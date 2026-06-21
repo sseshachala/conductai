@@ -23,25 +23,6 @@ from app.modules.guard.policy_engine import invalidate_policy_cache
 router = APIRouter(prefix="/compliance", tags=["compliance"])
 
 
-# ── Pack ID ↔ slug mapping ────────────────────────────────────────────────────
-
-# Legacy pack_id (from old COMPLIANCE_PACKS dict) → new skill_packs.slug.
-# Kept so /compliance/packs/{owasp_top10}/install still resolves.
-LEGACY_SLUG_MAP: dict[str, str] = {
-    "owasp_top10":      "conduct-owasp",
-    "soc2":             "conduct-soc2",
-    "hipaa":            "conduct-hipaa",
-    "pci_dss":          "conduct-pci-dss",
-    "startup_baseline": "conduct-base",
-}
-
-def _resolve_slug(pack_id: str) -> str:
-    """Accept either a legacy pack_id ('owasp_top10') or a slug ('conduct-owasp')."""
-    if pack_id in LEGACY_SLUG_MAP:
-        return LEGACY_SLUG_MAP[pack_id]
-    return pack_id
-
-
 def _latest_pack(db: Session, slug: str) -> SkillPack | None:
     return (
         db.query(SkillPack)
@@ -69,9 +50,8 @@ def list_installed_packs(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Return installed pack slugs (e.g. 'conduct-owasp'). One identifier
-    scheme across the API surface — legacy ids are only accepted on
-    install/uninstall paths via _resolve_slug() for backward compatibility."""
+    """Return installed pack slugs (e.g. 'conduct-owasp'). Single identifier
+    scheme across the entire surface — slugs only, no legacy translation."""
     ws_uuid = uuid.UUID(workspace_id)
     rows = (
         db.query(WorkspaceSkillPack.pack_slug)
@@ -88,7 +68,7 @@ def install_pack(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("guard.policies.edit")),
 ):
-    slug = _resolve_slug(pack_id)
+    slug = pack_id
     pack = _latest_pack(db, slug)
     if not pack:
         raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
@@ -121,7 +101,7 @@ def uninstall_pack(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("guard.policies.edit")),
 ):
-    slug = _resolve_slug(pack_id)
+    slug = pack_id
     ws_uuid = uuid.UUID(workspace_id)
 
     pack = _latest_pack(db, slug)
