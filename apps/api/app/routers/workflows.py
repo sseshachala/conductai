@@ -451,8 +451,9 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
         first_repo = next((r.strip() for r in str(allowlist_raw).split(",") if r.strip()), None)
         if first_repo:
             workflow.github_hook_repo = first_repo
-            # Reflect back into graph so canvas + webhook stay in sync if substitution didn't fire.
-            if not cfg.get("repo_allowlist"):
+            # Always reflect into the graph so canvas + webhook stay in sync.
+            # Covers: substitution skipped, leftover template literal, or repo from body fallback.
+            if cfg.get("repo_allowlist") != first_repo:
                 cfg["repo_allowlist"] = first_repo
                 trigger_node["data"]["config"] = cfg
                 from sqlalchemy.orm.attributes import flag_modified as _flag_repo
@@ -624,23 +625,10 @@ def _do_register_workflow_webhook(workflow, workspace_id: str, db: Session) -> s
 
     repo = workflow.github_hook_repo
 
-    # Reuse existing hook if another workflow in this workspace already registered one for this repo.
-    existing = db.query(Workflow).filter(
-        Workflow.workspace_id == workspace_id,
-        Workflow.github_hook_repo == repo,
-        Workflow.github_hook_id.isnot(None),
-        Workflow.id != workflow.id,
-    ).first()
-    if existing:
-        workflow.github_hook_id = existing.github_hook_id
-        db.commit()
-        return None
-
+    # DB-level dedup REMOVED — it copied stale hook_ids without verifying GitHub state.
+    # _register_github_webhook does its own GitHub-side dedup: GET /hooks, reuse if URL matches, else POST.
+    # Clear our cached hook_id so we don't try to deregister a (possibly stale) hook.
     if workflow.github_hook_id:
-        try:
-            _deregister_git_webhook(token, repo, workflow.github_hook_id, provider=provider)
-        except Exception as e:
-            log.warning("webhook.stale_deregistration_skipped", workflow_id=str(workflow.id), error=str(e))
         workflow.github_hook_id = None
         db.commit()
 
