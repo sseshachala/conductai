@@ -58,44 +58,6 @@ class GuardMemberConfig(Base):
     )
 
 
-class GuardPolicy(Base):
-    __tablename__ = "guard_policies"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    rule_id = Column(String(100), nullable=False)
-    description = Column(String(255), nullable=True)
-    match_tool = Column(String(255), nullable=True)
-    match_pattern = Column(String(500), nullable=True)
-    match_path_pattern = Column(String(500), nullable=True)
-    match_tokens_before_gt = Column(Integer, nullable=True)
-    action = Column(String(20), nullable=False)
-    message = Column(Text, nullable=True)
-    enabled = Column(Boolean, nullable=False, default=True)
-    builtin = Column(Boolean, nullable=False, default=False)
-    pack_id = Column(String(100), nullable=True)
-    # Which personas include this rule. GIN-indexed for array containment queries.
-    # e.g. ['conservative','standard'] means developer persona skips this rule.
-    persona_affinity = Column(ARRAY(Text), nullable=False, default=lambda: ["conservative", "standard", "developer"])
-    # Findings vocabulary (#745) — one rule maps to many frameworks.
-    recommendation = Column(Text, nullable=True)
-    frameworks = Column(ARRAY(Text), nullable=False, default=list)
-    severity = Column(String(20), nullable=False, default="medium")
-    iso_control = Column(String(50), nullable=True)
-    created_at = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-    updated_at = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-    archived_at = Column(DateTime(timezone=True), nullable=True)
-
-
 class GuardSession(Base):
     __tablename__ = "guard_sessions"
 

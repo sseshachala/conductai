@@ -15,7 +15,6 @@ from app.models.playbook_submission import PlaybookSubmission
 from app.modules.guard.models import (
     GuardConfig,
     GuardMemberConfig,
-    GuardPolicy,
     GuardSession,
     GuardAuditEvent,
     GuardSpendBudget,
@@ -26,7 +25,7 @@ __all__ = [
     "Workflow", "WorkflowVersion", "Integration", "Run", "RunEvent",
     "RunAnalyticsEvent", "RunTrace", "AuditLog", "EmailTemplate",
     "PlaybookSubmission",
-    "GuardConfig", "GuardMemberConfig", "GuardPolicy", "GuardSession",
+    "GuardConfig", "GuardMemberConfig", "GuardSession",
     "GuardAuditEvent", "GuardSpendBudget",
     "Role", "Permission",
 ]
