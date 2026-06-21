@@ -526,11 +526,17 @@ def update_workflow(
         workflow.current_version_id = version.id
 
         # Keep github_hook_repo and github_hook_label in sync with trigger config.
+        # Also normalize: 1 autopilot per repo. If client sent an array, take the first
+        # and write it back as a single string so canvas + downstream stay consistent.
         nodes = graph_dict.get("nodes", [])
         trigger_node = next((n for n in nodes if n.get("data", {}).get("type") == "trigger"), None)
         if trigger_node:
-            cfg = trigger_node.get("data", {}).get("config", {})
-            allowlist_raw = cfg.get("repo_allowlist") or ""
+            cfg = trigger_node.get("data", {}).setdefault("config", {})
+            allowlist_val = cfg.get("repo_allowlist") or ""
+            if isinstance(allowlist_val, list):
+                allowlist_val = allowlist_val[0] if allowlist_val else ""
+                cfg["repo_allowlist"] = allowlist_val
+            allowlist_raw = str(allowlist_val)
             first_repo = next((r.strip() for r in allowlist_raw.split(",") if r.strip()), None)
             if first_repo and first_repo != workflow.github_hook_repo:
                 workflow.github_hook_repo = first_repo
