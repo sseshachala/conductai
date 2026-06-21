@@ -51,7 +51,11 @@ def invalidate_policy_cache(db: Session, workspace_id: uuid.UUID) -> None:
     """Wipe all cached personas for a workspace. Call after any policy change."""
     db.query(GuardPolicyCache).filter(
         GuardPolicyCache.workspace_id == workspace_id
-    ).delete(synchronize_session=False)
+    ).delete(synchronize_session="fetch")
+    # Also expire the session identity map so any cached ORM instances are
+    # rediscovered from the DB on the next compute_policy() call. Without this,
+    # db.get(GuardPolicyCache, ...) in the same session returns a stale row.
+    db.expire_all()
     # Push invalidation to any connected conduct-daemon instances
     try:
         from app.modules.guard.routers.ws import publish_policy_invalidated
