@@ -699,85 +699,16 @@ def register_workflow_webhook(
     if not workflow.current_version_id:
         raise HTTPException(status_code=400, detail="Workflow has no version — save the canvas first")
 
-    playbook_slug = workflow.playbook_slug or ""
-    if playbook_slug not in _GITHUB_WEBHOOK_EVENTS:
-        raise HTTPException(status_code=400, detail="This workflow type does not use GitHub webhooks")
-
-    import secrets as _secrets
-    import re as _re
-    from app.routers.credentials import _git_token
-    from app.core.crypto import encrypt as _encrypt
-    from sqlalchemy.orm.attributes import flag_modified
-
-    token, provider = _git_token(str(workspace_id), db, str(workflow.environment_id) if workflow.environment_id else None)
-
-    repo = workflow.github_hook_repo
-
-    # One webhook per repo: reuse an existing Conduct hook if one already exists for this repo.
-    existing = db.query(Workflow).filter(
-        Workflow.workspace_id == workspace_id,
-        Workflow.github_hook_repo == repo,
-        Workflow.github_hook_id.isnot(None),
-        Workflow.id != workflow_id,
-    ).first()
-
-    if existing:
-        workflow.github_hook_id = existing.github_hook_id
-        db.commit()
-        db.refresh(workflow)
-        _stamp(workflow)
-        return workflow
-
-    # No existing hook — deregister any stale one first, then register fresh.
-    if workflow.github_hook_id:
-        try:
-            _deregister_git_webhook(token, repo, workflow.github_hook_id, provider=provider)
-        except Exception as e:
-            log.warning("webhook.stale_deregistration_skipped", workflow_id=str(workflow_id), error=str(e))
-        workflow.github_hook_id = None
-        db.commit()
-
-    project_slug: str | None = None
-    if workflow.project_id:
-        from app.models.project import Project as _Project
-        proj = db.query(_Project).filter(_Project.id == workflow.project_id).first()
-        if proj:
-            project_slug = proj.slug  # use the stored slug, not a runtime derivation
-
-    from app.core.config import settings as _settings
-    webhook_secret = _settings.github_webhook_secret or _secrets.token_hex(32)
-
-    hook_id, error = _register_git_webhook(
-        token, repo, str(workflow.id),
-        _ALL_GITHUB_EVENTS if provider == "github" else _GITHUB_WEBHOOK_EVENTS[playbook_slug],
-        provider=provider,
-        project_slug=project_slug,
-        secret=webhook_secret,
-        workspace_id=str(workspace_id),
-    )
-    if not hook_id:
-        raise HTTPException(status_code=502, detail=error or "Webhook registration failed")
-
-    workflow.github_hook_id = hook_id
-
-    # Store encrypted secret + provider in trigger node of current version
-    version = db.query(WorkflowVersion).filter(WorkflowVersion.id == workflow.current_version_id).first()
-    if version:
-        encrypted_secret = _encrypt({"secret": webhook_secret})
-        graph = version.graph
-        for node in graph.get("nodes", []):
-            if node.get("data", {}).get("type") == "trigger":
-                node["data"].setdefault("config", {})["webhook_secret"] = encrypted_secret
-                node["data"]["config"]["git_provider"] = provider
-                node["data"]["config"]["repo_allowlist"] = repo
-        version.graph = graph
-        flag_modified(version, "graph")
-
-    db.commit()
+    # Single source of truth: _do_register_workflow_webhook helper.
+    # It handles token fetch, GitHub-side dedup (via /hooks GET), POST if new,
+    # secret encryption, graph writeback. No DB-level dedup that copies stale hook_ids.
+    err = _do_register_workflow_webhook(workflow, str(workspace_id), db)
+    if err:
+        raise HTTPException(status_code=502, detail=err)
     db.refresh(workflow)
     audit(db, workspace_id, "workflow.webhook_registered",
           resource_type="workflow", resource_id=str(workflow_id),
-          metadata={"repo": repo})
+          metadata={"repo": workflow.github_hook_repo})
     _stamp(workflow)
     return workflow
 
