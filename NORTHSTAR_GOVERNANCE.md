@@ -245,7 +245,9 @@ In priority order (revised after audit — backend gaps were smaller than expect
 
 ## 8. Tied To
 
-- **Epic:** _(to be created — link will be added here once filed)_
+- **Epic:** #759 — [epic: AI Governance Northstar — 10-layer coverage spec](https://github.com/sseshachala/conductai/issues/759)
+- **Now items:** #760 (Budget UI) · #761 (SOC 2 PDF) · #762 (Approval-in-hook) · #763 (Fail-closed flag) · #764 (Findings auto-sync)
+- **Layer roadmaps:** #766 (L1) · #767 (L2) · #768 (L3) · #769 (L4) · #770 (L5) · #771 (L6) · #772 (L7) · #773 (L8) · #765 (L9) · #774 (L10)
 - **Code anchors:** [`apps/api/app/modules/guard/models.py:82`](./apps/api/app/modules/guard/models.py), [`runtime/blocks/guard_block.py:137`](./apps/api/app/runtime/blocks/guard_block.py), [`routers/mcp.py:195`](./apps/api/app/modules/guard/routers/mcp.py), [`routers/events.py:322`](./apps/api/app/modules/guard/routers/events.py), [`core/pii.py:17`](./apps/api/app/core/pii.py), [`routers/governance.py:124`](./apps/api/app/routers/governance.py), [`hook_template.py:344,688`](./packages/conduct-cli/src/conduct_cli/hook_template.py)
 - **Related epics:** #748 (TrustLayers competitive response), #750 (Governance Dashboard), #756 (Conduct Compliance), #758 (MCP surface expansion)
 - **Parent doc:** [NORTHSTAR.md](./NORTHSTAR.md) (Layer 6 — Trust & Compliance)
