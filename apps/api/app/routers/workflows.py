@@ -175,12 +175,19 @@ def _register_git_webhook(
     project_slug: str | None = None,
     secret: str | None = None,
     workspace_id: str | None = None,
+    playbook_slug: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Register a webhook on the git provider. Returns (hook_id, error_message)."""
     import httpx
     from app.core.config import settings
 
-    if provider == "github" and "issues" in events and workspace_id:
+    if provider == "github" and "issues" in events and project_slug and playbook_slug:
+        # Per-workflow URL: human-readable + unique per workflow.
+        # Format: /webhooks/github/{project_slug}/{playbook_slug}-{id_prefix}
+        id_prefix = workflow_id.replace("-", "")[:8]
+        webhook_url = f"{settings.api_base_url}/webhooks/github/{project_slug}/{playbook_slug}-{id_prefix}"
+    elif provider == "github" and "issues" in events and workspace_id:
+        # Fallback: workspace-scoped fan-out URL (no project_slug — should be rare).
         webhook_url = f"{settings.api_base_url}/webhooks/github?workspace_id={workspace_id}"
     else:
         slug_segment = f"{project_slug}/" if project_slug else ""
@@ -653,6 +660,7 @@ def _do_register_workflow_webhook(workflow, workspace_id: str, db: Session) -> s
         project_slug=project_slug,
         secret=webhook_secret,
         workspace_id=str(workspace_id),
+        playbook_slug=playbook_slug,
     )
     if not hook_id:
         return error or "Webhook registration failed"
