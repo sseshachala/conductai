@@ -1,18 +1,30 @@
 {
   "slug": "conduct-hipaa",
   "name": "Conduct HIPAA",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "tier": "paid",
   "description": "HIPAA PHI protection rules",
   "rules": [
     {
       "id": "hipaa_phi_field",
-      "description": "Warn on PHI field access (HIPAA §164.312)",
+      "description": "Warn on PHI field access (HIPAA \u00a7164.312)",
       "match_tool": "edit,write,bash",
       "match_pattern": "(patient_id|ssn|dob|date_of_birth|medical_record)",
       "action": "warn",
-      "message": "PHI field — ensure encrypted at rest and access is logged.",
-      "persona_affinity": ["conservative", "standard", "developer"]
+      "message": "PHI field \u2014 ensure encrypted at rest and access is logged.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "HIPAA:164.514",
+        "GDPR:Art32",
+        "ISO_42001:8.11"
+      ],
+      "severity": "high",
+      "recommendation": "De-identify PHI per Safe Harbor or Expert Determination methods before processing. Document the de-identification approach.",
+      "iso_control": "A.8.11"
     },
     {
       "id": "hipaa_http_phi",
@@ -20,8 +32,19 @@
       "match_tool": "edit,write,bash",
       "match_pattern": "http://.*patient|http://.*health",
       "action": "block",
-      "message": "PHI over plain HTTP is a HIPAA violation — use HTTPS.",
-      "persona_affinity": ["conservative", "standard"]
+      "message": "PHI over plain HTTP is a HIPAA violation \u2014 use HTTPS.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ],
+      "frameworks": [
+        "HIPAA:164.312",
+        "SOC2:CC6.1",
+        "GDPR:Art32"
+      ],
+      "severity": "critical",
+      "recommendation": "All PHI transmission must use TLS 1.2 or higher. Verify certificate validation is not disabled.",
+      "iso_control": "A.8.24"
     },
     {
       "id": "hipaa_ssn_pattern",
@@ -29,8 +52,20 @@
       "match_tool": "edit,write",
       "match_pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
       "action": "block",
-      "message": "Social Security Number detected — never store in source.",
-      "persona_affinity": ["conservative", "standard", "developer"]
+      "message": "Social Security Number detected \u2014 never store in source.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "HIPAA:164.514",
+        "GDPR:Art32",
+        "PCI_DSS:3.3"
+      ],
+      "severity": "critical",
+      "recommendation": "Never store or transmit SSNs in plain text. Tokenise or hash with a per-record salt if a unique identifier is required.",
+      "iso_control": "A.8.11"
     }
   ]
 }

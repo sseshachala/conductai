@@ -1,9 +1,9 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "tier": "free",
-  "description": "Core safety rules \u2014 destructive ops, secrets, production gates, audit",
+  "description": "Core safety rules \u2014 destructive ops, secrets, production gates, audit. Findings vocabulary aligned to SOC 2, ISO 42001, OWASP, PCI DSS, GDPR.",
   "rules": [
     {
       "id": "no-rm-rf",
@@ -16,7 +16,14 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "high",
+      "recommendation": "Delete files individually or use a version-controlled cleanup script that can be reviewed and reverted.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-git-reset-hard",
@@ -28,7 +35,14 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "medium",
+      "recommendation": "Use --soft or --mixed to preserve working tree changes. For published commits, use git revert.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-force-push",
@@ -40,7 +54,14 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "high",
+      "recommendation": "Coordinate with your team before rewriting history. Use git push --force-with-lease at minimum.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-drop-table",
@@ -52,7 +73,15 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:10.7"
+      ],
+      "severity": "critical",
+      "recommendation": "Use a reversible migration. Create a backup or snapshot before destructive schema changes.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-truncate-table",
@@ -64,7 +93,15 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:10.7"
+      ],
+      "severity": "high",
+      "recommendation": "Use a migration with rollback. For test data, use a controlled fixture reset.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-delete-without-where",
@@ -76,7 +113,14 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "high",
+      "recommendation": "Add a WHERE clause. Verify the row count with SELECT before running the DELETE.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-sudo",
@@ -89,7 +133,14 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "high",
+      "recommendation": "Escalating privileges via AI agents is not permitted. Run the privileged command yourself with audit logging.",
+      "iso_control": "A.8.2"
     },
     {
       "id": "no-chmod-permissive",
@@ -102,7 +153,15 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "OWASP:A05"
+      ],
+      "severity": "medium",
+      "recommendation": "Use the most restrictive permission that works (e.g. 644 for files, 755 for directories).",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-chown-root",
@@ -114,7 +173,14 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "high",
+      "recommendation": "Use a service-specific user. Never grant agent processes root ownership.",
+      "iso_control": "A.8.2"
     },
     {
       "id": "no-env-commits",
@@ -126,7 +192,16 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "GDPR:Art32",
+        "PCI_DSS:3.5"
+      ],
+      "severity": "critical",
+      "recommendation": "Add .env to .gitignore. Store secrets in a vault (1Password, AWS Secrets Manager, Conduct credential vault).",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-hardcoded-secrets",
@@ -139,7 +214,17 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "GDPR:Art32",
+        "PCI_DSS:3.5",
+        "OWASP:A07"
+      ],
+      "severity": "high",
+      "recommendation": "Read secrets from environment variables or a secrets manager. Never embed them in source code.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-aws-keys",
@@ -152,7 +237,15 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:3.5"
+      ],
+      "severity": "critical",
+      "recommendation": "Use IAM roles for AWS workloads. Never embed access keys in source code.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-private-key-files",
@@ -164,7 +257,15 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:3.5"
+      ],
+      "severity": "critical",
+      "recommendation": "Store private keys in a key management system (KMS, HSM, vault). Never write them to disk in source-controlled paths.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "no-secret-in-commit-msg",
@@ -177,7 +278,15 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:3.5"
+      ],
+      "severity": "high",
+      "recommendation": "Remove the secret from the commit message. If already committed, rotate the credential and rewrite history with git rebase.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "approve-prod-deploy",
@@ -189,7 +298,15 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.6",
+        "SOC2:CC8.1",
+        "ISO_42001:8.5"
+      ],
+      "severity": "high",
+      "recommendation": "Require explicit human approval before any production deploy. Tie approval to a named oversight officer.",
+      "iso_control": "A.8.32"
     },
     {
       "id": "approve-db-migration-prod",
@@ -201,7 +318,15 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.6",
+        "SOC2:CC8.1",
+        "ISO_42001:8.5"
+      ],
+      "severity": "high",
+      "recommendation": "Require approval and verify the migration has been tested in staging before production.",
+      "iso_control": "A.8.32"
     },
     {
       "id": "approve-terraform-destroy",
@@ -213,7 +338,14 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.6",
+        "ISO_42001:8.5"
+      ],
+      "severity": "high",
+      "recommendation": "Always plan first. Require approval and a documented reason before destroying infrastructure.",
+      "iso_control": "A.8.32"
     },
     {
       "id": "approve-kubectl-delete",
@@ -225,7 +357,14 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.6",
+        "ISO_42001:8.5"
+      ],
+      "severity": "high",
+      "recommendation": "Require approval. For namespace-wide deletes, snapshot resources first.",
+      "iso_control": "A.8.32"
     },
     {
       "id": "approve-prod-env-edit",
@@ -237,7 +376,15 @@
       "persona_affinity": [
         "conservative",
         "standard"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.6",
+        "SOC2:CC8.1",
+        "ISO_42001:8.5"
+      ],
+      "severity": "high",
+      "recommendation": "Production env file changes require approval and a Git commit. Use sealed-secrets pattern where possible.",
+      "iso_control": "A.8.32"
     },
     {
       "id": "audit-migrations",
@@ -250,7 +397,14 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC7.2",
+        "ISO_42001:9.1"
+      ],
+      "severity": "low",
+      "recommendation": "Audit-only. Migration changes are recorded for review.",
+      "iso_control": "A.5.36"
     },
     {
       "id": "audit-ci-config",
@@ -263,7 +417,14 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC7.2",
+        "ISO_42001:9.1"
+      ],
+      "severity": "low",
+      "recommendation": "Audit-only. CI config changes are recorded for review.",
+      "iso_control": "A.5.36"
     },
     {
       "id": "audit-dockerfile",
@@ -276,7 +437,14 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC7.2",
+        "ISO_42001:9.1"
+      ],
+      "severity": "low",
+      "recommendation": "Audit-only. Dockerfile changes are recorded for review.",
+      "iso_control": "A.5.36"
     },
     {
       "id": "secret-stripe",
@@ -289,7 +457,14 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "PCI_DSS:3.5"
+      ],
+      "severity": "critical",
+      "recommendation": "Use environment variables. Rotate the key in the Stripe dashboard if it has been exposed.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "secret-slack",
@@ -302,7 +477,14 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "high",
+      "recommendation": "Store Slack tokens in environment variables. Rotate via the Slack app dashboard if exposed.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "secret-private-key",
@@ -315,7 +497,15 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:3.5"
+      ],
+      "severity": "critical",
+      "recommendation": "Use a secrets manager (KMS, vault). Rotate immediately if a private key has been committed.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "cmd-injection",
@@ -328,7 +518,15 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "OWASP:A03",
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "high",
+      "recommendation": "Use subprocess with shell=False and a list of args. Never pass user input through eval/exec.",
+      "iso_control": "A.8.28"
     },
     {
       "id": "sql-injection",
@@ -341,7 +539,16 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "OWASP:A03",
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:6.5.1"
+      ],
+      "severity": "high",
+      "recommendation": "Use parameterised queries (e.g. cursor.execute(sql, params)). Never f-string user input into SQL.",
+      "iso_control": "A.8.28"
     },
     {
       "id": "weak-hash-md5",
@@ -354,7 +561,15 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "OWASP:A02",
+        "SOC2:CC6.1",
+        "PCI_DSS:3.6"
+      ],
+      "severity": "medium",
+      "recommendation": "Use SHA-256 for general hashing, bcrypt/argon2 for passwords.",
+      "iso_control": "A.8.24"
     },
     {
       "id": "weak-hash-sha1",
@@ -367,7 +582,15 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "OWASP:A02",
+        "SOC2:CC6.1",
+        "PCI_DSS:3.6"
+      ],
+      "severity": "medium",
+      "recommendation": "Use SHA-256 for general hashing, bcrypt/argon2 for passwords.",
+      "iso_control": "A.8.24"
     },
     {
       "id": "warn-deterministic-compute",
@@ -380,7 +603,13 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "ISO_42001:8.6"
+      ],
+      "severity": "low",
+      "recommendation": "Run deterministic shell pipelines directly as a script. Reserve LLM calls for reasoning tasks.",
+      "iso_control": "A.8.6"
     },
     {
       "id": "warn-large-context-dump",
@@ -393,7 +622,13 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "ISO_42001:8.6"
+      ],
+      "severity": "low",
+      "recommendation": "Use Agent Booster smart_read to retrieve only relevant symbols instead of the full file.",
+      "iso_control": "A.8.6"
     },
     {
       "id": "pii-redact",
@@ -405,7 +640,16 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "GDPR:Art32",
+        "EU_AI_ACT:Art10",
+        "ISO_42001:8.4",
+        "HIPAA:164.514"
+      ],
+      "severity": "high",
+      "recommendation": "Pseudonymise or redact PII before sending data to an LLM. Maintain a documented data-flow map for AI processing.",
+      "iso_control": "A.8.11"
     },
     {
       "id": "secret-redact",
@@ -417,7 +661,16 @@
         "conservative",
         "standard",
         "developer"
-      ]
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "GDPR:Art32",
+        "PCI_DSS:3.5"
+      ],
+      "severity": "critical",
+      "recommendation": "Remove credentials from tool inputs. Use environment variables or Conduct's credential vault. Rotate any exposed credential.",
+      "iso_control": "A.8.4"
     }
   ]
 }

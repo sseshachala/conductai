@@ -77,6 +77,11 @@ class GuardPolicy(Base):
     # Which personas include this rule. GIN-indexed for array containment queries.
     # e.g. ['conservative','standard'] means developer persona skips this rule.
     persona_affinity = Column(ARRAY(Text), nullable=False, default=lambda: ["conservative", "standard", "developer"])
+    # Findings vocabulary (#745) — one rule maps to many frameworks.
+    recommendation = Column(Text, nullable=True)
+    frameworks = Column(ARRAY(Text), nullable=False, default=list)
+    severity = Column(String(20), nullable=False, default="medium")
+    iso_control = Column(String(50), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

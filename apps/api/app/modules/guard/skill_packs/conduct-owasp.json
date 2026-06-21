@@ -1,7 +1,7 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "tier": "paid",
   "description": "OWASP Top 10 enforcement rules",
   "rules": [
@@ -11,8 +11,20 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "SELECT\\s+.*\\+|execute\\(.*f['\"]",
       "action": "block",
-      "message": "Possible SQL injection — use parameterised queries.",
-      "persona_affinity": ["conservative", "standard"]
+      "message": "Possible SQL injection \u2014 use parameterised queries.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ],
+      "frameworks": [
+        "OWASP:A03",
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:6.5.1"
+      ],
+      "severity": "high",
+      "recommendation": "Use parameterised queries. Never concatenate or f-string user input into SQL or shell commands.",
+      "iso_control": "A.8.28"
     },
     {
       "id": "owasp_crypto_guard",
@@ -20,8 +32,21 @@
       "match_tool": "edit,write",
       "match_pattern": "md5|sha1",
       "action": "warn",
-      "message": "MD5/SHA1 is weak for password hashing — use bcrypt or argon2.",
-      "persona_affinity": ["conservative", "standard", "developer"]
+      "message": "MD5/SHA1 is weak for password hashing \u2014 use bcrypt or argon2.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "OWASP:A02",
+        "SOC2:CC6.1",
+        "PCI_DSS:3.6",
+        "ISO_42001:8.24"
+      ],
+      "severity": "medium",
+      "recommendation": "Use SHA-256 or stronger for general hashing, bcrypt/argon2 for passwords, AES-GCM for symmetric encryption.",
+      "iso_control": "A.8.24"
     },
     {
       "id": "owasp_weak_session_guard",
@@ -29,8 +54,19 @@
       "match_tool": "edit,write",
       "match_pattern": "random\\.random\\(\\).*session|Math\\.random\\(\\).*token",
       "action": "block",
-      "message": "Weak randomness for session/token — use secrets.token_hex().",
-      "persona_affinity": ["conservative", "standard"]
+      "message": "Weak randomness for session/token \u2014 use secrets.token_hex().",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ],
+      "frameworks": [
+        "OWASP:A07",
+        "SOC2:CC6.1",
+        "ISO_42001:8.5"
+      ],
+      "severity": "high",
+      "recommendation": "Use a cryptographically secure session secret (>=32 bytes). Rotate session secrets regularly.",
+      "iso_control": "A.8.5"
     },
     {
       "id": "owasp_ssrf_guard",
@@ -38,8 +74,20 @@
       "match_tool": "edit,write",
       "match_pattern": "requests\\.get\\(.*request\\.|fetch\\(.*req\\.(query|body|params)",
       "action": "warn",
-      "message": "Possible SSRF — validate and allowlist URLs before outbound requests.",
-      "persona_affinity": ["conservative", "standard", "developer"]
+      "message": "Possible SSRF \u2014 validate and allowlist URLs before outbound requests.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "OWASP:A10",
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "high",
+      "recommendation": "Allowlist outbound destinations. Block requests to internal IP ranges (RFC1918, link-local, metadata endpoints).",
+      "iso_control": "A.8.28"
     },
     {
       "id": "owasp_eval_guard",
@@ -47,8 +95,20 @@
       "match_tool": "edit,write",
       "match_pattern": "\\beval\\s*\\(",
       "action": "block",
-      "message": "eval() enables code injection — avoid it.",
-      "persona_affinity": ["conservative", "standard", "developer"]
+      "message": "eval() enables code injection \u2014 avoid it.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "OWASP:A03",
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "critical",
+      "recommendation": "Never use eval() or exec() with untrusted input. Parse explicit data formats (JSON/YAML) instead.",
+      "iso_control": "A.8.28"
     },
     {
       "id": "owasp_xss_guard",
@@ -56,8 +116,20 @@
       "match_tool": "edit,write",
       "match_pattern": "innerHTML\\s*=",
       "action": "warn",
-      "message": "innerHTML assignment can introduce XSS — use textContent or DOMPurify.",
-      "persona_affinity": ["conservative", "standard", "developer"]
+      "message": "innerHTML assignment can introduce XSS \u2014 use textContent or DOMPurify.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "OWASP:A03",
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
+      "severity": "medium",
+      "recommendation": "Escape user-controlled content before rendering. Use framework-native templating (e.g. React JSX, Django auto-escape) instead of innerHTML.",
+      "iso_control": "A.8.28"
     }
   ]
 }
