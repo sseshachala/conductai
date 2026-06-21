@@ -224,7 +224,6 @@ def _cleanup_test_data(db_session, workspace_id: str) -> None:
             text("SELECT id FROM guard_teams WHERE workspace_id::text = :ws LIMIT 1"), {"ws": workspace_id}
         ).fetchone()
         if guard_team:
-            db_session.execute(text("DELETE FROM guard_policies WHERE team_id = :tid"), {"tid": str(guard_team.id)})
             db_session.execute(text("DELETE FROM guard_teams WHERE id = :tid"), {"tid": str(guard_team.id)})
         db_session.execute(text("DELETE FROM workspaces WHERE id = :ws"), {"ws": workspace_id})
         db_session.commit()
@@ -290,15 +289,13 @@ def test_full_onboarding_flow(db):
             )
             print(f"[step 1] guard_team_id={guard_team_id!r}")
 
-            # Verify 18 starter policies were seeded
-            policy_count = db.execute(
-                text("SELECT COUNT(*) FROM guard_policies WHERE team_id = :tid"),
-                {"tid": guard_team_id},
+            # Verify conduct-base skill pack was auto-installed for the workspace
+            pack_installed = db.execute(
+                text("SELECT 1 FROM workspace_skill_packs WHERE workspace_id::text = :ws AND pack_slug = 'conduct-base'"),
+                {"ws": workspace_id},
             ).scalar()
-            assert policy_count >= 18, (
-                f"Expected >= 18 starter policies, found {policy_count}"
-            )
-            print(f"[step 1] policies seeded: {policy_count}")
+            assert pack_installed, "conduct-base skill pack was not installed for the new workspace"
+            print(f"[step 1] conduct-base pack installed")
 
             # ----------------------------------------------------------------
             # Step 2 — Admin invites 3 members by email
