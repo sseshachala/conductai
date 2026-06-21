@@ -1,214 +1,51 @@
-"""
-ConductGuard — policy engine endpoints.
+"""ConductGuard — policy endpoints.
 
-GET    /guard/policies          — list all workspace policies (enabled + disabled)
-POST   /guard/policies          — create custom rule
-PATCH  /guard/policies/{id}     — update rule (enable/disable/edit)
-DELETE /guard/policies/{id}     — delete custom rule (builtin=True rules cannot be deleted)
-GET    /guard/policies/sync     — returns current active ruleset as JSON (polled by hook binary every 60s)
+GET    /guard/policies                — list custom + active pack rules
+POST   /guard/policies                — create a custom rule
+PATCH  /guard/policies/{rule_id}      — edit a rule (custom row OR pack override)
+DELETE /guard/policies/{rule_id}      — delete a custom rule (pack rules can't be deleted)
+POST   /guard/policies/generate       — LLM-generate a rule from a description
+GET    /guard/policies/sync           — daemon sync, returns the active ruleset
+POST   /guard/policies/reinstall-base — re-install the conduct-base pack
 """
+from __future__ import annotations
+
+import hashlib
+import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, get_guard_hook_auth
 from app.core.database import get_db
-from app.modules.guard.models import GuardAuditEvent, GuardConfig as _GuardConfig, GuardPolicy, GuardRuleOverride, SkillPack, WorkspaceSkillPack
+from app.modules.guard.models import (
+    GuardAuditEvent,
+    GuardConfig,
+    GuardRuleOverride,
+    SkillPack,
+    WorkspaceCustomRule,
+    WorkspaceSkillPack,
+)
 from app.modules.guard.policy_engine import compute_policy, invalidate_policy_cache
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
 _VALID_ACTIONS = {"block", "warn", "audit", "approval", "inject"}
-
-# ── Built-in rule definitions (loaded from YAML) ──────────────────────────────
-
-_POLICIES_FILE = Path(__file__).parent.parent / "builtin_policies.yaml"
-
-
-def _load_builtin_rules() -> list[dict]:
-    with _POLICIES_FILE.open() as f:
-        rules = yaml.safe_load(f) or []
-    for r in rules:
-        r.setdefault("match_pattern", None)
-        r.setdefault("match_path_pattern", None)
-    return rules
+_PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+_GENERATE_SYSTEM_FILE = _PROMPTS_DIR / "policy_generate_system.txt"
+_GENERATE_SYSTEM = _GENERATE_SYSTEM_FILE.read_text() if _GENERATE_SYSTEM_FILE.exists() else ""
 
 
-_BUILTIN_RULES: list[dict] = _load_builtin_rules()
-
-
-_SKILL_PACKS_DIR = Path(__file__).parent.parent / "skill_packs"
-
-
-def auto_refresh_skill_packs(db: Session) -> None:
-    """Upsert every skill pack JSON from disk into the skill_packs table.
-
-    Uses INSERT ... ON CONFLICT (slug, version) DO UPDATE so that any fields
-    added to the JSON after the initial seed (e.g. persona_affinity inside rules)
-    are written to the DB on next startup.  Non-fatal.
-    """
-    from sqlalchemy import text as _text
-
-    try:
-        import json as _json
-        for json_path in _SKILL_PACKS_DIR.glob("*.json"):
-            try:
-                data = _json.loads(json_path.read_text())
-            except Exception:
-                continue
-            slug = data.get("slug") or json_path.stem
-            version = str(data.get("version", "1.0.0"))
-            name = data.get("name", slug)
-            description = data.get("description")
-            tier = data.get("tier", "free")
-            rules = data.get("rules", [])
-            db.execute(
-                _text(
-                    """
-                    INSERT INTO skill_packs (slug, version, name, description, tier, rules, created_at)
-                    VALUES (:slug, :version, :name, :description, :tier, :rules::jsonb, NOW())
-                    ON CONFLICT (slug, version) DO UPDATE
-                        SET rules       = EXCLUDED.rules,
-                            name        = EXCLUDED.name,
-                            description = EXCLUDED.description,
-                            tier        = EXCLUDED.tier
-                    """
-                ),
-                {
-                    "slug": slug,
-                    "version": version,
-                    "name": name,
-                    "description": description,
-                    "tier": tier,
-                    "rules": _json.dumps(rules),
-                },
-            )
-        db.commit()
-        import structlog as _sl
-        _sl.get_logger(__name__).info("guard.skill_packs_refreshed")
-    except Exception as exc:
-        import structlog as _sl
-        _sl.get_logger(__name__).warning("guard.skill_packs_refresh_failed", error=str(exc))
-
-
-def auto_seed_if_changed(db: Session) -> None:
-    """On startup: if builtin_policies.yaml has changed since last run, upsert
-    policies for every workspace that has Guard enabled (has a GuardConfig row).
-
-    Checksum is persisted to builtin_policies.yaml.sha256 next to the YAML file.
-    Non-fatal: any exception is swallowed so startup is never blocked.
-    """
-    import hashlib
-    _CHECKSUM_FILE = _POLICIES_FILE.with_suffix(".yaml.sha256")
-
-    try:
-        content = _POLICIES_FILE.read_bytes()
-        current_sha = hashlib.sha256(content).hexdigest()
-
-        stored_sha = _CHECKSUM_FILE.read_text().strip() if _CHECKSUM_FILE.exists() else ""
-        if current_sha == stored_sha:
-            return  # YAML unchanged — nothing to do
-
-        # YAML changed (or first run): upsert for all Guard-enabled workspaces
-        from app.modules.guard.models import GuardConfig as _GC
-        workspace_ids = [row.workspace_id for row in db.query(_GC.workspace_id).all()]
-
-        rules = _load_builtin_rules()
-        for ws_id in workspace_ids:
-            ws_uuid = uuid.UUID(str(ws_id))
-            added = updated = 0
-            for rule in rules:
-                rule_data = {**rule, "description": (rule.get("description") or "")[:255]}
-                existing = (
-                    db.query(GuardPolicy)
-                    .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.rule_id == rule_data["rule_id"])
-                    .first()
-                )
-                if existing is None:
-                    db.add(GuardPolicy(workspace_id=ws_uuid, builtin=True, enabled=True, **rule_data))
-                    added += 1
-                else:
-                    existing.description = rule_data.get("description", existing.description)
-                    existing.match_pattern = rule_data.get("match_pattern")
-                    existing.match_path_pattern = rule_data.get("match_path_pattern")
-                    existing.action = rule_data.get("action", existing.action)
-                    existing.message = rule_data.get("message", existing.message)
-                    if "match_tokens_before_gt" in rule_data:
-                        existing.match_tokens_before_gt = rule_data["match_tokens_before_gt"]
-                    existing.updated_at = datetime.now(timezone.utc)
-                    updated += 1
-            db.commit()
-            import structlog as _sl
-            _sl.get_logger(__name__).info(
-                "guard.builtin_policies_seeded",
-                workspace_id=str(ws_id),
-                added=added,
-                updated=updated,
-            )
-
-        # Refresh skill pack rules from disk so persona_affinity stays in sync
-        auto_refresh_skill_packs(db)
-
-        # Persist new checksum so next startup is a no-op
-        _CHECKSUM_FILE.write_text(current_sha)
-
-    except Exception as exc:
-        import structlog as _sl
-        _sl.get_logger(__name__).warning("guard.auto_seed_failed", error=str(exc))
-
-
-def seed_builtin_policies(db: Session, workspace_id) -> None:
-    """Insert built-in policies for a workspace if they do not already exist."""
-    ws_uuid = uuid.UUID(str(workspace_id))
-    for rule in _BUILTIN_RULES:
-        exists = (
-            db.query(GuardPolicy)
-            .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.rule_id == rule["rule_id"])
-            .first()
-        )
-        if exists:
-            continue
-        db.add(
-            GuardPolicy(
-                workspace_id=ws_uuid,
-                builtin=True,
-                enabled=True,
-                **rule,
-            )
-        )
-    db.commit()
-
-
-# ── Pydantic schemas ──────────────────────────────────────────────────────────
-
-
-class PolicyCreate(BaseModel):
-    workspace_id: Optional[str] = None
-    rule_id: str
-    description: Optional[str] = None
-    match_tool: Optional[str] = None
-    match_pattern: Optional[str] = None
-    match_path_pattern: Optional[str] = None
-    action: str
-    message: Optional[str] = None
-
-
-class PolicyPatch(BaseModel):
-    enabled: Optional[bool] = None
-    description: Optional[str] = None
-    match_pattern: Optional[str] = None
-    match_path_pattern: Optional[str] = None
-    action: Optional[str] = None
-    message: Optional[str] = None
-
+# ── Schemas ───────────────────────────────────────────────────────────────────
 
 class PolicyOut(BaseModel):
+    """Workspace policy as surfaced to the UI. Same shape for custom rules and
+    pack rules; the `pack_id` field distinguishes them (None for custom)."""
     id: str
     workspace_id: str
     rule_id: str
@@ -229,8 +66,30 @@ class PolicyOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+
+class PolicyCreate(BaseModel):
+    rule_id: str
+    description: Optional[str] = None
+    match_tool: Optional[str] = None
+    match_pattern: Optional[str] = None
+    match_path_pattern: Optional[str] = None
+    action: str
+    message: Optional[str] = None
+    persona_affinity: Optional[list[str]] = None
+    recommendation: Optional[str] = None
+    frameworks: Optional[list[str]] = None
+    severity: Optional[str] = None
+    iso_control: Optional[str] = None
+    workspace_id: Optional[str] = None
+
+
+class PolicyPatch(BaseModel):
+    enabled: Optional[bool] = None
+    description: Optional[str] = None
+    match_pattern: Optional[str] = None
+    match_path_pattern: Optional[str] = None
+    action: Optional[str] = None
+    message: Optional[str] = None
 
 
 class PolicySyncRule(BaseModel):
@@ -249,70 +108,6 @@ class PolicySyncOut(BaseModel):
     rules: list[PolicySyncRule]
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _write_policy_audit(db: Session, workspace_id: uuid.UUID, tool_call: str, p: GuardPolicy) -> None:
-    """Write a GuardAuditEvent row for admin policy mutations. Non-fatal."""
-    try:
-        summary = f"rule_id={p.rule_id} action={p.action} enabled={p.enabled}"[:500]
-        db.add(GuardAuditEvent(
-            workspace_id=workspace_id,
-            clerk_user_id=None,
-            ai_tool="platform",
-            tool_call=tool_call,
-            decision="allowed",
-            rule_id=p.rule_id,
-            input_summary=summary,
-            ts=datetime.now(timezone.utc),
-        ))
-        db.commit()
-    except Exception as exc:
-        import structlog as _sl
-        _sl.get_logger(__name__).warning("guard.policy_audit_write_failed", exc=str(exc))
-
-
-def _get_policy_or_404(db: Session, policy_id: str) -> GuardPolicy:
-    try:
-        pid = uuid.UUID(policy_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Policy not found")
-    policy = db.query(GuardPolicy).filter(GuardPolicy.id == pid).first()
-    if not policy:
-        raise HTTPException(status_code=404, detail="Policy not found")
-    return policy
-
-
-def _policy_to_out(p: GuardPolicy) -> PolicyOut:
-    return PolicyOut(
-        id=str(p.id),
-        workspace_id=str(p.workspace_id),
-        rule_id=p.rule_id,
-        description=p.description,
-        match_tool=p.match_tool,
-        match_pattern=p.match_pattern,
-        match_path_pattern=p.match_path_pattern,
-        action=p.action,
-        message=p.message,
-        enabled=p.enabled,
-        builtin=p.builtin,
-        pack_id=p.pack_id,
-        persona_affinity=p.persona_affinity or [],
-        recommendation=p.recommendation,
-        frameworks=p.frameworks or [],
-        severity=p.severity,
-        iso_control=p.iso_control,
-        created_at=p.created_at,
-        updated_at=p.updated_at,
-    )
-
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
-
-_PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
-_GENERATE_SYSTEM = (_PROMPTS_DIR / "policy_generate_system.txt").read_text()
-
-
 class PolicyGenerateRequest(BaseModel):
     prompt: str
     workspace_id: Optional[str] = None
@@ -328,35 +123,144 @@ class PolicyGenerateOut(BaseModel):
     message: str
 
 
-def _get_anthropic_key(db: Session, workspace_id: str | None) -> str:
-    """Resolve Anthropic API key from the workspace credential vault."""
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _ws_uuid(workspace_id: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+
+
+def _custom_to_out(row: WorkspaceCustomRule) -> PolicyOut:
+    body = row.body or {}
+    return PolicyOut(
+        id=row.rule_id,
+        workspace_id=str(row.workspace_id),
+        rule_id=row.rule_id,
+        description=body.get("description"),
+        match_tool=body.get("match_tool"),
+        match_pattern=body.get("match_pattern"),
+        match_path_pattern=body.get("match_path_pattern"),
+        action=body.get("action", "block"),
+        message=body.get("message"),
+        enabled=bool(row.enabled),
+        builtin=False,
+        pack_id=None,
+        persona_affinity=body.get("persona_affinity") or [],
+        recommendation=body.get("recommendation"),
+        frameworks=body.get("frameworks") or [],
+        severity=body.get("severity") or "medium",
+        iso_control=body.get("iso_control"),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _pack_rule_to_out(
+    rule: dict,
+    pack_slug: str,
+    installed_at: datetime,
+    workspace_id: uuid.UUID,
+    override: Optional[GuardRuleOverride],
+) -> PolicyOut:
+    return PolicyOut(
+        id=rule["id"],
+        workspace_id=str(workspace_id),
+        rule_id=rule["id"],
+        description=rule.get("description"),
+        match_tool=rule.get("match_tool"),
+        match_pattern=rule.get("match_pattern"),
+        match_path_pattern=rule.get("match_path_pattern"),
+        action=(override.action if override and override.action else rule.get("action", "block")),
+        message=(override.custom_message if override and override.custom_message else rule.get("message")),
+        enabled=not (override and override.disabled),
+        builtin=True,
+        pack_id=pack_slug,
+        persona_affinity=rule.get("persona_affinity") or [],
+        recommendation=rule.get("recommendation"),
+        frameworks=rule.get("frameworks") or [],
+        severity=rule.get("severity") or "medium",
+        iso_control=rule.get("iso_control"),
+        created_at=installed_at,
+        updated_at=installed_at,
+    )
+
+
+def _upsert_override(
+    db: Session,
+    workspace_id: uuid.UUID,
+    rule_id: str,
+    *,
+    disabled: Optional[bool] = None,
+    action: Optional[str] = None,
+    message: Optional[str] = None,
+) -> None:
+    """Create or update a GuardRuleOverride. Fields with `None` are not touched."""
+    existing = db.get(GuardRuleOverride, (workspace_id, rule_id))
+    now = datetime.now(timezone.utc)
+    if existing:
+        if disabled is not None:
+            existing.disabled = disabled
+        if action is not None:
+            existing.action = action
+        if message is not None:
+            existing.custom_message = message
+        existing.overridden_at = now
+    else:
+        db.add(GuardRuleOverride(
+            workspace_id=workspace_id,
+            rule_id=rule_id,
+            disabled=bool(disabled) if disabled is not None else False,
+            action=action,
+            custom_message=message,
+            overridden_at=now,
+        ))
+
+
+def _write_audit(db: Session, workspace_id: uuid.UUID, tool_call: str, rule_id: str, action: str) -> None:
+    """Non-fatal audit row for policy mutations."""
+    try:
+        db.add(GuardAuditEvent(
+            workspace_id=workspace_id,
+            clerk_user_id=None,
+            ai_tool="platform",
+            tool_call=tool_call,
+            decision="allowed",
+            rule_id=rule_id,
+            input_summary=f"rule_id={rule_id} action={action}"[:500],
+            ts=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def _get_anthropic_key(db: Session, workspace_id: Optional[str]) -> str:
+    """Resolve the workspace's Anthropic API key from the credential vault."""
+    if not workspace_id:
+        return ""
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        return ""
     from app.core.crypto import decrypt
     from app.models.integration import Integration
+    row = (
+        db.query(Integration)
+        .filter(Integration.workspace_id == ws_uuid, Integration.handle == "anthropic")
+        .first()
+    )
+    if not row or not row.encrypted_credentials:
+        return ""
+    try:
+        creds = decrypt(row.encrypted_credentials)
+        return creds.get("api_key") or ""
+    except Exception:
+        return ""
 
-    if workspace_id:
-        try:
-            ws_uuid = uuid.UUID(workspace_id)
-        except ValueError:
-            ws_uuid = None
 
-        if ws_uuid:
-            row = (
-                db.query(Integration)
-                .filter(
-                    Integration.workspace_id == ws_uuid,
-                    Integration.handle == "anthropic",
-                )
-                .first()
-            )
-            if row and row.encrypted_credentials:
-                creds = decrypt(row.encrypted_credentials)
-                key = creds.get("api_key", "")
-                if key:
-                    return key
-
-    from app.core.config import settings
-    return settings.anthropic_api_key
-
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/generate", response_model=PolicyGenerateOut)
 def generate_policy(
@@ -364,14 +268,13 @@ def generate_policy(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Use Claude to generate a policy rule from a plain-English description."""
-    import json
+    """LLM-generate a rule from a plain-English description."""
     import anthropic
 
     resolved_ws = body.workspace_id or workspace_id
     api_key = _get_anthropic_key(db, resolved_ws)
     if not api_key:
-        raise HTTPException(status_code=503, detail="Anthropic API key not configured — add it in Settings → Environments")
+        raise HTTPException(status_code=503, detail="Anthropic API key not configured — add it in Settings -> Environments")
 
     client = anthropic.Anthropic(api_key=api_key)
     try:
@@ -391,12 +294,12 @@ def generate_policy(
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=422,
-            detail="Couldn't generate a rule from that description — try being more specific.",
+            detail="Could not generate a rule from that description — try being more specific.",
         )
     except Exception:
         raise HTTPException(
             status_code=502,
-            detail="Rule generation failed — check that your Anthropic API key is valid in Settings → Environments.",
+            detail="Rule generation failed — check that your Anthropic API key is valid in Settings -> Environments.",
         )
 
     action = data.get("action", "block")
@@ -421,35 +324,31 @@ def sync_policies(
     _auth: str = Depends(get_guard_hook_auth),
 ):
     """Return the current active ruleset for the hook binary or MCP server."""
-    try:
-        ws_uuid = uuid.UUID(workspace_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+    ws_uuid = _ws_uuid(workspace_id)
 
-    gc = db.query(_GuardConfig).filter(_GuardConfig.workspace_id == ws_uuid).first()
-    active_persona = gc.persona if gc and gc.persona else "standard"
+    gc = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    persona = (gc.persona if gc and gc.persona else "standard")
 
-    active_rules = compute_policy(db, ws_uuid, active_persona)
-
-    # version = hash of active rule set so hook knows when to re-download
-    version_hash = __import__("hashlib").sha256(
-        __import__("json").dumps(active_rules, sort_keys=True).encode()
-    ).hexdigest()[:16]
+    active_rules = compute_policy(db, ws_uuid, persona)
+    version_hash = hashlib.sha256(json.dumps(active_rules, sort_keys=True).encode()).hexdigest()[:16]
     version = f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}-{version_hash}"
 
-    rules = [
-        PolicySyncRule(
-            rule_id=r["id"],
-            match_tool=r.get("match_tool"),
-            match_pattern=r.get("match_pattern"),
-            match_path_pattern=r.get("match_path_pattern"),
-            action=r["action"],
-            message=r.get("message"),
-        )
-        for r in active_rules
-    ]
-
-    return PolicySyncOut(workspace_id=workspace_id, version=version, persona=active_persona, rules=rules)
+    return PolicySyncOut(
+        workspace_id=workspace_id,
+        version=version,
+        persona=persona,
+        rules=[
+            PolicySyncRule(
+                rule_id=r["id"],
+                match_tool=r.get("match_tool"),
+                match_pattern=r.get("match_pattern"),
+                match_path_pattern=r.get("match_path_pattern"),
+                action=r["action"],
+                message=r.get("message"),
+            )
+            for r in active_rules
+        ],
+    )
 
 
 @router.get("", response_model=list[PolicyOut])
@@ -457,68 +356,50 @@ def list_policies(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Return all workspace policies."""
-    try:
-        ws_uuid = uuid.UUID(workspace_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+    """List all policies for a workspace — custom rules + active pack rules."""
+    ws_uuid = _ws_uuid(workspace_id)
 
-    # Custom user-created rules (builtins come exclusively from skill packs)
-    custom = (
-        db.query(GuardPolicy)
-        .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.builtin == False, GuardPolicy.archived_at.is_(None))
-        .order_by(GuardPolicy.created_at.asc())
+    out: list[PolicyOut] = []
+
+    # 1. Custom rules
+    customs = (
+        db.query(WorkspaceCustomRule)
+        .filter(WorkspaceCustomRule.workspace_id == ws_uuid)
+        .order_by(WorkspaceCustomRule.created_at.asc())
         .all()
     )
-    result: list[PolicyOut] = [_policy_to_out(p) for p in custom]
+    out.extend(_custom_to_out(c) for c in customs)
 
+    # 2. Pack rules (with overrides applied)
     installed = (
         db.query(WorkspaceSkillPack)
         .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
         .order_by(WorkspaceSkillPack.installed_at)
         .all()
     )
-    if installed:
-        overrides = {
-            o.rule_id: o
-            for o in db.query(GuardRuleOverride)
-            .filter(GuardRuleOverride.workspace_id == ws_uuid)
-            .all()
-        }
-        seen: set[str] = set()
-        for wp in installed:
-            pack = (
-                db.query(SkillPack)
-                .filter(SkillPack.slug == wp.pack_slug)
-                .order_by(SkillPack.version.desc())
-                .first()
-            )
-            if not pack:
+    overrides = {
+        o.rule_id: o
+        for o in db.query(GuardRuleOverride)
+        .filter(GuardRuleOverride.workspace_id == ws_uuid)
+        .all()
+    }
+    seen: set[str] = set()
+    for wp in installed:
+        pack = (
+            db.query(SkillPack)
+            .filter(SkillPack.slug == wp.pack_slug)
+            .order_by(SkillPack.version.desc())
+            .first()
+        )
+        if not pack:
+            continue
+        for rule in pack.rules or []:
+            if rule["id"] in seen:
                 continue
-            for rule in pack.rules:
-                if rule["id"] in seen:
-                    continue
-                seen.add(rule["id"])
-                override = overrides.get(rule["id"])
-                result.append(PolicyOut(
-                    id=rule["id"],
-                    workspace_id=str(ws_uuid),
-                    rule_id=rule["id"],
-                    description=rule.get("description", ""),
-                    match_tool=rule.get("match_tool"),
-                    match_pattern=rule.get("match_pattern"),
-                    match_path_pattern=rule.get("match_path_pattern"),
-                    action=rule["action"],
-                    message=rule.get("message"),
-                    enabled=not (override and override.disabled),
-                    builtin=True,
-                    pack_id=wp.pack_slug,
-                    persona_affinity=rule.get("persona_affinity", []),
-                    created_at=wp.installed_at,
-                    updated_at=wp.installed_at,
-                ))
+            seen.add(rule["id"])
+            out.append(_pack_rule_to_out(rule, wp.pack_slug, wp.installed_at, ws_uuid, overrides.get(rule["id"])))
 
-    return result
+    return out
 
 
 @router.post("", response_model=PolicyOut, status_code=201)
@@ -527,7 +408,7 @@ def create_policy(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Create a custom (non-builtin) policy rule."""
+    """Create a custom (non-pack) policy rule."""
     if body.action not in _VALID_ACTIONS:
         raise HTTPException(
             status_code=422,
@@ -535,92 +416,94 @@ def create_policy(
         )
 
     resolved_ws = body.workspace_id or workspace_id
-    try:
-        ws_uuid = uuid.UUID(resolved_ws)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+    ws_uuid = _ws_uuid(resolved_ws)
 
-    policy = GuardPolicy(
+    existing = db.get(WorkspaceCustomRule, (ws_uuid, body.rule_id))
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Rule '{body.rule_id}' already exists in this workspace")
+
+    rule_body = {
+        "id": body.rule_id,
+        "description": body.description,
+        "match_tool": body.match_tool,
+        "match_pattern": body.match_pattern,
+        "match_path_pattern": body.match_path_pattern,
+        "action": body.action,
+        "message": body.message,
+        "persona_affinity": body.persona_affinity or ["conservative", "standard", "developer"],
+        "recommendation": body.recommendation,
+        "frameworks": body.frameworks or [],
+        "severity": body.severity or "medium",
+        "iso_control": body.iso_control,
+    }
+    rule_body = {k: v for k, v in rule_body.items() if v is not None}
+
+    row = WorkspaceCustomRule(
         workspace_id=ws_uuid,
         rule_id=body.rule_id,
-        description=body.description,
-        match_tool=body.match_tool,
-        match_pattern=body.match_pattern,
-        match_path_pattern=body.match_path_pattern,
-        action=body.action,
-        message=body.message,
+        body=rule_body,
         enabled=True,
-        builtin=False,
     )
-    db.add(policy)
+    db.add(row)
     db.commit()
-    db.refresh(policy)
-    _write_policy_audit(db, ws_uuid, "policy_created", policy)
-    return _policy_to_out(policy)
+    db.refresh(row)
+    invalidate_policy_cache(db, ws_uuid)
+
+    _write_audit(db, ws_uuid, "policy_created", body.rule_id, body.action)
+    return _custom_to_out(row)
 
 
-@router.patch("/{policy_id}", response_model=PolicyOut)
+@router.patch("/{rule_id}", response_model=PolicyOut)
 def patch_policy(
-    policy_id: str,
+    rule_id: str,
     body: PolicyPatch,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Update a policy rule (enable/disable/edit). Works on both custom and skill-pack rules."""
+    """Edit a rule. Custom rules update workspace_custom_rules; pack rules write
+    an entry in guard_rule_overrides."""
     if body.action is not None and body.action not in _VALID_ACTIONS:
         raise HTTPException(
             status_code=422,
             detail=f"Invalid action '{body.action}'. Must be one of: {sorted(_VALID_ACTIONS)}",
         )
 
-    # Try UUID → custom rule in guard_policies
-    try:
-        ws_uuid = uuid.UUID(workspace_id)
-        pid = uuid.UUID(policy_id)
-        policy = db.query(GuardPolicy).filter(GuardPolicy.id == pid).first()
-        if not policy:
-            raise HTTPException(status_code=404, detail="Policy not found")
+    ws_uuid = _ws_uuid(workspace_id)
+
+    # Custom rule?
+    custom = db.get(WorkspaceCustomRule, (ws_uuid, rule_id))
+    if custom is not None:
+        b = dict(custom.body or {})
+        if body.description is not None: b["description"] = body.description
+        if body.match_pattern is not None: b["match_pattern"] = body.match_pattern
+        if body.match_path_pattern is not None: b["match_path_pattern"] = body.match_path_pattern
+        if body.action is not None: b["action"] = body.action
+        if body.message is not None: b["message"] = body.message
+        custom.body = b
         if body.enabled is not None:
-            policy.enabled = body.enabled
-            _upsert_override(db, policy.workspace_id, policy.rule_id,
-                             disabled=not body.enabled, action=None, message=None)
-            invalidate_policy_cache(db, policy.workspace_id)
-        if body.description is not None:
-            policy.description = body.description
-        if body.match_pattern is not None:
-            policy.match_pattern = body.match_pattern
-        if body.match_path_pattern is not None:
-            policy.match_path_pattern = body.match_path_pattern
-        if body.action is not None:
-            policy.action = body.action
-            _upsert_override(db, policy.workspace_id, policy.rule_id,
-                             disabled=False, action=body.action, message=body.message)
-            invalidate_policy_cache(db, policy.workspace_id)
-        if body.message is not None:
-            policy.message = body.message
-        policy.updated_at = datetime.now(timezone.utc)
+            custom.enabled = body.enabled
+        custom.updated_at = datetime.now(timezone.utc)
         db.commit()
-        db.refresh(policy)
-        _write_policy_audit(db, policy.workspace_id, "policy_updated", policy)
-        return _policy_to_out(policy)
-    except ValueError:
-        pass  # non-UUID → skill-pack rule
+        db.refresh(custom)
+        invalidate_policy_cache(db, ws_uuid)
+        _write_audit(db, ws_uuid, "policy_updated", rule_id, b.get("action", "block"))
+        return _custom_to_out(custom)
 
-    # Skill-pack rule: write override directly (no guard_policies row)
-    ws_uuid = uuid.UUID(workspace_id)
-    rule_id = policy_id
+    # Pack rule -> write override
+    touched_override = False
     if body.enabled is not None:
-        _upsert_override(db, ws_uuid, rule_id, disabled=not body.enabled, action=None, message=None)
+        _upsert_override(db, ws_uuid, rule_id, disabled=not body.enabled)
+        touched_override = True
+    if body.action is not None or body.message is not None:
+        _upsert_override(db, ws_uuid, rule_id, action=body.action, message=body.message)
+        touched_override = True
+    if touched_override:
+        db.commit()
         invalidate_policy_cache(db, ws_uuid)
-    if body.action is not None:
-        _upsert_override(db, ws_uuid, rule_id, disabled=False, action=body.action, message=body.message)
-        invalidate_policy_cache(db, ws_uuid)
-    db.commit()
+        _write_audit(db, ws_uuid, "policy_override_set", rule_id, body.action or "")
 
-    # Return updated PolicyOut synthesised from skill-pack rule + override
-    override = db.query(GuardRuleOverride).filter(
-        GuardRuleOverride.workspace_id == ws_uuid, GuardRuleOverride.rule_id == rule_id
-    ).first()
+    # Re-synthesize PolicyOut from the pack rule + the (possibly new) override
+    override = db.get(GuardRuleOverride, (ws_uuid, rule_id))
     installed = (
         db.query(WorkspaceSkillPack)
         .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
@@ -634,77 +517,33 @@ def patch_policy(
         )
         if not pack:
             continue
-        for rule in pack.rules:
+        for rule in pack.rules or []:
             if rule["id"] == rule_id:
-                return PolicyOut(
-                    id=rule_id, workspace_id=str(ws_uuid), rule_id=rule_id,
-                    description=rule.get("description", ""),
-                    match_tool=rule.get("match_tool"), match_pattern=rule.get("match_pattern"),
-                    match_path_pattern=rule.get("match_path_pattern"),
-                    action=(override.action if (override and override.action) else rule["action"]),
-                    message=rule.get("message"),
-                    enabled=not (override and override.disabled),
-                    builtin=True, pack_id=wp.pack_slug,
-                    persona_affinity=rule.get("persona_affinity", []),
-                    created_at=wp.installed_at, updated_at=datetime.now(timezone.utc),
-                )
+                return _pack_rule_to_out(rule, wp.pack_slug, wp.installed_at, ws_uuid, override)
+
     raise HTTPException(status_code=404, detail="Policy not found")
 
 
-@router.delete("/{policy_id}", status_code=204)
+@router.delete("/{rule_id}", status_code=204)
 def delete_policy(
-    policy_id: str,
+    rule_id: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Delete a custom policy rule. Skill-pack rules cannot be deleted — uninstall the pack."""
-    try:
-        uuid.UUID(policy_id)
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Skill-pack rules cannot be deleted. Uninstall the pack instead.")
-    policy = _get_policy_or_404(db, policy_id)
+    """Delete a custom rule. Pack rules cannot be deleted — uninstall the pack
+    or disable the rule via PATCH /guard/policies/{rule_id} (enabled=False)."""
+    ws_uuid = _ws_uuid(workspace_id)
 
-    if policy.builtin:
+    custom = db.get(WorkspaceCustomRule, (ws_uuid, rule_id))
+    if custom is None:
         raise HTTPException(
             status_code=403,
-            detail="Built-in rules cannot be deleted. Disable the rule instead.",
+            detail="Pack rules cannot be deleted. Uninstall the pack or disable the rule.",
         )
-
-    from datetime import datetime, timezone as _tz
-    policy.archived_at = datetime.now(_tz.utc)
+    db.delete(custom)
     db.commit()
-    _write_policy_audit(db, policy.workspace_id, "policy_archived", policy)
-
-
-def _upsert_override(
-    db: Session,
-    workspace_id: uuid.UUID,
-    rule_id: str,
-    *,
-    disabled: bool,
-    action: str | None,
-    message: str | None,
-    clerk_user_id: str | None = None,
-) -> None:
-    existing = db.get(GuardRuleOverride, (workspace_id, rule_id))
-    now = datetime.now(timezone.utc)
-    if existing:
-        existing.disabled = disabled
-        if action is not None:
-            existing.action = action
-        if message is not None:
-            existing.custom_message = message
-        existing.overridden_at = now
-    else:
-        db.add(GuardRuleOverride(
-            workspace_id=workspace_id,
-            rule_id=rule_id,
-            disabled=disabled,
-            action=action,
-            custom_message=message,
-            overridden_by=clerk_user_id,
-            overridden_at=now,
-        ))
+    invalidate_policy_cache(db, ws_uuid)
+    _write_audit(db, ws_uuid, "policy_deleted", rule_id, "")
 
 
 @router.post("/reinstall-base")
@@ -712,10 +551,8 @@ def reinstall_base(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Re-seed conduct-base skill pack rules for this workspace.
-    Replaces refresh-builtins — install conduct-base pack if missing, then invalidate cache.
-    """
-    ws_uuid = uuid.UUID(str(workspace_id))
+    """Re-install the conduct-base skill pack if missing, then invalidate cache."""
+    ws_uuid = _ws_uuid(workspace_id)
     existing = db.get(WorkspaceSkillPack, (ws_uuid, "conduct-base"))
     if not existing:
         db.add(WorkspaceSkillPack(
@@ -727,42 +564,3 @@ def reinstall_base(
         db.commit()
     invalidate_policy_cache(db, ws_uuid)
     return {"status": "ok", "pack": "conduct-base"}
-
-
-@router.post("/refresh-builtins")
-def refresh_builtins(
-    db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-):
-    """Upsert all built-in policies from builtin_policies.yaml into the workspace.
-
-    - New rules (not yet in DB) are inserted enabled=True.
-    - Existing rules have description, match_pattern, match_path_pattern, action,
-      message, and match_tokens_before_gt refreshed from YAML.
-    - User-toggled enabled state is preserved.
-    """
-    ws_uuid = uuid.UUID(str(workspace_id))
-    added = updated = 0
-    for rule in _BUILTIN_RULES:
-        # description column is String(255) — truncate long YAML descriptions
-        rule = {**rule, "description": (rule.get("description") or "")[:255]}
-        existing = (
-            db.query(GuardPolicy)
-            .filter(GuardPolicy.workspace_id == ws_uuid, GuardPolicy.rule_id == rule["rule_id"])
-            .first()
-        )
-        if existing is None:
-            db.add(GuardPolicy(workspace_id=ws_uuid, builtin=True, enabled=True, **rule))
-            added += 1
-        else:
-            existing.description = rule.get("description", existing.description)
-            existing.match_pattern = rule.get("match_pattern")
-            existing.match_path_pattern = rule.get("match_path_pattern")
-            existing.action = rule.get("action", existing.action)
-            existing.message = rule.get("message", existing.message)
-            if "match_tokens_before_gt" in rule:
-                existing.match_tokens_before_gt = rule["match_tokens_before_gt"]
-            existing.updated_at = datetime.now(timezone.utc)
-            updated += 1
-    db.commit()
-    return {"added": added, "updated": updated, "total": added + updated}
