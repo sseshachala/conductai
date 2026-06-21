@@ -144,7 +144,7 @@ const FRIENDLY_NAMES: Record<string, string> = {
 
 const PACK_CATALOG = [
   {
-    id: "owasp_top10",
+    id: "conduct-owasp",
     icon: "🔐",
     name: "OWASP Top 10",
     subtitle: "Guards and scan rules for the 10 most critical web application security risks.",
@@ -154,7 +154,7 @@ const PACK_CATALOG = [
     securityRules: 10,
   },
   {
-    id: "soc2",
+    id: "conduct-soc2",
     icon: "📋",
     name: "SOC 2",
     subtitle: "Rules aligned to SOC 2 Trust Service Criteria for audit-ready compliance.",
@@ -164,7 +164,7 @@ const PACK_CATALOG = [
     securityRules: 3,
   },
   {
-    id: "hipaa",
+    id: "conduct-hipaa",
     icon: "🏥",
     name: "HIPAA",
     subtitle: "Block PHI patterns and flag unencrypted health data. §164.312 aligned.",
@@ -174,7 +174,7 @@ const PACK_CATALOG = [
     securityRules: 3,
   },
   {
-    id: "pci_dss",
+    id: "conduct-pci-dss",
     icon: "💳",
     name: "PCI DSS",
     subtitle: "Block PANs and CVVs in source, flag weak TLS. Covers Requirements 3 and 4.",
@@ -184,7 +184,7 @@ const PACK_CATALOG = [
     securityRules: 3,
   },
   {
-    id: "startup_baseline",
+    id: "conduct-base",
     icon: "🚀",
     name: "Startup Baseline",
     subtitle: "Zero-friction starter — catches hardcoded keys, weak random, and stack trace leaks.",

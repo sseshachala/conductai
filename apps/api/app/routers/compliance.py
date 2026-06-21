@@ -35,9 +35,6 @@ LEGACY_SLUG_MAP: dict[str, str] = {
     "startup_baseline": "conduct-base",
 }
 
-_SLUG_TO_PACK_ID = {v: k for k, v in LEGACY_SLUG_MAP.items()}
-
-
 def _resolve_slug(pack_id: str) -> str:
     """Accept either a legacy pack_id ('owasp_top10') or a slug ('conduct-owasp')."""
     if pack_id in LEGACY_SLUG_MAP:
@@ -72,17 +69,16 @@ def list_installed_packs(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Return installed pack identifiers as legacy pack_ids when known, otherwise
-    the raw slug. Lets the frontend marketplace match by either identifier."""
+    """Return installed pack slugs (e.g. 'conduct-owasp'). One identifier
+    scheme across the API surface — legacy ids are only accepted on
+    install/uninstall paths via _resolve_slug() for backward compatibility."""
     ws_uuid = uuid.UUID(workspace_id)
     rows = (
         db.query(WorkspaceSkillPack.pack_slug)
         .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
         .all()
     )
-    return InstalledPacksOut(
-        installed=sorted(_SLUG_TO_PACK_ID.get(r[0], r[0]) for r in rows)
-    )
+    return InstalledPacksOut(installed=sorted(r[0] for r in rows))
 
 
 @router.post("/packs/{pack_id}/install", response_model=PackStatusOut)

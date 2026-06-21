@@ -56,7 +56,7 @@ const MODULES = [
 
 const COMPLIANCE_PACKS = [
   {
-    id: "owasp_top10",
+    id: "conduct-owasp",
     icon: "🔐",
     name: "OWASP Top 10",
     description: "6 guard rules + 10 security rules covering injection, broken access control, weak session management, SSRF, and more.",
@@ -64,7 +64,7 @@ const COMPLIANCE_PACKS = [
     badgeColor: "bg-orange-100 text-orange-700",
   },
   {
-    id: "soc2",
+    id: "conduct-soc2",
     icon: "📋",
     name: "SOC 2",
     description: "Blocks hardcoded secrets and PII logging. Keeps your audit trail clean for SOC 2 Type II compliance.",
@@ -72,7 +72,7 @@ const COMPLIANCE_PACKS = [
     badgeColor: "bg-blue-100 text-blue-700",
   },
   {
-    id: "hipaa",
+    id: "conduct-hipaa",
     icon: "🏥",
     name: "HIPAA",
     description: "Detects PHI patterns (SSN, DOB, medical record numbers) and blocks unencrypted health data in AI-generated code.",
@@ -80,7 +80,7 @@ const COMPLIANCE_PACKS = [
     badgeColor: "bg-emerald-100 text-emerald-700",
   },
   {
-    id: "pci_dss",
+    id: "conduct-pci-dss",
     icon: "💳",
     name: "PCI DSS",
     description: "Guards against PAN, CVV, and card number exposure in AI-generated code. Blocks logging of cardholder data.",
