@@ -1,7 +1,7 @@
 {
   "slug": "conduct-pci-dss",
   "name": "Conduct PCI-DSS",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "tier": "paid",
   "description": "PCI-DSS cardholder data rules",
   "rules": [
@@ -11,8 +11,21 @@
       "match_tool": "edit,write,bash",
       "match_pattern": "\\b4[0-9]{12}(?:[0-9]{3})?\\b|\\b5[1-5][0-9]{14}\\b",
       "action": "block",
-      "message": "Card number detected — never log or store PANs in plaintext.",
-      "persona_affinity": ["conservative", "standard", "developer"]
+      "message": "Card number detected \u2014 never log or store PANs in plaintext.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "PCI_DSS:3.4",
+        "PCI_DSS:3.5",
+        "SOC2:CC6.1",
+        "GDPR:Art32"
+      ],
+      "severity": "critical",
+      "recommendation": "Tokenise PAN before storage. Never log full PAN. Use a PCI-compliant tokenisation service or vault.",
+      "iso_control": "A.8.11"
     },
     {
       "id": "pci_cvv_guard",
@@ -21,7 +34,19 @@
       "match_pattern": "(cvv|cvc|cvv2)\\s*=",
       "action": "block",
       "message": "CVV must never be stored post-authorization (PCI DSS 3.2.1).",
-      "persona_affinity": ["conservative", "standard", "developer"]
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "PCI_DSS:3.2.1",
+        "PCI_DSS:3.2.2",
+        "SOC2:CC6.1"
+      ],
+      "severity": "critical",
+      "recommendation": "Never store CVV/CVC, even encrypted. Discard immediately after authorisation per PCI DSS Requirement 3.2.",
+      "iso_control": "A.8.11"
     },
     {
       "id": "pci_weak_tls",
@@ -29,8 +54,19 @@
       "match_tool": "edit,write",
       "match_pattern": "TLSv1\\b|ssl\\.PROTOCOL_TLSv1\\b",
       "action": "block",
-      "message": "TLS 1.0 is prohibited under PCI DSS — use TLS 1.2+.",
-      "persona_affinity": ["conservative", "standard"]
+      "message": "TLS 1.0 is prohibited under PCI DSS \u2014 use TLS 1.2+.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ],
+      "frameworks": [
+        "PCI_DSS:4.1",
+        "SOC2:CC6.7",
+        "ISO_42001:8.24"
+      ],
+      "severity": "high",
+      "recommendation": "Use TLS 1.2 or higher. Disable SSL 2/3, TLS 1.0, and TLS 1.1. Use strong cipher suites (AES-GCM, ChaCha20-Poly1305).",
+      "iso_control": "A.8.24"
     }
   ]
 }
