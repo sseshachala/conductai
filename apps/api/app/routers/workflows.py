@@ -181,9 +181,11 @@ def _register_git_webhook(
     import httpx
     from app.core.config import settings
 
-    if provider == "github" and "issues" in events and project_slug and playbook_slug:
+    if provider == "github" and project_slug and playbook_slug:
         # Per-workflow URL: human-readable + unique per workflow.
         # Format: /webhooks/github/{project_slug}/{playbook_slug}-{id_prefix}
+        # Applies to ALL github playbooks (autopilot, security_scanner, pr_reviewer,
+        # issue_triage, etc.) so each workflow owns its own GitHub hook.
         id_prefix = workflow_id.replace("-", "")[:8]
         webhook_url = f"{settings.api_base_url}/webhooks/github/{project_slug}/{playbook_slug}-{id_prefix}"
     elif provider == "github" and "issues" in events and workspace_id:
