@@ -1,8 +1,89 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useGuardSavings } from "@/hooks/useGuardSavings"
+
+interface SpendStats {
+  active_developers: number
+  events_today: number
+  blocked_today: number
+  tokens_saved_today: number
+}
+
+interface InstalledPacksResponse { installed: string[] }
+
+function KpiCard({ label, value, sub, tone = "neutral" }: {
+  label: string
+  value: string
+  sub?: string
+  tone?: "neutral" | "good" | "warn"
+}) {
+  const valueColor =
+    tone === "good" ? "var(--accent-text)" :
+    tone === "warn" ? "var(--text-1)" : "var(--text-1)"
+  return (
+    <div style={{
+      border: "1px solid var(--border)",
+      borderRadius: 8,
+      padding: "14px 16px",
+      background: "var(--surface-1)",
+    }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: ".06em", textTransform: "uppercase" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 600, color: valueColor, marginTop: 6 }}>{value}</div>
+      <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>{sub ?? "\u00a0"}</div>
+    </div>
+  )
+}
+
+const fmtUsd = (n: number) =>
+  n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`
+
+const fmtInt = (n: number) =>
+  n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`
 
 export default function GovernancePage() {
+  const { activeWorkspace } = useWorkspace()
+  const workspaceId = activeWorkspace?.id ?? null
+  const { getToken } = useAuth()
+  const [stats, setStats] = useState<SpendStats | null>(null)
+  const [installedPacks, setInstalledPacks] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!workspaceId) return
+    let cancelled = false
+    const load = async () => {
+      const token = await getToken()
+      const headers: Record<string, string> = {}
+      if (token) headers["Authorization"] = `Bearer ${token}`
+      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+
+      try {
+        const res = await fetch(`${base}/guard/spend?workspace_id=${workspaceId}`, { headers })
+        if (res.ok && !cancelled) setStats(await res.json())
+      } catch { /* non-fatal */ }
+
+      try {
+        const res = await fetch(`${base}/compliance/packs/installed?workspace_id=${workspaceId}`, { headers })
+        if (res.ok && !cancelled) {
+          const data: InstalledPacksResponse = await res.json()
+          setInstalledPacks(Array.isArray(data?.installed) ? data.installed : [])
+        }
+      } catch { /* non-fatal */ }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [workspaceId, getToken])
+
+  const { savings } = useGuardSavings(workspaceId)
+  const totalSavedUsd = savings
+    ? (savings.team_total.rtk_saved_usd || 0) + (savings.team_total.booster_saved_usd || 0)
+    : 0
+
   return (
     <AppShell>
       <div style={{ padding: "24px 28px", maxWidth: 1280, margin: "0 auto" }}>
@@ -31,22 +112,31 @@ export default function GovernancePage() {
           </p>
         </section>
 
-        {/* KPI cards — placeholders, real data lands in 750b */}
+        {/* KPI cards */}
         <section style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
-          {["AI ROI", "Spend (7d)", "Risk trend", "Compliance"].map(label => (
-            <div key={label} style={{
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: "14px 16px",
-              background: "var(--surface-1)",
-            }}>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: ".06em", textTransform: "uppercase" }}>
-                {label}
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 600, color: "var(--text-1)", marginTop: 6 }}>—</div>
-              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Pending data</div>
-            </div>
-          ))}
+          <KpiCard
+            label="AI ROI"
+            value={savings ? fmtUsd(totalSavedUsd) : "—"}
+            sub={savings ? "saved via RTK + Booster" : "tooling savings pending"}
+            tone={totalSavedUsd > 0 ? "good" : "neutral"}
+          />
+          <KpiCard
+            label="AI activity today"
+            value={stats ? fmtInt(stats.events_today) : "—"}
+            sub={stats ? `${stats.active_developers} active developers` : "no data yet"}
+          />
+          <KpiCard
+            label="Risk intercepted today"
+            value={stats ? fmtInt(stats.blocked_today) : "—"}
+            sub={stats && stats.blocked_today > 0 ? "blocks + warnings" : "no incidents"}
+            tone={stats && stats.blocked_today > 0 ? "warn" : "neutral"}
+          />
+          <KpiCard
+            label="Compliance packs"
+            value={`${installedPacks.length}`}
+            sub={installedPacks.length > 0 ? "frameworks covered" : "install packs to start coverage"}
+            tone={installedPacks.length > 0 ? "good" : "neutral"}
+          />
         </section>
 
         {/* Framework matrix — placeholder, real data lands in 750c */}
