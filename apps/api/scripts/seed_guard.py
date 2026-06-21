@@ -42,7 +42,6 @@ from app.core.database import SessionLocal
 from app.modules.guard.models import (
     GuardAuditEvent,
     GuardMember,
-    GuardPolicy,
     GuardSession,
     GuardSpendBudget,
     GuardTeam,
@@ -154,7 +153,6 @@ def clean(db, workspace_id: uuid.UUID) -> None:
     deleted["audit_events"] = db.query(GuardAuditEvent).filter(GuardAuditEvent.team_id == tid).delete()
     deleted["sessions"]     = db.query(GuardSession).filter(GuardSession.team_id == tid).delete()
     deleted["budgets"]      = db.query(GuardSpendBudget).filter(GuardSpendBudget.team_id == tid).delete()
-    deleted["policies"]     = db.query(GuardPolicy).filter(GuardPolicy.team_id == tid).delete()
     deleted["members"]      = db.query(GuardMember).filter(GuardMember.team_id == tid).delete()
     deleted["team"]         = db.query(GuardTeam).filter(GuardTeam.id == tid).delete()
 
@@ -200,24 +198,9 @@ def seed(db, workspace_id: uuid.UUID) -> None:
     db.flush()
     print(f"  members: {len(members)}")
 
-    # 3. Policies
-    for p_data in POLICIES:
-        p = GuardPolicy(
-            id=uuid.uuid4(),
-            team_id=team.id,
-            rule_id=p_data["rule_id"],
-            description=p_data.get("description"),
-            match_tool=p_data.get("match_tool"),
-            match_pattern=p_data.get("match_pattern"),
-            match_path_pattern=p_data.get("match_path_pattern"),
-            action=p_data["action"],
-            message=p_data.get("message"),
-            enabled=p_data.get("enabled", True),
-            builtin=p_data.get("builtin", False),
-        )
-        db.add(p)
-    db.flush()
-    print(f"  policies: {len(POLICIES)}")
+    # 3. Policies — removed. Rules now live in skill_packs JSONB.
+    # Install conduct-base via WorkspaceSkillPack for the seeded workspace
+    # if you need starter rules for a demo dataset.
 
     # 4. Team budget
     team_budget = GuardSpendBudget(

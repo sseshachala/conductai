@@ -4,11 +4,9 @@ Seed skill packs from existing builtin_policies.yaml and compliance.py data.
 Steps:
   1. Seed skill_packs table with conduct-base + compliance packs
   2. Auto-install conduct-base for every workspace that has guard_config
-  3. Auto-install compliance packs for workspaces that have pack_id rows in guard_policies
-  4. Migrate disabled builtin rules to guard_rule_overrides
 
-Run AFTER alembic upgrade 0017. Does NOT drop guard_policies — that's a
-separate step once this is verified in production.
+Idempotent — runs after migrations. Loads pack JSON files into skill_packs
+and auto-installs conduct-base for every workspace that has guard_config.
 
 Usage:
   python apps/api/scripts/seed_skill_packs.py
@@ -103,45 +101,11 @@ def run(dry_run: bool) -> None:
                     """), {"ws": ws_id, "now": NOW})
             print(f"  {'[dry]' if dry_run else ''} {len(configs)} workspaces → conduct-base")
 
-            # 3. Migrate legacy compliance pack installs
-            print("\n── Migrating legacy compliance pack installs ──")
-            legacy_rows = conn.execute(_text(
-                "SELECT DISTINCT workspace_id, pack_id FROM guard_policies WHERE pack_id IS NOT NULL"
-            )).fetchall()
-            migrated = 0
-            for ws_id, legacy_pack_id in legacy_rows:
-                new_slug = LEGACY_PACK_MAP.get(legacy_pack_id)
-                if not new_slug:
-                    print(f"  WARNING: unknown legacy pack_id '{legacy_pack_id}' — skipped")
-                    continue
-                if not dry_run:
-                    conn.execute(_text("""
-                        INSERT INTO workspace_skill_packs (workspace_id, pack_slug, installed_by, installed_at)
-                        VALUES (:ws, :slug, 'system:migration', :now)
-                        ON CONFLICT (workspace_id, pack_slug) DO NOTHING
-                    """), {"ws": ws_id, "slug": new_slug, "now": NOW})
-                migrated += 1
-            print(f"  {'[dry]' if dry_run else ''} {migrated} legacy pack installs migrated")
-
-            # 4. Migrate disabled builtin rules → guard_rule_overrides
-            print("\n── Migrating disabled builtin rules → guard_rule_overrides ──")
-            disabled = conn.execute(_text(
-                "SELECT workspace_id, rule_id FROM guard_policies WHERE builtin=true AND enabled=false"
-            )).fetchall()
-            for ws_id, rule_id in disabled:
-                if not dry_run:
-                    conn.execute(_text("""
-                        INSERT INTO guard_rule_overrides (workspace_id, rule_id, disabled, overridden_by, overridden_at)
-                        VALUES (:ws, :rid, true, 'system:migration', :now)
-                        ON CONFLICT (workspace_id, rule_id) DO NOTHING
-                    """), {"ws": ws_id, "rid": rule_id, "now": NOW})
-            print(f"  {'[dry]' if dry_run else ''} {len(disabled)} disabled builtin rules → overrides")
-
             if dry_run:
                 conn.execute(_text("ROLLBACK"))
                 print("\n[dry-run] No changes committed.")
             else:
-                print("\n✓ Done. guard_policies table preserved — verify new tables before dropping.")
+                print("\n✓ Done.")
 
 
 
