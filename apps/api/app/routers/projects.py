@@ -175,43 +175,21 @@ def _accept_pending_invites_bg(user_id: str) -> None:
 
 
 def _seed_starter_policies(db, workspace_id: uuid.UUID, now) -> None:
-    from app.modules.guard.models import GuardPolicy
-    policies = [
-        # Destructive Operations
-        {"rule_id": "no-rm-rf",                "description": "Block recursive deletes",                         "action": "BLOCK", "match_pattern": r"rm\s+-rf"},
-        {"rule_id": "no-git-reset-hard",        "description": "Block hard resets",                              "action": "BLOCK", "match_pattern": r"git\s+reset\s+--hard"},
-        {"rule_id": "no-force-push",            "description": "Block force pushes",                             "action": "BLOCK", "match_pattern": r"git\s+push\s+(--force|-f)\b"},
-        {"rule_id": "no-drop-table",            "description": "Block DROP TABLE statements",                    "action": "BLOCK", "match_pattern": r"DROP\s+TABLE"},
-        {"rule_id": "no-truncate-table",        "description": "Block TRUNCATE TABLE statements",               "action": "BLOCK", "match_pattern": r"TRUNCATE\s+TABLE"},
-        {"rule_id": "no-delete-without-where",  "description": "Block DELETE statements without a WHERE clause", "action": "BLOCK", "match_pattern": r"DELETE\s+FROM\s+\w+\s*;"},
-        # Secrets & Credentials
-        {"rule_id": "no-env-commits",           "description": "Block committing .env files",                   "action": "BLOCK", "match_pattern": r"git (add|commit).+\.env"},
-        {"rule_id": "no-hardcoded-secrets",     "description": "Warn on possible hardcoded secrets",            "action": "WARN",  "match_pattern": r"(API_KEY|SECRET|PASSWORD|TOKEN)\s*=\s*['\"][A-Za-z0-9+/]{16,}"},
-        {"rule_id": "no-aws-keys",              "description": "Warn on hardcoded AWS access keys",             "action": "WARN",  "match_pattern": r"AKIA[0-9A-Z]{16}"},
-        {"rule_id": "no-private-key-files",     "description": "Block writing private key files",               "action": "BLOCK", "match_pattern": r"-----BEGIN (RSA |EC )?PRIVATE KEY-----"},
-        # Production Gates
-        {"rule_id": "approve-prod-deploy",          "description": "Require approval for production deploys",           "action": "APPROVAL", "match_pattern": r"deploy.*(prod|production)|vercel.*--prod|railway.*prod"},
-        {"rule_id": "approve-db-migration-prod",    "description": "Require approval for production DB migrations",     "action": "APPROVAL", "match_pattern": r"alembic upgrade|prisma migrate deploy"},
-        {"rule_id": "approve-terraform-destroy",    "description": "Require approval for terraform destroy",            "action": "APPROVAL", "match_pattern": r"terraform\s+destroy"},
-        {"rule_id": "approve-kubectl-delete",       "description": "Require approval for kubectl delete",               "action": "APPROVAL", "match_pattern": r"kubectl\s+delete"},
-        {"rule_id": "approve-prod-env-edit",        "description": "Require approval when editing production env files", "action": "APPROVAL", "match_pattern": r"\.env\.prod(uction)?"},
-        # Audit
-        {"rule_id": "audit-migrations",   "description": "Audit migration file modifications", "action": "AUDIT", "match_pattern": r"alembic/versions/.*\.py|migrations/.*\.sql"},
-        {"rule_id": "audit-ci-config",    "description": "Audit CI config modifications",       "action": "AUDIT", "match_pattern": r"\.(github|gitlab)/workflows/.*\.ya?ml|\.circleci/"},
-        {"rule_id": "audit-dockerfile",   "description": "Audit Dockerfile modifications",      "action": "AUDIT", "match_pattern": r"Dockerfile"},
-    ]
-    for p in policies:
-        db.add(GuardPolicy(
-            workspace_id=workspace_id,
-            rule_id=p["rule_id"],
-            description=p["description"],
-            action=p["action"],
-            match_pattern=p["match_pattern"],
-            enabled=True,
-            builtin=True,
-            created_at=now,
-            updated_at=now,
-        ))
+    """Install the conduct-base skill pack for a new workspace.
+
+    Replaces the legacy per-rule write into guard_policies. The base pack
+    JSONB carries the same set of starter rules (destructive ops, secrets,
+    production gates, audit) plus the new findings vocabulary fields."""
+    from app.modules.guard.models import WorkspaceSkillPack
+    existing = db.get(WorkspaceSkillPack, (workspace_id, "conduct-base"))
+    if existing:
+        return
+    db.add(WorkspaceSkillPack(
+        workspace_id=workspace_id,
+        pack_slug="conduct-base",
+        installed_by="system:workspace_create",
+        installed_at=now,
+    ))
 
 
 @router.get("", response_model=list[ProjectOut])
