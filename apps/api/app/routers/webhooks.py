@@ -873,30 +873,41 @@ async def github_webhook_by_slug(
     db: Session = Depends(get_db),
 ):
     """
-    Slug-addressed GitHub webhook — one URL per agent, human-readable.
+    Per-workflow GitHub webhook — one URL per agent, human-readable.
 
-    URL: /webhooks/github/{project-slug}/{workflow-slug}
-    e.g. /webhooks/github/devops/autopilot-quick
+    URL format: /webhooks/github/{project_slug}/{playbook_slug}-{id_prefix}
+    e.g. /webhooks/github/marshal/autopilot-a3f912ab
 
-    Auth: HMAC-SHA256 via X-Hub-Signature-256 header (webhook secret stored
-    on the workflow's trigger node). No workspace_id cookie needed.
+    The id_prefix (first 8 hex chars of workflow.id) disambiguates multiple
+    installs of the same playbook in the same project.
+
+    Auth: HMAC-SHA256 via X-Hub-Signature-256 header against per-workflow
+    webhook secret stored on the trigger node. No workspace cookie needed.
+
+    Routes ONLY to this workflow — no fan-out across the workspace.
     """
     from app.core.crypto import decrypt as _decrypt
 
     body = await request.body()
 
-    # Resolve project → workflow by slugs
     project = db.query(Project).filter(Project.slug == project_slug).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    workflow = (
-        db.query(Workflow)
-        .filter(
-            Workflow.project_id == project.id,
-            Workflow.playbook_slug == workflow_slug,
-        )
-        .first()
+    # Parse "{playbook_slug}-{id_prefix}" — rpartition handles playbook slugs
+    # that contain dashes (e.g. "autopilot-approved-a3f912ab").
+    playbook_part, sep, id_prefix = workflow_slug.rpartition("-")
+    if not sep or not id_prefix:
+        raise HTTPException(status_code=400, detail="Invalid workflow slug format")
+
+    candidates = db.query(Workflow).filter(
+        Workflow.project_id == project.id,
+        Workflow.playbook_slug == playbook_part,
+        Workflow.archived_at.is_(None),
+    ).all()
+    workflow = next(
+        (w for w in candidates if str(w.id).replace("-", "").startswith(id_prefix)),
+        None,
     )
     if not workflow or not workflow.current_version:
         raise HTTPException(status_code=404, detail="Workflow not found")
@@ -929,69 +940,60 @@ async def github_webhook_by_slug(
         payload = json.loads(body)
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON")
+    action = payload.get("action", "")
 
-    if event != "issues" or payload.get("action") != "labeled":
-        return {"ok": True, "queued": 0, "reason": f"event {event}/{payload.get('action')} not handled"}
+    for (gh_event, matches, normalizer, event_type, state_keys) in _GITHUB_DISPATCH:
+        if event != gh_event or not matches(action, payload):
+            continue
+        normalized = normalizer(payload)
+        initial_state = _build_state(normalized, *state_keys)
 
-    normalized = _normalize_github_issue_labeled_payload(payload)
-    initial_state = {
-        "github_issue": {
-            "issue_number": normalized["issue"]["number"],
-            "title": normalized["issue"]["title"],
-            "body": normalized["issue"]["body"],
-            "url": normalized["issue"]["url"],
-            "author": normalized["issue"]["author"],
-            "labels": normalized["issue"]["labels"],
-            "label_added": normalized["label"],
-            "repo_full_name": normalized["repo"]["full_name"],
-            "repo_name": normalized["repo"]["name"],
-            "repo_owner": normalized["repo"]["owner"],
-            "default_branch": normalized["repo"]["default_branch"],
-            "clone_url": normalized["repo"]["clone_url"],
-        },
-        "github_trigger": normalized,
-    }
+        # Check this workflow's trigger matches the event_type + repo + label filters.
+        if trigger_config.get("event_type", "") != event_type:
+            continue
+        strict = str(trigger_config.get("enforcement") or "strict").strip() != "permissive"
+        incoming_repo = (normalized.get("repo") or {}).get("full_name", "")
+        if not _repo_matches(trigger_config, incoming_repo, strict):
+            return {"ok": True, "queued": 0, "reason": f"repo {incoming_repo} not in allowlist"}
+        if event_type == "github_issue_labeled":
+            incoming_label = normalized.get("label", "")
+            issue_labels = (normalized.get("issue") or {}).get("labels", [])
+            if not _labels_match(trigger_config, incoming_label, issue_labels, strict):
+                return {"ok": True, "queued": 0, "reason": f"label {incoming_label} not matched"}
 
-    from app.routers.workflows import _estimate_turns_for_graph
-    try:
-        pf = _estimate_turns_for_graph(version.graph or {}, normalized["issue"]["title"], normalized["issue"]["body"] or "", workspace_id=str(workflow.workspace_id), db=db)
-        suggested_turns = pf["suggested_max_turns"]
-    except Exception:
-        suggested_turns = 20
+        run_state = enrich_run_state_contract(
+            {**initial_state, "__triggered_by": f"github:{event_type}"},
+            source=f"github:{event_type}",
+            trigger_provider="github",
+            workflow_id=str(workflow.id),
+            workspace_id=str(workflow.workspace_id),
+            max_turns=20,
+        )
+        try:
+            run_state = validate_run_start_inputs(run_state)
+        except InputContractError as err:
+            raise HTTPException(status_code=422, detail=str(err))
 
-    run_state = enrich_run_state_contract(
-        {
-            **initial_state,
-            "__triggered_by": "github:github_issue",
-        },
-        source="github:github_issue",
-        trigger_provider="github",
-        workflow_id=str(workflow.id),
-        workspace_id=str(workflow.workspace_id),
-        max_turns=suggested_turns,
-    )
-    try:
-        run_state = validate_run_start_inputs(run_state)
-    except InputContractError as err:
-        raise HTTPException(status_code=422, detail=str(err))
+        run = Run(
+            workflow_version_id=version.id,
+            workspace_id=workflow.workspace_id,
+            triggered_by=f"github:{event_type}",
+            status="pending",
+            state=run_state,
+        )
+        db.add(run)
+        db.commit()
+        try:
+            _enqueue_run(str(run.id))
+        except Exception as _enqueue_err:
+            log.error("github.slug_enqueue_failed", run_id=str(run.id), error=str(_enqueue_err))
+            raise HTTPException(status_code=503, detail="Webhook received but queue is unavailable")
+        log.info("github.slug_triggered", project_slug=project_slug, workflow_slug=workflow_slug,
+                 event_type=event_type, run_id=str(run.id))
+        return {"ok": True, "queued": 1, "run_ids": [str(run.id)], "event_type": event_type,
+                "repo": incoming_repo}
 
-    run = Run(
-        workflow_version_id=version.id,
-        workspace_id=workflow.workspace_id,
-        triggered_by=f"github:github_issue:{normalized['label']}",
-        status="pending",
-        state=run_state,
-        max_turns=suggested_turns,
-    )
-    db.add(run)
-    db.commit()
-    try:
-        _enqueue_run(str(run.id))
-    except Exception as _enqueue_err:
-        log.error("github.slug_enqueue_failed", run_id=str(run.id), error=str(_enqueue_err))
-        raise HTTPException(status_code=503, detail="Webhook received but queue is unavailable")
-    log.info("github.slug_triggered", project_slug=project_slug, workflow_slug=workflow_slug, run_id=str(run.id))
-    return {"ok": True, "queued": 1, "run_ids": [str(run.id)], "label": normalized["label"], "repo": normalized["repo"]["full_name"]}
+    return {"ok": True, "queued": 0, "reason": f"event {event}/{action} not handled"}
 
 
 @router.post("/github")
