@@ -427,23 +427,21 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
         db.commit()
         log.info("guard.developer_joined", workspace_id=workspace_id, email=body.email)
 
-    # Fetch policies for this workspace
-    from app.modules.guard.models import GuardPolicy
-    policies_rows = db.query(GuardPolicy).filter(
-        GuardPolicy.workspace_id == config.workspace_id,
-        GuardPolicy.enabled == True,
-    ).all()
-
+    # Active ruleset comes from skill_packs JSONB via compute_policy().
+    # Persona is read from guard_config above (config.persona, defaults to 'standard').
+    from app.modules.guard.policy_engine import compute_policy
+    persona = (config.persona or "standard")
+    computed = compute_policy(db, config.workspace_id, persona)
     rules = [
         {
-            "rule_id":           str(p.id),
-            "match_tool":        p.match_tool or "*",
-            "match_pattern":     p.match_pattern,
-            "match_path_pattern": p.match_path_pattern,
-            "action":            p.action,
-            "message":           p.rule_message,
+            "rule_id":           r.get("id") or r.get("rule_id"),
+            "match_tool":        r.get("match_tool") or "*",
+            "match_pattern":     r.get("match_pattern"),
+            "match_path_pattern": r.get("match_path_pattern"),
+            "action":            r.get("action"),
+            "message":           r.get("message"),
         }
-        for p in policies_rows
+        for r in computed
     ]
     policy = {"workspace_id": workspace_id, "version": "1", "rules": rules}
 
