@@ -66,54 +66,45 @@ export function SlackIntegrationPicker({ base, wsId, buildHeaders, integrationId
   }
 
   return (
-    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-      {/* Row 1: Environment dropdown (full width) */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>
-          Environment
-        </label>
-        <select
-          value={selectedId}
+    <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <select
+        value={selectedId}
+        disabled={!isAdmin}
+        onChange={e => isAdmin && setSelectedId(e.target.value)}
+        title="Environment"
+        style={{
+          width: 200, height: 36, padding: "0 10px", fontSize: 13,
+          border: "1px solid var(--border-2)", borderRadius: 8,
+          background: "var(--surface)", color: "var(--text)",
+          opacity: isAdmin ? 1 : 0.6, cursor: isAdmin ? "pointer" : "default",
+        }}
+      >
+        <option value="">Environment…</option>
+        {integrations.map(i => (
+          <option key={i.id} value={i.id}>
+            {i.environment_name ?? i.handle}
+          </option>
+        ))}
+      </select>
+      <div style={{ display: "flex", alignItems: "center", border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden", flex: 1, minWidth: 160 }}>
+        <span style={{ padding: "0 10px", fontSize: 13, color: "var(--text-muted)", background: "var(--surface-2)", borderRight: "1px solid var(--border)", alignSelf: "stretch", display: "flex", alignItems: "center", userSelect: "none" }}>#</span>
+        <input
+          type="text"
+          value={channelInput}
+          onChange={e => isAdmin && setChannelInput(e.target.value.replace(/^#+/, ""))}
+          placeholder="general"
           disabled={!isAdmin}
-          onChange={e => isAdmin && setSelectedId(e.target.value)}
-          style={{
-            width: "100%", height: 36, padding: "0 10px", fontSize: 13,
-            border: "1px solid var(--border-2)", borderRadius: 8,
-            background: "var(--surface)", color: "var(--text)",
-            opacity: isAdmin ? 1 : 0.6, cursor: isAdmin ? "pointer" : "default",
-          }}
-        >
-          <option value="">Select environment…</option>
-          {integrations.map(i => (
-            <option key={i.id} value={i.id}>
-              {i.environment_name ?? i.handle}
-            </option>
-          ))}
-        </select>
+          className="mono"
+          style={{ flex: 1, fontSize: 13, padding: "0 10px", height: 36, border: "none", background: "transparent", color: "var(--text)", outline: "none", opacity: isAdmin ? 1 : 0.6 }}
+          onKeyDown={e => { if (e.key === "Enter" && isAdmin) handleSave() }}
+        />
       </div>
-
-      {/* Row 2: Channel + Save */}
-      <div style={{ display: "flex", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden", flex: 1 }}>
-          <span style={{ padding: "0 10px", fontSize: 13, color: "var(--text-muted)", background: "var(--surface-2)", borderRight: "1px solid var(--border)", alignSelf: "stretch", display: "flex", alignItems: "center", userSelect: "none" }}>#</span>
-          <input
-            type="text"
-            value={channelInput}
-            onChange={e => isAdmin && setChannelInput(e.target.value.replace(/^#+/, ""))}
-            placeholder="general"
-            disabled={!isAdmin}
-            className="mono"
-            style={{ flex: 1, fontSize: 13, padding: "0 10px", height: 36, border: "none", background: "transparent", color: "var(--text)", outline: "none", opacity: isAdmin ? 1 : 0.6 }}
-            onKeyDown={e => { if (e.key === "Enter" && isAdmin) handleSave() }}
-          />
-        </div>
-        {isAdmin && (
-          <button onClick={handleSave} disabled={saving || !selectedId} className="btn btn-ghost btn-sm">
-            {saving ? "Saving…" : "Save"}
-          </button>
-        )}
-        {saved && <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600, alignSelf: "center" }}>Saved</span>}
-      </div>
+      {isAdmin && (
+        <button onClick={handleSave} disabled={saving || !selectedId} className="btn btn-ghost btn-sm">
+          {saving ? "Saving…" : "Save"}
+        </button>
+      )}
+      {saved && <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>}
     </div>
   )
 }
