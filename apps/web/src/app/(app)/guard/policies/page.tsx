@@ -262,6 +262,28 @@ function AddRuleModal({
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
+  const [aiEnvId, setAiEnvId] = useState<string>("")
+
+  useEffect(() => {
+    async function loadEnvs() {
+      try {
+        const token = getToken ? await getToken() : null
+        const headers: Record<string, string> = {}
+        if (token) headers["Authorization"] = `Bearer ${token}`
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
+        const res = await fetch(`${apiUrl}/environments`, { headers })
+        if (!res.ok) return
+        const data: Array<{ id: string; name: string }> = await res.json()
+        setEnvironments(data)
+        const def = data.find(e => e.name === "Default") ?? data[0]
+        if (def) setAiEnvId(def.id)
+      } catch {
+        // non-fatal — picker just shows empty
+      }
+    }
+    loadEnvs()
+  }, [getToken])
 
   async function handleGenerate() {
     const text = aiPrompt.trim()
@@ -276,7 +298,7 @@ function AddRuleModal({
       const res = await fetch(`${apiUrl}/guard/policies/generate`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({ prompt: text, environment_id: aiEnvId || undefined }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
@@ -391,6 +413,21 @@ function AddRuleModal({
           {/* AI generate */}
           <div style={{ background: "var(--surface-2)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             <label style={labelStyle}>Generate with AI</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>Environment</span>
+              <select
+                value={aiEnvId}
+                onChange={e => setAiEnvId(e.target.value)}
+                disabled={aiGenerating || environments.length === 0}
+                style={{ ...fieldStyle, flex: 1, maxWidth: 220 }}
+              >
+                {environments.length === 0 && <option value="">No environments</option>}
+                {environments.map(env => (
+                  <option key={env.id} value={env.id}>{env.name}</option>
+                ))}
+              </select>
+              <span style={{ fontSize: 11, color: "var(--text-3)" }}>Uses this environment's Anthropic key</span>
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 2 }}>
               {POLICY_TEMPLATES.map(t => (
                 <button
