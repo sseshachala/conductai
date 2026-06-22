@@ -106,9 +106,6 @@ function SettingsContent() {
   const [toolCoverage, setToolCoverage] = useState<Array<{ detected_tools: string[]; mcp_registered: string[]; hook_registered: string[] }> | null>(null)
 
   // MCP connect
-  const [memberToken, setMemberToken] = useState<string | null | undefined>(undefined)
-  const [mcpCopied, setMcpCopied] = useState(false)
-  const [tokenRevealed, setTokenRevealed] = useState(false)
 
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
   const wsId = activeWorkspace?.id ?? null
@@ -146,9 +143,6 @@ function SettingsContent() {
         .then(r => r.ok ? r.json() : null)
         .then(d => { if (d) setToolCoverage(d) })
         .catch(() => {})
-      fetch(`${base}/guard/members/me/token?workspace_id=${wsId}`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => setMemberToken(d?.member_token ?? null))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings")
     } finally {
@@ -243,9 +237,6 @@ function SettingsContent() {
     else if (k === "warns")  setNotifWarn(v => !v)
     else if (k === "digest") setNotifDigest(v => !v)
   }
-
-  const mcpUrl = `https://api.conductai.ai/guard/mcp?workspace_id=${wsId ?? ""}&token=${memberToken ?? ""}`
-  const mcpUrlMasked = `https://api.conductai.ai/guard/mcp?workspace_id=${wsId ?? ""}&token=••••••••`
 
   const isSlackConnected = prefs.alert_slack_integration_id != null
 
@@ -580,61 +571,20 @@ function SettingsContent() {
             </div>
           </div>
 
-          {/* ── MCP Integration ─────────────────────────────────────────────── */}
-          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
-            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                </svg>
-              </span>
-              <div style={{ fontWeight: 650, fontSize: 14.5 }}>MCP Integration</div>
+          {/* ── MCP servers link (canonical list lives on /integrations) ────── */}
+          <div className="card" style={{ marginTop: 20, padding: "14px 20px", display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+              </svg>
+            </span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 13.5 }}>MCP servers</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Conduct AI Guard is enabled by default. Connect Claude.ai, Desktop, or Work from the MCP servers page.</div>
             </div>
-            <div style={{ padding: "18px 20px" }}>
-              <p style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 14 }}>
-                Connect Claude.ai, Claude Desktop, or Claude for Work to ConductGuard. Every tool call will be audited and policy-enforced.
-              </p>
-              {memberToken === undefined ? (
-                <div style={{ height: 38, borderRadius: 8, background: "var(--surface-2)", marginBottom: 14 }} />
-              ) : memberToken === null ? (
-                <p style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 14 }}>
-                  Run <code style={{ background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4, fontFamily: "ui-monospace,monospace" }}>conduct guard init</code> in your terminal first to generate your token.
-                </p>
-              ) : (
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginBottom: 6 }}>
-                    <code style={{ flex: 1, fontSize: 11.5, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", fontFamily: "ui-monospace,monospace", color: "var(--text-2)", wordBreak: "break-all" }}>
-                      {tokenRevealed ? mcpUrl : mcpUrlMasked}
-                    </code>
-                    {!tokenRevealed && (
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ flexShrink: 0 }}
-                        onClick={() => setTokenRevealed(true)}
-                      >
-                        Reveal
-                      </button>
-                    )}
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ flexShrink: 0, background: mcpCopied ? "var(--ok-bg)" : undefined, color: mcpCopied ? "var(--ok)" : undefined }}
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(mcpUrl)
-                        setMcpCopied(true)
-                        setTimeout(() => setMcpCopied(false), 2000)
-                      }}
-                    >
-                      {mcpCopied ? "Copied!" : "Copy"}
-                    </button>
-                  </div>
-                </div>
-              )}
-              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5 }}>
-                <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude.ai</strong> — Settings &rarr; MCP Servers &rarr; Add &rarr; paste URL, then type <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>load mcp</code> or <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>enable guard</code> in chat</li>
-                <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude Desktop</strong> — run <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>conduct guard sync</code> in your terminal</li>
-                <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude for Work</strong> — Admin Console &rarr; Integrations &rarr; MCP &rarr; paste URL, then type <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>load mcp</code> in chat</li>
-              </ul>
-            </div>
+            <a href="/integrations" className="btn btn-ghost btn-sm" style={{ textDecoration: "none" }}>
+              Manage MCP →
+            </a>
           </div>
 
           {/* Automation — hidden until operation cleanup complete */}
