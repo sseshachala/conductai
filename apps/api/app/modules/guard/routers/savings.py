@@ -135,10 +135,8 @@ def record_savings(
     try:
         import uuid as _uuid
         from app.modules.guard.models import GuardConfig
-        from app.modules.guard.routers.token_guardrails import (
-            _check_guardrail_drift,
-            _post_slack_drift,
-        )
+        from app.modules.guard.routers.token_guardrails import _check_guardrail_drift
+        from app.modules.guard.routers.events import _send_guard_slack
 
         team = db.query(GuardConfig).filter(
             GuardConfig.workspace_id == _uuid.UUID(body.workspace_id)
@@ -159,11 +157,11 @@ def record_savings(
 
             drifts = _check_guardrail_drift(team, current_tools, current_snapshot)
             if drifts:
-                _post_slack_drift(
-                    team.slack_webhook_url or "",
-                    body.workspace_id,
-                    drifts,
+                text = (
+                    f"*ConductGuard drift detected* in workspace *{body.workspace_id}*:\n"
+                    + "\n".join(drifts)
                 )
+                _send_guard_slack(db, team, text)
 
             team.guardrail_snapshot = {
                 **prev_snap,
