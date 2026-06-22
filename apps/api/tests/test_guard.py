@@ -387,3 +387,65 @@ class TestWorkspaceCustomRuleModel:
         # instead of as top-level columns. This is the shape contract.
         assert "body" in cols
         assert "enabled" in cols
+
+
+# ── runtime_persona split (#776) ────────────────────────────────────────────
+
+from app.modules.guard.models import GuardConfig
+
+
+class TestRuntimePersonaSplit:
+    """guard_block.py must read runtime_persona, not the dev persona, so
+    workflow execution enforces strict rules regardless of dev relaxations."""
+
+    def test_guard_config_has_runtime_persona_column(self):
+        cols = {c.key for c in GuardConfig.__table__.columns}
+        assert "runtime_persona" in cols
+        assert "persona" in cols  # dev persona still there
+
+    def test_runtime_persona_default(self):
+        # Default is 'conservative' so production workflows always start strict
+        # even if the workspace dev persona is relaxed.
+        col = GuardConfig.__table__.columns["runtime_persona"]
+        default = col.default.arg if col.default else None
+        server_default = str(col.server_default.arg) if col.server_default else ""
+        assert default == "conservative" or "conservative" in server_default
+
+    def test_guard_block_reads_runtime_persona_not_dev(self):
+        """When guard_block.py runs, it should request rules using the workspace's
+        runtime_persona, not the dev persona. Different rules fire as a result."""
+        import uuid
+        import app.runtime.blocks.guard_block as _gb
+
+        # Build a fake config where dev='developer' but runtime='conservative'.
+        # If guard_block reads runtime_persona, compute_policy is called with
+        # 'conservative'. If it reads the dev one, it's called with 'developer'.
+        captured = {}
+
+        def fake_compute_policy(_db, _ws, persona):
+            captured["persona"] = persona
+            return []
+
+        class FakeCfg:
+            persona = "developer"
+            runtime_persona = "conservative"
+
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = FakeCfg()
+        db._test_policies = []
+
+        orig = _gb.compute_policy
+        _gb.compute_policy = fake_compute_policy
+        try:
+            _execute_guard(
+                {"id": "test", "config": {"enforcement_mode": "audit"}},
+                {"some": "context"},
+                str(uuid.uuid4()),
+                db,
+            )
+        finally:
+            _gb.compute_policy = orig
+
+        assert captured.get("persona") == "conservative", (
+            f"guard_block should use runtime_persona ('conservative'), got {captured.get('persona')!r}"
+        )

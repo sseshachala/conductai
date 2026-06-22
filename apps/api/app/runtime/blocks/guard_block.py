@@ -93,8 +93,10 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
     # ── 3. Load active policies ───────────────────────────────────────────────
     # Pull active rules from skill_packs JSONB via compute_policy(). Persona is
     # the workspace's configured persona (defaults to 'standard').
+    # Workflow runtime always uses runtime_persona (defaults to 'conservative'),
+    # independent of the workspace's dev persona. Closes #776.
     cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
-    persona = (cfg.persona if cfg else None) or "standard"
+    persona = (cfg.runtime_persona if cfg else None) or "conservative"
     policies = compute_policy(db, ws_uuid, persona)
     if rule_ids_filter:
         policies = [p for p in policies if (p.get("id") or p.get("rule_id")) in rule_ids_filter]
