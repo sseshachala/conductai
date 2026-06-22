@@ -171,9 +171,14 @@ function McpModal({
           display: "flex", flexDirection: "column", gap: 16,
         }}
       >
-        <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", margin: 0 }}>
-          {mode === "add" ? "Add MCP server" : "Edit MCP server"}
-        </h2>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", margin: 0 }}>
+            {mode === "add" ? "Add MCP server" : "Edit MCP server"}
+          </h2>
+          <a href="/docs/mcp-setup" target="_blank" rel="noopener" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>
+            How to connect Claude →
+          </a>
+        </div>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {/* Provider dropdown — shown in both add and edit; disabled for system servers */}
