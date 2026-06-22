@@ -111,6 +111,7 @@ class PolicySyncOut(BaseModel):
 class PolicyGenerateRequest(BaseModel):
     prompt: str
     workspace_id: Optional[str] = None
+    environment_id: Optional[str] = None
 
 
 class PolicyGenerateOut(BaseModel):
@@ -270,11 +271,16 @@ def generate_policy(
 ):
     """LLM-generate a rule from a plain-English description."""
     import anthropic
+    from app.routers.generate import _resolve_anthropic_key
 
     resolved_ws = body.workspace_id or workspace_id
-    api_key = _get_anthropic_key(db, resolved_ws)
+    api_key = _resolve_anthropic_key(resolved_ws, body.environment_id, db)
     if not api_key:
-        raise HTTPException(status_code=503, detail="Anthropic API key not configured — add it in Settings -> Environments")
+        env_hint = "selected environment" if body.environment_id else "Default environment"
+        raise HTTPException(
+            status_code=503,
+            detail=f"Anthropic API key not configured for the {env_hint} — add it in Settings -> Environments",
+        )
 
     client = anthropic.Anthropic(api_key=api_key)
     try:
