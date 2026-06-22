@@ -391,34 +391,7 @@ function SettingsContent() {
 
                   <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 14, lineHeight: 1.5 }}>
                     Spend alerts are deduped — Slack fires once per 5% increment, not on every tool call.
-                  </div>
-
-                  {/* Drift alert channel + Slack integration picker */}
-                  <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 16 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>Drift alert channel</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 8 }}>
-                      Fires when a token guardrail goes inactive — tool removed or policy disabled.
-                    </div>
-                    <SlackIntegrationPicker
-                      base={base}
-                      wsId={wsId ?? undefined}
-                      buildHeaders={async () => {
-                        const token = await getToken()
-                        const h: Record<string, string> = { "Content-Type": "application/json" }
-                        if (token) h["Authorization"] = `Bearer ${token}`
-                        return h
-                      }}
-                      integrationId={tokenGuardrails?.slack_integration_id ?? null}
-                      channel={tokenGuardrails?.slack_webhook_url ?? ""}
-                      isAdmin={isAdmin}
-                      onSave={async (integrationId, channel) => {
-                        const token = await getToken()
-                        await patchTokenGuardrails(wsId!, token ?? "", base, {
-                          slack_integration_id: integrationId,
-                          slack_webhook_url: channel || null,
-                        })
-                      }}
-                    />
+                    Drift alerts (guardrail goes inactive) post to the same channel.
                   </div>
                 </div>
               </div>
