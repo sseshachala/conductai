@@ -24,7 +24,7 @@ export default function TermsPage() {
           </section>
           <section>
             <h2 className="text-base font-semibold text-stone-800 mb-2">Open source</h2>
-            <p>The Conduct codebase is available under the MIT license at <a href="https://github.com/sseshachala/conductai" target="_blank" rel="noopener noreferrer" className="text-stone-900 underline hover:no-underline">github.com/sseshachala/conductai</a>. Self-hosted deployments are your responsibility.</p>
+            <p>The Conduct codebase is available under the MIT license at <a href="https://github.com/sseshachala/conduct-cli" target="_blank" rel="noopener noreferrer" className="text-stone-900 underline hover:no-underline">github.com/sseshachala/conduct-cli</a>. Self-hosted deployments are your responsibility.</p>
           </section>
           <section>
             <h2 className="text-base font-semibold text-stone-800 mb-2">Limitation of liability</h2>

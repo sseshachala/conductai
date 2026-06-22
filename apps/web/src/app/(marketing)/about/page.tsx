@@ -189,7 +189,7 @@ export default function AboutPage() {
 
         <div className="flex flex-wrap gap-3 pt-2 pb-4">
           <a
-            href="https://github.com/sseshachala/conductai"
+            href="https://github.com/sseshachala/conduct-cli"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-lg border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
