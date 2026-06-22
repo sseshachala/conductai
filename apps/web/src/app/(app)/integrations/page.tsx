@@ -176,7 +176,7 @@ function McpModal({
             {mode === "add" ? "Add MCP server" : "Edit MCP server"}
           </h2>
           <a href="/docs/mcp-setup" target="_blank" rel="noopener" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>
-            How to connect Claude →
+            How to connect your AI tools →
           </a>
         </div>
 
