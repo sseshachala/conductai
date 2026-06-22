@@ -93,16 +93,6 @@ function SettingsContent() {
   const [enforcementMode, setEnforcementMode] = useState<"block" | "warn" | "audit">("warn")
   const [enforcementError, setEnforcementError] = useState<string | null>(null)
 
-  // Persona — dev-time (MCP hook) and runtime (workflow execution) are separate.
-  const [persona, setPersona] = useState<string | null>(null)
-  const [personaSaving, setPersonaSaving] = useState(false)
-  const [personaSaved, setPersonaSaved] = useState(false)
-  const [personaError, setPersonaError] = useState<string | null>(null)
-  const [runtimePersona, setRuntimePersona] = useState<string | null>(null)
-  const [runtimePersonaSaving, setRuntimePersonaSaving] = useState(false)
-  const [runtimePersonaSaved, setRuntimePersonaSaved] = useState(false)
-  const [runtimePersonaError, setRuntimePersonaError] = useState<string | null>(null)
-
   // Re-sync state
   const [resyncing, setResyncing] = useState(false)
   const [resyncDone, setResyncDone] = useState(false)
@@ -159,13 +149,6 @@ function SettingsContent() {
       fetch(`${base}/guard/members/me/token?workspace_id=${wsId}`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(d => setMemberToken(d?.member_token ?? null))
-      fetch(`${base}/guard/config/persona`, { headers: { ...headers, "x-workspace-id": wsId } })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (d?.persona) setPersona(d.persona)
-          if (d?.workspace_runtime_persona) setRuntimePersona(d.workspace_runtime_persona)
-        })
-        .catch((e: unknown) => setPersonaError(e instanceof Error ? e.message : "Failed to load persona"))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings")
     } finally {
@@ -298,20 +281,6 @@ function SettingsContent() {
               marginBottom: 24,
             }}>
               View only — contact your admin to make changes.
-            </div>
-          )}
-
-          {personaError && (
-            <div style={{
-              borderRadius: 8,
-              border: "1px solid var(--warn-bd)",
-              background: "var(--warn-bg)",
-              padding: "8px 16px",
-              fontSize: 12,
-              color: "var(--warn)",
-              marginBottom: 16,
-            }}>
-              Could not load policy persona: {personaError}
             </div>
           )}
 
@@ -569,158 +538,6 @@ function SettingsContent() {
             </div>
           </div>
 
-          {/* ── Policy Persona ───────────────────────────────────────────────── */}
-          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
-            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 30, height: 30, borderRadius: 8, background: "#7c3aed", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-              </span>
-              <div>
-                <div style={{ fontWeight: 650, fontSize: 14.5 }}>Dev-time persona</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>Rules enforced for IDE / MCP-hook tool calls (Claude Code, Cursor, etc.). Members can override their own.</div>
-              </div>
-              {personaSaved && <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>}
-            </div>
-            <div style={{ padding: "18px 20px", display: "flex", gap: 12 }}>
-              {[
-                { key: "conservative", label: "Conservative", badge: "🔴", desc: "Default deny. Block everything not explicitly allowed. Best for production agents and regulated environments." },
-                { key: "standard",     label: "Standard",     badge: "🟡", desc: "Allow common read ops, block destructive actions. Best for most engineering teams." },
-                { key: "developer",    label: "Developer",    badge: "🟢", desc: "Audit everything, block only catastrophic risks. Best for local dev and experimentation." },
-              ].map(p => {
-                const active = (persona ?? "standard") === p.key
-                return (
-                  <button
-                    key={p.key}
-                    disabled={!isAdmin || personaSaving}
-                    onClick={async () => {
-                      if (!isAdmin || active) return
-                      setPersonaSaving(true)
-                      try {
-                        const headers = await authHeaders()
-                        const res = await fetch(`${base}/guard/config/persona`, {
-                          method: "PATCH",
-                          headers: { ...headers, "x-workspace-id": wsId ?? "" },
-                          body: JSON.stringify({ persona: p.key }),
-                        })
-                        if (res.ok) {
-                          setPersona(p.key)
-                          setPersonaSaved(true)
-                          setTimeout(() => setPersonaSaved(false), 2500)
-                        } else {
-                          throw new Error(`Failed to save persona (${res.status})`)
-                        }
-                      } catch (e) {
-                        setPersonaError(e instanceof Error ? e.message : "Failed to save persona")
-                      } finally {
-                        setPersonaSaving(false)
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: "14px 16px",
-                      borderRadius: 10,
-                      border: `2px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                      background: active ? "var(--accent-weak)" : "var(--surface)",
-                      textAlign: "left",
-                      cursor: isAdmin ? "pointer" : "default",
-                      opacity: personaSaving ? 0.6 : 1,
-                      transition: "border-color 0.15s, background 0.15s",
-                    }}
-                  >
-                    <div style={{ fontSize: 15, marginBottom: 5 }}>{p.badge} <strong style={{ color: active ? "var(--accent-text)" : "var(--text)" }}>{p.label}</strong></div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.4 }}>{p.desc}</div>
-                  </button>
-                )
-              })}
-            </div>
-            {!isAdmin && (
-              <div style={{ padding: "0 20px 16px", fontSize: 12, color: "var(--text-muted)" }}>
-                Only admins can change the workspace persona.
-              </div>
-            )}
-          </div>
-
-          {/* ── Runtime Persona ─────────────────────────────────────────────── */}
-          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
-            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 30, height: 30, borderRadius: 8, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                </svg>
-              </span>
-              <div>
-                <div style={{ fontWeight: 650, fontSize: 14.5 }}>Runtime persona</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>
-                  Rules enforced on every workflow execution. Independent of dev persona — production stays strict even if dev runs loose.
-                </div>
-              </div>
-              {runtimePersonaSaved && <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>}
-            </div>
-            <div style={{ padding: "18px 20px", display: "flex", gap: 12 }}>
-              {[
-                { key: "conservative", label: "Conservative", badge: "🔴", desc: "Maximum enforcement. Every rule fires. Recommended for production workflows." },
-                { key: "standard",     label: "Standard",     badge: "🟡", desc: "Balanced enforcement. Block destructive + warn on risk. Fine for internal automation." },
-                { key: "developer",    label: "Developer",    badge: "🟢", desc: "Lightest enforcement. Use only when running workflows against ephemeral sandboxes." },
-              ].map(p => {
-                const active = (runtimePersona ?? "conservative") === p.key
-                return (
-                  <button
-                    key={p.key}
-                    disabled={!isAdmin || runtimePersonaSaving}
-                    onClick={async () => {
-                      if (!isAdmin || active) return
-                      setRuntimePersonaSaving(true)
-                      try {
-                        const headers = await authHeaders()
-                        const res = await fetch(`${base}/guard/config/runtime-persona`, {
-                          method: "PATCH",
-                          headers: { ...headers, "x-workspace-id": wsId ?? "" },
-                          body: JSON.stringify({ persona: p.key }),
-                        })
-                        if (res.ok) {
-                          setRuntimePersona(p.key)
-                          setRuntimePersonaSaved(true)
-                          setTimeout(() => setRuntimePersonaSaved(false), 2500)
-                        } else {
-                          throw new Error(`Failed to save runtime persona (${res.status})`)
-                        }
-                      } catch (e) {
-                        setRuntimePersonaError(e instanceof Error ? e.message : "Failed to save runtime persona")
-                      } finally {
-                        setRuntimePersonaSaving(false)
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: "14px 16px",
-                      borderRadius: 10,
-                      border: `2px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                      background: active ? "var(--accent-weak)" : "var(--surface)",
-                      textAlign: "left",
-                      cursor: isAdmin ? "pointer" : "default",
-                      opacity: runtimePersonaSaving ? 0.6 : 1,
-                      transition: "border-color 0.15s, background 0.15s",
-                    }}
-                  >
-                    <div style={{ fontSize: 15, marginBottom: 5 }}>{p.badge} <strong style={{ color: active ? "var(--accent-text)" : "var(--text)" }}>{p.label}</strong></div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.4 }}>{p.desc}</div>
-                  </button>
-                )
-              })}
-            </div>
-            {runtimePersonaError && (
-              <div style={{ padding: "0 20px 12px", fontSize: 12, color: "var(--err)" }}>
-                {runtimePersonaError}
-              </div>
-            )}
-            {!isAdmin && (
-              <div style={{ padding: "0 20px 16px", fontSize: 12, color: "var(--text-muted)" }}>
-                Only admins can change the runtime persona.
-              </div>
-            )}
-          </div>
 
           {/* ── MCP Integration ─────────────────────────────────────────────── */}
           <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
