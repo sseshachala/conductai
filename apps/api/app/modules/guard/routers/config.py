@@ -250,14 +250,19 @@ _VALID_PERSONAS = {"conservative", "standard", "developer"}
 
 
 class PersonaOut(BaseModel):
-    persona: str          # active persona for the calling user
-    assigned_by: str      # 'user' or 'admin'
-    workspace_default: str
+    persona: str                                  # active dev persona for the calling user
+    assigned_by: str                              # 'user' or 'admin'
+    workspace_default: str                        # workspace dev_persona default
+    workspace_runtime_persona: str = "conservative"  # admin-only, applies to workflow runtime
 
 
 class PersonaPatch(BaseModel):
     persona: str
     developer_id: str | None = None   # if set, override for that member only; else workspace default
+
+
+class RuntimePersonaPatch(BaseModel):
+    persona: str
 
 
 @router.get("/persona", response_model=PersonaOut)
@@ -276,6 +281,7 @@ def get_persona(
 
     cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     workspace_default = (cfg.persona if cfg and cfg.persona else "standard")
+    workspace_runtime = (cfg.runtime_persona if cfg and cfg.runtime_persona else "conservative")
 
     member = (
         db.query(GuardMemberConfig)
@@ -291,12 +297,14 @@ def get_persona(
             persona=member.persona,
             assigned_by=member.assigned_by or "user",
             workspace_default=workspace_default,
+            workspace_runtime_persona=workspace_runtime,
         )
 
     return PersonaOut(
         persona=workspace_default,
         assigned_by="user",
         workspace_default=workspace_default,
+        workspace_runtime_persona=workspace_runtime,
     )
 
 
@@ -338,7 +346,12 @@ def set_persona(
         log.info("guard.persona_set_member", workspace_id=workspace_id, developer_id=body.developer_id, persona=body.persona)
         cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         workspace_default = cfg.persona if cfg else "standard"
-        return PersonaOut(persona=body.persona, assigned_by="admin", workspace_default=workspace_default)
+        workspace_runtime = cfg.runtime_persona if cfg else "conservative"
+        return PersonaOut(
+            persona=body.persona, assigned_by="admin",
+            workspace_default=workspace_default,
+            workspace_runtime_persona=workspace_runtime,
+        )
 
     # Workspace-wide default
     cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
@@ -347,7 +360,46 @@ def set_persona(
     cfg.persona = body.persona
     db.commit()
     log.info("guard.persona_set_workspace", workspace_id=workspace_id, persona=body.persona)
-    return PersonaOut(persona=body.persona, assigned_by="admin", workspace_default=body.persona)
+    return PersonaOut(
+        persona=body.persona, assigned_by="admin",
+        workspace_default=body.persona,
+        workspace_runtime_persona=cfg.runtime_persona or "conservative",
+    )
+
+
+@router.patch("/runtime-persona", response_model=PersonaOut)
+def set_runtime_persona(
+    body: RuntimePersonaPatch,
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Admin sets the runtime persona for the workspace. Applies only to
+    workflow execution (guard_block.py) - independent of dev/MCP persona."""
+    if body.persona not in _VALID_PERSONAS:
+        raise HTTPException(status_code=422, detail=f"persona must be one of {sorted(_VALID_PERSONAS)}")
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+
+    cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Guard not installed for this workspace")
+    cfg.runtime_persona = body.persona
+    db.commit()
+
+    from app.modules.guard.policy_engine import invalidate_policy_cache
+    invalidate_policy_cache(db, ws_uuid)
+    db.commit()
+
+    log.info("guard.runtime_persona_set", workspace_id=workspace_id, persona=body.persona)
+    return PersonaOut(
+        persona=cfg.persona or "standard",
+        assigned_by="admin",
+        workspace_default=cfg.persona or "standard",
+        workspace_runtime_persona=body.persona,
+    )
 
 
 @router.post("/resync", response_model=ResyncOut, status_code=200)

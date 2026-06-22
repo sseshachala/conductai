@@ -27,9 +27,13 @@ class GuardConfig(Base):
     alert_slack_integration_id = Column(UUID(as_uuid=True), nullable=True)
     automation_security_scan = Column(Boolean, nullable=False, default=False)
     automation_workflow_trigger = Column(Boolean, nullable=False, default=False)
-    # Persona governs which policy rule set applies to agents in this workspace.
-    # 'conservative' | 'standard' | 'developer' — admin-managed via dashboard.
+    # Dev-time persona: applies to MCP hook + daemon sync (Claude Code, Cursor, etc.).
+    # 'conservative' | 'standard' | 'developer' — admin-managed; member can override.
     persona = Column(String(20), nullable=False, default="standard")
+    # Runtime persona: applies to workflow execution (guard_block.py). Defaults to
+    # 'conservative' so production runs always enforce the strictest rule set
+    # regardless of what dev persona the workspace runs locally. Admin-only edit.
+    runtime_persona = Column(String(20), nullable=False, default="conservative")
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
