@@ -637,8 +637,11 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                         {pack.icon}
                       </span>
                       <div>
-                        <h3 style={{ fontSize: 15, fontWeight: 650, color: "var(--text)", margin: 0 }}>{pack.name}</h3>
+                        <h3 style={{ fontSize: 15, fontWeight: 650, color: "var(--text)", margin: 0 }}>
+                          <a href={`/marketplace/${pack.id}`} style={{ color: "inherit", textDecoration: "none" }}>{pack.name}</a>
+                        </h3>
                         <p style={{ fontSize: 12.5, color: "var(--text-3)", margin: "3px 0 0" }}>{pack.subtitle}</p>
+                        <a href={`/marketplace/${pack.id}`} style={{ display: "inline-block", marginTop: 4, fontSize: 11, color: "var(--accent-text)" }}>View rules →</a>
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>

@@ -340,15 +340,26 @@ export default function GovernancePage() {
               Source packs: {activeFwRow.packs.join(", ")}
             </div>
             {(() => {
+              // Only render CTA when the active framework is a "bonus" one — i.e. its
+              // dedicated pack isn't installed. Installed-tier frameworks already get
+              // dedicated coverage so no CTA is needed.
+              const isBonus = frameworks?.bonus.some(b => b.framework === activeFwRow.framework)
+              if (!isBonus) return null
               const rec = (activeFwRow as BonusFrameworkRow).recommended_pack
-              if (!rec) return null
               const label = FRAMEWORK_LABEL[activeFwRow.framework] ?? activeFwRow.framework
+              if (rec) {
+                return (
+                  <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-2)" }}>
+                    Want dedicated {label} controls?{" "}
+                    <Link href={`/marketplace/${rec}`} style={{ color: "var(--accent-text)", textDecoration: "underline" }}>
+                      Install {rec}
+                    </Link>
+                  </div>
+                )
+              }
               return (
-                <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-2)" }}>
-                  Want dedicated {label} controls?{" "}
-                  <Link href="/marketplace" style={{ color: "var(--accent-text)", textDecoration: "underline" }}>
-                    Install {rec}
-                  </Link>
+                <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
+                  Dedicated {label} pack — <em>coming soon</em>. Currently covered via cross-tagged rules from your installed packs.
                 </div>
               )
             })()}
