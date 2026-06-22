@@ -2,28 +2,18 @@
 
 import Link from "next/link"
 import { useEffect, useState, useCallback, useRef } from "react"
+import { useSearchParams } from "next/navigation"
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { GuardShell } from "@/components/guard/GuardShell"
-import { ActivityRow, ActivityHeader, ToolBadge, DecisionBadge, BlastRadiusBadge, formatTs } from "@/components/guard/ActivityRow"
+import { ActivityRow, ActivityHeader, ToolBadge, DecisionBadge, BlastRadiusBadge, formatTs, type AuditEvent } from "@/components/guard/ActivityRow"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface AuditEvent {
-  id: string
-  ts: string
-  user_email: string | null
-  ai_tool: string
-  tool_call: string
-  input_summary: string | null
-  decision: "allowed" | "blocked" | "warned" | "approval"
-  rule_id: string | null
-  conductai_run_id: string | null
-  blast_radius: { files: number; symbols: number; tier: string } | null
-}
+// AuditEvent shape lives in the shared component — keep one definition.
 
 interface GuardSession {
   id: string
@@ -107,6 +97,22 @@ function ActivityContent() {
   const [filterTool, setFilterTool] = useState("")
   const [filterSince, setFilterSince] = useState("")
   const [filterUntil, setFilterUntil] = useState("")
+  const [filterRuleId, setFilterRuleId] = useState("")
+
+  // Hydrate filters from URL on first load — lets callers like the governance
+  // dashboard deep-link with ?rule_id=foo or ?decision=blocked.
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    if (!searchParams) return
+    const d = searchParams.get("decision")
+    if (d) setFilterDecision(d)
+    const t = searchParams.get("ai_tool")
+    if (t) setFilterTool(t)
+    const r = searchParams.get("rule_id")
+    if (r) setFilterRuleId(r)
+    // dev override left out — admins viewing all is the default; per-user
+    // restriction kicks in via effectiveDeveloperFilter below.
+  }, [searchParams])
 
   const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
@@ -123,6 +129,7 @@ function ActivityContent() {
     if (effectiveDeveloperFilter) p.set("user_email", effectiveDeveloperFilter)
     if (filterTool) p.set("ai_tool", filterTool)
     if (filterDecision) p.set("decision", filterDecision)
+    if (filterRuleId) p.set("rule_id", filterRuleId)
     if (filterSince) p.set("since", filterSince)
     if (filterUntil) p.set("until", filterUntil)
     return p.toString()
@@ -158,7 +165,7 @@ function ActivityContent() {
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getToken, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil])
+  }, [getToken, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId])
 
   const loadSessions = useCallback(async () => {
     if (!teamId) return
@@ -323,11 +330,22 @@ function ActivityContent() {
           aria-label="To date"
         />
 
-        {(filterDeveloper || filterTool || filterSince || filterUntil) && (
+        {filterRuleId && (
+          <span style={{
+            fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 12,
+            background: "var(--accent-weak)", color: "var(--accent-text)",
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}>
+            rule: <span style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)" }}>{filterRuleId}</span>
+            <button onClick={() => setFilterRuleId("")} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, lineHeight: 1 }} aria-label="Clear rule filter">×</button>
+          </span>
+        )}
+
+        {(filterDeveloper || filterTool || filterSince || filterUntil || filterRuleId) && (
           <button
             onClick={() => {
               if (permissions.canViewAllActivity) setFilterDeveloper("")
-              setFilterTool(""); setFilterSince(""); setFilterUntil("")
+              setFilterTool(""); setFilterSince(""); setFilterUntil(""); setFilterRuleId("")
             }}
             style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
           >

@@ -208,6 +208,7 @@ export default function GovernancePage() {
   const [drillLoading, setDrillLoading] = useState(false)
   const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([])
   const [kpis, setKpis] = useState<KpisOut | null>(null)
+  const [eventFilter, setEventFilter] = useState<"" | "blocked" | "warned">("")
 
   useEffect(() => {
     if (!workspaceId) return
@@ -249,7 +250,8 @@ export default function GovernancePage() {
       } catch { /* non-fatal */ }
 
       try {
-        const res = await fetch(`${base}/governance/events/recent?workspace_id=${workspaceId}&limit=15`, { headers })
+        const filterParam = eventFilter ? `&decision=${eventFilter}` : ""
+        const res = await fetch(`${base}/governance/events/recent?workspace_id=${workspaceId}&limit=15${filterParam}`, { headers })
         if (res.ok && !cancelled) setRecentEvents(await res.json())
       } catch { /* non-fatal */ }
 
@@ -260,7 +262,7 @@ export default function GovernancePage() {
     }
     load()
     return () => { cancelled = true }
-  }, [workspaceId, getToken, activeFramework])
+  }, [workspaceId, getToken, activeFramework, eventFilter])
 
   // Fetch the rules covering the selected control whenever it changes.
   useEffect(() => {
@@ -613,9 +615,43 @@ export default function GovernancePage() {
           background: "var(--surface-1)",
           overflow: "hidden",
         }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--border)" }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)" }}>Recent activity</div>
-            <Link href="/guard/activity" style={{ fontSize: 11, color: "var(--accent-text)" }}>View all →</Link>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--border)", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)" }}>Recent activity</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {([
+                  { key: "", label: "All" },
+                  { key: "blocked", label: "Blocked" },
+                  { key: "warned", label: "Warned" },
+                ] as const).map(chip => {
+                  const active = eventFilter === chip.key
+                  return (
+                    <button
+                      key={chip.key || "all"}
+                      onClick={() => setEventFilter(chip.key as typeof eventFilter)}
+                      style={{
+                        fontSize: 11,
+                        fontWeight: active ? 600 : 500,
+                        padding: "3px 10px",
+                        borderRadius: 12,
+                        border: `1px solid ${active ? "var(--accent-text)" : "var(--border)"}`,
+                        background: active ? "var(--accent-weak)" : "transparent",
+                        color: active ? "var(--accent-text)" : "var(--text-2)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {chip.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <Link
+              href={eventFilter ? `/guard/activity?decision=${eventFilter}` : "/guard/activity"}
+              style={{ fontSize: 11, color: "var(--accent-text)" }}
+            >
+              View all →
+            </Link>
           </div>
           {recentEvents.length === 0 ? (
             <div style={{ padding: "14px 18px", fontSize: 12, color: "var(--text-3)" }}>

@@ -545,6 +545,7 @@ def list_events(
     decision: str | None = Query(default=None, description="allowed|blocked|warned|approval"),
     ai_tool: str | None = Query(default=None, description="claude_code|claude_chat|claude_desktop|claude_work|codex|codex_cli|codex_chat|cursor|copilot|windsurf|gemini"),
     user_email: str | None = Query(default=None),
+    rule_id: str | None = Query(default=None, description="Filter to events that fired a specific rule"),
     since: datetime | None = Query(default=None, description="ISO datetime lower bound"),
     until: datetime | None = Query(default=None, description="ISO datetime upper bound"),
     limit: int = Query(default=50, ge=1, le=200),
@@ -561,6 +562,8 @@ def list_events(
         q = q.filter(GuardAuditEvent.ai_tool == ai_tool)
     if user_email:
         q = q.filter(GuardAuditEvent.user_email == user_email)
+    if rule_id:
+        q = q.filter(GuardAuditEvent.rule_id == rule_id)
     if since:
         q = q.filter(GuardAuditEvent.ts >= since)
     if until:
