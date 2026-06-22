@@ -295,6 +295,8 @@ class RecentEventOut(BaseModel):
     tool_call: str
     user_email: str | None = None
     input_summary: str | None = None
+    conductai_run_id: str | None = None
+    blast_radius: dict | None = None
 
 
 @router.get("/frameworks/{framework}/controls/{control}/rules", response_model=ControlDrillOut)
@@ -400,6 +402,8 @@ def get_recent_events(
             tool_call=r.tool_call,
             user_email=r.user_email,
             input_summary=(r.input_summary or "")[:200] if r.input_summary else None,
+            conductai_run_id=r.conductai_run_id,
+            blast_radius=r.blast_radius,
         )
         for r in rows
     ]

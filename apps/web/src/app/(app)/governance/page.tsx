@@ -6,6 +6,7 @@ import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardSavings } from "@/hooks/useGuardSavings"
+import { ActivityRow, ActivityHeader } from "@/components/guard/ActivityRow"
 
 interface SpendStats {
   active_developers: number
@@ -604,12 +605,13 @@ export default function GovernancePage() {
           </section>
         )}
 
-        {/* Recent activity feed — last N guard events */}
+        {/* Recent activity feed — top 6, same row component as /guard/activity */}
         <section style={{
           marginTop: 20,
           border: "1px solid var(--border)",
           borderRadius: 8,
           background: "var(--surface-1)",
+          overflow: "hidden",
         }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--border)" }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)" }}>Recent activity</div>
@@ -620,30 +622,12 @@ export default function GovernancePage() {
               No events yet. Activity will appear here as your team uses AI tools.
             </div>
           ) : (
-            <div>
-              {recentEvents.map(ev => (
-                <div key={ev.id} style={{
-                  display: "grid",
-                  gridTemplateColumns: "auto auto 1fr auto",
-                  gap: 12,
-                  alignItems: "center",
-                  padding: "10px 18px",
-                  borderTop: "1px solid var(--border)",
-                  fontSize: 12,
-                }}>
-                  <DecisionDot decision={ev.decision} />
-                  <div style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)", color: "var(--text-2)" }}>
-                    {ev.rule_id ?? ev.tool_call}
-                  </div>
-                  <div style={{ color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {ev.input_summary ?? `${ev.ai_tool} · ${ev.tool_call}`}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                    {ev.user_email ?? "system"} · {timeAgo(ev.ts)}
-                  </div>
-                </div>
+            <>
+              <ActivityHeader />
+              {recentEvents.slice(0, 6).map((ev, i, arr) => (
+                <ActivityRow key={ev.id} ev={ev} isLast={i === arr.length - 1} />
               ))}
-            </div>
+            </>
           )}
         </section>
       </div>
