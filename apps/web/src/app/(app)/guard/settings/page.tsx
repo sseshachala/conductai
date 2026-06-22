@@ -85,10 +85,6 @@ function SettingsContent() {
   const [error, setError] = useState<string | null>(null)
   const [lastFetched, setLastFetched] = useState<Date | null>(null)
 
-  // Notification toggles: extend prefs with warn + digest
-  const [notifWarn, setNotifWarn] = useState(true)
-  const [notifDigest, setNotifDigest] = useState(false)
-
   // Enforcement mode
   const [enforcementMode, setEnforcementMode] = useState<"block" | "warn" | "audit">("warn")
   const [enforcementError, setEnforcementError] = useState<string | null>(null)
@@ -217,25 +213,21 @@ function SettingsContent() {
   }
 
   const NOTIFS = [
-    { k: "blocks",  t: "Policy blocks",          d: "Notify the channel when a tool call is blocked by a rule." },
-    { k: "warns",   t: "Policy warnings",         d: "Notify on warn-mode rule matches (e.g. force-push)." },
-    { k: "budget",  t: "Budget threshold alerts", d: "Fire when team or a developer crosses the alert threshold." },
-    { k: "digest",  t: "Daily spend digest",      d: "A 9am summary of yesterday's spend, top tools and developers." },
+    { k: "blocks",  t: "Policy blocks",          d: "Notify the channel when a tool call is blocked by a rule.", locked: false },
+    { k: "warns",   t: "Policy warnings",         d: "Warn-mode matches share the Policy blocks toggle above — turn that off to silence both.", locked: true },
+    { k: "budget",  t: "Budget threshold alerts", d: "Fire when team or a developer crosses the alert threshold.", locked: false },
   ]
 
   function getNotifValue(k: string): boolean {
     if (k === "blocks") return prefs.notify_on_block
     if (k === "budget") return prefs.notify_on_budget
-    if (k === "warns")  return notifWarn
-    if (k === "digest") return notifDigest
+    if (k === "warns")  return prefs.notify_on_block
     return false
   }
 
   function toggleNotif(k: string) {
     if (k === "blocks") handleToggle("notify_on_block", !prefs.notify_on_block)
     else if (k === "budget") handleToggle("notify_on_budget", !prefs.notify_on_budget)
-    else if (k === "warns")  setNotifWarn(v => !v)
-    else if (k === "digest") setNotifDigest(v => !v)
   }
 
   const isSlackConnected = prefs.alert_slack_integration_id != null
@@ -344,7 +336,7 @@ function SettingsContent() {
                       <GuardToggle
                         on={getNotifValue(x.k)}
                         onClick={() => toggleNotif(x.k)}
-                        disabled={!isAdmin}
+                        disabled={!isAdmin || x.locked}
                       />
                     </div>
                   ))}
