@@ -40,6 +40,38 @@ interface NarrativeOut {
   source: "template" | "llm"
 }
 
+interface RuleDrillRow {
+  rule_id: string
+  description: string | null
+  action: string
+  severity: string | null
+  pack_slug: string
+  match_tool: string | null
+  match_pattern: string | null
+  match_path_pattern: string | null
+  recommendation: string | null
+  iso_control: string | null
+  frameworks: string[]
+  events_30d: number
+}
+
+interface ControlDrillOut {
+  framework: string
+  control: string | null
+  rules: RuleDrillRow[]
+}
+
+interface RecentEvent {
+  id: string
+  ts: string
+  decision: string
+  rule_id: string | null
+  ai_tool: string
+  tool_call: string
+  user_email: string | null
+  input_summary: string | null
+}
+
 // Friendly display names for known framework prefixes.
 const FRAMEWORK_LABEL: Record<string, string> = {
   SOC2: "SOC 2",
@@ -86,6 +118,49 @@ const fmtUsd = (n: number) =>
 const fmtInt = (n: number) =>
   n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`
 
+const DECISION_COLOR: Record<string, string> = {
+  blocked: "#dc2626",
+  warned: "#d97706",
+  audited: "#2563eb",
+  allowed: "#16a34a",
+  approval: "#7c3aed",
+}
+
+function DecisionDot({ decision }: { decision: string }) {
+  const color = DECISION_COLOR[decision] ?? "#6b7280"
+  return (
+    <span title={decision} style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      fontSize: 11,
+      fontWeight: 600,
+      color,
+      textTransform: "capitalize",
+    }}>
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
+      {decision}
+    </span>
+  )
+}
+
+function timeAgo(iso: string): string {
+  try {
+    const t = new Date(iso).getTime()
+    if (Number.isNaN(t)) return ""
+    const delta = Math.max(0, Date.now() - t)
+    const m = Math.floor(delta / 60000)
+    if (m < 1) return "just now"
+    if (m < 60) return `${m}m ago`
+    const h = Math.floor(m / 60)
+    if (h < 24) return `${h}h ago`
+    const d = Math.floor(h / 24)
+    return `${d}d ago`
+  } catch {
+    return ""
+  }
+}
+
 export default function GovernancePage() {
   const { activeWorkspace } = useWorkspace()
   const workspaceId = activeWorkspace?.id ?? null
@@ -95,6 +170,10 @@ export default function GovernancePage() {
   const [frameworks, setFrameworks] = useState<FrameworksOut | null>(null)
   const [narrative, setNarrative] = useState<NarrativeOut | null>(null)
   const [activeFramework, setActiveFramework] = useState<string | null>(null)
+  const [activeControl, setActiveControl] = useState<string | null>(null)
+  const [controlDrill, setControlDrill] = useState<ControlDrillOut | null>(null)
+  const [drillLoading, setDrillLoading] = useState(false)
+  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([])
 
   useEffect(() => {
     if (!workspaceId) return
@@ -134,10 +213,42 @@ export default function GovernancePage() {
         const res = await fetch(`${base}/governance/narrative?workspace_id=${workspaceId}`, { headers })
         if (res.ok && !cancelled) setNarrative(await res.json())
       } catch { /* non-fatal */ }
+
+      try {
+        const res = await fetch(`${base}/governance/events/recent?workspace_id=${workspaceId}&limit=15`, { headers })
+        if (res.ok && !cancelled) setRecentEvents(await res.json())
+      } catch { /* non-fatal */ }
     }
     load()
     return () => { cancelled = true }
   }, [workspaceId, getToken, activeFramework])
+
+  // Fetch the rules covering the selected control whenever it changes.
+  useEffect(() => {
+    if (!workspaceId || !activeFramework || !activeControl) {
+      setControlDrill(null)
+      return
+    }
+    let cancelled = false
+    const load = async () => {
+      setDrillLoading(true)
+      try {
+        const token = await getToken()
+        const headers: Record<string, string> = {}
+        if (token) headers["Authorization"] = `Bearer ${token}`
+        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+        const res = await fetch(
+          `${base}/governance/frameworks/${activeFramework}/controls/${activeControl}/rules?workspace_id=${workspaceId}`,
+          { headers },
+        )
+        if (res.ok && !cancelled) setControlDrill(await res.json())
+      } catch { /* non-fatal */ } finally {
+        if (!cancelled) setDrillLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [workspaceId, getToken, activeFramework, activeControl])
 
   const { savings } = useGuardSavings(workspaceId)
   const totalSavedUsd = savings
@@ -322,19 +433,96 @@ export default function GovernancePage() {
                 No specific controls tagged — this framework matches at the pack level only.
               </div>
             ) : (
+              <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8 }}>
-                {activeFwRow.controls.map(ctrl => (
-                  <div key={ctrl} style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    padding: "10px 12px",
-                    background: "var(--surface-2)",
-                  }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)" }}>{ctrl}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>covered</div>
-                  </div>
-                ))}
+                {activeFwRow.controls.map(ctrl => {
+                  const isActive = ctrl === activeControl
+                  return (
+                    <button
+                      key={ctrl}
+                      onClick={() => setActiveControl(isActive ? null : ctrl)}
+                      style={{
+                        textAlign: "left",
+                        border: `1px solid ${isActive ? "var(--accent-text)" : "var(--border)"}`,
+                        borderRadius: 6,
+                        padding: "10px 12px",
+                        background: isActive ? "var(--accent-weak)" : "var(--surface-2)",
+                        color: isActive ? "var(--accent-text)" : "var(--text-1)",
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{ctrl}</div>
+                      <div style={{ fontSize: 11, color: isActive ? "var(--accent-text)" : "var(--text-3)", marginTop: 2 }}>
+                        {isActive ? "showing rules ↓" : "covered · click to view rules"}
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
+
+              {/* Drill-down: rules covering the selected control */}
+              {activeControl && (
+                <div style={{ marginTop: 16, padding: "14px 16px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface-2)" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>
+                      Rules covering {activeFwRow.framework}: {activeControl}
+                    </div>
+                    {controlDrill && (
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {controlDrill.rules.length} {controlDrill.rules.length === 1 ? "rule" : "rules"}
+                      </div>
+                    )}
+                  </div>
+                  {drillLoading && (
+                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>Loading rules…</div>
+                  )}
+                  {!drillLoading && controlDrill && controlDrill.rules.length === 0 && (
+                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>No rules cover this control yet.</div>
+                  )}
+                  {!drillLoading && controlDrill && controlDrill.rules.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {controlDrill.rules.map(r => (
+                        <div key={r.rule_id} style={{ background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 12px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <Link href={`/marketplace/${r.pack_slug}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)", textDecoration: "none" }}>
+                                {r.rule_id}
+                              </Link>
+                              <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "var(--surface-2)", color: "var(--text-2)", textTransform: "uppercase", fontWeight: 600 }}>
+                                {r.action}
+                              </span>
+                              {r.severity && (
+                                <span style={{ fontSize: 10, color: "var(--text-3)" }}>severity: {r.severity}</span>
+                              )}
+                            </div>
+                            <Link
+                              href={`/guard/activity?rule_id=${encodeURIComponent(r.rule_id)}`}
+                              style={{ fontSize: 11, color: "var(--accent-text)", whiteSpace: "nowrap" }}
+                            >
+                              {r.events_30d} {r.events_30d === 1 ? "event" : "events"} · 30d →
+                            </Link>
+                          </div>
+                          {r.description && (
+                            <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-2)" }}>{r.description}</div>
+                          )}
+                          {(r.match_tool || r.match_pattern) && (
+                            <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-3)", fontFamily: "var(--font-mono, ui-monospace, monospace)" }}>
+                              {r.match_tool && <span>tool: {r.match_tool}</span>}
+                              {r.match_tool && r.match_pattern && <span> · </span>}
+                              {r.match_pattern && <span style={{ wordBreak: "break-all" }}>{r.match_pattern}</span>}
+                            </div>
+                          )}
+                          <div style={{ marginTop: 4, fontSize: 10, color: "var(--text-muted)" }}>
+                            from <Link href={`/marketplace/${r.pack_slug}`} style={{ color: "var(--accent-text)", textDecoration: "none" }}>{r.pack_slug}</Link>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              </>
             )}
             <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-muted)" }}>
               Source packs: {activeFwRow.packs.join(", ")}
@@ -365,6 +553,49 @@ export default function GovernancePage() {
             })()}
           </section>
         )}
+
+        {/* Recent activity feed — last N guard events */}
+        <section style={{
+          marginTop: 20,
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          background: "var(--surface-1)",
+        }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)" }}>Recent activity</div>
+            <Link href="/guard/activity" style={{ fontSize: 11, color: "var(--accent-text)" }}>View all →</Link>
+          </div>
+          {recentEvents.length === 0 ? (
+            <div style={{ padding: "14px 18px", fontSize: 12, color: "var(--text-3)" }}>
+              No events yet. Activity will appear here as your team uses AI tools.
+            </div>
+          ) : (
+            <div>
+              {recentEvents.map(ev => (
+                <div key={ev.id} style={{
+                  display: "grid",
+                  gridTemplateColumns: "auto auto 1fr auto",
+                  gap: 12,
+                  alignItems: "center",
+                  padding: "10px 18px",
+                  borderTop: "1px solid var(--border)",
+                  fontSize: 12,
+                }}>
+                  <DecisionDot decision={ev.decision} />
+                  <div style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)", color: "var(--text-2)" }}>
+                    {ev.rule_id ?? ev.tool_call}
+                  </div>
+                  <div style={{ color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {ev.input_summary ?? `${ev.ai_tool} · ${ev.tool_call}`}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                    {ev.user_email ?? "system"} · {timeAgo(ev.ts)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </AppShell>
   )
