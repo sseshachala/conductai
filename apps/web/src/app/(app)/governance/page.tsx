@@ -72,6 +72,18 @@ interface RecentEvent {
   input_summary: string | null
 }
 
+interface KpiValue {
+  value: number
+  avg_7d: number | null
+  delta_pct: number | null
+}
+
+interface KpisOut {
+  events_today: KpiValue
+  blocked_today: KpiValue
+  active_developers_today: KpiValue
+}
+
 // Friendly display names for known framework prefixes.
 const FRAMEWORK_LABEL: Record<string, string> = {
   SOC2: "SOC 2",
@@ -87,15 +99,28 @@ const FRAMEWORK_LABEL: Record<string, string> = {
   DORA: "DORA",
 }
 
-function KpiCard({ label, value, sub, tone = "neutral" }: {
+function KpiCard({ label, value, sub, tone = "neutral", delta, deltaSemantic = "neutral" }: {
   label: string
   value: string
   sub?: string
   tone?: "neutral" | "good" | "warn"
+  delta?: number | null              // signed % vs baseline; null/undefined hides
+  deltaSemantic?: "neutral" | "more_is_better" | "less_is_better"
 }) {
   const valueColor =
     tone === "good" ? "var(--accent-text)" :
     tone === "warn" ? "var(--text-1)" : "var(--text-1)"
+
+  // Color the delta arrow based on direction + semantic.
+  let deltaColor = "var(--text-3)"
+  if (typeof delta === "number" && delta !== 0) {
+    if (deltaSemantic === "more_is_better") {
+      deltaColor = delta > 0 ? "#16a34a" : "#dc2626"
+    } else if (deltaSemantic === "less_is_better") {
+      deltaColor = delta > 0 ? "#dc2626" : "#16a34a"
+    }
+  }
+
   return (
     <div style={{
       border: "1px solid var(--border)",
@@ -103,8 +128,15 @@ function KpiCard({ label, value, sub, tone = "neutral" }: {
       padding: "14px 16px",
       background: "var(--surface-1)",
     }}>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: ".06em", textTransform: "uppercase" }}>
-        {label}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: ".06em", textTransform: "uppercase" }}>
+          {label}
+        </div>
+        {typeof delta === "number" && (
+          <span title="vs 7-day average" style={{ fontSize: 11, fontWeight: 600, color: deltaColor }}>
+            {delta > 0 ? "↑" : delta < 0 ? "↓" : "—"} {Math.abs(delta)}%
+          </span>
+        )}
       </div>
       <div style={{ fontSize: 24, fontWeight: 600, color: valueColor, marginTop: 6 }}>{value}</div>
       <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>{sub ?? "\u00a0"}</div>
@@ -174,6 +206,7 @@ export default function GovernancePage() {
   const [controlDrill, setControlDrill] = useState<ControlDrillOut | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
   const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([])
+  const [kpis, setKpis] = useState<KpisOut | null>(null)
 
   useEffect(() => {
     if (!workspaceId) return
@@ -217,6 +250,11 @@ export default function GovernancePage() {
       try {
         const res = await fetch(`${base}/governance/events/recent?workspace_id=${workspaceId}&limit=15`, { headers })
         if (res.ok && !cancelled) setRecentEvents(await res.json())
+      } catch { /* non-fatal */ }
+
+      try {
+        const res = await fetch(`${base}/governance/kpis?workspace_id=${workspaceId}`, { headers })
+        if (res.ok && !cancelled) setKpis(await res.json())
       } catch { /* non-fatal */ }
     }
     load()
@@ -298,13 +336,25 @@ export default function GovernancePage() {
           <KpiCard
             label="AI activity today"
             value={stats ? fmtInt(stats.events_today) : "—"}
-            sub={stats ? `${stats.active_developers} active developers` : "no data yet"}
+            sub={
+              kpis?.events_today.avg_7d != null
+                ? `${stats?.active_developers ?? 0} active developers · 7d avg ${fmtInt(Math.round(kpis.events_today.avg_7d))}`
+                : stats ? `${stats.active_developers} active developers` : "no data yet"
+            }
+            delta={kpis?.events_today.delta_pct ?? null}
+            deltaSemantic="neutral"
           />
           <KpiCard
             label="Risk intercepted today"
             value={stats ? fmtInt(stats.blocked_today) : "—"}
-            sub={stats && stats.blocked_today > 0 ? "blocks + warnings" : "no incidents"}
+            sub={
+              kpis?.blocked_today.avg_7d != null
+                ? `blocks · 7d avg ${kpis.blocked_today.avg_7d.toFixed(1)}`
+                : stats && stats.blocked_today > 0 ? "blocks + warnings" : "no incidents"
+            }
             tone={stats && stats.blocked_today > 0 ? "warn" : "neutral"}
+            delta={kpis?.blocked_today.delta_pct ?? null}
+            deltaSemantic="more_is_better"
           />
           <KpiCard
             label="Compliance packs"

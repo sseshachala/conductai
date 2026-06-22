@@ -403,3 +403,118 @@ def get_recent_events(
         )
         for r in rows
     ]
+
+
+# ── KPIs with deltas (governance polish #3) ─────────────────────────────────
+
+class KpiValue(BaseModel):
+    value: int
+    avg_7d: float | None = None       # 7-day daily average (the baseline)
+    delta_pct: int | None = None      # signed % delta vs avg_7d; None when baseline is 0
+
+
+class KpisOut(BaseModel):
+    events_today: KpiValue
+    blocked_today: KpiValue
+    active_developers_today: KpiValue
+
+
+def _kpi(value: int, avg_7d: float) -> KpiValue:
+    """Build a KpiValue with delta. Avoids divide-by-zero by returning None
+    delta when the baseline is 0."""
+    if avg_7d <= 0:
+        return KpiValue(value=value, avg_7d=None if avg_7d == 0 else avg_7d, delta_pct=None)
+    delta = round((value - avg_7d) / avg_7d * 100)
+    return KpiValue(value=value, avg_7d=round(avg_7d, 1), delta_pct=delta)
+
+
+@router.get("/kpis", response_model=KpisOut)
+def get_kpis(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.activity.view_own")),
+):
+    """Today's headline metrics with 7-day-average baseline + delta %.
+    Used by the governance dashboard cards to show direction (up/down)."""
+    ws_uuid = uuid.UUID(workspace_id)
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    baseline_start = today_start - timedelta(days=7)
+
+    from sqlalchemy import func as _func, distinct
+
+    # --- Events today
+    events_today = (
+        db.query(_func.count(GuardAuditEvent.id))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.ts >= today_start,
+        )
+        .scalar() or 0
+    )
+    # 7d total (yesterday backwards 7 full days) — divide by 7 for daily avg
+    events_7d_total = (
+        db.query(_func.count(GuardAuditEvent.id))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.ts >= baseline_start,
+            GuardAuditEvent.ts < today_start,
+        )
+        .scalar() or 0
+    )
+    events_7d_avg = events_7d_total / 7.0
+
+    # --- Blocked today
+    blocked_today = (
+        db.query(_func.count(GuardAuditEvent.id))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.decision == "blocked",
+            GuardAuditEvent.ts >= today_start,
+        )
+        .scalar() or 0
+    )
+    blocked_7d_total = (
+        db.query(_func.count(GuardAuditEvent.id))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.decision == "blocked",
+            GuardAuditEvent.ts >= baseline_start,
+            GuardAuditEvent.ts < today_start,
+        )
+        .scalar() or 0
+    )
+    blocked_7d_avg = blocked_7d_total / 7.0
+
+    # --- Active developers today (distinct user_email with at least one event)
+    active_today = (
+        db.query(_func.count(distinct(GuardAuditEvent.user_email)))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.user_email.isnot(None),
+            GuardAuditEvent.ts >= today_start,
+        )
+        .scalar() or 0
+    )
+    # For "active devs" baseline, we want avg distinct devs per day in the
+    # last 7 days — approximate with the simple count over 7 days / 7. Good
+    # enough for a direction signal, not a perfect metric.
+    active_7d_total = (
+        db.query(_func.count(distinct(GuardAuditEvent.user_email)))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.user_email.isnot(None),
+            GuardAuditEvent.ts >= baseline_start,
+            GuardAuditEvent.ts < today_start,
+        )
+        .scalar() or 0
+    )
+    # Active devs collapses across days, so dividing by 7 understates. Take the
+    # raw count as the baseline for now — direction is what matters.
+    active_baseline = float(active_7d_total)
+
+    return KpisOut(
+        events_today=_kpi(events_today, events_7d_avg),
+        blocked_today=_kpi(blocked_today, blocked_7d_avg),
+        active_developers_today=_kpi(active_today, active_baseline),
+    )
