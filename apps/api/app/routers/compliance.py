@@ -43,6 +43,32 @@ class InstalledPacksOut(BaseModel):
     installed: list[str]
 
 
+class PackRuleOut(BaseModel):
+    id: str
+    description: str | None = None
+    action: str
+    severity: str | None = None
+    match_tool: str | None = None
+    match_pattern: str | None = None
+    match_path_pattern: str | None = None
+    message: str | None = None
+    recommendation: str | None = None
+    frameworks: list[str] = []
+    iso_control: str | None = None
+    persona_affinity: list[str] = []
+
+
+class PackDetailOut(BaseModel):
+    slug: str
+    version: str
+    name: str
+    description: str | None = None
+    tier: str
+    rules_count: int
+    rules: list[PackRuleOut]
+    installed: bool
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/packs/installed", response_model=InstalledPacksOut)
@@ -59,6 +85,49 @@ def list_installed_packs(
         .all()
     )
     return InstalledPacksOut(installed=sorted(r[0] for r in rows))
+
+
+@router.get("/packs/{pack_id}", response_model=PackDetailOut)
+def get_pack_detail(
+    pack_id: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Full metadata for a single pack including every rule it ships. Used by
+    the marketplace detail page so users see exactly what coverage they get
+    before installing."""
+    pack = _latest_pack(db, pack_id)
+    if not pack:
+        raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
+    ws_uuid = uuid.UUID(workspace_id)
+    installed = db.get(WorkspaceSkillPack, (ws_uuid, pack.slug)) is not None
+    rules_out = [
+        PackRuleOut(
+            id=r.get("id") or r.get("rule_id") or "",
+            description=r.get("description"),
+            action=r.get("action", "block"),
+            severity=r.get("severity"),
+            match_tool=r.get("match_tool"),
+            match_pattern=r.get("match_pattern"),
+            match_path_pattern=r.get("match_path_pattern"),
+            message=r.get("message"),
+            recommendation=r.get("recommendation"),
+            frameworks=r.get("frameworks") or [],
+            iso_control=r.get("iso_control"),
+            persona_affinity=r.get("persona_affinity") or [],
+        )
+        for r in (pack.rules or [])
+    ]
+    return PackDetailOut(
+        slug=pack.slug,
+        version=pack.version,
+        name=pack.name,
+        description=pack.description,
+        tier=pack.tier,
+        rules_count=len(rules_out),
+        rules=rules_out,
+        installed=installed,
+    )
 
 
 @router.post("/packs/{pack_id}/install", response_model=PackStatusOut)
