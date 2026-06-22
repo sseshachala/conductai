@@ -245,7 +245,9 @@ function ApplySection() {
             Email Us — hello@conductai.ai
           </a>
           <a
-            href="mailto:hello@conductai.ai"
+            href="https://cal.com/sudhi-seshachala-pks7pd"
+            target="_blank"
+            rel="noopener"
             className="rounded-xl border border-white/20 text-white px-7 py-3.5 text-base font-semibold hover:bg-white/10 transition-colors w-full sm:w-auto text-center"
           >
             Book a 30-Minute Call
