@@ -204,6 +204,14 @@ export default function AboutPage() {
             <MailIcon />
             hello@conductai.ai
           </a>
+          <a
+            href="https://cal.com/sudhi-seshachala-pks7pd"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-700 transition-all"
+          >
+            Book a Demo
+          </a>
         </div>
 
       </div>
