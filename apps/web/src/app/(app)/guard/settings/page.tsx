@@ -482,39 +482,6 @@ function SettingsContent() {
                 ))}
               </div>
 
-              {/* Auto-detected guardrails (read-only status) */}
-              <div className="card" style={{ padding: "18px 20px" }}>
-                <div className="eyebrow" style={{ marginBottom: 4 }}>Token guardrails</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Auto-detected from installed tools and active policies.</div>
-                {tokenGuardrails === null ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {[...Array(4)].map((_, i) => (
-                      <div key={i} style={{ height: 36, background: "var(--surface-2)", borderRadius: 6, opacity: 0.6 }} />
-                    ))}
-                  </div>
-                ) : (
-                  ([
-                    { key: "deterministic_offload", label: "Deterministic offload", desc: "warn-deterministic-compute policy" },
-                    { key: "output_compression",    label: "Output compression",    desc: "RTK installed" },
-                    { key: "structured_retrieval",  label: "Structured retrieval",  desc: "Agent Booster installed" },
-                    { key: "metrics_budgets",       label: "Metrics & budgets",     desc: "Spend budgets configured" },
-                  ] as const).map((item, i) => {
-                    const active = tokenGuardrails[item.key] ?? false
-                    return (
-                      <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{item.label}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{item.desc}</div>
-                        </div>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: active ? "var(--ok)" : "var(--text-3)", flexShrink: 0, marginLeft: 12 }}>
-                          {active ? "Active" : "Inactive"}
-                        </span>
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-
               {/* Re-sync */}
               <div className="card" style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -538,6 +505,79 @@ function SettingsContent() {
             </div>
           </div>
 
+
+          {/* ── Token Guardrails — manual + auto-detected ───────────────────── */}
+          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
+            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                </svg>
+              </span>
+              <div style={{ fontWeight: 650, fontSize: 14.5 }}>Token guardrails</div>
+              <a href="/token-guardrails" target="_blank" style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", textDecoration: "none" }}>
+                Learn more →
+              </a>
+              {guardrailSaved && (
+                <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>
+              )}
+            </div>
+
+            {/* Manual toggles */}
+            <div style={{ padding: "4px 20px 8px" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Manual</div>
+              {([
+                { key: "prompt_caching",   label: "Prompt caching",   desc: "System prompts are cached on every agent run" },
+                { key: "model_routing",    label: "Model routing",    desc: "Agent runs select model tier by task complexity" },
+                { key: "prompt_splitting", label: "Prompt splitting", desc: "Agent Templates enforce composable YAML skills" },
+              ] as const).map(item => (
+                <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.label}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</div>
+                  </div>
+                  <GuardToggle
+                    on={guardrailState[item.key]}
+                    onClick={() => handleGuardrailToggle(item.key, !guardrailState[item.key])}
+                    disabled={!isAdmin}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Auto-detected status */}
+            <div style={{ padding: "4px 20px 16px", borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Auto-detected</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Detected from installed tools and active policies.</div>
+              {tokenGuardrails === null ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} style={{ height: 36, background: "var(--surface-2)", borderRadius: 6, opacity: 0.6 }} />
+                  ))}
+                </div>
+              ) : (
+                ([
+                  { key: "deterministic_offload", label: "Deterministic offload", desc: "warn-deterministic-compute policy" },
+                  { key: "output_compression",    label: "Output compression",    desc: "RTK installed" },
+                  { key: "structured_retrieval",  label: "Structured retrieval",  desc: "Agent Booster installed" },
+                  { key: "metrics_budgets",       label: "Metrics & budgets",     desc: "Spend budgets configured" },
+                ] as const).map((item, i) => {
+                  const active = tokenGuardrails[item.key] ?? false
+                  return (
+                    <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 0", borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{item.label}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</div>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: active ? "var(--ok)" : "var(--text-3)", flexShrink: 0, marginLeft: 12 }}>
+                        {active ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
 
           {/* ── MCP Integration ─────────────────────────────────────────────── */}
           <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
@@ -593,43 +633,6 @@ function SettingsContent() {
                 <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude Desktop</strong> — run <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>conduct guard sync</code> in your terminal</li>
                 <li style={{ fontSize: 12.5, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Claude for Work</strong> — Admin Console &rarr; Integrations &rarr; MCP &rarr; paste URL, then type <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>load mcp</code> in chat</li>
               </ul>
-            </div>
-          </div>
-
-          {/* ── Token Guardrails — manual toggles ───────────────────────────── */}
-          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
-            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-                </svg>
-              </span>
-              <div style={{ fontWeight: 650, fontSize: 14.5 }}>Token guardrails</div>
-              <a href="/token-guardrails" target="_blank" style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", textDecoration: "none" }}>
-                Learn more →
-              </a>
-              {guardrailSaved && (
-                <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>
-              )}
-            </div>
-            <div style={{ padding: "4px 20px 16px" }}>
-              {([
-                { key: "prompt_caching",   label: "Prompt caching",   desc: "System prompts are cached on every agent run" },
-                { key: "model_routing",    label: "Model routing",    desc: "Agent runs select model tier by task complexity" },
-                { key: "prompt_splitting", label: "Prompt splitting", desc: "Agent Templates enforce composable YAML skills" },
-              ] as const).map(item => (
-                <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.label}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</div>
-                  </div>
-                  <GuardToggle
-                    on={guardrailState[item.key]}
-                    onClick={() => handleGuardrailToggle(item.key, !guardrailState[item.key])}
-                    disabled={!isAdmin}
-                  />
-                </div>
-              ))}
             </div>
           </div>
 
