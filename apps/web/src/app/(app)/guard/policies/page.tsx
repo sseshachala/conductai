@@ -278,7 +278,10 @@ function AddRuleModal({
         headers,
         body: JSON.stringify({ prompt: text }),
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.detail ?? `HTTP ${res.status}`)
+      }
       const data = await res.json()
       setForm({
         rule_id: data.rule_id ?? "",
@@ -290,8 +293,8 @@ function AddRuleModal({
         message: data.message ?? "",
       })
       setErrors({})
-    } catch {
-      setAiError("Couldn't generate a rule — try being more specific.")
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : "Couldn't generate a rule — try being more specific.")
     } finally {
       setAiGenerating(false)
     }
