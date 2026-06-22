@@ -261,3 +261,145 @@ def get_narrative(
         para = ". ".join(b.capitalize() if i == 0 else b for i, b in enumerate(bits)) + "."
 
     return NarrativeOut(paragraph=para, generated_at=now, source="template")
+
+
+# ── Drill-down + events feed (governance polish A) ──────────────────────────
+
+class RuleDrillRow(BaseModel):
+    rule_id: str
+    description: str | None = None
+    action: str
+    severity: str | None = None
+    pack_slug: str
+    match_tool: str | None = None
+    match_pattern: str | None = None
+    match_path_pattern: str | None = None
+    recommendation: str | None = None
+    iso_control: str | None = None
+    frameworks: list[str] = []
+    events_30d: int = 0
+
+
+class ControlDrillOut(BaseModel):
+    framework: str
+    control: str | None              # may be None when drilling by framework only
+    rules: list[RuleDrillRow]
+
+
+class RecentEventOut(BaseModel):
+    id: str
+    ts: datetime
+    decision: str                    # blocked | warned | allowed | audited
+    rule_id: str | None = None
+    ai_tool: str
+    tool_call: str
+    user_email: str | None = None
+    input_summary: str | None = None
+
+
+@router.get("/frameworks/{framework}/controls/{control}/rules", response_model=ControlDrillOut)
+def get_rules_for_control(
+    framework: str,
+    control: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.policies.view")),
+):
+    """Return all rules covering a specific control in a framework, plus how
+    many times each rule has fired in the last 30 days."""
+    ws_uuid = uuid.UUID(workspace_id)
+    target_token_prefix = f"{framework}:{control}"
+    target_token_bare = framework  # rules may tag bare framework w/o control
+
+    installed = (
+        db.query(WorkspaceSkillPack)
+        .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
+        .all()
+    )
+
+    matched: dict[str, RuleDrillRow] = {}
+    for wp in installed:
+        pack = _latest_pack(db, wp.pack_slug, wp.pinned_version)
+        if not pack:
+            continue
+        for rule in pack.rules or []:
+            fw_tokens = rule.get("frameworks") or []
+            if not any(t == target_token_prefix or t == target_token_bare for t in fw_tokens):
+                continue
+            rid = rule.get("id") or rule.get("rule_id") or ""
+            if rid and rid not in matched:
+                matched[rid] = RuleDrillRow(
+                    rule_id=rid,
+                    description=rule.get("description"),
+                    action=rule.get("action", "block"),
+                    severity=rule.get("severity"),
+                    pack_slug=pack.slug,
+                    match_tool=rule.get("match_tool"),
+                    match_pattern=rule.get("match_pattern"),
+                    match_path_pattern=rule.get("match_path_pattern"),
+                    recommendation=rule.get("recommendation"),
+                    iso_control=rule.get("iso_control"),
+                    frameworks=fw_tokens,
+                    events_30d=0,
+                )
+
+    if matched:
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+        rule_ids = list(matched.keys())
+        from sqlalchemy import func as _func
+        rows = (
+            db.query(GuardAuditEvent.rule_id, _func.count(GuardAuditEvent.id))
+            .filter(
+                GuardAuditEvent.workspace_id == ws_uuid,
+                GuardAuditEvent.rule_id.in_(rule_ids),
+                GuardAuditEvent.ts >= since,
+            )
+            .group_by(GuardAuditEvent.rule_id)
+            .all()
+        )
+        for rid, cnt in rows:
+            if rid in matched:
+                matched[rid].events_30d = int(cnt)
+
+    return ControlDrillOut(
+        framework=framework,
+        control=control,
+        rules=sorted(matched.values(), key=lambda r: (-r.events_30d, r.rule_id)),
+    )
+
+
+@router.get("/events/recent", response_model=list[RecentEventOut])
+def get_recent_events(
+    limit: int = 20,
+    decision: str | None = None,    # filter: blocked | warned | allowed | audited
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.activity.view_own")),
+):
+    """Recent guard events for the dashboard activity feed. Defaults to last
+    20 events; pass ?decision=blocked or ?decision=warned to filter."""
+    ws_uuid = uuid.UUID(workspace_id)
+    limit = max(1, min(limit, 100))
+
+    q = (
+        db.query(GuardAuditEvent)
+        .filter(GuardAuditEvent.workspace_id == ws_uuid)
+        .order_by(GuardAuditEvent.ts.desc())
+    )
+    if decision:
+        q = q.filter(GuardAuditEvent.decision == decision)
+
+    rows = q.limit(limit).all()
+    return [
+        RecentEventOut(
+            id=str(r.id),
+            ts=r.ts,
+            decision=r.decision,
+            rule_id=r.rule_id,
+            ai_tool=r.ai_tool,
+            tool_call=r.tool_call,
+            user_email=r.user_email,
+            input_summary=(r.input_summary or "")[:200] if r.input_summary else None,
+        )
+        for r in rows
+    ]
