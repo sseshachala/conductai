@@ -126,7 +126,7 @@ url = "https://api.conductai.ai/guard/mcp?workspace_id=<your-ws>&token=<your-tok
         </p>
         <p className="text-stone-600">
           If your tool isn't supported by the CLI yet, add it manually using the URL pattern above and{" "}
-          <a href="https://github.com/sseshachala/conductai/issues" target="_blank" rel="noopener" className="text-indigo-600 underline">open an issue</a>{" "}
+          <a href="https://github.com/sseshachala/conduct-cli/issues" target="_blank" rel="noopener" className="text-indigo-600 underline">open an issue</a>{" "}
           so we add detection.
         </p>
       </section>
