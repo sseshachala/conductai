@@ -66,28 +66,36 @@ export function SlackIntegrationPicker({ base, wsId, buildHeaders, integrationId
   }
 
   return (
-    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Row 1: Environment dropdown (full width) */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>
+          Environment
+        </label>
         <select
           value={selectedId}
           disabled={!isAdmin}
           onChange={e => isAdmin && setSelectedId(e.target.value)}
           style={{
-            flex: 1, height: 36, padding: "0 10px", fontSize: 13,
+            width: "100%", height: 36, padding: "0 10px", fontSize: 13,
             border: "1px solid var(--border-2)", borderRadius: 8,
             background: "var(--surface)", color: "var(--text)",
             opacity: isAdmin ? 1 : 0.6, cursor: isAdmin ? "pointer" : "default",
           }}
         >
-          <option value="">Select Slack integration…</option>
+          <option value="">Select environment…</option>
           {integrations.map(i => (
             <option key={i.id} value={i.id}>
-              {i.environment_name ?? i.handle} — Slack
+              {i.environment_name ?? i.handle}
             </option>
           ))}
         </select>
-        <div style={{ display: "flex", alignItems: "center", border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden", width: 180 }}>
-          <span style={{ padding: "0 8px", fontSize: 13, color: "var(--text-muted)", background: "var(--surface-2)", borderRight: "1px solid var(--border)", alignSelf: "stretch", display: "flex", alignItems: "center", userSelect: "none" }}>#</span>
+      </div>
+
+      {/* Row 2: Channel + Save */}
+      <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden", flex: 1 }}>
+          <span style={{ padding: "0 10px", fontSize: 13, color: "var(--text-muted)", background: "var(--surface-2)", borderRight: "1px solid var(--border)", alignSelf: "stretch", display: "flex", alignItems: "center", userSelect: "none" }}>#</span>
           <input
             type="text"
             value={channelInput}
