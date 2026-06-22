@@ -8,6 +8,7 @@ import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { GuardShell } from "@/components/guard/GuardShell"
+import { ActivityRow, ActivityHeader, ToolBadge, DecisionBadge, BlastRadiusBadge, formatTs } from "@/components/guard/ActivityRow"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,107 +40,6 @@ interface GuardSession {
   hostname: string | null
 }
 
-
-// ─── Tool badge ───────────────────────────────────────────────────────────────
-
-const TOOL_COLORS: Record<string, string> = {
-  "claude-code":     "var(--chart-claude)",
-  "claude_code":     "var(--chart-claude)",
-  "claude_chat":     "var(--chart-claude)",
-  "claude-chat":     "var(--chart-claude)",
-  "claude_desktop":  "var(--chart-claude)",
-  "claude-desktop":  "var(--chart-claude)",
-  "claude_work":     "var(--chart-claude)",
-  "claude-work":     "var(--chart-claude)",
-  "codex":           "var(--chart-codex)",
-  "codex_cli":       "var(--chart-codex)",
-  "codex_chat":      "var(--chart-codex)",
-  "cursor":          "#7c3aed",
-  "windsurf":        "#0284c7",
-  "copilot":         "#24292f",
-  "gemini":          "#ea580c",
-}
-
-function ToolBadge({ tool }: { tool: string }) {
-  const color = TOOL_COLORS[tool] ?? TOOL_COLORS[tool.replace(/-/g, "_")] ?? "var(--text-3)"
-  const LABELS: Record<string, string> = {
-    claude_code: "Claude Code", claude: "Claude",
-    claude_chat: "Claude.ai", claude_desktop: "Claude Desktop", claude_work: "Claude Work",
-    codex: "Codex", codex_cli: "Codex CLI", codex_chat: "Codex Chat",
-    cursor: "Cursor", windsurf: "Windsurf", copilot: "Copilot", gemini: "Gemini",
-  }
-  const label = LABELS[tool.replace(/-/g, "_")] ?? tool
-  return (
-    <span
-      style={{
-        fontSize: 11,
-        fontWeight: 600,
-        color,
-        background: "var(--surface-3)",
-        borderRadius: 5,
-        padding: "2px 7px",
-      }}
-    >
-      {label}
-    </span>
-  )
-}
-
-// ─── Decision badge ───────────────────────────────────────────────────────────
-
-function DecisionBadge({ decision }: { decision: string }) {
-  if (decision === "allowed") {
-    return (
-      <span className="sbadge ok" style={{ textTransform: "capitalize" }}>
-        {decision}
-      </span>
-    )
-  }
-  if (decision === "blocked") {
-    return (
-      <span className="sbadge err" style={{ textTransform: "capitalize" }}>
-        {decision}
-      </span>
-    )
-  }
-  return (
-    <span className="sbadge warn" style={{ textTransform: "capitalize" }}>
-      {decision}
-    </span>
-  )
-}
-
-// ─── Blast Radius badge ───────────────────────────────────────────────────────
-
-function BlastRadiusBadge({ br }: { br: { tier: string; files: number } }) {
-  const colors: Record<string, { bg: string; text: string }> = {
-    LOW:      { bg: "var(--ok-bg)",   text: "var(--ok)"   },
-    MEDIUM:   { bg: "var(--warn-bg)", text: "var(--warn)"  },
-    HIGH:     { bg: "#fff3e0",        text: "#e65100"      },
-    CRITICAL: { bg: "var(--err-bg)",  text: "var(--err)"   },
-  }
-  const c = colors[br.tier] ?? colors.LOW
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 20,
-      background: c.bg, color: c.text, whiteSpace: "nowrap",
-    }}>
-      {br.tier} · {br.files}f
-    </span>
-  )
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatTs(ts: string): string {
-  try {
-    const d = new Date(ts)
-    const pad = (n: number) => String(n).padStart(2, "0")
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-  } catch {
-    return ts
-  }
-}
 
 function exportCsv(events: AuditEvent[]) {
   const header = "timestamp,developer,ai_tool,tool_call,input_summary,decision,rule_id\n"
@@ -594,71 +494,7 @@ function ActivityContent() {
 
           {/* Table rows */}
           {events.map((ev, i) => (
-            <div
-              key={ev.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr 0.9fr",
-                gap: 12,
-                padding: "11px 18px",
-                borderBottom: i < events.length - 1 ? "1px solid var(--border)" : "none",
-                alignItems: "center",
-                background: ev.decision === "blocked" ? "var(--err-bg)" : "transparent",
-              }}
-            >
-              {/* Time */}
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                {formatTs(ev.ts)}
-              </div>
-
-              {/* Developer */}
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {ev.user_email ?? "—"}
-              </div>
-
-              {/* Tool */}
-              <div>
-                <ToolBadge tool={ev.ai_tool} />
-              </div>
-
-              {/* Call */}
-              <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{ev.tool_call}</div>
-
-              {/* Input */}
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {ev.input_summary ? `${ev.input_summary}…` : "—"}
-              </div>
-
-              {/* Decision */}
-              <div>
-                {ev.conductai_run_id ? (
-                  <Link
-                    href={`/runs/${ev.conductai_run_id}`}
-                    style={{ opacity: 1, transition: "opacity 0.15s", display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}
-                    aria-label="View run"
-                  >
-                    <DecisionBadge decision={ev.decision} />
-                    <span style={{ fontSize: 11, color: "var(--accent-text)" }}>→</span>
-                  </Link>
-                ) : (
-                  <DecisionBadge decision={ev.decision} />
-                )}
-              </div>
-
-              {/* Rule */}
-              <div className="mono" style={{ fontSize: 11.5, color: ev.rule_id ? "var(--err)" : "var(--text-muted)" }}>
-                {ev.rule_id ?? "—"}
-              </div>
-
-              {/* Blast Radius */}
-              <div>
-                {ev.blast_radius ? (
-                  <BlastRadiusBadge br={ev.blast_radius} />
-                ) : (
-                  <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>—</span>
-                )}
-              </div>
-            </div>
+            <ActivityRow key={ev.id} ev={ev} isLast={i === events.length - 1} />
           ))}
 
           {/* Load more / count */}
