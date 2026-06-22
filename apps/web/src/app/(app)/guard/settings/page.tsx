@@ -523,32 +523,10 @@ function SettingsContent() {
               )}
             </div>
 
-            {/* Manual toggles */}
+            {/* Active (auto-detected) status — shown first */}
             <div style={{ padding: "4px 20px 8px" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Manual</div>
-              {([
-                { key: "prompt_caching",   label: "Prompt caching",   desc: "System prompts are cached on every agent run" },
-                { key: "model_routing",    label: "Model routing",    desc: "Agent runs select model tier by task complexity" },
-                { key: "prompt_splitting", label: "Prompt splitting", desc: "Agent Templates enforce composable YAML skills" },
-              ] as const).map(item => (
-                <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.label}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</div>
-                  </div>
-                  <GuardToggle
-                    on={guardrailState[item.key]}
-                    onClick={() => handleGuardrailToggle(item.key, !guardrailState[item.key])}
-                    disabled={!isAdmin}
-                  />
-                </div>
-              ))}
-            </div>
-
-            {/* Auto-detected status */}
-            <div style={{ padding: "4px 20px 16px", borderTop: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Auto-detected</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Detected from installed tools and active policies.</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Active</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Detected from installed tools and active policies — flip to inactive when the underlying tool is removed.</div>
               {tokenGuardrails === null ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {[...Array(4)].map((_, i) => (
@@ -557,10 +535,10 @@ function SettingsContent() {
                 </div>
               ) : (
                 ([
-                  { key: "deterministic_offload", label: "Deterministic offload", desc: "warn-deterministic-compute policy" },
-                  { key: "output_compression",    label: "Output compression",    desc: "RTK installed" },
-                  { key: "structured_retrieval",  label: "Structured retrieval",  desc: "Agent Booster installed" },
-                  { key: "metrics_budgets",       label: "Metrics & budgets",     desc: "Spend budgets configured" },
+                  { key: "deterministic_offload", label: "Deterministic offload", desc: "Routes deterministic compute tasks (string ops, arithmetic, format conversion) off the LLM and onto local code." },
+                  { key: "output_compression",    label: "Output compression",    desc: "RTK rewrites verbose tool output to compact summaries so the model spends tokens on signal, not boilerplate." },
+                  { key: "structured_retrieval",  label: "Structured retrieval",  desc: "Agent Booster pulls only the relevant slice of files instead of the whole file, cutting read-token cost on every agent turn." },
+                  { key: "metrics_budgets",       label: "Metrics & budgets",     desc: "Per-workspace and per-developer spend budgets that block runs when limits are exceeded and warn before they're hit." },
                 ] as const).map((item, i) => {
                   const active = tokenGuardrails[item.key] ?? false
                   return (
@@ -576,6 +554,29 @@ function SettingsContent() {
                   )
                 })
               )}
+            </div>
+
+            {/* Manual toggles — shown below Active */}
+            <div style={{ padding: "4px 20px 16px", borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Toggleable</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Workspace-wide knobs your admin controls — flip these off if you want to opt out for the whole team.</div>
+              {([
+                { key: "prompt_caching",   label: "Prompt caching",   desc: "System prompts and shared context are cached on every agent run so repeat calls don't re-pay for the same tokens." },
+                { key: "model_routing",    label: "Model routing",    desc: "Each agent run picks the cheapest model tier that can handle the task — small tasks go to Haiku, hard ones escalate." },
+                { key: "prompt_splitting", label: "Prompt splitting", desc: "Agent Templates enforce composable YAML skills, so prompts stay small and shared chunks get cached across blocks." },
+              ] as const).map(item => (
+                <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.label}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</div>
+                  </div>
+                  <GuardToggle
+                    on={guardrailState[item.key]}
+                    onClick={() => handleGuardrailToggle(item.key, !guardrailState[item.key])}
+                    disabled={!isAdmin}
+                  />
+                </div>
+              ))}
             </div>
           </div>
 
