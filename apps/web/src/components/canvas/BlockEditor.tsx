@@ -220,6 +220,7 @@ function GitHubWebhookStatusPanel({
           )}
           {registered && (
             <button onClick={register} disabled={busy}
+              title="Re-registers the webhook and rotates the signing key with GitHub."
               className="rounded bg-emerald-600 text-white px-2.5 py-1 font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors text-[10px]">
               {busy ? "Updating…" : "Re-activate"}
             </button>
@@ -257,6 +258,7 @@ function GitHubWebhookStatusPanel({
           {registered && (
             <>
               <button onClick={register} disabled={busy}
+                title="Re-registers the webhook and rotates the signing key with GitHub."
                 className="rounded-md bg-emerald-600 text-white px-3 py-1.5 font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors text-xs">
                 {busy ? "Updating…" : "Update"}
               </button>
