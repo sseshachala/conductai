@@ -383,14 +383,28 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
         playbook_path = pathlib.Path(__file__).parent.parent.parent / "playbooks" / playbook_file
         if playbook_path.exists():
             dsl_text = playbook_path.read_text()
-            # Substitute {{inputs.xxx}} with user-supplied values (or YAML defaults)
-            if body.inputs or True:
-                import yaml as _yaml, re as _re
-                raw = _yaml.safe_load(dsl_text) or {}
-                declared = raw.get("inputs", {})
-                resolved = {k: body.inputs.get(k, v.get("default", "")) for k, v in declared.items()}
-                for key, val in resolved.items():
-                    dsl_text = dsl_text.replace(f"{{{{inputs.{key}}}}}", str(val))
+            # Substitute {{inputs.xxx}} with user-supplied values, falling back to
+            # YAML-declared defaults. Critically, an empty-string user input also
+            # falls back to default — otherwise the install modal's empty fields
+            # write "" into the YAML and brain blocks lose their model selector.
+            import yaml as _yaml, re as _re
+            raw = _yaml.safe_load(dsl_text) or {}
+            declared = raw.get("inputs", {})
+            user_inputs = body.inputs or {}
+            resolved = {}
+            for k, v in declared.items():
+                supplied = user_inputs.get(k)
+                if supplied in (None, ""):
+                    supplied = v.get("default", "")
+                resolved[k] = str(supplied) if supplied is not None else ""
+            for key, val in resolved.items():
+                dsl_text = dsl_text.replace(f"{{{{inputs.{key}}}}}", val)
+            # Final guard: warn if any {{inputs.X}} survived unsubstituted
+            import re as _re2
+            leftover = _re2.findall(r"\{\{inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\}\}", dsl_text)
+            if leftover:
+                log.warning("workflow.template_substitution_incomplete",
+                            template=body.template, leftover=sorted(set(leftover)))
             try:
                 dsl = load_workflow_yaml(dsl_text, base_dir=_PLAYBOOKS_BASE_DIR)
                 graph_data = yaml_to_graph(dsl)

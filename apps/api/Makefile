@@ -5,5 +5,7 @@ schema:
 	python scripts/generate_schema.py
 
 # CI gate: fail if v1.yaml is out of sync with schema.py
+# Also verifies BE block_schemas.py + FE config-schemas.ts agree on required flags.
 schema-check:
 	python scripts/generate_schema.py --check
+	python ../../scripts/check_schema_parity.py
