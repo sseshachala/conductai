@@ -112,7 +112,7 @@ def _extract_trigger_summary(state: dict | None) -> str | None:
 class RunCreate(BaseModel):
     triggered_by: Optional[str] = "manual"
     dry_run: bool = False
-    guard_enabled: bool = True
+    guard_enabled: Optional[bool] = None  # None = inherit from workflow.guard_enabled
     initial_state: Optional[dict[str, Any]] = None
     max_turns: Optional[int] = None  # override default 20-turn brain budget
 

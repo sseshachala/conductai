@@ -35,6 +35,10 @@ class Workflow(Base):
     default_max_turns = Column(Integer(), nullable=True)
     is_template = Column(Boolean(), nullable=False, default=False, server_default="false")
     source = Column(String(32), nullable=True)
+    # Per-workflow Guard config (#? — moved from per-run modal to Settings tab)
+    guard_enabled   = Column(Boolean, nullable=False, default=True, server_default="true")
+    runtime_persona = Column(String(20), nullable=True)  # NULL = inherit workspace runtime_persona
+
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

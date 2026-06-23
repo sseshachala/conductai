@@ -23,6 +23,8 @@ class WorkflowCreate(BaseModel):
 class WorkflowUpdate(BaseModel):
     name: Optional[str] = None
     graph: Optional[WorkflowGraph] = None
+    guard_enabled:   Optional[bool] = None
+    runtime_persona: Optional[str]  = None  # 'conservative' | 'standard' | 'developer' | None to inherit
 
 
 class WorkflowVersionOut(BaseModel):

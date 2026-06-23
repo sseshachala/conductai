@@ -248,8 +248,16 @@ def create_run(
     initial_state = body.initial_state or {}
     if body.dry_run:
         initial_state["__dry_run"] = True
-    if not body.guard_enabled:
+    # Resolve effective guard: per-run body.guard_enabled overrides; otherwise
+    # workflow.guard_enabled is the source of truth (moved from per-run modal to
+    # Settings tab — workflow.guard_enabled defaults to True).
+    effective_guard = body.guard_enabled if body.guard_enabled is not None else getattr(workflow, "guard_enabled", True)
+    if not effective_guard:
         initial_state["__guard_enabled"] = False
+    # Persona override on the workflow row, if set
+    _persona = getattr(workflow, "runtime_persona", None)
+    if _persona:
+        initial_state["__runtime_persona"] = _persona
 
     try:
         initial_state = validate_run_start_inputs(initial_state)

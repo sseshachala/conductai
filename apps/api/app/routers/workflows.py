@@ -537,6 +537,11 @@ def update_workflow(
     if body.name:
         workflow.name = body.name
 
+    if body.guard_enabled is not None:
+        workflow.guard_enabled = body.guard_enabled
+    if body.runtime_persona is not None:
+        workflow.runtime_persona = (body.runtime_persona or None)  # empty string → NULL (inherit)
+
     if body.graph is not None:
         graph_dict = body.graph.model_dump()
         version = WorkflowVersion(workflow_id=workflow.id, graph=graph_dict)
