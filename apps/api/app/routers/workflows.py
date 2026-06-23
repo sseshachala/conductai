@@ -183,11 +183,12 @@ def _register_git_webhook(
 
     if provider == "github" and project_slug and playbook_slug:
         # Per-workflow URL: human-readable + unique per workflow.
-        # Format: /webhooks/github/{project_slug}/{playbook_slug}-{id_prefix}
-        # Applies to ALL github playbooks (autopilot, security_scanner, pr_reviewer,
-        # issue_triage, etc.) so each workflow owns its own GitHub hook.
+        # Format: /webhooks/github/{project_slug}/agent-{playbook_slug}-{id_prefix}
+        # The "agent-" prefix matches the auto-prefixed workflow name (see
+        # name-prefix logic in create_workflow) so name + slug + webhook URL
+        # all use the same formula. Applies to ALL github playbooks.
         id_prefix = workflow_id.replace("-", "")[:8]
-        webhook_url = f"{settings.api_base_url}/webhooks/github/{project_slug}/{playbook_slug}-{id_prefix}"
+        webhook_url = f"{settings.api_base_url}/webhooks/github/{project_slug}/agent-{playbook_slug}-{id_prefix}"
     elif provider == "github" and "issues" in events and workspace_id:
         # Fallback: workspace-scoped fan-out URL (no project_slug — should be rare).
         webhook_url = f"{settings.api_base_url}/webhooks/github?workspace_id={workspace_id}"
@@ -441,6 +442,15 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
     )
     db.add(workflow)
     db.flush()
+
+    # Auto-prefix workflow name when installed from a playbook with the
+    # default name unchanged. Format: Agent-<playbook_slug>-<8 hex> mirrors
+    # the per-workflow webhook URL slug suffix at line ~188 — one formula
+    # for name + slug + webhook URL.
+    if body.template:
+        default_name = body.template.replace("_", " ").title()
+        if (body.name or "").strip() == default_name:
+            workflow.name = f"Agent-{body.template}-{workflow.id.hex[:8]}"
 
     version = WorkflowVersion(workflow_id=workflow.id, graph=graph_data)
     db.add(version)
