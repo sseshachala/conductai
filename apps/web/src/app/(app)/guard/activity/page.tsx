@@ -370,6 +370,19 @@ function ActivityContent() {
             Export CSV
           </button>
         )}
+
+        {/* SOC 2 PDF Report */}
+        {permissions.canExportActivity && (
+          <a
+            href="/guard/reports/soc2"
+            target="_blank"
+            rel="noopener"
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: 11, textDecoration: "none" }}
+          >
+            SOC 2 Report →
+          </a>
+        )}
       </div>)}
 
       {/* Sessions & Machines view */}
