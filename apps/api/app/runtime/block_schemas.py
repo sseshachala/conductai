@@ -54,7 +54,7 @@ MODEL_OPTIONS = [
 
 # ── Trigger subtypes ─────────────────────────────────────────────────────────
 
-_REPO = _f("config.repo", "Repository", "text", required=True, placeholder="owner/repo",
+_REPO = _f("config.repo_allowlist", "Repository", "text", required=True, placeholder="owner/repo",
            hint="GitHub repository that fires this trigger")
 _BRANCH = _f("config.branch_filter", "Branch filter", "text",
              placeholder="main", hint="Leave blank for all branches")
@@ -76,7 +76,7 @@ TRIGGER_SUBTYPES: dict[str, dict] = {
         "label": "GitHub — issue labeled",
         "fields": [
             _REPO,
-            _f("config.label", "Label", "text", required=True,
+            _f("config.labels", "Label", "text", required=True,
                placeholder="autopilot-ready", hint="Issue label that fires this trigger"),
         ],
     },
@@ -150,7 +150,7 @@ BLOCK_SCHEMAS: dict[str, BlockDef] = {
         "label": "Brain",
         "icon": "brain",
         "fields": [
-            _f("config.model", "Model", "model_select", required=True,
+            _f("model", "Model", "model_select", required=True,
                options=MODEL_OPTIONS, default="claude-sonnet-4-6"),
             _f("config.mode", "Mode", "select", required=False,
                options=[
