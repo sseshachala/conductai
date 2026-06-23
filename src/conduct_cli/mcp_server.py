@@ -330,5 +330,9 @@ def main() -> None:
                 _err(msg_id, -32601, f"Method not found: {method}")
 
 
+# ponytail: telemetry error interceptor (#718)
+from .log_util import install_error_interceptor as _ei
+main = _ei(main)
+
 if __name__ == "__main__":
     main()
