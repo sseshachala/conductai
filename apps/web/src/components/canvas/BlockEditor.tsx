@@ -2271,16 +2271,20 @@ export default function BlockEditor({
       {/* Footer — close + optional delete; changes auto-save on every edit */}
       <div style={{ padding: "10px 18px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }} className="shrink-0 bg-white sticky bottom-0">
         {schemaRequiredKeys.length > 0 && (() => {
-          const missing = schemaRequiredKeys.filter(key => {
-            const val = getNestedValue(blockData, key)
-            return !val
-          })
+          const def = blockSchemas?.[blockType]
+          const allFields = def
+            ? [...def.fields, ...(triggerEventType && def.subtypes?.[triggerEventType]?.fields ? def.subtypes[triggerEventType].fields : [])]
+            : []
+          const missing = schemaRequiredKeys
+            .filter(key => !getNestedValue(blockData, key))
+            .map(key => allFields.find(f => f.key === key)?.label || key)
           return missing.length > 0 ? (
-            <p className="text-[10px] text-amber-600 flex items-center gap-1">
+            <p className="text-[10px] text-amber-600 flex items-start gap-1">
               <span>⚠</span>
-              {missing.length === 1
-                ? `Missing required field`
-                : `${missing.length} required fields missing`}
+              <span>
+                <strong>{missing.length === 1 ? "Missing required field:" : `${missing.length} required fields missing:`}</strong>{" "}
+                {missing.join(", ")}
+              </span>
             </p>
           ) : (
             <p className="text-[10px] text-emerald-600 flex items-center gap-1"><span>✓</span> All required fields set</p>
