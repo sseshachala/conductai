@@ -749,11 +749,8 @@ def _labels_match(config: dict[str, Any], incoming_label: str, issue_labels: lis
             issue_set = set(issue_labels)
             return all(lbl in issue_set for lbl in configured_labels)
 
-    # Legacy / fallback — handles label: singular and label_mode: one_of with no labels list
-    required = str(config.get("label") or "").strip()
-    if not required:
-        return not strict
-    return incoming_label == required
+    # No configured labels — fire if not strict (open trigger), reject if strict
+    return not strict
 
 
 def _repo_matches(config: dict[str, Any], incoming_repo: str, strict: bool) -> bool:
@@ -877,7 +874,6 @@ async def github_webhook_by_slug(
 
     URL format: /webhooks/github/{project_slug}/agent-{playbook_slug}-{id_prefix}
     e.g. /webhooks/github/marshal/agent-autopilot-a3f912ab
-    (legacy URLs without the "agent-" prefix still resolve — see prefix strip below.)
 
     The id_prefix (first 8 hex chars of workflow.id) disambiguates multiple
     installs of the same playbook in the same project.
@@ -895,12 +891,13 @@ async def github_webhook_by_slug(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Parse "[agent-]{playbook_slug}-{id_prefix}" — rpartition handles playbook slugs
-    # that contain dashes (e.g. "autopilot-approved-a3f912ab"). Optional "agent-"
-    # prefix is stripped so old (pre-rename) and new (post-rename) URLs both resolve.
+    # Parse "agent-{playbook_slug}-{id_prefix}" — rpartition handles playbook slugs
+    # that contain dashes (e.g. "autopilot-approved-a3f912ab"). The "agent-" prefix
+    # is mandatory — every workflow registers its webhook with it.
     playbook_part, sep, id_prefix = workflow_slug.rpartition("-")
-    if playbook_part.startswith("agent-"):
-        playbook_part = playbook_part[len("agent-"):]
+    if not playbook_part.startswith("agent-"):
+        raise HTTPException(status_code=400, detail="Workflow slug must start with 'agent-'")
+    playbook_part = playbook_part[len("agent-"):]
     if not sep or not id_prefix:
         raise HTTPException(status_code=400, detail="Invalid workflow slug format")
 
