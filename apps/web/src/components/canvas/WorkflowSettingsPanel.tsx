@@ -32,6 +32,7 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
   const [persona, setPersona] = useState<string>("")
   const [guardSaving, setGuardSaving] = useState(false)
   const [guardSaved, setGuardSaved] = useState(false)
+  const [workspaceRuntimePersona, setWorkspaceRuntimePersona] = useState<string>("conservative")
   const [turnsSaving, setTurnsSaving] = useState(false)
   const [turnsSaved, setTurnsSaved] = useState(false)
   const [deleteConfirmValue, setDeleteConfirmValue] = useState("")
@@ -61,6 +62,14 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
           setTurnsInput(wf.default_max_turns ? String(wf.default_max_turns) : "")
           setGuardEnabled(wf.guard_enabled !== false)
           setPersona(wf.runtime_persona || "")
+          // Resolve what "Inherit from workspace" currently means.
+          try {
+            const pRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/guard/config/persona`, { headers: h })
+            if (pRes.ok) {
+              const pData = await pRes.json()
+              if (pData?.workspace_runtime_persona) setWorkspaceRuntimePersona(pData.workspace_runtime_persona)
+            }
+          } catch { /* non-fatal — fall back to 'conservative' */ }
         }
         if (envRes.ok) setEnvironments(await envRes.json())
       } finally {
@@ -258,7 +267,7 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
                       color: "var(--text)",
                     }}
                   >
-                    <option value="">Inherit from workspace</option>
+                    <option value="">{`Inherit from workspace (currently: ${workspaceRuntimePersona.charAt(0).toUpperCase() + workspaceRuntimePersona.slice(1)})`}</option>
                     <option value="conservative">Conservative (strictest — recommended)</option>
                     <option value="standard">Standard</option>
                     <option value="developer">Developer</option>
