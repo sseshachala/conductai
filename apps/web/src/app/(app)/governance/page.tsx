@@ -203,6 +203,7 @@ export default function GovernancePage() {
   const [installedPacks, setInstalledPacks] = useState<string[]>([])
   const [frameworks, setFrameworks] = useState<FrameworksOut | null>(null)
   const [narrative, setNarrative] = useState<NarrativeOut | null>(null)
+  const [narrativePeriod, setNarrativePeriod] = useState<"week" | "month">("week")
   const [activeFramework, setActiveFramework] = useState<string | null>(null)
   const [activeControl, setActiveControl] = useState<string | null>(null)
   const [controlDrill, setControlDrill] = useState<ControlDrillOut | null>(null)
@@ -246,7 +247,7 @@ export default function GovernancePage() {
       } catch { /* non-fatal */ }
 
       try {
-        const res = await fetch(`${base}/governance/narrative?workspace_id=${workspaceId}`, { headers })
+        const res = await fetch(`${base}/governance/narrative?workspace_id=${workspaceId}&period=${narrativePeriod}`, { headers })
         if (res.ok && !cancelled) setNarrative(await res.json())
       } catch { /* non-fatal */ }
 
@@ -263,7 +264,7 @@ export default function GovernancePage() {
     }
     load()
     return () => { cancelled = true }
-  }, [workspaceId, getToken, activeFramework, eventFilter])
+  }, [workspaceId, getToken, activeFramework, eventFilter, narrativePeriod])
 
   // Fetch the rules covering the selected control whenever it changes.
   useEffect(() => {
@@ -316,8 +317,34 @@ export default function GovernancePage() {
           background: "var(--surface-2)",
           marginBottom: 20,
         }}>
-          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 6 }}>
-            This week in plain English
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, gap: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+              This {narrativePeriod} in plain English
+            </div>
+            <div style={{ display: "inline-flex", padding: 2, borderRadius: 9999, background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+              {(["week", "month"] as const).map(p => {
+                const active = narrativePeriod === p
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setNarrativePeriod(p)}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "3px 12px",
+                      borderRadius: 9999,
+                      border: "none",
+                      background: active ? "var(--accent)" : "transparent",
+                      color: active ? "#fff" : "var(--text-muted)",
+                      cursor: active ? "default" : "pointer",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {p}
+                  </button>
+                )
+              })}
+            </div>
           </div>
           <p style={{ fontSize: 14, lineHeight: 1.55, color: "var(--text-2)", margin: 0 }}>
             {narrative?.paragraph ?? "Loading summary…"}
