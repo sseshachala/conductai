@@ -421,6 +421,15 @@ class KpisOut(BaseModel):
     events_today: KpiValue
     blocked_today: KpiValue
     active_developers_today: KpiValue
+    risk_avoided_usd_mtd: int       # blocks month-to-date × industry-avg incident cost
+    blocks_mtd: int                 # raw count behind the $ figure (for tooltip / explainer)
+
+
+# Industry-average cost of a single prevented incident, used to translate raw
+# block counts into a $ figure on the dashboard. Conservative end of the
+# $15K–$50K range commonly cited for mid-market engineering incidents.
+# ponytail: hardcoded constant, make per-workspace configurable when finance asks.
+_INCIDENT_AVG_USD = 15000
 
 
 def _kpi(value: int, avg_7d: float) -> KpiValue:
@@ -517,8 +526,22 @@ def get_kpis(
     # raw count as the baseline for now — direction is what matters.
     active_baseline = float(active_7d_total)
 
+    # --- Risk avoided $ (month-to-date)
+    month_start = today_start.replace(day=1)
+    blocks_mtd = (
+        db.query(_func.count(GuardAuditEvent.id))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.decision == "blocked",
+            GuardAuditEvent.ts >= month_start,
+        )
+        .scalar() or 0
+    )
+
     return KpisOut(
         events_today=_kpi(events_today, events_7d_avg),
         blocked_today=_kpi(blocked_today, blocked_7d_avg),
         active_developers_today=_kpi(active_today, active_baseline),
+        risk_avoided_usd_mtd=blocks_mtd * _INCIDENT_AVG_USD,
+        blocks_mtd=blocks_mtd,
     )
