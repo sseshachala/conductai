@@ -22,6 +22,7 @@ from app.modules.guard.routers import token_guardrails as guard_token_guardrails
 from app.modules.guard.routers import session_reports as guard_session_reports
 from app.modules.guard.routers import mcp as guard_mcp
 from app.modules.guard.routers import ws as guard_ws
+from app.modules.telemetry import routes as telemetry_routes
 from app.routers.organizations import router as organizations_router
 from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router, notifications_router
 from app.routers.runs import workspace_runs_router
@@ -119,6 +120,7 @@ app.include_router(guard_token_guardrails.router)
 app.include_router(guard_session_reports.router)
 app.include_router(guard_mcp.router)
 app.include_router(guard_ws.router)
+app.include_router(telemetry_routes.router)
 app.include_router(rbac_router)
 app.include_router(me_rbac_router)
 app.include_router(mcp_router)

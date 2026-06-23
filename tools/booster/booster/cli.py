@@ -1512,3 +1512,7 @@ def cmd_debt(fix: bool) -> None:
     no_trigger = sum(1 for _, _, t in markers if not re.search(r"\bif\b|\bwhen\b|\buntil\b|\badd\b", t, re.I))
     click.echo(f"\nSummary: {len(markers)} marker(s) · {no_trigger} no-trigger ⚠ · {len(dupes)} duplicate set(s)")
     click.echo()
+
+# ponytail: telemetry error interceptor (#718)
+from .log_util import install_error_interceptor as _ei
+main = _ei(main)

@@ -3205,5 +3205,9 @@ def main():
         parser.print_help()
 
 
+# ponytail: telemetry error interceptor (#718)
+from .log_util import install_error_interceptor as _ei
+main = _ei(main)
+
 if __name__ == "__main__":
     main()

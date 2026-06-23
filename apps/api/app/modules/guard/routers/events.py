@@ -746,3 +746,77 @@ def ingest_batch(
             ingest_event(event, request, background, db)
         except HTTPException:
             pass  # skip individual bad events; don't fail the whole batch
+
+
+# ── Unified activity feed (#718 Phase 1B) ─────────────────────────────────────
+# Reads from the `unified_activity_v` view created in migration 0028.
+# UNION ALL of guard_audit_events (source='policy') and telemetry_events
+# (source='tool'). Single page can render one feed with a Source filter pill.
+
+from sqlalchemy import text as _sql_text
+
+
+@router.get("/unified")
+def list_unified_activity(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    source: str | None = Query(default=None, description="policy|tool"),
+    status: str | None = Query(default=None, description="allowed|blocked|warned|audited|info|warning|error"),
+    actor: str | None = Query(default=None, description="user_email — only matches policy rows"),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """One feed, three sources later (policy + tool today, run pending)."""
+    import uuid
+    ws_uuid = uuid.UUID(workspace_id)
+
+    where = ["workspace_id = :w"]
+    params: dict = {"w": str(ws_uuid)}
+    if source:
+        if source not in ("policy", "tool"):
+            raise HTTPException(status_code=422, detail="source must be policy|tool")
+        where.append("source = :src")
+        params["src"] = source
+    if status:
+        where.append("status = :st")
+        params["st"] = status
+    if actor:
+        where.append("actor = :ac")
+        params["ac"] = actor
+    if since:
+        where.append("ts >= :since")
+        params["since"] = since
+    if until:
+        where.append("ts <= :until")
+        params["until"] = until
+
+    sql = (
+        "SELECT event_id, source, ts, actor, action, status, reason, message, session_id "
+        "FROM unified_activity_v "
+        "WHERE " + " AND ".join(where) + " "
+        "ORDER BY ts DESC OFFSET :off LIMIT :lim"
+    )
+    params["off"] = offset
+    params["lim"] = limit
+
+    rows = db.execute(_sql_text(sql), params).mappings().all()
+    return {
+        "items": [
+            {
+                "event_id":   r["event_id"],
+                "source":     r["source"],
+                "ts":         r["ts"].isoformat() if r["ts"] else None,
+                "actor":      r["actor"],
+                "action":     r["action"],
+                "status":     r["status"],
+                "reason":     r["reason"],
+                "message":    r["message"],
+                "session_id": r["session_id"],
+            }
+            for r in rows
+        ],
+        "limit":  limit,
+        "offset": offset,
+    }
