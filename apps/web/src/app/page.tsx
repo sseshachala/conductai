@@ -101,14 +101,13 @@ function HeroSection() {
     <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
-        AI Operating Layer for Engineering Teams
+        One operating layer for AI-assisted engineering
       </div>
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-        Run AI agents.<br />
-        <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Govern the risk.</span>
+        <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Govern. Secure. Automate.</span>
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
-        22 agent templates that automate your engineering workflows, with real-time spend limits, policy enforcement, and a full audit trail.
+        One identity, one policy, one audit trail — across every AI tool your team uses.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
         {chips.map(chip => (
