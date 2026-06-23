@@ -1724,7 +1724,7 @@ export default function BlockEditor({
         const workspaceId = wsId
         const idPrefix = workflowId ? workflowId.replace(/-/g, "").slice(0, 8) : ""
         const githubWebhookUrl = projectSlug && playbookSlug && idPrefix
-          ? `${webhookBase}/webhooks/github/${projectSlug}/${playbookSlug}-${idPrefix}`
+          ? `${webhookBase}/webhooks/github/${projectSlug}/agent-${playbookSlug}-${idPrefix}`
           : workspaceId ? `${webhookBase}/webhooks/github?workspace_id=${workspaceId}` : null
         const inboundWebhookUrl = `${webhookBase}/webhooks/inbound/${workflowId}`
         const vercelWebhookUrl = workspaceId
@@ -1978,7 +1978,7 @@ export default function BlockEditor({
                           const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
                           const idP = workflowId ? workflowId.replace(/-/g, "").slice(0, 8) : ""
                           const webhookUrl = projectSlug && playbookSlug && idP
-                            ? `${base}/webhooks/github/${projectSlug}/${playbookSlug}-${idP}`
+                            ? `${base}/webhooks/github/${projectSlug}/agent-${playbookSlug}-${idP}`
                             : wsId ? `${base}/webhooks/github?workspace_id=${wsId}` : null
                           return (
                             <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2.5 text-xs text-violet-800 mt-2 space-y-1.5">
@@ -2015,7 +2015,7 @@ export default function BlockEditor({
                           const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
                           const idP = workflowId ? workflowId.replace(/-/g, "").slice(0, 8) : ""
                           const githubUrl = projectSlug && playbookSlug && idP
-                            ? `${base}/webhooks/github/${projectSlug}/${playbookSlug}-${idP}`
+                            ? `${base}/webhooks/github/${projectSlug}/agent-${playbookSlug}-${idP}`
                             : wsId ? `${base}/webhooks/github?workspace_id=${wsId}` : null
                           const inboundUrl = `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/${workflowId}`
                           const webhookUrl = githubHookRepo ? githubUrl : inboundUrl
