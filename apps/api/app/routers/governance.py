@@ -186,14 +186,25 @@ def get_framework_coverage(
 
 @router.get("/narrative", response_model=NarrativeOut)
 def get_narrative(
+    period: str = "week",
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("guard.activity.view_own")),
 ):
-    """Plain-English summary. Template-based; LLM upgrade in Phase 2."""
+    """Plain-English summary. Template-based; LLM upgrade in Phase 2.
+
+    period=week  → last 7 days (default)
+    period=month → month-to-date
+    """
     ws_uuid = uuid.UUID(workspace_id)
     now = datetime.now(timezone.utc)
-    week_ago = now - timedelta(days=7)
+    if period == "month":
+        window_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        period_label = "this month"
+    else:
+        window_start = now - timedelta(days=7)
+        period_label = "this week"
+    week_ago = window_start  # legacy name reused below
 
     installed_packs = (
         db.query(WorkspaceSkillPack)
@@ -245,7 +256,7 @@ def get_narrative(
     else:
         bits = []
         if total_7d > 0:
-            bits.append(f"Guard screened {total_7d:,} AI tool calls this week")
+            bits.append(f"Guard screened {total_7d:,} AI tool calls {period_label}")
         if blocked_7d > 0:
             bits.append(f"intercepted {blocked_7d} risky actions")
         if warned_7d > 0:
@@ -258,6 +269,8 @@ def get_narrative(
             bits.append(f"with bonus coverage on {bonus_count} frameworks from {installed_packs} pack(s)")
         elif installed_packs > 0:
             bits.append(f"with {installed_packs} pack(s) installed")
+        if period == "month" and blocked_7d > 0:
+            bits.append(f"risk avoided ~${blocked_7d * _INCIDENT_AVG_USD:,} (industry avg)")
         para = ". ".join(b.capitalize() if i == 0 else b for i, b in enumerate(bits)) + "."
 
     return NarrativeOut(paragraph=para, generated_at=now, source="template")
