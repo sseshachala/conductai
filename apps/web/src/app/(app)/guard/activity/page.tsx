@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import ToolActivityTable from "@/components/guard/ToolActivityTable"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -78,7 +79,7 @@ function ActivityContent() {
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
-  const [activeView, setActiveView] = useState<"events" | "sessions">("events")
+  const [activeView, setActiveView] = useState<"events" | "sessions" | "tools">("events")
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [sessions, setSessions] = useState<GuardSession[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
@@ -242,7 +243,7 @@ function ActivityContent() {
 
       {/* View toggle */}
       <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        {(["events", "sessions"] as const).map(v => (
+        {(["events", "sessions", "tools"] as const).map(v => (
           <button
             key={v}
             onClick={() => setActiveView(v)}
@@ -255,7 +256,7 @@ function ActivityContent() {
               cursor: "pointer",
             }}
           >
-            {v === "events" ? "Audit Events" : "Sessions & Machines"}
+            {v === "events" ? "Audit Events" : v === "sessions" ? "Sessions & Machines" : "Tool Events"}
           </button>
         ))}
       </div>
@@ -461,6 +462,10 @@ function ActivityContent() {
             </div>
           )}
         </div>
+      )}
+
+      {activeView === "tools" && (
+        <ToolActivityTable workspaceId={teamId} />
       )}
 
       {activeView === "events" && error && (
