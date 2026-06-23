@@ -256,7 +256,7 @@ function ActivityContent() {
               cursor: "pointer",
             }}
           >
-            {v === "events" ? "Audit Events" : v === "sessions" ? "Sessions & Machines" : "Tool Events"}
+            {v === "events" ? "Audit Events" : v === "sessions" ? "Sessions & Machines" : "Tool Errors & Warnings"}
           </button>
         ))}
       </div>
