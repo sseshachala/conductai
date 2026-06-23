@@ -105,6 +105,7 @@ class PolicySyncOut(BaseModel):
     workspace_id: str
     version: str
     persona: str
+    fail_mode: str = "fail_open"   # CLI hook reads this to decide outage behavior
     rules: list[PolicySyncRule]
 
 
@@ -343,6 +344,7 @@ def sync_policies(
         workspace_id=workspace_id,
         version=version,
         persona=persona,
+        fail_mode=getattr(gc, "fail_mode", "fail_open") if gc else "fail_open",
         rules=[
             PolicySyncRule(
                 rule_id=r["id"],

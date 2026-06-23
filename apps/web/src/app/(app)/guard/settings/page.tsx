@@ -87,6 +87,7 @@ function SettingsContent() {
 
   // Enforcement mode
   const [enforcementMode, setEnforcementMode] = useState<"block" | "warn" | "audit">("warn")
+  const [failMode, setFailMode] = useState<"fail_open" | "fail_closed">("fail_open")
   const [enforcementError, setEnforcementError] = useState<string | null>(null)
 
   // Re-sync state
@@ -133,6 +134,7 @@ function SettingsContent() {
         automation_workflow_trigger: data.automation_workflow_trigger ?? false,
       })
       if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
+      if (data.fail_mode) setFailMode(data.fail_mode as "fail_open" | "fail_closed")
       setLastFetched(new Date())
       // Load sync coverage + member token in parallel
       fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers })
@@ -463,6 +465,65 @@ function SettingsContent() {
                     </div>
                   </label>
                 ))}
+              </div>
+
+              {/* Outage behavior — fail-open vs fail-closed */}
+              <div className="card" style={{ padding: "18px 20px" }}>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>Outage behavior</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                  What the CLI hook does when it can&apos;t reach Guard
+                </div>
+                {([
+                  ["fail_open",   "Fail open",   "Tool calls proceed when Guard is unreachable. Recommended for most teams — keeps developers productive when our infra hiccups."],
+                  ["fail_closed", "Fail closed", "Tool calls are blocked with rule_id=guard-unavailable until Guard responds. Use for regulated workloads where missing a policy check is worse than a paused build."],
+                ] as const).map(([k, t, d], i) => (
+                  <label
+                    key={k}
+                    style={{
+                      display: "flex",
+                      gap: 11,
+                      padding: "10px 0",
+                      borderTop: i > 0 ? "1px solid var(--border)" : "none",
+                      cursor: isAdmin ? "pointer" : "default",
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <span
+                      onClick={async () => {
+                        if (!isAdmin || failMode === k) return
+                        const prev = failMode
+                        setFailMode(k)
+                        try {
+                          await patch({ fail_mode: k } as never)
+                        } catch {
+                          setFailMode(prev)
+                        }
+                      }}
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: "50%",
+                        border: `2px solid ${failMode === k ? "var(--accent)" : "var(--border-2)"}`,
+                        display: "grid",
+                        placeItems: "center",
+                        marginTop: 2,
+                        flexShrink: 0,
+                        cursor: isAdmin ? "pointer" : "default",
+                      }}
+                    >
+                      {failMode === k && (
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)" }} />
+                      )}
+                    </span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{d}</div>
+                    </div>
+                  </label>
+                ))}
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Change takes effect on each machine the next time <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "0 4px", borderRadius: 3 }}>conduct guard sync</code> runs (≤60s for active CLI sessions).
+                </div>
               </div>
 
               {/* Re-sync */}

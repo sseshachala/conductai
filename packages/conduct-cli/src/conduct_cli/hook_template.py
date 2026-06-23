@@ -86,7 +86,17 @@ def _maybe_sync_policy():
             POLICY_PATH.write_text(json.dumps(remote, indent=2))
         VERSION_CACHE_PATH.write_text(json.dumps({"ts": time.time(), "version": remote_version}))
     except Exception:
-        pass  # Never block a tool call due to sync failure
+        pass  # sync failure does not directly block; policy file may still be present
+
+
+def _get_fail_mode():
+    """Read fail_mode from ~/.conduct/config.json. Default: fail_open."""
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+    except Exception:
+        return "fail_open"
+    mode = cfg.get("fail_mode", "fail_open")
+    return mode if mode in ("fail_open", "fail_closed") else "fail_open"
 
 
 def _load_budget_cache():
@@ -685,10 +695,35 @@ def main():
     # Policy version check (cached 60s) — auto-syncs if server version differs
     _maybe_sync_policy()
 
+    # Fail-closed gate: if the local policy file is missing and the workspace
+    # is configured for fail_closed, block every tool call with a clear
+    # message. fail_open (default) silently allows.
+    if _get_fail_mode() == "fail_closed" and not POLICY_PATH.exists():
+        tool_name  = (data.get("tool_name") or "").lower()
+        tool_input = data.get("tool_input") or {}
+        session_id = data.get("session_id")
+        msg = "[ConductGuard] Policy cache unavailable — fail-closed mode is on. Run `conduct guard sync` or contact your admin."
+        print(msg)
+        print(msg, file=sys.stderr)
+        _post_event(tool_name, tool_input, "blocked", "guard-unavailable", msg, session_id=session_id)
+        sys.exit(2)
+
     # Hard budget cap (cached 5 min)
     hard_blocked, reason = _load_budget_cache()
     if hard_blocked is None:
         hard_blocked, reason = _fetch_budget_status()
+        # Fail-closed: if the budget check returned default (None reason) AND
+        # we just hit the API for a fresh value, the API was unreachable.
+        # Treat as unavailable and block.
+        if not hard_blocked and reason is None and _get_fail_mode() == "fail_closed":
+            tool_name  = (data.get("tool_name") or "").lower()
+            tool_input = data.get("tool_input") or {}
+            session_id = data.get("session_id")
+            msg = "[ConductGuard] Spend budget check unavailable — fail-closed mode is on."
+            print(msg)
+            print(msg, file=sys.stderr)
+            _post_event(tool_name, tool_input, "blocked", "guard-unavailable", msg, session_id=session_id)
+            sys.exit(2)
     if hard_blocked:
         msg = f"[ConductGuard] {reason or 'Budget hard cap reached. Contact your manager.'}"
         print(msg)

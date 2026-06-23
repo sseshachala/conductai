@@ -36,6 +36,7 @@ class ConfigOut(BaseModel):
     alert_channel: str | None
     alert_slack_integration_id: str | None
     enforcement_mode: str
+    fail_mode: str
     notify_on_block: bool
     notify_on_budget: bool
     automation_security_scan: bool = False
@@ -52,6 +53,7 @@ class ConfigPatch(BaseModel):
     alert_channel: str | None = None
     alert_slack_integration_id: str | None = None
     enforcement_mode: str | None = None
+    fail_mode: str | None = None
     notify_on_block: bool | None = None
     notify_on_budget: bool | None = None
     automation_security_scan: bool | None = None
@@ -100,6 +102,7 @@ def _config_to_out(cfg: GuardConfig) -> ConfigOut:
         alert_channel=cfg.alert_channel,
         alert_slack_integration_id=str(cfg.alert_slack_integration_id) if cfg.alert_slack_integration_id else None,
         enforcement_mode=cfg.enforcement_mode,
+        fail_mode=getattr(cfg, "fail_mode", "fail_open"),
         notify_on_block=cfg.notify_on_block,
         notify_on_budget=cfg.notify_on_budget,
         automation_security_scan=bool(cfg.automation_security_scan),
@@ -209,6 +212,13 @@ def patch_config(
                 detail=f"enforcement_mode must be one of: {', '.join(sorted(_VALID_ENFORCEMENT_MODES))}",
             )
         config.enforcement_mode = body.enforcement_mode
+    if body.fail_mode is not None:
+        if body.fail_mode not in {"fail_open", "fail_closed"}:
+            raise HTTPException(
+                status_code=422,
+                detail="fail_mode must be 'fail_open' or 'fail_closed'",
+            )
+        config.fail_mode = body.fail_mode
     if body.notify_on_block is not None:
         config.notify_on_block = body.notify_on_block
     if body.notify_on_budget is not None:
