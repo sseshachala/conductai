@@ -174,7 +174,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const [lastRunSummary, setLastRunSummary] = useState<{ status: string; created_at?: string; run_id?: string } | undefined>(undefined)
   const [testPrNumber, setTestPrNumber] = useState("")
   const [testMaxTurns, setTestMaxTurns] = useState("")
-  const [guardEnabled, setGuardEnabled] = useState(true)
   const { prefs } = usePreferences()
   const [playbookSlug, setPlaybookSlug] = useState<string | null>(null)
   const [projectSlug, setProjectSlug] = useState<string | null>(null)
@@ -829,7 +828,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         {
           method: "POST",
           headers,
-          body: JSON.stringify({ triggered_by: "manual", dry_run: dryRun, initial_state: initialState, guard_enabled: guardEnabled }),
+          body: JSON.stringify({ triggered_by: "manual", dry_run: dryRun, initial_state: initialState }),
         }
       )
       if (!res.ok) throw new Error("Failed to start run")
@@ -865,7 +864,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         body: JSON.stringify({
           triggered_by: "manual",
           dry_run: dryRun,
-          guard_enabled: guardEnabled,
           ...(initialState ? { initial_state: initialState } : {}),
           ...(maxTurns    ? { max_turns: maxTurns }          : {}),
         }),
@@ -929,7 +927,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       }
       const turns = parseInt(testMaxTurns.trim(), 10)
       if (!isNaN(turns) && turns > 0) payload.__max_turns_override = turns
-      payload.__guard_enabled = guardEnabled
       await performTestTrigger(payload, headers)
     } catch {
       // test run failed to start — setTestRunning resets below
@@ -1508,20 +1505,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                 className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
               />
             </div>
-            <div className="flex items-center justify-between py-1">
-              <div>
-                <div className="text-xs font-medium text-stone-700">Guard</div>
-                <div className="text-xs text-stone-400">Policy check before each AI step</div>
-              </div>
-              <button
-                onClick={() => setGuardEnabled(v => !v)}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${guardEnabled ? "bg-violet-600" : "bg-stone-200"}`}
-                role="switch"
-                aria-checked={guardEnabled}
-              >
-                <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${guardEnabled ? "translate-x-4" : "translate-x-0"}`} />
-              </button>
-            </div>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setWebhookModal(null)}
@@ -1611,20 +1594,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               {preflight && (
                 <p className="text-xs text-stone-400">Estimated {preflight.suggestedTurns} turns based on payload complexity.</p>
               )}
-            </div>
-            <div className="flex items-center justify-between py-1">
-              <div>
-                <div className="text-xs font-medium text-stone-700">Guard</div>
-                <div className="text-xs text-stone-400">Policy check before each AI step</div>
-              </div>
-              <button
-                onClick={() => setGuardEnabled(v => !v)}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${guardEnabled ? "bg-violet-600" : "bg-stone-200"}`}
-                role="switch"
-                aria-checked={guardEnabled}
-              >
-                <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${guardEnabled ? "translate-x-4" : "translate-x-0"}`} />
-              </button>
             </div>
             <div className="flex gap-2 justify-end">
               <button

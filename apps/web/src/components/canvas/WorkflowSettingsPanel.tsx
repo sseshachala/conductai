@@ -28,6 +28,10 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [loading, setLoading] = useState(true)
   const [turnsInput, setTurnsInput] = useState("")
+  const [guardEnabled, setGuardEnabled] = useState(true)
+  const [persona, setPersona] = useState<string>("")
+  const [guardSaving, setGuardSaving] = useState(false)
+  const [guardSaved, setGuardSaved] = useState(false)
   const [turnsSaving, setTurnsSaving] = useState(false)
   const [turnsSaved, setTurnsSaved] = useState(false)
   const [deleteConfirmValue, setDeleteConfirmValue] = useState("")
@@ -55,6 +59,8 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
           const wf = await wfRes.json()
           setWorkflow(wf)
           setTurnsInput(wf.default_max_turns ? String(wf.default_max_turns) : "")
+          setGuardEnabled(wf.guard_enabled !== false)
+          setPersona(wf.runtime_persona || "")
         }
         if (envRes.ok) setEnvironments(await envRes.json())
       } finally {
@@ -77,6 +83,28 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
       return
     }
     setWorkflow(prev => prev ? { ...prev, environment_id: envId } : prev)
+  }
+
+  async function saveGuard() {
+    setGuardSaving(true)
+    setGuardSaved(false)
+    try {
+      const token = getToken ? await getToken() : null
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) headers["Authorization"] = `Bearer ${token}`
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ guard_enabled: guardEnabled, runtime_persona: persona || null }),
+      })
+      if (!res.ok) throw new Error("Failed to save Guard settings")
+      setGuardSaved(true)
+      setTimeout(() => setGuardSaved(false), 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save Guard settings")
+    } finally {
+      setGuardSaving(false)
+    }
   }
 
   async function saveTurnBudget() {
@@ -194,6 +222,57 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Guard — workflow-level on/off + persona override */}
+            <div className="card" style={{ padding: "16px 20px" }}>
+              <p className="eyebrow" style={{ marginBottom: 4 }}>ConductGuard</p>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                Govern every brain block in this workflow. When on, Guard checks each tool call
+                against the selected persona policy set and PII-redacts context sent to the LLM.
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setGuardEnabled(v => !v)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${guardEnabled ? "bg-violet-600" : "bg-stone-300"}`}
+                  role="switch"
+                  aria-checked={guardEnabled}
+                >
+                  <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${guardEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                </button>
+                <span style={{ fontSize: 13, color: "var(--text-2)" }}>{guardEnabled ? "Enforcing" : "Bypassed (use with caution)"}</span>
+              </div>
+              {guardEnabled && (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                  <label style={{ fontSize: 12, color: "var(--text-muted)" }}>Persona</label>
+                  <select
+                    value={persona}
+                    onChange={e => setPersona(e.target.value)}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "6px 10px",
+                      fontSize: 13,
+                      background: "var(--surface)",
+                      color: "var(--text)",
+                    }}
+                  >
+                    <option value="">Inherit from workspace</option>
+                    <option value="conservative">Conservative (strictest — recommended)</option>
+                    <option value="standard">Standard</option>
+                    <option value="developer">Developer</option>
+                  </select>
+                </div>
+              )}
+              <button
+                onClick={saveGuard}
+                disabled={guardSaving}
+                className="btn btn-primary btn-sm"
+                style={{ opacity: guardSaving ? 0.5 : 1 }}
+              >
+                {guardSaved ? "Saved \u2713" : guardSaving ? "Saving\u2026" : "Save Guard settings"}
+              </button>
             </div>
 
             {/* Turn budget */}
