@@ -149,6 +149,25 @@ function KpiCard({ label, value, sub, tone = "neutral", delta, deltaSemantic = "
 const fmtUsd = (n: number) =>
   n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`
 
+// Reusable shimmer skeleton — for progressive section loads.
+function Skeleton({ height = 14, width = "100%", radius = 6, style }: { height?: number | string; width?: number | string; radius?: number; style?: React.CSSProperties }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: "inline-block",
+        height: typeof height === "number" ? `${height}px` : height,
+        width: typeof width === "number" ? `${width}px` : width,
+        borderRadius: radius,
+        background: "linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3, var(--border)) 50%, var(--surface-2) 100%)",
+        backgroundSize: "200% 100%",
+        animation: "conduct-skel 1.4s ease-in-out infinite",
+        ...style,
+      }}
+    />
+  )
+}
+
 // Format a drilled rule as YAML for inline preview.
 function formatRuleYaml(r: {
   rule_id: string
@@ -243,6 +262,7 @@ export default function GovernancePage() {
   const [controlDrill, setControlDrill] = useState<ControlDrillOut | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
   const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([])
+  const [recentLoaded, setRecentLoaded] = useState(false)
   const [kpis, setKpis] = useState<KpisOut | null>(null)
   const [eventFilter, setEventFilter] = useState<"" | "blocked" | "warned">("")
 
@@ -288,7 +308,10 @@ export default function GovernancePage() {
       try {
         const filterParam = eventFilter ? `&decision=${eventFilter}` : ""
         const res = await fetch(`${base}/governance/events/recent?workspace_id=${workspaceId}&limit=15${filterParam}`, { headers })
-        if (res.ok && !cancelled) setRecentEvents(await res.json())
+        if (res.ok && !cancelled) {
+          setRecentEvents(await res.json())
+          setRecentLoaded(true)
+        }
       } catch { /* non-fatal */ }
 
       try {
@@ -333,6 +356,7 @@ export default function GovernancePage() {
 
   return (
     <AppShell>
+      <style>{`@keyframes conduct-skel { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
       <div style={{ padding: "24px 28px", maxWidth: 1280, margin: "0 auto" }}>
         <header style={{ marginBottom: 24 }}>
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: "var(--text-1)" }}>
@@ -344,7 +368,20 @@ export default function GovernancePage() {
         </header>
 
         {/* Hero status banner — dominates the screenshot */}
-        {(() => {
+        {(!kpis && !frameworks) ? (
+          <section style={{
+            display: "flex", alignItems: "center", gap: 16,
+            padding: "20px 22px", borderRadius: 12,
+            border: "1px solid var(--border)", background: "var(--surface-2)", marginBottom: 20,
+          }}>
+            <Skeleton height={44} width={44} radius={10} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+              <Skeleton height={20} width="55%" />
+              <Skeleton height={12} width="35%" />
+            </div>
+            <Skeleton height={36} width={120} radius={8} />
+          </section>
+        ) : (() => {
           const installedCount = frameworks?.installed.length ?? 0
           const bonusCount = frameworks?.bonus.length ?? 0
           const totalFrameworks = installedCount + bonusCount
@@ -479,12 +516,30 @@ export default function GovernancePage() {
               })}
             </div>
           </div>
-          <p style={{ fontSize: 14, lineHeight: 1.55, color: "var(--text-2)", margin: 0 }}>
-            {narrative?.paragraph ?? "Loading summary…"}
-          </p>
+          {narrative ? (
+            <p style={{ fontSize: 14, lineHeight: 1.55, color: "var(--text-2)", margin: 0 }}>
+              {narrative.paragraph}
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <Skeleton height={14} width="92%" />
+              <Skeleton height={14} width="78%" />
+            </div>
+          )}
         </section>
 
         {/* KPI cards */}
+        {!kpis && !stats ? (
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} style={{ padding: "16px 18px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-1)", display: "flex", flexDirection: "column", gap: 10 }}>
+                <Skeleton height={11} width="55%" />
+                <Skeleton height={28} width="40%" />
+                <Skeleton height={11} width="80%" />
+              </div>
+            ))}
+          </section>
+        ) : (
         <section style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
           <KpiCard
             label="Guard ROI (month-to-date)"
@@ -526,6 +581,7 @@ export default function GovernancePage() {
             tone={installedPacks.length > 0 ? "good" : "neutral"}
           />
         </section>
+        )}
 
         {/* Framework matrix */}
         <section style={{
@@ -546,7 +602,13 @@ export default function GovernancePage() {
             )}
           </div>
 
-          {!frameworks || (frameworks.installed.length === 0 && frameworks.bonus.length === 0) ? (
+          {!frameworks ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {[120, 145, 100, 130, 110].map((w, i) => (
+                <Skeleton key={i} height={56} width={w} radius={8} />
+              ))}
+            </div>
+          ) : (frameworks.installed.length === 0 && frameworks.bonus.length === 0) ? (
             <div style={{ fontSize: 13, color: "var(--text-3)" }}>
               No frameworks covered yet. Install a compliance pack from the marketplace to start.
             </div>
@@ -835,7 +897,18 @@ export default function GovernancePage() {
               View all →
             </Link>
           </div>
-          {recentEvents.length === 0 ? (
+          {!recentLoaded ? (
+            <div style={{ padding: "8px 18px 14px" }}>
+              {[0, 1, 2, 3, 4, 5].map(i => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < 5 ? "1px solid var(--border)" : "none" }}>
+                  <Skeleton height={12} width={70} />
+                  <Skeleton height={12} width={90} />
+                  <Skeleton height={12} width={120} />
+                  <Skeleton height={12} width="40%" />
+                </div>
+              ))}
+            </div>
+          ) : recentEvents.length === 0 ? (
             <div style={{ padding: "14px 18px", fontSize: 12, color: "var(--text-3)" }}>
               No events yet. Activity will appear here as your team uses AI tools.
             </div>
