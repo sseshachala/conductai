@@ -149,6 +149,39 @@ function KpiCard({ label, value, sub, tone = "neutral", delta, deltaSemantic = "
 const fmtUsd = (n: number) =>
   n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`
 
+// Format a drilled rule as YAML for inline preview.
+function formatRuleYaml(r: {
+  rule_id: string
+  description?: string | null
+  action: string
+  severity?: string | null
+  match_tool?: string | null
+  match_pattern?: string | null
+  match_path_pattern?: string | null
+  recommendation?: string | null
+  iso_control?: string | null
+  frameworks?: string[]
+  pack_slug: string
+}): string {
+  const yq = (v: string) => /[:#\-?{}\[\],&*!|>'"%@`]/.test(v) || v.includes("  ") ? JSON.stringify(v) : v
+  const lines: string[] = []
+  lines.push(`- id: ${r.rule_id}`)
+  if (r.description) lines.push(`  description: ${yq(r.description)}`)
+  lines.push(`  action: ${r.action}`)
+  if (r.severity) lines.push(`  severity: ${r.severity}`)
+  if (r.match_tool) lines.push(`  match_tool: ${r.match_tool}`)
+  if (r.match_pattern) lines.push(`  match_pattern: ${yq(r.match_pattern)}`)
+  if (r.match_path_pattern) lines.push(`  match_path_pattern: ${yq(r.match_path_pattern)}`)
+  if (r.frameworks && r.frameworks.length > 0) {
+    lines.push(`  frameworks:`)
+    for (const f of r.frameworks) lines.push(`    - ${f}`)
+  }
+  if (r.iso_control) lines.push(`  iso_control: ${r.iso_control}`)
+  if (r.recommendation) lines.push(`  recommendation: ${yq(r.recommendation)}`)
+  lines.push(`  pack: ${r.pack_slug}`)
+  return lines.join("\n")
+}
+
 const fmtInt = (n: number) =>
   n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`
 
@@ -205,6 +238,7 @@ export default function GovernancePage() {
   const [narrative, setNarrative] = useState<NarrativeOut | null>(null)
   const [narrativePeriod, setNarrativePeriod] = useState<"week" | "month">("week")
   const [activeFramework, setActiveFramework] = useState<string | null>(null)
+  const [expandedRule, setExpandedRule] = useState<string | null>(null)
   const [activeControl, setActiveControl] = useState<string | null>(null)
   const [controlDrill, setControlDrill] = useState<ControlDrillOut | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
@@ -692,9 +726,31 @@ export default function GovernancePage() {
                               {r.match_pattern && <span style={{ wordBreak: "break-all" }}>{r.match_pattern}</span>}
                             </div>
                           )}
-                          <div style={{ marginTop: 4, fontSize: 10, color: "var(--text-muted)" }}>
-                            from <Link href={`/marketplace/${r.pack_slug}`} style={{ color: "var(--accent-text)", textDecoration: "none" }}>{r.pack_slug}</Link>
+                          <div style={{ marginTop: 4, fontSize: 10, color: "var(--text-muted)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span>from <Link href={`/marketplace/${r.pack_slug}`} style={{ color: "var(--accent-text)", textDecoration: "none" }}>{r.pack_slug}</Link></span>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedRule(expandedRule === r.rule_id ? null : r.rule_id)}
+                              style={{ fontSize: 10, fontWeight: 600, color: "var(--accent-text)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                            >
+                              {expandedRule === r.rule_id ? "hide YAML ↑" : "show YAML ↓"}
+                            </button>
                           </div>
+                          {expandedRule === r.rule_id && (
+                            <pre style={{
+                              marginTop: 8,
+                              padding: "10px 12px",
+                              background: "var(--surface-3, #0d0d10)",
+                              color: "var(--text-1)",
+                              border: "1px solid var(--border)",
+                              borderRadius: 6,
+                              fontFamily: "ui-monospace, monospace",
+                              fontSize: 11,
+                              lineHeight: 1.55,
+                              overflowX: "auto",
+                              whiteSpace: "pre",
+                            }}>{formatRuleYaml(r)}</pre>
+                          )}
                         </div>
                       ))}
                     </div>
