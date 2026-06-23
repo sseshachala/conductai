@@ -387,14 +387,17 @@ def get_rules_for_control(
 def get_recent_events(
     limit: int = 20,
     decision: str | None = None,    # filter: blocked | warned | allowed | audited
+    from_dt: datetime | None = None,  # ISO-8601 — events with ts >= from_dt
+    to_dt: datetime | None = None,    # ISO-8601 — events with ts <  to_dt
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("guard.activity.view_own")),
 ):
     """Recent guard events for the dashboard activity feed. Defaults to last
-    20 events; pass ?decision=blocked or ?decision=warned to filter."""
+    20 events; pass ?decision=blocked or ?decision=warned to filter. Reports
+    use from_dt/to_dt + higher limit cap."""
     ws_uuid = uuid.UUID(workspace_id)
-    limit = max(1, min(limit, 100))
+    limit = max(1, min(limit, 1000))
 
     q = (
         db.query(GuardAuditEvent)
@@ -403,6 +406,10 @@ def get_recent_events(
     )
     if decision:
         q = q.filter(GuardAuditEvent.decision == decision)
+    if from_dt:
+        q = q.filter(GuardAuditEvent.ts >= from_dt)
+    if to_dt:
+        q = q.filter(GuardAuditEvent.ts < to_dt)
 
     rows = q.limit(limit).all()
     return [
