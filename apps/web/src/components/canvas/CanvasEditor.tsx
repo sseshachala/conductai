@@ -651,12 +651,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       if (triggerNode) {
         const cfg = (triggerNode.data as BlockNodeData).config as Record<string, unknown>
         const repoAllowlist = (cfg.repo_allowlist as string) || ""
-        // Canvas stores labels as an array under cfg.labels; back-compat to singular cfg.label
+        // Canvas stores labels as an array at cfg.labels — the only canonical path.
         const labelsRaw = cfg.labels
         const labelsArr: string[] = Array.isArray(labelsRaw)
           ? (labelsRaw as string[]).map(s => String(s).trim()).filter(Boolean)
-          : (typeof labelsRaw === "string" && labelsRaw ? [String(labelsRaw)] : [])
-        const label = labelsArr[0] || (cfg.label as string) || ""
+          : []
+        const label = labelsArr[0] || ""
         const repos = repoAllowlist.split(",").map(s => s.trim()).filter(Boolean)
         const repo = repos[0] // try first configured repo
 
