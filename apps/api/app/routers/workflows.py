@@ -399,12 +399,27 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
                 resolved[k] = str(supplied) if supplied is not None else ""
             for key, val in resolved.items():
                 dsl_text = dsl_text.replace(f"{{{{inputs.{key}}}}}", val)
-            # Final guard: warn if any {{inputs.X}} survived unsubstituted
+            # Final guard: any {{inputs.X}} left after substitution is a HARD
+            # error — the install modal failed to collect a required value or
+            # the playbook YAML is missing a default. Either way we refuse to
+            # write a broken workflow to the canvas. The frontend shows the
+            # 422 with the list of missing keys and re-prompts the user.
             import re as _re2
-            leftover = _re2.findall(r"\{\{inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\}\}", dsl_text)
+            leftover = sorted(set(_re2.findall(r"\{\{inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\}\}", dsl_text)))
             if leftover:
-                log.warning("workflow.template_substitution_incomplete",
-                            template=body.template, leftover=sorted(set(leftover)))
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "error": "missing_required_inputs",
+                        "template": body.template,
+                        "missing": leftover,
+                        "message": (
+                            f"Cannot install {body.template} — required input(s) "
+                            f"not supplied: {', '.join(leftover)}. "
+                            "Fill them in the install modal or add a default to the playbook YAML."
+                        ),
+                    },
+                )
             try:
                 dsl = load_workflow_yaml(dsl_text, base_dir=_PLAYBOOKS_BASE_DIR)
                 graph_data = yaml_to_graph(dsl)
