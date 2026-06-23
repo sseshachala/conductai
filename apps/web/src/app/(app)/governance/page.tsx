@@ -5,7 +5,6 @@ import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
-import { useGuardSavings } from "@/hooks/useGuardSavings"
 import { ActivityRow, ActivityHeader } from "@/components/guard/ActivityRow"
 
 interface SpendStats {
@@ -83,6 +82,8 @@ interface KpisOut {
   events_today: KpiValue
   blocked_today: KpiValue
   active_developers_today: KpiValue
+  risk_avoided_usd_mtd: number
+  blocks_mtd: number
 }
 
 // Friendly display names for known framework prefixes.
@@ -291,11 +292,6 @@ export default function GovernancePage() {
     return () => { cancelled = true }
   }, [workspaceId, getToken, activeFramework, activeControl])
 
-  const { savings } = useGuardSavings(workspaceId)
-  const totalSavedUsd = savings
-    ? (savings.team_total.rtk_saved_usd || 0) + (savings.team_total.booster_saved_usd || 0)
-    : 0
-
   const allFwRows: (FrameworkRow | BonusFrameworkRow)[] =
     frameworks ? [...frameworks.installed, ...frameworks.bonus] : []
   const activeFwRow = allFwRows.find(f => f.framework === activeFramework) || null
@@ -331,10 +327,14 @@ export default function GovernancePage() {
         {/* KPI cards */}
         <section style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
           <KpiCard
-            label="AI ROI"
-            value={savings ? fmtUsd(totalSavedUsd) : "—"}
-            sub={savings ? "saved via RTK + Booster" : "tooling savings pending"}
-            tone={totalSavedUsd > 0 ? "good" : "neutral"}
+            label="Guard ROI (month-to-date)"
+            value={kpis ? fmtUsd(kpis.risk_avoided_usd_mtd) : "—"}
+            sub={
+              kpis && kpis.blocks_mtd > 0
+                ? `${fmtInt(kpis.blocks_mtd)} risk events intercepted · industry avg $15K each`
+                : "no risk events intercepted yet"
+            }
+            tone={kpis && kpis.risk_avoided_usd_mtd > 0 ? "good" : "neutral"}
           />
           <KpiCard
             label="AI activity today"
