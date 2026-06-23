@@ -8,6 +8,7 @@ const TABS = [
   { label: "Policies",     href: "/guard/policies" },
   { label: "Spend",        href: "/guard/spend" },
   { label: "Activity",     href: "/guard/activity" },
+  { label: "Tool Errors & Warnings", href: "/guard/tool-errors" },
   { label: "Team Memory",  href: "/guard/team-memory" },
   { label: "Settings",     href: "/guard/settings" },
 ]
