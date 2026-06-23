@@ -342,22 +342,27 @@ function BudgetBar({ used, limit, warnAt = 80 }: { used: number; limit: number |
 function BudgetInput({
   email,
   current,
+  currentHard,
   onSave,
 }: {
   email: string
   current: number | null
-  onSave: (email: string, limit: number) => Promise<void>
+  currentHard: number | null
+  onSave: (email: string, limit: number, hard: number | null) => Promise<void>
 }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(current != null ? String(current) : "")
+  const [hardValue, setHardValue] = useState(currentHard != null ? String(currentHard) : "")
   const [saving, setSaving] = useState(false)
 
   async function handleSave() {
     const parsed = parseFloat(value)
     if (isNaN(parsed) || parsed < 0) return
+    const hardParsed = hardValue.trim() === "" ? null : parseFloat(hardValue)
+    if (hardParsed != null && (isNaN(hardParsed) || hardParsed < 0)) return
     setSaving(true)
     try {
-      await onSave(email, parsed)
+      await onSave(email, parsed, hardParsed)
       setEditing(false)
     } finally {
       setSaving(false)
@@ -380,19 +385,35 @@ function BudgetInput({
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>$</span>
-      <input
-        type="number" min="0" step="10"
-        value={value}
-        onChange={e => setValue(e.target.value)}
-        style={{ width: 56, fontSize: 11, border: "1px solid var(--border-2)", borderRadius: 5, padding: "2px 6px" }}
-        autoFocus
-        onKeyDown={e => {
-          if (e.key === "Enter") handleSave()
-          if (e.key === "Escape") setEditing(false)
-        }}
-      />
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <label style={{ fontSize: 10.5, color: "var(--text-muted)" }} title="Monthly soft limit — warns at threshold">
+        soft $
+        <input
+          type="number" min="0" step="10"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          style={{ width: 56, fontSize: 11, border: "1px solid var(--border-2)", borderRadius: 5, padding: "2px 6px", marginLeft: 3 }}
+          autoFocus
+          onKeyDown={e => {
+            if (e.key === "Enter") handleSave()
+            if (e.key === "Escape") setEditing(false)
+          }}
+        />
+      </label>
+      <label style={{ fontSize: 10.5, color: "var(--text-muted)" }} title="Hard cap — blocks tool calls once reached. Leave blank for no cap.">
+        hard $
+        <input
+          type="number" min="0" step="10"
+          value={hardValue}
+          placeholder="—"
+          onChange={e => setHardValue(e.target.value)}
+          style={{ width: 56, fontSize: 11, border: "1px solid var(--border-2)", borderRadius: 5, padding: "2px 6px", marginLeft: 3 }}
+          onKeyDown={e => {
+            if (e.key === "Enter") handleSave()
+            if (e.key === "Escape") setEditing(false)
+          }}
+        />
+      </label>
       <button
         onClick={handleSave}
         disabled={saving}
@@ -528,6 +549,7 @@ function SpendContent() {
   )
   const [data, setData] = useState<SpendData | null>(null)
   const [budgets, setBudgets] = useState<Record<string, number | null>>({})
+  const [hardLimits, setHardLimits] = useState<Record<string, number | null>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [currency, setCurrency] = useState<Currency>("USD")
@@ -579,11 +601,16 @@ function SpendContent() {
           })
         }
         const map: Record<string, number | null> = {}
+        const hardMap: Record<string, number | null> = {}
         for (const b of budgetList) {
           const key = b.email ?? b.clerk_user_id
-          if (key) map[key] = b.monthly_limit_usd
+          if (key) {
+            map[key] = b.monthly_limit_usd
+            hardMap[key] = b.hard_limit_usd
+          }
         }
         setBudgets(map)
+        setHardLimits(hardMap)
       }
       setLastUpdated(new Date())
     } catch (err) {
@@ -627,7 +654,7 @@ function SpendContent() {
     setTeamSettings(s)
   }
 
-  async function saveBudget(email: string, limit: number) {
+  async function saveBudget(email: string, limit: number, hard: number | null) {
     if (!teamId) return
     const token = await getToken()
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -638,10 +665,16 @@ function SpendContent() {
     const res = await fetch(`${base}/guard/spend/budgets`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ workspace_id: teamId, email, monthly_limit_usd: limit }),
+      body: JSON.stringify({
+        workspace_id: teamId,
+        email,
+        monthly_limit_usd: limit,
+        hard_limit_usd: hard,
+      }),
     })
     if (!res.ok) throw new Error("Failed to save budget")
     setBudgets(prev => ({ ...prev, [email]: limit }))
+    setHardLimits(prev => ({ ...prev, [email]: hard }))
   }
 
   const monthLabel = (() => {
@@ -893,8 +926,27 @@ function SpendContent() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <BudgetBar used={dev.cost_usd} limit={budgetLimit} warnAt={teamSettings.alert_threshold_pct ?? 80} />
+                  {hardLimits[dev.email] != null && dev.cost_usd >= (hardLimits[dev.email] ?? Infinity) && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "2px 7px",
+                        borderRadius: 9999,
+                        background: "var(--err-bg)",
+                        color: "var(--err)",
+                        border: "1px solid var(--err-bd)",
+                        textTransform: "uppercase",
+                        letterSpacing: ".04em",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={`Hard cap reached: $${hardLimits[dev.email]} — tool calls are blocked`}
+                    >
+                      Hard cap
+                    </span>
+                  )}
                   {isAdmin && (
-                    <BudgetInput email={dev.email} current={budgetLimit} onSave={saveBudget} />
+                    <BudgetInput email={dev.email} current={budgetLimit} currentHard={hardLimits[dev.email] ?? null} onSave={saveBudget} />
                   )}
                 </div>
               </div>

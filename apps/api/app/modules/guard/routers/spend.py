@@ -412,6 +412,7 @@ def upsert_budget(
     now = _now()
 
     if existing:
+        old = (existing.monthly_limit_usd, existing.hard_limit_usd)
         existing.monthly_limit_usd = body.monthly_limit_usd
         existing.alert_threshold_pct = body.alert_threshold_pct
         existing.hard_limit_usd = body.hard_limit_usd
@@ -421,6 +422,8 @@ def upsert_budget(
         db.commit()
         db.refresh(existing)
         budget = existing
+        audit_action = "budget_updated"
+        audit_summary = f"monthly {old[0]}→{body.monthly_limit_usd} hard {old[1]}→{body.hard_limit_usd}"
     else:
         budget = GuardSpendBudget(
             workspace_id=ws_uuid,
@@ -433,9 +436,42 @@ def upsert_budget(
         db.add(budget)
         db.commit()
         db.refresh(budget)
+        audit_action = "budget_created"
+        audit_summary = f"monthly={body.monthly_limit_usd} hard={body.hard_limit_usd}"
+
+    _audit_budget_change(db, ws_uuid, clerk_user_id, audit_action, audit_summary)
 
     current_cost = _current_month_cost(db, ws_uuid, clerk_user_id)
     return _budget_out(budget, current_cost)
+
+
+def _audit_budget_change(
+    db: Session,
+    workspace_id: uuid.UUID,
+    clerk_user_id: str | None,
+    action: str,
+    summary: str,
+) -> None:
+    """Write a non-fatal audit row for budget mutations.
+
+    target rule_id encodes 'workspace' or the clerk_user_id so the activity
+    feed can show who the change applied to.
+    """
+    from app.modules.guard.models import GuardAuditEvent
+    try:
+        db.add(GuardAuditEvent(
+            workspace_id=workspace_id,
+            clerk_user_id=None,
+            ai_tool="platform",
+            tool_call=action,
+            decision="allowed",
+            rule_id=clerk_user_id or "workspace",
+            input_summary=summary[:500],
+            ts=_now(),
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 # ── GET /guard/spend/budgets ──────────────────────────────────────────────────
