@@ -265,6 +265,15 @@ export default function GovernancePage() {
   const [recentLoaded, setRecentLoaded] = useState(false)
   const [kpis, setKpis] = useState<KpisOut | null>(null)
   const [eventFilter, setEventFilter] = useState<"" | "blocked" | "warned">("")
+  // Live auto-refresh — Phase 1B governance polling
+  const [tick, setTick] = useState(0)
+  const [lastFetched, setLastFetched] = useState<Date | null>(null)
+
+  // 60s auto-refresh — bumps tick which triggers the data useEffects below
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     if (!workspaceId) return
@@ -318,10 +327,12 @@ export default function GovernancePage() {
         const res = await fetch(`${base}/governance/kpis?workspace_id=${workspaceId}`, { headers })
         if (res.ok && !cancelled) setKpis(await res.json())
       } catch { /* non-fatal */ }
+
+      if (!cancelled) setLastFetched(new Date())
     }
     load()
     return () => { cancelled = true }
-  }, [workspaceId, getToken, activeFramework, eventFilter, narrativePeriod])
+  }, [workspaceId, getToken, activeFramework, eventFilter, narrativePeriod, tick])
 
   // Fetch the rules covering the selected control whenever it changes.
   useEffect(() => {
@@ -358,13 +369,24 @@ export default function GovernancePage() {
     <AppShell>
       <style>{`@keyframes conduct-skel { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
       <div style={{ padding: "24px 28px", maxWidth: 1280, margin: "0 auto" }}>
-        <header style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: "var(--text-1)" }}>
-            Governance
-          </h1>
-          <p style={{ fontSize: 13, color: "var(--text-3)", margin: "4px 0 0" }}>
-            One outcome surface for engineering, security, and finance — ROI, behavioral insights, compliance proof.
-          </p>
+        <header style={{ marginBottom: 24, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: "var(--text-1)" }}>
+              Governance
+            </h1>
+            <p style={{ fontSize: 13, color: "var(--text-3)", margin: "4px 0 0" }}>
+              One outcome surface for engineering, security, and finance — ROI, behavioral insights, compliance proof.
+            </p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-3)", paddingTop: 4 }}>
+            <span className="conduct-pulse-dot" style={{ background: "var(--ok)" }} />
+            <span>Auto-refresh · every 60s</span>
+            {lastFetched && (
+              <span style={{ color: "var(--text-muted)" }}>
+                · updated {lastFetched.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
         </header>
 
         {/* Hero status banner — dominates the screenshot */}
