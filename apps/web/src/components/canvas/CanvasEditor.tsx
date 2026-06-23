@@ -651,15 +651,23 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       if (triggerNode) {
         const cfg = (triggerNode.data as BlockNodeData).config as Record<string, unknown>
         const repoAllowlist = (cfg.repo_allowlist as string) || ""
-        const label = (cfg.label as string) || ""
+        // Canvas stores labels as an array under cfg.labels; back-compat to singular cfg.label
+        const labelsRaw = cfg.labels
+        const labelsArr: string[] = Array.isArray(labelsRaw)
+          ? (labelsRaw as string[]).map(s => String(s).trim()).filter(Boolean)
+          : (typeof labelsRaw === "string" && labelsRaw ? [String(labelsRaw)] : [])
+        const label = labelsArr[0] || (cfg.label as string) || ""
         const repos = repoAllowlist.split(",").map(s => s.trim()).filter(Boolean)
         const repo = repos[0] // try first configured repo
 
         if (!repo || !label) {
+          const missing: string[] = []
+          if (!repo) missing.push("Repository")
+          if (!label) missing.push("Label")
           setValidationErrors([{
             blockId: triggerNode.id,
             label: (triggerNode.data as BlockNodeData).label,
-            message: "Set repo_allowlist and label on the trigger block before running",
+            message: `Set ${missing.join(" and ")} on the trigger block before running`,
           }])
           setRunning("idle")
           return
