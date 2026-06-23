@@ -30,7 +30,7 @@ export default function McpSetupDocsPage() {
       <h1 className="text-4xl font-bold text-stone-900 mb-3">Connect your AI tools to ConductGuard</h1>
       <p className="text-lg text-stone-600 leading-relaxed mb-6">
         Conduct AI Guard is a default MCP server for every workspace. It works with any client that
-        speaks MCP — Claude, Codex, Cursor, Gemini CLI, opencode, Pi, and more. Once a client is
+        speaks MCP — Claude, Codex, Cursor, VS Code + Copilot, Devin, and more. Once a client is
         pointed at your workspace URL, every tool call is audited and policy-enforced.
       </p>
 
@@ -41,8 +41,8 @@ export default function McpSetupDocsPage() {
         </p>
         <Pre>conduct guard sync</Pre>
         <p className="text-xs text-indigo-700 mt-3">
-          Covers Claude Code, Claude Desktop, Codex CLI, Cursor, Gemini CLI, opencode, and Pi.
-          Skip the manual sections below if this works for you.
+          Covers Claude Code, Claude Desktop, Cursor, Codex CLI, Windsurf, and VS Code + Copilot.
+          Devin is cloud-only — see its section below for the URL-paste flow.
         </p>
       </div>
 
@@ -118,16 +118,63 @@ url = "https://api.conductai.ai/guard/mcp?workspace_id=<your-ws>&token=<your-tok
       </section>
 
       <section className="mb-12">
-        <h2 className="text-2xl font-semibold text-stone-900 mb-3">Other MCP clients</h2>
+        <h2 className="text-2xl font-semibold text-stone-900 mb-3">VS Code + GitHub Copilot</h2>
         <p className="text-stone-600 mb-3">
-          Gemini CLI, opencode, Pi, Continue, and any other MCP-aware tool follow the same pattern:
-          add the workspace URL to that tool's MCP server config. The CLI's <Code>conduct guard sync</Code>{" "}
-          auto-detects most of these.
+          If you have the GitHub Copilot extension installed in VS Code, <Code>conduct guard sync</Code>{" "}
+          detects it and writes the MCP config to <Code>Code/User/mcp.json</Code>. Copilot Chat picks it
+          up automatically.
         </p>
+        <p className="text-stone-600 mb-3">Or add it manually in your VS Code <Code>settings.json</Code>:</p>
+        <Pre>{`{
+  "mcp.servers": {
+    "conduct-guard": {
+      "url": "https://api.conductai.ai/guard/mcp?workspace_id=<your-ws>&token=<your-token>"
+    }
+  }
+}`}</Pre>
+        <p className="text-stone-600 mt-3">Reload the VS Code window to pick up the new server.</p>
+      </section>
+
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold text-stone-900 mb-3">Devin</h2>
+        <p className="text-stone-600 mb-3">
+          Devin runs in the cloud, so there's no local config to sync. Paste the workspace URL into
+          Devin directly:
+        </p>
+        <ol className="list-none p-0">
+          <Step n={1}>Open Devin → <strong>Workspace Settings</strong> → <strong>MCP Servers</strong>.</Step>
+          <Step n={2}>Click <strong>Add Server</strong>, paste your workspace URL, save.</Step>
+          <Step n={3}>Devin's agents now route tool calls through ConductGuard automatically.</Step>
+        </ol>
+        <p className="text-sm text-stone-500 mt-3">
+          Devin sessions run remotely, so the token in the URL must belong to the workspace member you
+          want activity attributed to. Treat it as a service credential.
+        </p>
+      </section>
+
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold text-stone-900 mb-3">Windsurf</h2>
+        <p className="text-stone-600 mb-3">
+          <Code>conduct guard sync</Code> writes to <Code>~/.windsurf/mcp.json</Code> if Windsurf is
+          installed. Or add the block manually:
+        </p>
+        <Pre>{`# ~/.windsurf/mcp.json
+{
+  "mcpServers": {
+    "conduct-guard": {
+      "url": "https://api.conductai.ai/guard/mcp?workspace_id=<your-ws>&token=<your-token>"
+    }
+  }
+}`}</Pre>
+      </section>
+
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold text-stone-900 mb-3">Other MCP clients</h2>
         <p className="text-stone-600">
-          If your tool isn't supported by the CLI yet, add it manually using the URL pattern above and{" "}
+          Any other MCP-aware tool follows the same pattern: add your workspace URL to that tool's
+          MCP server config. If you'd like CLI auto-detection added,{" "}
           <a href="https://github.com/sseshachala/conduct-cli/issues" target="_blank" rel="noopener" className="text-indigo-600 underline">open an issue</a>{" "}
-          so we add detection.
+          with the tool's config path.
         </p>
       </section>
 
