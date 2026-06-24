@@ -31,16 +31,21 @@ def main():
     if not changed:
         sys.exit(0)
 
+    venv_python = os.path.join(repo_root, "apps/api/.venv/bin/python3")
+    if not os.path.exists(venv_python):
+        sys.exit(0)
+
     errors = []
     for rel_path in changed:
         path = os.path.join(repo_root, rel_path)
         validation = subprocess.run(
-            ["python3", "-c", f"""
+            [venv_python, "-c", f"""
 import sys
+from pathlib import Path
 sys.path.insert(0, 'apps/api')
-from app.dsl.loader import load_workflow
+from app.dsl.loader import load_workflow_yaml
 try:
-    load_workflow(open('{path}').read())
+    load_workflow_yaml(open('{path}').read(), base_dir=Path('apps/api/playbooks'))
     print("OK: {rel_path}")
 except Exception as e:
     print(f"FAIL: {rel_path} — {{e}}", file=sys.stderr)
