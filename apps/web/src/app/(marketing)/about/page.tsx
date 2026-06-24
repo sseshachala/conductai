@@ -7,134 +7,60 @@ export default function AboutPage() {
         <h1 className="text-4xl font-black text-stone-900 tracking-tight leading-tight mb-3">
           A team of builders.
         </h1>
-        <p className="text-stone-400 text-sm">Houston, TX &nbsp;·&nbsp; One of us founded Xervmon &nbsp;·&nbsp; All of us have been burned by the gap we&apos;re closing</p>
+        <p className="text-stone-400 text-sm">Houston, TX &nbsp;·&nbsp; Building governance for AI-assisted engineering teams</p>
       </div>
 
-      <div className="space-y-10 text-stone-700 leading-[1.9] text-[1.0625rem]">
+      <div className="space-y-8 text-stone-700 leading-[1.8] text-[1.0625rem]">
 
         <p>
-          I gave the best years of my career to a company called <strong className="text-stone-900 font-semibold">Xervmon</strong>.
-          Cloud management. Monitoring. Infrastructure visibility.
-          I believed in it the way you only believe in something
-          you&apos;ve poured yourself into completely — nights, weekends, savings, relationships.
-          All of it.
-        </p>
-
-        <p className="text-stone-500 italic border-l-2 border-stone-200 pl-5">
-          It didn&apos;t make it.
-        </p>
-
-        <p>
-          Not because the technology was wrong. Not because the team didn&apos;t work hard.
-          The market moved. The timing was off. The gap between what we built and what
-          customers were willing to pay for turned out to be wider than any amount of
-          conviction could bridge.
+          Conduct AI is built by engineers who ran cloud infrastructure
+          and observability teams for the better part of a decade. Before
+          this we built and ran <strong className="text-stone-900 font-semibold">Xervmon</strong>,
+          a cloud management platform — the kind of product that taught us
+          exactly where governance tools break under pressure, where audit
+          trails go quiet at the moment they&apos;re needed, and where the
+          gap between a written policy and an enforced policy can swallow
+          a company whole.
         </p>
 
         <p>
-          I remember the exact moment I knew. Sitting in a conference room, looking at
-          a spreadsheet that told a story I had been refusing to read for months.
-          The numbers didn&apos;t argue. They just sat there.
+          Xervmon didn&apos;t survive. The market wasn&apos;t there yet.
+          What did survive was a very specific understanding of how
+          engineering teams actually make decisions when things break,
+          and what kind of safety net is — and isn&apos;t — there when
+          they do.
         </p>
 
         <p>
-          Shutting it down quietly is the loneliest thing I&apos;ve ever done.
-          There&apos;s no public announcement. No closure. You just stop.
-          And then you figure out who you are when the thing you were
-          is gone.
-        </p>
-
-        <p>
-          It took me ten years to recover. Not ten months. Ten years.
-        </p>
-
-        <p>
-          My family held me together during that time in ways I am still
-          finding words for. Friends who didn&apos;t ask when I was going
-          to figure it out. Who just stayed. I don&apos;t think I understood
-          what that cost them until much later.
-        </p>
-
-        <p className="text-stone-500 italic border-l-2 border-stone-200 pl-5">
-          Recently, I reached out to our seed investor to apologize.
-          It had taken me years to find the courage to even send the message.
-          I didn&apos;t have a face to show them for a long time.
-          They were gracious. That generosity still humbles me.
-        </p>
-
-        <p>
-          Even today — with Conduct growing, with new customers, with a product
-          I believe in — my primary obligation is to them. To our seed investor.
-          To the handful of others who stood with us like a rock when there was
-          no rational reason to. Partners who didn&apos;t just write a check
-          but showed up, stayed in, and never made me feel small for failing.
-        </p>
-
-        <p>
-          I don&apos;t think of Conduct as a second chance.
-          I think of it as a debt I intend to repay — not just in money,
-          but in something built that lasts. Something that justifies the
-          trust that was placed in me when I hadn&apos;t yet earned it.
-        </p>
-
-        <hr className="border-stone-100" />
-
-        <p>
-          What I took from Xervmon wasn&apos;t bitterness. It was clarity.
-          I understood, finally and specifically, where tools break under pressure.
-          Where governance becomes a document nobody reads. Where visibility
-          disappears exactly when you need it most. Where engineering teams
-          make decisions at 2am with no safety net and no record of what happened.
-        </p>
-
-        <p>
-          That knowledge sat in me for a long time.
-        </p>
-
-        <p>
-          Then AI arrived — not as a trend, but as a genuine rupture in what one person
-          could build and ship. I started building with it. Claude Code, agentic workflows,
-          MCP servers. The token bills climbed. The context costs were brutal.
-          And I noticed the familiar pattern: powerful tools, invisible risks, and
-          nobody owning the layer underneath.
-        </p>
-
-        <p>
-          Engineering teams adopting AI with no controls. No audit trail.
-          No visibility into what their AI tools were actually doing.
-          Credentials leaking into prompts. Security policies that existed on paper
-          and nowhere else. Compliance teams asking questions that nobody could answer.
-        </p>
-
-        <p>
-          I had watched this exact failure mode destroy something I built.
-          I wasn&apos;t going to watch it happen to other people&apos;s teams.
+          When AI arrived as a real shift in what a small team could
+          build, we started shipping with it. Claude Code, MCP servers,
+          agentic playbooks. The pattern was familiar: powerful tools,
+          invisible risks, no clear owner for the layer underneath.
+          Credentials drifting into prompts, policies that existed only
+          on paper, no answer to the compliance question the auditor
+          would ask in six months.
         </p>
 
         <p className="text-stone-900 font-semibold">
-          So I built Conduct AI.
+          That&apos;s why Conduct AI exists.
         </p>
 
         <p>
-          Not as a pivot. Not as a market opportunity I spotted on a slide deck.
-          As the thing I needed to exist. The governance layer that runs at the same
-          layer as the tools — not above them in a policy document, not below them
-          in infrastructure nobody configures. Right there, between the developer
-          and the AI, enforcing the rules in real time.
-        </p>
-
-        <p>
-          Guard for every AI session. Security enforcement in every PR.
-          Workflows that inherit your policies instead of running around them.
-          An audit trail that can actually answer the compliance question —
-          not in theory, but in one click.
+          We build the governance layer at the same layer as the tools —
+          not above them in a policy document, not below them in
+          infrastructure no one configures. Guard policies enforced in
+          every AI session. Security checks in every PR. Workflows that
+          inherit your rules instead of routing around them. An audit
+          trail that answers the compliance question in one click,
+          not one quarter.
         </p>
 
         <hr className="border-stone-100" />
 
-        <p className="text-stone-500">
-          Along the way, I built tools to make AI work better at the engineering
-          layer. Because the infrastructure underneath the governance matters too.
+        <p className="text-stone-500 text-sm">
+          Along the way we built infrastructure to make AI work better
+          at the engineering layer. These tools are free and open source —
+          they fund and dogfood the platform.
         </p>
 
         <div className="space-y-4">
@@ -175,16 +101,13 @@ export default function AboutPage() {
         <hr className="border-stone-100" />
 
         <p>
-          Everything goes on GitHub. MIT licensed. No gates. No &ldquo;contact sales&rdquo;
-          before you can see what you&apos;re buying. The Xervmon years taught me
-          that the people who actually need a tool find out too late when it&apos;s
-          hidden behind a demo request form.
+          Source on GitHub, MIT licensed. No demo gates before you can
+          see what you&apos;re buying.
         </p>
 
-        <p className="text-stone-500">
-          If you&apos;re building in this space and want to compare notes —
-          or if you just want to talk to someone who has failed loudly enough
-          to know what actually matters — I&apos;m here.
+        <p className="text-stone-500 text-sm">
+          If you&apos;re building in this space and want to compare notes,
+          we&apos;re reachable below.
         </p>
 
         <div className="flex flex-wrap gap-3 pt-2 pb-4">
