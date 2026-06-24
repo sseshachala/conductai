@@ -678,10 +678,23 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           { headers }
         )
         if (!issueRes.ok) {
+          // Surface the actual server error instead of a generic suggestion.
+          let serverDetail = ""
+          try {
+            const body = await issueRes.json()
+            serverDetail = typeof body?.detail === "string" ? body.detail : JSON.stringify(body)
+          } catch {
+            try { serverDetail = await issueRes.text() } catch { /* give up */ }
+          }
+          const hint = issueRes.status === 404
+            ? " — connect a GitHub credential in Settings → Environments"
+            : issueRes.status === 401 || issueRes.status === 403
+            ? " — token rejected by GitHub (check scopes: repo, issues:read)"
+            : ""
           setValidationErrors([{
             blockId: triggerNode.id,
             label: (triggerNode.data as BlockNodeData).label,
-            message: "Could not fetch GitHub issues — is GitHub connected?",
+            message: `Could not fetch issues from ${repo} (HTTP ${issueRes.status})${hint}${serverDetail ? `: ${serverDetail.slice(0, 200)}` : ""}`,
           }])
           setRunning("idle")
           return
