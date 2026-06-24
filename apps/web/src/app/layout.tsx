@@ -4,35 +4,67 @@ import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
 
 export const metadata: Metadata = {
-  title: "Conduct AI — Governed AI Automations for Engineering Teams",
+  metadataBase: new URL("https://conductai.ai"),
+  title: {
+    default: "ConductAI — Runtime AI Governance for Engineering Teams",
+    template: "%s | ConductAI",
+  },
   description:
-    "Conduct turns tickets, PRs, alerts, and incidents into auditable AI agent workflows with human approval before anything ships.",
+    "Govern every AI tool your team uses — Claude Code, Cursor, Copilot, Codex. Inline enforcement, audit trail, SOC 2 ready. Install in 10 minutes.",
+  keywords: [
+    "runtime AI governance",
+    "AI governance platform",
+    "AI security",
+    "Claude Code governance",
+    "Cursor governance",
+    "Copilot governance",
+    "AI audit trail",
+    "AI compliance SOC 2",
+    "AI usage policy",
+    "inline AI enforcement",
+  ],
+  authors: [{ name: "ConductAI" }],
+  alternates: {
+    canonical: "https://conductai.ai",
+  },
   icons: {
     icon: "/icon.png",
     shortcut: "/icon.png",
     apple: "/icon.png",
   },
   openGraph: {
-    title: "Conduct AI — Governed AI Automations for Engineering Teams",
+    title: "ConductAI — Runtime AI Governance for Engineering Teams",
     description:
-      "Conduct turns tickets, PRs, alerts, and incidents into auditable AI agent workflows with human approval before anything ships.",
+      "Policy is a PDF. Runtime is a hook. One identity, one policy, one audit trail across every AI tool your team uses.",
     url: "https://conductai.ai",
-    siteName: "Conduct",
+    siteName: "ConductAI",
     type: "website",
+    locale: "en_US",
     images: [
       {
         url: "https://conductai.ai/og.png",
         width: 1200,
         height: 630,
-        alt: "Conduct — governed AI automations for engineering teams",
+        alt: "ConductAI — Runtime AI Governance for Engineering Teams",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Conduct AI — Governed AI Automations for Engineering Teams",
+    title: "ConductAI — Runtime AI Governance",
     description:
-      "Auditable AI agent workflows for tickets, PRs, alerts, and incidents.",
+      "Govern every AI tool your team uses — inline enforcement, audit trail, SOC 2 ready. Install in 10 minutes.",
+    images: ["https://conductai.ai/og.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
   },
 }
 
