@@ -368,7 +368,13 @@ def _execute_brain(
 
     # Provider fallback keeps existing Anthropic behavior if OpenAI is selected
     # but no key is configured for this workspace/run.
-    if provider == "perplexity" and _perplexity_key:
+    if provider == "perplexity":
+        if not _perplexity_key:
+            raise RuntimeError(
+                f"Missing PERPLEXITY_API_KEY for brain block (provider=perplexity, "
+                f"model={model_id}). Add it in Settings → Environments or workspace "
+                f"credentials, then re-run."
+            )
         llm = PerplexityClient(api_key=_perplexity_key, pricing_snapshot=pricing_snapshot)
     elif provider == "openai" and _openai_key:
         llm = OpenAIClient(api_key=_openai_key, pricing_snapshot=pricing_snapshot)
@@ -381,6 +387,12 @@ def _execute_brain(
             log.warning("brain.provider_fallback", reason="missing_perplexity_key", selected_provider=provider, fallback_provider="anthropic")
             provider, model_id, fallback_reason = _router_resolve(playbook_slug, routing_pref, None, "anthropic")
             routing_reason = f"{routing_reason}; fallback: {fallback_reason}"
+        if not _anthropic_key:
+            raise RuntimeError(
+                f"Missing ANTHROPIC_API_KEY for brain block (provider=anthropic, "
+                f"model={model_id}). Add it in Settings → Environments or workspace "
+                f"credentials, then re-run."
+            )
         llm = AnthropicClient(api_key=_anthropic_key, pricing_snapshot=pricing_snapshot)
 
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
