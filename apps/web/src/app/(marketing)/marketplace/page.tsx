@@ -51,9 +51,9 @@ interface Environment {
 }
 
 const MODEL_HINTS: Record<string, string> = {
-  "claude-haiku-4-5-20251001": "Fastest & cheapest — great for simple fixes and triage tasks",
-  "claude-sonnet-4-6": "Balanced speed and capability — recommended for most autopilot tasks",
-  "claude-opus-4-7": "Most capable — best for complex multi-file refactors, slower and costlier",
+  "claude-haiku-4-5-20251001": "Fastest & cheapest, great for simple fixes and triage tasks",
+  "claude-sonnet-4-6": "Balanced speed and capability, recommended for most autopilot tasks",
+  "claude-opus-4-7": "Most capable, best for complex multi-file refactors, slower and costlier",
 }
 
 interface PlaybookInput {
@@ -94,7 +94,7 @@ const CATEGORY_ORDER = [
   "Platform & Infra",
 ]
 
-// Display labels for category chips — maps internal category to design label
+// Display labels for category chips, maps internal category to design label
 const CATEGORY_LABELS: Record<string, string> = {
   "Issue to PR": "Issue → PR",
   "Issue Triage": "Triage",
@@ -148,7 +148,7 @@ const PACK_CATALOG = [
     icon: "🔐",
     name: "OWASP Top 10",
     subtitle: "Guards and scan rules for the 10 most critical web application security risks.",
-    description: "Guards and scan rules for the 10 most critical web application security risks — injection, XSS, path traversal, broken crypto, and more.",
+    description: "Guards and scan rules for the 10 most critical web application security risks, injection, XSS, path traversal, broken crypto, and more.",
     tags: ["Security", "Web"],
     guardRules: 6,
     securityRules: 10,
@@ -158,7 +158,7 @@ const PACK_CATALOG = [
     icon: "📋",
     name: "SOC 2",
     subtitle: "Rules aligned to SOC 2 Trust Service Criteria for audit-ready compliance.",
-    description: "Rules aligned to SOC 2 Trust Service Criteria — block hardcoded secrets (CC6.1), warn on PII logging (CC7.2), flag debug mode in production.",
+    description: "Rules aligned to SOC 2 Trust Service Criteria, block hardcoded secrets (CC6.1), warn on PII logging (CC7.2), flag debug mode in production.",
     tags: ["Compliance", "Audit"],
     guardRules: 2,
     securityRules: 3,
@@ -187,8 +187,8 @@ const PACK_CATALOG = [
     id: "conduct-base",
     icon: "🚀",
     name: "Startup Baseline",
-    subtitle: "Zero-friction starter — catches hardcoded keys, weak random, and stack trace leaks.",
-    description: "Lightweight starter pack — hardcoded API keys, weak random for security, and stack traces leaking to clients. Zero-friction first install.",
+    subtitle: "Zero-friction starter, catches hardcoded keys, weak random, and stack trace leaks.",
+    description: "Lightweight starter pack, hardcoded API keys, weak random for security, and stack traces leaking to clients. Zero-friction first install.",
     tags: ["Starter", "General"],
     guardRules: 1,
     securityRules: 3,
@@ -337,7 +337,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         setInstalledWorkflowId(ids)
       }
 
-      // Fetch quality scores — graceful if endpoint not yet available
+      // Fetch quality scores, graceful if endpoint not yet available
       if (loadedPlaybooks.length > 0) {
         const scoreHeaders = await authHeaders()
         const scoreResults = await Promise.allSettled(
@@ -446,7 +446,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
           const data: Repo[] = await res.json()
           setRepos(data)
           setSelectedRepo(data[0]?.full_name ?? "")
-          if (data.length === 0) setReposError("Token is valid but no accessible repos returned. If you use a fine-grained PAT scoped to a single repo, GitHub's /user/repos may not list it — type the repo manually below.")
+          if (data.length === 0) setReposError("Token is valid but no accessible repos returned. If you use a fine-grained PAT scoped to a single repo, GitHub's /user/repos may not list it, type the repo manually below.")
         })
         .catch((e) => { if (!cancelled) { setReposError(String(e)); setRepos([]); setSelectedRepo("") } })
         .finally(() => { if (!cancelled) setReposLoading(false) })
@@ -470,7 +470,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
       }
       if (selectedProjectId) body.project_id = selectedProjectId
       if (selectedEnvId) body.environment_id = selectedEnvId
-      // New flow: repo is a normal input — declared in playbook YAML, substituted into the trigger.
+      // New flow: repo is a normal input, declared in playbook YAML, substituted into the trigger.
       // Backend keeps body.repo as a backward-compat alias for old clients.
       const mergedInputs: Record<string, unknown> = { ...inputValues }
       if (needsRepo && selectedRepo) mergedInputs.repo = selectedRepo
@@ -630,7 +630,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               const busy = packInstalling === pack.id
               return (
                 <div key={pack.id} className="card" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-                  {/* Header row — mirrors ModulesManager exactly */}
+                  {/* Header row, mirrors ModulesManager exactly */}
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                       <span style={{ width: 40, height: 40, borderRadius: 10, background: "var(--accent-weak)", color: "var(--accent-text)", display: "grid", placeItems: "center", flexShrink: 0, fontSize: 20 }} aria-hidden="true">
@@ -849,7 +849,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                 placeholder={FRIENDLY_NAMES[pendingSlug ?? ""] ?? pendingSlug ?? ""}
                 className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
               />
-              <p className="text-[10px] text-stone-400">Give this instance a name — e.g. "Autopilot — conductai prod"</p>
+              <p className="text-[10px] text-stone-400">Give this instance a name, e.g. "Autopilot, conductai prod"</p>
             </div>
 
             {/* Project picker */}
@@ -925,7 +925,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               </div>
             ))}
 
-            {/* Repo picker — GitHub webhook playbooks */}
+            {/* Repo picker. GitHub webhook playbooks */}
             {GITHUB_WEBHOOK_SLUGS.has(pendingSlug) && (
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-stone-500">
@@ -943,7 +943,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
                     )}
                     {repos.length === 1 ? (
                       <div className="text-xs text-stone-700 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2">
-                        Selected <span className="font-medium">{repos[0].full_name}</span> — the only repo your GitHub token can access.
+                        Selected <span className="font-medium">{repos[0].full_name}</span>, the only repo your GitHub token can access.
                       </div>
                     ) : repos.length > 1 ? (
                       <select
@@ -969,7 +969,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               </div>
             )}
 
-            {/* Manual setup instructions — inbound webhook playbooks */}
+            {/* Manual setup instructions, inbound webhook playbooks */}
             {MANUAL_WEBHOOK_SLUGS.has(pendingSlug) && (
               <div className="bg-stone-50 border border-stone-200 rounded-lg px-3 py-3 flex flex-col gap-1.5">
                 <p className="text-xs font-medium text-stone-700">Manual webhook setup required</p>
@@ -984,7 +984,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
               <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-3">
                 <p className="text-xs font-semibold text-red-700 mb-1">Webhook not registered</p>
                 <p className="text-xs text-red-600 leading-relaxed">{webhookError}</p>
-                <p className="text-xs text-stone-400 mt-2">The agent was installed — the webhook can be added once the token is updated.</p>
+                <p className="text-xs text-stone-400 mt-2">The agent was installed, the webhook can be added once the token is updated.</p>
                 <button onClick={() => { closeInstallModal(); router.push(`/workflows/${lastInstalledId ?? ""}`) }}
                   className="mt-2 text-xs underline text-red-700">Open agent anyway →</button>
               </div>
@@ -1052,7 +1052,7 @@ function PlaybookCard({
         ;(e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"
       }}
     >
-      {/* Grade badge — top right */}
+      {/* Grade badge, top right */}
       {grade && (
         <span
           className={`text-[10px] px-1.5 py-0.5 rounded font-semibold tabular-nums ${GRADE_STYLES[grade] ?? "bg-stone-100 text-stone-500"}`}

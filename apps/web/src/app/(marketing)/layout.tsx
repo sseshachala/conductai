@@ -97,7 +97,7 @@ function MarketingFooter() {
         <div className="flex flex-col md:flex-row justify-between gap-8 mb-10">
           <div>
             <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto mb-3" />
-            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">AI Governance for Engineering Teams. Platform or partnership — you choose how.</p>
+            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">AI Governance for Engineering Teams. Platform or partnership, you choose how.</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[

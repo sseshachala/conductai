@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-export const metadata = { title: "Terms of Service — Conduct" }
+export const metadata = { title: "Terms of Service. Conduct" }
 
 export default function TermsPage() {
   return (

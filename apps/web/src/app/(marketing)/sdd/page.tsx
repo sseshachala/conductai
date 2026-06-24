@@ -74,7 +74,7 @@ function ProblemSection() {
         </h2>
         <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-14">
           The faster AI writes, the faster requirements drift. By the time you notice, the code
-          doesn&apos;t match the intent — and there&apos;s no audit trail to explain what happened.
+          doesn&apos;t match the intent, and there&apos;s no audit trail to explain what happened.
         </p>
 
         <div className="grid sm:grid-cols-3 gap-6">
@@ -82,13 +82,13 @@ function ProblemSection() {
             {
               icon: "⇌",
               title: "AI drift",
-              desc: "The AI interprets your prompt, not your requirements. Each session it starts fresh — no memory of what FR-001 actually meant last week.",
+              desc: "The AI interprets your prompt, not your requirements. Each session it starts fresh, no memory of what FR-001 actually meant last week.",
               border: "border-red-100",
             },
             {
               icon: "∅",
               title: "No traceability",
-              desc: "Which lines of code map to which decision? Nobody knows. A refactor breaks something — but nothing links the broken code back to a requirement.",
+              desc: "Which lines of code map to which decision? Nobody knows. A refactor breaks something, but nothing links the broken code back to a requirement.",
               border: "border-amber-100",
             },
             {
@@ -124,7 +124,7 @@ function PrincipleSection() {
         </h2>
         <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-14">
           Every requirement gets a number. Every line of code traces back to one.
-          The spec lives in your repo — git-versioned, human-readable, owned by your team.
+          The spec lives in your repo, git-versioned, human-readable, owned by your team.
           Conduct never owns your spec. It just enforces it.
         </p>
 
@@ -175,7 +175,7 @@ function WorkflowSection() {
       <div className="max-w-5xl mx-auto">
         <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">The workflow</p>
         <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
-          From idea to shipped code — with full traceability.
+          From idea to shipped code, with full traceability.
         </h2>
         <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-14">
           Six playbooks. One continuous workflow. Each step feeds the next.
@@ -199,7 +199,7 @@ function WorkflowSection() {
               name: "sdd-bootstrap",
               label: "Requires account",
               title: "SPEC.md → Full repo scaffold",
-              desc: "Reads your SPEC.md and commits 6 files in one push: AGENTS.md, DESIGN.md, PLAN.md, SPRINT.md, CLAUDE.md, and .conduct/spec-index.json — the machine-readable FR index that powers everything downstream.",
+              desc: "Reads your SPEC.md and commits 6 files in one push: AGENTS.md, DESIGN.md, PLAN.md, SPRINT.md, CLAUDE.md, and .conduct/spec-index.json, the machine-readable FR index that powers everything downstream.",
               color: "border-violet-300 bg-violet-50",
               badge: "bg-violet-100 text-violet-700",
               icon: "⬡",
@@ -417,7 +417,7 @@ function SpecGenSection() {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setErrorMsg(body?.detail ?? "Generation failed — please try again.")
+        setErrorMsg(body?.detail ?? "Generation failed, please try again.")
         setStage("error")
         return
       }
@@ -426,7 +426,7 @@ function SpecGenSection() {
       setTimeout(() => setStage("output"), 300)
     } catch {
       clearInterval(iv)
-      setErrorMsg("Could not reach the server — check your connection.")
+      setErrorMsg("Could not reach the server, check your connection.")
       setStage("error")
     }
   }
@@ -500,7 +500,7 @@ function SpecGenSection() {
           Generate your SPEC.md.
         </h2>
         <p className="text-center text-stone-500 text-sm mb-10">
-          No account needed. Describe what you&apos;re building — get a structured spec in ~20 seconds.
+          No account needed. Describe what you&apos;re building, get a structured spec in ~20 seconds.
         </p>
 
         <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-sm">
@@ -524,7 +524,7 @@ function SpecGenSection() {
 
           <div className="px-7 py-7">
 
-            {/* Stage 1 — Input */}
+            {/* Stage 1. Input */}
             {stage === "input" && (
               <div className="flex flex-col gap-5">
                 <div className="flex flex-col gap-2">
@@ -546,7 +546,7 @@ function SpecGenSection() {
                     placeholder="https://notion.so/... or Confluence, GitHub Epic"
                     className="w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
-                  <p className="text-xs text-stone-400">Notion, Confluence, GitHub Epic — agent extracts and normalises</p>
+                  <p className="text-xs text-stone-400">Notion, Confluence, GitHub Epic, agent extracts and normalises</p>
                 </div>
                 <button
                   onClick={handleAnalyse}
@@ -558,7 +558,7 @@ function SpecGenSection() {
               </div>
             )}
 
-            {/* Stage 1b — Asking (loading questions) */}
+            {/* Stage 1b. Asking (loading questions) */}
             {stage === "asking" && (
               <div className="flex flex-col items-center gap-4 py-8">
                 <span className="text-2xl animate-spin inline-block text-indigo-400">◈</span>
@@ -566,7 +566,7 @@ function SpecGenSection() {
               </div>
             )}
 
-            {/* Stage 2 — Clarify (dynamic questions) */}
+            {/* Stage 2. Clarify (dynamic questions) */}
             {stage === "clarify" && (
               <div className="flex flex-col gap-6">
                 <div className="rounded-xl bg-indigo-50 border border-indigo-100 px-5 py-4">
@@ -603,7 +603,7 @@ function SpecGenSection() {
               </div>
             )}
 
-            {/* Stage 2b — Generating */}
+            {/* Stage 2b. Generating */}
             {stage === "generating" && (
               <div className="flex flex-col items-center gap-6 py-6">
                 <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
@@ -626,7 +626,7 @@ function SpecGenSection() {
               </div>
             )}
 
-            {/* Stage — Error */}
+            {/* Stage. Error */}
             {stage === "error" && (
               <div className="flex flex-col gap-4">
                 <div className="rounded-xl bg-red-50 border border-red-200 px-5 py-4">
@@ -642,7 +642,7 @@ function SpecGenSection() {
               </div>
             )}
 
-            {/* Stage 3 — Output */}
+            {/* Stage 3. Output */}
             {stage === "output" && (
               <div className="flex flex-col gap-4">
 
@@ -707,7 +707,7 @@ function SpecGenSection() {
                   <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-4 flex items-center justify-between gap-4">
                     <div>
                       <p className="text-sm font-semibold text-stone-900 mb-0.5">Scaffold your repo from this spec</p>
-                      <p className="text-xs text-stone-500">Generates AGENTS.md, DESIGN.md, PLAN.md, SPRINT.md, CLAUDE.md + spec-index.json — free, no login.</p>
+                      <p className="text-xs text-stone-500">Generates AGENTS.md, DESIGN.md, PLAN.md, SPRINT.md, CLAUDE.md + spec-index.json, free, no login.</p>
                     </div>
                     <button
                       onClick={handleScaffold}
@@ -784,14 +784,14 @@ function EnforcementSection() {
         <p className="text-center text-stone-400 text-sm max-w-2xl mx-auto mb-14">
           Notion stores requirements. Jira tracks tickets. Linear manages sprints.
           None of them prevent AI from writing code with no requirement behind it.
-          Conduct does — at the git hook level.
+          Conduct does, at the git hook level.
         </p>
 
         <div className="grid sm:grid-cols-2 gap-5 mb-8">
           <div className="rounded-2xl border border-stone-700 bg-stone-800 px-7 py-6">
             <p className="text-xs font-bold text-stone-500 uppercase tracking-widest mb-4">Without Conduct</p>
             <div className="rounded-xl bg-stone-950 px-5 py-4 font-mono text-xs space-y-2">
-              <p className="text-stone-500"># git push — no checks</p>
+              <p className="text-stone-500"># git push, no checks</p>
               <p className="text-stone-400">modified: src/auth/session.ts</p>
               <p className="text-stone-400">modified: src/auth/sso.ts</p>
               <p className="text-emerald-400">✓ pushed to main</p>
@@ -802,7 +802,7 @@ function EnforcementSection() {
           <div className="rounded-2xl border border-indigo-500 bg-stone-800 px-7 py-6">
             <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-4">With Conduct SDD</p>
             <div className="rounded-xl bg-stone-950 px-5 py-4 font-mono text-xs space-y-2">
-              <p className="text-stone-500"># git push — hook runs</p>
+              <p className="text-stone-500"># git push, hook runs</p>
               <p className="text-stone-400">modified: src/auth/session.ts</p>
               <p className="text-red-400">✗ no FR reference found</p>
               <p className="text-amber-400">  hint: add [FR-002] to commit msg</p>
@@ -816,7 +816,7 @@ function EnforcementSection() {
 
         <div className="rounded-2xl border border-stone-600 bg-stone-800 px-8 py-6 text-center">
           <p className="text-stone-300 text-sm leading-relaxed">
-            The pre-merge hook lives in <code className="font-mono text-indigo-400 bg-stone-900 px-1.5 py-0.5 rounded">.conduct/hooks/pre-merge</code> — git-native, no external service required to enforce. If a team leaves Conduct, their spec and traceability data stay in the repo.
+            The pre-merge hook lives in <code className="font-mono text-indigo-400 bg-stone-900 px-1.5 py-0.5 rounded">.conduct/hooks/pre-merge</code>, git-native, no external service required to enforce. If a team leaves Conduct, their spec and traceability data stay in the repo.
           </p>
         </div>
       </div>
@@ -836,7 +836,7 @@ function SyncSection() {
         </h2>
         <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-14">
           One number traces a requirement from SPEC.md through Jira, the test file, the commit,
-          and the PR. Sync with GitHub, Jira, or Linear — bidirectionally.
+          and the PR. Sync with GitHub, Jira, or Linear, bidirectionally.
         </p>
 
         <div className="rounded-2xl border border-stone-200 bg-stone-950 overflow-hidden mb-8">
@@ -908,7 +908,7 @@ function WhyNotChatGPTSection() {
             <ul className="space-y-3">
               {[
                 "Spec lives in a chat thread",
-                "No FR numbers — just prose",
+                "No FR numbers, just prose",
                 "Nothing enforced at commit time",
                 "Disconnected from your repo and tickets",
                 "Agents ignore it the next day",
@@ -925,7 +925,7 @@ function WhyNotChatGPTSection() {
             <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-4">Conduct SDD</p>
             <ul className="space-y-3">
               {[
-                "SPEC.md committed to git — versioned forever",
+                "SPEC.md committed to git, versioned forever",
                 "FR-xxx numbers in every commit, PR, and test",
                 "Pre-commit hook blocks unlinked code",
                 "One command syncs FRs to Jira / Linear / GitHub",
@@ -965,12 +965,12 @@ function ComparisonSection() {
           </div>
           {[
             ["Write structured requirements", "Manual", "Generated + quality-checked"],
-            ["Requirements in version control", "No", "Yes — SPEC.md in git"],
+            ["Requirements in version control", "No", "Yes. SPEC.md in git"],
             ["FR numbers in code", "Convention only", "Enforced by hook"],
             ["Block PR with no spec reference", "No", "Yes"],
             ["Sync FRs to Jira / Linear", "Manual copy-paste", "Automated bidirectional"],
-            ["Detect spec drift weekly", "No", "Yes — sdd-drift-check"],
-            ["AI agents respect requirements", "No", "Yes — AGENTS.md + gate"],
+            ["Detect spec drift weekly", "No", "Yes, sdd-drift-check"],
+            ["AI agents respect requirements", "No", "Yes. AGENTS.md + gate"],
           ].map(([feature, them, us], i) => (
             <div key={feature} className={`grid grid-cols-3 px-6 py-4 ${i % 2 === 0 ? "bg-white" : "bg-stone-50"} border-b border-stone-100 last:border-0`}>
               <p className="text-sm text-stone-700 font-medium">{feature}</p>
@@ -994,7 +994,7 @@ function FooterCTASection() {
         Start with a spec. Ship with confidence.
       </h2>
       <p className="text-stone-500 mb-8 max-w-lg mx-auto leading-relaxed">
-        Generate your SPEC.md free — no account needed. Then run the full SDD workflow
+        Generate your SPEC.md free, no account needed. Then run the full SDD workflow
         inside Conduct to scaffold, enforce, and ship spec-compliant code.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

@@ -27,7 +27,7 @@ export default function BlogPost() {
             <section>
               <p>
                 The numbers from our own sessions tell the story. Across 2,221 commands, RTK saved
-                <strong> 2.8 million tokens</strong> — a 93.2% reduction. The single biggest win
+                <strong> 2.8 million tokens</strong>, a 93.2% reduction. The single biggest win
                 was <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-stone-600 text-[13px]">rtk read</code>,
                 which saved 2.4M tokens across just 42 calls. That&apos;s roughly 57,000 tokens per
                 file read, on average, filtered down to what actually matters.
@@ -41,7 +41,7 @@ export default function BlogPost() {
               <h2 className="text-xl font-bold text-stone-900 mb-3">The problem: tools are chatty</h2>
               <p>
                 AI coding tools operate by running shell commands and feeding the output back to the
-                model. The model then decides what to do next. This loop is powerful — but the
+                model. The model then decides what to do next. This loop is powerful, but the
                 raw output of most developer tools is designed for humans, not for language models.
               </p>
               <p className="mt-4">
@@ -49,7 +49,7 @@ export default function BlogPost() {
               </p>
 
               <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-5 py-4 text-sm space-y-2">
-                <p className="font-semibold text-red-700 text-xs uppercase tracking-widest mb-3">Without RTK — tokens consumed per command</p>
+                <p className="font-semibold text-red-700 text-xs uppercase tracking-widest mb-3">Without RTK, tokens consumed per command</p>
                 <div className="flex justify-between text-stone-600"><span><code className="font-mono text-[12px]">git log --oneline -20</code></span><span className="font-mono text-red-600">~800 tokens</span></div>
                 <div className="flex justify-between text-stone-600"><span><code className="font-mono text-[12px]">git diff HEAD~1</code></span><span className="font-mono text-red-600">~3,200 tokens</span></div>
                 <div className="flex justify-between text-stone-600"><span><code className="font-mono text-[12px]">pnpm install</code></span><span className="font-mono text-red-600">~2,400 tokens</span></div>
@@ -59,7 +59,7 @@ export default function BlogPost() {
 
               <p className="mt-5">
                 A busy session runs 50–100 commands. Without filtering, that&apos;s millions of
-                tokens — most of it noise the model scrolls past anyway.
+                tokens, most of it noise the model scrolls past anyway.
               </p>
             </section>
 
@@ -73,7 +73,7 @@ export default function BlogPost() {
               </p>
               <p className="mt-4">
                 For commands RTK knows about, it applies a dedicated filter. For commands it doesn&apos;t
-                recognise, it passes through unchanged. This means it&apos;s always safe to use — there&apos;s
+                recognise, it passes through unchanged. This means it&apos;s always safe to use, there&apos;s
                 no risk of accidentally silencing output RTK doesn&apos;t understand.
               </p>
 
@@ -122,12 +122,12 @@ export default function BlogPost() {
               <p>
                 The highest savings come from test runners. A typical vitest run for a large project
                 might print 800 passing test names, 40 lines of timing breakdown, a progress bar,
-                and finally — buried at the bottom — one failing test.
+                and finally, buried at the bottom, one failing test.
               </p>
               <p className="mt-4">
                 The model needs exactly one thing: what failed and why. RTK&apos;s test filter keeps
                 only failure blocks and the summary line. Everything else is discarded. That&apos;s
-                where the 99.5% figure comes from — not compression, but surgical removal of
+                where the 99.5% figure comes from, not compression, but surgical removal of
                 content that carries zero information for the task.
               </p>
 
@@ -160,7 +160,7 @@ export default function BlogPost() {
               <p>
                 RTK integrates via a hook in <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-stone-600 text-[13px]">CLAUDE.md</code>.
                 Once configured, Claude Code automatically prefixes commands with{" "}
-                <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-stone-600 text-[13px]">rtk</code> — you don&apos;t have to remember to do it manually.
+                <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-stone-600 text-[13px]">rtk</code>, you don&apos;t have to remember to do it manually.
                 The savings accumulate silently across every session.
               </p>
               <p className="mt-4">
@@ -177,7 +177,7 @@ export default function BlogPost() {
             <section>
               <h2 className="text-xl font-bold text-stone-900 mb-3">RTK as Layer 2</h2>
               <p>
-                RTK sits at Layer 2 of the Agent Booster stack — between prompt caching (Layer 1)
+                RTK sits at Layer 2 of the Agent Booster stack, between prompt caching (Layer 1)
                 and AST-level symbol routing (Layer 3). The three layers compound:
               </p>
               <ul className="mt-4 space-y-2 text-sm">
@@ -191,7 +191,7 @@ export default function BlogPost() {
                 </li>
                 <li className="flex gap-3">
                   <span className="font-mono text-stone-400 shrink-0">L3</span>
-                  <span>Agent Booster cuts what code the model reads — AST routing, smart_read, route_model.</span>
+                  <span>Agent Booster cuts what code the model reads. AST routing, smart_read, route_model.</span>
                 </li>
               </ul>
               <p className="mt-5">

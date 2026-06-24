@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-export const metadata: Metadata = { title: "Connect your AI tools to ConductGuard — Docs" }
+export const metadata: Metadata = { title: "Connect your AI tools to ConductGuard. Docs" }
 
 function Code({ children }: { children: React.ReactNode }) {
   return <code className="bg-stone-100 px-1.5 py-0.5 rounded text-sm font-mono text-stone-800">{children}</code>
@@ -30,7 +30,7 @@ export default function McpSetupDocsPage() {
       <h1 className="text-4xl font-bold text-stone-900 mb-3">Connect your AI tools to ConductGuard</h1>
       <p className="text-lg text-stone-600 leading-relaxed mb-6">
         Conduct AI Guard is a default MCP server for every workspace. It works with any client that
-        speaks MCP — Claude, Codex, Cursor, VS Code + Copilot, Devin, and more. Once a client is
+        speaks MCP. Claude, Codex, Cursor, VS Code + Copilot, Devin, and more. Once a client is
         pointed at your workspace URL, every tool call is audited and policy-enforced.
       </p>
 
@@ -42,7 +42,7 @@ export default function McpSetupDocsPage() {
         <Pre>conduct guard sync</Pre>
         <p className="text-xs text-indigo-700 mt-3">
           Covers Claude Code, Claude Desktop, Cursor, Codex CLI, Windsurf, and VS Code + Copilot.
-          Devin is cloud-only — see its section below for the URL-paste flow.
+          Devin is cloud-only, see its section below for the URL-paste flow.
         </p>
       </div>
 
@@ -55,7 +55,7 @@ export default function McpSetupDocsPage() {
         </p>
         <Pre>https://api.conductai.ai/guard/mcp?workspace_id=&lt;your-ws&gt;&amp;token=&lt;your-token&gt;</Pre>
         <p className="text-sm text-stone-500 mt-3">
-          The token is scoped to the member who copies it. Treat it like a personal access token — do not paste it in shared docs or repos.
+          The token is scoped to the member who copies it. Treat it like a personal access token, do not paste it in shared docs or repos.
         </p>
       </section>
 
@@ -99,7 +99,7 @@ export default function McpSetupDocsPage() {
       <section className="mb-12">
         <h2 className="text-2xl font-semibold text-stone-900 mb-3">Codex CLI</h2>
         <p className="text-stone-600 mb-3">
-          Run <Code>conduct guard sync</Code> — it writes the config to <Code>~/.codex/config.toml</Code>.
+          Run <Code>conduct guard sync</Code>, it writes the config to <Code>~/.codex/config.toml</Code>.
           Or add the block manually:
         </p>
         <Pre>{`# ~/.codex/config.toml
@@ -183,7 +183,7 @@ url = "https://api.conductai.ai/guard/mcp?workspace_id=<your-ws>&token=<your-tok
         <ul className="list-disc pl-6 space-y-2 text-stone-700">
           <li>Every tool call goes through ConductGuard <strong>before</strong> the model can execute it.</li>
           <li>Policy rules (block / warn / audit) are applied based on your workspace's active skill packs.</li>
-          <li>Spend budgets are checked per-developer and per-team — runs are blocked when limits are exceeded.</li>
+          <li>Spend budgets are checked per-developer and per-team, runs are blocked when limits are exceeded.</li>
           <li>Activity is logged to <a href="/guard/activity" className="text-indigo-600 underline">Guard → Activity</a> with the rule that fired and the decision.</li>
         </ul>
       </section>
@@ -193,7 +193,7 @@ url = "https://api.conductai.ai/guard/mcp?workspace_id=<your-ws>&token=<your-tok
         <div className="space-y-4 text-stone-700">
           <div>
             <p className="font-semibold">Tool calls aren't getting enforced.</p>
-            <p className="text-sm text-stone-600 mt-1">For Claude.ai and Claude for Work, make sure you typed <Code>load mcp</Code> in the chat — MCP servers are per-conversation. For Codex / Cursor / Desktop, restart the client after editing config.</p>
+            <p className="text-sm text-stone-600 mt-1">For Claude.ai and Claude for Work, make sure you typed <Code>load mcp</Code> in the chat. MCP servers are per-conversation. For Codex / Cursor / Desktop, restart the client after editing config.</p>
           </div>
           <div>
             <p className="font-semibold">Token revoked or rotated.</p>

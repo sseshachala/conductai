@@ -3,7 +3,7 @@ import HtmlPrototypeFrame from "@/components/HtmlPrototypeFrame"
 
 export const metadata: Metadata = {
   title: "AI Engineering Tools Compared | Conduct AI",
-  description: "Honest side-by-side comparison of Conduct AI, GitHub Copilot, Devin, CodeRabbit, LinearB, Bito, Amazon Q, and xHawk — features, trade-offs, and which tool fits your team.",
+  description: "Honest side-by-side comparison of Conduct AI, GitHub Copilot, Devin, CodeRabbit, LinearB, Bito, Amazon Q, and xHawk, features, trade-offs, and which tool fits your team.",
   openGraph: {
     title: "AI Engineering Tools Compared | Conduct AI",
     description: "Honest side-by-side comparison of the leading AI engineering tools. Features, trade-offs, and decision guide.",

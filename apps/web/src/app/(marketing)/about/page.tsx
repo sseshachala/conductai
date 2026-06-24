@@ -16,7 +16,7 @@ export default function AboutPage() {
           Conduct AI is built by engineers who ran cloud infrastructure
           and observability teams for the better part of a decade. Before
           this we built and ran <strong className="text-stone-900 font-semibold">Xervmon</strong>,
-          a cloud management platform — the kind of product that taught us
+          a cloud management platform, the kind of product that taught us
           exactly where governance tools break under pressure, where audit
           trails go quiet at the moment they&apos;re needed, and where the
           gap between a written policy and an enforced policy can swallow
@@ -27,7 +27,7 @@ export default function AboutPage() {
           Xervmon didn&apos;t survive. The market wasn&apos;t there yet.
           What did survive was a very specific understanding of how
           engineering teams actually make decisions when things break,
-          and what kind of safety net is — and isn&apos;t — there when
+          and what kind of safety net is, and isn&apos;t, there when
           they do.
         </p>
 
@@ -72,7 +72,7 @@ export default function AboutPage() {
               label: "Learn more",
             },
             {
-              name: "RTK — Rust Token Killer",
+              name: "RTK: Rust Token Killer",
               desc: "Strips noise from git, build, and test output before it reaches the model. 93% savings in production.",
               href: "/blog/rtk-how-we-cut-93-percent-of-cli-tokens",
               label: "Read post",

@@ -140,8 +140,8 @@ function EvalContent({ getToken, workspaceId }: { getToken: (() => Promise<strin
         if (!playbooksRes.ok) {
           const status = playbooksRes.status
           setError(
-            status === 401 ? "Not authorised — check your session." :
-            status === 403 ? "Forbidden — workspace role may be insufficient." :
+            status === 401 ? "Not authorised, check your session." :
+            status === 403 ? "Forbidden, workspace role may be insufficient." :
             status === 500 ? "The eval runner returned an error (500). Check the API logs." :
             `Eval endpoint returned ${status}.`
           )
@@ -150,7 +150,7 @@ function EvalContent({ getToken, workspaceId }: { getToken: (() => Promise<strin
 
         setPlaybooks(await playbooksRes.json())
       } catch {
-        if (!cancelled) setError("Network error — could not reach the API.")
+        if (!cancelled) setError("Network error, could not reach the API.")
       } finally {
         if (!cancelled) setLoading(false)
       }

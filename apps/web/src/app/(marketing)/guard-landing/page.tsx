@@ -29,17 +29,17 @@ function HeroSection() {
         <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Guard is how you govern them.</span>
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-4">
-        Most governance stops at day one. Guard gets smarter every session — learning your codebase, your team&apos;s patterns, and your risk profile over time.
+        Most governance stops at day one. Guard gets smarter every session. It learns your codebase, your team&apos;s patterns, and your risk profile over time.
       </p>
       <p className="text-base text-stone-600 max-w-2xl mx-auto leading-relaxed mb-3">
-        Other AI governance tools want you to import an SDK and wrap every model call. Guard installs in 10 minutes and intercepts every AI tool your team already uses — Claude Code, Cursor, Copilot, Codex.
+        Other AI governance tools want you to import an SDK and wrap every model call. Guard installs in 10 minutes. It intercepts every AI tool your team already uses: Claude Code, Cursor, Copilot, Codex.
       </p>
       <p className="text-base text-indigo-600 italic max-w-2xl mx-auto leading-relaxed mb-8">
         GitHub gives the CISO a setting. ConductGuard gives them enforcement.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <a href="/sign-up" className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center">
-          Start Free — See It Yourself
+          Start Free
         </a>
         <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener" className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-base font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center">
           Book a Demo
@@ -159,14 +159,14 @@ function Phase2Section() {
       badge: "BLOCKED",
       badgeStyle: "bg-red-100 text-red-700",
       rule: "approve-prod-deploy",
-      headline: "Force-deploy to production — intercepted",
+      headline: "Force-deploy to production, intercepted",
       detail: "AI attempted vercel deploy --prod --force at 3:11pm on a Friday. Guard blocked it before it executed.",
     },
     {
       badge: "BLOCKED",
       badgeStyle: "bg-red-100 text-red-700",
       rule: "no-secret-in-commit-msg",
-      headline: "Secret embedded in git commit — caught",
+      headline: "Secret embedded in git commit, caught",
       detail: "AI tried to commit code with a credential token in the commit message. Fired twice in the same session.",
     },
     {
@@ -255,21 +255,21 @@ function Phase3Section() {
                 <span className="w-[7px] h-[7px] rounded-full bg-violet-700 flex-shrink-0 mt-[5px]" />
                 <span className="text-sm">
                   <span className="font-semibold text-stone-900">Knows which files are fragile</span>
-                  <span className="text-stone-500"> — Run 1 explores. Run 10 goes straight to the right file.</span>
+                  <span className="text-stone-500">. Run 1 explores. Run 10 goes straight to the right file.</span>
                 </span>
               </li>
               <li className="flex items-start gap-2.5">
                 <span className="w-[7px] h-[7px] rounded-full bg-violet-700 flex-shrink-0 mt-[5px]" />
                 <span className="text-sm">
                   <span className="font-semibold text-stone-900">Avoids repeating past mistakes</span>
-                  <span className="text-stone-500"> — If a fix caused a regression last time, the agent knows.</span>
+                  <span className="text-stone-500">. If a fix caused a regression last time, the agent knows.</span>
                 </span>
               </li>
               <li className="flex items-start gap-2.5">
                 <span className="w-[7px] h-[7px] rounded-full bg-violet-700 flex-shrink-0 mt-[5px]" />
                 <span className="text-sm">
                   <span className="font-semibold text-stone-900">Compounds across every run</span>
-                  <span className="text-stone-500"> — A workflow that has run 50 times on your repo is more valuable than a fresh install anywhere else.</span>
+                  <span className="text-stone-500">. A workflow that has run 50 times on your repo is more valuable than a fresh install anywhere else.</span>
                 </span>
               </li>
             </ul>
@@ -297,21 +297,21 @@ function Phase3Section() {
                 <span className="w-[7px] h-[7px] rounded-full bg-violet-400 flex-shrink-0 mt-[5px]" />
                 <span className="text-sm">
                   <span className="font-semibold text-white">Knows how each developer works</span>
-                  <span style={{ color: "rgba(255,255,255,0.45)" }}> — Sarah always requires tests. The security lead flags credential exposure.</span>
+                  <span style={{ color: "rgba(255,255,255,0.45)" }}>. Sarah always requires tests. The security lead flags credential exposure.</span>
                 </span>
               </li>
               <li className="flex items-start gap-2.5">
                 <span className="w-[7px] h-[7px] rounded-full bg-violet-400 flex-shrink-0 mt-[5px]" />
                 <span className="text-sm">
                   <span className="font-semibold text-white">Captured across all AI tools</span>
-                  <span style={{ color: "rgba(255,255,255,0.45)" }}> — One CLI hook. Every session adds to the team&apos;s shared context.</span>
+                  <span style={{ color: "rgba(255,255,255,0.45)" }}>. One CLI hook. Every session adds to the team&apos;s shared context.</span>
                 </span>
               </li>
               <li className="flex items-start gap-2.5">
                 <span className="w-[7px] h-[7px] rounded-full bg-violet-400 flex-shrink-0 mt-[5px]" />
                 <span className="text-sm">
                   <span className="font-semibold text-white">The agent behaves like a team member</span>
-                  <span style={{ color: "rgba(255,255,255,0.45)" }}> — Not a contractor who just showed up. An engineer who&apos;s been here for months.</span>
+                  <span style={{ color: "rgba(255,255,255,0.45)" }}>. Not a contractor who just showed up. An engineer who&apos;s been here for months.</span>
                 </span>
               </li>
             </ul>
@@ -337,10 +337,10 @@ function Phase3Section() {
             An agent that knows your codebase and your team.
           </h3>
           <p className="text-[15px] leading-relaxed mb-6 max-w-lg mx-auto" style={{ color: "rgba(255,255,255,0.7)" }}>
-            No other automation tool has either. GitHub Actions has zero memory. Copilot has no team context. Conduct compounds both — silently, continuously, from day one.
+            No other automation tool has either. GitHub Actions has zero memory. Copilot has no team context. Conduct compounds both: silently, continuously, from day one.
           </p>
           <a href="/sign-up" className="inline-flex items-center rounded-xl bg-white text-violet-700 px-7 py-3.5 text-base font-bold hover:bg-violet-50 transition-colors">
-            Start Free — See It Yourself
+            Start Free
           </a>
         </div>
 
@@ -363,7 +363,7 @@ function FinalCTASection() {
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <a href="/sign-up" className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center">
-            Start Free — See It Yourself
+            Start Free
           </a>
           <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener" className="rounded-xl border border-white/40 text-white px-7 py-3.5 text-base font-semibold hover:bg-white/10 transition-colors w-full sm:w-auto text-center">
             Book a Demo

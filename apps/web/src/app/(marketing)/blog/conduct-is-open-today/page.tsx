@@ -28,7 +28,7 @@ export default function BlogPost() {
           <figure className="mb-10 -mx-2 sm:-mx-6 md:-mx-10">
             <img
               src="/blog/launch-hero.png"
-              alt="Conduct Guard dashboard — Overview, Token Abuse Guardrails, By AI tool table with a sample 5-developer team"
+              alt="Conduct Guard dashboard. Overview, Token Abuse Guardrails, By AI tool table with a sample 5-developer team"
               className="w-full rounded-2xl border border-stone-200 shadow-sm"
             />
             <figcaption className="text-xs text-stone-400 text-center mt-3">

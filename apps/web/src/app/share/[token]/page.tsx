@@ -158,7 +158,7 @@ function SessionReportView({ data, expiresAt }: { data: SessionReportData; expir
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, color: "#78716c", marginBottom: 6 }}>
-                {data.planning_ratio >= 0.4 ? "Strong planning behaviour — agent spends significant time on design before executing." :
+                {data.planning_ratio >= 0.4 ? "Strong planning behaviour, agent spends significant time on design before executing." :
                  data.planning_ratio >= 0.2 ? "Moderate planning. Agent balances thinking with execution." :
                  "Execution-heavy. Agent moves fast but plans less upfront."}
               </div>
@@ -210,7 +210,7 @@ function SessionReportView({ data, expiresAt }: { data: SessionReportData; expir
         <div style={{ marginTop: 40, background: "#fff", border: "1px solid #e7e5e4", borderRadius: 14, padding: "24px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#1c1917", marginBottom: 4 }}>Track your whole team with Conduct Guard</div>
-            <div style={{ fontSize: 12, color: "#78716c" }}>Policies, spend limits, and session reports — MDM for AI coding tools.</div>
+            <div style={{ fontSize: 12, color: "#78716c" }}>Policies, spend limits, and session reports. MDM for AI coding tools.</div>
           </div>
           <a
             href="https://conductai.ai"

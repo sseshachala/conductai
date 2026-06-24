@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-export const metadata = { title: "Privacy Policy — Conduct" }
+export const metadata = { title: "Privacy Policy. Conduct" }
 
 export default function PrivacyPage() {
   return (
