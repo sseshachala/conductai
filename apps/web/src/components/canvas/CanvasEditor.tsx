@@ -678,7 +678,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           { headers }
         )
         if (!issueRes.ok) {
-          // Surface the actual server error instead of a generic suggestion.
+          // Read server detail + GitHub message buried inside it
           let serverDetail = ""
           try {
             const body = await issueRes.json()
@@ -686,15 +686,30 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           } catch {
             try { serverDetail = await issueRes.text() } catch { /* give up */ }
           }
-          const hint = issueRes.status === 404
-            ? " — connect a GitHub credential in Settings → Environments"
-            : issueRes.status === 401 || issueRes.status === 403
-            ? " — token rejected by GitHub (check scopes: repo, issues:read)"
-            : ""
+          // Translate known GitHub errors into actionable user-facing text
+          const friendly = (() => {
+            if (issueRes.status === 404) {
+              return `No GitHub credential connected for this workspace. Add one in Settings → Environments and reload.`
+            }
+            if (/Resource not accessible by personal access token/i.test(serverDetail)) {
+              return `Your GitHub token does not have permission to read issues on ${repo}. Fine-grained PAT: grant Repository → ${repo} and Permissions → Issues (Read). Classic PAT: include the 'repo' scope (private) or 'public_repo' scope (public). Then reconnect in Settings → Environments.`
+            }
+            if (/Bad credentials/i.test(serverDetail)) {
+              return `GitHub rejected your token as invalid or expired. Reconnect in Settings → Environments.`
+            }
+            if (/API rate limit exceeded/i.test(serverDetail)) {
+              return `GitHub API rate limit hit. Wait a few minutes or use an authenticated token with higher limits.`
+            }
+            if (/Not Found/i.test(serverDetail) && issueRes.status === 404) {
+              return `${repo} doesn't exist or your token can't see it. Check the repo name and PAT access scope.`
+            }
+            // Fallback — show the raw error if we don't have a translation
+            return `GitHub returned HTTP ${issueRes.status}${serverDetail ? `: ${serverDetail.slice(0, 200)}` : ""}`
+          })()
           setValidationErrors([{
             blockId: triggerNode.id,
             label: (triggerNode.data as BlockNodeData).label,
-            message: `Could not fetch issues from ${repo} (HTTP ${issueRes.status})${hint}${serverDetail ? `: ${serverDetail.slice(0, 200)}` : ""}`,
+            message: friendly,
           }])
           setRunning("idle")
           return
