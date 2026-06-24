@@ -25,7 +25,8 @@ This spec consolidates the existing `conduct_api_keys` table with the new short-
 | Kind | Purpose | Lifetime | Where stored | Surface |
 |---|---|---|---|---|
 | **Platform key** | Durable identity, server-to-server | Configurable (default 1 year) | API caller's secret manager | `conduct_api_keys` table (already exists) |
-| **Member token** | Personal dev workstation MCP | 90 days | `~/.conduct/config.yaml` | `guard_member_config` table |
+| **Refresh token** | Long-lived credential, mints access tokens | 90 days | `~/.conduct/credentials.yaml` (encrypted) | `guard_refresh_tokens` table |
+| **Access token** | Personal dev workstation MCP — what client configs hold | 7 days | `~/.conduct/credentials.yaml` (refreshed in place) | `guard_member_config` table (renamed `access_token`) |
 | **Session token** | One Guard MCP connection | 24 hours | Embedding app's process memory | New table `guard_session_tokens` |
 
 ### What stays the same
@@ -41,29 +42,46 @@ This spec consolidates the existing `conduct_api_keys` table with the new short-
 
 ## 3. The three issuance flows
 
-### Flow A — Personal dev workstation
+### Flow A — Personal dev workstation (refresh-token model)
 
-The dev runs `conduct login` once, then `conduct guard sync` periodically.
+The dev runs `conduct login` once. A daemon (or `conduct guard sync` cron) keeps the access token fresh transparently.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ conduct login                                                            │
 │   → opens browser to https://conductai.ai/cli-auth                       │
 │   → user signs in via Clerk                                              │
-│   → backend issues platform_key, returns to CLI                          │
-│   → CLI writes to ~/.conduct/config.yaml                                 │
+│   → backend issues:                                                      │
+│       refresh_token  (90d TTL, never sent to MCP clients)                │
+│       access_token   (7d TTL, what MCP configs hold)                     │
+│   → CLI writes both to ~/.conduct/credentials.yaml (encrypted)           │
+│   → CLI writes MCP configs to Claude Code, Cursor, Codex, etc.            │
+│       with Authorization: Bearer <access_token> in headers               │
 │                                                                          │
-│ conduct guard sync                                                        │
-│   → CLI calls POST /guard/tokens/refresh with platform_key               │
-│   → backend mints new member_token (90-day TTL)                          │
-│   → CLI writes MCP config to Claude Code, Cursor, Codex, etc.            │
-│   → with Authorization: Bearer <member_token> in headers                 │
+│ Daemon — `conduct daemon` or cron'd `conduct guard sync`                 │
+│   → wakes every 4 hours                                                  │
+│   → if access_token has <2 days left:                                    │
+│       POST /guard/tokens/access  (Bearer <refresh_token>)                │
+│       → backend mints new 7d access_token                                │
+│       → CLI rewrites MCP configs in place                                │
+│   → if refresh_token has <7 days left, banner:                           │
+│       "Conduct login expires in N days — run `conduct login` to renew."  │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Refresh cadence:** automatic on every `conduct guard sync` (which devs run when policies change). If token has >30 days left, no-op; else mint fresh.
+**TTLs and why:**
+- `refresh_token` — 90 days. Long enough that `conduct login` is quarterly, not weekly. Stored encrypted at rest on the dev's machine. Never sent to MCP clients.
+- `access_token` — 7 days. Tight leak window. Survives weekends + holidays. 5-day refresh window means daemon can miss 2-3 refresh attempts without breaking the dev.
 
-**Failure mode:** member_token expired and dev hasn't run `guard sync` → MCP client gets 401 → friendly error in client: *"Run `conduct guard sync` to refresh."*
+**Refresh cadence:** daemon attempts refresh when access_token has <2 days left. Industry-aligned with Auth0 / GitHub OAuth refresh patterns.
+
+**Failure modes:**
+- access_token expired + no internet → MCP client gets 401 → "Run `conduct guard sync` when online."
+- refresh_token expired (90d lapse) → `conduct guard sync` returns 401 → "Run `conduct login` to re-authenticate."
+- refresh_token revoked (security incident) → next refresh fails immediately → dev sees revocation notice in CLI.
+
+**Why not 24h access tokens (originally considered):**
+24h optimizes for the stolen-laptop scenario at the cost of breaking every dev who goes offline for a weekend. 7d is the right balance — small leak window, humane offline behavior, 7× fewer server-side refresh ops.
 
 ### Flow B — CI / headless agent
 

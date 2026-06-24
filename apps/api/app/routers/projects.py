@@ -254,13 +254,17 @@ def list_projects(
         """), {"ws": str(project_id), "uid": user_id, "token": member_token, "now": now})
 
         # 6. Pre-seed Conduct AI Guard MCP server
+        # Token goes in encrypted_auth (rendered as Authorization: Bearer header),
+        # not in URL (#800 — avoids leaking in access logs).
+        from app.core.crypto import encrypt as _enc_token
+        _enc_bearer = _enc_token({"header": "Authorization", "value": f"Bearer {member_token}"})
         db.execute(text("""
-            INSERT INTO mcp_servers (id, workspace_id, environment_id, name, url, transport, created_at)
+            INSERT INTO mcp_servers (id, workspace_id, environment_id, name, url, transport, encrypted_auth, created_at)
             VALUES (gen_random_uuid(), :ws, NULL, 'Conduct AI Guard',
-                    'https://api.conductai.ai/guard/mcp?workspace_id=' || :ws || '&token=' || :token,
-                    'http', :now)
+                    'https://api.conductai.ai/guard/mcp?workspace_id=' || :ws,
+                    'http', :auth, :now)
             ON CONFLICT DO NOTHING
-        """), {"ws": str(project_id), "token": member_token, "now": now})
+        """), {"ws": str(project_id), "auth": _enc_bearer, "now": now})
 
         db.commit()
         return [ProjectOut(id=str(project_id), name="Engineering", owner_id=user_id,

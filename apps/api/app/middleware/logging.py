@@ -18,7 +18,11 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         duration_ms = int((time.monotonic() - start) * 1000)
 
-        # Skip health check noise
+        # Skip health check noise. Path-only logging — never include query
+        # string per issue #801 (avoids leaking legacy ?token= URLs into
+        # structured logs). Render's nginx access log is outside our control;
+        # the long-term mitigation is #800 (header auth) + #810 (drop URL
+        # fallback when Claude.ai web supports headers).
         if request.url.path not in ("/health", "/health/sandbox"):
             log.info(
                 "http.request",
