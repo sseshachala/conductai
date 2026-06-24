@@ -422,12 +422,17 @@ def _gh_headers(token: str) -> dict:
 def list_github_issues(
     repo: str,
     label: str,
+    environment_id: str | None = None,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    """Return open issues in repo with the given label using the stored GitHub token."""
-    token = _github_token(workspace_id, db)
+    """Return open issues in repo with the given label using the stored GitHub token.
+
+    Passes environment_id through to _git_token so a freshly-updated credential
+    in a specific environment is honored rather than a stale workspace-level one.
+    """
+    token = _github_token(workspace_id, db, environment_id)
     owner, repo_name = repo.split("/", 1)
     try:
         r = httpx.get(
