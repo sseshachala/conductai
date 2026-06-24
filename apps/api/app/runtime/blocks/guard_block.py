@@ -157,6 +157,16 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
 
         if action == "block":
             _record_event(v, "blocked")
+            # Mark state so the runs list can show a "Blocked" badge instead of "Failed"
+            try:
+                state["__governance"] = {
+                    "blocked":   True,
+                    "rule_id":   v_rule_id,
+                    "rule_message": message,
+                    "reason_code":  "GUARD_POLICY_BLOCKED",
+                }
+            except Exception:
+                pass
             db.commit()
             raise RuntimeError(f"[ConductGuard] Blocked by policy '{v_rule_id}': {message}")
 
