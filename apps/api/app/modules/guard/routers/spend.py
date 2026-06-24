@@ -247,10 +247,14 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
     ]
 
     # By AI tool
+    # COALESCE(tokens_after, tokens_before) — blocked events (e.g. workflow Guard
+    # intercepts) have no tokens_after because the LLM was never called, but they
+    # do carry an estimated tokens_before. Falling back surfaces prevented exposure
+    # instead of showing 0.
     tool_rows = (
         db.query(
             GuardAuditEvent.ai_tool,
-            func.coalesce(func.sum(GuardAuditEvent.tokens_after), 0).label("tokens_after"),
+            func.coalesce(func.sum(func.coalesce(GuardAuditEvent.tokens_after, GuardAuditEvent.tokens_before, 0)), 0).label("tokens_after"),
             func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("cost_usd"),
         )
         .filter(
