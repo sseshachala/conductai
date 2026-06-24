@@ -76,3 +76,10 @@ export function duration(startedAt: string | null, completedAt: string | null, s
   const totalSecs = Math.floor(ms / 1000)
   return `${Math.floor(totalSecs / 60)}m ${totalSecs % 60}s`
 }
+
+// Returns the status used for badge rendering — promotes a guard-blocked
+// run from "failed" to "blocked" so the UI can render the right badge.
+// Used everywhere status badges are shown so the logic lives in one place.
+export function effectiveStatus(run: { status: string; governance?: { blocked?: boolean } | null }): string {
+  return run.governance?.blocked ? "blocked" : run.status
+}

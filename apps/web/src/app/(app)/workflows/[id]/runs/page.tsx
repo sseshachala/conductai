@@ -5,12 +5,13 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import StatusBadge from "@/components/runs/StatusBadge"
-import { isActive, duration, timeAgo } from "@/lib/runUtils"
+import { isActive, duration, timeAgo, effectiveStatus } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Run {
   id: string
   status: string
+  governance?: { blocked?: boolean } | null
   triggered_by: string | null
   started_at: string | null
   completed_at: string | null
@@ -167,7 +168,7 @@ export default function RunsPage() {
                   className="run-row-link"
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                    <StatusBadge status={run.status} />
+                    <StatusBadge status={effectiveStatus(run)} />
                     {/* Outcome text in left cell only — no trigger_summary duplication (#12) */}
                     {run.trigger_summary ? (
                       <span

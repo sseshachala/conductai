@@ -6,7 +6,7 @@ import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import StatusBadge from "@/components/runs/StatusBadge"
-import { needsAttention, isActive, formatTrigger, timeAgo, duration } from "@/lib/runUtils"
+import { needsAttention, isActive, formatTrigger, timeAgo, duration, effectiveStatus } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Run {
@@ -381,7 +381,7 @@ function RunRow({ run }: RunRowProps) {
 
       {/* Outcome — StatusBadge + trigger_summary text here only (#12) */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-        <StatusBadge status={run.governance?.blocked ? "blocked" : run.status} />
+        <StatusBadge status={effectiveStatus(run)} />
         <span style={{ fontSize: 12.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {outcomeText(run.status, run.trigger_summary)}
         </span>

@@ -25,6 +25,7 @@ import "@xyflow/react/dist/style.css"
 
 import BlockNode, { type BlockNodeData } from "./BlockNode"
 import StatusBadge from "@/components/runs/StatusBadge"
+import { effectiveStatus } from "@/lib/runUtils"
 import BlockEditor from "./BlockEditor"
 import BlockPalette from "./BlockPalette"
 import RunInputsModal from "./RunInputsModal"
@@ -1424,7 +1425,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                       className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all text-left w-full"
                     >
                       <div className="flex items-center gap-3">
-                        <StatusBadge status={run.status} />
+                        <StatusBadge status={effectiveStatus(run)} />
                         <span className="text-sm text-stone-700 font-mono">{run.id.slice(0, 8)}…</span>
                         {run.triggered_by && (
                           <span className="text-xs text-stone-400">{run.triggered_by}</span>

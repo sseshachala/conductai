@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import AgentStatusPill from "@/components/workflows/AgentStatusPill"
-import { formatTrigger, timeAgo, duration } from "@/lib/runUtils"
+import { formatTrigger, timeAgo, duration, effectiveStatus } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface Workflow {
@@ -30,6 +30,7 @@ interface Run {
   workflow_id: string
   workflow_name: string
   status: string
+  governance?: { blocked?: boolean } | null
   triggered_by: string | null
   started_at: string | null
   completed_at: string | null
@@ -552,7 +553,7 @@ function ProjectContent({ getToken, currentUserId }: {
                     <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{timeAgo(run.created_at)}</div>
                   </div>
                   <div className="mono" style={{ fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{formatTrigger(run.triggered_by)}</div>
-                  <RunStatusBadge status={run.status} />
+                  <RunStatusBadge status={effectiveStatus(run)} />
                   <div className="mono" style={{ fontSize: 12, color: "var(--text-3)" }}>{duration(run.started_at, run.completed_at)}</div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{timeAgo(run.started_at ?? run.created_at)}</div>
                 </div>
