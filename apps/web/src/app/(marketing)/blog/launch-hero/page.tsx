@@ -158,19 +158,23 @@ export default function LaunchHero() {
 
         {/* ─── Panel 3: By AI tool + recent events ───────────────── */}
         <section className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-          <div className="px-7 py-4 border-b border-stone-100">
+          <div className="px-7 py-4 border-b border-stone-100 flex items-center gap-3">
             <div className="text-base font-semibold text-stone-900">By AI tool</div>
+            <span className="font-mono text-[10px] text-stone-400">empty tools hidden · hover badge for telemetry coverage</span>
           </div>
-          <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr_1.6fr] gap-4 px-7 py-3 bg-stone-50 border-b border-stone-100 text-[10px] font-semibold uppercase tracking-widest text-stone-400">
-            <div>Tool</div><div>Tokens used</div><div>Est. cost</div><div>Saved</div><div>% of total</div>
+          <div className="grid grid-cols-[1.4fr_0.9fr_1fr_1fr_1fr_1.4fr] gap-4 px-7 py-3 bg-stone-50 border-b border-stone-100 text-[10px] font-semibold uppercase tracking-widest text-stone-400">
+            <div>Tool</div><div>Coverage</div><div>Tokens used</div><div>Est. cost</div><div>Saved</div><div>% of total</div>
           </div>
           {[
-            { tool: "claude_code", used: "56k", cost: "$30.8596", saved: "10.4M", pct: 100 },
-            { tool: "workflow",    used: "0",   cost: "$0.0000",   saved: "13k",   pct: 0   },
-            { tool: "platform",    used: "0",   cost: "$0.0000",   saved: "—",     pct: 0   },
+            { tool: "claude_code", coverage: "full", used: "56k", cost: "$30.8596", saved: "10.4M", pct: 73 },
+            { tool: "codex",       coverage: "full", used: "21k", cost: "$11.2480", saved: "3.1M",  pct: 27 },
+            { tool: "workflow",    coverage: "full", used: "0",   cost: "$0.0000",   saved: "13k",   pct: 0  },
           ].map(r => (
-            <div key={r.tool} className="grid grid-cols-[1.4fr_1fr_1fr_1fr_1.6fr] gap-4 px-7 py-3 border-b border-stone-100 items-center text-sm">
+            <div key={r.tool} className="grid grid-cols-[1.4fr_0.9fr_1fr_1fr_1fr_1.4fr] gap-4 px-7 py-3 border-b border-stone-100 items-center text-sm">
               <div className="font-mono font-semibold text-stone-900">{r.tool}</div>
+              <div>
+                <span className="inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full text-emerald-700 bg-emerald-50 border border-emerald-200">{r.coverage}</span>
+              </div>
               <div className="font-mono text-stone-600">{r.used}</div>
               <div className="font-mono text-stone-600">{r.cost}</div>
               <div className="font-mono text-emerald-700">{r.saved}</div>
