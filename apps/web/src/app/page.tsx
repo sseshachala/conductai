@@ -132,7 +132,7 @@ function HeroSection() {
 /* ─── Trust Bar ────────────────────────────────────────────────────────── */
 
 function TrustBarSection() {
-  const integrations = ["GitHub", "Slack", "Linear", "Jira", "Claude", "GPT-4.1", "Gemini", "VS Code"]
+  const integrations = ["GitHub", "Slack", "Linear", "Jira", "Claude", "GPT", "Gemini", "VS Code"]
   return (
     <div className="border-y border-stone-100 bg-stone-50 py-5 px-6">
       <div className="max-w-5xl mx-auto text-center">
@@ -295,7 +295,7 @@ function TwoLanesSection() {
                 "CI failure triage · flaky test detection",
                 "Release notes · postmortem drafter · docs drift",
                 "YAML you own, no vendor lock-in",
-                "Runs on Claude, GPT-4.1, or Gemini",
+                "Runs on Claude, GPT, or Gemini",
               ].map(f => (
                 <li key={f} className="flex items-center gap-2.5 text-sm text-stone-700">
                   <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">✓</span>
