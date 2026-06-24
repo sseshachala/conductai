@@ -134,6 +134,11 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
     now        = datetime.now(timezone.utc)
     warnings   = []
 
+    # Rough estimate of what the LLM call would have consumed if Guard hadn't
+    # intercepted. Surfaces "prevented exposure" in the spend rollup so blocked
+    # workflow events don't look free.
+    estimated_input_tokens = max(1, len(context_json) // 4)
+
     def _record_event(policy: dict, decision: str) -> None:
         try:
             db.add(GuardAuditEvent(
@@ -141,6 +146,7 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
                 ai_tool="workflow",
                 tool_call=block_id,
                 input_summary=context_json[:500],
+                tokens_before=estimated_input_tokens,
                 decision=decision,
                 rule_id=policy.get("id") or policy.get("rule_id"),
                 rule_message=policy.get("message"),
