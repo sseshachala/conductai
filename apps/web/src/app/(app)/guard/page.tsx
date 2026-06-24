@@ -396,21 +396,25 @@ function SavingsStatCard({
 
 function ByToolTable({ events }: { events: GuardEvent[] }) {
   const byTool = useMemo(() => {
-    const map = new Map<string, { tokens: number; cost: number }>()
+    const map = new Map<string, { tokens: number; cost: number; saved: number }>()
     for (const ev of events) {
       const key = canonicalTool(ev.ai_tool || "unknown")
-      const prev = map.get(key) ?? { tokens: 0, cost: 0 }
+      const prev = map.get(key) ?? { tokens: 0, cost: 0, saved: 0 }
+      const tokensBefore = ev.tokens_before ?? 0
+      const tokensAfter  = ev.tokens_after  ?? 0
       map.set(key, {
         tokens: prev.tokens + ((ev.tokens_after ?? ev.tokens_input ?? 0)),
         cost:   prev.cost   + (ev.cost_usd_after ?? 0),
+        saved:  prev.saved  + Math.max(0, tokensBefore - tokensAfter),
       })
     }
     const total = Array.from(map.values()).reduce((s, v) => s + v.tokens, 0)
     return Array.from(map.entries())
-      .map(([tool, { tokens, cost }]) => ({
+      .map(([tool, { tokens, cost, saved }]) => ({
         tool,
         tokens,
         cost,
+        saved,
         pct: total > 0 ? Math.round((tokens / total) * 100) : 0,
       }))
       .sort((a, b) => b.tokens - a.tokens)
@@ -430,19 +434,22 @@ function ByToolTable({ events }: { events: GuardEvent[] }) {
         By AI tool
       </div>
       {/* Header */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-        {["Tool", "Tokens used", "Est. cost", "% of total"].map((h, i) => (
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1.6fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+        {["Tool", "Tokens used", "Est. cost", "Saved", "% of total"].map((h, i) => (
           <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
         ))}
       </div>
       {byTool.map(t => (
         <div
           key={t.tool}
-          style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--border)", alignItems: "center" }}
+          style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1.6fr", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--border)", alignItems: "center" }}
         >
           <div className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{t.tool}</div>
           <div className="mono" style={{ fontSize: 13, color: "var(--text-2)" }}>{fmtTokens(t.tokens)}</div>
           <div className="mono" style={{ fontSize: 13, color: "var(--text-2)" }}>${t.cost.toFixed(4)}</div>
+          <div className="mono" style={{ fontSize: 13, color: "#16a34a" }}>
+            {t.saved > 0 ? fmtTokens(t.saved) : "—"}
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
             <div style={{ flex: 1, height: 8, borderRadius: 6, background: "var(--surface-3)", overflow: "hidden" }}>
               <div style={{ width: `${t.pct}%`, height: "100%", background: "var(--accent)", borderRadius: 6 }} />
