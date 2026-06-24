@@ -7,7 +7,7 @@ import Link from "next/link"
 import RunTrace from "@/components/runs/RunTrace"
 import ConversationTrace from "@/components/runs/ConversationTrace"
 import AppShell from "@/components/AppShell"
-import { statusStyle, formatTrigger, duration, isTerminal, isActive, isAwaiting } from "@/lib/runUtils"
+import { statusStyle, formatTrigger, duration, isTerminal, isActive, isAwaiting, effectiveStatus } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 // ── Tab error boundary ────────────────────────────────────────────────────────
@@ -33,6 +33,7 @@ class TabErrorBoundary extends Component<{ children: React.ReactNode }, { hasErr
 interface RunMeta {
   id: string
   status: string
+  governance?: { blocked?: boolean } | null
   triggered_by: string | null
   trigger_summary: string | null
   started_at: string | null
@@ -178,7 +179,7 @@ export default function RunDetailPage() {
   )
   if (!run) return <AppShell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 256 }}><p style={{ fontSize: 14, color: "var(--text-3)" }}>{fetchError ?? "Run not found."}</p></div></AppShell>
 
-  const s = statusStyle(run.status)
+  const s = statusStyle(effectiveStatus(run))
   const tabs: { id: Tab; label: string }[] = [
     { id: "summary",  label: "Summary"  },
     { id: "trace",    label: "Steps"    },
