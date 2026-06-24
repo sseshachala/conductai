@@ -20,7 +20,7 @@ export default function BlogPost() {
             <p className="text-lg text-stone-500 leading-relaxed">
               We&apos;re not a marketing-first company. We built Conduct because the
               problem kept showing up in every conversation with engineering
-              leaders we know. It works from day one. This is a quiet launch note: what v1 is, what
+              leaders, CTOs, CIOs, and CISOs we know. It works from day one. This is a quiet launch note: what v1 is, what
               it isn&apos;t, and how to try it without committing to anything.
             </p>
           </div>
@@ -32,7 +32,7 @@ export default function BlogPost() {
             <section>
               <h2 className="text-xl font-bold text-stone-900 mb-3">The problem we kept hearing</h2>
               <p>
-                Every engineering leader we&apos;ve spoken to over the last year has
+                Every engineering leader, CTO, CIO, and CISO we&apos;ve spoken to over the last year has
                 said some version of the same thing. AI is already inside their
                 team. Copilot, Cursor, Claude Code, Codex, a dozen MCP servers.
                 and nobody can answer simple questions about it.
