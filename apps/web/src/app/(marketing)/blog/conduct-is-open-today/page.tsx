@@ -6,10 +6,7 @@ export const metadata = {
 
 export default function BlogPost() {
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <BlogNav />
-      <main className="flex-1">
-        <article className="max-w-2xl mx-auto px-6 py-16">
+    <article className="max-w-2xl mx-auto px-6 py-16">
           <div className="mb-10">
             <div className="flex items-center gap-3 mb-6">
               <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full uppercase tracking-widest">
@@ -219,22 +216,7 @@ export default function BlogPost() {
               Start the afternoon →
             </a>
           </div>
-        </article>
-      </main>
-    </div>
+    </article>
   )
 }
 
-function BlogNav() {
-  return (
-    <header className="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full">
-      <a href="/"><img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" /></a>
-      <div className="flex items-center gap-4">
-        <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
-        <a href="/tools/agent-booster" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Booster</a>
-        <a href="/marketplace" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Templates</a>
-        <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
-      </div>
-    </header>
-  )
-}
