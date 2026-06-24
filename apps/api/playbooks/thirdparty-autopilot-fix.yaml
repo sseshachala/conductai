@@ -181,22 +181,38 @@ blocks:
       fail: write_memory_failure
 
   open_pr:
-    type: tool
-    integration: github
-    action: open_pull_request
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
     label: Open pull request
-    description: Open PR from fork branch back to upstream
-    params:
-      owner: "{{fetch_issue.owner}}"
-      repo: "{{fetch_issue.repo}}"
-      title: "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
-      head: "{{implement_fix.head_ref}}"
-      base: "{{implement_fix.base_branch}}"
-      body: |
-        Fixes #{{inputs.issue_number}}
+    description: |
+      Open a PR from the pushed branch to the upstream repo via the GitHub API.
+      Capture both success and failure cleanly — do not let HTTP errors raise.
 
-        {{$snippet: pr_attribution}}
-    next: write_memory
+      Repo:  {{fetch_issue.owner}}/{{fetch_issue.repo}}
+      Head:  {{implement_fix.head_ref}}
+      Base:  {{implement_fix.base_branch}}
+      Title: fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})
+
+      In ONE run_shell call, POST to:
+        https://api.github.com/repos/{{fetch_issue.owner}}/{{fetch_issue.repo}}/pulls
+      Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
+      Body: {"title": "<above>", "head": "{{implement_fix.head_ref}}",
+             "base": "{{implement_fix.base_branch}}",
+             "body": "Fixes #{{inputs.issue_number}}\n\n{{$snippet: pr_attribution}}"}
+
+      Output ONLY one of these JSON lines:
+      ON SUCCESS (HTTP 201): {"pr_url": "<html_url from response>"}
+      ON FAILURE (any non-2xx): {"pr_url": null, "error": "<HTTP status + brief reason from response.message>"}
+    next: pr_opened
+
+  pr_opened:
+    type: logic
+    label: PR opened?
+    condition: "{{open_pr.pr_url}} != null"
+    next:
+      pass: write_memory
+      fail: write_memory_failure
 
   write_memory:
     $use: base-autopilot.record_outcome
@@ -217,11 +233,12 @@ blocks:
     key: "{{fetch_issue.owner}}/{{fetch_issue.repo}}"
     summary: |
       Issue #{{inputs.issue_number}}: {{fetch_issue.title}}
-      OUTCOME: failed — implement_fix could not push a branch
+      OUTCOME: failed — implement_fix or open_pr did not complete
       Complexity: {{plan_fix.complexity}} | Prior fixes on this repo: {{read_memory.count}}
       Files: {{plan_fix.files}}
       Approach: {{plan_fix.approach}}
-      Error: {{implement_fix.error}}
+      Error (implement_fix): {{implement_fix.error}}
+      Error (open_pr): {{open_pr.error}}
       Lesson: {{implement_fix.lesson}}
     next: notify_failure
 

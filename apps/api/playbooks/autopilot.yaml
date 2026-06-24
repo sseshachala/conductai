@@ -195,7 +195,7 @@ blocks:
     summary: |
       Issue #{{_trigger.issue_number}}: {{_trigger.title}}
       OUTCOME: failed — tests did not pass after {{run_tests.attempts}} attempts
-      Complexity: {{plan_fix.complexity}} | Approach: {{plan_fix.approach}}
+      Complexity: {{plan_fix.complexity}} | Approach: {{plan_fix.approach}} | Prior fixes on this repo: {{read_memory.count}}
       Files: {{plan_fix.files}}
       Lesson: {{implement_fix.lesson}}
       Test output: {{run_tests.output}}
@@ -233,7 +233,7 @@ blocks:
     summary: |
       Issue #{{_trigger.issue_number}}: {{_trigger.title}}
       OUTCOME: success — PR opened after {{run_tests.attempts}} test attempt(s)
-      Complexity: {{plan_fix.complexity}} | Approach: {{plan_fix.approach}}
+      Complexity: {{plan_fix.complexity}} | Approach: {{plan_fix.approach}} | Prior fixes on this repo: {{read_memory.count}}
       Files: {{plan_fix.files}}
       Fix: {{implement_fix.summary}}
       Lesson: {{implement_fix.lesson}}
