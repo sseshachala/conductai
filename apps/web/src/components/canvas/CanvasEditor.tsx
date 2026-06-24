@@ -673,8 +673,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           return
         }
 
+        // Pass environment_id so the credential lookup uses the workflow's env,
+        // not whichever workspace-level GitHub token comes back first.
+        const issueParams = new URLSearchParams({ repo, label })
+        if (selectedEnvId) issueParams.set("environment_id", selectedEnvId)
         const issueRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/credentials/github/issues?repo=${encodeURIComponent(repo)}&label=${encodeURIComponent(label)}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/credentials/github/issues?${issueParams.toString()}`,
           { headers }
         )
         if (!issueRes.ok) {
