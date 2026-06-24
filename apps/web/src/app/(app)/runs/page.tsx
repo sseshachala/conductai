@@ -23,6 +23,7 @@ interface Run {
   completed_at: string | null
   paused_at: string | null
   created_at: string
+  governance?: { blocked?: boolean; rule_id?: string; reason_code?: string } | null
 }
 
 function outcomeText(status: string, triggerSummary: string | null): string {
@@ -380,7 +381,7 @@ function RunRow({ run }: RunRowProps) {
 
       {/* Outcome — StatusBadge + trigger_summary text here only (#12) */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-        <StatusBadge status={run.status} />
+        <StatusBadge status={run.governance?.blocked ? "blocked" : run.status} />
         <span style={{ fontSize: 12.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {outcomeText(run.status, run.trigger_summary)}
         </span>
