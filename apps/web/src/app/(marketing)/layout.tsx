@@ -1,6 +1,7 @@
 "use client"
 
 import { WorkspaceProvider } from "@/lib/WorkspaceContext"
+import { useAuth } from "@clerk/nextjs"
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -9,10 +10,16 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <div className="min-h-screen bg-white flex flex-col">
         <MarketingNav />
         <main className="flex-1">{children}</main>
-        <MarketingFooter />
+        {clerkEnabled ? <FooterUnlessSignedIn /> : <MarketingFooter />}
       </div>
     </WorkspaceProvider>
   )
+}
+
+function FooterUnlessSignedIn() {
+  const { isSignedIn } = useAuth()
+  if (isSignedIn) return null
+  return <MarketingFooter />
 }
 
 function ProductsDropdown() {
