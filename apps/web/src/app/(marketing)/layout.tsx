@@ -8,12 +8,18 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
   return (
     <WorkspaceProvider clerkEnabled={clerkEnabled}>
       <div className="min-h-screen bg-white flex flex-col">
-        <MarketingNav />
+        {clerkEnabled ? <NavUnlessSignedIn /> : <MarketingNav />}
         <main className="flex-1">{children}</main>
         {clerkEnabled ? <FooterUnlessSignedIn /> : <MarketingFooter />}
       </div>
     </WorkspaceProvider>
   )
+}
+
+function NavUnlessSignedIn() {
+  const { isSignedIn } = useAuth()
+  if (isSignedIn) return null
+  return <MarketingNav />
 }
 
 function FooterUnlessSignedIn() {
