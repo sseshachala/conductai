@@ -88,6 +88,7 @@ function McpModal({
   onSave,
   onClose,
   isSystem,
+  hasExistingAuth,
 }: {
   mode: "add" | "edit"
   initial: FormState
@@ -95,6 +96,7 @@ function McpModal({
   onSave: (form: FormState) => Promise<void>
   onClose: () => void
   isSystem?: boolean
+  hasExistingAuth?: boolean
 }) {
   const [form, setForm] = useState<FormState>(initial)
   const [saving, setSaving] = useState(false)
@@ -233,18 +235,36 @@ function McpModal({
           {/* Auth token */}
           <div>
             <label style={labelStyle}>
-              Auth token{" "}
-              <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>optional</span>
+              Auth token
+              {!isSystem && !hasExistingAuth && (
+                <span style={{ fontWeight: 400, color: "var(--text-muted)" }}> optional</span>
+              )}
+              {hasExistingAuth && (
+                <span style={{ fontWeight: 400, color: "var(--success, #2d8f5f)" }}> configured</span>
+              )}
             </label>
             <input
               type="password"
               value={form.auth_token}
               onChange={e => !readOnly && set("auth_token", e.target.value)}
-              placeholder="Bearer token or API key"
+              placeholder={
+                isSystem && hasExistingAuth
+                  ? "Token configured by Conduct (hidden for security)"
+                  : hasExistingAuth
+                  ? "•••••••• (existing token preserved — type to replace)"
+                  : "Bearer token or API key"
+              }
               readOnly={readOnly}
               style={{ ...inputStyle, opacity: readOnly ? 0.6 : 1 }}
             />
             {(() => {
+              if (isSystem) {
+                return (
+                  <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
+                    Provisioned by Conduct on workspace creation. Rotate via <code style={{ fontFamily: "monospace", background: "var(--surface-2)", padding: "1px 4px", borderRadius: 3 }}>conduct guard rotate</code> or Settings → Tokens.
+                  </p>
+                )
+              }
               const cred = getProvider(form.provider)?.credentialKey
               return cred ? (
                 <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
@@ -575,6 +595,7 @@ function IntegrationsPageInner({
         <McpModal
           mode={modalMode}
           isSystem={!!editTarget?.is_system}
+          hasExistingAuth={!!editTarget?.has_auth}
           initial={initialForm}
           environments={environments}
           onSave={handleSave}
