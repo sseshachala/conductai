@@ -451,18 +451,22 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
           </div>
         )}
 
-        {/* Error */}
-        {row.status === "failed" && row.error && (
-          <p style={{ marginTop: 4, fontSize: 12.5, color: isTimedOut ? "var(--warn, #d97706)" : "var(--err, #dc2626)", lineHeight: 1.4 }}>
-            {row.error}
-          </p>
-        )}
+        {/* Error / Blocked */}
+        {row.status === "failed" && row.error && (() => {
+          const isGuardBlock = row.failure?.code === "GUARD_POLICY_BLOCKED"
+          const color = isGuardBlock || isTimedOut ? "var(--warn, #d97706)" : "var(--err, #dc2626)"
+          return (
+            <p style={{ marginTop: 4, fontSize: 12.5, color, lineHeight: 1.4 }}>
+              {isGuardBlock ? row.error.replace(/^\[ConductGuard\]\s*/, "") : row.error}
+            </p>
+          )
+        })()}
 
         {row.status === "failed" && (row.failure?.code || row.nextAction) && (
           <div style={{ marginTop: 4 }}>
             {row.failure?.code && (
               <p className="mono" style={{ fontSize: 11, color: "var(--text-3, #78716c)", margin: 0 }}>
-                Reason: {row.failure.code}
+                Reason: {row.failure.code === "GUARD_POLICY_BLOCKED" ? "BLOCKED_BY_GUARD" : row.failure.code}
               </p>
             )}
             {row.nextAction && (
