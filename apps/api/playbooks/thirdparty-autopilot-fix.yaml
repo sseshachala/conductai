@@ -164,8 +164,21 @@ blocks:
       Set head_ref based on REPO_TYPE:
         REPO_TYPE=same → head_ref = "<branch-name>"
         REPO_TYPE=fork → head_ref = "{{fork_upstream.fork_owner}}:<branch-name>"
-        {"branch_pushed": "<actual-branch-name>", "head_ref": "<head_ref>", "base_branch": "<the resolved BASE_BRANCH value — e.g. v2, main, develop>", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}", "fix_summary": "<one line: which file(s) changed and what the fix was>", "lesson": "<one line: what to know for future fixes in this repo — pitfalls found, patterns that worked, anything surprising>"}
-    next: open_pr
+
+      ON SUCCESS:
+        {"branch_pushed": "<actual-branch-name>", "head_ref": "<head_ref>", "base_branch": "<the resolved BASE_BRANCH value>", "fork_owner": "{{fork_upstream.fork_owner}}", "fork_full_name": "{{fork_upstream.fork_full_name}}", "fix_summary": "<one line: which file(s) changed and what the fix was>", "lesson": "<one line: what to know for future fixes in this repo>"}
+
+      ON FAILURE (token/push/build error — anything that prevents a clean push):
+        {"branch_pushed": null, "error": "<one line: what failed and why>", "fix_summary": "attempted: <approach>", "lesson": "<one line: what to avoid next time>"}
+    next: implement_succeeded
+
+  implement_succeeded:
+    type: logic
+    label: Did implement_fix succeed?
+    condition: "{{implement_fix.branch_pushed}} != null"
+    next:
+      pass: open_pr
+      fail: write_memory_failure
 
   open_pr:
     type: tool
@@ -190,13 +203,39 @@ blocks:
     key: "{{fetch_issue.owner}}/{{fetch_issue.repo}}"
     summary: |
       Issue #{{inputs.issue_number}}: {{fetch_issue.title}}
-      PR: {{open_pr.pr_url}} — status: opened, pending review
+      OUTCOME: success — PR opened, pending review
+      PR: {{open_pr.pr_url}}
       Complexity: {{plan_fix.complexity}} | Prior fixes on this repo: {{read_memory.count}}
       Files: {{plan_fix.files}}
       Approach: {{plan_fix.approach}}
       Fix: {{implement_fix.fix_summary}}
       Lesson: {{implement_fix.lesson}}
     next: notify_slack
+
+  write_memory_failure:
+    $use: base-autopilot.record_outcome
+    key: "{{fetch_issue.owner}}/{{fetch_issue.repo}}"
+    summary: |
+      Issue #{{inputs.issue_number}}: {{fetch_issue.title}}
+      OUTCOME: failed — implement_fix could not push a branch
+      Complexity: {{plan_fix.complexity}} | Prior fixes on this repo: {{read_memory.count}}
+      Files: {{plan_fix.files}}
+      Approach: {{plan_fix.approach}}
+      Error: {{implement_fix.error}}
+      Lesson: {{implement_fix.lesson}}
+    next: notify_failure
+
+  notify_failure:
+    type: output
+    label: Notify failure
+    output:
+      via: slack
+      slack:
+        channel: "#engineering"
+        message: |
+          ❌ Conduct AI could not fix issue #{{inputs.issue_number}} in {{fetch_issue.owner}}/{{fetch_issue.repo}}
+          Error: {{implement_fix.error}}
+          Lesson recorded for future runs.
 
   notify_slack:
     type: output
