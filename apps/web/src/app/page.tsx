@@ -1,5 +1,7 @@
 "use client"
 
+import BootSequence from "@/components/marketing/BootSequence"
+
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -99,6 +101,7 @@ function HeroSection() {
   ]
   return (
     <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
+      <BootSequence />
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
         One operating layer for AI-assisted engineering
