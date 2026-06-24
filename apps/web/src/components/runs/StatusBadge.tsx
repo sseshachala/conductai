@@ -16,7 +16,7 @@ const BADGE_MAP: Record<BadgeVariant, BadgeConfig> = {
   run:       { bg: "var(--info-bg)",     color: "var(--info)",    border: "var(--info)",    label: "Running",   pulse: true  },
   wait:      { bg: "var(--warn-bg)",     color: "var(--warn)",    border: "var(--warn)",    label: "Awaiting",  pulse: true  },
   err:       { bg: "var(--err-bg)",      color: "var(--err)",     border: "var(--err)",     label: "Failed",    pulse: false },
-  blocked:   { bg: "var(--warn-bg)",     color: "var(--warn)",    border: "var(--warn)",    label: "Blocked",   pulse: false },
+  blocked:   { bg: "var(--err-bg)",      color: "var(--err)",     border: "var(--err)",     label: "Blocked",   pulse: false },
   cancelled: { bg: "var(--warn-bg)",     color: "var(--warn)",    border: "var(--warn)",    label: "Cancelled", pulse: false },
   skipped:   { bg: "var(--surface-3)",   color: "var(--text-2)",  border: "var(--border)",  label: "Skipped",   pulse: false },
   idle:      { bg: "var(--surface-3)",   color: "var(--text-2)",  border: "var(--border)",  label: "Queued",    pulse: false },

@@ -451,10 +451,10 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
           </div>
         )}
 
-        {/* Error / Blocked */}
+        {/* Error / Blocked — both red (block headline still says Blocked, not Failed) */}
         {row.status === "failed" && row.error && (() => {
           const isGuardBlock = row.failure?.code === "GUARD_POLICY_BLOCKED"
-          const color = isGuardBlock || isTimedOut ? "var(--warn, #d97706)" : "var(--err, #dc2626)"
+          const color = isTimedOut ? "var(--warn, #d97706)" : "var(--err, #dc2626)"
           return (
             <p style={{ marginTop: 4, fontSize: 12.5, color, lineHeight: 1.4 }}>
               {isGuardBlock ? row.error.replace(/^\[ConductGuard\]\s*/, "") : row.error}
@@ -601,11 +601,12 @@ function RunTerminalRow({ runFailed, runCompleted }: {
         </div>
       )
     }
-    // Guard-policy block is a governance outcome, not a crash — render amber not red.
+    // Blocked and Failed both render red — distinguished by the headline + reason.
+    // Warn = yellow, Audit = green elsewhere; this card is for terminal outcomes only.
     const isGuardBlock = reasonCode === "GUARD_POLICY_BLOCKED"
-    const color  = isGuardBlock ? "var(--warn, #d97706)"  : "var(--err, #dc2626)"
-    const bg     = isGuardBlock ? "var(--warn-bg, #fffbeb)" : "var(--err-bg, #fef2f2)"
-    const border = isGuardBlock ? "var(--warn-bd, #fde68a)" : "var(--err-bd, #fecaca)"
+    const color  = "var(--err, #dc2626)"
+    const bg     = "var(--err-bg, #fef2f2)"
+    const border = "var(--err-bd, #fecaca)"
     const headline = isGuardBlock ? "Blocked by Guard" : "Run failed"
     return (
       <div style={{ display: "flex", gap: 14, position: "relative", paddingTop: 4 }}>
