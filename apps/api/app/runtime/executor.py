@@ -486,6 +486,22 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
         category = "governance"
         stop_reason = "policy_block"
         next_action = "Update allowed_hosts for this environment or remove the blocked outbound call."
+    elif "[ConductGuard] Blocked by policy" in msg:
+        # Guard policy fired — this is a governance decision, not a crash.
+        # Surface it as such so the UI shows a clean "blocked" state and
+        # the user knows where to go to fix it.
+        code = "GUARD_POLICY_BLOCKED"
+        category = "governance"
+        stop_reason = "policy_block"
+        # Pull the rule_id out of the message for a more actionable hint
+        import re as _re
+        m = _re.search(r"policy '([^']+)'", msg)
+        rule_id = m.group(1) if m else None
+        next_action = (
+            (f"Guard rule '{rule_id}' blocked this step. " if rule_id else "Guard blocked this step. ") +
+            "Disable Guard for this workflow in Settings → ConductGuard, "
+            "or change the rule action at /guard/policies."
+        )
     elif isinstance(exc, RuntimeError) and "Turn budget exhausted" in msg:
         code = "RETRY_BUDGET_EXHAUSTED"
         category = "reliability"

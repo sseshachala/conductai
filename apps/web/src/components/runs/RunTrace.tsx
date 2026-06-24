@@ -597,15 +597,26 @@ function RunTerminalRow({ runFailed, runCompleted }: {
         </div>
       )
     }
+    // Guard-policy block is a governance outcome, not a crash — render amber not red.
+    const isGuardBlock = reasonCode === "GUARD_POLICY_BLOCKED"
+    const color  = isGuardBlock ? "var(--warn, #d97706)"  : "var(--err, #dc2626)"
+    const bg     = isGuardBlock ? "var(--warn-bg, #fffbeb)" : "var(--err-bg, #fef2f2)"
+    const border = isGuardBlock ? "var(--warn-bd, #fde68a)" : "var(--err-bd, #fecaca)"
+    const headline = isGuardBlock ? "Blocked by Guard" : "Run failed"
     return (
       <div style={{ display: "flex", gap: 14, position: "relative", paddingTop: 4 }}>
         <div style={{ flexShrink: 0, width: 22, display: "flex", justifyContent: "center", paddingTop: 13, zIndex: 2 }}>
-          <span style={{ width: 13, height: 13, borderRadius: "50%", border: "2px solid var(--err, #dc2626)", background: "var(--err, #dc2626)", display: "grid", placeItems: "center", boxShadow: "0 0 0 4px var(--bg, #fff)" }} />
+          <span style={{ width: 13, height: 13, borderRadius: "50%", border: `2px solid ${color}`, background: color, display: "grid", placeItems: "center", boxShadow: "0 0 0 4px var(--bg, #fff)" }} />
         </div>
-        <div className="card" style={{ flex: 1, padding: "12px 15px", background: "var(--err-bg, #fef2f2)", border: "1px solid var(--err-bd, #fecaca)" }}>
-          <p style={{ fontWeight: 600, color: "var(--err, #dc2626)", margin: 0, fontSize: 13.5 }}>
-            Run failed{errMsg ? ` — ${errMsg}` : ""}
+        <div className="card" style={{ flex: 1, padding: "12px 15px", background: bg, border: `1px solid ${border}` }}>
+          <p style={{ fontWeight: 600, color: color, margin: 0, fontSize: 13.5 }}>
+            {headline}{errMsg ? ` — ${errMsg}` : ""}
           </p>
+          {isGuardBlock && (
+            <p style={{ marginTop: 4, fontSize: 12, color: "var(--text-3, #78716c)" }}>
+              See <a href="/guard/activity" style={{ color: color, textDecoration: "underline" }}>Guard activity</a> for the audit event.
+            </p>
+          )}
           {reasonCode && (
             <p className="mono" style={{ marginTop: 4, fontSize: 11, color: "var(--text-3, #78716c)" }}>
               Reason: {reasonCode}
