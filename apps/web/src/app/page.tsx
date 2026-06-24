@@ -9,6 +9,7 @@ export default function HomePage() {
       <main className="flex-1">
 
         <HeroSection />
+        <CeoQuoteSection />
         <TrustBarSection />
         <ProofStripSection />
         <ProblemSection />
@@ -133,6 +134,26 @@ function HeroSection() {
 }
 
 /* ─── Trust Bar ────────────────────────────────────────────────────────── */
+
+function CeoQuoteSection() {
+  return (
+    <section className="max-w-3xl mx-auto px-6 py-12">
+      <blockquote className="border-l-4 border-indigo-500 pl-6 py-2">
+        <p className="text-xl text-stone-700 leading-relaxed italic mb-4">
+          &ldquo;What impressed me most about Conduct AI is that it approaches AI governance
+          as a business capability, not just a technical feature. By bringing together cost
+          management, security controls, and compliance oversight in a scalable architecture,
+          it addresses a need that many enterprises are actively trying to solve.&rdquo;
+        </p>
+        <footer className="text-sm text-stone-500">
+          <span className="font-semibold text-stone-700">Ram Prasad</span>
+          {" · "}
+          CEO, Delence
+        </footer>
+      </blockquote>
+    </section>
+  )
+}
 
 function TrustBarSection() {
   const integrations = ["GitHub", "Slack", "Linear", "Jira", "Claude", "GPT", "Gemini", "VS Code"]
