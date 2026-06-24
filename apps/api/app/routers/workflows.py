@@ -1166,6 +1166,23 @@ def validate_workflow(
 
     from app.core.config import settings as _cfg
     _server_has_anthropic = bool(_cfg.anthropic_api_key)
+    _server_has_openai = bool(getattr(_cfg, "openai_api_key", None))
+
+    def _provider_for_model(model: str) -> str:
+        m = (model or "").lower()
+        if m.startswith("gpt-"):
+            return "openai"
+        if m.startswith("sonar"):
+            return "perplexity"
+        return "anthropic"
+
+    def _provider_key_available(provider: str) -> tuple[bool, str]:
+        """Return (has_key, env_var_name) for provider."""
+        if provider == "openai":
+            return (_server_has_openai or "OPENAI_API_KEY" in available_env_keys, "OPENAI_API_KEY")
+        if provider == "perplexity":
+            return ("PERPLEXITY_API_KEY" in available_env_keys, "PERPLEXITY_API_KEY")
+        return (_server_has_anthropic or "ANTHROPIC_API_KEY" in available_env_keys, "ANTHROPIC_API_KEY")
 
     errors = []
 
@@ -1200,10 +1217,13 @@ def validate_workflow(
                 errors.append({"block_id": block_id, "label": label,
                                 "message": "Description is required for Brain blocks"})
 
-            # ANTHROPIC_API_KEY required for every brain block
-            if not _server_has_anthropic and "ANTHROPIC_API_KEY" not in available_env_keys:
+            # Provider key required for this brain block's selected model
+            brain_model = data.get("model") or config.get("model") or ""
+            brain_provider = _provider_for_model(brain_model)
+            has_key, env_var_name = _provider_key_available(brain_provider)
+            if not has_key:
                 errors.append({"block_id": block_id, "label": label,
-                                "message": "ANTHROPIC_API_KEY is not set — add it under Settings → Environments"})
+                                "message": f"{env_var_name} is not set for {brain_provider} model '{brain_model or 'default'}' — add it under Settings → Environments"})
 
             # Execution provider credential checks
             runs_on = data.get("runs_on") or {}
