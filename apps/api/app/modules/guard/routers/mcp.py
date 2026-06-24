@@ -4,10 +4,13 @@ ConductGuard — Remote MCP server over HTTP.
 POST /guard/mcp   — stateless JSON-RPC 2.0 endpoint (MCP HTTP transport)
 
 Claude.ai / Claude for Work users add this URL in their MCP settings:
-  https://api.conductai.ai/guard/mcp?workspace_id=<uuid>&token=<member_token>
+  https://api.conductai.ai/guard/mcp?workspace_id=<uuid>
+  Authorization: Bearer <member_token>
 
 Claude Desktop users can also point here instead of running a local process.
-Auth: workspace_id + token as query params (header auth not supported by all MCP clients).
+Auth: workspace_id in query, member_token in `Authorization: Bearer` header.
+Legacy `?token=` query param accepted for Claude.ai web compat — emits a
+deprecation warning (issue #800). Slated for removal in issue #810.
 """
 from __future__ import annotations
 
@@ -239,15 +242,40 @@ def _text(msg_id, text: str) -> dict:
 
 # ── Main endpoint ─────────────────────────────────────────────────────────────
 
+def _extract_token(request: Request, query_token: str | None) -> str | None:
+    """Authorization: Bearer header first, ?token= fallback for legacy MCP clients.
+
+    URL fallback emits a deprecation warning — once Claude.ai web ships header
+    support, the query param path is removed (issue #810).
+    """
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip() or None
+    if query_token:
+        # Deprecation signal — every URL-token request is logged so we can track
+        # when it's safe to drop the fallback.
+        from structlog import get_logger
+        get_logger(__name__).warning("guard.mcp.token_in_query_deprecated")
+        return query_token
+    return None
+
+
 @router.get("")
 async def mcp_sse(
+    request: Request,
     workspace_id: str = Query(...),
-    token: str       = Query(...),
+    token: str | None = Query(None),
 ):
     """SSE endpoint required by MCP Streamable HTTP transport (GET establishes the stream).
     For stateless policy checks we don't push server-initiated messages, so this just
-    holds the connection open with keepalive pings until the client disconnects."""
+    holds the connection open with keepalive pings until the client disconnects.
+
+    Auth: Authorization: Bearer <token> header preferred. ?token= legacy fallback.
+    """
     import asyncio
+
+    if not _extract_token(request, token):
+        return JSONResponse(status_code=401, content={"error": "missing or invalid token"})
 
     async def event_stream():
         yield ": keepalive\n\n"
@@ -269,7 +297,7 @@ async def mcp_sse(
 async def mcp_endpoint(
     request: Request,
     workspace_id: str = Query(..., description="Guard workspace UUID"),
-    token: str       = Query(..., description="Member token from conduct guard init"),
+    token: str | None = Query(None, description="Legacy fallback; prefer Authorization: Bearer header"),
 ):
     """Stateless MCP JSON-RPC endpoint for Claude.ai / Claude Desktop / Claude for Work."""
     try:
@@ -286,12 +314,17 @@ async def mcp_endpoint(
     except ValueError:
         return JSONResponse(status_code=422, content=_err(msg_id, -32600, "invalid workspace_id"))
 
+    # Header-first, query-fallback per issue #800
+    resolved_token = _extract_token(request, token)
+    if not resolved_token:
+        return JSONResponse(status_code=401, content=_err(msg_id, -32600, "missing token (use Authorization: Bearer)"))
+
     db = SessionLocal()
     try:
         # Validate token against guard_member_config
         member_row = db.execute(
             _sql("SELECT clerk_user_id FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
-            {"w": str(ws_uuid), "t": token},
+            {"w": str(ws_uuid), "t": resolved_token},
         ).fetchone()
         if not member_row:
             return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid token"))
@@ -407,13 +440,14 @@ async def mcp_endpoint(
                     "If the response is BLOCKED, stop immediately and explain the policy rule to the user. "
                     "If WARNING, proceed but surface the warning."
                 )
-                mcp_url = f"https://api.conductai.ai/guard/mcp?workspace_id={workspace_id}&token={token}"
+                mcp_url = f"https://api.conductai.ai/guard/mcp?workspace_id={workspace_id}"
                 desktop_config = (
                     '{\n'
                     '  "mcpServers": {\n'
                     '    "conductguard": {\n'
                     '      "command": "npx",\n'
-                    '      "args": ["-y", "mcp-remote", "' + mcp_url + '"]\n'
+                    '      "args": ["-y", "mcp-remote", "' + mcp_url + '",\n'
+                    '               "--header", "Authorization: Bearer ' + resolved_token + '"]\n'
                     '    }\n'
                     '  }\n'
                     '}'
