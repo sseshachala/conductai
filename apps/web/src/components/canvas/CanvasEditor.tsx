@@ -731,17 +731,17 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           return
         }
 
-        if (issues.length > 1) {
-          setValidationErrors([{
-            blockId: triggerNode.id,
-            label: (triggerNode.data as BlockNodeData).label,
-            message: `${issues.length} matching issues found — use the CLI to run all: marshal run autopilot.yaml`,
-          }])
-          setRunning("idle")
-          return
-        }
-
+        // Multiple matching issues — pick the most recent (GitHub returns by
+        // created_at DESC) and proceed. No more hostile blocking. Production
+        // webhook fires one run per labeling event anyway; this is just a
+        // manual test fire.
         const issue = issues[0]
+        if (issues.length > 1) {
+          console.info(
+            `[canvas] ${issues.length} issues match "${label}" on ${repo}; ` +
+            `running against the most recent: #${issue.number} - ${issue.title}`
+          )
+        }
         const [repoOwner, repoName] = repo.split("/")
         initialState = {
           github_issue: {
