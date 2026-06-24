@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 
-const VALID_TABS = ["overview", "getting-started", "api", "blocks", "guard", "mcp-tools", "integrations"] as const
+const VALID_TABS = ["overview", "guard", "mcp-tools", "getting-started", "blocks", "api", "integrations"] as const
 
 // ── Shared components ──────────────────────────────────────────────────────────
 
@@ -73,11 +73,11 @@ function Endpoint({ method, path, desc, children }: { method: string; path: stri
 
 const TABS = [
   { id: "overview",        label: "Overview" },
-  { id: "getting-started", label: "Getting started" },
-  { id: "api",             label: "API reference" },
-  { id: "blocks",          label: "Blocks" },
-  { id: "guard",           label: "ConductGuard" },
+  { id: "guard",           label: "Guard" },
   { id: "mcp-tools",       label: "MCP & Tools" },
+  { id: "getting-started", label: "Automations" },
+  { id: "blocks",          label: "Blocks" },
+  { id: "api",             label: "API reference" },
   { id: "integrations",    label: "Integrations" },
 ] as const
 
