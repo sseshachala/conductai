@@ -25,6 +25,17 @@ export default function BlogPost() {
             </p>
           </div>
 
+          <figure className="mb-10 -mx-2 sm:-mx-6 md:-mx-10">
+            <img
+              src="/blog/launch-hero.png"
+              alt="Conduct Guard dashboard — Overview, Token Abuse Guardrails, By AI tool table with a sample 5-developer team"
+              className="w-full rounded-2xl border border-stone-200 shadow-sm"
+            />
+            <figcaption className="text-xs text-stone-400 text-center mt-3">
+              Day one in Conduct. Top: Overview. Middle: Token Abuse Guardrails. Bottom: spend and decisions for the team.
+            </figcaption>
+          </figure>
+
           <hr className="border-stone-100 mb-10" />
 
           <div className="prose prose-stone prose-sm max-w-none space-y-8 text-stone-700 leading-relaxed">
