@@ -366,34 +366,13 @@ def _execute_brain(
 
     pricing_snapshot = freeze_pricing_snapshot()
 
-    # Provider fallback keeps existing Anthropic behavior if OpenAI is selected
-    # but no key is configured for this workspace/run.
-    if provider == "perplexity":
-        if not _perplexity_key:
-            raise RuntimeError(
-                f"Missing PERPLEXITY_API_KEY for brain block (provider=perplexity, "
-                f"model={model_id}). Add it in Settings → Environments or workspace "
-                f"credentials, then re-run."
-            )
-        llm = PerplexityClient(api_key=_perplexity_key, pricing_snapshot=pricing_snapshot)
-    elif provider == "openai" and _openai_key:
-        llm = OpenAIClient(api_key=_openai_key, pricing_snapshot=pricing_snapshot)
-    else:
-        if provider == "openai" and not _openai_key:
-            log.warning("brain.provider_fallback", reason="missing_openai_key", selected_provider=provider, fallback_provider="anthropic")
-            provider, model_id, fallback_reason = _router_resolve(playbook_slug, routing_pref, None, "anthropic")
-            routing_reason = f"{routing_reason}; fallback: {fallback_reason}"
-        elif provider == "perplexity" and not _perplexity_key:
-            log.warning("brain.provider_fallback", reason="missing_perplexity_key", selected_provider=provider, fallback_provider="anthropic")
-            provider, model_id, fallback_reason = _router_resolve(playbook_slug, routing_pref, None, "anthropic")
-            routing_reason = f"{routing_reason}; fallback: {fallback_reason}"
-        if not _anthropic_key:
-            raise RuntimeError(
-                f"Missing ANTHROPIC_API_KEY for brain block (provider=anthropic, "
-                f"model={model_id}). Add it in Settings → Environments or workspace "
-                f"credentials, then re-run."
-            )
-        llm = AnthropicClient(api_key=_anthropic_key, pricing_snapshot=pricing_snapshot)
+    from app.runtime.provider_keys import MissingProviderKey
+    _provider_keys = {"anthropic": _anthropic_key, "openai": _openai_key, "perplexity": _perplexity_key}
+    if not _provider_keys[provider]:
+        raise MissingProviderKey(provider, model_id)
+
+    client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
+    llm = client_for[provider](api_key=_provider_keys[provider], pricing_snapshot=pricing_snapshot)
 
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
