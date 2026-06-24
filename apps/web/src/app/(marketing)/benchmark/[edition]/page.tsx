@@ -192,7 +192,7 @@ function BenchmarkContent({
         if (summaryRes.ok) setSummary(await summaryRes.json())
         if (playbooksRes.ok) setPlaybooks(await playbooksRes.json())
       } catch {
-        if (!cancelled) setError("Network error — could not reach the API.")
+        if (!cancelled) setError("Network error, could not reach the API.")
       } finally {
         if (!cancelled) setLoading(false)
       }

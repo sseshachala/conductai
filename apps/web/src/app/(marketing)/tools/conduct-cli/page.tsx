@@ -78,13 +78,13 @@ type Segment = {
 
 const SCRIPT: Segment[] = [
   { text: "What AI tool are you on?\n", style: "question", speed: 28, pause: 520 },
-  { text: "Probably Claude Code — that's where we see the most context waste.\n\n", style: "answer", speed: 22, pause: 680 },
+  { text: "Probably Claude Code, that's where we see the most context waste.\n\n", style: "answer", speed: 22, pause: 680 },
   { text: "How big is your codebase?\n", style: "question", speed: 28, pause: 500 },
-  { text: "Let's say medium — 50 to 500 files. That's the sweet spot where bloat really bites.\n\n", style: "answer", speed: 20, pause: 700 },
+  { text: "Let's say medium, 50 to 500 files. That's the sweet spot where bloat really bites.\n\n", style: "answer", speed: 20, pause: 700 },
   { text: "What's leaking tokens?\n", style: "question", speed: 28, pause: 440 },
   { text: "Three things.\n\n", style: "answer", speed: 35, pause: 260 },
   { text: "File reads sending 800-line files when the model needed 40 lines.\n", style: "answer", speed: 18, pause: 180 },
-  { text: "CLI output — pytest runs, git diffs, docker logs — flooding the context before you've done anything useful.\n", style: "answer", speed: 18, pause: 180 },
+  { text: "CLI output, pytest runs, git diffs, docker logs, flooding the context before you've done anything useful.\n", style: "answer", speed: 18, pause: 180 },
   { text: "And responses that are longer than they have to be.\n\n", style: "answer", speed: 20, pause: 700 },
   { text: "Here's what fixes all three:\n\n", style: "label", speed: 26, pause: 300 },
   { text: "$ pip install agent-booster[full]\n", style: "code", speed: 14, pause: 120 },
@@ -113,7 +113,7 @@ function PageHook() {
       </p>
       <p className="text-sm text-stone-400">
         <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">conduct-cli</code> is the platform CLI.{" "}
-        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">agent-booster</code> is a companion that cuts token usage — install both, they work together.
+        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">agent-booster</code> is a companion that cuts token usage, install both, they work together.
       </p>
     </section>
   )
@@ -260,7 +260,7 @@ function DiagnosticHero() {
           <span className="w-3 h-3 rounded-full bg-red-500/60" />
           <span className="w-3 h-3 rounded-full bg-yellow-500/60" />
           <span className="w-3 h-3 rounded-full bg-green-500/60" />
-          <span className="ml-3 text-xs text-stone-500 font-mono">agent-booster — diagnostic</span>
+          <span className="ml-3 text-xs text-stone-500 font-mono">agent-booster, diagnostic</span>
           {!done && (
             <button
               onClick={skip}
@@ -389,15 +389,15 @@ function QuickstartSection() {
 
         <div className="flex flex-col gap-5">
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 1 — Install Conduct CLI</p>
-            <InlineCodeBlock comment="platform CLI — run agents, manage workspaces, enforce policies">pip install conduct-cli</InlineCodeBlock>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 1. Install Conduct CLI</p>
+            <InlineCodeBlock comment="platform CLI, run agents, manage workspaces, enforce policies">pip install conduct-cli</InlineCodeBlock>
           </div>
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2 — Install Agent Booster</p>
-            <InlineCodeBlock comment="token savings companion — includes embeddings + file watcher">pip install agent-booster[full]</InlineCodeBlock>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2. Install Agent Booster</p>
+            <InlineCodeBlock comment="token savings companion, includes embeddings + file watcher">pip install agent-booster[full]</InlineCodeBlock>
           </div>
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 3 — Start</p>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 3. Start</p>
             <InlineCodeBlock comment="detects Claude/Cursor/Codex, wires hooks, indexes, starts daemon">booster start</InlineCodeBlock>
             <p className="mt-2 text-xs text-stone-400">Detects which AI tools are present (Claude Code, Cursor, Windsurf, Codex), wires each one automatically, indexes the project, and starts a background daemon. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
           </div>
@@ -727,7 +727,7 @@ const WHATS_NEW_ITEMS = [
     icon: "🤝",
     title: "Shared team index",
     tag: "v0.2.30",
-    desc: "booster index-push uploads your symbol index to the team workspace via the Guard sync channel. Teammates run booster index-pull (or just conduct guard sync) to merge it locally — no re-indexing the same repo twice. Uses the same auth as guard sync, zero new config.",
+    desc: "booster index-push uploads your symbol index to the team workspace via the Guard sync channel. Teammates run booster index-pull (or just conduct guard sync) to merge it locally, no re-indexing the same repo twice. Uses the same auth as guard sync, zero new config.",
     color: "text-indigo-600",
     bg: "bg-indigo-50 border-indigo-200",
   },
@@ -735,7 +735,7 @@ const WHATS_NEW_ITEMS = [
     icon: "🎓",
     title: "booster learn",
     tag: "v0.2.28",
-    desc: "Mines your local read history and Guard failed run traces to extract patterns — hot files, files that resist smart_read, turn limit failures. Writes corrections directly to CLAUDE.md under a dedicted block. Run booster learn --dry-run to preview first.",
+    desc: "Mines your local read history and Guard failed run traces to extract patterns, hot files, files that resist smart_read, turn limit failures. Writes corrections directly to CLAUDE.md under a dedicted block. Run booster learn --dry-run to preview first.",
     color: "text-emerald-600",
     bg: "bg-emerald-50 border-emerald-200",
   },
@@ -743,7 +743,7 @@ const WHATS_NEW_ITEMS = [
     icon: "🗜️",
     title: "SmartCrusher",
     tag: "v0.2.27",
-    desc: "Compression pass on every smart_read and search_context result before it reaches the model. JSON arrays: keeps first 5 + last 3 entries, drops middle duplicates. Repeated lines: collapsed into '… N identical lines omitted'. Kicks in above 2KB — small results pass through untouched.",
+    desc: "Compression pass on every smart_read and search_context result before it reaches the model. JSON arrays: keeps first 5 + last 3 entries, drops middle duplicates. Repeated lines: collapsed into '… N identical lines omitted'. Kicks in above 2KB, small results pass through untouched.",
     color: "text-rose-600",
     bg: "bg-rose-50 border-rose-200",
   },
@@ -751,7 +751,7 @@ const WHATS_NEW_ITEMS = [
     icon: "⚡",
     title: "Cache alignment",
     tag: "v0.2.26",
-    desc: "Tools are now returned alphabetically with deterministically sorted schema keys on every request. Anthropic users get free KV cache hits on the tools prefix — same tool list every session means the prefix is already cached. Auto-detected from ANTHROPIC_API_KEY, no config needed. booster gain shows cache alignment status.",
+    desc: "Tools are now returned alphabetically with deterministically sorted schema keys on every request. Anthropic users get free KV cache hits on the tools prefix, same tool list every session means the prefix is already cached. Auto-detected from ANTHROPIC_API_KEY, no config needed. booster gain shows cache alignment status.",
     color: "text-amber-600",
     bg: "bg-amber-50 border-amber-200",
   },
@@ -759,7 +759,7 @@ const WHATS_NEW_ITEMS = [
     icon: "🛑",
     title: "Output token tracking",
     tag: "v0.2.25",
-    desc: "booster-stop.py fires on every Claude Code session end and captures actual output tokens from the stop event. Stores baseline vs. actual in .booster/stats.db. booster gain now shows real savings — not estimates.",
+    desc: "booster-stop.py fires on every Claude Code session end and captures actual output tokens from the stop event. Stores baseline vs. actual in .booster/stats.db. booster gain now shows real savings, not estimates.",
     color: "text-rose-600",
     bg: "bg-rose-50 border-rose-200",
   },
@@ -783,7 +783,7 @@ const WHATS_NEW_ITEMS = [
     icon: "⚡",
     title: "Background daemon",
     tag: "v0.2.18",
-    desc: "booster start launches a persistent Unix socket process that keeps the embedding model loaded. search_context drops from 2–3 s cold-start to ~50 ms. Daemon survives editor restarts — it's not tied to any terminal.",
+    desc: "booster start launches a persistent Unix socket process that keeps the embedding model loaded. search_context drops from 2–3 s cold-start to ~50 ms. Daemon survives editor restarts, it's not tied to any terminal.",
     color: "text-amber-600",
     bg: "bg-amber-50 border-amber-200",
   },
@@ -791,7 +791,7 @@ const WHATS_NEW_ITEMS = [
     icon: "◎",
     title: "File watcher",
     tag: "v0.2.17",
-    desc: "watchdog monitors the project for writes. Changed files are re-indexed within 2 seconds of a save — no manual booster index during a coding session. Daemon handles this automatically.",
+    desc: "watchdog monitors the project for writes. Changed files are re-indexed within 2 seconds of a save, no manual booster index during a coding session. Daemon handles this automatically.",
     color: "text-blue-600",
     bg: "bg-blue-50 border-blue-200",
   },
@@ -835,7 +835,7 @@ function WhatsNewSection() {
           SmartCrusher, cache alignment, booster learn, and shared team index.
         </h2>
         <p className="text-center text-stone-500 text-sm max-w-2xl mx-auto mb-12">
-          Four new releases. The result: booster cuts costs at every layer — elimination, compression, caching, and learning from every session,
+          Four new releases. The result: booster cuts costs at every layer, elimination, compression, caching, and learning from every session,
           search is instant after the first run, and re-indexing costs nothing on unchanged files.
         </p>
 
@@ -882,11 +882,11 @@ function WhatsNewSection() {
 const FAQS = [
   {
     q: "What is an AST and why does it matter?",
-    a: "AST stands for Abstract Syntax Tree — a structured representation of source code. Instead of treating code as raw text, we parse it into a tree of nodes: functions, classes, parameters, and their relationships. This lets us extract just the symbols relevant to a task (say, 3 functions out of 1,800 lines) rather than sending the entire file. We use tree-sitter to parse Python and TypeScript files.",
+    a: "AST stands for Abstract Syntax Tree, a structured representation of source code. Instead of treating code as raw text, we parse it into a tree of nodes: functions, classes, parameters, and their relationships. This lets us extract just the symbols relevant to a task (say, 3 functions out of 1,800 lines) rather than sending the entire file. We use tree-sitter to parse Python and TypeScript files.",
   },
   {
     q: "How does the symbol index work?",
-    a: "When you run booster index (or booster start on first run), we walk every .py / .ts / .tsx / .js / .jsx file with tree-sitter, extract all function and class nodes, and store name, kind, file path, start/end line, and signature into .booster/symbols.db. Delta indexing skips unchanged files — each file's SHA-256 hash and mtime are stored, so only modified files are re-parsed. Use booster index --force to bypass the delta cache and re-index everything.",
+    a: "When you run booster index (or booster start on first run), we walk every .py / .ts / .tsx / .js / .jsx file with tree-sitter, extract all function and class nodes, and store name, kind, file path, start/end line, and signature into .booster/symbols.db. Delta indexing skips unchanged files, each file's SHA-256 hash and mtime are stored, so only modified files are re-parsed. Use booster index --force to bypass the delta cache and re-index everything.",
   },
   {
     q: "How does semantic search work?",
@@ -894,7 +894,7 @@ const FAQS = [
   },
   {
     q: "What happens when Claude reads a file through Booster?",
-    a: "The MCP smart_read tool receives the file path and a task description. It uses RRF (Reciprocal Rank Fusion) to merge two ranked lists — a vector similarity search and a keyword LIKE search — using the formula score = Σ 1/(60 + rank). This surfaces symbols that score well on either or both strategies, instead of relying on embeddings alone. The result is AST symbol slices (source lines for matching functions/classes) with a header showing name and line range. A 5 KB gate caps output — if matched symbols exceed 5 KB, only the top-3 RRF-ranked symbols are returned with a truncation notice. Every call is logged to .booster/stats.db so booster gain can report real token savings.",
+    a: "The MCP smart_read tool receives the file path and a task description. It uses RRF (Reciprocal Rank Fusion) to merge two ranked lists, a vector similarity search and a keyword LIKE search, using the formula score = Σ 1/(60 + rank). This surfaces symbols that score well on either or both strategies, instead of relying on embeddings alone. The result is AST symbol slices (source lines for matching functions/classes) with a header showing name and line range. A 5 KB gate caps output, if matched symbols exceed 5 KB, only the top-3 RRF-ranked symbols are returned with a truncation notice. Every call is logged to .booster/stats.db so booster gain can report real token savings.",
   },
   {
     q: "How does token savings tracking work?",
@@ -902,27 +902,27 @@ const FAQS = [
   },
   {
     q: "What does booster init actually change on my machine?",
-    a: "For Claude Code, booster init claude writes six things: .mcp.json (registers the MCP server), CLAUDE.md (appends a rules block), .claude/settings.json (wires three hooks), and three hook scripts — booster-gate.py (blocks Read on indexed files and forces smart_read), booster-grep-nudge.py (detects semantic Grep patterns and suggests search_context instead), and booster-route.py (fires on every user message and recommends haiku/sonnet/opus before Claude starts work). Before writing anything, it prints a full list of changes and asks for confirmation. Run booster remove claude to undo everything cleanly. No residue.",
+    a: "For Claude Code, booster init claude writes six things: .mcp.json (registers the MCP server), CLAUDE.md (appends a rules block), .claude/settings.json (wires three hooks), and three hook scripts, booster-gate.py (blocks Read on indexed files and forces smart_read), booster-grep-nudge.py (detects semantic Grep patterns and suggests search_context instead), and booster-route.py (fires on every user message and recommends haiku/sonnet/opus before Claude starts work). Before writing anything, it prints a full list of changes and asks for confirmation. Run booster remove claude to undo everything cleanly. No residue.",
   },
   {
     q: "Does Booster send my code anywhere?",
-    a: "No code, no prompts, no file content ever leaves your machine. The symbol index, vector store, and stats database are all local — stored in .booster/ inside your project. The MCP server runs as a local stdio process. No network calls, no telemetry, no structured events phoned home. The only external call is the one-time model download from HuggingFace when you first run booster embed.",
+    a: "No code, no prompts, no file content ever leaves your machine. The symbol index, vector store, and stats database are all local, stored in .booster/ inside your project. The MCP server runs as a local stdio process. No network calls, no telemetry, no structured events phoned home. The only external call is the one-time model download from HuggingFace when you first run booster embed.",
   },
   {
     q: "Does it work with TypeScript and other languages?",
-    a: "Yes. Booster indexes Python (.py) and TypeScript/TSX/JS/JSX files. We use tree-sitter-python for Python and tree-sitter-typescript for TypeScript — extracting functions, classes, methods, interfaces, and named arrow functions. Build artifacts (.next/, dist/, build/) are automatically excluded from indexing so minified bundles never pollute the symbol index.",
+    a: "Yes. Booster indexes Python (.py) and TypeScript/TSX/JS/JSX files. We use tree-sitter-python for Python and tree-sitter-typescript for TypeScript, extracting functions, classes, methods, interfaces, and named arrow functions. Build artifacts (.next/, dist/, build/) are automatically excluded from indexing so minified bundles never pollute the symbol index.",
   },
   {
     q: "How is this different from just using prompt caching?",
-    a: "Prompt caching (Layer 1) reuses stable prefixes that have already been sent — it reduces cost on repeated context. Booster (Layer 3) prevents that context from being sent in the first place. A 1,800-line file cached still costs full price on the first read of a session. Booster routes only the relevant 80 lines every time, whether or not caching is active. The two stack: Booster reduces what you send, caching reduces the cost of what you sent previously.",
+    a: "Prompt caching (Layer 1) reuses stable prefixes that have already been sent, it reduces cost on repeated context. Booster (Layer 3) prevents that context from being sent in the first place. A 1,800-line file cached still costs full price on the first read of a session. Booster routes only the relevant 80 lines every time, whether or not caching is active. The two stack: Booster reduces what you send, caching reduces the cost of what you sent previously.",
   },
   {
     q: "Does it work across multiple terminal sessions on the same machine?",
-    a: "Yes. The hooks and MCP server are wired via .claude/settings.json and .mcp.json at the project root — not tied to any specific terminal window or session. Every Claude Code session you open inside the project directory (any terminal, same machine) automatically gets the Read gate, Grep nudge, and route_model hook. The MCP server starts fresh per session but the index is shared (it's just .booster/symbols.db on disk). The only requirement: run booster init claude once per project, not once per session.",
+    a: "Yes. The hooks and MCP server are wired via .claude/settings.json and .mcp.json at the project root, not tied to any specific terminal window or session. Every Claude Code session you open inside the project directory (any terminal, same machine) automatically gets the Read gate, Grep nudge, and route_model hook. The MCP server starts fresh per session but the index is shared (it's just .booster/symbols.db on disk). The only requirement: run booster init claude once per project, not once per session.",
   },
   {
     q: "Does each developer on my team need to run booster init?",
-    a: "Yes — once per developer, once per project. Each developer runs pip install 'agent-booster[full]' then booster start inside the project. booster start wires the AI tools it detects, indexes the codebase, builds embeddings, and starts the daemon — nothing manual. The symbol index is gitignored so each developer builds their own locally. For teams, ConductGuard fleet admin (coming) will push the setup automatically to every developer's workspace.",
+    a: "Yes, once per developer, once per project. Each developer runs pip install 'agent-booster[full]' then booster start inside the project. booster start wires the AI tools it detects, indexes the codebase, builds embeddings, and starts the daemon, nothing manual. The symbol index is gitignored so each developer builds their own locally. For teams, ConductGuard fleet admin (coming) will push the setup automatically to every developer's workspace.",
   },
 ]
 

@@ -45,7 +45,7 @@ function ToolsSection() {
           <h2 className="text-2xl font-bold text-stone-900 mb-3">Help your team work faster</h2>
           <p className="text-stone-500 text-sm max-w-xl mx-auto">
             These tools cut the cost and time of running AI assistants.
-            They work on their own — and work within whatever rules Guard sets.
+            They work on their own, and work within whatever rules Guard sets.
           </p>
         </div>
 
@@ -67,7 +67,7 @@ function ToolsSection() {
             <p className="text-sm text-stone-600 leading-relaxed">
               Instead of sending your whole codebase to the AI on every question,
               Agent Booster sends only the parts that matter. Less sent means less spent.
-              It also picks the right AI model for the job — no more using the expensive
+              It also picks the right AI model for the job, no more using the expensive
               one when a cheaper one would do.
             </p>
 
@@ -84,11 +84,11 @@ function ToolsSection() {
               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
               <ul className="space-y-1.5">
                 {[
-                  "Sends only the relevant code — not the whole file",
+                  "Sends only the relevant code, not the whole file",
                   "Finds the right code by meaning, not just keywords",
                   "Picks the cheapest model that can handle the task",
                   "booster verbosity: cuts output tokens 30–75% across Claude Code, Cursor, Codex",
-                  "booster compress: shrinks memory files via haiku — keeps context lean",
+                  "booster compress: shrinks memory files via haiku, keeps context lean",
                   "booster gain: shows real input + output savings from actual session data",
                 ].map(item => (
                   <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
@@ -134,7 +134,7 @@ function ToolsSection() {
 
             <p className="text-sm text-stone-600 leading-relaxed">
               The daily driver for Conduct users. Run agents from the terminal, switch workspaces in one command,
-              and enforce AI usage policies across the team with ConductGuard MCP — every tool call Claude makes
+              and enforce AI usage policies across the team with ConductGuard MCP, every tool call Claude makes
               passes through Guard first.
             </p>
 
@@ -151,7 +151,7 @@ function ToolsSection() {
               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
               <ul className="space-y-1.5">
                 {[
-                  "Run any agent from the terminal — picks up the right context automatically",
+                  "Run any agent from the terminal, picks up the right context automatically",
                   "conduct switch: swap workspaces + re-sync policies atomically",
                   "ConductGuard MCP enforces team AI policies on every tool call",
                   "conduct whoami: instant view of workspace, Guard, and Booster status",
@@ -199,7 +199,7 @@ function ToolsSection() {
 
             <p className="text-sm text-stone-600 leading-relaxed">
               Run one command. Conduct analyses your local Claude Code transcripts using paxel,
-              builds your builder profile — archetype, competency scores, signature moves —
+              builds your builder profile, archetype, competency scores, signature moves —
               and sends the report straight to your admin. No data leaves your machine until you hit send.
             </p>
 
@@ -207,10 +207,10 @@ function ToolsSection() {
               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">What it does</p>
               <ul className="space-y-1.5">
                 {[
-                  "Analyses local ~/.claude/projects transcripts — fully offline",
+                  "Analyses local ~/.claude/projects transcripts, fully offline",
                   "Computes builder archetype: Execution · Planning · Engineering scores",
                   "Sends a formatted report to your admin via Slack",
-                  "No install needed — paxel downloads on first run",
+                  "No install needed, paxel downloads on first run",
                 ].map(item => (
                   <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
                     <span className="text-amber-500 mt-0.5 shrink-0">✓</span>
@@ -242,7 +242,7 @@ function ToolsSection() {
             <p className="text-sm text-stone-600 leading-relaxed">
               A ready-to-use setup for teams using Claude Code. Instead of every
               developer configuring things from scratch, this gives the whole team
-              a shared starting point — the same rules, the same shortcuts, the same checks.
+              a shared starting point, the same rules, the same shortcuts, the same checks.
             </p>
 
             <div className="flex flex-col gap-2">
@@ -252,7 +252,7 @@ function ToolsSection() {
                   "Shared instructions so the AI knows how your team works",
                   "Pre-built shortcuts for common tasks",
                   "Automatic checks that run before risky actions",
-                  "Roles for different team types — startup, SMB, enterprise",
+                  "Roles for different team types, startup, SMB, enterprise",
                 ].map(item => (
                   <li key={item} className="flex items-start gap-2 text-sm text-stone-600">
                     <span className="text-violet-500 mt-0.5 shrink-0">✓</span>
@@ -291,10 +291,10 @@ function GuardTogetherSection() {
         <div className="text-center mb-14">
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">Guard + tools together</p>
           <h2 className="text-3xl font-bold text-white mb-4">
-            Ship AI at scale — without blowing<br />your budget or hitting rate limits.
+            Ship AI at scale, without blowing<br />your budget or hitting rate limits.
           </h2>
           <p className="text-stone-400 text-sm max-w-2xl mx-auto leading-relaxed">
-            Guard gives your team lead one place to set the rules — how much any developer can spend,
+            Guard gives your team lead one place to set the rules, how much any developer can spend,
             which actions are off limits, which AI tools are approved. These tools make sure every
             developer runs as efficiently as possible within those rules. The combination means your
             team can run dozens of AI workflows a day without budget surprises or rate limit failures.
@@ -306,21 +306,21 @@ function GuardTogetherSection() {
             {
               guard: "Guard sets a spend limit per developer per day",
               tool: "Agent Booster cuts per-request cost by up to 15×",
-              outcome: "The same budget covers 10× more workflow runs — every developer stays inside the limit without thinking about it.",
+              outcome: "The same budget covers 10× more workflow runs, every developer stays inside the limit without thinking about it.",
               color: "border-indigo-500",
               toolColor: "text-indigo-300",
             },
             {
               guard: "Guard blocks unapproved AI tools team-wide",
               tool: "Claude Code Team Kit makes approved tools the default for everyone",
-              outcome: "Developers get a ready-to-go setup that already matches Guard's approved tool list — zero friction, zero policy violations.",
+              outcome: "Developers get a ready-to-go setup that already matches Guard's approved tool list, zero friction, zero policy violations.",
               color: "border-violet-500",
               toolColor: "text-violet-300",
             },
             {
               guard: "Guard logs every AI action across the whole team",
-              tool: "RTK shrinks what the AI reads — 60–90% fewer tokens per run",
-              outcome: "Fewer tokens means less to log, less rate limit pressure, and a cleaner audit trail — every run is faster and cheaper.",
+              tool: "RTK shrinks what the AI reads, 60–90% fewer tokens per run",
+              outcome: "Fewer tokens means less to log, less rate limit pressure, and a cleaner audit trail, every run is faster and cheaper.",
               color: "border-amber-500",
               toolColor: "text-amber-300",
             },
@@ -333,7 +333,7 @@ function GuardTogetherSection() {
             },
             {
               guard: "Guard wires PreCompact + SessionStart hooks into Claude Code",
-              tool: "Agent Booster uses RRF fusion — vector + keyword ranks merged for every search",
+              tool: "Agent Booster uses RRF fusion, vector + keyword ranks merged for every search",
               outcome: "Session context (budget, branch, policies) survives conversation compaction. Searches return better symbol matches by combining two ranking strategies automatically.",
               color: "border-emerald-500",
               toolColor: "text-emerald-300",
@@ -366,7 +366,7 @@ function GuardTogetherSection() {
           <div className="flex-1">
             <p className="text-white font-semibold mb-1">Ready to set this up for your team?</p>
             <p className="text-stone-400 text-sm">
-              Start with Guard in Conduct — set your team&apos;s policies in minutes.
+              Start with Guard in Conduct, set your team&apos;s policies in minutes.
               Then give your developers these tools and they&apos;ll stay under budget automatically.
             </p>
           </div>
@@ -403,7 +403,7 @@ function OnboardingSection() {
 
         <div className="grid sm:grid-cols-3 gap-6 mb-10">
 
-          {/* Step 1 — Manager */}
+          {/* Step 1. Manager */}
           <div className="relative bg-white rounded-2xl border border-stone-200 p-7 flex flex-col gap-4">
             <div className="flex items-center justify-between mb-1">
               <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-red-700 bg-red-50 border border-red-100 px-2.5 py-1 rounded-full uppercase tracking-widest">
@@ -439,7 +439,7 @@ function OnboardingSection() {
             </div>
           </div>
 
-          {/* Step 2 — Developer */}
+          {/* Step 2. Developer */}
           <div className="relative bg-white rounded-2xl border border-stone-200 p-7 flex flex-col gap-4">
             <div className="flex items-center justify-between mb-1">
               <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full uppercase tracking-widest">
@@ -465,7 +465,7 @@ function OnboardingSection() {
             </div>
           </div>
 
-          {/* Step 3 — Tools sync */}
+          {/* Step 3. Tools sync */}
           <div className="relative bg-white rounded-2xl border border-stone-200 p-7 flex flex-col gap-4">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
@@ -514,7 +514,7 @@ function OnboardingSection() {
             <p className="font-semibold text-stone-900 mb-1">Change a rule once. It updates everywhere.</p>
             <p className="text-sm text-stone-500 leading-relaxed">
               When the team lead lowers the spend limit or adds a new blocked action,
-              every developer gets the update the next time they sync — no Slack messages,
+              every developer gets the update the next time they sync, no Slack messages,
               no manual steps, no one left on an old policy.
             </p>
           </div>

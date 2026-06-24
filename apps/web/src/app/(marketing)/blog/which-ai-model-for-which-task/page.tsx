@@ -11,10 +11,10 @@ export default function BlogPost() {
               <span className="text-xs text-stone-400">June 5, 2026</span>
             </div>
             <h1 className="text-4xl font-bold text-stone-900 leading-tight mb-4">
-              Which AI model should you use — and for which task?
+              Which AI model should you use, and for which task?
             </h1>
             <p className="text-lg text-stone-500 leading-relaxed">
-              Claude, GPT-4o, Gemini, DeepSeek, Mistral, Llama — a practical guide for developers on picking the right model for the job. With code examples and a note on why governance matters when you run them all.
+              Claude, GPT-4o, Gemini, DeepSeek, Mistral, Llama, a practical guide for developers on picking the right model for the job. With code examples and a note on why governance matters when you run them all.
             </p>
           </div>
 
@@ -25,7 +25,7 @@ export default function BlogPost() {
             <section>
               <h2 className="text-xl font-bold text-stone-900 mb-3">The problem with &quot;just use the best model&quot;</h2>
               <p>
-                In 2026 developers have access to 15+ production-quality LLMs. The instinct is to default to the strongest one for everything. That&apos;s expensive and often wrong — a model optimised for long-context reasoning is overkill for a one-line fix, and a fast cheap model is the wrong choice for a complex security audit.
+                In 2026 developers have access to 15+ production-quality LLMs. The instinct is to default to the strongest one for everything. That&apos;s expensive and often wrong, a model optimised for long-context reasoning is overkill for a one-line fix, and a fast cheap model is the wrong choice for a complex security audit.
               </p>
               <p className="mt-4">
                 The answer is routing. Know what each model is good at. Send the right task to the right model.
@@ -100,7 +100,7 @@ export default function BlogPost() {
                     <tr>
                       <td className="px-4 py-3 font-semibold text-stone-800">DeepSeek R1</td>
                       <td className="px-4 py-3 text-stone-500">DeepSeek</td>
-                      <td className="px-4 py-3 text-stone-600">Reasoning chains, maths, logic — at open-source cost</td>
+                      <td className="px-4 py-3 text-stone-600">Reasoning chains, maths, logic, at open-source cost</td>
                       <td className="px-4 py-3 text-stone-500">128k</td>
                     </tr>
                     <tr>
@@ -151,7 +151,7 @@ export default function BlogPost() {
                 <div>
                   <p className="font-semibold text-stone-800 mb-1">Complex reasoning / architecture design</p>
                   <p>
-                    Use <strong>Claude Opus 4.7</strong> or <strong>o3</strong>. These tasks need sustained multi-step reasoning across large context. Don&apos;t cheap out here — a bad architectural decision costs more than the token bill.
+                    Use <strong>Claude Opus 4.7</strong> or <strong>o3</strong>. These tasks need sustained multi-step reasoning across large context. Don&apos;t cheap out here, a bad architectural decision costs more than the token bill.
                   </p>
                 </div>
 
@@ -179,7 +179,7 @@ export default function BlogPost() {
                 <div>
                   <p className="font-semibold text-stone-800 mb-1">Maths, logic, step-by-step planning</p>
                   <p>
-                    Use <strong>o3</strong> or <strong>DeepSeek R1</strong>. Chain-of-thought reasoning is where these models separate themselves. DeepSeek R1 is particularly compelling because it&apos;s open-weights — you can self-host and match o3 quality at a fraction of the cost.
+                    Use <strong>o3</strong> or <strong>DeepSeek R1</strong>. Chain-of-thought reasoning is where these models separate themselves. DeepSeek R1 is particularly compelling because it&apos;s open-weights, you can self-host and match o3 quality at a fraction of the cost.
                   </p>
                 </div>
 
@@ -214,7 +214,7 @@ export default function BlogPost() {
             </section>
 
             <section>
-              <h2 className="text-xl font-bold text-stone-900 mb-3">Getting started — code examples</h2>
+              <h2 className="text-xl font-bold text-stone-900 mb-3">Getting started, code examples</h2>
               <p>
                 Quick-start snippets for each major provider.
               </p>
@@ -359,21 +359,21 @@ export default function BlogPost() {
             <section>
               <h2 className="text-xl font-bold text-stone-900 mb-3">How ConductGuard helps when you run multiple models</h2>
               <p>
-                ConductGuard sits between your developers and every AI coding tool they run — Claude Code, Codex, Cursor, and any tool that hooks into your IDE. It gives you three things:
+                ConductGuard sits between your developers and every AI coding tool they run. Claude Code, Codex, Cursor, and any tool that hooks into your IDE. It gives you three things:
               </p>
 
               <div className="mt-5 space-y-5">
                 <div>
                   <p className="font-semibold text-stone-800 mb-1">1. Per-tool, per-developer spend visibility</p>
                   <p>
-                    See exactly how much each developer is spending per tool per day. Set hard caps. Get Slack alerts before budgets blow. The spend breakdown works across models — you can see your Claude bill vs. your OpenAI bill vs. your Codex usage in one dashboard.
+                    See exactly how much each developer is spending per tool per day. Set hard caps. Get Slack alerts before budgets blow. The spend breakdown works across models, you can see your Claude bill vs. your OpenAI bill vs. your Codex usage in one dashboard.
                   </p>
                 </div>
 
                 <div>
                   <p className="font-semibold text-stone-800 mb-1">2. Policy enforcement across every model</p>
                   <p>
-                    Write a rule once — &quot;never send files from /secrets/ to any model&quot;, &quot;block any tool call that modifies production infrastructure without approval&quot;, &quot;warn on any model output that contains hardcoded credentials&quot; — and it applies to every tool. The rule doesn&apos;t care whether the output came from Claude or GPT-4o.
+                    Write a rule once — &quot;never send files from /secrets/ to any model&quot;, &quot;block any tool call that modifies production infrastructure without approval&quot;, &quot;warn on any model output that contains hardcoded credentials&quot;, and it applies to every tool. The rule doesn&apos;t care whether the output came from Claude or GPT-4o.
                   </p>
                 </div>
 

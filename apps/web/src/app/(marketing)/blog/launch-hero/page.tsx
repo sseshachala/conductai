@@ -1,6 +1,6 @@
 // Static hero composite for the launch blog post. Open at /blog/launch-hero,
 // screenshot at full window height, save to /public/blog/launch-hero.png.
-// All data is hard-coded — no API calls. Tweak numbers/names below.
+// All data is hard-coded, no API calls. Tweak numbers/names below.
 
 export const metadata = {
   title: "Conduct launch hero",
@@ -85,7 +85,7 @@ export default function LaunchHero() {
             </div>
 
             <div className="bg-white rounded-2xl border border-stone-200 px-6 py-5 shadow-sm col-span-5">
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-stone-400 mb-3">Tool coverage — 6/24/2026</div>
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-stone-400 mb-3">Tool coverage, 6/24/2026</div>
               <div className="flex flex-col gap-2.5">
                 {DEVELOPERS.map(d => (
                   <div key={d.email} className="flex items-center gap-3 text-sm">

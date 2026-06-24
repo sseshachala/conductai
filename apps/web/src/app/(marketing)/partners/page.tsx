@@ -25,7 +25,7 @@ function HeroSection() {
       <p className="text-lg text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
         AI governance is not a product category you install and forget. It's a practice that takes
         people, process, and technology working together. We're looking for partners who want to
-        build that practice alongside us — in any form that makes sense.
+        build that practice alongside us, in any form that makes sense.
       </p>
       <a href="#apply" className="inline-flex rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-bold hover:bg-stone-700 transition-colors">
         Tell Us How You'd Like to Partner →
@@ -42,7 +42,7 @@ const partnerTypes = [
     iconBg: "bg-indigo-50",
     label: "Solutions Partners",
     title: "Implement governance for your clients.",
-    desc: "You're a consulting firm, systems integrator, or managed services provider. Your clients are adopting AI and need someone to own the governance layer for them. You bring the relationship — we bring the platform and the playbooks.",
+    desc: "You're a consulting firm, systems integrator, or managed services provider. Your clients are adopting AI and need someone to own the governance layer for them. You bring the relationship, we bring the platform and the playbooks.",
     outcomes: [
       "White-label or co-branded delivery",
       "Access to full platform + implementation tooling",
@@ -57,7 +57,7 @@ const partnerTypes = [
     iconBg: "bg-emerald-50",
     label: "Technology Partners",
     title: "Integrate Conduct into your platform.",
-    desc: "You build developer tools, security platforms, or engineering infrastructure. Your users are already using AI. Adding Conduct's governance layer — Guard policies, audit trails, spend controls — makes your platform more defensible.",
+    desc: "You build developer tools, security platforms, or engineering infrastructure. Your users are already using AI. Adding Conduct's governance layer. Guard policies, audit trails, spend controls, makes your platform more defensible.",
     outcomes: [
       "MCP integration support",
       "API access for audit log and policy data",
@@ -72,7 +72,7 @@ const partnerTypes = [
     iconBg: "bg-amber-50",
     label: "Referral Partners",
     title: "Connect us to teams that need governance.",
-    desc: "You work with engineering organizations, CISOs, or IT leaders. When AI governance comes up in conversation — and it will — you refer them to Conduct. Simple, low-touch, valuable.",
+    desc: "You work with engineering organizations, CISOs, or IT leaders. When AI governance comes up in conversation, and it will, you refer them to Conduct. Simple, low-touch, valuable.",
     outcomes: [
       "Referral fee on closed platform subscriptions",
       "Solutions engagements for referred clients",
@@ -87,7 +87,7 @@ const partnerTypes = [
     iconBg: "bg-violet-50",
     label: "Community & Research Partners",
     title: "Advance the practice of AI governance.",
-    desc: "You're a researcher, educator, community builder, or open-source contributor working on responsible AI, developer tooling, or engineering culture. We want to collaborate — not just commercially, but intellectually.",
+    desc: "You're a researcher, educator, community builder, or open-source contributor working on responsible AI, developer tooling, or engineering culture. We want to collaborate, not just commercially, but intellectually.",
     outcomes: [
       "Access to Conduct's data and findings",
       "Platform access for research and teaching",
@@ -110,7 +110,7 @@ function PartnerTypesSection() {
           </h2>
           <p className="text-stone-500 max-w-xl mx-auto leading-relaxed">
             We're open to any collaboration that helps engineering teams govern their AI.
-            Tell us what you're thinking — we'll figure out the right fit together.
+            Tell us what you're thinking, we'll figure out the right fit together.
           </p>
         </div>
         <div className="grid md:grid-cols-2 gap-5">
@@ -150,12 +150,12 @@ function PartnerTypesSection() {
 function WhyPartnerSection() {
   const reasons = [
     {
-      title: "AI governance is a growing requirement — not a nice-to-have.",
+      title: "AI governance is a growing requirement, not a nice-to-have.",
       body: "SOC 2, ISO 27001, and emerging AI-specific compliance frameworks are all asking the same question: how do you govern what your AI tools do? The teams that can answer that question are the ones that win enterprise deals. We help you answer it.",
     },
     {
       title: "SaaS alone isn't a moat anymore. Expertise is.",
-      body: "Anyone can build software now. What can't be replicated is the knowledge of how to apply AI governance in a real engineering organization — the policy design, the organizational change, the integration with existing security practice. Partners who carry that expertise have a durable advantage.",
+      body: "Anyone can build software now. What can't be replicated is the knowledge of how to apply AI governance in a real engineering organization, the policy design, the organizational change, the integration with existing security practice. Partners who carry that expertise have a durable advantage.",
     },
     {
       title: "We built the platform. You bring the relationships.",
@@ -188,12 +188,12 @@ function WhyPartnerSection() {
 
 function WhatYouGetSection() {
   const items = [
-    { icon: "🚀", title: "Full platform access", desc: "Every feature — Guard, Secure, Workflows, the marketplace, and the canvas — available to you and your team for delivery and demo." },
+    { icon: "🚀", title: "Full platform access", desc: "Every feature. Guard, Secure, Workflows, the marketplace, and the canvas, available to you and your team for delivery and demo." },
     { icon: "📚", title: "Implementation playbooks", desc: "The same runbooks we use internally to deploy governance across engineering teams. Adapted for partner delivery." },
     { icon: "🤝", title: "Joint go-to-market", desc: "Co-marketing, case studies, speaking opportunities, and introductions to our network. We build pipeline together." },
     { icon: "🛠️", title: "Technical support", desc: "Direct line to the Conduct engineering team. For technical questions, custom integrations, and edge cases in client deployments." },
-    { icon: "📊", title: "Partner portal", desc: "Deal registration, revenue tracking, training materials, and certification — all in one place." },
-    { icon: "💬", title: "Shared Slack channel", desc: "Real-time communication with the Conduct team. Not a ticket queue — a conversation." },
+    { icon: "📊", title: "Partner portal", desc: "Deal registration, revenue tracking, training materials, and certification, all in one place." },
+    { icon: "💬", title: "Shared Slack channel", desc: "Real-time communication with the Conduct team. Not a ticket queue, a conversation." },
   ]
   return (
     <section className="py-20 px-6 bg-stone-50">
@@ -205,7 +205,7 @@ function WhatYouGetSection() {
           </h2>
           <p className="text-stone-500 max-w-xl mx-auto leading-relaxed">
             We don't have a partner program with a PDF and a badge.
-            We have actual support — people, tools, and shared upside.
+            We have actual support, people, tools, and shared upside.
           </p>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -234,7 +234,7 @@ function ApplySection() {
         </h2>
         <p className="text-stone-400 leading-relaxed mb-10">
           No form with 40 fields. No sales qualification call before we've even talked.
-          Send us a note — tell us who you are, what you're building, and what kind of
+          Send us a note, tell us who you are, what you're building, and what kind of
           partnership you have in mind. We'll respond within one business day.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -242,7 +242,7 @@ function ApplySection() {
             href="mailto:hello@conductai.ai"
             className="rounded-xl bg-white text-stone-900 px-7 py-3.5 text-base font-bold hover:bg-stone-100 transition-colors w-full sm:w-auto text-center"
           >
-            Email Us — hello@conductai.ai
+            Email Us, hello@conductai.ai
           </a>
           <a
             href="https://cal.com/sudhi-seshachala-pks7pd"

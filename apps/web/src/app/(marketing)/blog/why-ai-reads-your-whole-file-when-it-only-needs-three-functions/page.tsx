@@ -14,7 +14,7 @@ export default function BlogPost() {
               Why your AI reads the whole file when it only needs three functions.
             </h1>
             <p className="text-lg text-stone-500 leading-relaxed">
-              AI coding tools aren&apos;t lazy — they&apos;re blind. They can&apos;t see inside a file
+              AI coding tools aren&apos;t lazy, they&apos;re blind. They can&apos;t see inside a file
               without reading it. Agent Booster gives them a map so they don&apos;t have to.
             </p>
           </div>
@@ -31,11 +31,11 @@ export default function BlogPost() {
               </p>
               <p className="mt-4">
                 An AI coding tool, by default, does read all 2,000 lines. Not because it&apos;s
-                inefficient — but because it has no other choice. It can&apos;t see the shape of a
+                inefficient, but because it has no other choice. It can&apos;t see the shape of a
                 file without reading it. Every read is a full read.
               </p>
               <p className="mt-4">
-                This post explains how Agent Booster solves that — and what an AST actually is,
+                This post explains how Agent Booster solves that, and what an AST actually is,
                 in plain terms.
               </p>
             </section>
@@ -75,7 +75,7 @@ export default function BlogPost() {
               <p className="mt-5">
                 Agent Booster uses a tool called <strong>tree-sitter</strong> to parse your
                 codebase into an AST when you run <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-stone-600 text-[13px]">booster index</code>.
-                The result is stored in a small local database — a symbol index.
+                The result is stored in a small local database, a symbol index.
               </p>
             </section>
 
@@ -84,7 +84,7 @@ export default function BlogPost() {
               <p>
                 After indexing, Booster knows about every function and class in your project:
                 its name, which file it lives in, which lines it spans, and its signature
-                (the first line — the part that tells you what it accepts and returns).
+                (the first line, the part that tells you what it accepts and returns).
               </p>
               <p className="mt-4">
                 Nothing is sent anywhere. It&apos;s a local SQLite file at{" "}
@@ -112,7 +112,7 @@ export default function BlogPost() {
               <p className="mt-4">
                 It takes two inputs: the file path and a description of the task. It looks
                 up that file in the symbol index, matches the task description against the symbol
-                names, and returns only the source lines for the matching functions — with
+                names, and returns only the source lines for the matching functions, with
                 a header showing exactly where they came from.
               </p>
 
@@ -145,7 +145,7 @@ export default function BlogPost() {
               </p>
               <p className="mt-4">
                 <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-stone-600 text-[13px]">search_context</code> handles this.
-                It takes your task description and searches the symbol index by meaning — not just
+                It takes your task description and searches the symbol index by meaning, not just
                 keyword matching. It uses a small local embedding model to understand that
                 &ldquo;handle Slack notification failure&rdquo; and &ldquo;post_message error handling&rdquo; are related,
                 even if they share no words.
@@ -170,12 +170,12 @@ export default function BlogPost() {
                 On a small project, reading whole files is fine. On a codebase with 200 files
                 and 15,000 functions, every unnecessary read compounds. An agentic session
                 might read 30–50 files across a single task. Without smart_read, that&apos;s
-                potentially millions of tokens — most of it irrelevant.
+                potentially millions of tokens, most of it irrelevant.
               </p>
               <p className="mt-4">
                 Reuven Cohen&apos;s observation that swarm-style AI development costs ~$2,500/day
                 is not a model pricing problem. It&apos;s an information flow problem. The same
-                context — architecture docs, source files, conversation history — gets resent
+                context, architecture docs, source files, conversation history, gets resent
                 on every call. Smart_read is the fix at the file level.
               </p>
             </section>
@@ -194,7 +194,7 @@ export default function BlogPost() {
               <p className="mt-5 text-sm text-stone-500">
                 Add <code className="font-mono bg-stone-100 px-1.5 py-0.5 rounded text-stone-600 text-[13px]">--embed</code> to
                 the index command to enable semantic search.
-                Without it, Booster falls back to keyword matching — still useful, just less precise.
+                Without it, Booster falls back to keyword matching, still useful, just less precise.
               </p>
             </section>
 

@@ -596,13 +596,13 @@ function DeepDiveContent({
 
         if (cancelled) return
 
-        // Edition manifest (required — need baseline score)
+        // Edition manifest (required, need baseline score)
         if (editionRes) {
           if (!editionRes.ok) {
             const status = editionRes.status
             setError(
-              status === 401 ? "Not authorised — check your session." :
-              status === 403 ? "Forbidden — workspace role insufficient." :
+              status === 401 ? "Not authorised, check your session." :
+              status === 403 ? "Forbidden, workspace role insufficient." :
               status === 404 ? `Edition "${editionSlug}" has no committed baseline yet.` :
               `Benchmark endpoint returned ${status}.`
             )
@@ -621,18 +621,18 @@ function DeepDiveContent({
           return
         }
 
-        // Scenarios (optional — not all playbooks have multi-scenario fixtures)
+        // Scenarios (optional, not all playbooks have multi-scenario fixtures)
         if (scenariosRes?.ok) {
           setScenarios(await scenariosRes.json())
         }
 
-        // Current criteria breakdown (optional — show if available)
+        // Current criteria breakdown (optional, show if available)
         if (liveRes?.ok) {
           setLive(await liveRes.json())
         }
 
       } catch {
-        if (!cancelled) setError("Network error — could not reach the API.")
+        if (!cancelled) setError("Network error, could not reach the API.")
       } finally {
         if (!cancelled) setLoading(false)
       }

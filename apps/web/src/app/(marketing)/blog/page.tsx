@@ -10,8 +10,8 @@ export default function BlogIndex() {
     },
     {
       slug: "which-ai-model-for-which-task",
-      title: "Which AI model should you use — and for which task?",
-      excerpt: "Claude, GPT-4o, Gemini, DeepSeek, Mistral, Llama — a practical guide for developers on picking the right model for the job. With code examples and ConductGuard governance.",
+      title: "Which AI model should you use, and for which task?",
+      excerpt: "Claude, GPT-4o, Gemini, DeepSeek, Mistral, Llama, a practical guide for developers on picking the right model for the job. With code examples and ConductGuard governance.",
       date: "June 5, 2026",
       tag: "Guide",
       tagColor: "text-amber-700 bg-amber-50 border-amber-200",
@@ -19,7 +19,7 @@ export default function BlogIndex() {
     {
       slug: "stop-paying-opus-prices-for-haiku-work",
       title: "Stop paying Opus prices for Haiku work.",
-      excerpt: "Most AI coding setups default to the most capable model for every task — including fixing a typo. That's a 4x cost penalty on work a cheaper model handles just as well.",
+      excerpt: "Most AI coding setups default to the most capable model for every task, including fixing a typo. That's a 4x cost penalty on work a cheaper model handles just as well.",
       date: "May 31, 2026",
       tag: "Agent Booster",
       tagColor: "text-amber-700 bg-amber-50 border-amber-200",
@@ -35,7 +35,7 @@ export default function BlogIndex() {
     {
       slug: "why-ai-reads-your-whole-file-when-it-only-needs-three-functions",
       title: "Why your AI reads the whole file when it only needs three functions.",
-      excerpt: "AI coding tools aren't lazy — they're blind. They can't see inside a file without reading it. Agent Booster gives them a map so they don't have to.",
+      excerpt: "AI coding tools aren't lazy, they're blind. They can't see inside a file without reading it. Agent Booster gives them a map so they don't have to.",
       date: "May 31, 2026",
       tag: "Agent Booster",
       tagColor: "text-indigo-700 bg-indigo-50 border-indigo-200",

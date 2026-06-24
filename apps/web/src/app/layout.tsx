@@ -6,11 +6,11 @@ import { ClerkProvider } from "@clerk/nextjs"
 export const metadata: Metadata = {
   metadataBase: new URL("https://conductai.ai"),
   title: {
-    default: "ConductAI — Runtime AI Governance for Engineering Teams",
+    default: "ConductAI: Runtime AI Governance for Engineering Teams",
     template: "%s | ConductAI",
   },
   description:
-    "Govern every AI tool your team uses — Claude Code, Cursor, Copilot, Codex. Inline enforcement, audit trail, SOC 2 ready. Install in 10 minutes.",
+    "Govern every AI tool your team uses: Claude Code, Cursor, Copilot, Codex. Inline enforcement, audit trail, SOC 2 ready. Install in 10 minutes.",
   keywords: [
     "runtime AI governance",
     "AI governance platform",
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     apple: "/icon.png",
   },
   openGraph: {
-    title: "ConductAI — Runtime AI Governance for Engineering Teams",
+    title: "ConductAI: Runtime AI Governance for Engineering Teams",
     description:
       "Policy is a PDF. Runtime is a hook. One identity, one policy, one audit trail across every AI tool your team uses.",
     url: "https://conductai.ai",
@@ -45,15 +45,15 @@ export const metadata: Metadata = {
         url: "https://conductai.ai/og.png",
         width: 1200,
         height: 630,
-        alt: "ConductAI — Runtime AI Governance for Engineering Teams",
+        alt: "ConductAI: Runtime AI Governance for Engineering Teams",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "ConductAI — Runtime AI Governance",
+    title: "ConductAI: Runtime AI Governance",
     description:
-      "Govern every AI tool your team uses — inline enforcement, audit trail, SOC 2 ready. Install in 10 minutes.",
+      "Govern every AI tool your team uses: inline enforcement, audit trail, SOC 2 ready. Install in 10 minutes.",
     images: ["https://conductai.ai/og.png"],
   },
   robots: {

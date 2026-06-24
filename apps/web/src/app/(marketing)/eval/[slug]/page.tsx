@@ -480,8 +480,8 @@ function EvalDetailContent({
         if (!res.ok) {
           const hint =
             res.status === 404 ? `Playbook "${slug}" not found in eval results.` :
-            res.status === 401 ? "Not authorised — check your session." :
-            res.status === 403 ? "Forbidden — workspace role may be insufficient." :
+            res.status === 401 ? "Not authorised, check your session." :
+            res.status === 403 ? "Forbidden, workspace role may be insufficient." :
             `API returned ${res.status}.`
           setError(hint)
           return
@@ -489,7 +489,7 @@ function EvalDetailContent({
 
         setDetail(await res.json())
       } catch {
-        if (!cancelled) setError("Network error — could not reach the API.")
+        if (!cancelled) setError("Network error, could not reach the API.")
       } finally {
         if (!cancelled) setLoading(false)
       }

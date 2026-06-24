@@ -107,7 +107,7 @@ function HeroSection() {
         <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Govern. Secure. Automate.</span>
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
-        One identity, one policy, one audit trail — across every AI tool your team uses.
+        One identity, one policy, one audit trail across every AI tool your team uses.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
         {chips.map(chip => (
@@ -118,7 +118,7 @@ function HeroSection() {
       </div>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <a href="/sign-up" className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center">
-          Start Free — See It Yourself
+          Start Free
         </a>
         <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener" className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-base font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center">
           Book a Demo
@@ -316,7 +316,7 @@ function TwoLanesSection() {
             <div>
               <h3 className="text-2xl font-bold text-white tracking-tight mb-2">Govern every agent at runtime</h3>
               <p className="text-stone-400 leading-relaxed text-sm">
-                The Friday deploy that would have gone through unreviewed — blocked. The secret that would have landed in a commit message — caught. At the moment the agent acts, not the morning after.
+                The Friday deploy that would have gone through unreviewed, blocked. The secret that would have landed in a commit message, caught. At the moment the agent acts, not the morning after.
               </p>
             </div>
             <ul className="space-y-2.5 flex-1">
@@ -350,14 +350,14 @@ function GovernanceNarrativeSection() {
   const incidents = [
     {
       rule: "approve-prod-deploy",
-      headline: "Force-deploy to production — intercepted",
+      headline: "Force-deploy to production, intercepted",
       detail: "AI attempted vercel deploy --prod --force at 3:11pm on a Friday. Guard blocked it before it executed.",
       badge: "BLOCKED",
       badgeColor: "bg-red-500",
     },
     {
       rule: "no-secret-in-commit-msg",
-      headline: "Secret embedded in git commit — caught",
+      headline: "Secret embedded in git commit, caught",
       detail: "AI tried to commit code with a credential token in the commit message. Fired twice in the same session.",
       badge: "BLOCKED",
       badgeColor: "bg-red-500",
@@ -392,7 +392,7 @@ function GovernanceNarrativeSection() {
               Every AI session, explained in plain English.
             </h2>
             <p className="text-stone-500 leading-relaxed mb-8">
-              Guard watches every tool call across every AI session — Claude, Codex, Cursor, Copilot. At the end of each day, it surfaces one sentence that tells your team what happened, what was blocked, and what it cost.
+              Guard watches every tool call across every AI session: Claude, Codex, Cursor, Copilot. At the end of each day, it surfaces one sentence that tells your team what happened, what was blocked, and what it cost.
             </p>
             <div className="flex flex-wrap gap-2 mb-6">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-100 text-xs font-semibold text-red-600">🚫 6 deploys intercepted</span>
@@ -421,7 +421,7 @@ function GovernanceNarrativeSection() {
               </div>
             </div>
             <p className="text-sm text-stone-700 leading-relaxed mb-6">
-              You spent <strong>$245/day</strong> on AI this period across <span className="text-indigo-600 font-medium">claude-code</span>, <span className="text-indigo-600 font-medium">codex</span>, and <span className="text-indigo-600 font-medium">cursor</span>. Guard intercepted <strong>6 production deploys</strong> before they ran unreviewed, warned on <strong>2 destructive commands</strong>, and screened <strong>589 events for PII</strong> before they reached any LLM. Claude Code dominates at <strong>96% of total spend</strong>. RTK and Booster offset <strong>$235</strong> — 5.6% back.
+              You spent <strong>$245/day</strong> on AI this period across <span className="text-indigo-600 font-medium">claude-code</span>, <span className="text-indigo-600 font-medium">codex</span>, and <span className="text-indigo-600 font-medium">cursor</span>. Guard intercepted <strong>6 production deploys</strong> before they ran unreviewed, warned on <strong>2 destructive commands</strong>, and screened <strong>589 events for PII</strong> before they reached any LLM. Claude Code dominates at <strong>96% of total spend</strong>. RTK and Booster offset <strong>$235</strong>, 5.6% back.
             </p>
             <div className="grid grid-cols-4 gap-3 mb-4">
               {kpis.map(k => (
@@ -478,9 +478,9 @@ const personas = [
   {
     role: "Engineering Leaders",
     title: "Your team is using 4 AI tools. You don't know which ones, what they cost, or what they did.",
-    desc: "Conduct gives you a single view across every tool, every developer, every session — without adding any process to your team's workflow.",
+    desc: "Conduct gives you a single view across every tool, every developer, every session, without adding any process to your team's workflow.",
     outcomes: [
-      "See every AI tool your team uses — in one dashboard",
+      "See every AI tool your team uses, in one dashboard",
       "Know what AI is costing you, by person and by project",
       "Enforce your engineering standards automatically",
       "Answer security and compliance questions on demand",
@@ -489,10 +489,10 @@ const personas = [
   {
     role: "IT & Security Leaders",
     title: "Your AI usage policy exists in a doc. It has never once stopped an agent.",
-    desc: "Conduct enforces policy at the layer where agents actually run — not in a review meeting, not in a Notion page. At the moment the tool call happens.",
+    desc: "Conduct enforces policy at the layer where agents actually run. Not in a review meeting, not in a Notion page. At the moment the tool call happens.",
     outcomes: [
       "One policy layer across Claude Code, Cursor, Copilot, and more",
-      "No infrastructure changes — works with your existing stack",
+      "No infrastructure changes. Works with your existing stack",
       "Role-based policies for different teams and access levels",
       "Spend budgets per developer, per tool, per project",
     ],
@@ -500,11 +500,11 @@ const personas = [
   {
     role: "Security & Compliance",
     title: "Compliance asked for an AI audit trail. You had nothing to show them.",
-    desc: "Every tool call, every decision, every developer — logged from day one. Export the audit trail in 30 seconds. Answer any question on demand.",
+    desc: "Every tool call, every decision, every developer, logged from day one. Export the audit trail in 30 seconds. Answer any question on demand.",
     outcomes: [
       "Credentials and PII blocked before they reach any LLM",
       "Every tool call logged with decision, rule, and developer identity",
-      "Security scanning on every PR — automatic, not manual",
+      "Security scanning on every PR, automatic not manual",
       "Compliance audit trail exportable on demand",
     ],
   },
@@ -576,7 +576,7 @@ function FinalCTASection() {
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <a href="/sign-up" className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center">
-            Start Free — See It Yourself
+            Start Free
           </a>
           <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener" className="rounded-xl border border-white/40 text-white px-7 py-3.5 text-base font-semibold hover:bg-white/10 transition-colors w-full sm:w-auto text-center">
             Book a Demo
@@ -597,7 +597,7 @@ function PageFooter() {
         <div className="flex flex-col md:flex-row justify-between gap-8 mb-10">
           <div>
             <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto mb-3" />
-            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">AI Governance for Engineering Teams. Platform or partnership — you choose how.</p>
+            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">AI Governance for Engineering Teams. Platform or partnership. You choose how.</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
