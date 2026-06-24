@@ -31,6 +31,9 @@ function HeroSection() {
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-4">
         Most governance stops at day one. Guard gets smarter every session — learning your codebase, your team&apos;s patterns, and your risk profile over time.
       </p>
+      <p className="text-base text-stone-600 max-w-2xl mx-auto leading-relaxed mb-3">
+        Other AI governance tools want you to import an SDK and wrap every model call. Guard installs in 10 minutes and intercepts every AI tool your team already uses — Claude Code, Cursor, Copilot, Codex.
+      </p>
       <p className="text-base text-indigo-600 italic max-w-2xl mx-auto leading-relaxed mb-8">
         GitHub gives the CISO a setting. ConductGuard gives them enforcement.
       </p>
