@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "conduct-is-open-today",
+      title: "Conduct is open today. Here's the honest version.",
+      excerpt: "A quiet launch note from a product-first team. What v1 is, what it isn't, how to onboard in an afternoon, and a standing offer of a 60-day free evaluation.",
+      date: "June 24, 2026",
+      tag: "Launch",
+      tagColor: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    },
+    {
       slug: "which-ai-model-for-which-task",
       title: "Which AI model should you use — and for which task?",
       excerpt: "Claude, GPT-4o, Gemini, DeepSeek, Mistral, Llama — a practical guide for developers on picking the right model for the job. With code examples and ConductGuard governance.",
