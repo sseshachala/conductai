@@ -30,6 +30,39 @@ The thesis in one line: **TrustLayers tells you what happened. ConductAI stops i
 
 **Decision:** We do not chase EU AI Act Annex IV documentation in v1. We win the US first, then either partner with TrustLayers or build EU coverage at the 12-month mark when a paying EU customer demands it.
 
+### The broader competitive set
+
+The four vendors a CISO confuses us with — each governs a different layer:
+
+| Vendor | What they govern | Deployment | Origin | Buyer |
+|---|---|---|---|---|
+| **TrustLayers** | EU regulatory documentation | Async — logs after | EU (FR + LT) | Legal, regulators |
+| **Patronus / Galileo / Arize** | Model quality (hallucination, bias) | Pre-prod benchmarks | US | ML platform team |
+| **AgentID** | AI inside *apps you build* | SDK wraps model calls (TS/Python) | EU (Brno, CZ — AI shield s.r.o.) | AI product team |
+| **ConductAI Guard** | AI tools *engineers use to build* | PreToolUse hook, zero code | US-native | VP Eng / CISO |
+
+**One-line wedges:**
+- vs TrustLayers: inline vs async (already covered above)
+- vs Patronus: usage-governance ≠ model-eval; we consume their outputs, don't duplicate
+- vs AgentID: hook vs SDK; "they govern the AI you *build* — we govern the AI your team *uses to build*"
+
+**Positioning hygiene risk:** AgentID's marketing copy ("runtime governance, observability, audit trails, compliance evidence") is the closest verbatim overlap with ours. Every public surface needs the "AI your team uses" qualifier in the first sentence to draw the line. Two of four competitors are EU-origin — US-native is a stronger differentiator than originally framed in the TrustLayers table.
+
+### Scope boundary — what we are NOT
+
+We govern **AI usage**, not the **AI model**. Concretely, ConductAI does not own:
+
+| Capability | Owned by | Why we don't compete |
+|---|---|---|
+| Hallucination rate measurement | Patronus, Galileo, Arize, Braintrust | Eval-vendor space. Buyer is ML platform team, not CISO. |
+| Bias / fairness benchmarks | Patronus, Galileo, Credo | Requires labeled eval sets per use case. Vendor-aligned, not policy-aligned. |
+| Model accuracy benchmarking | LangSmith, Arize, Galileo | Pre-production gate, not runtime enforcement. |
+| RAG retrieval quality scoring | Ragas, TruLens, Arize | Application-internal metric, not governance surface. |
+
+When a buyer asks "do you do model evals" the answer is: **no, and we integrate with whoever you picked.** Model eval outputs flow into Guard findings (Layer 6) if/when the customer wires them in — we surface them in the audit trail, we don't generate them.
+
+The boundary: **the model is a vendor. Governance is what wraps every vendor.** If we drift into eval-vendor work we lose the wedge against TrustLayers ("we're the runtime layer") and start losing deals to Patronus on capability they own.
+
 ---
 
 ## 2. Architectural Foundation
@@ -232,7 +265,63 @@ In priority order (revised after audit — backend gaps were smaller than expect
 
 ---
 
-## 7. Anti-Patterns
+## 7. The Clone Test — weekly moat audit
+
+Forcing question, asked every Monday:
+
+> **If Bain cloned us this weekend with Lovable + Claude, what would we still have on Monday?**
+
+### What clones in a weekend
+
+Everything visible in a demo. All dashboard pages (`/governance`, `/guard`, `/secure`, `/spend`), canvas editor, YAML playbook format, the 22 playbooks, brain block prompts, framework matrix, KPI cards, narrative strip, RBAC tables, MCP surface, CLI.
+
+If it lives on a screen or in a YAML file in the repo, it clones.
+
+### What doesn't clone today
+
+- **PreToolUse hook engineering** across Claude Code / Cursor / Copilot / Codex — fail-open semantics, PII screening, budget hard-stop. A week per IDE if you know what you're doing.
+- **Multi-tenant isolation correctness** — auth on every endpoint, ownership checks, no path traversal. The cloner will ship security holes.
+- **Runtime + executor + sandbox dispatch** — Modal/E2B integration, turn budgets, SSE keepalive, agent_config tuning. Real engineering.
+- **Playbook calibration** — the YAML copies, the year of running it against real codebases doesn't.
+
+### What we *claim* is a moat but isn't yet
+
+These become real with customer time + telemetry. Calling them moats today is forward-marketing, not reality:
+
+- Multi-year audit chain. We have weeks.
+- Run-data flywheel. Thin without customer volume.
+- Customer-specific playbook libraries. Zero today.
+- Deep CI/CD integrations that cost more to rip out than keep. Zero today.
+
+### The brutal asymmetry
+
+**Visible surface = clonable. Hook plumbing + runtime = not.** The thing a procurement deck shows is exactly the thing Lovable reproduces. The thing that takes a year to build is invisible in the demo.
+
+Two consequences:
+1. We look more clonable than we are.
+2. We're tempted to polish the clonable part because it's what buyers see in the first meeting.
+
+### Prioritization filter
+
+Every governance-surface investment must answer: *does this make us harder to clone next quarter, or just easier to demo this quarter?*
+
+**Investments that compound (do more):**
+- **#764** — executor → `guard_audit_events` auto-sync. Every playbook run becomes a row in the chain.
+- **#733** — defensibility snapshots, hash chain. Once a tenant has 6 months of sealed events, no clone catches up.
+- More IDE / shell / MCP hooks. Each one is a week of plumbing a cloner has to redo.
+- Customer-specific playbook tuning. A YAML that took two weeks of calibration is a YAML a cloner doesn't have.
+
+**Investments that don't compound (do less):**
+- Additional dashboard variants past MVP
+- New framework matrices before customer demand
+- New visualization layers
+- Polishing what already renders
+
+The clone test isn't a threat — it's a weekly prioritization filter. Today's answer ("we still have hooks + runtime + auth") should grow to ("hooks + runtime + chain + flywheel + tuned playbooks + IDE coverage") in 12 months. If the list isn't growing, the dashboards are all anyone bought.
+
+---
+
+## 8. Anti-Patterns
 
 - **Don't build EU AI Act Annex IV docs ahead of a paying EU customer.** Engineering opportunity cost is too high. Partner with TrustLayers if needed.
 - **Don't market the 10-layer coverage as a feature claim.** Buyers will check. Only surface layers we score ≥80% on.
@@ -243,7 +332,7 @@ In priority order (revised after audit — backend gaps were smaller than expect
 
 ---
 
-## 8. Tied To
+## 9. Tied To
 
 - **Epic:** #759 — [epic: AI Governance Northstar — 10-layer coverage spec](https://github.com/sseshachala/conductai/issues/759)
 - **Now items:** #760 (Budget UI) · #761 (SOC 2 PDF) · #762 (Approval-in-hook) · #763 (Fail-closed flag) · #764 (Findings auto-sync)
