@@ -86,6 +86,7 @@ function McpModal({
   initial,
   environments,
   onSave,
+  onTest,
   onClose,
   isSystem,
   hasExistingAuth,
@@ -94,6 +95,7 @@ function McpModal({
   initial: FormState
   environments: Environment[]
   onSave: (form: FormState) => Promise<void>
+  onTest: (body: { url: string; auth_token: string | null; transport: string }) => Promise<{ ok: boolean; msg: string }>
   onClose: () => void
   isSystem?: boolean
   hasExistingAuth?: boolean
@@ -101,7 +103,28 @@ function McpModal({
   const [form, setForm] = useState<FormState>(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const readOnly = !!isSystem
+
+  async function handleTest() {
+    if (!form.url.trim()) { setError("URL is required to test."); return }
+    setTesting(true)
+    setTestResult(null)
+    setError("")
+    try {
+      const result = await onTest({
+        url: form.url.trim(),
+        auth_token: form.auth_token.trim() || null,
+        transport: form.transport,
+      })
+      setTestResult(result)
+    } catch (e: unknown) {
+      setTestResult({ ok: false, msg: e instanceof Error ? e.message : "Test failed" })
+    } finally {
+      setTesting(false)
+    }
+  }
 
   function set(key: keyof FormState, value: string) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -294,10 +317,21 @@ function McpModal({
             <p style={{ fontSize: 12, color: "var(--err)", margin: 0 }}>{error}</p>
           )}
 
+          {testResult && (
+            <p style={{ fontSize: 12, color: testResult.ok ? "var(--success, #2d8f5f)" : "var(--err)", margin: 0 }}>
+              {testResult.ok ? "✓ " : "✗ "}{testResult.msg}
+            </p>
+          )}
+
           <div style={{ display: "flex", gap: 8, paddingTop: 4 }}>
             <button type="submit" disabled={saving} className="btn btn-primary btn-sm">
               {saving ? "Saving…" : "Save"}
             </button>
+            {!readOnly && (
+              <button type="button" onClick={handleTest} disabled={testing || !form.url.trim()} className="btn btn-ghost btn-sm">
+                {testing ? "Testing…" : "Test connection"}
+              </button>
+            )}
             <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">
               Cancel
             </button>
@@ -379,6 +413,20 @@ function IntegrationsPageInner({
   function closeModal() {
     setModalMode(null)
     setEditTarget(null)
+  }
+
+  async function handleTest(body: { url: string; auth_token: string | null; transport: string }): Promise<{ ok: boolean; msg: string }> {
+    const headers = await buildHeaders(true)
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp-servers/test-connection`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (!res.ok) return { ok: false, msg: data?.detail || `HTTP ${res.status}` }
+    if (!data.ok) return { ok: false, msg: data.error || "Connection failed" }
+    const sample = data.sample_tools?.length ? ` (e.g. ${data.sample_tools.slice(0, 3).join(", ")})` : ""
+    return { ok: true, msg: `${data.tool_count} tool(s) via ${data.transport_used}${sample}` }
   }
 
   async function handleSave(form: FormState) {
@@ -599,6 +647,7 @@ function IntegrationsPageInner({
           initial={initialForm}
           environments={environments}
           onSave={handleSave}
+          onTest={handleTest}
           onClose={closeModal}
         />
       )}
