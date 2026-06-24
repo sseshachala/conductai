@@ -129,21 +129,25 @@ export default function LaunchHero() {
                 <span className="px-3 py-1 rounded-md text-stone-500">Monthly</span>
               </div>
             </div>
-            <div className="flex items-end gap-2 h-48">
-              {TREND.map(([day, claude, codex]) => {
-                const c = Number(claude); const x = Number(codex)
-                const hClaude = (c / maxBar) * 100
-                const hCodex = (x / maxBar) * 100
-                return (
-                  <div key={day} className="flex-1 flex flex-col items-center gap-1">
-                    <div className="w-full flex flex-col-reverse" style={{ height: "100%" }}>
+            <div className="h-56 flex flex-col">
+              <div className="flex-1 flex items-end gap-2">
+                {TREND.map(([day, claude, codex]) => {
+                  const c = Number(claude); const x = Number(codex)
+                  const hClaude = (c / maxBar) * 100
+                  const hCodex  = (x / maxBar) * 100
+                  return (
+                    <div key={day} className="flex-1 h-full flex flex-col-reverse">
                       <div style={{ height: `${hClaude}%`, background: "#4f46e5", borderRadius: "3px 3px 0 0" }} />
-                      <div style={{ height: `${hCodex}%`, background: "#0f766e", borderRadius: "3px 3px 0 0" }} />
+                      <div style={{ height: `${hCodex}%`,  background: "#0f766e", borderRadius: "3px 3px 0 0" }} />
                     </div>
-                    <div className="text-[10px] text-stone-400 font-mono">{day}</div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
+              <div className="flex gap-2 mt-2">
+                {TREND.map(([day]) => (
+                  <div key={String(day)} className="flex-1 text-[10px] text-stone-400 font-mono text-center">{day}</div>
+                ))}
+              </div>
             </div>
             <div className="flex items-center justify-center gap-6 mt-4 text-xs text-stone-500">
               <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm" style={{ background: "#4f46e5" }} /> Claude</span>
