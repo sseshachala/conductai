@@ -254,10 +254,11 @@ def list_projects(
         """), {"ws": str(project_id), "uid": user_id, "token": member_token, "now": now})
 
         # 6. Pre-seed Conduct AI Guard MCP server
-        # Token goes in encrypted_auth (rendered as Authorization: Bearer header),
+        # Token goes in encrypted_auth (rendered as Authorization: Bearer header
+        # by the MCP client at call time — see runtime/integrations/mcp_client.py),
         # not in URL (#800 — avoids leaking in access logs).
         from app.core.crypto import encrypt as _enc_token
-        _enc_bearer = _enc_token({"header": "Authorization", "value": f"Bearer {member_token}"})
+        _enc_bearer = _enc_token({"token": member_token})
         db.execute(text("""
             INSERT INTO mcp_servers (id, workspace_id, environment_id, name, url, transport, encrypted_auth, created_at)
             VALUES (gen_random_uuid(), :ws, NULL, 'Conduct AI Guard',
