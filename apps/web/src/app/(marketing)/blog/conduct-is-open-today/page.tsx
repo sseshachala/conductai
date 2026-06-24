@@ -66,6 +66,23 @@ export default function BlogPost() {
             </section>
 
             <section>
+              <blockquote className="border-l-4 border-indigo-500 pl-5 py-1 my-2">
+                <p className="text-base text-stone-700 leading-relaxed italic mb-3">
+                  &ldquo;What impressed me most about Conduct AI is that it approaches AI
+                  governance as a business capability, not just a technical feature. By
+                  bringing together cost management, security controls, and compliance
+                  oversight in a scalable architecture, it addresses a need that many
+                  enterprises are actively trying to solve.&rdquo;
+                </p>
+                <footer className="text-sm text-stone-500">
+                  <span className="font-semibold text-stone-700">Ram Prasad</span>
+                  {" · "}
+                  CEO, Delence
+                </footer>
+              </blockquote>
+            </section>
+
+            <section>
               <h2 className="text-xl font-bold text-stone-900 mb-3">What Conduct is (and isn&apos;t)</h2>
               <p>
                 Conduct is an operating layer that sits alongside the AI tools
