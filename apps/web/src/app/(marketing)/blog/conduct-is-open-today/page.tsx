@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Conduct is open today. Here's the honest version. — Conduct",
+  title: "Conduct is open today. Here's the honest version. | Conduct",
   description:
     "A launch note from the team behind Conduct. What v1 is, what it isn't, how to onboard in an afternoon, and a standing offer of a free evaluation.",
 }
@@ -19,8 +19,8 @@ export default function BlogPost() {
             </h1>
             <p className="text-lg text-stone-500 leading-relaxed">
               We&apos;re not a marketing-first company. We built Conduct because the
-              problem kept showing up — in every conversation with engineering
-              leaders we know. This is a quiet launch note: what v1 is, what
+              problem kept showing up in every conversation with engineering
+              leaders we know. It works from day one. This is a quiet launch note: what v1 is, what
               it isn&apos;t, and how to try it without committing to anything.
             </p>
           </div>
@@ -34,7 +34,7 @@ export default function BlogPost() {
               <p>
                 Every engineering leader we&apos;ve spoken to over the last year has
                 said some version of the same thing. AI is already inside their
-                team — Copilot, Cursor, Claude Code, Codex, a dozen MCP servers —
+                team. Copilot, Cursor, Claude Code, Codex, a dozen MCP servers.
                 and nobody can answer simple questions about it.
               </p>
               <p className="mt-4">
@@ -63,7 +63,7 @@ export default function BlogPost() {
               <ul className="mt-4 space-y-2 text-sm">
                 <li className="flex gap-3">
                   <span className="font-mono text-stone-400 shrink-0 w-16">Govern</span>
-                  <span>Policies that travel with your team into Cursor, Claude Code, Copilot — enforced at the hook level, not after the fact.</span>
+                  <span>Policies that travel with your team into Cursor, Claude Code, Copilot. Enforced at the hook level, not after the fact.</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="font-mono text-stone-400 shrink-0 w-16">Secure</span>
@@ -71,7 +71,7 @@ export default function BlogPost() {
                 </li>
                 <li className="flex gap-3">
                   <span className="font-mono text-stone-400 shrink-0 w-16">Automate</span>
-                  <span>YAML playbooks for the work that&apos;s already repeated by hand — PR triage, incident response, CI/CD recovery, security review.</span>
+                  <span>YAML playbooks for the work that&apos;s already repeated by hand: PR triage, incident response, CI/CD recovery, security review.</span>
                 </li>
               </ul>
               <p className="mt-5">
@@ -98,7 +98,7 @@ export default function BlogPost() {
                   </thead>
                   <tbody className="divide-y divide-stone-100">
                     <tr>
-                      <td className="px-4 py-3 text-stone-600">ConductGuard — policy + activity feed</td>
+                      <td className="px-4 py-3 text-stone-600">ConductGuard: policy + activity feed</td>
                       <td className="px-4 py-3 text-stone-500">SSO beyond Clerk</td>
                     </tr>
                     <tr>
@@ -167,19 +167,19 @@ export default function BlogPost() {
               </p>
               <ul className="mt-4 space-y-2 text-sm">
                 <li className="flex gap-3">
-                  <span className="text-stone-400 shrink-0">—</span>
+                  <span className="text-stone-400 shrink-0">·</span>
                   <span><strong className="text-stone-900">60-day free evaluation</strong> for any team with more than a handful of engineers. No credit card, no procurement gauntlet.</span>
                 </li>
                 <li className="flex gap-3">
-                  <span className="text-stone-400 shrink-0">—</span>
+                  <span className="text-stone-400 shrink-0">·</span>
                   <span><strong className="text-stone-900">Design-partner slots</strong> for teams that want a say in the next two quarters of roadmap. Reduced pricing in exchange for honest feedback.</span>
                 </li>
                 <li className="flex gap-3">
-                  <span className="text-stone-400 shrink-0">—</span>
+                  <span className="text-stone-400 shrink-0">·</span>
                   <span><strong className="text-stone-900">Open-source contributors</strong> get a workspace free, indefinitely. If you maintain something we depend on, you shouldn&apos;t be paying us.</span>
                 </li>
                 <li className="flex gap-3">
-                  <span className="text-stone-400 shrink-0">—</span>
+                  <span className="text-stone-400 shrink-0">·</span>
                   <span><strong className="text-stone-900">If pricing is the blocker, write to us.</strong> We&apos;ve done unusual deals for teams whose problem we cared about.</span>
                 </li>
               </ul>
@@ -188,7 +188,7 @@ export default function BlogPost() {
             <section>
               <h2 className="text-xl font-bold text-stone-900 mb-3">Give it a chance?</h2>
               <p>
-                We&apos;re aware there&apos;s no shortage of new tools in this space, and
+                We&apos;re aware there&apos;s no shortage of new entrants in this space, and
                 we&apos;re not going to claim Conduct is the only answer. What we will
                 say is: the problem is real, the people asking us about it are
                 serious, and we&apos;ve built something we&apos;d be willing to put under
@@ -200,7 +200,7 @@ export default function BlogPost() {
                 of getting some of those board-level questions answered.
               </p>
               <p className="mt-4 text-stone-500">
-                — The Conduct team
+                The Conduct team.
               </p>
             </section>
 
