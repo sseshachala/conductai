@@ -134,6 +134,47 @@ def update_mcp_server(
     return _row_to_out(row)
 
 
+class McpTestIn(BaseModel):
+    url: str
+    auth_token: Optional[str] = None
+    transport: str = "auto"
+
+
+class McpTestOut(BaseModel):
+    ok: bool
+    tool_count: int = 0
+    sample_tools: list[str] = []
+    transport_used: str = ""
+    error: Optional[str] = None
+
+
+@router.post("/test-connection", response_model=McpTestOut)
+def test_mcp_connection(
+    body: McpTestIn,
+    _: str = Depends(require_permission("platform.credentials.manage")),
+):
+    """Call tools/list on the candidate MCP server with the user-supplied auth.
+
+    Returns ok=True with a tool sample on success, ok=False with the underlying
+    error message on failure. Saves the user a 30-minute agent run that fails
+    at the first tool call because the token was wrong.
+    """
+    from app.runtime.integrations.mcp_client import list_tools
+
+    try:
+        tools, transport_used = list_tools(body.url, body.auth_token or None, body.transport)
+    except Exception as e:
+        return McpTestOut(ok=False, error=str(e)[:200])
+
+    sample = [t.get("name", "") for t in tools[:5] if t.get("name")]
+    return McpTestOut(
+        ok=True,
+        tool_count=len(tools),
+        sample_tools=sample,
+        transport_used=transport_used,
+    )
+
+
 @router.delete("/{server_id}", status_code=204)
 def delete_mcp_server(
     server_id: str,
