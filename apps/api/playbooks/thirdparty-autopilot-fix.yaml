@@ -88,7 +88,14 @@ blocks:
       Approach: {{plan_fix.approach}}
       Grep:     {{plan_fix.grep_pattern}}
       Base branch: {{plan_fix.base_branch}} (use this branch as the fix base; if "default", use {{fork_upstream.default_branch}})
-      Prior:    {{read_memory.entries}}
+
+      ── PRIOR CONTEXT (read carefully and adjust your approach) ─────────────
+      {{read_memory.entries}}
+
+      Rules from prior context:
+      1. If a prior entry shows OUTCOME: failed for this issue/area, do NOT repeat the same approach — try a different file or strategy.
+      2. If a prior entry succeeded with a known pattern (test runner, file layout, lint setup), reuse it instead of re-discovering.
+      3. If a prior entry mentions a specific gotcha (token scope, branch protection, flaky test), preempt it.
 
       ── YOUR ONE SHELL CALL ───────────────────────────────────────────────────
       Fill in the FIX SECTION below and run it as a single run_shell call.
