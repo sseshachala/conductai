@@ -64,6 +64,8 @@ class ToolSpend(BaseModel):
     ai_tool: str
     tokens_after: int
     cost_usd: float
+    tokens_saved: int = 0
+    cost_saved: float = 0.0
 
 
 class SpendSummary(BaseModel):
@@ -247,15 +249,16 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
     ]
 
     # By AI tool
-    # COALESCE(tokens_after, tokens_before) — blocked events (e.g. workflow Guard
-    # intercepts) have no tokens_after because the LLM was never called, but they
-    # do carry an estimated tokens_before. Falling back surfaces prevented exposure
-    # instead of showing 0.
+    # tokens_after = actually consumed; tokens_saved = prevented exposure
+    # (tokens_before - tokens_after, treating NULL as 0). Surfaces Guard's
+    # value on blocked events without inflating the "used" column.
     tool_rows = (
         db.query(
             GuardAuditEvent.ai_tool,
-            func.coalesce(func.sum(func.coalesce(GuardAuditEvent.tokens_after, GuardAuditEvent.tokens_before, 0)), 0).label("tokens_after"),
+            func.coalesce(func.sum(GuardAuditEvent.tokens_after), 0).label("tokens_after"),
             func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("cost_usd"),
+            func.coalesce(func.sum(func.coalesce(GuardAuditEvent.tokens_before, 0) - func.coalesce(GuardAuditEvent.tokens_after, 0)), 0).label("tokens_saved"),
+            func.coalesce(func.sum(func.coalesce(GuardAuditEvent.cost_usd_before, 0.0) - func.coalesce(GuardAuditEvent.cost_usd_after, 0.0)), 0.0).label("cost_saved"),
         )
         .filter(
             GuardAuditEvent.workspace_id == ws_uuid,
@@ -271,6 +274,8 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
             ai_tool=row.ai_tool,
             tokens_after=int(row.tokens_after),
             cost_usd=round(float(row.cost_usd), 6),
+            tokens_saved=int(row.tokens_saved),
+            cost_saved=round(float(row.cost_saved), 6),
         )
         for row in tool_rows
     ]
