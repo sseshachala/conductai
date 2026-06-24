@@ -8,6 +8,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardSavings } from "@/hooks/useGuardSavings"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
+import { ByAiToolTable } from "@/components/guard/ByAiToolTable"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -957,49 +958,22 @@ function SpendContent() {
         )}
       </div>
 
-      {/* By AI tool table */}
+      {/* By AI tool table — uses the shared <ByAiToolTable /> renderer */}
       {data && data.by_ai_tool.length > 0 && (
-        <div className="card" style={{ overflow: "hidden" }}>
-          <div style={{ padding: "15px 20px 13px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 14.5 }}>
-            By AI tool
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1.6fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-            {["Tool", "Tokens used", "Est. cost", "Saved", "% of total"].map((h, i) => (
-              <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
-            ))}
-          </div>
-          {data.by_ai_tool.map(t => {
-            const pct = data.total_tokens_after > 0
+        <ByAiToolTable
+          rows={data.by_ai_tool.map(t => ({
+            tool: t.ai_tool,
+            tokens: t.tokens_after,
+            costLabel: `${CURRENCY_SYMBOLS[currency]}${fromUsd(t.cost_usd, currency).toFixed(2)}`,
+            saved: t.tokens_saved,
+            savedCostLabel: t.cost_saved > 0
+              ? `${CURRENCY_SYMBOLS[currency]}${fromUsd(t.cost_saved, currency).toFixed(2)}`
+              : undefined,
+            pct: data.total_tokens_after > 0
               ? Math.round((t.tokens_after / data.total_tokens_after) * 100)
-              : 0
-            return (
-              <div
-                key={t.ai_tool}
-                style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1.6fr", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--border)", alignItems: "center" }}
-              >
-                <div className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{t.ai_tool}</div>
-                <div className="mono" style={{ fontSize: 13, color: "var(--text-2)" }}>{formatTokens(t.tokens_after)}</div>
-                <div className="mono" style={{ fontSize: 13, color: "var(--text-2)" }}>
-                  {CURRENCY_SYMBOLS[currency]}{fromUsd(t.cost_usd, currency).toFixed(2)}
-                </div>
-                <div className="mono" style={{ fontSize: 13, color: "#16a34a" }}>
-                  {t.tokens_saved > 0 ? formatTokens(t.tokens_saved) : "—"}
-                  {t.cost_saved > 0 && (
-                    <span style={{ color: "var(--text-3)", marginLeft: 6, fontSize: 11 }}>
-                      ({CURRENCY_SYMBOLS[currency]}{fromUsd(t.cost_saved, currency).toFixed(2)})
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                  <div style={{ flex: 1, height: 8, borderRadius: 6, background: "var(--surface-3)", overflow: "hidden" }}>
-                    <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent)", borderRadius: 6 }} />
-                  </div>
-                  <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", width: 34, textAlign: "right" }}>{pct}%</span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+              : 0,
+          }))}
+        />
       )}
     </GuardShell>
   )

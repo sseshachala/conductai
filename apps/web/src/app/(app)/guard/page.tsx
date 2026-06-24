@@ -14,6 +14,7 @@ import { useGuardRole } from "@/hooks/useGuardRole"
 import { useGuardSavings, type GuardSavingsSummary } from "@/hooks/useGuardSavings"
 import { useTokenGuardrails, type TokenGuardrails } from "@/hooks/useTokenGuardrails"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { ByAiToolTable, type ByAiToolRow } from "@/components/guard/ByAiToolTable"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -393,9 +394,11 @@ function SavingsStatCard({
 }
 
 // ─── By AI tool table ─────────────────────────────────────────────────────────
+// Aggregates raw events client-side (respects the page's date filter) and
+// passes normalized rows to the shared <ByAiToolTable /> component.
 
 function ByToolTable({ events }: { events: GuardEvent[] }) {
-  const byTool = useMemo(() => {
+  const rows = useMemo<ByAiToolRow[]>(() => {
     const map = new Map<string, { tokens: number; cost: number; saved: number }>()
     for (const ev of events) {
       const key = canonicalTool(ev.ai_tool || "unknown")
@@ -413,53 +416,14 @@ function ByToolTable({ events }: { events: GuardEvent[] }) {
       .map(([tool, { tokens, cost, saved }]) => ({
         tool,
         tokens,
-        cost,
+        costLabel: `$${cost.toFixed(4)}`,
         saved,
         pct: total > 0 ? Math.round((tokens / total) * 100) : 0,
       }))
       .sort((a, b) => b.tokens - a.tokens)
   }, [events])
 
-  const fmtTokens = (n: number) => {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-    if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}k`
-    return String(n)
-  }
-
-  if (byTool.length === 0) return null
-
-  return (
-    <div className="card" style={{ overflow: "hidden" }}>
-      <div style={{ padding: "15px 20px 13px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 14.5 }}>
-        By AI tool
-      </div>
-      {/* Header */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1.6fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-        {["Tool", "Tokens used", "Est. cost", "Saved", "% of total"].map((h, i) => (
-          <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
-        ))}
-      </div>
-      {byTool.map(t => (
-        <div
-          key={t.tool}
-          style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1.6fr", gap: 14, padding: "13px 20px", borderBottom: "1px solid var(--border)", alignItems: "center" }}
-        >
-          <div className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{t.tool}</div>
-          <div className="mono" style={{ fontSize: 13, color: "var(--text-2)" }}>{fmtTokens(t.tokens)}</div>
-          <div className="mono" style={{ fontSize: 13, color: "var(--text-2)" }}>${t.cost.toFixed(4)}</div>
-          <div className="mono" style={{ fontSize: 13, color: "#16a34a" }}>
-            {t.saved > 0 ? fmtTokens(t.saved) : "—"}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-            <div style={{ flex: 1, height: 8, borderRadius: 6, background: "var(--surface-3)", overflow: "hidden" }}>
-              <div style={{ width: `${t.pct}%`, height: "100%", background: "var(--accent)", borderRadius: 6 }} />
-            </div>
-            <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", width: 34, textAlign: "right" }}>{t.pct}%</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
+  return <ByAiToolTable rows={rows} />
 }
 
 // ─── Select style helper ──────────────────────────────────────────────────────
