@@ -1164,25 +1164,7 @@ def validate_workflow(
             if decrypted.get("api_key"):
                 available_env_keys.add("ANTHROPIC_API_KEY")
 
-    from app.core.config import settings as _cfg
-    _server_has_anthropic = bool(_cfg.anthropic_api_key)
-    _server_has_openai = bool(getattr(_cfg, "openai_api_key", None))
-
-    def _provider_for_model(model: str) -> str:
-        m = (model or "").lower()
-        if m.startswith("gpt-"):
-            return "openai"
-        if m.startswith("sonar"):
-            return "perplexity"
-        return "anthropic"
-
-    def _provider_key_available(provider: str) -> tuple[bool, str]:
-        """Return (has_key, env_var_name) for provider."""
-        if provider == "openai":
-            return (_server_has_openai or "OPENAI_API_KEY" in available_env_keys, "OPENAI_API_KEY")
-        if provider == "perplexity":
-            return ("PERPLEXITY_API_KEY" in available_env_keys, "PERPLEXITY_API_KEY")
-        return (_server_has_anthropic or "ANTHROPIC_API_KEY" in available_env_keys, "ANTHROPIC_API_KEY")
+    from app.runtime.provider_keys import provider_for_model, provider_key_exists, ENV_VAR
 
     errors = []
 
@@ -1217,13 +1199,11 @@ def validate_workflow(
                 errors.append({"block_id": block_id, "label": label,
                                 "message": "Description is required for Brain blocks"})
 
-            # Provider key required for this brain block's selected model
             brain_model = data.get("model") or config.get("model") or ""
-            brain_provider = _provider_for_model(brain_model)
-            has_key, env_var_name = _provider_key_available(brain_provider)
-            if not has_key:
+            brain_provider = provider_for_model(brain_model)
+            if not provider_key_exists(brain_provider, available_env_keys):
                 errors.append({"block_id": block_id, "label": label,
-                                "message": f"{env_var_name} is not set for {brain_provider} model '{brain_model or 'default'}' — add it under Settings → Environments"})
+                                "message": f"{ENV_VAR[brain_provider]} is not set for {brain_provider} model '{brain_model or 'default'}' — add it under Settings → Environments"})
 
             # Execution provider credential checks
             runs_on = data.get("runs_on") or {}
