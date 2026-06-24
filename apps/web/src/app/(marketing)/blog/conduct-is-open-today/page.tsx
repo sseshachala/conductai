@@ -18,10 +18,10 @@ export default function BlogPost() {
               Conduct is open today. Here&apos;s the honest version.
             </h1>
             <p className="text-lg text-stone-500 leading-relaxed">
-              We&apos;re not a marketing-first company. We built Conduct because the
-              problem kept showing up in every conversation with engineering
-              leaders, CTOs, CIOs, and CISOs we know. It works from day one. This is a quiet launch note: what v1 is, what
-              it isn&apos;t, and how to try it without committing to anything.
+              We built Conduct because the problem kept showing up in every
+              conversation with engineering leaders, CTOs, CIOs, and CISOs we
+              know. It works from day one. This is a launch note: what v1 is,
+              what it isn&apos;t, and how to try it without committing to anything.
             </p>
           </div>
 
@@ -113,7 +113,7 @@ export default function BlogPost() {
                       <td className="px-4 py-3 text-stone-500">SSO beyond Clerk</td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-3 text-stone-600">22 starter playbooks (GitHub, Slack, CI/CD, incident)</td>
+                      <td className="px-4 py-3 text-stone-600">30+ starter playbooks (GitHub, Slack, CI/CD, incident)</td>
                       <td className="px-4 py-3 text-stone-500">On-prem / air-gapped install</td>
                     </tr>
                     <tr>
