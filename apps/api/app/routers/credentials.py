@@ -410,6 +410,24 @@ def _vercel_token(workspace_id: str, db: Session) -> str:
     return token
 
 
+def _translate_git_error(status_code: int, response_text: str) -> str:
+    """Map raw GitHub/GitLab/Bitbucket API errors to actionable user-facing text."""
+    body = response_text or ""
+    if "Bad credentials" in body:
+        return "Git token rejected as invalid or expired. Reconnect in Settings → Environments."
+    if "Resource not accessible by personal access token" in body:
+        return "Git token does not have permission for this resource. Re-issue the PAT with the correct scopes (Repository → Read for repos, Issues → Read for issues), then reconnect in Settings → Environments."
+    if "API rate limit exceeded" in body or "secondary rate limit" in body.lower():
+        return "Git API rate limit reached. Wait a few minutes or use a token with higher limits."
+    if status_code == 404 and ("Not Found" in body or '"message":"Not Found"' in body):
+        return "Resource not found, or your token can't see it. Check the repo/owner and PAT scope."
+    if status_code == 401:
+        return "Git token rejected (HTTP 401). Reconnect in Settings → Environments."
+    if status_code == 403:
+        return "Git request forbidden (HTTP 403). Token likely lacks the required scope."
+    return f"Git API error (HTTP {status_code}): {body[:200]}"
+
+
 def _gh_headers(token: str) -> dict:
     return {
         "Authorization": f"Bearer {token}",
@@ -509,7 +527,7 @@ def list_github_repos(
                 for repo in r.json()
             ]
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=f"Git API error: {e.response.text[:200]}")
+        raise HTTPException(status_code=e.response.status_code, detail=_translate_git_error(e.response.status_code, e.response.text))
     except httpx.RequestError:
         raise HTTPException(status_code=502, detail="Could not reach git provider API")
 
@@ -555,7 +573,7 @@ def list_github_branches(
             r.raise_for_status()
             return [{"name": b["name"]} for b in r.json()]
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=f"Git API error: {e.response.text[:200]}")
+        raise HTTPException(status_code=e.response.status_code, detail=_translate_git_error(e.response.status_code, e.response.text))
     except httpx.RequestError:
         raise HTTPException(status_code=502, detail="Could not reach git provider API")
 
