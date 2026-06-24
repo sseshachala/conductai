@@ -106,8 +106,8 @@ export default function BlogPost() {
                       <td className="px-4 py-3 text-stone-500">On-prem / air-gapped install</td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-3 text-stone-600">Hook-level telemetry from Claude Code, Cursor, Codex</td>
-                      <td className="px-4 py-3 text-stone-500">JetBrains plugin (in progress)</td>
+                      <td className="px-4 py-3 text-stone-600">Hook-level telemetry from Claude Code, Cursor, Codex, JetBrains AI Assistant</td>
+                      <td className="px-4 py-3 text-stone-500">Self-serve MCP server registry</td>
                     </tr>
                     <tr>
                       <td className="px-4 py-3 text-stone-600">Agent Booster + RTK for cost &amp; context efficiency</td>
