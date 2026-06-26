@@ -258,7 +258,6 @@ async def _proxy(
 
     # 6. Forward + stream back. Use a fresh DB session inside the background task.
     is_stream = bool(body.get("stream"))
-    return await _forward(
         upstream=upstream,
         path=upstream_path,
         body=body,
@@ -266,6 +265,7 @@ async def _proxy(
         auth_header_out=auth_header_out,
         bearer=bearer,
         is_stream=is_stream,
+        extra_headers=extra_headers,
         background=background,
         audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, "ALLOW", None, started, body),
     )
@@ -466,6 +466,7 @@ async def _forward(
     *, upstream: str, path: str, body: dict, real_key: str,
     auth_header_out: str, bearer: bool, is_stream: bool,
     background: BackgroundTasks, audit_args: tuple,
+    extra_headers: dict | None = None,
 ) -> StreamingResponse | JSONResponse:
     headers = {
         "content-type": "application/json",
@@ -474,6 +475,8 @@ async def _forward(
     headers[auth_header_out] = f"Bearer {real_key}" if bearer else real_key
     if upstream.startswith(VENDOR_DEFAULTS["anthropic"]):
         headers["anthropic-version"] = "2023-06-01"
+    if extra_headers:
+        headers.update(extra_headers)
 
     # ponytail: a single shared async client would be better for connection
     # pooling. Per-call is fine until QPS warrants it.
