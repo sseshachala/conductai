@@ -1,6 +1,7 @@
 """conduct guard — team policy + MCP registration subcommand."""
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -847,6 +848,21 @@ def cmd_guard_sync(args):
     _save_policy(policy)
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
 
+    # Write LLM proxy env vars so any AI tool (Claude Code, Cursor, Codex, …)
+    # routes through Conduct Guard. Customer-overridable via --proxy-url or
+    # CONDUCT_PROXY_URL env var; defaults to api.conductai.ai/proxy.
+    proxy_url = (
+        getattr(args, "proxy_url", None)
+        or os.environ.get("CONDUCT_PROXY_URL")
+        or DEFAULT_PROXY_URL
+    )
+    member_token = cfg.get("member_token", "")
+    rc_path, newly_sourced = _write_proxy_env(member_token, proxy_url)
+    if member_token:
+        print(f"  {GREEN}Proxy env written:{RESET} ~/.conduct/env → {proxy_url}")
+        if newly_sourced:
+            print(f"  {CYAN}Run `source {rc_path}` (or open a new shell) to activate.{RESET}")
+
     if getattr(args, "cursor", False):
         _write_cursorrules(policy)
 
@@ -886,6 +902,72 @@ def cmd_guard_sync(args):
         print(f"  Settings → MCP Servers → Add custom server")
         print(f"  URL:    {CYAN}{mcp_url}{RESET}")
         print(f"  Auth:   {CYAN}Bearer {member_token}{RESET}\n")
+
+
+CONDUCT_DIR        = Path.home() / ".conduct"
+PROXY_ENV_FILE     = CONDUCT_DIR / "env"
+PROXY_OVERRIDE     = CONDUCT_DIR / "env-override"
+DEFAULT_PROXY_URL  = "https://api.conductai.ai/proxy"
+SHELL_RC_MARKER    = "# Conduct Guard Proxy — managed by `conduct guard sync`"
+SHELL_SOURCE_LINE  = "[ -f ~/.conduct/env ] && . ~/.conduct/env"
+
+
+def _write_proxy_env(member_token: str, proxy_url: str) -> tuple[Path, bool]:
+    """Write ~/.conduct/env with the 3 provider env-var pairs and ensure the
+    user's shell rc sources it.
+
+    Idempotent — env file rewritten each sync. Shell rc gets the source line
+    appended once (guarded by SHELL_RC_MARKER). Returns (rc_path, newly_sourced).
+    User-managed customizations go in ~/.conduct/env-override which is sourced
+    after the managed file.
+    """
+    if not member_token:
+        print(f"  {YELLOW}Proxy env skipped — no member token in config{RESET}")
+        return Path(), False
+
+    CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
+    token = f"guard-mt-{member_token}"
+    proxy = proxy_url.rstrip("/")
+
+    PROXY_ENV_FILE.write_text("\n".join([
+        SHELL_RC_MARKER,
+        "# Edit ~/.conduct/env-override to add your own vars — sourced after this file.",
+        "",
+        f'export ANTHROPIC_BASE_URL="{proxy}"',
+        f'export ANTHROPIC_API_KEY="{token}"',
+        "",
+        f'export OPENAI_BASE_URL="{proxy}/openai"',
+        f'export OPENAI_API_KEY="{token}"',
+        "",
+        f'export PERPLEXITY_BASE_URL="{proxy}/perplexity"',
+        f'export PERPLEXITY_API_KEY="{token}"',
+        "",
+        "[ -f ~/.conduct/env-override ] && . ~/.conduct/env-override",
+        "",
+    ]))
+
+    shell = os.environ.get("SHELL", "").lower()
+    if "zsh" in shell:
+        rc = Path.home() / ".zshrc"
+    elif "bash" in shell:
+        rc = Path.home() / ".bashrc"
+    elif "fish" in shell:
+        # fish doesn't source bash-style files; tell the user
+        print(f"  {YELLOW}fish detected — add this to ~/.config/fish/config.fish:{RESET}")
+        print(f"    bass source ~/.conduct/env")
+        return Path(), False
+    else:
+        print(f"  {YELLOW}Unknown shell. Source manually: . ~/.conduct/env{RESET}")
+        return Path(), False
+
+    existing = rc.read_text() if rc.exists() else ""
+    if SHELL_RC_MARKER in existing:
+        return rc, False
+
+    rc.parent.mkdir(parents=True, exist_ok=True)
+    addition = f"\n\n{SHELL_RC_MARKER}\n{SHELL_SOURCE_LINE}\n"
+    rc.write_text(existing.rstrip() + addition if existing else addition.lstrip())
+    return rc, True
 
 
 def _write_cursorrules(policy: dict) -> None:
@@ -1299,6 +1381,8 @@ def register_guard_parser(sub):
     sync_p = guard_sub.add_parser("sync", help="Refresh policy and re-scan for AI tools")
     sync_p.add_argument("--cursor", action="store_true", help="Write active Guard policies to .cursorrules")
     sync_p.add_argument("--dry-run", action="store_true", help="Preview policy changes without writing anything")
+    sync_p.add_argument("--proxy-url", default=None,
+                        help="Override the Guard proxy URL (default: https://api.conductai.ai/proxy)")
 
     # conduct guard status
     guard_sub.add_parser("status", help="Show today's spend and violations")
