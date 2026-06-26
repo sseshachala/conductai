@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.sseshachala/conduct-cli -->
 # conduct-cli
 
 Official CLI for [Conduct AI](https://conductai.ai) — install AI agents, manage projects, run end-to-end tests, and enforce team AI policies with ConductGuard.
