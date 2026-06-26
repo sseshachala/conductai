@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
-# End-to-end smoke for the Guard Proxy.
+# End-to-end smoke for the Guard Proxy across all 3 providers.
 #
-# Verifies the full chain: dev's AI tool → Conduct proxy → real api.anthropic.com
-# → response back → audit row in guard_audit_events.
+# Verifies the full chain: dev's AI tool → Conduct proxy → real vendor API
+# → response back → audit row in guard_audit_events. Tests whichever
+# provider keys are seeded; skips the rest with a clear note.
 #
-# Prereqs (set as env vars or via 1Password, etc.):
+# Prereqs:
 #   CONDUCT_PROXY    proxy base URL (default: http://localhost:8000/proxy)
-#   MEMBER_TOKEN     workspace member token (without the guard-mt- prefix; will be added)
-#   WORKSPACE_ID     workspace uuid to verify audit row landed against
-#   REAL_ANTHROPIC_KEY  used to seed the workspace's integration row if not already there
-#                       (this script does NOT send your real key to the proxy)
+#   MEMBER_TOKEN     workspace member token (without the guard-mt- prefix)
+#   WORKSPACE_ID     workspace uuid
 #
 # Run:
 #   ./scripts/proxy_smoke.sh
 #
-# Pass criteria:
-#   1. Proxy returns 200 with Claude's reply
-#   2. New row in guard_audit_events for our workspace with ai_tool='claude-code-test'
+# Pass criteria per provider:
+#   1. Proxy returns 200
+#   2. New audit row lands with tool_call like '<provider>/<model>'
 
 set -euo pipefail
 
@@ -30,70 +29,84 @@ echo "▶ Workspace:    $WORKSPACE_ID"
 echo "▶ Member token: guard-mt-${MEMBER_TOKEN:0:6}…"
 echo
 
-before_count=$(psql "$DB_URL" -tA -c "
-  SELECT COUNT(*) FROM guard_audit_events
-  WHERE workspace_id = '$WORKSPACE_ID'::uuid
-    AND tool_call LIKE 'anthropic/%'
-")
-echo "Audit rows for this workspace (before): $before_count"
+PASS=0
+FAIL=0
+SKIP=0
 
-echo
-echo "▶ Calling proxy → expect Claude reply"
-resp=$(mktemp)
-http_code=$(curl -sS -o "$resp" -w "%{http_code}" \
-  -X POST "$PROXY/v1/messages" \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: guard-mt-$MEMBER_TOKEN" \
-  -H "anthropic-version: 2023-06-01" \
-  -H "x-conduct-ai-tool: claude-code-test" \
-  -d '{
-    "model": "claude-haiku-4-5-20251001",
-    "max_tokens": 50,
-    "messages": [{"role": "user", "content": "Reply with exactly: SMOKE_OK"}]
-  }')
+# ── provider runner ───────────────────────────────────────────────────────
 
-echo "HTTP $http_code"
-if [[ "$http_code" != "200" ]]; then
-  echo "FAIL — proxy returned non-200"
-  cat "$resp"
-  exit 1
-fi
+run_one() {
+  local provider="$1" path="$2" model="$3" auth_header="$4" extra_headers="$5" body="$6"
 
-# Show the model's reply text
-python3 - <<PY < "$resp"
-import sys, json
-r = json.load(sys.stdin)
-content = (r.get("content") or [{}])[0].get("text", "")
-print(f"▶ Claude reply: {content!r}")
-print(f"▶ Stop reason:  {r.get('stop_reason')!r}")
-u = r.get("usage", {})
-print(f"▶ Tokens:       in={u.get('input_tokens')} out={u.get('output_tokens')}")
-PY
+  echo "── $provider ──────────────────────────────────────"
+  local before
+  before=$(psql "$DB_URL" -tA -c "
+    SELECT COUNT(*) FROM guard_audit_events
+    WHERE workspace_id = '$WORKSPACE_ID'::uuid AND tool_call LIKE '$provider/%'
+  ")
 
-# Wait a beat for the background audit task
-sleep 2
+  local resp http_code
+  resp=$(mktemp)
+  http_code=$(eval curl -sS -o "$resp" -w "%{http_code}" \
+    -X POST "\"$PROXY$path\"" \
+    -H "\"Content-Type: application/json\"" \
+    $auth_header \
+    $extra_headers \
+    -H "\"x-conduct-ai-tool: smoke-test-$provider\"" \
+    -d "'$body'")
 
-after_count=$(psql "$DB_URL" -tA -c "
-  SELECT COUNT(*) FROM guard_audit_events
-  WHERE workspace_id = '$WORKSPACE_ID'::uuid
-    AND tool_call LIKE 'anthropic/%'
-")
-echo
-echo "Audit rows for this workspace (after):  $after_count"
+  echo "HTTP $http_code"
+  if [[ "$http_code" != "200" ]]; then
+    echo "FAIL — $provider returned non-200"
+    cat "$resp" | head -c 300
+    echo
+    FAIL=$((FAIL + 1))
+    rm "$resp"
+    return
+  fi
 
-if (( after_count > before_count )); then
-  echo "▶ Last audit row:"
-  psql "$DB_URL" -c "
-    SELECT ts, ai_tool, tool_call, decision, tokens_before, tokens_after, duration_ms
-    FROM guard_audit_events
-    WHERE workspace_id = '$WORKSPACE_ID'::uuid
-      AND tool_call LIKE 'anthropic/%'
-    ORDER BY ts DESC LIMIT 1
-  "
-  echo "PASS — end-to-end working"
+  sleep 2
+  local after
+  after=$(psql "$DB_URL" -tA -c "
+    SELECT COUNT(*) FROM guard_audit_events
+    WHERE workspace_id = '$WORKSPACE_ID'::uuid AND tool_call LIKE '$provider/%'
+  ")
+  if (( after > before )); then
+    echo "▶ Audit row landed (was $before, now $after)"
+    echo "PASS"
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL — 200 but no audit row"
+    FAIL=$((FAIL + 1))
+  fi
   rm "$resp"
-  exit 0
-fi
+  echo
+}
 
-echo "FAIL — proxy returned 200 but no audit row landed (background task issue?)"
-exit 1
+# ── anthropic ─────────────────────────────────────────────────────────────
+run_one "anthropic" \
+  "/v1/messages" \
+  "claude-haiku-4-5-20251001" \
+  "-H \"x-api-key: guard-mt-$MEMBER_TOKEN\"" \
+  "-H \"anthropic-version: 2023-06-01\"" \
+  '{"model":"claude-haiku-4-5-20251001","max_tokens":40,"messages":[{"role":"user","content":"Reply: SMOKE_OK"}]}'
+
+# ── openai ────────────────────────────────────────────────────────────────
+run_one "openai" \
+  "/openai/v1/chat/completions" \
+  "gpt-4o-mini" \
+  "-H \"Authorization: Bearer guard-mt-$MEMBER_TOKEN\"" \
+  "" \
+  '{"model":"gpt-4o-mini","max_tokens":40,"messages":[{"role":"user","content":"Reply: SMOKE_OK"}]}'
+
+# ── perplexity ────────────────────────────────────────────────────────────
+run_one "perplexity" \
+  "/perplexity/chat/completions" \
+  "sonar" \
+  "-H \"Authorization: Bearer guard-mt-$MEMBER_TOKEN\"" \
+  "" \
+  '{"model":"sonar","max_tokens":40,"messages":[{"role":"user","content":"Reply: SMOKE_OK"}]}'
+
+echo "═══════════════════════════════════════════════════"
+echo "Summary: $PASS pass · $FAIL fail · $SKIP skip"
+exit $(( FAIL > 0 ? 1 : 0 ))

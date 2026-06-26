@@ -1,11 +1,15 @@
-"""Seed a real Anthropic key into a workspace's `env_vars` integration so the
-Guard proxy can use it during the smoke test.
+"""Seed real provider keys into a workspace's `env_vars` integration so the
+Guard proxy can resolve them during the smoke test.
 
-Usage:
-  WORKSPACE_ID=<uuid> REAL_ANTHROPIC_KEY=sk-ant-… \
+Usage — picks up any of these env vars, seeds whichever are set:
+  WORKSPACE_ID=<uuid> \
+  REAL_ANTHROPIC_KEY=sk-ant-… \
+  REAL_OPENAI_KEY=sk-… \
+  REAL_PERPLEXITY_KEY=pplx-… \
     .venv/bin/python scripts/seed_anthropic_key.py
 
-Idempotent — upserts the env_vars integration's encrypted_credentials.
+Idempotent — merges into whatever credentials already exist on the env_vars
+integration. Re-runnable; only the keys you pass get touched.
 """
 from __future__ import annotations
 
@@ -16,41 +20,62 @@ import uuid
 
 import psycopg2
 
-from app.core.crypto import encrypt
+from app.core.crypto import encrypt, decrypt
 
 
 DB_URL = os.environ.get(
     "DATABASE_URL", "postgresql://marshal:marshal@localhost:5432/marshal"
 )
 WS_ID = os.environ.get("WORKSPACE_ID")
-KEY = os.environ.get("REAL_ANTHROPIC_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-
 if not WS_ID:
     sys.exit("WORKSPACE_ID required (uuid)")
-if not KEY:
-    sys.exit("REAL_ANTHROPIC_KEY or ANTHROPIC_API_KEY required")
 
-creds = encrypt({"ANTHROPIC_API_KEY": KEY})
+# Map env var → vault key name (matches what the proxy looks up)
+SOURCES = {
+    "REAL_ANTHROPIC_KEY":   "ANTHROPIC_API_KEY",
+    "ANTHROPIC_API_KEY":    "ANTHROPIC_API_KEY",
+    "REAL_OPENAI_KEY":      "OPENAI_API_KEY",
+    "OPENAI_API_KEY":       "OPENAI_API_KEY",
+    "REAL_PERPLEXITY_KEY":  "PERPLEXITY_API_KEY",
+    "PERPLEXITY_API_KEY":   "PERPLEXITY_API_KEY",
+}
+
+new_keys: dict[str, str] = {}
+for env_name, vault_name in SOURCES.items():
+    v = os.environ.get(env_name)
+    if v and vault_name not in new_keys:   # first wins so REAL_ takes precedence
+        new_keys[vault_name] = v
+
+if not new_keys:
+    sys.exit(
+        "No keys to seed. Set one or more of: "
+        "REAL_ANTHROPIC_KEY, REAL_OPENAI_KEY, REAL_PERPLEXITY_KEY"
+    )
 
 conn = psycopg2.connect(DB_URL)
 conn.autocommit = False
 with conn.cursor() as cur:
     cur.execute(
         """
-        SELECT id FROM integrations
+        SELECT id, encrypted_credentials FROM integrations
         WHERE workspace_id = %s AND handle = 'env_vars'
         LIMIT 1
         """,
         (WS_ID,),
     )
     row = cur.fetchone()
+
     if row:
+        existing = decrypt(row[1]) or {}
+        existing.update(new_keys)
+        merged = encrypt(existing)
         cur.execute(
             "UPDATE integrations SET encrypted_credentials = %s WHERE id = %s",
-            (creds, row[0]),
+            (merged, row[0]),
         )
-        print(f"Updated env_vars integration {row[0]} for workspace {WS_ID}")
+        print(f"Merged into env_vars integration {row[0]} for workspace {WS_ID}")
     else:
+        creds = encrypt(new_keys)
         cur.execute(
             """
             INSERT INTO integrations
@@ -62,4 +87,5 @@ with conn.cursor() as cur:
         print(f"Created env_vars integration for workspace {WS_ID}")
 conn.commit()
 conn.close()
-print("Anthropic key seeded — proxy can now resolve it.")
+
+print(f"Seeded keys: {', '.join(sorted(new_keys))}")
