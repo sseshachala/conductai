@@ -85,13 +85,13 @@ async def ingest_local_audit(request: Request, body: _LocalAuditIn):
     if raw.lower().startswith("bearer "):
         raw = raw[7:].strip()
     if not raw.startswith(MEMBER_TOKEN_PREFIX):
-        return _fail_closed(401, "Missing or malformed Conduct member token")
+        return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
 
     db = SessionLocal()
     try:
         ident = _resolve_member(db, raw)
         if not ident:
-            return _fail_closed(401, "Conduct member token not recognized")
+            return _fail_closed(401, "Conduct member token not recognized — run `conduct guard sync` to refresh")
         workspace_id, clerk_user_id = ident
         set_workspace_rls(db, workspace_id)
 
@@ -212,14 +212,14 @@ async def _proxy(
     raw = request.headers.get(auth_header_in, "")
     token = _extract_member_token(raw, bearer=bearer)
     if not token:
-        return _fail_closed(401, "Missing or malformed Conduct member token")
+        return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
 
     # 2. Resolve workspace + user via guard_member_config
     db = SessionLocal()
     try:
         ident = _resolve_member(db, token)
         if not ident:
-            return _fail_closed(401, "Conduct member token not recognized")
+            return _fail_closed(401, "Conduct member token not recognized — run `conduct guard sync` to refresh")
         workspace_id, clerk_user_id = ident
         set_workspace_rls(db, workspace_id)
 

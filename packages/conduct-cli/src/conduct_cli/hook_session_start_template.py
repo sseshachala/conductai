@@ -9,11 +9,70 @@ SNAPSHOT_PATH = Path.home() / ".conductguard" / "session_snapshot.json"
 MAX_AGE_HOURS = 2
 
 
+CONDUCT_ENV_PATH = Path.home() / ".conduct" / "env"
+GUARD_CONFIG_PATH = Path.home() / ".conductguard" / "config.json"
+
+
+def _check_proxy_token() -> None:
+    """Warn + alert server if the proxy token is missing or malformed.
+
+    Reads ~/.conduct/env directly (not shell env) so this works regardless
+    of whether the user sourced their rc file in this session.
+    """
+    if not CONDUCT_ENV_PATH.exists():
+        return
+    env_text = CONDUCT_ENV_PATH.read_text()
+    # Check if proxy is configured and token is valid
+    has_base_url = 'ANTHROPIC_BASE_URL=' in env_text
+    has_valid_token = 'ANTHROPIC_API_KEY="guard-mt-' in env_text or "ANTHROPIC_API_KEY='guard-mt-" in env_text
+    if not has_base_url:
+        return  # proxy not configured — nothing to check
+    if has_valid_token:
+        return  # all good
+
+    # Token is missing or malformed — warn locally and ping the server
+    print("## ConductGuard: proxy token missing or malformed")
+    print("Run `conduct guard sync` to refresh your token before making LLM calls.\n")
+
+    # Alert the server so the admin can prompt the developer to re-sync
+    try:
+        cfg: dict = {}
+        if GUARD_CONFIG_PATH.exists():
+            cfg = json.loads(GUARD_CONFIG_PATH.read_text())
+        workspace_id = cfg.get("workspace_id", "")
+        clerk_user_id = cfg.get("clerk_user_id", "") or cfg.get("user_email", "")
+        api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+        member_token = cfg.get("member_token", "")
+        if workspace_id and member_token:
+            import urllib.request
+            payload = json.dumps({
+                "workspace_id": workspace_id,
+                "clerk_user_id": clerk_user_id,
+                "ai_tool": "claude_code",
+                "tool_call": "session_start",
+                "decision": "warned",
+                "rule_id": "proxy_token_missing",
+                "rule_message": "Developer proxy token missing or malformed — run conduct guard sync",
+                "input_summary": "session_start: proxy token not found in ~/.conduct/env",
+            }).encode()
+            req = urllib.request.Request(
+                f"{api_url}/guard/events",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=3)
+    except Exception:
+        pass  # best-effort — never block the session
+
+
 def main():
     try:
         sys.stdin.read()
     except Exception:
         pass
+
+    _check_proxy_token()
 
     if not SNAPSHOT_PATH.exists():
         sys.exit(0)

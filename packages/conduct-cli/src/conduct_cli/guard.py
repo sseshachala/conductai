@@ -923,6 +923,24 @@ def cmd_guard_sync(args):
     _save_policy(policy)
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
 
+    # Refresh member token from server (workspace API key → fresh guard-mt- token).
+    # Never rely on the locally-cached value — it may be stale or missing.
+    try:
+        installed = _req(
+            "GET",
+            f"{base_url}/guard/config/installed?workspace_id={workspace_id}",
+            api_key=api_key,
+        )
+        fresh_token = installed.get("member_token") or ""
+        if fresh_token:
+            cfg["member_token"] = fresh_token
+            _save_guard_config(cfg)
+        else:
+            print(f"  {YELLOW}Warning: server returned no member token — proxy env may be stale{RESET}")
+    except Exception as e:
+        fresh_token = ""
+        print(f"  {YELLOW}Warning: could not refresh member token ({e}) — using cached value{RESET}")
+
     # Write LLM proxy env vars so any AI tool (Claude Code, Cursor, Codex, …)
     # routes through Conduct Guard. Customer-overridable via --proxy-url or
     # CONDUCT_PROXY_URL env var; defaults to api.conductai.ai/proxy.
