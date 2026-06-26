@@ -37,6 +37,7 @@ from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.database import SessionLocal
 from app.core.workspace_context import set_workspace_rls
+from app.runtime.pricing import get_model_rates
 
 
 log = structlog.get_logger(__name__)
@@ -382,18 +383,21 @@ def _record_audit(
     try:
         set_workspace_rls(db, workspace_id)
         in_tokens, out_tokens = _extract_token_counts(body, response_bytes)
+        cost_usd = _compute_cost(provider, model, in_tokens, out_tokens)
         db.execute(
             text("""
                 INSERT INTO guard_audit_events (
                   workspace_id, clerk_user_id, ai_tool, tool_call,
                   source, provider, model,
                   decision, rule_id, ts,
-                  tokens_before, tokens_after, duration_ms
+                  tokens_before, tokens_after, duration_ms,
+                  cost_usd_after
                 ) VALUES (
                   :ws, :uid, :ai, NULL,
                   'proxy', :prov, :model,
                   :dec, :rid, :ts,
-                  :tin, :tout, :dur
+                  :tin, :tout, :dur,
+                  :cost
                 )
             """),
             {
@@ -403,6 +407,7 @@ def _record_audit(
                 "dec": decision, "rid": rule_id,
                 "ts": datetime.now(timezone.utc),
                 "tin": in_tokens, "tout": out_tokens, "dur": duration_ms,
+                "cost": cost_usd,
             },
         )
         db.commit()
@@ -454,6 +459,25 @@ def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int
         return in_tok, out_tok
     except Exception:
         return None, None
+
+
+def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | None) -> float | None:
+    """USD for this call. Reuses the workspace's pricing registry.
+
+    Token cost  = (in * input + out * output) / 1M
+    Request fee = flat per-call charge (e.g. Perplexity Sonar)
+
+    Returns None only when we couldn't get token counts AND there's no flat
+    request fee — i.e. nothing to charge."""
+    try:
+        rates, _version = get_model_rates(provider, model)
+    except Exception:
+        return None
+    request_fee = rates.get("request_fee_usd", 0.0)
+    if not in_tok and not out_tok and not request_fee:
+        return None
+    token_cost = ((in_tok or 0) * rates["input"] + (out_tok or 0) * rates["output"]) / 1_000_000
+    return round(token_cost + request_fee, 6)
 
 
 def _safe_json(b: bytes, *, fallback: dict) -> dict:
