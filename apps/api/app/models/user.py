@@ -15,5 +15,6 @@ class User(Base):
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     role = Column(String(50), nullable=False, default="developer")  # admin / developer / security / viewer
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    setup_completed_at = Column(DateTime(timezone=True), nullable=True)
 
     workspace = relationship("Workspace", back_populates="users")

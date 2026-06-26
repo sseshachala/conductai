@@ -97,3 +97,43 @@ def get_my_permissions(
 
     log.info("rbac.permissions_resolved", workspace_id=workspace_id, role=role, count=len(permission_names))
     return PermissionSet(role=role, permissions=permission_names)
+
+
+# ---------------------------------------------------------------------------
+# First-time setup gate (#858 slice 1)
+# ---------------------------------------------------------------------------
+
+from datetime import datetime, timezone
+from app.models.user import User
+
+
+@me_router.get("/setup-status")
+def get_setup_status(
+    user_id: Annotated[str, Depends(get_user_id)],
+    db: Session = Depends(get_db),
+) -> dict:
+    """Return whether the current user has completed first-time setup.
+
+    Fail-open: if no user row exists for this clerk_id, return True so the
+    gate does not infinite-loop. /setup is still reachable directly by URL.
+    """
+    u = db.query(User).filter(User.clerk_id == user_id).first()
+    if not u:
+        # ponytail: dev mode + brand-new clerk users land here before /organizations
+        # auto-creates the User row. Fail open to avoid redirect loop.
+        return {"setup_completed": True}
+    return {"setup_completed": bool(u.setup_completed_at)}
+
+
+@me_router.post("/setup-complete")
+def mark_setup_complete(
+    user_id: Annotated[str, Depends(get_user_id)],
+    db: Session = Depends(get_db),
+) -> dict:
+    """Mark the current user's first-time setup as complete (idempotent)."""
+    u = db.query(User).filter(User.clerk_id == user_id).first()
+    if u and u.setup_completed_at is None:
+        u.setup_completed_at = datetime.now(timezone.utc)
+        db.commit()
+        log.info("setup.completed", clerk_user_id=user_id)
+    return {"ok": True}
