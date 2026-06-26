@@ -343,8 +343,18 @@ def _detect_repo():  # -> Optional[str]
 
 def _detect_ai_tool():
     import os
-    if os.environ.get("CLAUDECODE") or os.environ.get("CLAUDE_CODE_ENTRYPOINT"):
+    # Explicit env vars — most reliable, set by the tool itself
+    if os.environ.get("CLAUDE_CODE_ENTRYPOINT") or os.environ.get("CLAUDECODE"):
         return "claude-code"
+    if os.environ.get("CODEX_SESSION_ID") or os.environ.get("CODEX_CLI_VERSION"):
+        return "codex"
+    # TERM_PROGRAM is set by Cursor, Windsurf, and similar IDE terminals
+    term = os.environ.get("TERM_PROGRAM", "").lower()
+    if term == "cursor":
+        return "cursor"
+    if term == "windsurf":
+        return "windsurf"
+    # PATH-based fallback
     path = os.environ.get("PATH", "")
     if "Codex.app" in path or "codex" in path.lower():
         return "codex"
@@ -352,7 +362,7 @@ def _detect_ai_tool():
         return "cursor"
     if "windsurf" in path.lower():
         return "windsurf"
-    return "unknown"
+    return "claude-code"  # default — Claude Code is primary
 
 
 def _already_warned_this_session(session_id: str, rule_id: str) -> bool:
@@ -730,11 +740,12 @@ def post_usage_main():
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
-    session_id      = data.get("session_id")
     tool_name       = (data.get("tool_name") or "").lower()
     tool_use_id     = data.get("tool_use_id")
     transcript_path = data.get("transcript_path")
-    is_codex = (tool_use_id or "").startswith("call_")
+    is_codex        = (tool_use_id or "").startswith("call_")
+    # Codex sends transcript_path but not session_id — use path as stable session key
+    session_id      = data.get("session_id") or (f"transcript:{transcript_path}" if transcript_path else None)
 
     if is_codex and transcript_path:
         # Write pending args; spawn delayed background reader so hook exits instantly
