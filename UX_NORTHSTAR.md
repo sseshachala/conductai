@@ -10,6 +10,25 @@
 
 ---
 
+## Executive summary
+
+Conduct is shifting its UX from a 2024 SaaS console (sidebar + list pages + settings) to a 2026 AI-app shape (conversational + ambient + governance-spine) — *without rip-and-replace*. The canvas stays. Guard becomes the visible spine on every rung. The journey reorders to buyer-first (Entry → Govern → Audit → Build → Run) so the security / compliance lead sees the case to pay before they ever touch Build / Run.
+
+The doc names **9 primitives** (Guard inline pill, compliance evidence chip, intent input, block card, timeline row, spend ribbon, role chip, compliance pack pane, right-panel inspector), **10 wireframes**, **23 decisions**, **5 phases** of implementation (Phase 0 unblockers → Phase 4 marketing), and **5 success metrics** (one per rung, 90-day targets).
+
+What dies: `/security` (3-line redirect), `/governance` (947-line dupe of `/guard`), the "blank canvas as first-time experience," the "dashboard as default landing" pattern, generic "team automations" copy. What's net-new: `/home` (conversational entry), the right-panel inspector primitive, the Guard event-schema `satisfies` field, the 3-tab Guard spine, the compliance pack pane.
+
+## How to read this doc
+
+- **For a 5-minute scan:** read this summary + the journey rungs + the wireframes section headings. That's the shape.
+- **For implementation:** start with the *Implementation order* section. Phase 0 is the gate to everything else.
+- **For a single screen:** look it up in the surface map, then jump to the wireframe and any decisions that reference it.
+- **For a single decision:** the decision log is authoritative. The journey + primitives describe the *what*; decisions describe the *why and what-was-considered*.
+- **Load-bearing primitives:** #1 (Guard inline pill) and #2 (compliance evidence chip) — every constraint depends on these existing.
+- **Load-bearing decisions:** #1 (Guard-on-every-rung), #3 (no rip-and-replace), #4 (run = timeline), #7 (buyer-first order), #21 (5-phase order). If you change one of these, the whole doc shifts.
+
+---
+
 ## Positioning (input, not a question)
 
 > **Conduct is a Guard-first AI governance platform** — policy, compliance, spend, and audit for AI usage at work — **with team automation playbooks layered on top, scoped to compliance, security, and engineering workflows.**
@@ -786,6 +805,31 @@ ASCII boxes instead of Excalidraw — readable inline in the PR, captures layout
 
 ---
 
+## Guard-on-every-rung — verification table
+
+Per constraint #1, every rung must show Guard inline. This table makes that visible; if any cell is empty, the constraint is broken.
+
+| Rung    | Where Guard appears                                                                                       | Primitive used        |
+|---------|-----------------------------------------------------------------------------------------------------------|------------------------|
+| Entry   | Ambient activity prompts ("3 calls blocked overnight"); demo (#826) shows a real block in 60s             | Guard inline pill #1; compliance evidence chip #2 (marketing) |
+| Govern  | The whole surface. 3-tab spine (Policy / Spend / Activity), compliance pack right rail                    | Guard inline pill #1; spend ribbon #6; compliance pack pane #8 |
+| Audit   | Every timeline row shows decision + linked policy + evidence chip                                          | Guard inline pill #1; compliance evidence chip #2; timeline row #5 |
+| Build   | Every block on canvas shows `predict` Guard pill at draft time; ambient draft modal shows applicable policies before commit | Guard inline pill #1 (predict variant); block card #4; intent input #3 |
+| Run     | Every step in timeline shows actual decision + linked policy; spend ribbon on every run                   | Guard inline pill #1; timeline row #5; spend ribbon #6 |
+
+All five rungs surface Guard inline. Constraint #1 holds.
+
+## What's intentionally still rough (push back here)
+
+The doc deliberately stops at the "constraint" level, not "spec." These are the places where ambiguity is by design — flag if you need more before Phase 0 starts.
+
+- **Visual treatment of `predict` vs `allow` Guard pill.** Specified as outlined vs filled; actual stroke / fill / dash pattern is for the design phase, not this doc.
+- **Right-panel inspector tabs per resource type.** Listed conceptually; per-tab content is per-phase spec work.
+- **Marketing wireframe (WF #10) above-the-fold layout.** Intentionally thin — brand / hero / illustration is the separate brand track (decision #13).
+- **Compliance pack export format.** Named as "PDF + JSON bundle"; field-level schema is for the engineer implementing the export.
+- **Intent input classifier model.** "Small LLM call routing to ~10 destinations" — not which model, not the prompt. Picked by whoever builds Phase 3.
+- **Per-phase ship dates.** Listed as "Week 2 / Week 3 / etc." — these are *order*, not deadlines. Calendar dates are set when each phase plans.
+
 ## Implementation order (Phase 0 → Phase 4)
 
 The doc lists a lot. Order matters more than completeness. Phase 0 is the smallest set of changes that bend the product toward the journey without breaking anything; each phase compounds.
@@ -932,6 +976,8 @@ Each phase ships an instrumentation hook so the metric is measurable from day on
 | 21  | 5-phase implementation order (Unblockers → Govern → Run+Audit → Entry+Build → Marketing) | Ship surface-by-surface as bandwidth allows | Phase 0 (schema + primitives #1, #9) is unavoidable scaffolding. Govern before Build because Build references policies defined in Govern. Marketing last because it benefits from everything before. | 2026-06-30 |
 | 22  | Compliance evidence chip depends on Guard event schema gaining a `satisfies: [{framework, code}]` field — file as a Phase 0 issue | Compute satisfies at read-time / per-framework lookup tables | Read-time computation slows the audit timeline, the surface that needs to be fast. Static lookup tables drift. Storing satisfies on the event itself is the simplest correct thing. | 2026-06-30 |
 | 23  | Success metric per rung, not per surface | OKR-style for the whole doc / no metrics this week | The doc is theory without measurement. One number per rung is tractable; per-surface is paralysis. Targets are 90 days post-launch so they survive the actual roll-out. | 2026-06-30 |
+| 24  | Compliance pack v1 = SOC 2 only; other frameworks ship "request access" cards | Ship all 4 frameworks at v1 / ship none and gate behind sales | SOC 2 has the most existing customer demand + the Lexoculus capture data is strongest there. Other frameworks generate inbound interest with zero engineering cost via the "request access" pattern. Pure B2B selling motion. | 2026-07-01 |
+| 25  | Doc has an executive summary + "how to read" + "what's intentionally rough" sections at the top, not just at the end | Skip the summary; reviewers should read it linearly | The doc is dense enough (~600 lines) that a cold reader needs a map. Load-bearing primitives + decisions are named explicitly so a reviewer can push back on the *right* things. | 2026-07-01 |
 
 
 ---
@@ -945,10 +991,10 @@ Each phase ships an instrumentation hook so the metric is measurable from day on
 5. ~~Marketing pages in scope?~~ **Resolved day 2:** journey + entry rung decisions ARE in scope; visual / brand work is separate. Decision #13.
 6. ~~`/playbook-queue` role?~~ **Resolved day 2:** admin/security-only approval surface (allowed roles: admin, security; status flow pending→promoted|needs_work). Confirmed Govern, not Build. Decision #12.
 7. ~~Canvas right-panel inspector — exists today?~~ **Resolved day 3:** no — `apps/web/src/components/` has no inspector component. Must be built (primitive #9). Decision #14.
-8. Which compliance pack format do we standardize on for `/audit?pack=*` export? SOC 2 is row one; EU AI Act + ISO 27001 next (per Lexoculus capture). Spec'd in primitive #2 above (v1 priority list). **Confirm day 5** when re-spec'ing #858/#859/#826.
+8. ~~Which compliance pack format do we standardize on?~~ **Resolved day 6:** SOC 2 only for v1. Other frameworks ship "coming soon — request access" cards per primitive #8 + WF #7. The B2B selling motion likes this; it generates inbound interest for ISO / EU AI Act / OWASP-LLM packs. Decision #24 below.
 9. **New (day 2):** `predict` Guard pill always-on at draft time, or only after first save? Primitive #1 recommends always; revisit week-2 dogfood.
 10. ~~event `satisfies` field — already in Guard schema?~~ **Resolved day 3:** no — grepped `apps/api/app/modules/guard/` for `satisfies|compliance.*framework|requirement_code`, no matches. Schema work required before primitive #2 (compliance evidence chip) can be implemented. Capture as a follow-up issue day 7.
 
 ---
 
-*End of day 5. Next: day 6 — buffer / tighten gaps / sanity-pass for B2B-not-consumer + Guard-on-every-rung constraints.*
+*End of day 6. Next: day 7 — ship: file the Phase 0 schema issue (Guard `satisfies` field), comment on #858 / #859 / #826 linking the relevant sections, mark PR #861 ready for review.*
