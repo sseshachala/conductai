@@ -427,6 +427,39 @@ ASCII boxes instead of Excalidraw — readable inline in the PR, captures layout
 - "Your lanes" cards are quick-jumps, not dashboards. Detail is in canvas.
 - No persistent sidebar. Nav is the row at the bottom + the workspace switcher in the header (Linear-style: keyboard + workspace switcher do most of the work).
 
+### Wireframe 1a — `/home` empty state (first session post-setup)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  [Conduct logo]   [workspace ▾]  [role chip · developer · Engineering] │
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  spend ribbon:  ░░░░░░░░░░░░░░░░░░░░  $0 / $500 this month              │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  Find a run, draft a policy, ask a question.                       │ │
+│  │  Try: "draft a PR review bot for our repo"                         │ │
+│  │  [               intent input              ]   [/]                 │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  No runs yet — start with a starter playbook:                           │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐                     │
+│  │ PR Review    │ │ Autopilot    │ │ SOC 2 evid.  │                     │
+│  │ Bot          │ │ + Approval   │ │ collector    │                     │
+│  │ Engineering  │ │ Engineering  │ │ Compliance   │                     │
+│  │ [Install]    │ │ [Install]    │ │ [Install]    │                     │
+│  └──────────────┘ └──────────────┘ └──────────────┘                     │
+│                                                                          │
+│  Guard is already protecting your workspace.                            │
+│  ▸ 0 policies set (defaults active)            [→ tune]                 │
+│  ▸ $500 monthly budget (set in setup)          [→ adjust]               │
+│                                                                          │
+│  [ → Canvas ] [ → /guard ] [ → /audit ]                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Annotation:** zero-state shows three lane-tagged starter playbooks (one per lane), not a generic catalog. Guard reassurance card sits below to make the spine visible from second one of session one.
+
 ### Wireframe 2 — `/guard` (Govern, 3-tab spine)
 
 ```
@@ -458,7 +491,298 @@ ASCII boxes instead of Excalidraw — readable inline in the PR, captures layout
 **Annotations:**
 - "Draft via intent" button is the entry into the intent-input primitive — drafts a new policy from natural language.
 - Compliance pack pane is the right rail; clicking a framework deep-links to Audit filtered to that framework.
-- The other Govern tabs (Spend, Activity, Approvals) follow the same shell; specs come in day-4 wireframes.
+
+### Wireframe 3 — `/guard?tab=spend` (Govern, Spend tab)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Guard  [● ON]                          [role chip · admin · Eng wsp]  │
+│  [ Policy ]  [ Spend ●]  [ Activity ]  [ Approvals ]                   │
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  This month                                                              │
+│  ████████████████░░░░░░░░  $3,210 / $5,000 (64%)                       │
+│                                                                          │
+│  By lane                                                                 │
+│  ┌─────────────┬──────────┬──────────┬──────────┐                       │
+│  │ Lane        │  Spent   │ Budget   │  Trend   │                       │
+│  ├─────────────┼──────────┼──────────┼──────────┤                       │
+│  │ Compliance  │   $410   │  $1,000  │  ▼ 12%   │                       │
+│  │ Security    │ $1,140   │  $2,000  │  ▲ 4%    │                       │
+│  │ Engineering │ $1,660   │  $2,000  │  ▲ 21% ⚠ │                       │
+│  └─────────────┴──────────┴──────────┴──────────┘                       │
+│                                                                          │
+│  By developer                                                            │
+│  ┌─────────────┬──────────┬──────────┬───────────┐                      │
+│  │ Developer   │  Spent   │ Per-cap  │  Status   │                      │
+│  ├─────────────┼──────────┼──────────┼───────────┤                      │
+│  │ Sudhi       │   $312   │   $400   │  ok       │                      │
+│  │ Jen         │   $189   │   $250   │  ok       │                      │
+│  │ Alex        │   $247   │   $250   │  ⚠ 99%    │                      │
+│  └─────────────┴──────────┴──────────┴───────────┘                      │
+│                                                                          │
+│  [ + adjust team budget ]    [ + add per-dev limit ]                    │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Primitives used:** spend ribbon (header), role chip (header), Guard inline pill implied in ⚠ markers.
+
+**Annotations:** lane row turns amber when ≥80% of lane budget, red ≥100%. Per-dev row goes ⚠ at 99% (matches the "hard cap at 100%" toggle from /setup).
+
+### Wireframe 4 — `/audit` (Audit, timeline-first)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Audit                                  [role chip · security · Eng wsp]│
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  Filters: [ time ▾ ]  [ actor ▾ ]  [ lane ▾ ]  [ policy ▾ ]            │
+│           [ framework ▾ ]  [ decision: all ▾ ]            [ export ▾ ]  │
+│                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │ 14:32  sudhi      run     pr-review-bot.engineering              │   │
+│  │        [Guard: allow]    [SOC 2 CC6.1]    $0.04                  │   │
+│  ├──────────────────────────────────────────────────────────────────┤   │
+│  │ 14:31  alex       run     autopilot-fix.engineering              │   │
+│  │        [Guard: BLOCK — above per-call cap]                       │   │
+│  │        Policy: block-gpt4-over-50c @v1                  →        │   │
+│  ├──────────────────────────────────────────────────────────────────┤   │
+│  │ 14:28  agent      tool    github.create_pr  (autopilot run #4823)│   │
+│  │        [Guard: allow]    [SOC 2 CC6.1] [EU AI Act §27]   $0.00   │   │
+│  ├──────────────────────────────────────────────────────────────────┤   │
+│  │ 14:22  jen        policy.edit  block-gpt4-over-50c v0→v1        │   │
+│  │        [Guard: allow]    [SOC 2 CC6.6] [internal-policy]  -      │   │
+│  ├──────────────────────────────────────────────────────────────────┤   │
+│  │ 47 more allow events  [show all]                                 │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  Showing 4 of 51 events for the last 24h                                │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Primitives used:** timeline row (the surface itself), Guard inline pill (per row), compliance evidence chip (per row), role chip (header).
+
+**Annotations:**
+- Compact mode 48px rows; click → right-panel inspector (primitive #9) with full event JSON.
+- 47-allow collapse is the "group" timeline-row state — keeps the surface scannable when 99% of events allow.
+- Export dropdown produces compliance packs (SOC 2 / EU AI Act / etc.) using the framework filter.
+
+### Wireframe 5 — `/workflows/[id]` canvas with Guard pills (Build)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  PR Review Bot · engineering         [role chip · developer · Eng wsp] │
+│  [ canvas ●]  [ runs ]  [ settings ]                          [ run ▶ ] │
+│  ─────────────────────────────────────────────────────────────────────  │
+│  spend ribbon (projected per-run):  ████░░░░░░  $0.42 / $1.00 cap      │
+│                                                                          │
+│  ┌──────────────┐                                                       │
+│  │ TRIGGER      │  GitHub PR opened                                      │
+│  │ [predict: ●] │                                          ──→          │
+│  └──────────────┘                                                       │
+│           │                                                              │
+│           ▼                                                              │
+│  ┌──────────────┐                                                       │
+│  │ MEMORY       │  recall prior reviews for this repo                    │
+│  │ [predict: ●] │  → 2,400 tokens                                       │
+│  └──────────────┘                                                       │
+│           │                                                              │
+│           ▼                                                              │
+│  ┌──────────────┐                                                       │
+│  │ AGENT STEP   │  Claude reviews PR diff                                │
+│  │ [predict: ⚠ ]│  warn: 'block-gpt4-over-50c' would warn at $0.62      │
+│  └──────────────┘                                                       │
+│           │                                                              │
+│           ▼                                                              │
+│  ┌──────────────┐                                                       │
+│  │ GUARD        │  policy gate                                           │
+│  │ [predict: ●] │  evaluates 3 policies                                 │
+│  └──────────────┘                                                       │
+│           │                                                              │
+│           ▼                                                              │
+│  ┌──────────────┐                                                       │
+│  │ TOOL         │  github.post_review_comment                            │
+│  │ [predict: ●] │                                                       │
+│  └──────────────┘                                                       │
+│                                                                          │
+│  [ + add block ]                                                        │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Primitives used:** block/node card (every block), Guard inline pill `predict` variant (every block), spend ribbon (header).
+
+**Annotations:**
+- Every block shows its `predict` Guard pill at draft time — `●` = allow, `⚠` = warn, `■` = block (drawn here as filled square). The third block warns because the projected cost would cross a policy threshold; user sees this without running.
+- Right-panel inspector (primitive #9) opens on block click with full Guard / spend / config detail.
+- This is the load-bearing Build view: ambient draft populated this canvas, user is reviewing before running.
+
+### Wireframe 6 — `/workflows/[id]/runs/[run_id]` (Run timeline reusing Audit primitive)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Run #4823 · PR Review Bot · engineering                                │
+│  Started 14:28 · 2m 14s · $0.41 actual    [role chip · developer]      │
+│  ─────────────────────────────────────────────────────────────────────  │
+│  spend ribbon (this run):   ████░░░░░  $0.41 / $1.00 cap              │
+│                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │ 14:28:02  TRIGGER     GitHub PR #4823 opened                     │   │
+│  │           [Guard: allow]                                  $0.00  │   │
+│  ├──────────────────────────────────────────────────────────────────┤   │
+│  │ 14:28:04  MEMORY      recall prior reviews (2,400 tok)           │   │
+│  │           [Guard: allow]                                  $0.01  │   │
+│  ├──────────────────────────────────────────────────────────────────┤   │
+│  │ 14:28:05  AGENT STEP  Claude reviews PR diff                     │   │
+│  │           [Guard: warn — 80% of per-call cap]             $0.38  │   │
+│  │           Policy: block-gpt4-over-50c @v1                 →      │   │
+│  ├──────────────────────────────────────────────────────────────────┤   │
+│  │ 14:30:11  GUARD       policy gate — 3 evaluated                  │   │
+│  │           [Guard: allow]                                  $0.00  │   │
+│  ├──────────────────────────────────────────────────────────────────┤   │
+│  │ 14:30:12  TOOL        github.post_review_comment                 │   │
+│  │           [Guard: allow]    [SOC 2 CC6.1]                 $0.02  │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ✓ Run complete — review comment posted                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Primitives used:** timeline row (the surface itself, same primitive as Audit), Guard inline pill (per step), compliance evidence chip (final tool row), spend ribbon (header), role chip.
+
+**Annotations:** structurally identical to `/audit` — that's the point. The only difference is the filter: this is a single run, audit is all events. One primitive, two views.
+
+### Wireframe 7 — Compliance pack page (`/guard/packs/soc2`)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  SOC 2 Compliance Pack                  [role chip · security · Eng wsp]│
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  Last evidence export: 3 days ago                                       │
+│  Coverage: 87 events / 47 requirements satisfied                        │
+│                                                                          │
+│  [ Export evidence pack ▾ ]    [ schedule monthly export ]              │
+│                                                                          │
+│  Requirements                                                            │
+│  ┌──────────┬────────────────────────────────┬────────┬────────┐        │
+│  │ Code     │ Requirement                    │ Events │ Last   │        │
+│  ├──────────┼────────────────────────────────┼────────┼────────┤        │
+│  │ CC6.1    │ Logical access controls        │   23   │ 4m ago │        │
+│  │ CC6.6    │ Manage system credentials      │   12   │ 2h ago │        │
+│  │ CC7.2    │ Detect and respond to events   │    8   │ 1d ago │        │
+│  │ CC8.1    │ Change management              │    0 ⚠ │ never  │ →gap  │
+│  │ CC9.2    │ Vendor risk management         │    0 ⚠ │ never  │ →gap  │
+│  └──────────┴────────────────────────────────┴────────┴────────┘        │
+│                                                                          │
+│  2 gaps — [ show me how to satisfy ▾ ]                                  │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Primitives used:** compliance pack pane (the surface), role chip.
+
+**Annotations:** gap rows are the critical UI — they're the "do this next" CTA for the security buyer. "Show me how to satisfy" is intent-driven help (intent input #3 wired to this surface): the LLM proposes a playbook or policy that would generate satisfying events.
+
+### Wireframe 8 — Ambient draft modal (Build, intent → canvas)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Draft a new playbook                                       [ close × ] │
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  What should this playbook do?                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │ when CI fails on main, open an issue, ping the on-call in Slack,  │ │
+│  │ and let Claude attempt a fix as a draft PR                         │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  Lane: [ engineering ▾ ]    Connected integrations: GitHub, Slack ✓     │
+│                                                                          │
+│  Conduct will draft:                                                    │
+│  ┌──────────┐ → ┌──────────┐ → ┌──────────┐ → ┌──────────┐             │
+│  │ TRIGGER  │   │ TOOL     │   │ AGENT    │   │ TOOL     │             │
+│  │ CI fail  │   │ open iss.│   │ Claude   │   │ draft PR │             │
+│  └──────────┘   └──────────┘   └──────────┘   └──────────┘             │
+│                                                                          │
+│  Policies that will apply:                                              │
+│  • block-gpt4-over-50c @v1 [warn]                                       │
+│  • require-signed-policy @v2 [block]                                    │
+│                                                                          │
+│  [ Draft on canvas ]   [ Cancel ]                                       │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Primitives used:** intent input (draft mode), block/node card preview, Guard inline pill (predicted on each upcoming block).
+
+**Annotations:** modal renders the *predicted* canvas + the policies it will be subject to *before* the user commits. B2B users don't want surprises — they want to see what they're about to create. This is the ambient agent rung with a brake.
+
+### Wireframe 9 — `/setup` target shape (post-#858 redesign)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Conduct                                          Step 1 of 4           │
+│  ─────────────────────────────────────────────────────────────────────  │
+│  [●][○][○][○]   Workspace                                               │
+│                                                                          │
+│  Organization:    [ OrganicSphere                                    ]  │
+│  Workspace name:  [ Engineering                                      ]  │
+│  Data region:     US · Oregon  (US only for now)                        │
+│                                                                          │
+│  Your lane (drives the suggested playbooks later):                      │
+│  ( ) Compliance       — SOC 2, ISO, EU AI Act focus                     │
+│  (●) Security         — AppSec, secrets, dependency triage              │
+│  ( ) Engineering      — DevEx, CI, on-call                              │
+│  ( ) Multiple lanes — pick the primary; others enable later             │
+│                                                                          │
+│                                                  [ Skip → /guard ]      │
+│                                                  [ Continue → ]         │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Annotations:**
+- Lane selector added — drives downstream starter playbooks (matches 3-lane positioning).
+- Skip routes to `/guard` (decision day 0 in #858 slice 1).
+- Region is fixed text, not a dropdown (decision in #858).
+
+### Wireframe 10 — Marketing entry (`/` rebuilt around v3 positioning)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Conduct                          [ docs ] [ guard ] [ pricing ] [ in ]│
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│   The Guard-first AI governance platform.                              │
+│                                                                          │
+│   Policy, compliance, spend, and audit                                 │
+│   for AI usage at work.                                                │
+│                                                                          │
+│   [ Try the 60s demo ]   [ Talk to us ]                                │
+│                                                                          │
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  Three automation lanes on a single governance spine:                  │
+│                                                                          │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐                   │
+│  │ Compliance  │   │ Security    │   │ Engineering │                   │
+│  │ SOC 2, ISO  │   │ BugHunter,  │   │ PR review,  │                   │
+│  │ EU AI Act   │   │ Autopilot,  │   │ on-call,    │                   │
+│  │ evidence    │   │ secrets     │   │ deploy      │                   │
+│  └─────────────┘   └─────────────┘   └─────────────┘                   │
+│                                                                          │
+│  Compliance live                                                        │
+│  SOC 2:    87 events satisfied                                          │
+│  ISO 27k:  41 events satisfied                                          │
+│  EU AI Act: 12 events satisfied                                         │
+│                                                                          │
+│  [ See the audit log of every AI call in your org → ]                  │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Primitives used:** compliance pack pane (abbreviated form, marketing surface), Guard inline pill implied in "audit log".
+
+**Annotations:**
+- 30-second test: a security buyer sees "Guard-first AI governance," "policy / compliance / spend / audit," and live compliance numbers above the fold.
+- Three lanes are concrete (named playbooks per lane), not abstract.
+- "60s demo" CTA links to #826 (dev funnel) — same demo, marketing-shaped framing.
 
 ---
 
@@ -484,6 +808,9 @@ ASCII boxes instead of Excalidraw — readable inline in the PR, captures layout
 | 15  | Wireframes use ASCII boxes, not Excalidraw or Figma | Excalidraw .json files; embedded Figma frames | ASCII renders inline in the PR, no separate tool needed, low-fi enough that no one mistakes it for production design. Matches #860's "low-fi" constraint. | 2026-06-28 |
 | 16  | Intent input has 3 modes (find / draft / ask), auto-selected from intent | Single chat mode like Claude.ai / ChatGPT | B2B users have rich context — most intents are find-a-thing, not generate-from-blank. Surfacing the mode prevents user confusion ("why is it making something new when I asked to find one?") and lets each mode have the right latency budget (find = instant, draft / ask = LLM). | 2026-06-28 |
 | 17  | Audit + Run are one primitive (timeline row), not two | Separate audit-row and run-step components | Both are "ordered events with provenance"; different filters, same shape. Forces visual + data-model coherence and saves one component. | 2026-06-28 |
+| 18  | `/setup` adds a "lane" picker (compliance / security / engineering / multiple) | Skip the lane picker; default to multi-lane | Lane drives the suggested playbooks downstream + matches 3-lane positioning. Picking primary lane during setup is a 5-second tradeoff for materially better starter suggestions. | 2026-06-29 |
+| 19  | Marketing homepage rebuilt around v3 positioning above the fold (Guard-first + 3 lanes + live compliance numbers) | Keep current homepage and add a banner | 30-second test fails if buyer has to scroll. Live numbers are the trust signal; without them, "compliance" reads as vaporware. Visual / brand work is out of scope (per #860); copy + structure is in scope. | 2026-06-29 |
+| 20  | Ambient draft modal shows predicted canvas + applicable policies *before* user commits | Generate directly to canvas like Lovable / v0 | B2B users want a confirm step before unknown LLM-generated structure lands in their workspace. Matches Linear's "preview before commit" pattern. | 2026-06-29 |
 
 
 ---
@@ -503,4 +830,4 @@ ASCII boxes instead of Excalidraw — readable inline in the PR, captures layout
 
 ---
 
-*End of day 3. Next: day 4 — wireframes 3–10 (Build canvas, Run timeline, Audit timeline, compliance pack page, ambient draft modal, /setup target, marketing entry).*
+*End of day 4. Next: day 5 — implementation roadmap, re-spec table for #858/#859/#826, success metrics for the journey.*
