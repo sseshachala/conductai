@@ -444,6 +444,13 @@ const WORKS_WITH = [
     bg: "bg-emerald-50 border-emerald-200",
     desc: "booster init codex",
   },
+  {
+    name: "GitHub Copilot",
+    icon: "✦",
+    color: "text-stone-700",
+    bg: "bg-stone-100 border-stone-300",
+    desc: "conduct guard sync",
+  },
 ]
 
 function WorksWithSection() {
@@ -455,7 +462,7 @@ function WorksWithSection() {
           Works with every major AI coding tool.
         </h2>
 
-        <div className="grid sm:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
           {WORKS_WITH.map(tool => (
             <div key={tool.name} className={`rounded-2xl border ${tool.bg} px-6 py-6 flex flex-col items-center text-center gap-3`}>
               <span className={`text-3xl font-black ${tool.color}`}>{tool.icon}</span>
@@ -468,8 +475,8 @@ function WorksWithSection() {
         </div>
 
         <p className="text-center text-xs text-stone-400 mt-6">
-          Each command shows exactly what files will change and asks for confirmation before writing anything.
-          Run <code className="font-mono bg-stone-200 px-1 rounded">booster remove &lt;platform&gt;</code> to cleanly undo.
+          The first four show exactly what files will change and ask for confirmation; run <code className="font-mono bg-stone-200 px-1 rounded">booster remove &lt;platform&gt;</code> to cleanly undo.
+          Copilot is auto-detected and wired via <code className="font-mono bg-stone-200 px-1 rounded">conduct guard sync</code> when VS Code's GitHub Copilot extension is installed.
         </p>
       </div>
     </section>
