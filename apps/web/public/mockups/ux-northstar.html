@@ -1049,6 +1049,7 @@
       <a href="#s9">Ambient draft</a>
       <a href="#s10">Canvas</a>
       <a href="#s11">Run</a>
+      <a href="#s12">Phase 0 primitives</a>
     </nav>
     <div class="top-meta">v3 positioning · Guard-first</div>
   </div>
@@ -2122,6 +2123,246 @@
       </div>
       <div style="margin-top:8px;">
         Structurally identical to Audit (S8) — only the filter differs. <strong>One primitive, two views</strong>. Decisions #4 + #17.
+      </div>
+    </div>
+    <a class="next" href="#s1">Back to start ↑</a>
+  </div>
+</section>
+
+<!-- ════════════ S12 — Phase 0 primitives ════════════ -->
+<section class="screen" id="s12">
+  <div class="screen-head">
+    <div>
+      <h2>12. Phase 0 — primitive components</h2>
+      <div class="ref">Unblockers · Right-panel inspector (#9) · Guard inline pill (#1) states · Analytics primitive</div>
+    </div>
+    <span class="ref">No new GH issues — primitives live in this mockup until Phase 1 starts</span>
+  </div>
+
+  <!-- ── Right-panel inspector (over canvas) ─────────────────────────────── -->
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/workflows/pr-review-bot · inspector open</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell" style="position: relative;">
+        <aside class="app-sidebar">
+          <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
+          <a href="#s4" class="sb-item">Home</a>
+          <a href="#s5" class="sb-item">Guard</a>
+          <a href="#s8" class="sb-item">Audit</a>
+          <a href="#s10" class="sb-item active">Canvas</a>
+          <a href="#s11" class="sb-item">Runs</a>
+        </aside>
+        <div class="app-main" style="padding-right: 440px; overflow: hidden;">
+          <div class="app-header">
+            <div>
+              <span class="lane eng">Engineering</span>
+              <h3 style="margin: 4px 0 0;">PR Review Bot</h3>
+            </div>
+            <div class="row-flex">
+              <span class="ws-switcher">Engineering ▾</span>
+              <span class="ws-switcher" style="border-color: var(--accent-ring); color: var(--accent-2); background: var(--accent-weak);">lane: eng ▾</span>
+              <span class="role-chip"><span class="role-dot"></span>developer · Sudhi</span>
+            </div>
+          </div>
+          <div class="canvas" style="opacity: .55; pointer-events: none;">
+            <div class="block-card" style="border-color: var(--accent);">
+              <span class="b-type agent">Agent Step</span>
+              <div class="b-text">Claude reviews PR diff<div class="b-note">selected · inspector open →</div></div>
+              <span class="gpill predict warn"><span class="gdot"></span>predict</span>
+            </div>
+            <div class="b-arrow"></div>
+            <div class="block-card">
+              <span class="b-type guard">Guard</span>
+              <div class="b-text">Policy gate</div>
+              <span class="gpill predict allow"><span class="gdot"></span>predict</span>
+            </div>
+          </div>
+          <!-- Inspector -->
+          <aside style="
+            position: absolute;
+            top: 0; right: 0; bottom: 0;
+            width: 420px;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            box-shadow: -8px 0 24px rgba(0,0,0,.05);
+            display: flex; flex-direction: column;
+          ">
+            <div style="padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <div class="mini-meta" style="text-transform: uppercase; letter-spacing: .12em; font-weight: 700; color: var(--accent-2); font-size: 10px;">Block</div>
+                <strong style="font-size: 14.5px;">Agent Step — Claude reviews PR diff</strong>
+              </div>
+              <div class="row-flex" style="gap: 6px;">
+                <a class="btn ghost sm" href="#">↗ full page</a>
+                <a class="btn ghost sm" href="#" style="padding: 0 8px;">×</a>
+              </div>
+            </div>
+            <div style="border-bottom: 1px solid var(--border); padding: 0 12px;">
+              <div class="tabbar" style="border-bottom: none; margin: 0;">
+                <a class="active" href="#">Config</a>
+                <a href="#">Guard</a>
+                <a href="#">History</a>
+              </div>
+            </div>
+            <div style="flex: 1; padding: 18px; overflow-y: auto;">
+              <div style="margin-bottom: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px; margin-bottom: 4px;">Model</div>
+                <div class="setup-form" style="margin: 0;">
+                  <div class="field" style="margin-bottom: 8px;">
+                    <div class="read" style="height: 34px; line-height: 32px; font-size: 12.5px;">claude-sonnet-4-6</div>
+                  </div>
+                </div>
+              </div>
+              <div style="margin-bottom: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px; margin-bottom: 4px;">Turn budget</div>
+                <div class="setup-form" style="margin: 0;">
+                  <div class="field" style="margin-bottom: 8px;">
+                    <div class="read" style="height: 34px; line-height: 32px; font-size: 12.5px;">medium · 50 turns <span class="mini-meta">— from workspace default</span></div>
+                  </div>
+                </div>
+              </div>
+              <div style="margin-bottom: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px; margin-bottom: 4px;">Projected cost</div>
+                <div style="font-family: ui-monospace, monospace; font-size: 18px; font-weight: 600;">$0.42 / call</div>
+                <div class="mini-meta">would <span class="gpill warn" style="height: 18px; padding: 0 7px; font-size: 10.5px;"><span class="gdot"></span>warn</span> at $0.50 — policy <code style="font-family: ui-monospace; font-size: 11px;">block-gpt4-over-50c@v1</code></div>
+              </div>
+              <div>
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px; margin-bottom: 6px;">Prompt</div>
+                <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-2); line-height: 1.5;">
+                  Review the diff for: security issues, race conditions, missing error handling, style violations…
+                </div>
+              </div>
+            </div>
+            <div style="padding: 12px 18px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end;">
+              <a class="btn ghost sm" href="#">Cancel</a>
+              <a class="btn primary sm" href="#">Save</a>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitive #9</span>
+      <div class="chips">
+        <span class="chip">420px right-edge sheet</span>
+        <span class="chip">tabs per resource type</span>
+        <span class="chip">persists last tab via key</span>
+        <span class="chip">focus trap · Esc closes</span>
+      </div>
+      <div style="margin-top:8px;">
+        Replaces modals (lose context) and full-page nav (break inspect-without-navigating). One shell, every surface uses it: Build (block detail) · Run (step detail) · Audit (event detail) · Govern (policy detail).
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Guard pill states gallery ───────────────────────────────────────── -->
+  <div class="screen-head" style="margin-top: 36px;">
+    <div>
+      <h3 style="font-size: 16px; font-weight: 650; margin: 0;">Guard inline pill — all 5 states + size variants</h3>
+      <div class="ref">Primitive #1 · load-bearing</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Decision states</div>
+    <table class="data" style="border: none; box-shadow: none;">
+      <thead>
+        <tr><th>State</th><th>Compact</th><th>Expanded</th><th>When</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>allow</strong></td>
+          <td><span class="gpill allow"><span class="gdot"></span>allow</span></td>
+          <td><span class="gpill allow"><span class="gdot"></span>allow · within budget</span></td>
+          <td class="mini-meta">default decision; no label needed in dense lists</td>
+        </tr>
+        <tr>
+          <td><strong>warn</strong></td>
+          <td><span class="gpill warn"><span class="gdot"></span>warn</span></td>
+          <td><span class="gpill warn"><span class="gdot"></span>warn · 80% of monthly cap</span></td>
+          <td class="mini-meta">action allowed but flagged; visible reason inline</td>
+        </tr>
+        <tr>
+          <td><strong>block</strong></td>
+          <td><span class="gpill block"><span class="gdot"></span>block</span></td>
+          <td><span class="gpill block"><span class="gdot"></span>block · above per-call cap</span></td>
+          <td class="mini-meta">action stopped; reason mandatory + policy link</td>
+        </tr>
+        <tr>
+          <td><strong>predict (allow)</strong></td>
+          <td><span class="gpill predict allow"><span class="gdot"></span>predict</span></td>
+          <td><span class="gpill predict allow"><span class="gdot"></span>predict · would allow</span></td>
+          <td class="mini-meta">canvas / draft time; outlined dashed border</td>
+        </tr>
+        <tr>
+          <td><strong>predict (warn)</strong></td>
+          <td><span class="gpill predict warn"><span class="gdot"></span>predict</span></td>
+          <td><span class="gpill predict warn"><span class="gdot"></span>predict · would warn</span></td>
+          <td class="mini-meta">canvas / draft time; cost projected past threshold</td>
+        </tr>
+        <tr>
+          <td><strong>predict (block)</strong></td>
+          <td><span class="gpill predict block"><span class="gdot"></span>predict</span></td>
+          <td><span class="gpill predict block"><span class="gdot"></span>predict · would block</span></td>
+          <td class="mini-meta">canvas / draft time; would breach a hard policy</td>
+        </tr>
+        <tr>
+          <td><strong>synthetic</strong></td>
+          <td><span class="gpill synthetic">synthetic</span></td>
+          <td><span class="gpill synthetic">synthetic · demo event</span></td>
+          <td class="mini-meta">#826 demo data; visually distinct from prod</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Analytics primitive ─────────────────────────────────────────────── -->
+  <div class="screen-head" style="margin-top: 36px;">
+    <div>
+      <h3 style="font-size: 16px; font-weight: 650; margin: 0;">Analytics primitive — instrument the 5 success metrics</h3>
+      <div class="ref">Behind-the-scenes · one helper, one schema, no UI</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">What lands in Phase 0</div>
+    <p style="font-size: 13px; color: var(--text-2); margin: 0 0 12px;">
+      One event schema, one client helper. Every per-rung metric flows through it from Phase 0 so we aren't adding tracking screen-by-screen later.
+    </p>
+    <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-2); line-height: 1.6;">
+      <span style="color: var(--accent-2); font-weight: 600;">track</span>(<span style="color: #047857;">"journey.event"</span>, {<br/>
+      &nbsp;&nbsp;rung: <span style="color: #c2410c;">"entry" | "govern" | "audit" | "build" | "run"</span>,<br/>
+      &nbsp;&nbsp;action: <span style="color: #c2410c;">"signup_to_trial" | "intent_to_action" | "policy_drafted" | "evidence_exported" | "playbook_run"</span>,<br/>
+      &nbsp;&nbsp;duration_ms: <span style="color: #1d4ed8;">number</span>,<br/>
+      &nbsp;&nbsp;workspace_id: <span style="color: #1d4ed8;">string</span>,<br/>
+      &nbsp;&nbsp;lane: <span style="color: #c2410c;">"compliance" | "security" | "engineering" | null</span>,<br/>
+      &nbsp;&nbsp;role: <span style="color: #c2410c;">"admin" | "security" | "developer" | "viewer"</span>,<br/>
+      })
+    </div>
+    <div class="row-flex" style="margin-top: 14px; gap: 6px;">
+      <span class="ec" style="background: var(--accent-weak); border-color: var(--accent-ring); color: var(--accent-2);">Entry — signup→trial</span>
+      <span class="ec" style="background: var(--accent-weak); border-color: var(--accent-ring); color: var(--accent-2);">Entry — first action 24h</span>
+      <span class="ec" style="background: var(--accent-weak); border-color: var(--accent-ring); color: var(--accent-2);">Govern — intent→policy</span>
+      <span class="ec" style="background: var(--accent-weak); border-color: var(--accent-ring); color: var(--accent-2);">Audit — auditor→pack</span>
+      <span class="ec" style="background: var(--accent-weak); border-color: var(--accent-ring); color: var(--accent-2);">Build — idea→first run</span>
+      <span class="ec" style="background: var(--accent-weak); border-color: var(--accent-ring); color: var(--accent-2);">Run — diagnose blocked</span>
+    </div>
+  </div>
+
+  <div class="footnote" style="margin-top: 20px;">
+    <div class="ft-left">
+      <span class="lbl">Phase 0 bundle</span>
+      <div class="chips">
+        <span class="chip">#862 satisfies[] schema (filed)</span>
+        <span class="chip">#863 right-panel inspector (filed)</span>
+        <span class="chip">Guard inline pill (in mockup, deferred)</span>
+        <span class="chip">Analytics helper (in mockup, deferred)</span>
+      </div>
+      <div style="margin-top:8px;">
+        <strong>1 week to ship.</strong> Two issues filed; Guard pill + analytics helper captured here for now — picked up by frontend engineer alongside the inspector.
       </div>
     </div>
     <a class="next" href="#s1">Back to start ↑</a>
