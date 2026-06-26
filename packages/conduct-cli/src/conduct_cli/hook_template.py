@@ -463,15 +463,13 @@ def _run_drain_daemon():
         return
     empty_scans = 0
     while empty_scans < 3:
-        files = sorted(JOURNAL_DIR.glob("*.json"))
+        files = sorted(f for f in JOURNAL_DIR.glob("*.json") if f.name != "drain.pid")
         if not files:
             empty_scans += 1
             _time.sleep(2)
             continue
-        empty_scans = 0
+        posted_any = False
         for f in files:
-            if f.name == "drain.pid":
-                continue
             try:
                 entry = json.loads(f.read_text())
                 api_url = entry["api_url"]
@@ -485,8 +483,15 @@ def _run_drain_daemon():
                 )
                 _ur.urlopen(req, timeout=8)
                 f.unlink(missing_ok=True)
+                posted_any = True
             except Exception:
                 pass  # ponytail: leave file on failure, next scan retries
+        # If every POST failed this scan, count it — prevents infinite loop on dead API
+        if not posted_any:
+            empty_scans += 1
+            _time.sleep(2)
+        else:
+            empty_scans = 0
     try:
         JOURNAL_PID_PATH.unlink(missing_ok=True)
     except Exception:
