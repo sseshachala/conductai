@@ -249,7 +249,7 @@ function DiagnosticHero() {
       {/* Badge */}
       <div className="flex items-center gap-2 mb-8">
         <span className="text-indigo-400 font-black text-lg">◈</span>
-        <span className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Agent Booster v0.2.30</span>
+        <span className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Agent Booster v0.3.0</span>
         <span className="text-[10px] font-bold bg-emerald-900 text-emerald-300 border border-emerald-700 px-2 py-0.5 rounded-full uppercase tracking-widest">Free · MIT</span>
       </div>
 
@@ -723,6 +723,38 @@ function GuardInsightsCallout() {
 /* ─── What's New ───────────────────────────────────────────────────────── */
 
 const WHATS_NEW_ITEMS = [
+  {
+    icon: "🔀",
+    title: "Call graph navigation",
+    tag: "v0.3.0",
+    desc: "expand_calls(symbol, direction) returns immediate callers or callees of any symbol. One MCP round-trip, cycle-safe depth up to 3, same-file resolution at index time, name-based cross-file resolution at query time. Stop re-searching for who calls what.",
+    color: "text-violet-600",
+    bg: "bg-violet-50 border-violet-200",
+  },
+  {
+    icon: "📅",
+    title: "Diff-aware reads",
+    tag: "v0.3.0",
+    desc: "Pass since='HEAD~5' or any git ref to smart_read or search_context. Returns only symbols whose lines changed in the range. Git context lives in the read now, no separate git diff parse, no whole-file scan to figure out what's new.",
+    color: "text-amber-600",
+    bg: "bg-amber-50 border-amber-200",
+  },
+  {
+    icon: "✅",
+    title: "Test signal in every read",
+    tag: "v0.3.0",
+    desc: "booster index --tests builds the symbol-to-test map. test_coverage('login') returns the test files that reference it. smart_read can surface the answer to 'is this code tested?' before the agent decides whether the change is safe.",
+    color: "text-emerald-600",
+    bg: "bg-emerald-50 border-emerald-200",
+  },
+  {
+    icon: "🕐",
+    title: "Last-modified header",
+    tag: "v0.3.0",
+    desc: "Every symbol in smart_read output now carries [last_modified: sha date] via batched git blame. One subprocess per file, max-timestamp commit per symbol range. Know whether code is hot or legacy without a separate look.",
+    color: "text-rose-600",
+    bg: "bg-rose-50 border-rose-200",
+  },
   {
     icon: "🤝",
     title: "Shared team index",
