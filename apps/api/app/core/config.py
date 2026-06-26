@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     #     "openai": {"gpt-4.1-mini": {"input": 0.4, "output": 1.6}}
     #   }
     # }
-    pricing_registry_version: str = "2026-06-04-default"
+    pricing_registry_version: str = "2026-06-26-proxy"
     pricing_overrides_json: str = ""
 
     # Fixture promotion — fallback repo if not derivable from the run's workflow

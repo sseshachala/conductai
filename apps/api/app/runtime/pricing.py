@@ -9,6 +9,9 @@ from app.core.config import settings
 
 log = structlog.get_logger(__name__)
 
+# All token prices are per 1M tokens, USD.
+# `request_fee_usd` (when set) is a per-request flat charge added on top — used
+# by Perplexity Sonar (~$5 per 1k requests = $0.005/request as of 2026-06).
 _DEFAULT_PRICING: dict[str, dict[str, dict[str, float]]] = {
     "anthropic": {
         "claude-sonnet-4-6": {
@@ -24,13 +27,23 @@ _DEFAULT_PRICING: dict[str, dict[str, dict[str, float]]] = {
             "cache_write": 18.75,
         },
         "claude-haiku-4-5-20251001": {
-            "input": 0.80,
-            "output": 4.00,
-            "cache_read": 0.08,
-            "cache_write": 1.00,
+            "input": 1.00,
+            "output": 5.00,
+            "cache_read": 0.10,
+            "cache_write": 1.25,
         },
     },
     "openai": {
+        # 4o family
+        "gpt-4o": {
+            "input": 2.50,
+            "output": 10.00,
+        },
+        "gpt-4o-mini": {
+            "input": 0.15,
+            "output": 0.60,
+        },
+        # 4.1 family
         "gpt-4.1": {
             "input": 2.00,
             "output": 8.00,
@@ -39,19 +52,35 @@ _DEFAULT_PRICING: dict[str, dict[str, dict[str, float]]] = {
             "input": 0.40,
             "output": 1.60,
         },
+        # 5 family (verify before any prod cost report — pricing may shift)
+        "gpt-5": {
+            "input": 3.00,
+            "output": 15.00,
+        },
+        "gpt-5-mini": {
+            "input": 0.60,
+            "output": 2.40,
+        },
+        "gpt-5-nano": {
+            "input": 0.20,
+            "output": 0.80,
+        },
     },
     "perplexity": {
         "sonar": {
             "input": 1.00,
             "output": 5.00,
+            "request_fee_usd": 0.005,
         },
         "sonar-pro": {
             "input": 3.00,
             "output": 15.00,
+            "request_fee_usd": 0.005,
         },
         "sonar-reasoning-pro": {
             "input": 2.00,
             "output": 8.00,
+            "request_fee_usd": 0.005,
         },
     },
 }
@@ -143,6 +172,7 @@ def get_model_rates(
         "output": float(rates.get("output", 0.0)),
         "cache_read": float(rates.get("cache_read", 0.0)),
         "cache_write": float(rates.get("cache_write", 0.0)),
+        "request_fee_usd": float(rates.get("request_fee_usd", 0.0)),
     }
     return out, version
 
