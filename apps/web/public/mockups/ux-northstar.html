@@ -1042,6 +1042,7 @@
       <a href="#s2">Setup</a>
       <a href="#s3">Home (empty)</a>
       <a href="#s4">Home</a>
+      <a href="#s4b">Dashboard</a>
       <a href="#s5b">Guard · Overview</a>
       <a href="#s5">Guard · Policy</a>
       <a href="#s6">Guard · Spend</a>
@@ -1296,6 +1297,7 @@
             </div>
           </div>
           <div class="bot-nav">
+            <a class="nav-item" href="#s4b">→ Dashboard</a>
             <a class="nav-item" href="#s10">→ Canvas</a>
             <a class="nav-item" href="#s5">→ Guard</a>
             <a class="nav-item" href="#s8">→ Audit</a>
@@ -1402,6 +1404,7 @@
             </div>
           </div>
           <div class="bot-nav">
+            <a class="nav-item" href="#s4b">→ Dashboard</a>
             <a class="nav-item" href="#s10">→ Canvas</a>
             <a class="nav-item" href="#s5">→ Guard</a>
             <a class="nav-item" href="#s8">→ Audit</a>
@@ -1428,6 +1431,184 @@
   </div>
 </section>
 
+<!-- ════════════ S4b — Dashboard (Governance / Guard / Agent) ════════════ -->
+<section class="screen" id="s4b">
+  <div class="screen-head">
+    <div>
+      <h2>4a. Dashboard — Governance / Guard / Agent — <code style="font-family:ui-monospace; font-size:14px;">/dashboard</code></h2>
+      <div class="ref">Decision #11 (revised) · Cross-cutting executive view; not the default landing (/home stays)</div>
+    </div>
+    <span class="ref">One click from /home + always in sidebar</span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/dashboard</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell">
+        <aside class="app-sidebar">
+          <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
+          <a href="#s4" class="sb-item">Home</a>
+          <a href="#s4b" class="sb-item active">Dashboard</a>
+          <a href="#s5b" class="sb-item">Guard</a>
+          <a href="#s8" class="sb-item">Audit</a>
+          <a href="#s10" class="sb-item">Canvas</a>
+          <a href="#s11" class="sb-item">Runs</a>
+        </aside>
+        <div class="app-main">
+          <div class="app-header">
+            <div>
+              <h3>Dashboard</h3>
+              <div class="mini-meta">Governance · Guard · Agent — at a glance</div>
+            </div>
+            <div class="row-flex">
+              <span class="ws-switcher">Engineering ▾</span>
+              <span class="ws-switcher" style="border-color: var(--accent-ring); color: var(--accent-2); background: var(--accent-weak);">lane: all ▾</span>
+              <span class="role-chip"><span class="role-dot"></span>security · Jen</span>
+            </div>
+          </div>
+
+          <!-- ── Governance pillar ── -->
+          <div style="margin: 6px 0 8px;">
+            <div class="row-flex" style="margin-bottom: 8px;">
+              <div class="card-title" style="margin: 0;">Governance</div>
+              <span class="mini-meta">compliance posture across frameworks</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 12px;">
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Compliance attestation</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin-top: 8px; font-size: 12px;">
+                  <div class="row-flex" style="gap: 6px;"><span class="ec">SOC 2</span><span style="color: var(--ok); font-weight: 600;">✓ 87 ev</span></div>
+                  <div class="row-flex" style="gap: 6px;"><span class="ec iso">ISO 27k</span><span style="color: var(--warn); font-weight: 600;">⚠ 41 ev</span></div>
+                  <div class="row-flex" style="gap: 6px;"><span class="ec eu">EU AI Act</span><span style="color: var(--warn); font-weight: 600;">⚠ 12 ev</span></div>
+                  <div class="row-flex" style="gap: 6px;"><span class="ec owasp">OWASP-LLM</span><span style="color: var(--warn); font-weight: 600;">⚠ 9 ev</span></div>
+                </div>
+              </div>
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Policy coverage</div>
+                <div style="font-size: 26px; font-weight: 700; margin-top: 4px;">94%</div>
+                <div class="mini-meta">15 of 16 lanes covered</div>
+              </div>
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Open gaps</div>
+                <div style="font-size: 26px; font-weight: 700; margin-top: 4px; color: var(--block);">2</div>
+                <div class="mini-meta">SOC 2 CC8.1 · CC9.2</div>
+              </div>
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Last export</div>
+                <div style="font-size: 16px; font-weight: 700; margin-top: 4px;">3 days ago</div>
+                <div class="mini-meta">SOC 2 evidence pack · v12</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Guard pillar ── -->
+          <div style="margin: 22px 0 8px;">
+            <div class="row-flex" style="margin-bottom: 8px;">
+              <div class="card-title" style="margin: 0;">Guard</div>
+              <span class="mini-meta">enforcement at runtime</span>
+              <a href="#s5b" class="btn ghost sm" style="margin-left: auto;">→ Open Guard</a>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Events 24h</div>
+                <div style="font-size: 26px; font-weight: 700; margin-top: 4px;">1,247</div>
+                <div class="mini-meta" style="color: var(--ok);">▼ 4%</div>
+              </div>
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Blocked</div>
+                <div style="font-size: 26px; font-weight: 700; margin-top: 4px; color: var(--block);">47</div>
+                <div class="mini-meta" style="color: var(--warn);">▲ 12%</div>
+              </div>
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Warnings</div>
+                <div style="font-size: 26px; font-weight: 700; margin-top: 4px; color: var(--warn);">112</div>
+                <div class="mini-meta">incl. 12 spend-cap warns</div>
+              </div>
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Top policy</div>
+                <div style="font-family: ui-monospace; font-size: 12px; font-weight: 700; margin-top: 6px;">no-claude-opus-without-approval</div>
+                <div class="mini-meta">@v3 · 47 fires</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Agent pillar ── -->
+          <div style="margin: 22px 0 8px;">
+            <div class="row-flex" style="margin-bottom: 8px;">
+              <div class="card-title" style="margin: 0;">Agent operations</div>
+              <span class="mini-meta">runs, success, model health</span>
+              <a href="#s11" class="btn ghost sm" style="margin-left: auto;">→ Open Runs</a>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Runs 24h</div>
+                <div style="font-size: 26px; font-weight: 700; margin-top: 4px;">124</div>
+                <div class="mini-meta"><span style="color: var(--ok);">96.7% success</span> · 4 failed</div>
+              </div>
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Spend MTD</div>
+                <div style="font-size: 26px; font-weight: 700; margin-top: 4px;">$3.2k <span style="font-size: 14px; color: var(--text-3);">/ $5k</span></div>
+                <div class="mini-meta">64% of monthly budget</div>
+              </div>
+              <div class="card" style="padding: 14px;">
+                <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Model health</div>
+                <div class="row-flex" style="gap: 8px; margin-top: 6px; font-size: 11.5px;">
+                  <span class="row-flex" style="gap: 4px;"><span class="pulse-dot"></span>Anthropic</span>
+                  <span class="row-flex" style="gap: 4px;"><span class="pulse-dot"></span>OpenAI</span>
+                  <span class="row-flex" style="gap: 4px;"><span class="pulse-dot" style="background: var(--warn);"></span>Perplexity</span>
+                </div>
+                <div class="mini-meta">All providers online · 1 degraded</div>
+              </div>
+            </div>
+            <div class="card" style="margin-top: 12px;">
+              <div class="card-title">Top playbooks by spend (24h)</div>
+              <table class="data" style="border: none; box-shadow: none;">
+                <tbody>
+                  <tr>
+                    <td style="width: 50%;"><span class="lane eng">Engineering</span> <strong>autopilot-fix</strong></td>
+                    <td><span class="tl-cost">42 runs</span></td>
+                    <td><span class="tl-cost">$1.18</span></td>
+                    <td><span class="gpill warn"><span class="gdot"></span>warn</span></td>
+                  </tr>
+                  <tr>
+                    <td><span class="lane sec">Security</span> <strong>pr-review-bot</strong></td>
+                    <td><span class="tl-cost">38 runs</span></td>
+                    <td><span class="tl-cost">$0.82</span></td>
+                    <td><span class="gpill allow"><span class="gdot"></span>allow</span></td>
+                  </tr>
+                  <tr>
+                    <td><span class="lane comp">Compliance</span> <strong>soc2-evidence-collector</strong></td>
+                    <td><span class="tl-cost">12 runs</span></td>
+                    <td><span class="tl-cost">$0.34</span></td>
+                    <td><span class="gpill allow"><span class="gdot"></span>allow</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#1 Guard pill</span>
+        <span class="chip">#2 evidence chip</span>
+        <span class="chip">#6 spend ribbon (implicit)</span>
+        <span class="chip">#7 role chip</span>
+      </div>
+      <div style="margin-top:8px;">
+        <strong>Three pillars on one surface</strong> — Governance compliance, Guard enforcement, Agent operations. Distinct from Guard Overview (which is Guard-only). Phase 5 Dashboard Builder may generalise; this hardcoded surface ships in Phase 1.
+      </div>
+    </div>
+    <a class="next" href="#s5b">Next: Guard Overview →</a>
+  </div>
+</section>
+
 <!-- ════════════ S5b — Guard Overview (default landing) ════════════ -->
 <section class="screen" id="s5b">
   <div class="screen-head">
@@ -1447,6 +1628,7 @@
         <aside class="app-sidebar">
           <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
           <a href="#s4" class="sb-item">Home</a>
+          <a href="#s4b" class="sb-item">Dashboard</a>
           <a href="#s5b" class="sb-item active">Guard</a>
           <a href="#s8" class="sb-item">Audit</a>
           <a href="#s10" class="sb-item">Canvas</a>
@@ -1614,6 +1796,7 @@
         <aside class="app-sidebar">
           <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
           <a href="#s4" class="sb-item">Home</a>
+          <a href="#s4b" class="sb-item">Dashboard</a>
           <a href="#s5" class="sb-item active">Guard</a>
           <a href="#s8" class="sb-item">Audit</a>
           <a href="#s10" class="sb-item">Canvas</a>
@@ -1730,6 +1913,7 @@
         <aside class="app-sidebar">
           <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
           <a href="#s4" class="sb-item">Home</a>
+          <a href="#s4b" class="sb-item">Dashboard</a>
           <a href="#s5" class="sb-item active">Guard</a>
           <a href="#s8" class="sb-item">Audit</a>
           <a href="#s10" class="sb-item">Canvas</a>
@@ -1834,6 +2018,7 @@
         <aside class="app-sidebar">
           <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
           <a href="#s4" class="sb-item">Home</a>
+          <a href="#s4b" class="sb-item">Dashboard</a>
           <a href="#s5" class="sb-item active">Guard</a>
           <a href="#s8" class="sb-item">Audit</a>
           <a href="#s10" class="sb-item">Canvas</a>
@@ -1938,6 +2123,7 @@
         <aside class="app-sidebar">
           <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
           <a href="#s4" class="sb-item">Home</a>
+          <a href="#s4b" class="sb-item">Dashboard</a>
           <a href="#s5" class="sb-item">Guard</a>
           <a href="#s8" class="sb-item active">Audit</a>
           <a href="#s10" class="sb-item">Canvas</a>
@@ -2122,6 +2308,7 @@
         <aside class="app-sidebar">
           <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
           <a href="#s4" class="sb-item">Home</a>
+          <a href="#s4b" class="sb-item">Dashboard</a>
           <a href="#s5" class="sb-item">Guard</a>
           <a href="#s8" class="sb-item">Audit</a>
           <a href="#s10" class="sb-item active">Canvas</a>
@@ -2219,6 +2406,7 @@
         <aside class="app-sidebar">
           <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
           <a href="#s4" class="sb-item">Home</a>
+          <a href="#s4b" class="sb-item">Dashboard</a>
           <a href="#s5" class="sb-item">Guard</a>
           <a href="#s8" class="sb-item">Audit</a>
           <a href="#s10" class="sb-item">Canvas</a>
@@ -2320,6 +2508,7 @@
         <aside class="app-sidebar">
           <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
           <a href="#s4" class="sb-item">Home</a>
+          <a href="#s4b" class="sb-item">Dashboard</a>
           <a href="#s5" class="sb-item">Guard</a>
           <a href="#s8" class="sb-item">Audit</a>
           <a href="#s10" class="sb-item active">Canvas</a>

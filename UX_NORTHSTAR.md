@@ -155,7 +155,7 @@ For each rung: who, what they're trying to do, what they see today, what they sh
 | `/setup`                                                | Entry        |      | x        |       |      | slice 1 of #858 in parallel; full redesign post-doc         |
 | `/sign-in`, `/sign-up`, `/accept-invite`                | Entry        | x    |          |       |      | Clerk-shaped, leave alone                                   |
 | `/home` *(new)*                                         | Entry        |      |          |       |      | **build new** — conversational entry per #859               |
-| `/dashboard`                                            | Run/Govern   |      | x        |       |      | Phase 1–4: ops overview power-user surface (decision #11). Phase 5: becomes **Dashboard Builder** target — role-aware composer of DORA / cost / agent / Guard blocks (decision #30). Existing components (SpendArc, GuardSnapshot, AgentHealth) become builder blocks. |
+| `/dashboard`                                            | Govern + Run + Build | | x      |       |      | **Governance / Guard / Agent executive dashboard** — cross-cutting KPIs across all three pillars on one surface. NOT just Guard (that's the /guard Overview tab). Reached from /home + sidebar. Phase 5 may generalise via Dashboard Builder (decision #30) but the hardcoded dashboard ships earlier — decision #11 revised. |
 | `/projects`                                             | Build        |      | x        |       |      | reframe as workspace index; project = canvas group          |
 | `/projects/[id]`                                        | Build        |      | x        |       |      | becomes the canvas with run-history inline                  |
 | `/workflows`, `/workflows/[id]`                         | Build        | x    |          |       |      | canvas stays; only entry changes                            |
@@ -844,11 +844,13 @@ These are blockers for anything else. Until they're done, every other phase has 
 - **Primitive #9:** build the right-panel inspector shell — no content yet, just the component (decision #14). Same shape, four resource types. ~2 days.
 - **Primitive #1:** Guard inline pill component — implement allow/warn/block, defer `predict` + `synthetic` until canvas is wired (Phase 2). ~1 day.
 
-### Phase 1 — Govern surface collapse (Week 2)
+### Phase 1 — Govern surface collapse + Dashboard (Week 2)
 
 The buyer-first half of the journey. Ship before Phase 2 because the canvas redesign depends on these primitives being live.
 
-- Merge `/guard/policies`, `/guard/spend`, `/guard/activity` into `/guard` 3-tab spine + tab routing. Old routes 302 to the new tabs.
+- Merge `/guard/policies`, `/guard/spend`, `/guard/activity` into `/guard` 5-tab spine (Overview / Policy / Spend / Activity / Approvals) + tab routing. Old routes 302 to the new tabs.
+- Build `/guard?tab=overview` per decision #29 — KPIs + top policies + recent activity + compliance pack snapshot + gaps.
+- Build `/dashboard` per decision #11 (revised) — Governance + Guard + Agent executive view. Re-package SpendArc / GuardSnapshot / AgentHealth as the Agent pillar.
 - Delete `/security` (3-line redirect, decision #9).
 - Merge `/governance` content into `/guard` + redirect (decision #9).
 - Move `/playbook-queue` under `/guard?tab=approvals` (decision #12).
@@ -888,11 +890,12 @@ Externally visible, but lower-impact internally. Run last so it benefits from ev
 
 ### Phase 5 — Dashboard Builder (Week 7–8, post-Northstar)
 
-Durable replacement for the at-a-glance gap. Decision #30.
+Durable generalisation of the hardcoded `/dashboard` (decision #11) and the Overview tabs.
 
-- Build the role-aware block composer at `/dashboard`. Blocks = DORA / cost / Guard policies / agent health / compliance / spend trend / lane breakdown.
+- Build the role-aware block composer that *generates* dashboards from blocks: Governance compliance status, Guard KPIs, Agent operations, DORA, cost, spend trend, lane breakdown.
+- The Phase 1 hardcoded `/dashboard` becomes a built-in **starter preset** of the builder — admins can fork it and customise.
 - Existing components (SpendArc, GuardSnapshot, AgentHealth) get re-packaged as builder blocks.
-- Overview tabs on `/guard` (decision #29) and `/runs` (decision #30) get reframed as default "preset" dashboards built on the same primitive — but kept as routes so users don't have to compose to get a sensible view.
+- Overview tabs on `/guard` (decision #29) and `/runs` (decision #30) stay as routes (built-in presets), so users don't have to compose to get a sensible view.
 - `/observability` and `/governance` (if either is somehow still alive) retire here.
 
 ### What this doesn't include
@@ -974,7 +977,7 @@ Each phase ships an instrumentation hook so the metric is measurable from day on
 | 8   | Build `/home` net-new as the conversational entry; do not "wire up an existing draft" | Reuse a drafted home page from prior session | Confirmed via filesystem search — no `/home` file exists. Memory was stale, now corrected. Spec from #859 is the source. | 2026-06-26 |
 | 9   | Delete `/security` (3-line redirect file) and merge `/governance` (947 lines) into `/guard` with a redirect | Keep both as distinct surfaces | `/security` already does nothing; `/governance` is a content dupe. v3 positioning says one canonical Guard surface. | 2026-06-26 |
 | 10  | Merge `/observability` into `/runs` as a saved filter view; keep `/observability/alerts` and move it under Guard | Keep `/observability` as a parallel surface to `/runs` | Both are timeline-of-events at heart. Alerts are policy-adjacent, so they belong on the Guard side. [contested — confirm with whoever owns observability today] | 2026-06-26 |
-| 11  | `/dashboard` reframed as power-user "ops overview" (Run + Govern crossover); never default landing | Kill /dashboard entirely / keep as default landing | Real components there (SpendArc, GuardSnapshot, AgentHealth) are useful for engineering leads. Killing wastes shipped work. But landing engineers there contradicts the buyer-first journey. Compromise: it stays, just not as the front door. | 2026-06-27 |
+| 11  | `/dashboard` is the **Governance / Guard / Agent executive dashboard** — cross-cutting KPIs across all 3 pillars. NOT the default landing (that stays `/home`). Reached from /home + sidebar. | Kill /dashboard / keep as default landing / use only as "ops overview" power-user surface | Revised 2026-07-02: the Guard Overview tab (decision #29) handles Guard-only at-a-glance. /dashboard is broader — combines Governance attestation status + Guard KPIs + Agent operations (runs, success rate, top playbooks by spend, model/provider health). Real components there (SpendArc, GuardSnapshot, AgentHealth) become the Agent pillar. Default landing stays /home because the conversational entry is non-negotiable for the v3 journey (decision #8); /dashboard is one click away from /home + always in the sidebar. | 2026-06-27 / revised 2026-07-02 |
 | 12  | `/playbook-queue` merges into `/guard?tab=approvals` (Govern) | Leave under Build / kill it | File confirmed: pending→promoted|needs_work approval flow, role-gated to admin/security. Pure governance surface. | 2026-06-27 |
 | 13  | Marketing pages are in scope for journey + entry-rung decisions, out of scope for visual / brand work | Treat marketing as entirely separate / fold all of it into the doc | Marketing IS the entry rung pre-signup; we can't ignore it without breaking the journey. But brand / visual identity is its own track per #860 out-of-scope. Split cleanly: journey calls (lead with Guard, kill /solutions as a separate page) are in; redesigning the hero is out. | 2026-06-27 |
 | 14  | Add primitive #9 right-panel inspector — does not exist today, blocks `/workflows/[id]/settings` merge and primitive #4 (block card click) | Use modal dialogs / new-page navigation instead of inspector | Modals lose context (you can't see the canvas behind); separate pages break the "inspect without navigating" promise. A single right-edge sheet is the standard B2B pattern (Linear, Notion, GitHub PR review). | 2026-06-28 |
