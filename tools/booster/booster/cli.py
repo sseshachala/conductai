@@ -603,7 +603,8 @@ def main() -> None:
 @main.command("index")
 @click.option("--embed", is_flag=True, default=False)
 @click.option("--force", is_flag=True, default=False, help="Re-index all files, ignoring cached hashes.")
-def cmd_index(embed: bool, force: bool) -> None:
+@click.option("--tests", is_flag=True, default=False, help="Also build the test-coverage index (symbol_tests table).")
+def cmd_index(embed: bool, force: bool, tests: bool) -> None:
     root = Path.cwd()
     indexer = SymbolIndexer(root)
     files, symbols = indexer.index_all(embed=embed, force=force)
@@ -611,6 +612,9 @@ def cmd_index(embed: bool, force: bool) -> None:
         click.echo(f"Indexed {files} files, {symbols} symbols. (forced full re-index)")
     else:
         click.echo(f"Indexed {files} changed files, {symbols} symbols. (use --force to re-index all)")
+    if tests:
+        test_files, refs = indexer.index_tests()
+        click.echo(f"Test index: scanned {test_files} test files, recorded {refs} symbol references.")
 
 
 @main.command("index-push")
@@ -1090,7 +1094,8 @@ def cmd_gain(fmt: str, team: bool) -> None:
 
     from booster.stats import StatsTracker
 
-    tracker = StatsTracker(Path.cwd())
+    root = Path.cwd()
+    tracker = StatsTracker(root)
     s = tracker.summary()
 
     if fmt == "json":
@@ -1128,7 +1133,6 @@ def cmd_gain(fmt: str, team: bool) -> None:
             click.echo(f"  {name:<24} {entry['saved']:,} tokens saved  ({entry['reads']} reads)")
 
     # --- Output savings section ---
-    root = Path.cwd()
     verbosity_json = root / ".booster" / "verbosity.json"
     active_verbosity: str | None = None
     if verbosity_json.exists():

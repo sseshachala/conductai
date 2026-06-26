@@ -69,21 +69,25 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="search_context",
-            description="Keyword search across all indexed symbols. Returns top 10 matches.",
+            description="Keyword search across all indexed symbols. Returns top 10 matches. Pass 'since' (e.g. 'HEAD~5', 'main', SHA) to restrict to recently-changed symbols.",
             inputSchema={
                 "type": "object",
-                "properties": {"task": {"type": "string", "description": "Task description or keywords"}},
+                "properties": {
+                    "task": {"type": "string", "description": "Task description or keywords"},
+                    "since": {"type": "string", "description": "Optional git ref. Restricts results to symbols whose lines changed since this ref."},
+                },
                 "required": ["task"],
             },
         ),
         Tool(
             name="smart_read",
-            description="Return only the relevant slice of a file based on a task description.",
+            description="Return only the relevant slice of a file based on a task description. Pass 'since' to filter to symbols modified after a git ref.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "file": {"type": "string", "description": "Relative file path"},
                     "task": {"type": "string", "description": "Task description"},
+                    "since": {"type": "string", "description": "Optional git ref (e.g. 'HEAD~5'). Restricts slice to symbols overlapping changes since this ref."},
                 },
                 "required": ["file", "task"],
             },
@@ -102,6 +106,36 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["task"],
+            },
+        ),
+        Tool(
+            name="expand_calls",
+            description="Return immediate callers or callees of a symbol. Name-based resolution (~70% accuracy on Python).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string", "description": "Symbol name to expand"},
+                    "direction": {
+                        "type": "string",
+                        "enum": ["callers", "callees", "both"],
+                        "description": "callers (who calls it) | callees (what it calls) | both. Default: callers",
+                    },
+                    "depth": {"type": "integer", "description": "Expansion depth, 1-3. Default: 1"},
+                    "file": {"type": "string", "description": "Optional file to disambiguate when symbol exists in multiple files"},
+                },
+                "required": ["symbol"],
+            },
+        ),
+        Tool(
+            name="test_coverage",
+            description="Return test references for a symbol. Requires `booster index --tests` to populate the test index.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string", "description": "Symbol name to look up tests for"},
+                    "file": {"type": "string", "description": "Optional source file to disambiguate"},
+                },
+                "required": ["symbol"],
             },
         ),
     ]
@@ -127,11 +161,28 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     if name == "search_context":
         results = indexer.rrf_search(arguments["task"], limit=10)
+        since = arguments.get("since")
+        if since:
+            from booster.indexer import _changed_lines_since, _filter_by_changed_lines
+            changed = _changed_lines_since(indexer.root, since)
+            if not changed:
+                text = f"No matches found (no changes since {since})."
+            else:
+                results = _filter_by_changed_lines(results, changed)
+        # v0.3.0 free-fold: nudge results toward files with high historical read counts.
+        # ponytail: small boost from stats; falls back silently if stats empty.
+        try:
+            top = _get_tracker().summary().get("top_files", [])
+            boost = {entry["file"]: entry.get("reads", 0) for entry in top}
+            if boost:
+                results = sorted(results, key=lambda s: -boost.get(s.get("file", ""), 0))
+        except Exception:
+            pass
         lines = [
             f"{s['file']}:{s['start_line']} {s['kind']} {s['name']} — {s['signature']}"
             for s in results
         ]
-        text = "\n".join(lines) if lines else "No matches found."
+        text = "\n".join(lines) if lines else (f"No matches changed since {since}." if since else "No matches found.")
         text, orig, crushed = _crush(text)
         _get_tracker().record_crush("search_context", orig, crushed)
         return [TextContent(type="text", text=text)]
@@ -143,7 +194,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         except (ValueError, Exception):
             return [TextContent(type="text", text=f"Error: path '{arguments['file']}' is outside the project root")]
         full_text = resolved.read_text(encoding="utf-8", errors="replace")
-        text = _smart_read(resolved, arguments["task"], indexer)
+        text = _smart_read(resolved, arguments["task"], indexer, since=arguments.get("since"))
         text, orig, crushed = _crush(text)
         _get_tracker().record_crush("smart_read", orig, crushed)
         _get_tracker().record(arguments["file"], full_text, text, arguments.get("task", ""))
@@ -153,6 +204,45 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         import json as _json
         result = _route_model(indexer, arguments["task"], arguments.get("files") or [])
         return [TextContent(type="text", text=_json.dumps(result))]
+
+    if name == "test_coverage":
+        refs = indexer.test_coverage(arguments["symbol"], file=arguments.get("file"))
+        if not refs:
+            # Check whether tests index is even populated
+            empty = indexer._conn.execute("SELECT COUNT(*) FROM symbol_tests").fetchone()[0] == 0
+            if empty:
+                return [TextContent(type="text", text="No test index yet. Run: booster index --tests")]
+            return [TextContent(type="text", text=f"No tests reference '{arguments['symbol']}'.")]
+        lines = [
+            f"{r['symbol_file']}:{r['name']} <- {r['test_file']} ({r['source']})"
+            for r in refs
+        ]
+        text = "\n".join(lines)
+        text, orig, crushed = _crush(text)
+        _get_tracker().record_crush("test_coverage", orig, crushed)
+        return [TextContent(type="text", text=text)]
+
+    if name == "expand_calls":
+        results = indexer.expand_calls(
+            arguments["symbol"],
+            direction=arguments.get("direction", "callers"),
+            depth=int(arguments.get("depth", 1)),
+            file=arguments.get("file"),
+        )
+        if not results:
+            return [TextContent(type="text", text=f"No edges found for '{arguments['symbol']}'.")]
+        lines = []
+        for r in results:
+            d = r["direction"]
+            if d == "callee":
+                tgt = f"{r['to_file']}:{r['to_name']}" if r["to_file"] else f"?:{r['to_name']}"
+                lines.append(f"[d{r['depth']}] callee: {r['from_file']}:{r['from_name']} -> {tgt} (call at line {r['call_line']})")
+            else:
+                lines.append(f"[d{r['depth']}] caller: {r['from_file']}:{r['from_name']} -> {r['to_name']} (call at line {r['call_line']})")
+        text = "\n".join(lines)
+        text, orig, crushed = _crush(text)
+        _get_tracker().record_crush("expand_calls", orig, crushed)
+        return [TextContent(type="text", text=text)]
 
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
 

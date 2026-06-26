@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
-from booster.indexer import SymbolIndexer
+from booster.indexer import SymbolIndexer, _changed_lines_since
 
 _MAX_OUTPUT_BYTES = 5_000
 
 
-def smart_read(file_path: Path, task: str, indexer: SymbolIndexer) -> str:
+def smart_read(
+    file_path: Path,
+    task: str,
+    indexer: SymbolIndexer,
+    since: str | None = None,
+) -> str:
     rel = str(file_path.relative_to(indexer.root))
     source_lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
 
@@ -21,11 +27,32 @@ def smart_read(file_path: Path, task: str, indexer: SymbolIndexer) -> str:
             f"# Use Read tool for full file content."
         )
 
+    # v0.3.0: diff-aware filter — keep only symbols overlapping changed lines.
+    if since:
+        changed = _changed_lines_since(indexer.root, since)
+        file_changes = changed.get(rel, set())
+        if not file_changes:
+            return f"# smart_read: no changes in {rel} since {since}"
+        matched = [
+            s for s in matched
+            if any(ln in file_changes for ln in range(s["start_line"], s["end_line"] + 1))
+        ]
+        if not matched:
+            return f"# smart_read: no matched symbols overlap changes in {rel} since {since}"
+
     chunks: list[str] = []
     for sym in matched:
         start = sym["start_line"] - 1
         end = sym["end_line"]
-        header = f"# {sym['kind']} {sym['name']} (lines {sym['start_line']}-{sym['end_line']})"
+        # v0.3.0 free-fold: staleness header — show last_modified when available
+        ts = sym.get("last_modified_ts") or 0
+        sha = sym.get("commit_last_modified") or ""
+        when = ""
+        if ts:
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+            short = (sha[:8] + " ") if sha else ""
+            when = f"  [last_modified: {short}{dt}]"
+        header = f"# {sym['kind']} {sym['name']} (lines {sym['start_line']}-{sym['end_line']}){when}"
         body = "\n".join(source_lines[start:end])
         chunks.append(f"{header}\n{body}")
 
