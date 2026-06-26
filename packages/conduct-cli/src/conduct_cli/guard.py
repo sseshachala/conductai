@@ -35,6 +35,37 @@ def _read_template(name: str) -> str:
 import json as _json
 import re as _re
 
+def _bash_command_words(cmd: str) -> list[str]:
+    """First token of each pipeline / conditional / semicolon-separated segment.
+
+    Argument bodies, heredoc contents, and quoted strings are ignored — so a
+    privilege-escalation matcher firing on the literal word inside a body
+    payload (issue body, commit message, file write) is no longer possible.
+    Returns lower-cased command words for case-insensitive matching.
+    """
+    import shlex as _shlex
+    words: list[str] = []
+    if not cmd:
+        return words
+    # Split on bash control operators (||, &&, |, ;, & and bg/fg keywords).
+    for segment in _re.split(r"\|\||&&|[|;&\n]+|\bthen\b|\belse\b|\bdo\b", cmd):
+        seg = segment.strip()
+        if not seg:
+            continue
+        try:
+            parts = _shlex.split(seg)
+        except ValueError:
+            continue
+        if parts:
+            # Strip env-var prefixes (FOO=bar bin baz → bin)
+            for p in parts:
+                if "=" in p and not p.startswith(("-", "/")):
+                    continue
+                words.append(p.lower())
+                break
+    return words
+
+
 def _check_policy(tool_name, tool_input, tokens_before=0):
     """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
     if not POLICY_PATH.exists():
@@ -47,11 +78,23 @@ def _check_policy(tool_name, tool_input, tokens_before=0):
     rules      = policy.get("rules", [])
     input_text = _json.dumps(tool_input)
     path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
+    # Extract command words only when bash is involved — empty list for other tools.
+    command_words = (
+        _bash_command_words(str(tool_input.get("command", "")))
+        if tool_name.lower() == "bash" else []
+    )
 
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
             if tool_name not in [t.strip() for t in match_tool.split(",")]:
+                continue
+        # New: structural match against the actual binary being invoked.
+        # Single string or list of strings; case-insensitive equality.
+        cw = rule.get("match_command_word")
+        if cw:
+            deny = [w.lower() for w in (cw if isinstance(cw, list) else [cw])]
+            if not any(w in deny for w in command_words):
                 continue
         pattern = rule.get("match_pattern")
         if pattern:
