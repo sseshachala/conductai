@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-booster"
-version = "0.2.33"
+version = "0.3.0"
 description = "AST+vector context router for AI coding agents — cut token costs 5-15x"
 readme = "README.md"
 license = { text = "MIT" }
