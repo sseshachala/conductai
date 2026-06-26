@@ -77,6 +77,7 @@ class EventOut(BaseModel):
     workspace_id: str
     clerk_user_id: str | None
     session_id: str | None
+    hook_session_id: str | None = None
     user_email: str | None
     ai_tool: str
     tool_call: str | None
@@ -107,6 +108,7 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "workspace_id": str(e.workspace_id),
         "clerk_user_id": e.clerk_user_id,
         "session_id": str(e.session_id) if e.session_id else None,
+        "hook_session_id": e.hook_session_id,
         "user_email": e.user_email,
         "ai_tool": e.ai_tool,
         "tool_call": e.tool_call,
