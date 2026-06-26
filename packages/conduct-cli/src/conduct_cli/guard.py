@@ -862,6 +862,64 @@ def _report_tools_to_server() -> None:
         pass  # Never surface errors — this is background telemetry
 
 
+def _check_and_upgrade_packages() -> None:
+    """Print installed versions and pip-upgrade if PyPI has a newer release."""
+    import importlib.metadata
+    import urllib.request
+
+    packages = ["conduct-cli", "agent-booster"]
+    installed: dict[str, str] = {}
+    for pkg in packages:
+        try:
+            installed[pkg] = importlib.metadata.version(pkg)
+        except importlib.metadata.PackageNotFoundError:
+            # agent-booster may live under a different Python interpreter
+            try:
+                import subprocess as _sp, shutil
+                for py in ["python3.11", "python3.12", "python3.10"]:
+                    if shutil.which(py):
+                        out = _sp.check_output(
+                            [py, "-c", f"import importlib.metadata; print(importlib.metadata.version('{pkg}'))"],
+                            stderr=_sp.DEVNULL, text=True,
+                        ).strip()
+                        if out:
+                            installed[pkg] = out
+                            break
+                else:
+                    installed[pkg] = "unknown"
+            except Exception:
+                installed[pkg] = "unknown"
+
+    print(f"  conduct-cli {installed['conduct-cli']}  ·  agent-booster {installed['agent-booster']}")
+
+    stale = []
+    for pkg, current in installed.items():
+        if current == "unknown":
+            continue
+        try:
+            with urllib.request.urlopen(f"https://pypi.org/pypi/{pkg}/json", timeout=4) as r:
+                latest = __import__("json").loads(r.read())["info"]["version"]
+            if latest != current:
+                stale.append((pkg, current, latest))
+        except Exception:
+            pass  # offline or PyPI down — skip silently
+
+    if not stale:
+        return
+
+    print(f"  {YELLOW}Updates available:{RESET} " + ", ".join(f"{p} {c} → {l}" for p, c, l in stale))
+    try:
+        import subprocess
+        pkgs = [p for p, _, _ in stale]
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "--quiet"] + pkgs,
+            check=True,
+        )
+        print(f"  {GREEN}Updated:{RESET} " + ", ".join(f"{p} → {l}" for p, _, l in stale))
+    except Exception as e:
+        print(f"  {YELLOW}Auto-update failed:{RESET} {e} — run: pip install --upgrade {' '.join(p for p,_,_ in stale)}")
+
+
 def cmd_guard_sync(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
@@ -873,6 +931,7 @@ def cmd_guard_sync(args):
 
     dry_run = getattr(args, "dry_run", False)
     print(f"{'[dry-run] ' if dry_run else ''}Syncing policy…")
+    _check_and_upgrade_packages()
 
     try:
         policy = _req(
