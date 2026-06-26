@@ -167,6 +167,21 @@ export function formatTs(ts: string): string {
   }
 }
 
+const MCP_SERVER_LABELS: Record<string, string> = {
+  claude_ai_conduct_ai: "Conduct",
+  "agent-booster": "Booster",
+  plugin_vercel_vercel: "Vercel",
+}
+
+function formatToolCall(call: string | null | undefined): string {
+  if (!call) return "—"
+  const m = call.match(/^mcp__([^_].+?)__(.+)$/)
+  if (!m) return call
+  const [, server, tool] = m
+  const label = MCP_SERVER_LABELS[server] ?? "MCP"
+  return `${label} · ${tool}`
+}
+
 /** Row + inline drill-down for policy_signature_invalid events. */
 export function SignatureTamperRow({ ev, isLast = false }: { ev: AuditEvent; isLast?: boolean }) {
   const [open, setOpen] = useState(false)
@@ -307,7 +322,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
             ? `${ev.provider}/${ev.model ?? "?"}`
             : ev.source === "local_audit"
               ? (ev.provider ? `${ev.provider} key found` : "local key found")
-              : ev.tool_call}
+              : formatToolCall(ev.tool_call)}
         </span>
         {ev.source === "proxy" && <ProxyPill />}
         {ev.source === "local_audit" && <LocalRiskPill />}
