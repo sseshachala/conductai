@@ -271,8 +271,10 @@ function DiagnosticHero() {
           )}
         </div>
 
-        {/* Content */}
-        <div className="px-6 py-6 min-h-[320px] flex flex-col gap-0.5">
+        {/* Content — capped + internally scrollable so the auto-typing
+            scrollIntoView stays inside the chat pane and doesn't hijack
+            the page scroll position. */}
+        <div className="px-6 py-6 min-h-[320px] max-h-[60vh] overflow-y-auto flex flex-col gap-0.5">
           {lines.map((line, i) => renderLine(line, i))}
           {/* blinking cursor */}
           {!done && (
