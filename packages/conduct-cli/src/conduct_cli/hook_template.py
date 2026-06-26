@@ -179,8 +179,29 @@ def _maybe_sync_policy():
 
         remote_version = remote.get("version", "")
         local_version = ""
+        local_policy: dict = {}
         if POLICY_PATH.exists():
-            local_version = json.loads(POLICY_PATH.read_text()).get("version", "")
+            local_policy = json.loads(POLICY_PATH.read_text())
+            local_version = local_policy.get("version", "")
+
+        # Meta-rule: block silent fail_closed → fail_open downgrade.
+        # An attacker who compromises the policy server cannot silently disable governance.
+        # Legitimate downgrade requires fail_mode_downgrade_token in the new policy,
+        # matching the token stored when fail_closed was originally set.
+        old_mode = local_policy.get("fail_mode", "fail_open")
+        new_mode = remote.get("fail_mode", "fail_open")
+        if old_mode == "fail_closed" and new_mode != "fail_closed":
+            expected = local_policy.get("fail_mode_downgrade_token")
+            provided = remote.get("fail_mode_downgrade_token")
+            if not expected or expected != provided:
+                _post_signature_invalid_event(
+                    expected_sig=f"fail_mode_downgrade_token:{expected}",
+                    computed_sig=f"fail_mode_downgrade_token:{provided}",
+                    policy_version=remote_version,
+                    hostname=__import__("platform").node(),
+                )
+                return  # reject downgrade — keep existing fail_closed policy
+
         if remote_version != local_version:
             POLICY_PATH.write_text(json.dumps(remote, indent=2))
         VERSION_CACHE_PATH.write_text(json.dumps({"ts": time.time(), "version": remote_version}))
