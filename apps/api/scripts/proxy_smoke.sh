@@ -72,11 +72,12 @@ for handle, enc in cur.fetchall():
     # Per-provider handle with api_key
     if handle in ('anthropic','openai','perplexity') and creds.get('api_key'):
         found.add(handle)
-    # Catch-all env_vars
+    # Catch-all env_vars — case-insensitive (matches what the proxy does)
     if handle == 'env_vars':
-        if 'ANTHROPIC_API_KEY' in creds: found.add('anthropic')
-        if 'OPENAI_API_KEY'    in creds: found.add('openai')
-        if 'PERPLEXITY_API_KEY' in creds: found.add('perplexity')
+        upper = {k.upper(): v for k, v in creds.items()}
+        if 'ANTHROPIC_API_KEY'  in upper: found.add('anthropic')
+        if 'OPENAI_API_KEY'     in upper: found.add('openai')
+        if 'PERPLEXITY_API_KEY' in upper: found.add('perplexity')
 print(' '.join(sorted(found)))
 ")
 
