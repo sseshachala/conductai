@@ -562,7 +562,7 @@ def _install_claude_hook(hook_path: Path) -> None:
 def cmd_guard_install(args):
     """Called automatically from `conduct login`. Sets up Guard: downloads policies, installs hook + MCP."""
     api_key = getattr(args, "api_key", None)
-    server  = getattr(args, "server", "https://api.conductai.ai").rstrip("/")
+    server  = (getattr(args, "server", None) or "https://api.conductai.ai").rstrip("/")
 
     # Load workspace_id from ~/.conduct/config.json
     conduct_cfg_path = Path.home() / ".conduct" / "config.json"
