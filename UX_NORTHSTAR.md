@@ -237,29 +237,228 @@ Chip that links a screen element (an event, a policy, a block, a setting) to a c
 
 **[contested]** Display strategy when an event satisfies 4+ requirements — show first two + "+3 more"? Show a count? Use the count chip pattern Linear uses for issue labels.
 
-### 3. Intent input (day 3)
+### 3. Intent input
 
-Chat-as-finder, lives in the app shell. Scoped to the user's workspace context (their playbooks, their policies, their lane). Routes intent to the right surface + can draft canvas (Build rung). **Not blank-slate** — placeholder copy and suggestions are workspace-aware ("Draft a policy that blocks GPT-4 over $0.50", not "What would you like to build?").
+Chat-as-finder, lives in the app shell. Scoped to the user's workspace context — not blank-slate.
 
-### 4. Block / node card (day 3)
+**Surfaces:**
+- Shell (always-on, top of every page) — collapsed pill, click to expand
+- `/home` (Entry, Rung 1) — expanded by default, primary surface focus
+- Build (Rung 4) — used to draft a new playbook ("auto-fix CI failures with Claude")
+- Govern (Rung 2) — used to draft a new policy ("block GPT-4 calls over $0.50")
+- Audit (Rung 3) — used to filter the timeline ("show me everything blocked yesterday by the AppSec lane")
 
-Same card shape on canvas (Build) and run timeline (Run). Holds: block name, lane, Guard inline pill, spend estimate / actual, run status, audit chip. Reuse means one component to keep visually coherent.
+**Behavior:**
+- Suggestions are workspace-aware: pulled from connected integrations, existing playbooks, active policies, current user's lane
+- Three routing modes: **find** (navigate to a surface, no LLM), **draft** (LLM call, produces a canvas / policy / filter), **ask** (LLM call, returns an answer card)
+- Mode is auto-selected from the intent; user can override with a `/find` `/draft` `/ask` prefix
+- B2B copy rules: never "What would you like to build today?" — always anchored ("Find a run, draft a policy, ask a question. Try: ‘show me blocks from last week'.")
 
-### 5. Timeline row (day 3)
+**Accessibility:**
+- `/` keyboard shortcut focuses it on any page
+- Esc collapses; Cmd-Enter submits
+- Screen reader announces routing mode + result count
 
-The Audit-and-Run primitive. Established in Audit rung 3, reused in Run rung 5. Holds: timestamp, actor, action, target, Guard inline pill, compliance evidence chips, spend, drill-down link.
+**Data-model implications:**
+- Needs a small intent classifier (single LLM call routing to ~10 destinations + a generator hook for draft mode)
+- Suggestion data needs an endpoint listing recent playbooks / policies / runs for the current workspace + lane
 
-### 6. Spend ribbon (day 3)
+### 4. Block / node card
 
-Running cost displayed inline on canvas (Build), run timeline (Run), and as the spine of Govern's Spend tab. Always references the per-developer + per-team budgets defined in Govern.
+Single card shape reused on canvas (Build) and timeline (Run + Audit). One component, one set of states.
 
-### 7. Role chip (day 3)
+**Anatomy:**
+- 64px tall in dense layouts (timeline), 96px in spacious (canvas)
+- Left: block-type icon (action / trigger / brain / guard / approval / notify / memory / output)
+- Middle: name + lane chip + Guard inline pill
+- Right: spend estimate (canvas) or actual cost (run) + status icon
+- Hover: drill-down chevron appears
+- Click: opens detail in right-panel inspector (primitive #9, see below — does not exist today, must be built)
 
-RBAC made visible. User always knows what role they're acting as. Sits in the header next to the workspace switcher. Required for B2B audience — never hidden.
+**States:**
+- Draft (canvas) — outlined, `predict` Guard pill, dashed border
+- Active (run, in-flight) — solid, animated dot
+- Done (run, finished) — solid, status checkmark or fail icon
+- Blocked (run) — red border, Guard pill expanded by default
 
-### 8. Compliance pack pane (day 3)
+**Reuse means:** changing the card visual changes both canvas + timeline. One source of truth keeps them coherent — and means a redesign is one PR, not two.
 
-Always-on accessory on the Govern surface. Shows current framework attestations, last evidence-export date, gaps. Doubles as the click target from marketing's compliance section.
+### 5. Timeline row
+
+The Audit-and-Run primitive. Established in Audit (Rung 3), reused in Run (Rung 5). Establishes the canonical "event with provenance" shape.
+
+**Anatomy:**
+- Compact mode (Audit index): 48px tall — timestamp / actor / action / target / Guard inline pill / compliance evidence chip(s) / spend
+- Expanded (single-run detail): 96px — same fields + inputs/outputs preview + drill-down to event JSON
+
+**States:**
+- Single event (audit row)
+- Step (run sub-event, indented under parent run)
+- Group (collapsed cluster — "47 allow events" if you're filtering for blocks)
+
+**Filtering anchors (the surface-level promise):**
+- Time range
+- Actor (user / agent / playbook)
+- Lane (compliance / security / engineering)
+- Policy (back-link from Guard inline pill)
+- Compliance framework (back-link from evidence chip)
+- Decision (allow / warn / block)
+
+**Why this is one primitive, not two:** Audit + Run are both "ordered events with provenance." Different filters, same shape. One primitive forces consistency.
+
+### 6. Spend ribbon
+
+Running cost shown inline wherever a cost is accruing.
+
+**Surfaces:**
+- Canvas (Build, Rung 4) — projected cost per run + cumulative for the playbook this month
+- Run timeline (Run, Rung 5) — actual cost growing as steps complete
+- Govern Spend tab (Govern, Rung 2) — the canonical view, per-developer + per-team breakdown
+- `/home` (Entry) — current month vs budget as ambient context
+
+**Anatomy:**
+- Thin bar (4px), color-graded: emerald (under 50%) → slate (50–80%) → amber (80–100%) → red (over)
+- Right side: `$current / $budget` text
+- Hover: tooltip with breakdown by lane
+
+**Behavior:**
+- Always references the per-developer + per-team budgets defined in Govern (Rung 2)
+- Clicking the ribbon opens Govern Spend tab pre-filtered to the relevant scope (this playbook / this run / this developer)
+- Goes red and pulses when the budget breaches — same visual on every surface
+
+### 7. Role chip
+
+RBAC made visible. User always knows what role they're acting as. Required for B2B audience.
+
+**Surfaces:** app shell header, every screen.
+
+**Anatomy:**
+- 22px chip, slate-bordered, role icon + role name + workspace name
+- Click: opens role / workspace switcher
+- Multi-role users: dropdown showing every role they have, current one checked
+
+**Roles (per ROLES.md):** admin, security, developer, viewer.
+
+**Behavior:**
+- Surfaces that require a specific role (Govern, audit export, settings) show a small lock chip if the user can't act
+- Hover on the lock: "Requires {role}. Switch role or ask {admin name}."
+- Never silently hides surfaces — RBAC is visible so users know what they're missing
+
+### 8. Compliance pack pane
+
+Always-on accessory on the Govern surface; doubles as the click target from marketing's compliance section.
+
+**Surfaces:**
+- Govern (Rung 2) — always-visible right-rail pane
+- Marketing `/` and `/guard-landing` (Entry) — abbreviated form ("SOC 2: 87 events satisfied · ISO 27001: 41 · EU AI Act: 12")
+- Audit export flow (Rung 3) — picker for which pack to export
+
+**Anatomy:**
+- Card per framework (SOC 2, EU AI Act, ISO 27001, OWASP-for-LLMs, internal)
+- Each card: framework name + completion % + last evidence-export date + gap count
+- Click a card → Audit timeline filtered to that framework
+
+**Behavior:**
+- "Export pack" CTA on each card — produces a PDF + JSON bundle for that framework, with linked evidence chips for every requirement
+- Gap count is clickable → "show me requirements with no events"
+- v1 covers SOC 2 only; other frameworks show "Coming soon — request access" (B2B selling motion)
+
+### 9. Right-panel inspector — **does not exist today, must be built**
+
+Discovered day 3: no existing right-panel-inspector component in `apps/web/src/components/`. Required by primitive #4 (block card click target) and the merged-in `/workflows/[id]/settings` (decision day 1). Spec'd here so day-3 reviewer sees the dependency.
+
+**Surfaces:**
+- Build canvas (block detail)
+- Run timeline (step detail)
+- Audit timeline (event detail)
+- Govern policy list (policy detail)
+
+**Anatomy:**
+- 420px right-edge sheet, collapsible
+- Header: title + close + "open as full page" link
+- Tabs for the resource type (block: config / Guard / history; event: detail / linked policy / linked compliance)
+- Persists which tab the user last used per resource type
+
+**Why one primitive, not four:** every surface in the doc has a "click to inspect" intent. One sheet shape applied consistently is cheaper and more learnable than per-surface modals.
+
+---
+
+## Wireframes (low-fi, ASCII)
+
+ASCII boxes instead of Excalidraw — readable inline in the PR, captures layout + flow + primitive placement. Pixel fidelity is out of scope this week (per #860). 8–10 key screens. Day 3 ships 2 of them (the load-bearing entry + Govern surfaces); day 4 ships the rest.
+
+### Wireframe 1 — `/home` (Entry, post-login)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  [Conduct logo]   [workspace ▾]  [role chip: developer · Engineering]   │
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                          │
+│  spend ribbon:  ████████░░░░░░░░░░░  $312 / $500 this month  ▾          │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  Find a run, draft a policy, ask a question.                       │ │
+│  │  Try: "show me blocks from last week"                              │ │
+│  │  [               intent input              ]   [/]                 │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  Recent Guard activity                                                   │
+│  ─────────────────────────────────                                       │
+│  • 3 calls blocked overnight by Engineering lane    [Guard pill: block] │
+│    └ Policy: "no-claude-opus-without-approval @v3"                       │
+│  • 1 spend warning at 80% — DevOps team             [Guard pill: warn]  │
+│  • SOC 2 export ready: 47 new events linked         [evidence: CC6.1]   │
+│                                                                          │
+│  Your lanes                                                              │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐                        │
+│  │ Compliance  │ │ Security    │ │ Engineering │                        │
+│  │ 4 playbooks │ │ 7 playbooks │ │ 11 playbooks│                        │
+│  │ 12 runs/wk  │ │ 23 runs/wk  │ │ 89 runs/wk  │                        │
+│  └─────────────┘ └─────────────┘ └─────────────┘                        │
+│                                                                          │
+│  [ → Canvas ] [ → /guard ] [ → /audit ]   (B2B nav, not a sidebar)      │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Primitives used:** intent input (expanded), spend ribbon (header), role chip (header), Guard inline pill (activity list), compliance evidence chip (SOC 2 export row).
+
+**Annotations:**
+- Activity list is ambient — 3 items max, scoped to the user's lane. Not a feed.
+- "Your lanes" cards are quick-jumps, not dashboards. Detail is in canvas.
+- No persistent sidebar. Nav is the row at the bottom + the workspace switcher in the header (Linear-style: keyboard + workspace switcher do most of the work).
+
+### Wireframe 2 — `/guard` (Govern, 3-tab spine)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Guard  [● ON]                          [role chip · security · Eng wsp] │
+│  ─────────────────────────────────────────────────────────────────────  │
+│  [ Policy ]  [ Spend ]  [ Activity ]  [ Approvals ]   <— tabs           │
+│                                                                          │
+│  ─── Policy tab ─────────────────────────────────────────────────────── │
+│                                                                          │
+│  ┌── policies ────────────────────────────┐  ┌── compliance pack ─────┐ │
+│  │ ▸ no-claude-opus-without-approval @v3  │  │  SOC 2     87 ev  →    │ │
+│  │   [block]  fires: 47/wk                │  │  EU AI Act 12 ev  →    │ │
+│  │ ▸ block-gpt4-over-50c          @v1     │  │  ISO 27001 41 ev  →    │ │
+│  │   [warn ]  fires: 12/wk                │  │  OWASP-LLM 9  ev  →    │ │
+│  │ ▸ require-signed-policy        @v2     │  │  Internal  3  ev  →    │ │
+│  │   [block]  fires: 0/wk                 │  │                        │ │
+│  │                                        │  │  Last export:          │ │
+│  │  + new policy   [draft via intent ▾]   │  │   SOC 2 — 3 days ago   │ │
+│  └────────────────────────────────────────┘  └────────────────────────┘ │
+│                                                                          │
+│  ─── spend ribbon (entire-org view) ──────────────────────────────────  │
+│  ████████████░░░░░░░░  $3,210 / $5,000 this month  [by lane ▾]         │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Primitives used:** Guard inline pill (per-policy fire decision), compliance evidence chip (right-rail pane), spend ribbon (footer), role chip (header).
+
+**Annotations:**
+- "Draft via intent" button is the entry into the intent-input primitive — drafts a new policy from natural language.
+- Compliance pack pane is the right rail; clicking a framework deep-links to Audit filtered to that framework.
+- The other Govern tabs (Spend, Activity, Approvals) follow the same shell; specs come in day-4 wireframes.
 
 ---
 
@@ -281,6 +480,10 @@ Always-on accessory on the Govern surface. Shows current framework attestations,
 | 11  | `/dashboard` reframed as power-user "ops overview" (Run + Govern crossover); never default landing | Kill /dashboard entirely / keep as default landing | Real components there (SpendArc, GuardSnapshot, AgentHealth) are useful for engineering leads. Killing wastes shipped work. But landing engineers there contradicts the buyer-first journey. Compromise: it stays, just not as the front door. | 2026-06-27 |
 | 12  | `/playbook-queue` merges into `/guard?tab=approvals` (Govern) | Leave under Build / kill it | File confirmed: pending→promoted|needs_work approval flow, role-gated to admin/security. Pure governance surface. | 2026-06-27 |
 | 13  | Marketing pages are in scope for journey + entry-rung decisions, out of scope for visual / brand work | Treat marketing as entirely separate / fold all of it into the doc | Marketing IS the entry rung pre-signup; we can't ignore it without breaking the journey. But brand / visual identity is its own track per #860 out-of-scope. Split cleanly: journey calls (lead with Guard, kill /solutions as a separate page) are in; redesigning the hero is out. | 2026-06-27 |
+| 14  | Add primitive #9 right-panel inspector — does not exist today, blocks `/workflows/[id]/settings` merge and primitive #4 (block card click) | Use modal dialogs / new-page navigation instead of inspector | Modals lose context (you can't see the canvas behind); separate pages break the "inspect without navigating" promise. A single right-edge sheet is the standard B2B pattern (Linear, Notion, GitHub PR review). | 2026-06-28 |
+| 15  | Wireframes use ASCII boxes, not Excalidraw or Figma | Excalidraw .json files; embedded Figma frames | ASCII renders inline in the PR, no separate tool needed, low-fi enough that no one mistakes it for production design. Matches #860's "low-fi" constraint. | 2026-06-28 |
+| 16  | Intent input has 3 modes (find / draft / ask), auto-selected from intent | Single chat mode like Claude.ai / ChatGPT | B2B users have rich context — most intents are find-a-thing, not generate-from-blank. Surfacing the mode prevents user confusion ("why is it making something new when I asked to find one?") and lets each mode have the right latency budget (find = instant, draft / ask = LLM). | 2026-06-28 |
+| 17  | Audit + Run are one primitive (timeline row), not two | Separate audit-row and run-step components | Both are "ordered events with provenance"; different filters, same shape. Forces visual + data-model coherence and saves one component. | 2026-06-28 |
 
 
 ---
@@ -293,11 +496,11 @@ Always-on accessory on the Govern surface. Shows current framework attestations,
 4. ~~`/dashboard` — what is it actually for today?~~ **Resolved day 2:** KPIs + SpendArc + GuardSnapshot + AgentHealth + EmptyChecklist (143-line shell + supporting components). Real ops-overview surface for engineering lead. Stops being default landing, lives next to `/home`. Decision #11.
 5. ~~Marketing pages in scope?~~ **Resolved day 2:** journey + entry rung decisions ARE in scope; visual / brand work is separate. Decision #13.
 6. ~~`/playbook-queue` role?~~ **Resolved day 2:** admin/security-only approval surface (allowed roles: admin, security; status flow pending→promoted|needs_work). Confirmed Govern, not Build. Decision #12.
-7. Canvas right-panel inspector — exists today, or do we build it before merging `/workflows/[id]/settings` in? **Day 3** — verify.
+7. ~~Canvas right-panel inspector — exists today?~~ **Resolved day 3:** no — `apps/web/src/components/` has no inspector component. Must be built (primitive #9). Decision #14.
 8. Which compliance pack format do we standardize on for `/audit?pack=*` export? SOC 2 is row one; EU AI Act + ISO 27001 next (per Lexoculus capture). Spec'd in primitive #2 above (v1 priority list). **Confirm day 5** when re-spec'ing #858/#859/#826.
 9. **New (day 2):** `predict` Guard pill always-on at draft time, or only after first save? Primitive #1 recommends always; revisit week-2 dogfood.
-10. **New (day 2):** event `satisfies: [{ framework, requirement_code }]` field — does Guard's event schema already have this? Check `apps/api/app/modules/guard/` day 3.
+10. ~~event `satisfies` field — already in Guard schema?~~ **Resolved day 3:** no — grepped `apps/api/app/modules/guard/` for `satisfies|compliance.*framework|requirement_code`, no matches. Schema work required before primitive #2 (compliance evidence chip) can be implemented. Capture as a follow-up issue day 7.
 
 ---
 
-*End of day 2. Next: day 3 — finish primitive specs (#3–#8), verify canvas right-panel inspector exists, start wireframes.*
+*End of day 3. Next: day 4 — wireframes 3–10 (Build canvas, Run timeline, Audit timeline, compliance pack page, ambient draft modal, /setup target, marketing entry).*
