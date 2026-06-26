@@ -272,6 +272,25 @@ Yes — once per developer, once per project. If you commit `.mcp.json` and `.cl
 **Can I undo it completely?**
 Yes. `booster remove claude` removes all six files and cleans the settings entries. No residue.
 
+## Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "agent-booster": {
+      "command": "booster",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+Run `booster index && booster embed` once from your project root before starting Claude Desktop. No env vars required.
+
+---
+
 ## Project layout
 
 ```

@@ -1,5 +1,5 @@
 name: agent-booster
-version: 0.1.2
+version: 0.6.3
 description: AST+vector context router for AI coding agents — cut token costs 5-15x by sending only relevant symbols instead of full files.
 
 startCommand:
