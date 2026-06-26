@@ -1042,6 +1042,7 @@
       <a href="#s2">Setup</a>
       <a href="#s3">Home (empty)</a>
       <a href="#s4">Home</a>
+      <a href="#s5b">Guard · Overview</a>
       <a href="#s5">Guard · Policy</a>
       <a href="#s6">Guard · Spend</a>
       <a href="#s7">SOC 2 pack</a>
@@ -1427,6 +1428,173 @@
   </div>
 </section>
 
+<!-- ════════════ S5b — Guard Overview (default landing) ════════════ -->
+<section class="screen" id="s5b">
+  <div class="screen-head">
+    <div>
+      <h2>5a. Guard — Overview tab (default landing)</h2>
+      <div class="ref">Decision #29 · Rung: <span class="rung-tag">Govern</span> · Closes governance-dashboard gap</div>
+    </div>
+    <span class="ref"><code>/guard?tab=overview</code></span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/guard</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell">
+        <aside class="app-sidebar">
+          <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
+          <a href="#s4" class="sb-item">Home</a>
+          <a href="#s5b" class="sb-item active">Guard</a>
+          <a href="#s8" class="sb-item">Audit</a>
+          <a href="#s10" class="sb-item">Canvas</a>
+          <a href="#s11" class="sb-item">Runs</a>
+        </aside>
+        <div class="app-main">
+          <div class="app-header">
+            <div class="row-flex">
+              <h3>Guard</h3>
+              <span class="gpill allow"><span class="gdot" style="background: var(--ok);"></span>ON</span>
+            </div>
+            <div class="row-flex">
+              <span class="ws-switcher">Engineering ▾</span>
+              <span class="ws-switcher" style="border-color: var(--accent-ring); color: var(--accent-2); background: var(--accent-weak);">lane: all ▾</span>
+              <span class="role-chip"><span class="role-dot"></span>security · Jen</span>
+            </div>
+          </div>
+          <div class="tabbar">
+            <a class="active" href="#s5b">Overview</a>
+            <a href="#s5">Policy</a>
+            <a href="#s6">Spend</a>
+            <a href="#s8">Activity</a>
+            <a href="#">Approvals</a>
+          </div>
+
+          <!-- KPI tiles -->
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px;">
+            <div class="card" style="padding: 14px 16px;">
+              <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Events 24h</div>
+              <div style="font-size: 26px; font-weight: 700; margin-top: 4px;">1,247</div>
+              <div class="mini-meta" style="color: var(--ok);">▼ 4% vs prev 24h</div>
+            </div>
+            <div class="card" style="padding: 14px 16px;">
+              <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Blocked</div>
+              <div style="font-size: 26px; font-weight: 700; margin-top: 4px; color: var(--block);">47</div>
+              <div class="mini-meta" style="color: var(--warn);">▲ 12% — worth a look</div>
+            </div>
+            <div class="card" style="padding: 14px 16px;">
+              <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Compliance</div>
+              <div style="font-size: 26px; font-weight: 700; margin-top: 4px;">87<span style="font-size: 14px; color: var(--text-3);">/47</span></div>
+              <div class="mini-meta">SOC 2 events / requirements</div>
+            </div>
+            <div class="card" style="padding: 14px 16px;">
+              <div class="mini-meta" style="font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 10px;">Spend</div>
+              <div style="font-size: 26px; font-weight: 700; margin-top: 4px;">$3.2k<span style="font-size: 14px; color: var(--text-3);"> / $5k</span></div>
+              <div class="mini-meta">64% of monthly budget</div>
+            </div>
+          </div>
+
+          <div class="spend-ribbon" style="margin-bottom: 18px;">
+            <span class="mini-meta">Entire-org spend</span>
+            <div class="bar"><div class="fill" style="width: 64%;"></div></div>
+            <span class="num">$3,210 / $5,000</span>
+            <a href="#s6" class="btn ghost sm">→ Spend</a>
+          </div>
+
+          <div class="two-col">
+            <div>
+              <div class="card-title">Top policies fired (last 7 days)</div>
+              <table class="data" style="margin-bottom: 18px;">
+                <thead><tr><th>Policy</th><th>Fires</th><th>Decision</th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td><span style="font-family: ui-monospace; font-size: 12px;">no-claude-opus-without-approval</span><div class="mini-meta">@v3</div></td>
+                    <td><span class="tl-cost">47</span></td>
+                    <td><span class="gpill block"><span class="gdot"></span>block</span></td>
+                  </tr>
+                  <tr>
+                    <td><span style="font-family: ui-monospace; font-size: 12px;">block-gpt4-over-50c</span><div class="mini-meta">@v1</div></td>
+                    <td><span class="tl-cost">12</span></td>
+                    <td><span class="gpill warn"><span class="gdot"></span>warn</span></td>
+                  </tr>
+                  <tr>
+                    <td><span style="font-family: ui-monospace; font-size: 12px;">require-signed-policy</span><div class="mini-meta">@v2</div></td>
+                    <td><span class="tl-cost">0</span></td>
+                    <td><span class="gpill allow"><span class="gdot"></span>—</span></td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="card-title">Recent activity</div>
+              <div class="card" style="padding: 0;">
+                <div class="activity-row" style="padding: 11px 16px;">
+                  <span class="gpill block"><span class="gdot"></span>block</span>
+                  <div>
+                    <div class="activity-text">3 calls blocked overnight by Engineering lane</div>
+                    <div class="activity-meta">14:32 · <code style="font-family: ui-monospace; font-size: 11px;">no-claude-opus-without-approval @v3</code></div>
+                  </div>
+                  <a href="#s8" style="color: var(--accent); font-size: 12.5px; font-weight: 600; text-decoration: none;">→</a>
+                </div>
+                <div class="activity-row" style="padding: 11px 16px;">
+                  <span class="gpill warn"><span class="gdot"></span>warn</span>
+                  <div>
+                    <div class="activity-text">Spend warning at 80% — DevOps team</div>
+                    <div class="activity-meta">14:31 · per-dev cap · Alex Chen</div>
+                  </div>
+                  <a href="#s6" style="color: var(--accent); font-size: 12.5px; font-weight: 600; text-decoration: none;">→</a>
+                </div>
+                <div class="activity-row" style="padding: 11px 16px;">
+                  <span class="ec">SOC 2 CC6.1</span>
+                  <div>
+                    <div class="activity-text">SOC 2 export ready: 47 new events</div>
+                    <div class="activity-meta">2h ago · since last export 3 days</div>
+                  </div>
+                  <a href="#s7" style="color: var(--accent); font-size: 12.5px; font-weight: 600; text-decoration: none;">→</a>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Compliance pack</div>
+              <div class="pack-cards">
+                <div class="pack-row"><span class="ec">SOC 2</span><span class="cnt">87 ev · ✓</span></div>
+                <div class="pack-row"><span class="ec eu">EU AI Act</span><span class="cnt">12 ev · ⚠</span></div>
+                <div class="pack-row"><span class="ec iso">ISO 27001</span><span class="cnt">41 ev · ⚠</span></div>
+                <div class="pack-row"><span class="ec owasp">OWASP-LLM</span><span class="cnt">9 ev · ⚠</span></div>
+                <div class="pack-row"><span class="ec internal">Internal</span><span class="cnt">3 ev</span></div>
+              </div>
+              <div class="mini-meta" style="margin-top: 12px;">Last export: SOC 2 — 3 days ago</div>
+              <a href="#s7" class="btn primary sm" style="margin-top: 10px;">Open SOC 2 pack →</a>
+
+              <div class="card-title" style="margin-top: 20px;">Gaps (SOC 2)</div>
+              <div class="gap-checklist" style="margin: 0;">
+                <strong>2 gaps</strong> · CC8.1, CC9.2<br/>
+                <a href="#s9" style="color: var(--block); text-decoration: underline;">show me how to satisfy →</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#1 Guard pill (per row + KPI)</span>
+        <span class="chip">#2 evidence chip (right rail)</span>
+        <span class="chip">#6 spend ribbon</span>
+        <span class="chip">#8 compliance pack pane</span>
+      </div>
+      <div style="margin-top:8px;">
+        <strong>Default landing</strong> for /guard — closes the at-a-glance gap (decision #29). KPI tiles + top-policies + recent-activity + compliance snapshot — all glanceable before the buyer drills into any deep-dive tab. Eventually rebuilt on Dashboard Builder primitives in Phase 5 (decision #30).
+      </div>
+    </div>
+    <a class="next" href="#s5">Next: Policy tab →</a>
+  </div>
+</section>
+
 <!-- ════════════ S5 — Guard Policy ════════════ -->
 <section class="screen" id="s5">
   <div class="screen-head">
@@ -1467,6 +1635,7 @@
             </div>
           </div>
           <div class="tabbar">
+            <a href="#s5b">Overview</a>
             <a class="active" href="#s5">Policy</a>
             <a href="#s6">Spend</a>
             <a href="#s8">Activity</a>
@@ -1578,6 +1747,7 @@
             <span class="role-chip"><span class="role-dot"></span>admin · Sudhi</span>
           </div>
           <div class="tabbar">
+            <a href="#s5b">Overview</a>
             <a href="#s5">Policy</a>
             <a class="active" href="#s6">Spend</a>
             <a href="#s8">Activity</a>

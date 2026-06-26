@@ -155,7 +155,7 @@ For each rung: who, what they're trying to do, what they see today, what they sh
 | `/setup`                                                | Entry        |      | x        |       |      | slice 1 of #858 in parallel; full redesign post-doc         |
 | `/sign-in`, `/sign-up`, `/accept-invite`                | Entry        | x    |          |       |      | Clerk-shaped, leave alone                                   |
 | `/home` *(new)*                                         | Entry        |      |          |       |      | **build new** — conversational entry per #859               |
-| `/dashboard`                                            | Run/Govern   |      | x        |       |      | stops being default landing; reframed as "ops overview" — KPIs + SpendArc + GuardSnapshot + agent-health. Sits next to /home as a power-user deep-link, never the default route. |
+| `/dashboard`                                            | Run/Govern   |      | x        |       |      | Phase 1–4: ops overview power-user surface (decision #11). Phase 5: becomes **Dashboard Builder** target — role-aware composer of DORA / cost / agent / Guard blocks (decision #30). Existing components (SpendArc, GuardSnapshot, AgentHealth) become builder blocks. |
 | `/projects`                                             | Build        |      | x        |       |      | reframe as workspace index; project = canvas group          |
 | `/projects/[id]`                                        | Build        |      | x        |       |      | becomes the canvas with run-history inline                  |
 | `/workflows`, `/workflows/[id]`                         | Build        | x    |          |       |      | canvas stays; only entry changes                            |
@@ -166,9 +166,9 @@ For each rung: who, what they're trying to do, what they see today, what they sh
 | `/playbooks/submit`                                     | Build        | x    |          |       |      | low-traffic, leave alone                                    |
 | `/runs`, `/workflows/[id]/runs`                         | Run          |      | x        |       |      | timeline-first index                                        |
 | `/workflows/[id]/runs/[run_id]`                         | Run          |      | x        |       |      | timeline view reusing Audit primitive                       |
-| `/observability`                                        | Run          |      |          | x     |      | merge into `/runs` as a saved filter view                   |
+| `/observability`                                        | Run          |      | x        |       |      | becomes Overview tab on `/runs` (engineering at-a-glance); retires when Dashboard Builder lands (Phase 5) — decision #30 |
 | `/observability/alerts`                                 | Govern       |      | x        |       |      | move under Guard as "Alert rules" (policy adjacent)         |
-| `/guard`                                                | Govern       |      | x        |       |      | redesigned as 3-tab spine (Policy / Spend / Activity)       |
+| `/guard`                                                | Govern       |      | x        |       |      | redesigned as 5-tab spine (**Overview** / Policy / Spend / Activity / Approvals). Overview is the default landing — closes the governance-dashboard gap (decision #29). |
 | `/guard/policies`, `/guard/policies/new`                | Govern       |      |          | x     |      | merge into `/guard?tab=policy` inline editor                |
 | `/guard/spend`                                          | Govern       |      |          | x     |      | merge into `/guard?tab=spend`                               |
 | `/guard/activity`                                       | Govern       |      |          | x     |      | merge into `/guard?tab=activity`                            |
@@ -886,6 +886,15 @@ Externally visible, but lower-impact internally. Run last so it benefits from ev
 - `/guard-landing` tighten — already Guard-first, just align with v3 wording.
 - Wire compliance pack pane on marketing (abbreviated form per WF #10).
 
+### Phase 5 — Dashboard Builder (Week 7–8, post-Northstar)
+
+Durable replacement for the at-a-glance gap. Decision #30.
+
+- Build the role-aware block composer at `/dashboard`. Blocks = DORA / cost / Guard policies / agent health / compliance / spend trend / lane breakdown.
+- Existing components (SpendArc, GuardSnapshot, AgentHealth) get re-packaged as builder blocks.
+- Overview tabs on `/guard` (decision #29) and `/runs` (decision #30) get reframed as default "preset" dashboards built on the same primitive — but kept as routes so users don't have to compose to get a sensible view.
+- `/observability` and `/governance` (if either is somehow still alive) retire here.
+
 ### What this doesn't include
 
 - Wireframes are not specs. Each phase still needs per-screen specs (Figma or refined ASCII) before engineers commit. Spec lead-time per phase: ~3 days.
@@ -982,7 +991,9 @@ Each phase ships an instrumentation hook so the metric is measurable from day on
 | 25  | Doc has an executive summary + "how to read" + "what's intentionally rough" sections at the top, not just at the end | Skip the summary; reviewers should read it linearly | The doc is dense enough (~600 lines) that a cold reader needs a map. Load-bearing primitives + decisions are named explicitly so a reviewer can push back on the *right* things. | 2026-07-01 |
 | 26  | Lane is a top-level filter in the app shell header — `[workspace ▾] [lane ▾] [role chip]` triad | Lane chips remain labels-only / quieter inline quick-filter pattern | Lane is the operational focus mode for B2B buyers (security lead only cares about Security-lane events). Making it global turns the lane chips already in the UI into a real control, matches the primary-lane choice from /setup (decision #18), and gives the chrome a stable three-piece identity (workspace = scope, lane = focus, role = RBAC). | 2026-07-02 |
 | 27  | Agent settings live at `/settings/agents` (workspace-level defaults), not on canvas (per-playbook) or Guard (enforcement) | Per-playbook agent config only / lump into Guard policies / leave in `agent_config.yaml` as code-only | Defaults vs enforcement are different jobs: Guard blocks/warns at runtime, agent settings configure the workspace baseline (turn budgets, model tiers, memory rules, fallback model order). Centralising defaults at workspace level avoids per-playbook drift and gives admins one place to adjust cost shape. Code-only config (today's `agent_config.yaml`) blocks non-engineer workspace admins from tuning. | 2026-07-02 |
-| 28  | `/guard/settings` route moves to `/settings/guard` so Guard spine stays 4 tabs (Policy / Spend / Activity / Approvals) | Keep `/guard/settings` as a 5th tab or sub-route | Spine tabs should be "operational view" surfaces, not admin config. Settings = admin config. Moving it out keeps the spine focused on the security-buyer journey. | 2026-07-02 |
+| 28  | `/guard/settings` route moves to `/settings/guard` so Guard spine stays clean | Keep `/guard/settings` as a tab or sub-route | Spine tabs should be "operational view" surfaces, not admin config. Settings = admin config. Moving it out keeps the spine focused on the security-buyer journey. | 2026-07-02 |
+| 29  | Guard gains an **Overview** tab as the default landing — KPI tiles, recent activity, top policies fired, pack snapshot, spend ribbon | 4 tabs as filed (Policy / Spend / Activity / Approvals); buyer drills directly from the first click | Decisions #5 + #9 collapsed the 7+ Govern surfaces into 4 deep-dive tabs but lost the at-a-glance dashboard the security buyer needs. Forcing the buyer to pick a tab to see anything fails the 30-second test (decision #1). Overview as default closes the gap with no new infrastructure — KPIs aggregate from existing data. | 2026-07-02 |
+| 30  | `/observability` retains an Overview view (as a tab on `/runs`) until Phase 5; `/dashboard` becomes the **Dashboard Builder** target in Phase 5 | Merge `/observability` directly into `/runs` (original decision #10) and leave `/dashboard` as static ops overview | Same gap as #29 on the engineering side. Killing the at-a-glance dashboards leaves both buyers + engineers with only deep-dive lists. Dashboard Builder (per `project_dashboard_builder.md`) is the durable answer — role-aware composer of DORA / cost / agent / Guard blocks closes the Port.io Interface Designer gap. Until it ships in Phase 5, Overview tabs on `/guard` (decision #29) and `/runs` cover the gap. `/observability` and `/governance` retire when the builder lands as starter presets. | 2026-07-02 |
 
 
 ---
