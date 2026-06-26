@@ -997,4 +997,28 @@ Each phase ships an instrumentation hook so the metric is measurable from day on
 
 ---
 
-*End of day 6. Next: day 7 — ship: file the Phase 0 schema issue (Guard `satisfies` field), comment on #858 / #859 / #826 linking the relevant sections, mark PR #861 ready for review.*
+## Day 7 — ship state
+
+The week ran. Doc is checked in. Open PR [#861](https://github.com/sseshachala/conductai/pull/861) carries the full history (day 0 → day 7). Three children commented with re-spec anchors. One new Phase 0 issue filed.
+
+### Shipped this week
+
+- `UX_NORTHSTAR.md` at repo root — exec summary + how-to-read + positioning lock + 5 hard constraints + 4 personas + 5-rung journey + surface map (every existing page judged) + 9 primitives spec'd + 10 wireframes (low-fi ASCII) + 5-phase implementation roadmap + re-spec for #858 / #859 / #826 + 5 success metrics + 25 decisions.
+- New issue **[#862](https://github.com/sseshachala/conductai/issues/862)** — Phase 0 Guard event schema (`satisfies[]` field). Unblocker for primitive #2 + audit timeline + compliance pack export.
+- Comment on **#858** — Slice 1 unchanged; Slice 2 reshapes to WF #9 + decision #18 (lane picker); Slice 3 moves to Phase 4.
+- Comment on **#859** — Gap 1 = primitive #3 (3-mode intent); Gap 2 = WF #8 (preview before commit); Gap 2 likely shorter than original sizing.
+- Comment on **#826** — adds two constraints (use primitive #5 timeline shape + `synthetic` Guard pill variant) so demo stays visually coherent with prod.
+
+### Open at end of week
+
+- Open questions 4 and 9 are resolved; questions 7, 10 resolved during the week.
+- No remaining `[contested]` markers in the doc (all resolved or punted to per-phase planning).
+- One follow-up that didn't land this week: an *example* compliance evidence chip seed mapping (~15 SOC 2 controls). It belongs inside #862's scope, not the doc.
+
+### Hand-off
+
+If someone reading this doc cold needs to pick the first thing to ship: **start with #862**. Until the Guard event schema has `satisfies[]`, primitive #2 is theoretical and the compliance pack export can't return real numbers. Everything else in the journey can be built on top of that field; without it, Phase 1 ships incomplete.
+
+If you want to argue with the doc: push back on the 5 **load-bearing decisions** named in "How to read this doc" — those are the joints the doc bends around. Decisions further down (per-primitive, per-wireframe) are cheaper to change.
+
+*Doc closed for the week. Next: per-phase planning issues opened from the implementation roadmap.*
