@@ -28,6 +28,8 @@ export interface AuditEvent {
   conductai_run_id?: string | null
   blast_radius?: { files: number; symbols?: number; tier: string } | null
   hostname?: string | null
+  hook_session_id?: string | null
+  session_id?: string | null
 }
 
 const TOOL_COLORS: Record<string, string> = {
@@ -310,8 +312,16 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       }}
     >
       <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }} title={formatTs(ev.ts)}>{formatTs(ev.ts).slice(11)}</div>
-      <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-        {ev.user_email ?? "—"}
+      <div style={{ minWidth: 0, overflow: "hidden" }}>
+        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {ev.user_email ?? "—"}
+        </div>
+        {(ev.hook_session_id || ev.session_id) && (
+          <div className="mono" style={{ fontSize: 9.5, color: "var(--text-muted)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            title={ev.hook_session_id || ev.session_id || ""}>
+            {(ev.hook_session_id || ev.session_id || "").slice(-8)}
+          </div>
+        )}
       </div>
       {!compact && (
         <div><ToolBadge tool={ev.ai_tool} /></div>
