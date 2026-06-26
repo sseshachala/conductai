@@ -265,36 +265,43 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
   compact?: boolean
   isLast?: boolean
 }) {
-  // Delegate signature tamper events to their specialised row.
+  const [hovered, setHovered] = useState(false)
+
   if (ev.rule_id === "policy_signature_invalid") {
     return <SignatureTamperRow ev={ev} isLast={isLast} />
   }
 
-  // Same grid layout the full /guard/activity page uses. The compact variant
-  // drops Tool and Blast Radius columns for the dashboard preview, but keeps
-  // every cell aligned to the same axis so width stays consistent.
   const cols = compact
-    ? "0.8fr 1.4fr 0.7fr 1.8fr 0.9fr 0.8fr"      // time · dev · call · input · decision · rule
-    : "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr 0.9fr"  // + tool, + blast radius
+    ? "0.8fr 1.4fr 0.7fr 1.8fr 0.9fr 0.8fr"
+    : "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr 0.9fr"
+
+  const bg = ev.decision === "blocked"
+    ? "var(--err-bg)"
+    : hovered ? "var(--surface-2)" : "transparent"
 
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: cols,
-      gap: 12,
-      padding: "11px 18px",
-      borderBottom: isLast ? "none" : "1px solid var(--border)",
-      alignItems: "center",
-      background: ev.decision === "blocked" ? "var(--err-bg)" : "transparent",
-    }}>
-      <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{formatTs(ev.ts)}</div>
-      <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "grid",
+        gridTemplateColumns: cols,
+        gap: 12,
+        padding: "10px 18px",
+        borderBottom: isLast ? "none" : "1px solid var(--border)",
+        alignItems: "center",
+        background: bg,
+        transition: "background .1s",
+      }}
+    >
+      <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{formatTs(ev.ts)}</div>
+      <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
         {ev.user_email ?? "—"}
       </div>
       {!compact && (
         <div><ToolBadge tool={ev.ai_tool} /></div>
       )}
-      <div className="mono" style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      <div className="mono" style={{ fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {ev.source === "proxy" && ev.provider
             ? `${ev.provider}/${ev.model ?? "?"}`
@@ -305,7 +312,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         {ev.source === "proxy" && <ProxyPill />}
         {ev.source === "local_audit" && <LocalRiskPill />}
       </div>
-      <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
         {ev.input_summary ? `${ev.input_summary}…` : "—"}
       </div>
       <div>
@@ -318,7 +325,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           <DecisionBadge decision={ev.decision} />
         )}
       </div>
-      <div className="mono" style={{ fontSize: 11.5, color: ev.rule_id ? "var(--err)" : "var(--text-muted)" }}>
+      <div className="mono" style={{ fontSize: 11, color: ev.rule_id ? "var(--err)" : "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
         {ev.rule_id ?? "—"}
       </div>
       {!compact && (
@@ -326,7 +333,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           {ev.blast_radius ? (
             <BlastRadiusBadge br={ev.blast_radius} />
           ) : (
-            <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>—</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>
           )}
         </div>
       )}
