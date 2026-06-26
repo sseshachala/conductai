@@ -786,6 +786,124 @@ ASCII boxes instead of Excalidraw — readable inline in the PR, captures layout
 
 ---
 
+## Implementation order (Phase 0 → Phase 4)
+
+The doc lists a lot. Order matters more than completeness. Phase 0 is the smallest set of changes that bend the product toward the journey without breaking anything; each phase compounds.
+
+### Phase 0 — Unblockers (Week 1 post-doc, in parallel with #858 slice 1)
+
+These are blockers for anything else. Until they're done, every other phase has to fake them.
+
+- **Schema:** add `satisfies: [{ framework, requirement_code }]` to Guard event store (decision #10). New issue, day 7.
+- **Primitive #9:** build the right-panel inspector shell — no content yet, just the component (decision #14). Same shape, four resource types. ~2 days.
+- **Primitive #1:** Guard inline pill component — implement allow/warn/block, defer `predict` + `synthetic` until canvas is wired (Phase 2). ~1 day.
+
+### Phase 1 — Govern surface collapse (Week 2)
+
+The buyer-first half of the journey. Ship before Phase 2 because the canvas redesign depends on these primitives being live.
+
+- Merge `/guard/policies`, `/guard/spend`, `/guard/activity` into `/guard` 3-tab spine + tab routing. Old routes 302 to the new tabs.
+- Delete `/security` (3-line redirect, decision #9).
+- Merge `/governance` content into `/guard` + redirect (decision #9).
+- Move `/playbook-queue` under `/guard?tab=approvals` (decision #12).
+- Add compliance pack pane to Govern right rail (primitive #8) — SOC 2 only in v1, others "coming soon."
+
+### Phase 2 — Run + Audit timeline (Week 3)
+
+The other half of the buyer-first journey, and the surface that establishes the timeline primitive used in Run.
+
+- Build `/audit` as timeline-first using primitive #5 (timeline row).
+- Reuse primitive #5 for `/workflows/[id]/runs/[run_id]` — same component, single-run filter.
+- Merge `/observability` into `/runs` as a saved filter (decision #10).
+- Move `/observability/alerts` under Guard.
+- Merge `/guard/session-reports`, `/guard/tool-errors`, `/guard/reports/soc2` into `/audit` filters (per surface map).
+- Compliance evidence chip (primitive #2) goes live wherever the `satisfies` field is populated.
+
+### Phase 3 — Entry + Build flip (Week 4)
+
+The user-facing half. Lower urgency than buyer-facing but where dogfooding bites first.
+
+- Build `/home` net-new (decision #8) — intent input primitive #3 in find / draft / ask modes.
+- Change post-login default route from `/projects` (or `/dashboard`) to `/home`.
+- Reframe `/dashboard` as "ops overview" power-user surface (decision #11).
+- Wire ambient draft modal (WF #8) — primitive #3 in draft mode → canvas seed.
+- Add Guard `predict` pill state to every block on canvas (primitive #1 completion).
+- Merge `/workflows/[id]/settings` into the canvas right-panel inspector.
+
+### Phase 4 — Marketing + setup polish (Week 5–6)
+
+Externally visible, but lower-impact internally. Run last so it benefits from everything before.
+
+- `/setup` redesign per WF #9 (post-#858 slice 1, with lane picker).
+- Marketing `/` rebuild per WF #10 — copy + structure only; brand is separate track.
+- Kill `/solutions` (merge into `/` lane sections).
+- `/guard-landing` tighten — already Guard-first, just align with v3 wording.
+- Wire compliance pack pane on marketing (abbreviated form per WF #10).
+
+### What this doesn't include
+
+- Wireframes are not specs. Each phase still needs per-screen specs (Figma or refined ASCII) before engineers commit. Spec lead-time per phase: ~3 days.
+- Brand / visual identity is a separate track (decision #13) — not in this roadmap.
+- Backend work for satisfies + new endpoints lives in API engineering's own tracker; this doc names what's needed, not how to build it.
+
+---
+
+## Re-spec table for #858 / #859 / #826
+
+These children were filed before this doc existed. Each gets re-specced here against the doc; the GitHub comment per child (day 7) links back to the right section.
+
+### #858 — /setup wire-up (slice 1 interim, full redesign deferred)
+
+**What was filed:** wire all 4 setup steps, first-time gate, skip → Guard Overview. Three slices proposed (1h / 3h / 8h).
+
+**Doc alignment:**
+- **Slice 1 stays as filed** — ships in parallel with this doc week. First-time gate + skip → `/guard` are no-doc-dependency wins.
+- **Slice 2 is reshaped** by WF #9 — adds the lane picker (decision #18). Reshapes the org / workspace step to defer non-required fields to a smaller initial form.
+- **Slice 3 (full) is now Phase 4** — lands after Phase 3 because /home and the conversational entry need to exist for "skip setup" to land somewhere useful.
+
+**Action day 7:** comment on #858 linking → "Implementation order — Phase 4" + WF #9 + decision #18.
+
+### #859 — Conversational entry + ambient agent (subsumed)
+
+**What was filed:** Gap 1 = chat-as-finder. Gap 2 = ambient agent.
+
+**Doc alignment:**
+- Both gaps remain — Gap 1 is now primitive #3 (intent input, find/draft/ask modes); Gap 2 is now WF #8 (ambient draft modal, with predicted-canvas-before-commit per decision #20).
+- Effort sizing in #859 was Gap 1 ~1 week / Gap 2 ~3 weeks. Doc agrees with Gap 1; Gap 2 may be shorter because the primitives (#3, #4, #5) are already specified — the work is wiring + an LLM prompt grounded on block library, not designing from blank.
+- Phase 3 (Week 4) ships Gap 1; Gap 2 starts in Week 5 alongside Phase 4 marketing work.
+
+**Action day 7:** comment on #859 linking → primitive #3 + WF #8 + decisions #16, #20.
+
+### #826 — Demo funnel (`docker-compose.demo.yml`)
+
+**What was filed:** 60-second demo with mock LLM + budget breach, in a public sister repo (`conductai/demo`).
+
+**Doc alignment:**
+- Entry rung WF #10 references "60s demo" as the marketing CTA — #826 IS this asset.
+- The doc adds one constraint: the demo's scripted runaway request must produce events that look exactly like Run + Audit timeline rows (primitive #5). Otherwise the demo and the real product visually diverge and the funnel breaks.
+- v1 of the demo uses `synthetic` Guard inline pill variant (primitive #1) so audit data from demos is visually distinct from real customer data.
+
+**Action day 7:** comment on #826 linking → primitive #1 (`synthetic` state) + primitive #5 + WF #10.
+
+---
+
+## Success metrics — how we know the doc worked
+
+Without a metric the doc is theory. Each rung gets one number to move; if all five move in the right direction over the next 90 days, the journey worked. These are inputs to the success criteria in the per-phase shipping, not OKRs.
+
+| Rung   | Metric                                                              | Today (rough estimate)        | Target (90 days post-launch) |
+|--------|---------------------------------------------------------------------|-------------------------------|------------------------------|
+| Entry  | Pre-signup → trial signup conversion                                | ?                             | +50% (#826 demo is the lever) |
+| Entry  | Post-signup → first-meaningful-action within 24h                    | ?                             | +30% (intent input is the lever) |
+| Govern | Time from "I want to set a policy" → policy live                    | unknown, many clicks          | < 60 seconds via intent + draft |
+| Audit  | Time from "auditor asks for SOC 2 evidence" → exported pack         | hours / days (manual)         | < 5 minutes via compliance pack |
+| Build  | Time from "I have an automation idea" → first run                   | unknown                       | < 5 minutes via ambient draft |
+| Run    | Time to diagnose a blocked run                                      | minutes of clicking           | < 30 seconds via inline Guard pill |
+
+Each phase ships an instrumentation hook so the metric is measurable from day one. Phase 0 includes the analytics primitive (one event schema, one helper) so we don't add tracking screen by screen.
+
+---
+
 ## Decision log (fill as decisions land)
 
 
@@ -811,6 +929,9 @@ ASCII boxes instead of Excalidraw — readable inline in the PR, captures layout
 | 18  | `/setup` adds a "lane" picker (compliance / security / engineering / multiple) | Skip the lane picker; default to multi-lane | Lane drives the suggested playbooks downstream + matches 3-lane positioning. Picking primary lane during setup is a 5-second tradeoff for materially better starter suggestions. | 2026-06-29 |
 | 19  | Marketing homepage rebuilt around v3 positioning above the fold (Guard-first + 3 lanes + live compliance numbers) | Keep current homepage and add a banner | 30-second test fails if buyer has to scroll. Live numbers are the trust signal; without them, "compliance" reads as vaporware. Visual / brand work is out of scope (per #860); copy + structure is in scope. | 2026-06-29 |
 | 20  | Ambient draft modal shows predicted canvas + applicable policies *before* user commits | Generate directly to canvas like Lovable / v0 | B2B users want a confirm step before unknown LLM-generated structure lands in their workspace. Matches Linear's "preview before commit" pattern. | 2026-06-29 |
+| 21  | 5-phase implementation order (Unblockers → Govern → Run+Audit → Entry+Build → Marketing) | Ship surface-by-surface as bandwidth allows | Phase 0 (schema + primitives #1, #9) is unavoidable scaffolding. Govern before Build because Build references policies defined in Govern. Marketing last because it benefits from everything before. | 2026-06-30 |
+| 22  | Compliance evidence chip depends on Guard event schema gaining a `satisfies: [{framework, code}]` field — file as a Phase 0 issue | Compute satisfies at read-time / per-framework lookup tables | Read-time computation slows the audit timeline, the surface that needs to be fast. Static lookup tables drift. Storing satisfies on the event itself is the simplest correct thing. | 2026-06-30 |
+| 23  | Success metric per rung, not per surface | OKR-style for the whole doc / no metrics this week | The doc is theory without measurement. One number per rung is tractable; per-surface is paralysis. Targets are 90 days post-launch so they survive the actual roll-out. | 2026-06-30 |
 
 
 ---
@@ -830,4 +951,4 @@ ASCII boxes instead of Excalidraw — readable inline in the PR, captures layout
 
 ---
 
-*End of day 4. Next: day 5 — implementation roadmap, re-spec table for #858/#859/#826, success metrics for the journey.*
+*End of day 5. Next: day 6 — buffer / tighten gaps / sanity-pass for B2B-not-consumer + Guard-on-every-rung constraints.*
