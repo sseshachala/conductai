@@ -130,6 +130,13 @@ function EnvironmentsManagerWithAuth({ isAdmin }: { isAdmin: boolean }) {
 
 interface EnvVar { key: string; value: string; handle?: string }
 
+// Canonical env var names are uppercase by convention (POSIX + 12-factor).
+// Stored as upper so the Guard proxy + runtime get consistent lookups instead
+// of having to fall back to lower on every read.
+function normalizeKey(raw: string): string {
+  return raw.trim().toUpperCase()
+}
+
 function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Promise<string | null>) | null; isAdmin: boolean }) {
   const { activeWorkspace } = useWorkspace()
   const [environments, setEnvironments] = useState<Environment[]>([])
@@ -699,7 +706,7 @@ function EnvironmentDetail({
 
   function addVar() {
     if (!newKey.trim()) return
-    const key = newKey.trim()
+    const key = normalizeKey(newKey)
     const updated = [...vars, { key, value: newValue }]
     setVars(updated)
     setNewKey(""); setNewValue(""); setShowNew(false)
@@ -714,7 +721,7 @@ function EnvironmentDetail({
       if (!line || line.startsWith("#")) continue
       const eq = line.indexOf("=")
       if (eq === -1) continue
-      const key = line.slice(0, eq).trim()
+      const key = normalizeKey(line.slice(0, eq))
       const value = line.slice(eq + 1).trim().replace(/^["']|["']$/g, "")
       if (key) parsed.push({ key, value })
     }
