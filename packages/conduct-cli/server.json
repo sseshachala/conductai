@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sseshachala/conduct-cli",
+  "title": "Conduct AI",
+  "description": "List agents, trigger workflows, and enforce team AI policies with ConductGuard.",
+  "version": "0.6.6",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "conduct-cli",
+      "version": "0.6.6",
+      "transport": {
+        "type": "stdio"
+      },
+      "installInstructions": "pip install conduct-cli && conduct login --server https://api.conductai.ai --api-key <key> --workspace <id>"
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/sseshachala/conduct-cli"
+  }
+}

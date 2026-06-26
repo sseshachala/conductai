@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.sseshachala/agent-booster -->
 # Agent Booster
 
 Cut AI coding agent token costs 5–15x by routing only the code that matters.
