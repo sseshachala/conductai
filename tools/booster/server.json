@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sseshachala/agent-booster",
+  "title": "Agent Booster",
+  "description": "AST+vector context router for AI coding agents — cut token costs 5-15x by sending only relevant symbols instead of full files.",
+  "version": "0.6.3",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "agent-booster",
+      "version": "0.6.3",
+      "transport": {
+        "type": "stdio"
+      },
+      "installInstructions": "pip install agent-booster[embed] && booster index && booster embed && booster serve"
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/sseshachala/agent-booster"
+  }
+}
