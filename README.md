@@ -234,6 +234,29 @@ conduct guard sync
 
 ---
 
+## Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "conduct": {
+      "command": "conduct-mcp",
+      "args": []
+    },
+    "conductguard": {
+      "command": "conductguard-mcp",
+      "args": ["--team", "<workspace-id>", "--token", "<member-token>"]
+    }
+  }
+}
+```
+
+Run `conduct login` first — `conduct-mcp` reads credentials from `~/.conduct/config.json`. Get your member token from **Settings → API Keys** in the Conduct AI dashboard.
+
+---
+
 ## Links
 
 - Dashboard: [conductai.ai](https://conductai.ai)

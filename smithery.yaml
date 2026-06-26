@@ -1,0 +1,22 @@
+name: conduct-cli
+version: 0.6.6
+description: Conduct AI MCP server — list agents, trigger workflows, and enforce team AI policies with ConductGuard.
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      workspace_id:
+        type: string
+        description: Conduct AI workspace ID (from Settings → Workspace)
+      member_token:
+        type: string
+        description: Member API token (from Settings → API Keys)
+    required: []
+  commandFunction: |-
+    (config) => ({
+      command: "conduct-mcp",
+      args: [],
+      env: {}
+    })
