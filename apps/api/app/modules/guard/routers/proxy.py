@@ -258,6 +258,15 @@ async def _proxy(
 
     # 6. Forward + stream back. Use a fresh DB session inside the background task.
     is_stream = bool(body.get("stream"))
+    # Pass through all vendor-specific headers the SDK sends (anthropic-beta,
+    # openai-organization, openai-project, etc.) minus the ones we own.
+    _skip = {auth_header_in, "host", "content-length", "transfer-encoding",
+             "connection", "content-type", "accept", "user-agent"}
+    extra_headers = {
+        k.lower(): v for k, v in request.headers.items()
+        if k.lower() not in _skip and not k.lower().startswith("x-conduct-")
+    }
+    return await _forward(
         upstream=upstream,
         path=upstream_path,
         body=body,
