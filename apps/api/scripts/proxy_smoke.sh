@@ -53,26 +53,30 @@ MEMBER_TOKEN=$(psql "$DB_URL" -tA -c "
 # We can't decrypt from bash, so we ask the API to do it via a one-shot Python helper.
 
 PROVIDERS=$(.venv/bin/python -c "
-import os, psycopg2
+import psycopg2
 from app.core.crypto import decrypt
 conn = psycopg2.connect('$DB_URL')
 cur = conn.cursor()
 cur.execute(\"\"\"
-  SELECT encrypted_credentials FROM integrations
-  WHERE workspace_id = '$WORKSPACE_ID' AND handle IN ('env_vars','anthropic')
+  SELECT handle, encrypted_credentials FROM integrations
+  WHERE workspace_id = '$WORKSPACE_ID'
+    AND handle IN ('anthropic','openai','perplexity','env_vars')
+    AND encrypted_credentials IS NOT NULL
 \"\"\")
 found = set()
-for row in cur.fetchall():
+for handle, enc in cur.fetchall():
     try:
-        creds = decrypt(row[0]) or {}
+        creds = decrypt(enc) or {}
     except Exception:
         continue
-    if 'ANTHROPIC_API_KEY' in creds or 'api_key' in creds:
-        found.add('anthropic')
-    if 'OPENAI_API_KEY' in creds:
-        found.add('openai')
-    if 'PERPLEXITY_API_KEY' in creds:
-        found.add('perplexity')
+    # Per-provider handle with api_key
+    if handle in ('anthropic','openai','perplexity') and creds.get('api_key'):
+        found.add(handle)
+    # Catch-all env_vars
+    if handle == 'env_vars':
+        if 'ANTHROPIC_API_KEY' in creds: found.add('anthropic')
+        if 'OPENAI_API_KEY'    in creds: found.add('openai')
+        if 'PERPLEXITY_API_KEY' in creds: found.add('perplexity')
 print(' '.join(sorted(found)))
 ")
 
