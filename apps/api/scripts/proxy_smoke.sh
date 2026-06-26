@@ -108,7 +108,7 @@ run_one() {
   local before
   before=$(psql "$DB_URL" -tA -c "
     SELECT COUNT(*) FROM guard_audit_events
-    WHERE workspace_id = '$WORKSPACE_ID'::uuid AND tool_call LIKE '$provider/%'
+    WHERE workspace_id = '$WORKSPACE_ID'::uuid AND source = 'proxy' AND provider = '$provider'
   ")
 
   local resp http_code
@@ -131,7 +131,7 @@ run_one() {
   local after
   after=$(psql "$DB_URL" -tA -c "
     SELECT COUNT(*) FROM guard_audit_events
-    WHERE workspace_id = '$WORKSPACE_ID'::uuid AND tool_call LIKE '$provider/%'
+    WHERE workspace_id = '$WORKSPACE_ID'::uuid AND source = 'proxy' AND provider = '$provider'
   ")
   if (( after > before )); then
     echo "Audit row landed (was $before → $after)"

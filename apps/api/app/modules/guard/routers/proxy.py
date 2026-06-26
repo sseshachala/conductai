@@ -386,17 +386,20 @@ def _record_audit(
             text("""
                 INSERT INTO guard_audit_events (
                   workspace_id, clerk_user_id, ai_tool, tool_call,
+                  source, provider, model,
                   decision, rule_id, ts,
                   tokens_before, tokens_after, duration_ms
                 ) VALUES (
-                  :ws, :uid, :ai, :tc,
+                  :ws, :uid, :ai, NULL,
+                  'proxy', :prov, :model,
                   :dec, :rid, :ts,
                   :tin, :tout, :dur
                 )
             """),
             {
                 "ws": workspace_id, "uid": clerk_user_id,
-                "ai": ai_tool, "tc": f"{provider}/{model}",
+                "ai": ai_tool,
+                "prov": provider, "model": model,
                 "dec": decision, "rid": rule_id,
                 "ts": datetime.now(timezone.utc),
                 "tin": in_tokens, "tout": out_tokens, "dur": duration_ms,
@@ -410,38 +413,47 @@ def _record_audit(
 
 
 def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int | None, int | None]:
-    """Best-effort token extraction.
+    """Best-effort token extraction across all 3 providers.
 
-    Anthropic SSE messages embed usage in the `message_start` and `message_delta`
-    events. Non-stream responses have usage directly. We accept either; failures
-    yield (None, None) so the row still lands.
+    Anthropic:        usage.input_tokens   / usage.output_tokens
+    OpenAI/Perplexity: usage.prompt_tokens / usage.completion_tokens
+
+    Works on both streaming (SSE) and non-streaming responses. Returns
+    (None, None) on parse failures so the row still lands.
     """
+    def _pair(usage: dict) -> tuple[int | None, int | None]:
+        if not isinstance(usage, dict):
+            return None, None
+        return (
+            usage.get("input_tokens")  or usage.get("prompt_tokens"),
+            usage.get("output_tokens") or usage.get("completion_tokens"),
+        )
+
+    if not response_bytes:
+        return None, None
     try:
-        if response_bytes:
-            # Try JSON first (non-stream)
+        # Non-stream JSON
+        try:
+            obj = json.loads(response_bytes)
+            return _pair(obj.get("usage") or {})
+        except json.JSONDecodeError:
+            pass
+        # SSE — keep the latest usage block we see
+        in_tok, out_tok = None, None
+        for line in response_bytes.splitlines():
+            if not line.startswith(b"data: "):
+                continue
             try:
-                obj = json.loads(response_bytes)
-                usage = obj.get("usage") or {}
-                return usage.get("input_tokens"), usage.get("output_tokens")
+                evt = json.loads(line[6:])
             except json.JSONDecodeError:
-                pass
-            # SSE: scan for the last usage block
-            in_tok, out_tok = None, None
-            for line in response_bytes.splitlines():
-                if line.startswith(b"data: "):
-                    try:
-                        evt = json.loads(line[6:])
-                    except json.JSONDecodeError:
-                        continue
-                    usage = evt.get("message", {}).get("usage") or evt.get("usage") or {}
-                    if "input_tokens" in usage:
-                        in_tok = usage["input_tokens"]
-                    if "output_tokens" in usage:
-                        out_tok = usage["output_tokens"]
-            return in_tok, out_tok
+                continue
+            usage = evt.get("message", {}).get("usage") or evt.get("usage") or {}
+            i, o = _pair(usage)
+            if i is not None: in_tok = i
+            if o is not None: out_tok = o
+        return in_tok, out_tok
     except Exception:
         return None, None
-    return None, None
 
 
 def _safe_json(b: bytes, *, fallback: dict) -> dict:

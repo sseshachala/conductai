@@ -16,10 +16,13 @@ export interface AuditEvent {
   ts: string
   user_email: string | null
   ai_tool: string
-  tool_call: string
+  tool_call: string | null
   input_summary: string | null
   decision: string                // "allowed" | "blocked" | "warned" | "approval" | "audited"
   rule_id: string | null
+  source?: "hook" | "proxy" | "mcp" | null
+  provider?: string | null         // 'anthropic' | 'openai' | 'perplexity' (proxy only)
+  model?: string | null            // vendor model id (proxy only)
   conductai_run_id?: string | null
   blast_radius?: { files: number; symbols?: number; tier: string } | null
 }
@@ -170,8 +173,10 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         <div><ToolBadge tool={ev.ai_tool} /></div>
       )}
       <div className="mono" style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-        {ev.tool_call}
-        {isProxyEvent(ev.tool_call) && <ProxyPill />}
+        {ev.source === "proxy" && ev.provider
+          ? `${ev.provider}/${ev.model ?? "?"}`
+          : ev.tool_call}
+        {ev.source === "proxy" && <ProxyPill />}
       </div>
       <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {ev.input_summary ? `${ev.input_summary}…` : "—"}
