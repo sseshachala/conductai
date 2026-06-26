@@ -832,6 +832,38 @@ The doc deliberately stops at the "constraint" level, not "spec." These are the 
 - **Intent input classifier model.** "Small LLM call routing to ~10 destinations" — not which model, not the prompt. Picked by whoever builds Phase 3.
 - **Per-phase ship dates.** Listed as "Week 2 / Week 3 / etc." — these are *order*, not deadlines. Calendar dates are set when each phase plans.
 
+## RBAC additions
+
+The 4-role model (admin / security / developer / viewer) and the existing `roles → role_permissions → permissions` schema (per ROLES.md + CLAUDE.md) stays intact. The Northstar adds ~5 new permission strings to the seed file. No schema migration, no new role.
+
+| Permission | What it gates | admin | security | developer | viewer |
+|---|---|:-:|:-:|:-:|:-:|
+| `platform.dashboard.view` | `/dashboard` cross-cutting executive view | ✓ | ✓ | ✓ | ✓ |
+| `platform.settings.agents.view` | `/settings/agents` (turn budgets, model tiers, etc.) | ✓ | ✓ | ✓ | ✓ |
+| `platform.settings.agents.edit` | Edit agent defaults | ✓ | — | — | — |
+| `guard.compliance.view` | View compliance pack status + evidence chips | ✓ | ✓ | ✓ | ✓ |
+| `guard.compliance.export` | Export evidence pack (PDF + JSON) | ✓ | ✓ | — | — |
+| `guard.overview.view` | `/guard?tab=overview` — likely just reuses `guard.activity.view_all` | ✓ | ✓ | ✓ | ✓ |
+
+**Pattern unchanged:** every new endpoint uses `require_permission("...")` from `app.core.auth` (per CLAUDE.md security rule). Frontend uses the existing role hook for render-time gating.
+
+### Lane is not RBAC
+
+Decision #26 added the lane chip to the header triad (`[workspace] [lane] [role chip]`). These are **two orthogonal axes**, not nested:
+
+- **Role** = what you can *do* (view, edit, manage). Permission table.
+- **Lane** = what slice you're currently *looking at*. User preference / filter.
+
+A security role doesn't auto-scope to the Security lane. An engineering developer can still view Compliance lane policies — they just aren't focused there. The lane filter is **transparent and overridable** at all times, regardless of role (decision #31).
+
+### Open RBAC question — resolved
+
+Should developer role see all lanes' policies, or only their own lane's?
+
+**Decision: see all (transparency).** Per decision #31 below — B2B engineering teams expect to know what other lanes enforce. Hiding cross-lane policies would surprise developers and harm trust. Lane is for *focus*, not isolation.
+
+---
+
 ## Implementation order (Phase 0 → Phase 4)
 
 The doc lists a lot. Order matters more than completeness. Phase 0 is the smallest set of changes that bend the product toward the journey without breaking anything; each phase compounds.
@@ -997,6 +1029,7 @@ Each phase ships an instrumentation hook so the metric is measurable from day on
 | 28  | `/guard/settings` route moves to `/settings/guard` so Guard spine stays clean | Keep `/guard/settings` as a tab or sub-route | Spine tabs should be "operational view" surfaces, not admin config. Settings = admin config. Moving it out keeps the spine focused on the security-buyer journey. | 2026-07-02 |
 | 29  | Guard gains an **Overview** tab as the default landing — KPI tiles, recent activity, top policies fired, pack snapshot, spend ribbon | 4 tabs as filed (Policy / Spend / Activity / Approvals); buyer drills directly from the first click | Decisions #5 + #9 collapsed the 7+ Govern surfaces into 4 deep-dive tabs but lost the at-a-glance dashboard the security buyer needs. Forcing the buyer to pick a tab to see anything fails the 30-second test (decision #1). Overview as default closes the gap with no new infrastructure — KPIs aggregate from existing data. | 2026-07-02 |
 | 30  | `/observability` retains an Overview view (as a tab on `/runs`) until Phase 5; `/dashboard` becomes the **Dashboard Builder** target in Phase 5 | Merge `/observability` directly into `/runs` (original decision #10) and leave `/dashboard` as static ops overview | Same gap as #29 on the engineering side. Killing the at-a-glance dashboards leaves both buyers + engineers with only deep-dive lists. Dashboard Builder (per `project_dashboard_builder.md`) is the durable answer — role-aware composer of DORA / cost / agent / Guard blocks closes the Port.io Interface Designer gap. Until it ships in Phase 5, Overview tabs on `/guard` (decision #29) and `/runs` cover the gap. `/observability` and `/governance` retire when the builder lands as starter presets. | 2026-07-02 |
+| 31  | RBAC extends with ~5 new permissions (dashboard view, agent settings view/edit, compliance view/export); lane is a separate axis (filter, not RBAC); developer role sees all lanes' policies (transparency) | New "lane" role added to the role table / lane-scoped read permissions for developers / hide cross-lane policies from non-owning roles | Existing 4-role + permissions table is the right primitive; adding a 5th role splits the model unnecessarily. Lane is operational focus, not a security boundary — making it RBAC turns a UX filter into a permission surface and forces every endpoint to think about lane scope, which is over-engineering for transparency-first B2B teams. Hiding cross-lane policies from developers harms trust and creates "why was I blocked by a policy I didn't know existed" incidents. | 2026-07-02 |
 
 
 ---
