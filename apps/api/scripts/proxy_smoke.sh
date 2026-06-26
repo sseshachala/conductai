@@ -1,42 +1,103 @@
 #!/usr/bin/env bash
 # End-to-end smoke for the Guard Proxy across all 3 providers.
 #
-# Verifies the full chain: dev's AI tool → Conduct proxy → real vendor API
-# → response back → audit row in guard_audit_events. Tests whichever
-# provider keys are seeded; skips the rest with a clear note.
-#
-# Prereqs:
-#   CONDUCT_PROXY    proxy base URL (default: http://localhost:8000/proxy)
-#   MEMBER_TOKEN     workspace member token (without the guard-mt- prefix)
-#   WORKSPACE_ID     workspace uuid
+# Looks up everything from the local DB so you don't have to remember IDs.
+# Just give it a workspace name (or none — defaults to the first workspace
+# with Guard installed + at least one seeded provider key).
 #
 # Run:
-#   ./scripts/proxy_smoke.sh
+#   ./scripts/proxy_smoke.sh                       # auto-pick first workspace
+#   ./scripts/proxy_smoke.sh "Acme Test Corp"      # use the named workspace
 #
-# Pass criteria per provider:
-#   1. Proxy returns 200
-#   2. New audit row lands with tool_call like '<provider>/<model>'
+# Skips providers without seeded keys instead of failing them.
 
 set -euo pipefail
 
 PROXY="${CONDUCT_PROXY:-http://localhost:8000/proxy}"
-MEMBER_TOKEN="${MEMBER_TOKEN:?MEMBER_TOKEN env var required (without guard-mt- prefix)}"
-WORKSPACE_ID="${WORKSPACE_ID:?WORKSPACE_ID env var required}"
 DB_URL="${DATABASE_URL:-postgresql://marshal:marshal@localhost:5432/marshal}"
+WORKSPACE_NAME="${1:-}"
 
-echo "▶ Proxy:        $PROXY"
-echo "▶ Workspace:    $WORKSPACE_ID"
+# ── resolve workspace ────────────────────────────────────────────────────
+
+if [[ -n "$WORKSPACE_NAME" ]]; then
+  WS_ROW=$(psql "$DB_URL" -tA -F'|' -c "
+    SELECT w.id::text, w.name
+    FROM workspaces w
+    JOIN guard_config gc ON gc.workspace_id = w.id
+    WHERE w.name = '$WORKSPACE_NAME'
+    LIMIT 1
+  ")
+  [[ -z "$WS_ROW" ]] && { echo "No workspace named '$WORKSPACE_NAME' with Guard installed."; exit 1; }
+else
+  WS_ROW=$(psql "$DB_URL" -tA -F'|' -c "
+    SELECT w.id::text, w.name
+    FROM workspaces w
+    JOIN guard_config gc ON gc.workspace_id = w.id
+    JOIN integrations i ON i.workspace_id = w.id AND i.handle = 'env_vars'
+    ORDER BY w.created_at DESC LIMIT 1
+  ")
+  [[ -z "$WS_ROW" ]] && { echo "No workspaces with Guard + a seeded env_vars integration."; exit 1; }
+fi
+WORKSPACE_ID="${WS_ROW%%|*}"
+WS_LABEL="${WS_ROW##*|}"
+
+# ── resolve member token ─────────────────────────────────────────────────
+
+MEMBER_TOKEN=$(psql "$DB_URL" -tA -c "
+  SELECT member_token FROM guard_member_config
+  WHERE workspace_id = '$WORKSPACE_ID'::uuid AND active = true LIMIT 1
+")
+[[ -z "$MEMBER_TOKEN" ]] && { echo "No active member token for workspace '$WS_LABEL'. Visit /guard to provision."; exit 1; }
+
+# ── check which provider keys are seeded ─────────────────────────────────
+# We can't decrypt from bash, so we ask the API to do it via a one-shot Python helper.
+
+PROVIDERS=$(.venv/bin/python -c "
+import os, psycopg2
+from app.core.crypto import decrypt
+conn = psycopg2.connect('$DB_URL')
+cur = conn.cursor()
+cur.execute(\"\"\"
+  SELECT encrypted_credentials FROM integrations
+  WHERE workspace_id = '$WORKSPACE_ID' AND handle IN ('env_vars','anthropic')
+\"\"\")
+found = set()
+for row in cur.fetchall():
+    try:
+        creds = decrypt(row[0]) or {}
+    except Exception:
+        continue
+    if 'ANTHROPIC_API_KEY' in creds or 'api_key' in creds:
+        found.add('anthropic')
+    if 'OPENAI_API_KEY' in creds:
+        found.add('openai')
+    if 'PERPLEXITY_API_KEY' in creds:
+        found.add('perplexity')
+print(' '.join(sorted(found)))
+")
+
+# ── header ───────────────────────────────────────────────────────────────
+
+echo "▶ Workspace:    $WS_LABEL ($WORKSPACE_ID)"
 echo "▶ Member token: guard-mt-${MEMBER_TOKEN:0:6}…"
+echo "▶ Proxy:        $PROXY"
+echo "▶ Available:    ${PROVIDERS:-none}"
 echo
 
-PASS=0
-FAIL=0
-SKIP=0
+[[ -z "$PROVIDERS" ]] && { echo "Nothing to test. Seed at least one provider key via Settings → Integrations or scripts/seed_anthropic_key.py"; exit 1; }
 
-# ── provider runner ───────────────────────────────────────────────────────
+PASS=0; FAIL=0; SKIP=0
+
+# ── runner ───────────────────────────────────────────────────────────────
 
 run_one() {
-  local provider="$1" path="$2" model="$3" auth_header="$4" extra_headers="$5" body="$6"
+  local provider="$1" path="$2" auth="$3" extra="$4" body="$5"
+
+  if [[ " $PROVIDERS " != *" $provider "* ]]; then
+    echo "── $provider ── SKIP (no key seeded)"
+    SKIP=$((SKIP + 1)); echo
+    return
+  fi
 
   echo "── $provider ──────────────────────────────────────"
   local before
@@ -50,19 +111,15 @@ run_one() {
   http_code=$(eval curl -sS -o "$resp" -w "%{http_code}" \
     -X POST "\"$PROXY$path\"" \
     -H "\"Content-Type: application/json\"" \
-    $auth_header \
-    $extra_headers \
+    $auth $extra \
     -H "\"x-conduct-ai-tool: smoke-test-$provider\"" \
     -d "'$body'")
 
   echo "HTTP $http_code"
   if [[ "$http_code" != "200" ]]; then
-    echo "FAIL — $provider returned non-200"
-    cat "$resp" | head -c 300
-    echo
-    FAIL=$((FAIL + 1))
-    rm "$resp"
-    return
+    echo "FAIL — non-200"
+    head -c 300 "$resp"; echo
+    FAIL=$((FAIL + 1)); rm "$resp"; echo; return
   fi
 
   sleep 2
@@ -72,37 +129,29 @@ run_one() {
     WHERE workspace_id = '$WORKSPACE_ID'::uuid AND tool_call LIKE '$provider/%'
   ")
   if (( after > before )); then
-    echo "▶ Audit row landed (was $before, now $after)"
+    echo "Audit row landed (was $before → $after)"
     echo "PASS"
     PASS=$((PASS + 1))
   else
     echo "FAIL — 200 but no audit row"
     FAIL=$((FAIL + 1))
   fi
-  rm "$resp"
-  echo
+  rm "$resp"; echo
 }
 
-# ── anthropic ─────────────────────────────────────────────────────────────
-run_one "anthropic" \
-  "/v1/messages" \
-  "claude-haiku-4-5-20251001" \
+# ── three runs ───────────────────────────────────────────────────────────
+
+run_one "anthropic" "/v1/messages" \
   "-H \"x-api-key: guard-mt-$MEMBER_TOKEN\"" \
   "-H \"anthropic-version: 2023-06-01\"" \
   '{"model":"claude-haiku-4-5-20251001","max_tokens":40,"messages":[{"role":"user","content":"Reply: SMOKE_OK"}]}'
 
-# ── openai ────────────────────────────────────────────────────────────────
-run_one "openai" \
-  "/openai/v1/chat/completions" \
-  "gpt-4o-mini" \
+run_one "openai" "/openai/v1/chat/completions" \
   "-H \"Authorization: Bearer guard-mt-$MEMBER_TOKEN\"" \
   "" \
   '{"model":"gpt-4o-mini","max_tokens":40,"messages":[{"role":"user","content":"Reply: SMOKE_OK"}]}'
 
-# ── perplexity ────────────────────────────────────────────────────────────
-run_one "perplexity" \
-  "/perplexity/chat/completions" \
-  "sonar" \
+run_one "perplexity" "/perplexity/chat/completions" \
   "-H \"Authorization: Bearer guard-mt-$MEMBER_TOKEN\"" \
   "" \
   '{"model":"sonar","max_tokens":40,"messages":[{"role":"user","content":"Reply: SMOKE_OK"}]}'
