@@ -327,7 +327,7 @@ except Exception:
         return None, "allow", None, None
 
 
-def _detect_repo() -> str | None:
+def _detect_repo():  # -> Optional[str]
     try:
         import subprocess
         out = subprocess.check_output(["git", "remote", "get-url", "origin"],
