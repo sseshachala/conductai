@@ -1,18 +1,23 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? ""
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 const ONB_STEPS = ["Workspace", "Connect tools", "Guard", "Install playbook"] as const
 
 const INTEGRATIONS = [
-  { id: "github",  name: "GitHub",   desc: "Repos, issues, PRs, webhooks",       color: "#1c1917" },
-  { id: "slack",   name: "Slack",    desc: "Messages, DMs, approvals",            color: "#4a154b" },
-  { id: "linear",  name: "Linear",   desc: "Issues, projects, labels",            color: "#5b5bd6" },
-  { id: "vercel",  name: "Vercel",   desc: "Deployments, logs, domains",          color: "#000000" },
-  { id: "railway", name: "Railway",  desc: "Services, deployments, environments", color: "#0f172a" },
+  { id: "github",  name: "GitHub",   desc: "Repos, issues, PRs, webhooks", color: "#1c1917" },
+  { id: "slack",   name: "Slack",    desc: "Messages, DMs, approvals",      color: "#4a154b" },
+  // ponytail: Linear/Vercel/Railway deferred — re-enable when /integrations supports them (#858 slice 2 redesigns this whole step)
+  // { id: "linear",  name: "Linear",   desc: "Issues, projects, labels",            color: "#5b5bd6" },
+  // { id: "vercel",  name: "Vercel",   desc: "Deployments, logs, domains",          color: "#000000" },
+  // { id: "railway", name: "Railway",  desc: "Services, deployments, environments", color: "#0f172a" },
 ] as const
 
 const FEATURED_PLAYBOOKS = [
@@ -140,37 +145,39 @@ function BlockChip({ type, label, hot }: { type: string; label: string; hot: boo
 
 // ── Step 1 — Workspace ────────────────────────────────────────────────────────
 
-function StepWorkspace() {
+interface StepWorkspaceProps {
+  orgName: string
+  setOrgName: (v: string) => void
+  wsName: string
+  setWsName: (v: string) => void
+}
+
+function StepWorkspace({ orgName, setOrgName, wsName, setWsName }: StepWorkspaceProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 460 }}>
       <div>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Organisation</div>
-        <div
-          style={{
-            ...inputStyle,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            background: "var(--surface-2)",
-            color: "var(--text-3)",
-          }}
-        >
-          <span style={{ width: 22, height: 22, borderRadius: 6, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
-            OS
-          </span>
-          OrganicSphere
-        </div>
+        <input
+          style={inputStyle}
+          value={orgName}
+          onChange={e => setOrgName(e.target.value)}
+          placeholder="Your organisation"
+        />
       </div>
       <div>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Workspace name</div>
-        <input style={inputStyle} defaultValue="Engineering" />
+        <input
+          style={inputStyle}
+          value={wsName}
+          onChange={e => setWsName(e.target.value)}
+          placeholder="Engineering"
+        />
       </div>
       <div>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Data region</div>
-        <select style={inputStyle}>
-          <option>US · Oregon</option>
-          <option>EU · Frankfurt</option>
-        </select>
+        <div style={{ ...inputStyle, background: "var(--surface-2)", color: "var(--text-3)" }}>
+          US · Oregon
+        </div>
       </div>
     </div>
   )
@@ -271,9 +278,13 @@ function StepTools({ connected, toggle }: StepToolsProps) {
 interface StepGuardProps {
   hardCap: boolean
   setHardCap: (v: boolean) => void
+  teamBudget: string
+  setTeamBudget: (v: string) => void
+  perDevLimit: string
+  setPerDevLimit: (v: string) => void
 }
 
-function StepGuard({ hardCap, setHardCap }: StepGuardProps) {
+function StepGuard({ hardCap, setHardCap, teamBudget, setTeamBudget, perDevLimit, setPerDevLimit }: StepGuardProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 540 }}>
       {/* ConductGuard enabled card */}
@@ -350,12 +361,28 @@ function StepGuard({ hardCap, setHardCap }: StepGuardProps) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Team monthly budget</div>
-            <input style={inputStyle} defaultValue="$500 / month" />
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Team monthly budget (USD)</div>
+            <input
+              type="number"
+              min={0}
+              step={10}
+              style={inputStyle}
+              value={teamBudget}
+              onChange={e => setTeamBudget(e.target.value)}
+              placeholder="500"
+            />
           </div>
           <div>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Default per-developer limit</div>
-            <input style={inputStyle} defaultValue="$75 / month" />
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>Default per-developer limit (USD)</div>
+            <input
+              type="number"
+              min={0}
+              step={5}
+              style={inputStyle}
+              value={perDevLimit}
+              onChange={e => setPerDevLimit(e.target.value)}
+              placeholder="75"
+            />
           </div>
         </div>
         <div
@@ -628,16 +655,56 @@ function PipelinePanel({ step }: { step: number }) {
 
 export default function SetupPage() {
   const router = useRouter()
+  const { getToken } = useAuth()
+  const { activeWorkspace, refresh: refreshWorkspaces } = useWorkspace()
+
   const [step, setStep] = useState(1)
   const [connected, setConnected] = useState<Record<string, boolean>>({
     github: false,
     slack: false,
-    linear: false,
-    vercel: false,
-    railway: false,
   })
   const [hardCap, setHardCap] = useState(true)
   const [selectedPlaybook, setSelectedPlaybook] = useState<string>(FEATURED_PLAYBOOKS[0].name)
+
+  // Slice 1: controlled state for Step 1 + Step 3
+  const [orgId, setOrgId] = useState<string>("")
+  const [orgName, setOrgName] = useState<string>("")
+  const [wsName, setWsName] = useState<string>("")
+  const [teamBudget, setTeamBudget] = useState<string>("500")
+  const [perDevLimit, setPerDevLimit] = useState<string>("75")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const h: Record<string, string> = { "Content-Type": "application/json" }
+    try {
+      const token = await getToken?.()
+      if (token) h["Authorization"] = `Bearer ${token}`
+    } catch { /* unauthenticated dev mode */ }
+    return h
+  }, [getToken])
+
+  // Initial load: org name + workspace name
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      const h = await authHeaders()
+      try {
+        const orgRes = await fetch(`${API}/organizations`, { headers: h })
+        if (orgRes.ok) {
+          const orgs = await orgRes.json()
+          const first = Array.isArray(orgs) ? orgs[0] : null
+          if (first && !cancelled) {
+            setOrgId(first.id ?? "")
+            setOrgName(first.name ?? "")
+          }
+        }
+      } catch { /* network error — leave defaults */ }
+      if (activeWorkspace && !cancelled) setWsName(activeWorkspace.name ?? "")
+    }
+    load()
+    return () => { cancelled = true }
+  }, [authHeaders, activeWorkspace])
 
   const connectedCount = Object.values(connected).filter(Boolean).length
 
@@ -645,13 +712,83 @@ export default function SetupPage() {
     setConnected(prev => ({ ...prev, [id]: !prev[id] }))
   }
 
-  function next() {
-    if (step < 4) {
-      setStep(step + 1)
-    } else {
-      localStorage.setItem("conduct_setup_seen", "1")
-      router.push("/projects")
+  async function ensureOk(res: Response, label: string): Promise<void> {
+    if (res.ok) return
+    let detail = ""
+    try { detail = (await res.json())?.detail ?? "" } catch { /* non-JSON body */ }
+    throw new Error(`${label} failed (${res.status})${detail ? ": " + detail : ""}`)
+  }
+
+  async function saveStep1() {
+    const h = await authHeaders()
+    const wsId = activeWorkspace?.id
+    if (orgId && orgName.trim()) {
+      const r = await fetch(`${API}/organizations/${orgId}`, {
+        method: "PATCH",
+        headers: h,
+        body: JSON.stringify({ name: orgName.trim() }),
+      })
+      await ensureOk(r, "Save organisation")
     }
+    if (wsId && wsName.trim()) {
+      const r = await fetch(`${API}/workspaces/${wsId}`, {
+        method: "PATCH",
+        headers: h,
+        body: JSON.stringify({ name: wsName.trim() }),
+      })
+      await ensureOk(r, "Save workspace name")
+      await refreshWorkspaces()
+    }
+  }
+
+  async function saveStep3() {
+    const h = await authHeaders()
+    const wsId = activeWorkspace?.id
+    if (!wsId) return
+    const monthly = Number.parseFloat(teamBudget) || 0
+    const perDev = Number.parseFloat(perDevLimit) || 0
+    const r = await fetch(`${API}/guard/spend/budgets?workspace_id=${wsId}`, {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({
+        workspace_id: wsId,
+        clerk_user_id: null,
+        monthly_limit_usd: monthly,
+        alert_threshold_pct: 80,
+        hard_limit_usd: hardCap ? monthly : null,
+        default_per_developer_usd: perDev,
+      }),
+    })
+    await ensureOk(r, "Save Guard budget")
+  }
+
+  async function markSetupComplete() {
+    const h = await authHeaders()
+    await fetch(`${API}/me/setup-complete`, { method: "POST", headers: h })
+  }
+
+  async function next() {
+    setError(null)
+    setSaving(true)
+    try {
+      if (step === 1) await saveStep1()
+      if (step === 3) await saveStep3()
+      if (step < 4) {
+        setStep(step + 1)
+      } else {
+        await markSetupComplete()
+        router.push("/guard")
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed — please try again")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function skip() {
+    try { await markSetupComplete() } catch { /* still navigate */ }
+    router.push("/guard")
   }
 
   function back() {
@@ -659,7 +796,8 @@ export default function SetupPage() {
   }
 
   const [title, subtitle] = STEP_HEADS[step]
-  const continueDisabled = step === 2 && connectedCount === 0
+  const step1Required = orgName.trim().length === 0 || wsName.trim().length === 0
+  const continueDisabled = saving || (step === 1 && step1Required) || (step === 2 && connectedCount === 0)
 
   return (
     <div
@@ -781,9 +919,9 @@ export default function SetupPage() {
 
         {/* Step content */}
         <div style={{ flex: 1 }}>
-          {step === 1 && <StepWorkspace />}
+          {step === 1 && <StepWorkspace orgName={orgName} setOrgName={setOrgName} wsName={wsName} setWsName={setWsName} />}
           {step === 2 && <StepTools connected={connected} toggle={toggle} />}
-          {step === 3 && <StepGuard hardCap={hardCap} setHardCap={setHardCap} />}
+          {step === 3 && <StepGuard hardCap={hardCap} setHardCap={setHardCap} teamBudget={teamBudget} setTeamBudget={setTeamBudget} perDevLimit={perDevLimit} setPerDevLimit={setPerDevLimit} />}
           {step === 4 && (
             <StepPlaybook
               selectedPlaybook={selectedPlaybook}
@@ -791,6 +929,23 @@ export default function SetupPage() {
             />
           )}
         </div>
+
+        {error && (
+          <div
+            role="alert"
+            style={{
+              marginTop: 20,
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--danger-bd, #fecaca)",
+              background: "var(--danger-bg, #fef2f2)",
+              color: "var(--danger, #b91c1c)",
+              fontSize: 13,
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         {/* Navigation */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 30 }}>
@@ -842,7 +997,7 @@ export default function SetupPage() {
             {step === 4 ? (
               <>
                 <CheckIcon size={16} />
-                Create &amp; open canvas
+                Finish setup
               </>
             ) : (
               <>
@@ -853,7 +1008,7 @@ export default function SetupPage() {
           </button>
 
           <button
-            onClick={() => { localStorage.setItem("conduct_setup_seen", "1"); router.push("/projects") }}
+            onClick={skip}
             style={{
               display: "inline-flex",
               alignItems: "center",
