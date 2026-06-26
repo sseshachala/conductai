@@ -80,7 +80,7 @@ function MarketingNav() {
           <a href="https://github.com/sseshachala/conduct-cli" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">GitHub</a>
         </nav>
         <div className="flex items-center gap-3">
-          <a href="mailto:hello@conductai.ai" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors hidden sm:block">Talk to Us</a>
+          {/* <a href="mailto:hello@conductai.ai" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors hidden sm:block">Talk to Us</a> */}
           <a href="/sign-up" className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors">
             Start Free
           </a>
@@ -102,7 +102,7 @@ function MarketingFooter() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
               { heading: "Solutions", links: [["Conduct Guard", "/guard-landing"], ["Spec-Driven Dev", "/sdd"], ["Agentic Workflows", "/playbooks"]] as [string, string][] },
-              { heading: "Company", links: [["About", "/about"], ["Partners", "/partners"], ["Blog", "/blog"]] as [string, string][] },
+              { heading: "Company", links: [["About", "/about"], /* ["Partners", "/partners"], */ ["Blog", "/blog"]] as [string, string][] },
               { heading: "Resources", links: [["Docs", "/docs"], ["Agent Templates", "/marketplace"], ["Token Guardrails", "/token-guardrails"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
               { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
             ].map(col => (

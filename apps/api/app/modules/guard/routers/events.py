@@ -79,7 +79,10 @@ class EventOut(BaseModel):
     session_id: str | None
     user_email: str | None
     ai_tool: str
-    tool_call: str
+    tool_call: str | None
+    source: str = "hook"
+    provider: str | None = None
+    model: str | None = None
     input_summary: str | None
     decision: str
     rule_id: str | None
@@ -107,6 +110,9 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "user_email": e.user_email,
         "ai_tool": e.ai_tool,
         "tool_call": e.tool_call,
+        "source": e.source or "hook",
+        "provider": e.provider,
+        "model": e.model,
         "input_summary": e.input_summary,
         "decision": e.decision,
         "rule_id": e.rule_id,

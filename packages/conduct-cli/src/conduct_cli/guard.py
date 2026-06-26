@@ -1,6 +1,7 @@
 """conduct guard — team policy + MCP registration subcommand."""
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -34,6 +35,37 @@ def _read_template(name: str) -> str:
 import json as _json
 import re as _re
 
+def _bash_command_words(cmd: str) -> list[str]:
+    """First token of each pipeline / conditional / semicolon-separated segment.
+
+    Argument bodies, heredoc contents, and quoted strings are ignored — so a
+    privilege-escalation matcher firing on the literal word inside a body
+    payload (issue body, commit message, file write) is no longer possible.
+    Returns lower-cased command words for case-insensitive matching.
+    """
+    import shlex as _shlex
+    words: list[str] = []
+    if not cmd:
+        return words
+    # Split on bash control operators (||, &&, |, ;, & and bg/fg keywords).
+    for segment in _re.split(r"\|\||&&|[|;&\n]+|\bthen\b|\belse\b|\bdo\b", cmd):
+        seg = segment.strip()
+        if not seg:
+            continue
+        try:
+            parts = _shlex.split(seg)
+        except ValueError:
+            continue
+        if parts:
+            # Strip env-var prefixes (FOO=bar bin baz → bin)
+            for p in parts:
+                if "=" in p and not p.startswith(("-", "/")):
+                    continue
+                words.append(p.lower())
+                break
+    return words
+
+
 def _check_policy(tool_name, tool_input, tokens_before=0):
     """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
     if not POLICY_PATH.exists():
@@ -46,11 +78,23 @@ def _check_policy(tool_name, tool_input, tokens_before=0):
     rules      = policy.get("rules", [])
     input_text = _json.dumps(tool_input)
     path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
+    # Extract command words only when bash is involved — empty list for other tools.
+    command_words = (
+        _bash_command_words(str(tool_input.get("command", "")))
+        if tool_name.lower() == "bash" else []
+    )
 
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
             if tool_name not in [t.strip() for t in match_tool.split(",")]:
+                continue
+        # New: structural match against the actual binary being invoked.
+        # Single string or list of strings; case-insensitive equality.
+        cw = rule.get("match_command_word")
+        if cw:
+            deny = [w.lower() for w in (cw if isinstance(cw, list) else [cw])]
+            if not any(w in deny for w in command_words):
                 continue
         pattern = rule.get("match_pattern")
         if pattern:
@@ -847,6 +891,35 @@ def cmd_guard_sync(args):
     _save_policy(policy)
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
 
+    # Write LLM proxy env vars so any AI tool (Claude Code, Cursor, Codex, …)
+    # routes through Conduct Guard. Customer-overridable via --proxy-url or
+    # CONDUCT_PROXY_URL env var; defaults to api.conductai.ai/proxy.
+    proxy_url = (
+        getattr(args, "proxy_url", None)
+        or os.environ.get("CONDUCT_PROXY_URL")
+        or DEFAULT_PROXY_URL
+    )
+    member_token = cfg.get("member_token", "")
+    rc_path, newly_sourced = _write_proxy_env(member_token, proxy_url)
+    if member_token:
+        print(f"  {GREEN}Proxy env written:{RESET} ~/.conduct/env → {proxy_url}")
+        if newly_sourced:
+            print(f"  {CYAN}Run `source {rc_path}` (or open a new shell) to activate.{RESET}")
+
+    # Local key audit — scan known config files for real provider keys that
+    # may have been pasted before the dev onboarded onto Conduct. Findings
+    # surface in /guard/audit with a 'LOCAL RISK' badge. --no-local-audit
+    # skips the scan (CI runners, dev throw-away setups, etc.)
+    if not getattr(args, "no_local_audit", False):
+        local = _scan_local_keys()
+        if local:
+            print(f"  {YELLOW}Local risk: {len(local)} pre-existing key(s) found{RESET}")
+            for f in local[:5]:
+                print(f"    [{f['provider']}] {f['path']}:{f['line']}  {f['masked']}")
+            if len(local) > 5:
+                print(f"    …{len(local) - 5} more — see /guard/audit")
+            _post_local_findings(cfg, base_url, local)
+
     if getattr(args, "cursor", False):
         _write_cursorrules(policy)
 
@@ -886,6 +959,156 @@ def cmd_guard_sync(args):
         print(f"  Settings → MCP Servers → Add custom server")
         print(f"  URL:    {CYAN}{mcp_url}{RESET}")
         print(f"  Auth:   {CYAN}Bearer {member_token}{RESET}\n")
+
+
+CONDUCT_DIR        = Path.home() / ".conduct"
+PROXY_ENV_FILE     = CONDUCT_DIR / "env"
+PROXY_OVERRIDE     = CONDUCT_DIR / "env-override"
+DEFAULT_PROXY_URL  = "https://api.conductai.ai/proxy"
+SHELL_RC_MARKER    = "# Conduct Guard Proxy — managed by `conduct guard sync`"
+SHELL_SOURCE_LINE  = "[ -f ~/.conduct/env ] && . ~/.conduct/env"
+
+
+# ── Local key audit ──────────────────────────────────────────────────────────
+# Patterns that match real provider keys (NOT our member tokens).
+# Tuples of (provider, regex). Compiled once at import.
+import re as _re
+
+_KEY_PATTERNS = [
+    ("anthropic",  _re.compile(r"sk-ant-(?:api\d+-)?[A-Za-z0-9_-]{20,}")),
+    ("openai",     _re.compile(r"sk-(?:proj-)?[A-Za-z0-9]{20,}")),   # sk-… (not sk-ant-)
+    ("perplexity", _re.compile(r"pplx-[A-Za-z0-9]{20,}")),
+]
+
+# Files to scan on the dev's machine.  Strings are user-home-relative paths.
+_SCAN_PATHS = [
+    "~/.claude/settings.json",
+    "~/.claude.json",
+    "~/.cursor/mcp.json",
+    "~/Library/Application Support/Cursor/User/settings.json",
+    "~/.codex/auth.json",
+    "~/.codex/config.toml",
+    "~/.zshrc",
+    "~/.bashrc",
+    "~/.bash_profile",
+    "~/.profile",
+    "~/.config/aider/.aider.conf.yml",
+]
+
+
+def _scan_local_keys() -> list[dict]:
+    """Scan the dev's machine for pre-existing real provider API keys.
+
+    Returns a list of findings. Each finding is dict with:
+        provider, path, masked, line (best-effort)
+
+    Skips our own guard-mt-… tokens — those aren't real keys.
+    """
+    findings: list[dict] = []
+    home = Path.home()
+    for raw in _SCAN_PATHS:
+        path = Path(raw.replace("~", str(home)))
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            text = path.read_text(errors="ignore")
+        except Exception:
+            continue
+        # OpenAI's sk- pattern will also catch sk-ant-… — order matters:
+        # try anthropic first, then strip its hits from the OpenAI pass.
+        seen: set[tuple[str, str]] = set()
+        for provider, pat in _KEY_PATTERNS:
+            for m in pat.finditer(text):
+                key = m.group(0)
+                if (provider, key) in seen:
+                    continue
+                if key.startswith("guard-mt-"):
+                    continue
+                # Compute line number for usability
+                line = text[: m.start()].count("\n") + 1
+                findings.append({
+                    "provider": provider,
+                    "path":     str(path),
+                    "masked":   key[:10] + "…" + key[-4:],
+                    "line":     line,
+                })
+                seen.add((provider, key))
+    return findings
+
+
+def _post_local_findings(cfg: dict, base_url: str, findings: list[dict]) -> None:
+    """Upload findings to /guard/local-audit-findings. Best-effort, never fatal."""
+    try:
+        _req(
+            "POST",
+            f"{base_url}/guard/local-audit-findings",
+            body={
+                "user_email": cfg.get("user_email", ""),
+                "findings":   findings,
+            },
+            api_key=cfg.get("api_key", ""),
+            token=cfg.get("member_token", ""),
+        )
+    except Exception as e:
+        print(f"  {YELLOW}Audit upload skipped: {e}{RESET}")
+
+
+def _write_proxy_env(member_token: str, proxy_url: str) -> tuple[Path, bool]:
+    """Write ~/.conduct/env with the 3 provider env-var pairs and ensure the
+    user's shell rc sources it.
+
+    Idempotent — env file rewritten each sync. Shell rc gets the source line
+    appended once (guarded by SHELL_RC_MARKER). Returns (rc_path, newly_sourced).
+    User-managed customizations go in ~/.conduct/env-override which is sourced
+    after the managed file.
+    """
+    if not member_token:
+        print(f"  {YELLOW}Proxy env skipped — no member token in config{RESET}")
+        return Path(), False
+
+    CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
+    token = f"guard-mt-{member_token}"
+    proxy = proxy_url.rstrip("/")
+
+    PROXY_ENV_FILE.write_text("\n".join([
+        SHELL_RC_MARKER,
+        "# Edit ~/.conduct/env-override to add your own vars — sourced after this file.",
+        "",
+        f'export ANTHROPIC_BASE_URL="{proxy}"',
+        f'export ANTHROPIC_API_KEY="{token}"',
+        "",
+        f'export OPENAI_BASE_URL="{proxy}/openai"',
+        f'export OPENAI_API_KEY="{token}"',
+        "",
+        f'export PERPLEXITY_BASE_URL="{proxy}/perplexity"',
+        f'export PERPLEXITY_API_KEY="{token}"',
+        "",
+        "[ -f ~/.conduct/env-override ] && . ~/.conduct/env-override",
+        "",
+    ]))
+
+    shell = os.environ.get("SHELL", "").lower()
+    if "zsh" in shell:
+        rc = Path.home() / ".zshrc"
+    elif "bash" in shell:
+        rc = Path.home() / ".bashrc"
+    elif "fish" in shell:
+        # fish doesn't source bash-style files; tell the user
+        print(f"  {YELLOW}fish detected — add this to ~/.config/fish/config.fish:{RESET}")
+        print(f"    bass source ~/.conduct/env")
+        return Path(), False
+    else:
+        print(f"  {YELLOW}Unknown shell. Source manually: . ~/.conduct/env{RESET}")
+        return Path(), False
+
+    existing = rc.read_text() if rc.exists() else ""
+    if SHELL_RC_MARKER in existing:
+        return rc, False
+
+    rc.parent.mkdir(parents=True, exist_ok=True)
+    addition = f"\n\n{SHELL_RC_MARKER}\n{SHELL_SOURCE_LINE}\n"
+    rc.write_text(existing.rstrip() + addition if existing else addition.lstrip())
+    return rc, True
 
 
 def _write_cursorrules(policy: dict) -> None:
@@ -1299,6 +1522,10 @@ def register_guard_parser(sub):
     sync_p = guard_sub.add_parser("sync", help="Refresh policy and re-scan for AI tools")
     sync_p.add_argument("--cursor", action="store_true", help="Write active Guard policies to .cursorrules")
     sync_p.add_argument("--dry-run", action="store_true", help="Preview policy changes without writing anything")
+    sync_p.add_argument("--proxy-url", default=None,
+                        help="Override the Guard proxy URL (default: https://api.conductai.ai/proxy)")
+    sync_p.add_argument("--no-local-audit", action="store_true",
+                        help="Skip the local pre-existing API key scan")
 
     # conduct guard status
     guard_sub.add_parser("status", help="Show today's spend and violations")

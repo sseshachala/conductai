@@ -16,10 +16,13 @@ export interface AuditEvent {
   ts: string
   user_email: string | null
   ai_tool: string
-  tool_call: string
+  tool_call: string | null
   input_summary: string | null
   decision: string                // "allowed" | "blocked" | "warned" | "approval" | "audited"
   rule_id: string | null
+  source?: "hook" | "proxy" | "mcp" | "local_audit" | null
+  provider?: string | null         // 'anthropic' | 'openai' | 'perplexity' (proxy only)
+  model?: string | null            // vendor model id (proxy only)
   conductai_run_id?: string | null
   blast_radius?: { files: number; symbols?: number; tier: string } | null
 }
@@ -48,6 +51,54 @@ const TOOL_LABELS: Record<string, string> = {
   codex: "Codex", codex_cli: "Codex CLI", codex_chat: "Codex Chat",
   cursor: "Cursor", windsurf: "Windsurf", copilot: "Copilot", gemini: "Gemini",
 }
+
+export function isProxyEvent(toolCall: string | null | undefined): boolean {
+  if (!toolCall) return false
+  return /^(anthropic|openai|perplexity)\//.test(toolCall)
+}
+
+export function ProxyPill() {
+  return (
+    <span
+      title="Routed through Conduct Guard Proxy"
+      style={{
+        fontSize: 9.5,
+        fontWeight: 700,
+        letterSpacing: 0.4,
+        padding: "1px 5px",
+        borderRadius: 3,
+        background: "var(--accent-weak)",
+        color: "var(--accent-text)",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+      }}
+    >
+      via proxy
+    </span>
+  )
+}
+
+export function LocalRiskPill() {
+  return (
+    <span
+      title="Pre-existing real API key detected on a dev's machine"
+      style={{
+        fontSize: 9.5,
+        fontWeight: 700,
+        letterSpacing: 0.4,
+        padding: "1px 5px",
+        borderRadius: 3,
+        background: "color-mix(in srgb, var(--err) 16%, transparent)",
+        color: "var(--err)",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+      }}
+    >
+      local risk
+    </span>
+  )
+}
+
 
 export function ToolBadge({ tool }: { tool: string }) {
   const norm = tool.replace(/-/g, "_")
@@ -142,7 +193,15 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       {!compact && (
         <div><ToolBadge tool={ev.ai_tool} /></div>
       )}
-      <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{ev.tool_call}</div>
+      <div className="mono" style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+        {ev.source === "proxy" && ev.provider
+          ? `${ev.provider}/${ev.model ?? "?"}`
+          : ev.source === "local_audit"
+            ? (ev.provider ? `${ev.provider} key found` : "local key found")
+            : ev.tool_call}
+        {ev.source === "proxy" && <ProxyPill />}
+        {ev.source === "local_audit" && <LocalRiskPill />}
+      </div>
       <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {ev.input_summary ? `${ev.input_summary}…` : "—"}
       </div>
