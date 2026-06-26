@@ -909,12 +909,22 @@ def _check_and_upgrade_packages() -> None:
 
     print(f"  {YELLOW}Updates available:{RESET} " + ", ".join(f"{p} {c} → {l}" for p, c, l in stale))
     try:
-        import subprocess
-        pkgs = [p for p, _, _ in stale]
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--upgrade", "--quiet"] + pkgs,
-            check=True,
-        )
+        import subprocess, shutil
+        # agent-booster requires >=3.10; conduct-cli runs on 3.9.
+        # Use the right interpreter for each package.
+        def _pip_for(pkg: str) -> str:
+            if pkg == "agent-booster":
+                for py in ["python3.11", "python3.12", "python3.10"]:
+                    if shutil.which(py):
+                        return py
+            return sys.executable
+
+        for pkg, _, latest in stale:
+            py = _pip_for(pkg)
+            subprocess.run(
+                [py, "-m", "pip", "install", "--upgrade", "--quiet", pkg],
+                check=True,
+            )
         print(f"  {GREEN}Updated:{RESET} " + ", ".join(f"{p} → {l}" for p, _, l in stale))
     except Exception as e:
         print(f"  {YELLOW}Auto-update failed:{RESET} {e} — run: pip install --upgrade {' '.join(p for p,_,_ in stale)}")
