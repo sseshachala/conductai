@@ -38,6 +38,7 @@ BUDGET_CACHE_TTL    = 300  # 5 minutes
 VERSION_CACHE_PATH  = GUARD_DIR / "version_cache.json"
 VERSION_CACHE_TTL   = 60   # 1 minute — matches server poll window
 WARNED_RULES_PATH   = GUARD_DIR / "warned_rules.json"
+SIGNING_KEY_PATH    = GUARD_DIR / "signing.key"
 
 
 _DAEMON_URL = "http://127.0.0.1:7878"
@@ -49,6 +50,91 @@ def _daemon_alive() -> bool:
             return True
     except Exception:
         return False
+
+
+def _verify_policy_signature(policy_dict: dict) -> bool:
+    """Verify HMAC-SHA256 signature on a policy dict. Returns True on success.
+
+    If SIGNING_KEY_PATH does not exist (dev mode / workspace has no signing key),
+    always returns True for backwards compatibility.
+
+    Uses hmac.compare_digest to prevent timing attacks.
+    """
+    import hashlib as _hashlib
+    import hmac as _hmac
+
+    # Path traversal guard: ensure SIGNING_KEY_PATH resolves within GUARD_DIR.
+    try:
+        resolved = SIGNING_KEY_PATH.resolve()
+        resolved.relative_to(GUARD_DIR.resolve())
+    except (ValueError, RuntimeError):
+        return True  # path outside guard dir -- skip verification
+
+    if not SIGNING_KEY_PATH.exists():
+        return True  # no local key -- dev mode, backwards compat
+
+    try:
+        raw = SIGNING_KEY_PATH.read_text().strip()
+        key_bytes = bytes.fromhex(raw)
+    except Exception:
+        return True  # unreadable or malformed key -- skip verification
+
+    expected_sig = policy_dict.get("signature")
+    if not expected_sig:
+        # Policy has no signature but we have a local key -- treat as invalid.
+        return False
+
+    # Reconstruct the canonical body the server signed.
+    body_dict = {k: v for k, v in policy_dict.items() if k not in ("signature", "signed_at")}
+    canonical = json.dumps(body_dict, sort_keys=True, separators=(",", ":"))
+    computed_sig = _hmac.new(key_bytes, canonical.encode(), _hashlib.sha256).hexdigest()
+
+    return _hmac.compare_digest(expected_sig, computed_sig)
+
+
+def _post_signature_invalid_event(expected_sig, computed_sig, policy_version, hostname):
+    """Fire-and-forget audit event for a failed signature check."""
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+    except Exception:
+        return
+    workspace_id = cfg.get("workspace_id")
+    if not workspace_id:
+        return
+    import platform as _platform
+    _hostname = hostname or _platform.node()
+    payload = json.dumps({
+        "workspace_id":  workspace_id,
+        "clerk_user_id": cfg.get("user_email"),
+        "user_email":    cfg.get("user_email"),
+        "ai_tool":       "hook",
+        "tool_call":     "policy_signature_invalid",
+        "input_summary": json.dumps({
+            "expected_signature": expected_sig or "",
+            "computed_signature": computed_sig or "",
+            "policy_version": policy_version or "",
+            "hostname": _hostname,
+        })[:500],
+        "decision":      "blocked",
+        "rule_id":       "policy_signature_invalid",
+        "rule_message":  "Policy signature verification failed",
+        "hostname":      _hostname,
+    })
+    api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    script = (
+        "import urllib.request\n"
+        "try:\n"
+        f"    req = urllib.request.Request(\"{api_url}/guard/events\","
+        f" data={repr(payload.encode())}, headers={{\"Content-Type\": \"application/json\"}}, method=\"POST\")\n"
+        "    urllib.request.urlopen(req, timeout=5)\n"
+        "except: pass\n"
+    )
+    subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 def _maybe_sync_policy():
@@ -78,6 +164,19 @@ def _maybe_sync_policy():
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"} if api_key else {})
         with urllib.request.urlopen(req, timeout=2) as resp:
             remote = json.loads(resp.read())
+
+        # Verify signature before writing to disk. If verification fails, keep
+        # the existing cached policy and emit an audit event.
+        import platform as _platform
+        if not _verify_policy_signature(remote):
+            _post_signature_invalid_event(
+                expected_sig=remote.get("signature"),
+                computed_sig=None,
+                policy_version=remote.get("version"),
+                hostname=_platform.node(),
+            )
+            return  # do not overwrite the cached policy with a tampered one
+
         remote_version = remote.get("version", "")
         local_version = ""
         if POLICY_PATH.exists():
@@ -174,6 +273,17 @@ except Exception:
         try:
             policy = json.loads(POLICY_PATH.read_text())
         except Exception:
+            return None, "allow", None, None
+
+        # Verify the cached policy's signature on every hook invocation.
+        if not _verify_policy_signature(policy):
+            import platform as _platform
+            _post_signature_invalid_event(
+                expected_sig=policy.get("signature"),
+                computed_sig=None,
+                policy_version=policy.get("version"),
+                hostname=_platform.node(),
+            )
             return None, "allow", None, None
 
         rules      = policy.get("rules", [])

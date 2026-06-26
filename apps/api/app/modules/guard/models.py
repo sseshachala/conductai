@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, JSONB, UUID
 
 from app.core.database import Base
@@ -276,3 +276,24 @@ class GuardPolicyCache(Base):
     payload      = Column(JSONB, nullable=False, default=list)
     version_hash = Column(Text, nullable=False)
     computed_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class WorkspaceSigningKey(Base):
+    """One HMAC-SHA256 signing key per workspace, used to sign GET /guard/policies/sync responses.
+
+    The raw key_bytes are returned only at POST (generate/rotate) time. All subsequent
+    reads return the fingerprint only. The CLI writes the key to ~/.conductguard/signing.key
+    and verifies each fetched policy before caching it to disk.
+    """
+
+    __tablename__ = "workspace_signing_keys"
+
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    key_bytes    = Column(LargeBinary(32), nullable=False)
+    fingerprint  = Column(Text, nullable=False)
+    created_at   = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    rotated_at   = Column(DateTime(timezone=True), nullable=True)

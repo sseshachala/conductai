@@ -107,6 +107,8 @@ class PolicySyncOut(BaseModel):
     persona: str
     fail_mode: str = "fail_open"   # CLI hook reads this to decide outage behavior
     rules: list[PolicySyncRule]
+    signature: Optional[str] = None    # HMAC-SHA256 hex; present when workspace has a signing key
+    signed_at: Optional[str] = None    # ISO-8601 timestamp of when the signature was computed
 
 
 class PolicyGenerateRequest(BaseModel):
@@ -330,7 +332,16 @@ def sync_policies(
     db: Session = Depends(get_db),
     _auth: str = Depends(get_guard_hook_auth),
 ):
-    """Return the current active ruleset for the hook binary or MCP server."""
+    """Return the current active ruleset for the hook binary or MCP server.
+
+    When the workspace has a signing key configured, the response includes a
+    HMAC-SHA256 signature field. The canonical body used for signing is the
+    JSON-serialised dict of all fields except signature and signed_at,
+    with keys sorted and no extra whitespace.
+    """
+    import hmac as _hmac
+    from app.modules.guard.models import WorkspaceSigningKey
+
     ws_uuid = _ws_uuid(workspace_id)
 
     gc = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
@@ -340,7 +351,7 @@ def sync_policies(
     version_hash = hashlib.sha256(json.dumps(active_rules, sort_keys=True).encode()).hexdigest()[:16]
     version = f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}-{version_hash}"
 
-    return PolicySyncOut(
+    out = PolicySyncOut(
         workspace_id=workspace_id,
         version=version,
         persona=persona,
@@ -357,6 +368,19 @@ def sync_policies(
             for r in active_rules
         ],
     )
+
+    # Sign the response if the workspace has a signing key.
+    signing_key_row = db.get(WorkspaceSigningKey, ws_uuid)
+    if signing_key_row and signing_key_row.key_bytes:
+        signed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        body_dict = out.model_dump(exclude={"signature", "signed_at"})
+        body_dict["rules"] = [r.model_dump() for r in out.rules]
+        canonical = json.dumps(body_dict, sort_keys=True, separators=(",", ":"))
+        sig = _hmac.new(signing_key_row.key_bytes, canonical.encode(), hashlib.sha256).hexdigest()
+        out.signature = sig
+        out.signed_at = signed_at
+
+    return out
 
 
 @router.get("", response_model=list[PolicyOut])

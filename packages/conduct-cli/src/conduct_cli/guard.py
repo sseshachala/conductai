@@ -643,6 +643,38 @@ def cmd_guard_install(args):
     except Exception:
         pass
 
+    # Write signing key if provided by the admin at onboarding time.
+    signing_key_hex = getattr(args, "signing_key", None)
+    if signing_key_hex:
+        _write_signing_key(signing_key_hex)
+
+
+def _write_signing_key(hex_key: str) -> None:
+    """Write a hex-encoded signing key to ~/.conductguard/signing.key.
+
+    Validates that the path resolves within GUARD_DIR (no traversal) and
+    that the value is a valid 64-char hex string (32 bytes).
+    """
+    import re as _re
+    signing_key_path = GUARD_DIR / "signing.key"
+
+    # Path traversal guard.
+    try:
+        resolved = signing_key_path.resolve()
+        resolved.relative_to(GUARD_DIR.resolve())
+    except (ValueError, RuntimeError):
+        print(f"  {RED}Signing key path rejected (traversal check failed).{RESET}")
+        return
+
+    # Must be exactly 64 hex characters (32 bytes).
+    if not _re.fullmatch(r"[0-9a-fA-F]{64}", hex_key.strip()):
+        print(f"  {RED}Invalid signing key: expected 64 hex characters.{RESET}")
+        return
+
+    GUARD_DIR.mkdir(parents=True, exist_ok=True)
+    signing_key_path.write_text(hex_key.strip())
+    print(f"  {GREEN}Signing key written:{RESET} {signing_key_path}")
+
 
 def cmd_guard_join(args):
     invite_code = args.invite_code
@@ -1499,6 +1531,23 @@ def cmd_guard_audit(args):
         decision = ev.get("decision", "—")
         rule     = (ev.get("rule_id") or ev.get("rule_message") or "—")
 
+        # policy_signature_invalid events get a distinct BLOCK prefix line.
+        if rule == "policy_signature_invalid":
+            hostname = ""
+            try:
+                import json as _j
+                payload = _j.loads(ev.get("input_summary") or "{}")
+                hostname = payload.get("hostname", ev.get("hostname") or "")
+            except Exception:
+                pass
+            ws_slug = cfg.get("workspace_id", "")
+            print(
+                f"  {RED}[BLOCK]{RESET} {GRAY}{ts}{RESET} "
+                f"policy_signature_invalid "
+                f"host={hostname} workspace={ws_slug}"
+            )
+            continue
+
         dec_color = RED if decision == "blocked" else GREEN if decision == "allowed" else GRAY
         print(
             f"  {GRAY}{ts:<{ts_w}}{RESET} "
@@ -1540,6 +1589,16 @@ def register_guard_parser(sub):
         default="24h",
         metavar="PERIOD",
         help="Time window: 1h, 24h, 7d, 30d (default: 24h)",
+    )
+
+    # conduct guard install [--signing-key <hex>]
+    install_p = guard_sub.add_parser("install", help="Install Guard hook and download policies")
+    install_p.add_argument(
+        "--signing-key",
+        default=None,
+        metavar="HEX",
+        help="Hex-encoded 32-byte signing key from POST /workspaces/{id}/signing-key. "
+             "Written to ~/.conductguard/signing.key.",
     )
 
     # conduct guard booster-status
@@ -1655,6 +1714,8 @@ def dispatch_guard(args, guard_p):
         cmd_guard_savings(args)
     elif guard_command == "audit":
         cmd_guard_audit(args)
+    elif guard_command == "install":
+        cmd_guard_install(args)
     elif guard_command == "booster-status":
         cmd_guard_booster_status(args)
     else:
