@@ -294,7 +294,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         transition: "background .1s",
       }}
     >
-      <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{formatTs(ev.ts)}</div>
+      <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }} title={formatTs(ev.ts)}>{formatTs(ev.ts).slice(11)}</div>
       <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
         {ev.user_email ?? "—"}
       </div>
@@ -302,7 +302,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         <div><ToolBadge tool={ev.ai_tool} /></div>
       )}
       <div className="mono" style={{ fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {ev.source === "proxy" && ev.provider
             ? `${ev.provider}/${ev.model ?? "?"}`
             : ev.source === "local_audit"
