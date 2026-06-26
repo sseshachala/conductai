@@ -410,7 +410,7 @@ ASCII boxes instead of Excalidraw — readable inline in the PR, captures layout
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  [Conduct logo]   [workspace ▾]  [role chip: developer · Engineering]   │
+│  [Conduct logo]   [workspace ▾] [lane: all ▾] [role chip: developer]   │
 │  ─────────────────────────────────────────────────────────────────────  │
 │                                                                          │
 │  spend ribbon:  ████████░░░░░░░░░░░  $312 / $500 this month  ▾          │
@@ -978,6 +978,7 @@ Each phase ships an instrumentation hook so the metric is measurable from day on
 | 23  | Success metric per rung, not per surface | OKR-style for the whole doc / no metrics this week | The doc is theory without measurement. One number per rung is tractable; per-surface is paralysis. Targets are 90 days post-launch so they survive the actual roll-out. | 2026-06-30 |
 | 24  | Compliance pack v1 = SOC 2 only; other frameworks ship "request access" cards | Ship all 4 frameworks at v1 / ship none and gate behind sales | SOC 2 has the most existing customer demand + the Lexoculus capture data is strongest there. Other frameworks generate inbound interest with zero engineering cost via the "request access" pattern. Pure B2B selling motion. | 2026-07-01 |
 | 25  | Doc has an executive summary + "how to read" + "what's intentionally rough" sections at the top, not just at the end | Skip the summary; reviewers should read it linearly | The doc is dense enough (~600 lines) that a cold reader needs a map. Load-bearing primitives + decisions are named explicitly so a reviewer can push back on the *right* things. | 2026-07-01 |
+| 26  | Lane is a top-level filter in the app shell header — `[workspace ▾] [lane ▾] [role chip]` triad | Lane chips remain labels-only / quieter inline quick-filter pattern | Lane is the operational focus mode for B2B buyers (security lead only cares about Security-lane events). Making it global turns the lane chips already in the UI into a real control, matches the primary-lane choice from /setup (decision #18), and gives the chrome a stable three-piece identity (workspace = scope, lane = focus, role = RBAC). | 2026-07-02 |
 
 
 ---
