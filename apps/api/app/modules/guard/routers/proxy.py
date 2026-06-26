@@ -33,10 +33,13 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+import re
+
 from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.database import SessionLocal
 from app.core.workspace_context import set_workspace_rls
+from app.modules.guard.policy_engine import compute_policy
 from app.runtime.pricing import get_model_rates
 
 
@@ -268,14 +271,86 @@ def _upstream_url(db: Session, workspace_id: str, provider: str) -> str:
 def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict) -> dict:
     """Pre-call Guard policy evaluation.
 
-    V1 stub: allow-all. Wire to the real policy engine once Guard's policy YAML
-    pack lands; the call shape stays the same (workspace + provider + model + body
-    in → BLOCK/WARN/ALLOW + rule_id + message out).
+    Loads the workspace's compiled policy snapshot (from skill_packs via the
+    existing engine) and applies any rule with proxy-applicable matchers:
+
+      match_provider  exact string ('anthropic' | 'openai' | 'perplexity')
+      match_model     regex against the model id
+      match_prompt    regex against concatenated user messages
+
+    First match wins; action is mapped to BLOCK / WARN / ALLOW. Rules written
+    for hook events (match_tool + match_pattern) are silently skipped here —
+    they don't apply to raw LLM calls.
+
+    Fail-open on engine errors: returns ALLOW with rule_id='guard.engine_error'
+    so the call still goes through and we don't lock customers out of LLMs if
+    our cache is busted. The error is logged.
     """
-    # ponytail: stub — returns ALLOW unconditionally. Replace with rule engine
-    # call when conduct-base + conduct-cost packs are ready to evaluate
-    # request bodies. The signature is what we want long-term.
-    return {"action": "ALLOW", "rule_id": None, "message": None}
+    persona = "standard"   # ponytail: hard-coded persona; per-workspace persona pick lands when needed
+    db = SessionLocal()
+    try:
+        set_workspace_rls(db, workspace_id)
+        try:
+            rules = compute_policy(db, uuid.UUID(workspace_id), persona)
+        except Exception as e:
+            log.warning("guard.proxy.policy_load_failed", err=str(e))
+            return {"action": "ALLOW", "rule_id": "guard.engine_error", "message": None}
+
+        prompt_text = _flatten_prompt(body)
+        for r in rules:
+            if not _is_proxy_rule(r):
+                continue
+            if not _rule_matches(r, provider, model, prompt_text):
+                continue
+            action = (r.get("action") or "warn").upper()
+            return {
+                "action": "BLOCK" if action == "BLOCK" else ("WARN" if action == "WARN" else "ALLOW"),
+                "rule_id": r.get("rule_id") or r.get("id"),
+                "message": r.get("message") or r.get("description"),
+            }
+        return {"action": "ALLOW", "rule_id": None, "message": None}
+    finally:
+        db.close()
+
+
+def _is_proxy_rule(rule: dict) -> bool:
+    """True if the rule has at least one proxy-applicable matcher."""
+    return any(k in rule for k in ("match_provider", "match_model", "match_prompt"))
+
+
+def _rule_matches(rule: dict, provider: str, model: str, prompt_text: str) -> bool:
+    p = rule.get("match_provider")
+    if p is not None and p != provider:
+        return False
+    m = rule.get("match_model")
+    if m and not re.search(m, model or "", re.IGNORECASE):
+        return False
+    pp = rule.get("match_prompt")
+    if pp and not re.search(pp, prompt_text, re.IGNORECASE):
+        return False
+    return True
+
+
+def _flatten_prompt(body: dict) -> str:
+    """Best-effort: join all user message contents for prompt-pattern matching.
+
+    Anthropic + OpenAI share the messages[].content shape; content can be a
+    string or a list of typed parts. Non-text parts are skipped.
+    """
+    out: list[str] = []
+    for msg in body.get("messages") or []:
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            out.append(content)
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") in (None, "text", "input_text"):
+                    text = part.get("text")
+                    if text:
+                        out.append(text)
+    return "\n".join(out)
 
 
 def _infer_ai_tool(request: Request) -> str:
