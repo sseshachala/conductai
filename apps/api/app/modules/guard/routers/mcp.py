@@ -85,6 +85,33 @@ _TOOLS = [
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
     {
+        "name": "guard_spend",
+        "description": (
+            "Returns LLM spend through the Conduct Guard Proxy, grouped by provider and model. "
+            "Use when the user asks 'how much did I spend on LLMs today?' or 'what's our team's "
+            "Claude bill this week?'. Optional 'days' argument (default 1, max 30) widens the "
+            "window. Only proxy-routed calls are counted."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "description": "Lookback window in days (default 1, max 30)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "guard_local_risks",
+        "description": (
+            "Returns open local key risk findings — pre-existing real provider API keys "
+            "(sk-ant-, sk-, pplx-) detected on developers' machines during conduct guard sync. "
+            "Use when the user asks 'do we still have raw API keys on dev laptops?' or for "
+            "CISO audit prep. Each finding includes provider, file path, masked fragment, "
+            "and which developer it was on."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
         "name": "guard_activity",
         "description": (
             "ALWAYS call this at the start of every conversation, immediately after the user sends "
@@ -463,6 +490,61 @@ async def mcp_endpoint(
                     f"Until then, Guard is active for this conversation only."
                 )
                 return JSONResponse(_text(msg_id, result))
+
+            elif tool_name == "guard_spend":
+                from sqlalchemy import text as _text_sql
+                days = max(1, min(int(arguments.get("days", 1)), 30))
+                rows = db.execute(
+                    _text_sql("""
+                        SELECT provider, model,
+                               COUNT(*)            AS calls,
+                               SUM(tokens_before)  AS in_tokens,
+                               SUM(tokens_after)   AS out_tokens,
+                               SUM(cost_usd_after) AS usd
+                        FROM guard_audit_events
+                        WHERE workspace_id = :ws AND source = 'proxy'
+                          AND ts > now() - (:days || ' days')::interval
+                        GROUP BY provider, model
+                        ORDER BY usd DESC NULLS LAST
+                        LIMIT 20
+                    """),
+                    {"ws": ws_uuid, "days": days},
+                ).fetchall()
+                if not rows:
+                    msg = f"No proxy traffic in the last {days} day(s)."
+                else:
+                    total = sum(float(r[5] or 0) for r in rows)
+                    lines = [f"Proxy spend - last {days} day(s):  ${total:.4f} total", ""]
+                    for prov, model, calls, in_t, out_t, usd in rows:
+                        lines.append(
+                            f"  {prov}/{model or '?'}: {calls} calls, "
+                            f"in {int(in_t or 0):,} / out {int(out_t or 0):,}, "
+                            f"${(usd or 0):.4f}"
+                        )
+                    msg = "\n".join(lines)
+                return JSONResponse(_text(msg_id, msg))
+
+            elif tool_name == "guard_local_risks":
+                from sqlalchemy import text as _text_sql
+                rows = db.execute(
+                    _text_sql("""
+                        SELECT provider, ai_tool, input_summary AS path,
+                               user_email, ts
+                        FROM guard_audit_events
+                        WHERE workspace_id = :ws AND source = 'local_audit'
+                        ORDER BY ts DESC LIMIT 50
+                    """),
+                    {"ws": ws_uuid},
+                ).fetchall()
+                if not rows:
+                    msg = "No local key risks flagged. All devs are clean."
+                else:
+                    lines = [f"Open local key risks ({len(rows)}):", ""]
+                    for prov, ai_tool, path, email, ts in rows:
+                        who = email or "unknown dev"
+                        lines.append(f"  [{prov}] {path} ({ai_tool}) - {who}")
+                    msg = "\n".join(lines)
+                return JSONResponse(_text(msg_id, msg))
 
             elif tool_name == "guard_activity":
                 summary  = arguments.get("summary", "")
