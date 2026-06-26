@@ -294,12 +294,14 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       {!compact && (
         <div><ToolBadge tool={ev.ai_tool} /></div>
       )}
-      <div className="mono" style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-        {ev.source === "proxy" && ev.provider
-          ? `${ev.provider}/${ev.model ?? "?"}`
-          : ev.source === "local_audit"
-            ? (ev.provider ? `${ev.provider} key found` : "local key found")
-            : ev.tool_call}
+      <div className="mono" style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {ev.source === "proxy" && ev.provider
+            ? `${ev.provider}/${ev.model ?? "?"}`
+            : ev.source === "local_audit"
+              ? (ev.provider ? `${ev.provider} key found` : "local key found")
+              : ev.tool_call}
+        </span>
         {ev.source === "proxy" && <ProxyPill />}
         {ev.source === "local_audit" && <LocalRiskPill />}
       </div>
