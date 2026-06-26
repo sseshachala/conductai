@@ -1,0 +1,2131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280" />
+<title>Conduct · UX Northstar Mockups</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --surface-2: #f5f5f4;
+    --border: #e7e5e4;
+    --border-2: #d6d3d1;
+    --text: #1c1917;
+    --text-2: #44403c;
+    --text-3: #78716c;
+    --text-muted: #a8a29e;
+    --accent: #7c3aed;
+    --accent-2: #6d28d9;
+    --accent-weak: #f5f3ff;
+    --accent-ring: #ddd6fe;
+    --ok: #059669;
+    --ok-bg: #ecfdf5;
+    --warn: #d97706;
+    --warn-bg: #fffbeb;
+    --warn-bd: #fde68a;
+    --block: #dc2626;
+    --block-bg: #fef2f2;
+    --block-bd: #fecaca;
+    --slate: #64748b;
+    --slate-bg: #f1f5f9;
+    --slate-bd: #e2e8f0;
+    --lane-comp: #0891b2;
+    --lane-sec: #be185d;
+    --lane-eng: #6d28d9;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,.06);
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Top bar (sticky journey nav) ─────────────────────────────────────── */
+  .top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(255,255,255,.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .top-bar-inner {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .top-brand {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: -.01em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .top-brand .logo-dot {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .top-nav {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    overflow-x: auto;
+  }
+  .top-nav a {
+    padding: 6px 12px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--text-2);
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    transition: background .14s, color .14s;
+  }
+  .top-nav a:hover {
+    background: var(--accent-weak);
+    color: var(--accent);
+  }
+  .top-nav a.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .top-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  /* ── Intro ─────────────────────────────────────────────────────────────── */
+  .intro {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 40px 32px 24px;
+  }
+  .intro h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+  }
+  .intro p {
+    margin: 0;
+    color: var(--text-3);
+    font-size: 15px;
+    max-width: 780px;
+  }
+  .intro .legend {
+    margin-top: 18px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+  .legend-item .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ── Screen frame ──────────────────────────────────────────────────────── */
+  .screen {
+    max-width: 1280px;
+    margin: 32px auto;
+    padding: 0 32px;
+    scroll-margin-top: 80px;
+  }
+  .screen-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    gap: 16px;
+  }
+  .screen-head h2 {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -.01em;
+  }
+  .screen-head .rung-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: var(--accent-weak);
+    color: var(--accent-2);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .screen-head .ref {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .screen-head .ref code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+    background: var(--surface-2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--text-2);
+  }
+  .viewport {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+  }
+  .viewport-chrome {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .viewport-chrome .dot-r { width: 11px; height: 11px; border-radius: 50%; background: #fb7185; opacity: .6; }
+  .viewport-chrome .dot-y { width: 11px; height: 11px; border-radius: 50%; background: #facc15; opacity: .6; }
+  .viewport-chrome .dot-g { width: 11px; height: 11px; border-radius: 50%; background: #4ade80; opacity: .6; }
+  .viewport-chrome .url {
+    margin-left: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--text-3);
+    flex: 1;
+    max-width: 460px;
+  }
+  .viewport-body {
+    padding: 0;
+    background: var(--bg);
+  }
+
+  /* ── In-app shell ──────────────────────────────────────────────────────── */
+  .app-shell {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 580px;
+  }
+  .app-shell.no-sidebar {
+    grid-template-columns: 1fr;
+  }
+  .app-sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 18px 14px;
+  }
+  .app-sidebar .sb-brand {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 650; font-size: 14px;
+    padding: 0 8px 18px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 14px;
+  }
+  .app-sidebar .sb-brand .logo-dot {
+    width: 22px; height: 22px; border-radius: 6px;
+    background: var(--accent); color: #fff;
+    display: grid; place-items: center; font-size: 10px; font-weight: 700;
+  }
+  .app-sidebar .sb-group {
+    font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .1em;
+    color: var(--text-muted);
+    padding: 12px 8px 4px;
+  }
+  .app-sidebar a.sb-item {
+    display: block;
+    padding: 6px 8px;
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--text-2);
+    font-size: 13px;
+    font-weight: 500;
+    margin: 1px 0;
+  }
+  .app-sidebar a.sb-item:hover { background: var(--surface-2); }
+  .app-sidebar a.sb-item.active {
+    background: var(--accent-weak);
+    color: var(--accent-2);
+  }
+  .app-main {
+    padding: 22px 28px;
+    overflow-y: auto;
+  }
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .app-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 650;
+    letter-spacing: -.01em;
+  }
+  .app-header .meta-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .ws-switcher {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .role-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border-2);
+    background: var(--surface);
+    font-size: 11.5px;
+    color: var(--text-2);
+  }
+  .role-chip .role-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  }
+
+  /* ── Guard pill ────────────────────────────────────────────────────────── */
+  .gpill {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 22px; padding: 0 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .gpill .gdot { width: 6px; height: 6px; border-radius: 50%; }
+  .gpill.allow { background: var(--slate-bg); border-color: var(--slate-bd); color: var(--slate); }
+  .gpill.allow .gdot { background: var(--slate); }
+  .gpill.warn  { background: var(--warn-bg); border-color: var(--warn-bd); color: var(--warn); }
+  .gpill.warn  .gdot { background: var(--warn); }
+  .gpill.block { background: var(--block-bg); border-color: var(--block-bd); color: var(--block); }
+  .gpill.block .gdot { background: var(--block); }
+  .gpill.predict {
+    background: transparent;
+    border-style: dashed;
+  }
+  .gpill.predict.allow { color: var(--slate); border-color: var(--slate-bd); }
+  .gpill.predict.warn { color: var(--warn); border-color: var(--warn-bd); }
+  .gpill.predict.block { color: var(--block); border-color: var(--block-bd); }
+  .gpill.synthetic {
+    background: var(--surface-2);
+    border-color: var(--border-2);
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  /* ── Compliance evidence chip ─────────────────────────────────────────── */
+  .ec {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 22px; padding: 0 8px;
+    border-radius: 6px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+    font-size: 10.5px;
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .ec.iso { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+  .ec.eu  { background: #fff7ed; border-color: #fed7aa; color: #c2410c; }
+  .ec.owasp { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+  .ec.internal { background: var(--accent-weak); border-color: var(--accent-ring); color: var(--accent-2); }
+
+  /* ── Lane chip ─────────────────────────────────────────────────────────── */
+  .lane {
+    display: inline-flex; align-items: center;
+    height: 20px; padding: 0 8px;
+    border-radius: 6px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .lane.comp { background: #ecfeff; color: var(--lane-comp); border: 1px solid #a5f3fc; }
+  .lane.sec  { background: #fdf2f8; color: var(--lane-sec); border: 1px solid #fbcfe8; }
+  .lane.eng  { background: var(--accent-weak); color: var(--lane-eng); border: 1px solid var(--accent-ring); }
+
+  /* ── Spend ribbon ──────────────────────────────────────────────────────── */
+  .spend-ribbon {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-2);
+    margin-bottom: 18px;
+  }
+  .spend-ribbon .bar {
+    flex: 1;
+    height: 6px;
+    border-radius: 4px;
+    background: var(--border);
+    overflow: hidden;
+    position: relative;
+  }
+  .spend-ribbon .bar .fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--ok), var(--accent));
+  }
+  .spend-ribbon.warn .bar .fill { background: var(--warn); }
+  .spend-ribbon.block .bar .fill { background: var(--block); }
+  .spend-ribbon .num {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+
+  /* ── Cards / lists ─────────────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .card-title {
+    font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .1em;
+    color: var(--text-muted);
+    margin: 0 0 12px;
+  }
+  .activity-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .activity-row:last-child { border-bottom: none; }
+  .activity-row .activity-text {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .activity-row .activity-meta {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .intent-input {
+    display: flex; align-items: center; gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    background: var(--surface);
+    margin: 14px 0;
+    box-shadow: var(--shadow-sm);
+  }
+  .intent-input .placeholder {
+    flex: 1;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+  .intent-input .kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+    padding: 3px 7px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface-2);
+    color: var(--text-3);
+  }
+  .lane-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .lane-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    cursor: pointer;
+    transition: border-color .14s, box-shadow .14s;
+  }
+  .lane-card:hover {
+    border-color: var(--accent-ring);
+    box-shadow: var(--shadow-sm);
+  }
+  .lane-card .title {
+    font-weight: 650;
+    font-size: 14px;
+    margin-bottom: 2px;
+  }
+  .lane-card .stat {
+    font-size: 12px;
+    color: var(--text-3);
+    margin-top: 6px;
+  }
+  .tabbar {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .tabbar a {
+    padding: 8px 14px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 550;
+    color: var(--text-3);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tabbar a.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  table.data {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  table.data th, table.data td {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 12.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.data th {
+    background: var(--surface-2);
+    color: var(--text-3);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  table.data tr:last-child td { border-bottom: none; }
+
+  /* ── Timeline ──────────────────────────────────────────────────────────── */
+  .timeline {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .tl-row {
+    display: grid;
+    grid-template-columns: 72px 70px 1fr auto;
+    gap: 14px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+    align-items: center;
+  }
+  .tl-row:last-child { border-bottom: none; }
+  .tl-row.collapsed {
+    color: var(--text-muted);
+    background: var(--surface-2);
+    font-style: italic;
+    padding: 8px 16px;
+  }
+  .tl-time {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .tl-actor {
+    font-weight: 600;
+    color: var(--text-2);
+  }
+  .tl-action {
+    color: var(--text);
+  }
+  .tl-action .detail {
+    color: var(--text-3);
+    margin-left: 6px;
+    font-size: 11.5px;
+  }
+  .tl-meta {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+  }
+  .tl-cost {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-3);
+  }
+
+  /* ── Canvas ────────────────────────────────────────────────────────────── */
+  .canvas {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 26px;
+    min-height: 380px;
+    background-image: radial-gradient(var(--border) 1px, transparent 1px);
+    background-size: 18px 18px;
+    position: relative;
+  }
+  .block-card {
+    display: grid;
+    grid-template-columns: 90px 1fr auto;
+    gap: 14px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-sm);
+    align-items: center;
+    max-width: 460px;
+    margin: 0 auto;
+  }
+  .block-card .b-type {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 5px;
+    text-align: center;
+  }
+  .b-type.trigger { background: #dbeafe; color: #1d4ed8; }
+  .b-type.memory  { background: #fef3c7; color: #b45309; }
+  .b-type.agent   { background: var(--accent-weak); color: var(--accent-2); }
+  .b-type.guard   { background: var(--block-bg); color: var(--block); border: 1px solid var(--block-bd); }
+  .b-type.tool    { background: #d1fae5; color: #047857; }
+  .b-type.approval { background: #fed7aa; color: #c2410c; }
+  .b-type.notify { background: #fce7f3; color: #be185d; }
+  .block-card .b-text {
+    font-size: 13px;
+    color: var(--text);
+  }
+  .block-card .b-text .b-note {
+    font-size: 11.5px;
+    color: var(--text-3);
+    margin-top: 2px;
+  }
+  .b-arrow {
+    width: 2px;
+    height: 24px;
+    background: var(--border-2);
+    margin: 0 auto;
+  }
+
+  /* ── Marketing & setup ─────────────────────────────────────────────────── */
+  .mk-header {
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface) 100%);
+    padding: 36px 56px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .mk-hero {
+    padding: 60px 56px 40px;
+  }
+  .mk-hero h1 {
+    font-size: 40px;
+    font-weight: 700;
+    margin: 0 0 14px;
+    letter-spacing: -.025em;
+    line-height: 1.1;
+  }
+  .mk-hero p {
+    margin: 0 0 22px;
+    font-size: 17px;
+    color: var(--text-3);
+    max-width: 560px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 38px;
+    padding: 0 16px;
+    border-radius: 9px;
+    font-size: 13.5px;
+    font-weight: 550;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid;
+    font-family: inherit;
+  }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+  .btn.ghost { background: var(--surface); color: var(--text); border-color: var(--border-2); }
+  .btn.sm { height: 30px; padding: 0 12px; font-size: 12.5px; }
+  .mk-lanes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    padding: 0 56px 40px;
+  }
+  .mk-lane {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .mk-lane h3 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 650;
+  }
+  .mk-lane p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .mk-compliance {
+    margin: 0 56px 40px;
+    padding: 22px;
+    background: var(--accent-weak);
+    border: 1px solid var(--accent-ring);
+    border-radius: 14px;
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr 1fr;
+    gap: 18px;
+    align-items: center;
+  }
+  .mk-compliance .lbl {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--accent-2);
+  }
+  .mk-compliance .num {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -.01em;
+  }
+  .mk-compliance .num small { font-size: 12px; font-weight: 500; color: var(--text-3); }
+
+  /* Setup */
+  .setup-shell {
+    padding: 40px 56px;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .setup-progress {
+    display: flex; gap: 8px;
+    margin: 28px 0 22px;
+  }
+  .setup-progress .step {
+    flex: 1;
+    height: 4px;
+    border-radius: 4px;
+    background: var(--border);
+  }
+  .setup-progress .step.done { background: var(--accent); }
+  .setup-progress .step.current { background: var(--accent); }
+  .setup-form .field {
+    margin-bottom: 16px;
+  }
+  .setup-form .field label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-2);
+    margin-bottom: 6px;
+  }
+  .setup-form .field input,
+  .setup-form .field .read {
+    width: 100%;
+    height: 40px;
+    padding: 0 13px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 14px;
+    box-sizing: border-box;
+    line-height: 38px;
+  }
+  .setup-form .field .read { background: var(--surface-2); color: var(--text-3); }
+  .lane-radio {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer;
+    margin-bottom: 8px;
+    background: var(--surface);
+  }
+  .lane-radio.sel {
+    border-color: var(--accent);
+    background: var(--accent-weak);
+  }
+  .lane-radio .rdo {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--border-2);
+    flex-shrink: 0;
+    display: grid; place-items: center;
+  }
+  .lane-radio.sel .rdo { border-color: var(--accent); }
+  .lane-radio.sel .rdo::after {
+    content: '';
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .lane-radio .lr-text {
+    flex: 1;
+  }
+  .lane-radio .lr-text strong {
+    font-size: 13.5px;
+    font-weight: 650;
+  }
+  .lane-radio .lr-text small {
+    display: block;
+    color: var(--text-3);
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  /* ── Footnote / journey next ───────────────────────────────────────────── */
+  .footnote {
+    margin-top: 14px;
+    padding: 14px 18px;
+    background: var(--accent-weak);
+    border: 1px solid var(--accent-ring);
+    border-radius: 12px;
+    font-size: 12.5px;
+    color: var(--text-2);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .footnote .ft-left {
+    flex: 1;
+    min-width: 300px;
+  }
+  .footnote .ft-left .lbl {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    font-size: 10.5px;
+    color: var(--accent-2);
+    margin-right: 8px;
+  }
+  .footnote .chips {
+    display: inline-flex; gap: 5px; flex-wrap: wrap; margin-top: 4px;
+  }
+  .footnote .chip {
+    background: var(--surface);
+    border: 1px solid var(--accent-ring);
+    color: var(--accent-2);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+  .footnote a.next {
+    display: inline-flex; align-items: center; gap: 6px;
+    text-decoration: none;
+    background: var(--accent);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .footnote a.next:hover { background: var(--accent-2); }
+
+  /* ── Modal ─────────────────────────────────────────────────────────────── */
+  .modal {
+    margin: 30px auto;
+    max-width: 640px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.12);
+  }
+  .modal h3 {
+    margin: 0 0 16px;
+    font-size: 18px;
+    font-weight: 650;
+  }
+  .modal-intent-input {
+    border: 1px solid var(--accent-ring);
+    background: var(--accent-weak);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13.5px;
+    margin-bottom: 16px;
+    color: var(--text);
+  }
+  .preview-chain {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 16px 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .preview-block {
+    flex: 0 0 auto;
+    background: var(--surface-2);
+    border: 1px dashed var(--border-2);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 11px;
+    min-width: 90px;
+    text-align: center;
+  }
+  .preview-block strong { display: block; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px; }
+  .modal-policies {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+  }
+  .modal-policies li {
+    list-style: none;
+    margin: 6px 0;
+    font-size: 12.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .modal-policies ul { margin: 0; padding: 0; }
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+
+  /* ── Right rail / multi-col ────────────────────────────────────────────── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+  }
+  .pack-cards .pack-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+  }
+  .pack-cards .pack-row:last-child { border-bottom: none; }
+  .pack-cards .pack-row .name { font-weight: 600; color: var(--text-2); }
+  .pack-cards .pack-row .cnt {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-3);
+    font-size: 11.5px;
+  }
+  .policy-row {
+    padding: 11px 13px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    margin-bottom: 8px;
+  }
+  .policy-row .pr-top {
+    display: flex; align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .policy-row .pr-name {
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .policy-row .pr-meta {
+    font-size: 11.5px;
+    color: var(--text-3);
+    margin-top: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* ── Bottom nav ────────────────────────────────────────────────────────── */
+  .bot-nav {
+    display: flex;
+    gap: 10px;
+    padding: 0 16px;
+    margin-top: 16px;
+  }
+  .bot-nav .nav-item {
+    padding: 8px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--text-2);
+    font-size: 12.5px;
+    font-weight: 550;
+  }
+
+  /* Misc */
+  .gap-checklist {
+    margin-top: 14px;
+    background: var(--block-bg);
+    border: 1px solid var(--block-bd);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--block);
+    font-size: 12.5px;
+  }
+  .mini-meta {
+    color: var(--text-muted);
+    font-size: 11.5px;
+  }
+  .row-flex {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .pulse-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ok);
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .55; transform: scale(.9); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════ Top bar ════════════ -->
+<div class="top-bar">
+  <div class="top-bar-inner">
+    <div class="top-brand">
+      <span class="logo-dot">C</span>
+      Conduct · UX Northstar mockup
+    </div>
+    <nav class="top-nav">
+      <a href="#s1">Marketing</a>
+      <a href="#s2">Setup</a>
+      <a href="#s3">Home (empty)</a>
+      <a href="#s4">Home</a>
+      <a href="#s5">Guard · Policy</a>
+      <a href="#s6">Guard · Spend</a>
+      <a href="#s7">SOC 2 pack</a>
+      <a href="#s8">Audit</a>
+      <a href="#s9">Ambient draft</a>
+      <a href="#s10">Canvas</a>
+      <a href="#s11">Run</a>
+    </nav>
+    <div class="top-meta">v3 positioning · Guard-first</div>
+  </div>
+</div>
+
+<!-- ════════════ Intro ════════════ -->
+<section class="intro">
+  <h1>The journey, top to bottom</h1>
+  <p>
+    Eleven screens spanning the 5-rung journey: <strong>Entry → Govern → Audit → Build → Run</strong>.
+    Click any link to jump; every screen has a "Next" button that walks the buyer-first journey.
+    This is a structural mock — pixels are approximate; primitive placement and copy are not.
+  </p>
+  <div class="legend">
+    <span class="legend-item"><span class="dot" style="background: var(--slate);"></span>Guard pill · allow</span>
+    <span class="legend-item"><span class="dot" style="background: var(--warn);"></span>warn</span>
+    <span class="legend-item"><span class="dot" style="background: var(--block);"></span>block</span>
+    <span class="legend-item"><span class="dot" style="background: var(--text-muted);"></span>synthetic (demo)</span>
+    <span class="legend-item">Lanes: <span class="lane comp" style="margin-left:4px;">compliance</span> <span class="lane sec">security</span> <span class="lane eng">engineering</span></span>
+  </div>
+</section>
+
+<!-- ════════════ S1 — Marketing ════════════ -->
+<section class="screen" id="s1">
+  <div class="screen-head">
+    <div>
+      <h2>1. Marketing entry — <code style="font-family:ui-monospace; font-size:14px;">/</code></h2>
+      <div class="ref">Wireframe #10 · Rung: <span class="rung-tag">Entry · pre-signup</span></div>
+    </div>
+    <span class="ref"><code>/ux-northstar/marketing</code></span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://conductai.ai/</span>
+    </div>
+    <div class="viewport-body">
+      <div class="mk-header">
+        <div class="top-brand"><span class="logo-dot">C</span> Conduct</div>
+        <div class="row-flex" style="gap:18px;">
+          <a class="btn ghost sm" href="#s2">Docs</a>
+          <a class="btn ghost sm" href="#s5">Guard</a>
+          <a class="btn ghost sm">Pricing</a>
+          <a class="btn primary sm" href="#s2">Sign in</a>
+        </div>
+      </div>
+      <div class="mk-hero">
+        <h1>The Guard-first AI<br/>governance platform.</h1>
+        <p>Policy, compliance, spend, and audit for AI usage at work — Claude Code, Cursor, Copilot, MCP tools, agents.</p>
+        <div class="row-flex">
+          <a class="btn primary" href="#">Try the 60s demo</a>
+          <a class="btn ghost" href="#">Talk to us</a>
+        </div>
+      </div>
+      <div class="mk-lanes">
+        <div class="mk-lane">
+          <span class="lane comp">Compliance</span>
+          <h3 style="margin-top:8px;">SOC 2 · ISO · EU AI Act</h3>
+          <p>Evidence collection, drift detection, audit log curation.</p>
+        </div>
+        <div class="mk-lane">
+          <span class="lane sec">Security</span>
+          <h3 style="margin-top:8px;">BugHunter · Autopilot</h3>
+          <p>Defect scanning, fix loops, secret + dependency triage.</p>
+        </div>
+        <div class="mk-lane">
+          <span class="lane eng">Engineering</span>
+          <h3 style="margin-top:8px;">PR review · on-call · deploy</h3>
+          <p>CI failure triage, deploy rollback, paging flows.</p>
+        </div>
+      </div>
+      <div class="mk-compliance">
+        <div>
+          <div class="lbl">Compliance live</div>
+          <div style="font-size:12.5px; color: var(--text-3); margin-top:4px;">Every framework, real numbers from a real customer workspace.</div>
+        </div>
+        <div><div class="num">87 <small>SOC 2 events</small></div></div>
+        <div><div class="num">41 <small>ISO 27001 events</small></div></div>
+        <div><div class="num">12 <small>EU AI Act events</small></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#2 evidence chip (marketing form)</span>
+        <span class="chip">#8 compliance pack pane (abbreviated)</span>
+      </div>
+      <div style="margin-top:8px;">
+        <strong>30-second test:</strong> a security buyer sees the Guard story, three lanes, and three live compliance numbers above the fold. Decision #19.
+      </div>
+    </div>
+    <a class="next" href="#s2">Next: Setup →</a>
+  </div>
+</section>
+
+<!-- ════════════ S2 — Setup ════════════ -->
+<section class="screen" id="s2">
+  <div class="screen-head">
+    <div>
+      <h2>2. Setup — <code style="font-family:ui-monospace; font-size:14px;">/setup</code></h2>
+      <div class="ref">Wireframe #9 · Rung: <span class="rung-tag">Entry · transition</span> · Decision #18 (lane picker)</div>
+    </div>
+    <span class="ref">First-time only — gate to /home</span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/setup</span>
+    </div>
+    <div class="viewport-body">
+      <div class="setup-shell">
+        <div class="top-brand"><span class="logo-dot">C</span> Conduct</div>
+        <div class="setup-progress">
+          <div class="step current"></div>
+          <div class="step"></div>
+          <div class="step"></div>
+          <div class="step"></div>
+        </div>
+        <div class="mini-meta" style="font-weight:700; letter-spacing:.08em;">STEP 1 OF 4</div>
+        <h2 style="font-size:24px; font-weight:700; margin:6px 0 4px;">Set up your workspace</h2>
+        <p style="color:var(--text-3); margin: 0 0 22px;">Workspaces live inside your organisation. Each keeps its own projects, runs, memory, and credentials.</p>
+        <div class="setup-form">
+          <div class="field">
+            <label>Organisation</label>
+            <div class="read">OrganicSphere (auto-created)</div>
+          </div>
+          <div class="field">
+            <label>Workspace name</label>
+            <input value="Engineering" />
+          </div>
+          <div class="field">
+            <label>Data region</label>
+            <div class="read">US · Oregon (US only for now)</div>
+          </div>
+          <div class="field">
+            <label>Your primary lane <span class="mini-meta">— drives suggested playbooks</span></label>
+            <div class="lane-radio">
+              <span class="rdo"></span>
+              <div class="lr-text"><strong>Compliance</strong><small>SOC 2, ISO, EU AI Act focus</small></div>
+            </div>
+            <div class="lane-radio sel">
+              <span class="rdo"></span>
+              <div class="lr-text"><strong>Security</strong><small>AppSec, secrets, dependency triage</small></div>
+            </div>
+            <div class="lane-radio">
+              <span class="rdo"></span>
+              <div class="lr-text"><strong>Engineering</strong><small>DevEx, CI, on-call</small></div>
+            </div>
+            <div class="lane-radio">
+              <span class="rdo"></span>
+              <div class="lr-text"><strong>Multiple lanes</strong><small>Pick primary; others enable later</small></div>
+            </div>
+          </div>
+        </div>
+        <div class="row-flex" style="justify-content: space-between; margin-top: 26px;">
+          <a class="btn ghost" href="#s5">Skip → /guard</a>
+          <a class="btn primary" href="#s3">Continue →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#7 role chip (implicit — Step 4 confirms)</span>
+      </div>
+      <div style="margin-top:8px;">
+        <strong>Lane picker</strong> is new (#860 slice 2/3). Skip routes to /guard (#858 slice 1).
+      </div>
+    </div>
+    <a class="next" href="#s3">Next: Home empty →</a>
+  </div>
+</section>
+
+<!-- ════════════ S3 — Home (empty) ════════════ -->
+<section class="screen" id="s3">
+  <div class="screen-head">
+    <div>
+      <h2>3. Home (first session) — <code style="font-family:ui-monospace; font-size:14px;">/home</code></h2>
+      <div class="ref">Wireframe #1a · Rung: <span class="rung-tag">Entry · first session</span></div>
+    </div>
+    <span class="ref"><code>net-new — decision #8</code></span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/home</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell no-sidebar">
+        <div class="app-main">
+          <div class="app-header">
+            <div class="row-flex">
+              <span class="top-brand"><span class="logo-dot">C</span> Engineering · OrganicSphere</span>
+              <span class="ws-switcher">workspace ▾</span>
+            </div>
+            <span class="role-chip"><span class="role-dot"></span>developer</span>
+          </div>
+          <div class="spend-ribbon">
+            <div class="bar"><div class="fill" style="width: 0%;"></div></div>
+            <span class="num">$0 / $500 this month</span>
+          </div>
+          <div class="intent-input">
+            <div class="placeholder">Find a run, draft a policy, ask a question.   Try: "draft a PR review bot for our repo"</div>
+            <span class="kbd">/</span>
+          </div>
+          <p style="font-size:14px; margin: 22px 0 10px;">No runs yet — start with a starter playbook:</p>
+          <div class="lane-cards">
+            <div class="lane-card">
+              <span class="lane sec">Security</span>
+              <div class="title" style="margin-top:8px;">PR Review Bot</div>
+              <p class="stat" style="margin:6px 0 12px;">Reviews PRs, posts inline comments.</p>
+              <a class="btn ghost sm" href="#s9">Install</a>
+            </div>
+            <div class="lane-card">
+              <span class="lane eng">Engineering</span>
+              <div class="title" style="margin-top:8px;">Autopilot + Approval</div>
+              <p class="stat" style="margin:6px 0 12px;">Issue → branch → fix → draft PR → Slack approval.</p>
+              <a class="btn ghost sm" href="#s9">Install</a>
+            </div>
+            <div class="lane-card">
+              <span class="lane comp">Compliance</span>
+              <div class="title" style="margin-top:8px;">SOC 2 evidence collector</div>
+              <p class="stat" style="margin:6px 0 12px;">Tags qualifying events to controls.</p>
+              <a class="btn ghost sm" href="#s9">Install</a>
+            </div>
+          </div>
+          <div class="card" style="margin-top: 22px;">
+            <div class="card-title">Guard is already protecting your workspace</div>
+            <div class="activity-row">
+              <span class="gpill allow"><span class="gdot"></span>Active</span>
+              <div class="activity-text">0 policies set (defaults active) <span class="mini-meta">— 5 default policies enforcing budget + sign-off</span></div>
+              <a href="#s5" style="color: var(--accent); font-size: 12.5px; font-weight: 600; text-decoration: none;">→ tune</a>
+            </div>
+            <div class="activity-row">
+              <span class="gpill allow"><span class="gdot"></span>$500</span>
+              <div class="activity-text">monthly budget (set in setup) <span class="mini-meta">— hard cap on</span></div>
+              <a href="#s6" style="color: var(--accent); font-size: 12.5px; font-weight: 600; text-decoration: none;">→ adjust</a>
+            </div>
+          </div>
+          <div class="bot-nav">
+            <a class="nav-item" href="#s10">→ Canvas</a>
+            <a class="nav-item" href="#s5">→ Guard</a>
+            <a class="nav-item" href="#s8">→ Audit</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#3 intent input</span>
+        <span class="chip">#6 spend ribbon</span>
+        <span class="chip">#7 role chip</span>
+        <span class="chip">#1 Guard pill (in reassurance card)</span>
+      </div>
+      <div style="margin-top:8px;">
+        Zero-state shows <strong>one starter per lane</strong>, not a generic catalog. Guard reassurance below makes the spine visible from second one.
+      </div>
+    </div>
+    <a class="next" href="#s4">Next: Home (populated) →</a>
+  </div>
+</section>
+
+<!-- ════════════ S4 — Home (populated) ════════════ -->
+<section class="screen" id="s4">
+  <div class="screen-head">
+    <div>
+      <h2>4. Home (ongoing) — <code style="font-family:ui-monospace; font-size:14px;">/home</code></h2>
+      <div class="ref">Wireframe #1 · Rung: <span class="rung-tag">Entry · post-login default</span></div>
+    </div>
+    <span class="ref">Same surface, populated state</span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/home</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell no-sidebar">
+        <div class="app-main">
+          <div class="app-header">
+            <div class="row-flex">
+              <span class="top-brand"><span class="logo-dot">C</span> Engineering · OrganicSphere</span>
+              <span class="ws-switcher">workspace ▾</span>
+            </div>
+            <span class="role-chip"><span class="role-dot"></span>developer · Sudhi</span>
+          </div>
+          <div class="spend-ribbon">
+            <div class="bar"><div class="fill" style="width: 62%;"></div></div>
+            <span class="num">$312 / $500 this month</span>
+          </div>
+          <div class="intent-input">
+            <div class="placeholder">Find a run, draft a policy, ask a question.   Try: "show me blocks from last week"</div>
+            <span class="kbd">/</span>
+          </div>
+          <div class="card" style="margin-top: 16px;">
+            <div class="card-title">Recent Guard activity</div>
+            <div class="activity-row">
+              <span class="gpill block"><span class="gdot"></span>Block</span>
+              <div>
+                <div class="activity-text">3 calls blocked overnight by Engineering lane</div>
+                <div class="activity-meta">Policy: <code style="font-family:ui-monospace; font-size:11px;">no-claude-opus-without-approval @v3</code></div>
+              </div>
+              <a href="#s8" style="color: var(--accent); font-size: 12.5px; font-weight: 600; text-decoration: none;">→ review</a>
+            </div>
+            <div class="activity-row">
+              <span class="gpill warn"><span class="gdot"></span>Warn</span>
+              <div>
+                <div class="activity-text">1 spend warning at 80% — DevOps team</div>
+                <div class="activity-meta">Per-dev cap · Alex Chen</div>
+              </div>
+              <a href="#s6" style="color: var(--accent); font-size: 12.5px; font-weight: 600; text-decoration: none;">→ adjust</a>
+            </div>
+            <div class="activity-row">
+              <span class="ec">SOC 2 CC6.1</span>
+              <div>
+                <div class="activity-text">SOC 2 export ready: 47 new events linked</div>
+                <div class="activity-meta">Since last export · 3 days</div>
+              </div>
+              <a href="#s7" style="color: var(--accent); font-size: 12.5px; font-weight: 600; text-decoration: none;">→ export</a>
+            </div>
+          </div>
+          <div style="margin-top:22px;">
+            <div class="card-title">Your lanes</div>
+            <div class="lane-cards">
+              <div class="lane-card">
+                <span class="lane comp">Compliance</span>
+                <div class="title" style="margin-top:8px;">4 playbooks</div>
+                <p class="stat">12 runs/wk · last 4m ago</p>
+              </div>
+              <div class="lane-card">
+                <span class="lane sec">Security</span>
+                <div class="title" style="margin-top:8px;">7 playbooks</div>
+                <p class="stat">23 runs/wk · last 14m ago</p>
+              </div>
+              <div class="lane-card">
+                <span class="lane eng">Engineering</span>
+                <div class="title" style="margin-top:8px;">11 playbooks</div>
+                <p class="stat">89 runs/wk · last 30s ago</p>
+              </div>
+            </div>
+          </div>
+          <div class="bot-nav">
+            <a class="nav-item" href="#s10">→ Canvas</a>
+            <a class="nav-item" href="#s5">→ Guard</a>
+            <a class="nav-item" href="#s8">→ Audit</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#3 intent input</span>
+        <span class="chip">#1 Guard pill (allow / warn / block)</span>
+        <span class="chip">#2 evidence chip</span>
+        <span class="chip">#6 spend ribbon</span>
+        <span class="chip">#7 role chip</span>
+      </div>
+      <div style="margin-top:8px;">
+        Activity list is ambient — 3 items, scoped to the user's lane. Not a feed. Nav lives at the bottom, not a persistent sidebar.
+      </div>
+    </div>
+    <a class="next" href="#s5">Next: Guard · Policy →</a>
+  </div>
+</section>
+
+<!-- ════════════ S5 — Guard Policy ════════════ -->
+<section class="screen" id="s5">
+  <div class="screen-head">
+    <div>
+      <h2>5. Guard — Policy tab</h2>
+      <div class="ref">Wireframe #2 · Rung: <span class="rung-tag">Govern</span> · Decisions #9 (kill /security, merge /governance)</div>
+    </div>
+    <span class="ref"><code>/guard?tab=policy</code></span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/guard?tab=policy</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell">
+        <aside class="app-sidebar">
+          <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
+          <a href="#s4" class="sb-item">Home</a>
+          <a href="#s5" class="sb-item active">Guard</a>
+          <a href="#s8" class="sb-item">Audit</a>
+          <a href="#s10" class="sb-item">Canvas</a>
+          <a href="#s11" class="sb-item">Runs</a>
+          <div class="sb-group">Settings</div>
+          <a href="#" class="sb-item">Integrations</a>
+          <a href="#" class="sb-item">Members</a>
+        </aside>
+        <div class="app-main">
+          <div class="app-header">
+            <div class="row-flex">
+              <h3>Guard</h3>
+              <span class="gpill allow" style="font-weight: 700;"><span class="gdot" style="background: var(--ok);"></span>ON</span>
+            </div>
+            <span class="role-chip"><span class="role-dot"></span>security · Jen</span>
+          </div>
+          <div class="tabbar">
+            <a class="active" href="#s5">Policy</a>
+            <a href="#s6">Spend</a>
+            <a href="#s8">Activity</a>
+            <a href="#">Approvals</a>
+          </div>
+          <div class="two-col">
+            <div>
+              <div class="card-title">Policies — 3 active</div>
+              <div class="policy-row">
+                <div class="pr-top">
+                  <span class="pr-name">no-claude-opus-without-approval</span>
+                  <span class="gpill block"><span class="gdot"></span>block</span>
+                </div>
+                <div class="pr-meta">v3 · fires 47/wk · last 4m ago</div>
+              </div>
+              <div class="policy-row">
+                <div class="pr-top">
+                  <span class="pr-name">block-gpt4-over-50c</span>
+                  <span class="gpill warn"><span class="gdot"></span>warn</span>
+                </div>
+                <div class="pr-meta">v1 · fires 12/wk · last 22m ago</div>
+              </div>
+              <div class="policy-row">
+                <div class="pr-top">
+                  <span class="pr-name">require-signed-policy</span>
+                  <span class="gpill block"><span class="gdot"></span>block</span>
+                </div>
+                <div class="pr-meta">v2 · fires 0/wk · last never</div>
+              </div>
+              <div style="margin-top: 14px; display: flex; gap: 8px;">
+                <a href="#s9" class="btn primary sm">+ Draft via intent</a>
+                <a href="#" class="btn ghost sm">+ New policy</a>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Compliance pack</div>
+              <div class="pack-cards">
+                <div class="pack-row"><span class="ec">SOC 2</span><span class="cnt">87 ev</span></div>
+                <div class="pack-row"><span class="ec eu">EU AI Act</span><span class="cnt">12 ev</span></div>
+                <div class="pack-row"><span class="ec iso">ISO 27001</span><span class="cnt">41 ev</span></div>
+                <div class="pack-row"><span class="ec owasp">OWASP-LLM</span><span class="cnt">9 ev</span></div>
+                <div class="pack-row"><span class="ec internal">Internal</span><span class="cnt">3 ev</span></div>
+              </div>
+              <div class="mini-meta" style="margin-top: 12px;">Last export: SOC 2 — 3 days ago</div>
+              <a href="#s7" class="btn ghost sm" style="margin-top: 10px;">Open SOC 2 pack →</a>
+            </div>
+          </div>
+          <div class="spend-ribbon" style="margin-top: 20px;">
+            <span class="mini-meta">Entire-org spend</span>
+            <div class="bar"><div class="fill" style="width: 64%;"></div></div>
+            <span class="num">$3,210 / $5,000</span>
+            <a href="#s6" class="btn ghost sm">by lane ▾</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#1 Guard pill (per policy)</span>
+        <span class="chip">#2 evidence chip (right rail)</span>
+        <span class="chip">#6 spend ribbon (footer)</span>
+        <span class="chip">#7 role chip</span>
+        <span class="chip">#8 compliance pack pane</span>
+      </div>
+      <div style="margin-top:8px;">
+        <strong>3-tab spine</strong> (Policy / Spend / Activity / Approvals). <code>/governance</code> + <code>/security</code> + <code>/playbook-queue</code> + <code>/guard/policies</code> + <code>/guard/spend</code> + <code>/guard/activity</code> all collapse here. 6 surfaces become 1 surface with 4 tabs.
+      </div>
+    </div>
+    <a class="next" href="#s6">Next: Guard · Spend →</a>
+  </div>
+</section>
+
+<!-- ════════════ S6 — Guard Spend ════════════ -->
+<section class="screen" id="s6">
+  <div class="screen-head">
+    <div>
+      <h2>6. Guard — Spend tab</h2>
+      <div class="ref">Wireframe #3 · Rung: <span class="rung-tag">Govern</span></div>
+    </div>
+    <span class="ref"><code>/guard?tab=spend</code></span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/guard?tab=spend</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell">
+        <aside class="app-sidebar">
+          <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
+          <a href="#s4" class="sb-item">Home</a>
+          <a href="#s5" class="sb-item active">Guard</a>
+          <a href="#s8" class="sb-item">Audit</a>
+          <a href="#s10" class="sb-item">Canvas</a>
+          <a href="#s11" class="sb-item">Runs</a>
+          <div class="sb-group">Settings</div>
+          <a href="#" class="sb-item">Integrations</a>
+          <a href="#" class="sb-item">Members</a>
+        </aside>
+        <div class="app-main">
+          <div class="app-header">
+            <div class="row-flex">
+              <h3>Guard</h3>
+              <span class="gpill allow"><span class="gdot" style="background: var(--ok);"></span>ON</span>
+            </div>
+            <span class="role-chip"><span class="role-dot"></span>admin · Sudhi</span>
+          </div>
+          <div class="tabbar">
+            <a href="#s5">Policy</a>
+            <a class="active" href="#s6">Spend</a>
+            <a href="#s8">Activity</a>
+            <a href="#">Approvals</a>
+          </div>
+          <div class="card-title">This month — entire org</div>
+          <div class="spend-ribbon" style="margin-bottom: 22px;">
+            <div class="bar"><div class="fill" style="width: 64%;"></div></div>
+            <span class="num">$3,210 / $5,000 (64%)</span>
+          </div>
+          <div class="card-title">By lane</div>
+          <table class="data" style="margin-bottom: 18px;">
+            <thead><tr><th>Lane</th><th>Spent</th><th>Budget</th><th>Trend</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="lane comp">Compliance</span></td>
+                <td><span class="tl-cost">$410</span></td>
+                <td><span class="tl-cost">$1,000</span></td>
+                <td style="color: var(--ok);">▼ 12%</td>
+              </tr>
+              <tr>
+                <td><span class="lane sec">Security</span></td>
+                <td><span class="tl-cost">$1,140</span></td>
+                <td><span class="tl-cost">$2,000</span></td>
+                <td style="color: var(--text-3);">▲ 4%</td>
+              </tr>
+              <tr>
+                <td><span class="lane eng">Engineering</span></td>
+                <td><span class="tl-cost">$1,660</span></td>
+                <td><span class="tl-cost">$2,000</span></td>
+                <td style="color: var(--warn);">▲ 21% ⚠</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="card-title">By developer</div>
+          <table class="data">
+            <thead><tr><th>Developer</th><th>Spent</th><th>Per-cap</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Sudhi</td><td><span class="tl-cost">$312</span></td><td><span class="tl-cost">$400</span></td><td><span class="gpill allow"><span class="gdot"></span>ok</span></td></tr>
+              <tr><td>Jen</td><td><span class="tl-cost">$189</span></td><td><span class="tl-cost">$250</span></td><td><span class="gpill allow"><span class="gdot"></span>ok</span></td></tr>
+              <tr><td>Alex</td><td><span class="tl-cost">$247</span></td><td><span class="tl-cost">$250</span></td><td><span class="gpill warn"><span class="gdot"></span>99%</span></td></tr>
+            </tbody>
+          </table>
+          <div class="row-flex" style="margin-top: 18px;">
+            <a class="btn primary sm" href="#">+ Adjust team budget</a>
+            <a class="btn ghost sm" href="#">+ Add per-dev limit</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#6 spend ribbon</span>
+        <span class="chip">#1 Guard pill</span>
+        <span class="chip">#7 role chip (admin only)</span>
+      </div>
+      <div style="margin-top:8px;">
+        Lane row turns amber at ≥80% / red at ≥100%. Per-dev row ⚠ at 99% mirrors the "hard cap at 100%" toggle from /setup.
+      </div>
+    </div>
+    <a class="next" href="#s7">Next: SOC 2 pack →</a>
+  </div>
+</section>
+
+<!-- ════════════ S7 — SOC 2 pack ════════════ -->
+<section class="screen" id="s7">
+  <div class="screen-head">
+    <div>
+      <h2>7. Compliance pack — SOC 2</h2>
+      <div class="ref">Wireframe #7 · Rung: <span class="rung-tag">Govern / Audit bridge</span> · Decision #24 (SOC 2 only v1)</div>
+    </div>
+    <span class="ref"><code>/guard/packs/soc2</code></span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/guard/packs/soc2</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell">
+        <aside class="app-sidebar">
+          <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
+          <a href="#s4" class="sb-item">Home</a>
+          <a href="#s5" class="sb-item active">Guard</a>
+          <a href="#s8" class="sb-item">Audit</a>
+          <a href="#s10" class="sb-item">Canvas</a>
+          <a href="#s11" class="sb-item">Runs</a>
+        </aside>
+        <div class="app-main">
+          <div class="app-header">
+            <div>
+              <span class="ec">SOC 2</span>
+              <h3 style="margin: 4px 0 0;">SOC 2 Compliance Pack</h3>
+            </div>
+            <span class="role-chip"><span class="role-dot"></span>security · Jen</span>
+          </div>
+          <div class="row-flex" style="margin-bottom: 18px;">
+            <span class="mini-meta">Last evidence export: <strong style="color: var(--text-2);">3 days ago</strong></span>
+            <span class="mini-meta">Coverage: <strong style="color: var(--text-2);">87 events / 47 requirements satisfied</strong></span>
+          </div>
+          <div class="row-flex" style="margin-bottom: 20px;">
+            <a class="btn primary" href="#">Export evidence pack ▾</a>
+            <a class="btn ghost" href="#">Schedule monthly export</a>
+          </div>
+          <div class="card-title">Requirements</div>
+          <table class="data">
+            <thead><tr><th>Code</th><th>Requirement</th><th>Events</th><th>Last</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="ec">CC6.1</span></td>
+                <td>Logical access controls</td>
+                <td><span class="tl-cost">23</span></td>
+                <td class="mini-meta">4m ago</td>
+                <td><a href="#s8" class="btn ghost sm">view</a></td>
+              </tr>
+              <tr>
+                <td><span class="ec">CC6.6</span></td>
+                <td>Manage system credentials</td>
+                <td><span class="tl-cost">12</span></td>
+                <td class="mini-meta">2h ago</td>
+                <td><a href="#s8" class="btn ghost sm">view</a></td>
+              </tr>
+              <tr>
+                <td><span class="ec">CC7.2</span></td>
+                <td>Detect and respond to events</td>
+                <td><span class="tl-cost">8</span></td>
+                <td class="mini-meta">1d ago</td>
+                <td><a href="#s8" class="btn ghost sm">view</a></td>
+              </tr>
+              <tr style="background: var(--block-bg);">
+                <td><span class="ec">CC8.1</span></td>
+                <td>Change management</td>
+                <td><span style="color: var(--block);">0 ⚠</span></td>
+                <td class="mini-meta">never</td>
+                <td><a href="#" class="btn ghost sm" style="color: var(--block); border-color: var(--block-bd);">gap</a></td>
+              </tr>
+              <tr style="background: var(--block-bg);">
+                <td><span class="ec">CC9.2</span></td>
+                <td>Vendor risk management</td>
+                <td><span style="color: var(--block);">0 ⚠</span></td>
+                <td class="mini-meta">never</td>
+                <td><a href="#" class="btn ghost sm" style="color: var(--block); border-color: var(--block-bd);">gap</a></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="gap-checklist">
+            <strong>2 gaps</strong> — <a href="#s9" style="color: var(--block);">Show me how to satisfy</a> (drafts a playbook via intent)
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#8 compliance pack pane (full form)</span>
+        <span class="chip">#2 evidence chip</span>
+        <span class="chip">#7 role chip</span>
+      </div>
+      <div style="margin-top:8px;">
+        Gap rows are the critical UI — "do this next" for the security buyer. "Show me how to satisfy" wires to the intent input draft mode.
+      </div>
+    </div>
+    <a class="next" href="#s8">Next: Audit timeline →</a>
+  </div>
+</section>
+
+<!-- ════════════ S8 — Audit timeline ════════════ -->
+<section class="screen" id="s8">
+  <div class="screen-head">
+    <div>
+      <h2>8. Audit — timeline-first</h2>
+      <div class="ref">Wireframe #4 · Rung: <span class="rung-tag">Audit</span> · Establishes primitive #5</div>
+    </div>
+    <span class="ref"><code>/audit</code></span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/audit</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell">
+        <aside class="app-sidebar">
+          <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
+          <a href="#s4" class="sb-item">Home</a>
+          <a href="#s5" class="sb-item">Guard</a>
+          <a href="#s8" class="sb-item active">Audit</a>
+          <a href="#s10" class="sb-item">Canvas</a>
+          <a href="#s11" class="sb-item">Runs</a>
+        </aside>
+        <div class="app-main">
+          <div class="app-header">
+            <h3>Audit</h3>
+            <span class="role-chip"><span class="role-dot"></span>security · Jen</span>
+          </div>
+          <div class="row-flex" style="margin-bottom: 14px;">
+            <a class="btn ghost sm" href="#">Time: last 24h ▾</a>
+            <a class="btn ghost sm" href="#">Actor: any ▾</a>
+            <a class="btn ghost sm" href="#">Lane: any ▾</a>
+            <a class="btn ghost sm" href="#">Policy: any ▾</a>
+            <a class="btn ghost sm" href="#">Framework: any ▾</a>
+            <a class="btn ghost sm" href="#">Decision: all ▾</a>
+            <span style="flex:1;"></span>
+            <a class="btn primary sm" href="#">Export ▾</a>
+          </div>
+          <div class="timeline">
+            <div class="tl-row">
+              <span class="tl-time">14:32:14</span>
+              <span class="tl-actor">sudhi</span>
+              <div class="tl-action">run · <strong>pr-review-bot</strong><span class="detail">engineering lane</span></div>
+              <div class="tl-meta"><span class="gpill allow"><span class="gdot"></span>allow</span><span class="ec">SOC 2 CC6.1</span><span class="tl-cost">$0.04</span></div>
+            </div>
+            <div class="tl-row">
+              <span class="tl-time">14:31:02</span>
+              <span class="tl-actor">alex</span>
+              <div class="tl-action">run · <strong>autopilot-fix</strong><span class="detail">engineering lane</span></div>
+              <div class="tl-meta"><span class="gpill block"><span class="gdot"></span>block · above per-call cap</span></div>
+            </div>
+            <div class="tl-row" style="padding-top: 4px; padding-bottom: 14px; padding-left: 102px;">
+              <span></span>
+              <span></span>
+              <div class="tl-action mini-meta">Policy: <code style="color: var(--accent-2); font-family: ui-monospace; font-size: 11px;">block-gpt4-over-50c @v1</code> · linked to: <code style="color: var(--accent-2); font-family: ui-monospace; font-size: 11px;">change request CR-2024</code></div>
+              <span></span>
+            </div>
+            <div class="tl-row">
+              <span class="tl-time">14:28:41</span>
+              <span class="tl-actor">agent</span>
+              <div class="tl-action">tool · <strong>github.create_pr</strong><span class="detail">autopilot run #4823</span></div>
+              <div class="tl-meta"><span class="gpill allow"><span class="gdot"></span>allow</span><span class="ec">CC6.1</span><span class="ec eu">EU §27</span><span class="tl-cost">$0.00</span></div>
+            </div>
+            <div class="tl-row">
+              <span class="tl-time">14:22:18</span>
+              <span class="tl-actor">jen</span>
+              <div class="tl-action">policy.edit · <strong>block-gpt4-over-50c</strong> <span class="detail">v0 → v1</span></div>
+              <div class="tl-meta"><span class="gpill allow"><span class="gdot"></span>allow</span><span class="ec">CC6.6</span><span class="ec internal">internal</span></div>
+            </div>
+            <div class="tl-row">
+              <span class="tl-time">14:18:02</span>
+              <span class="tl-actor">demo-user</span>
+              <div class="tl-action">run · <strong>demo-runaway-fixture</strong><span class="detail">synthetic demo event</span></div>
+              <div class="tl-meta"><span class="gpill synthetic">synthetic</span><span class="tl-cost">$0.00</span></div>
+            </div>
+            <div class="tl-row collapsed">
+              47 more allow events — show all
+            </div>
+          </div>
+          <div class="mini-meta" style="margin-top: 12px;">Showing 6 of 53 events for the last 24h</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#5 timeline row (the surface itself)</span>
+        <span class="chip">#1 Guard pill (per row)</span>
+        <span class="chip">#2 evidence chip</span>
+        <span class="chip">#1 synthetic variant (demo row)</span>
+      </div>
+      <div style="margin-top:8px;">
+        Run timeline (next-but-one) uses the same primitive. <code>/observability</code>, <code>/guard/session-reports</code>, <code>/guard/reports/soc2</code>, <code>/guard/tool-errors</code> all collapse into Audit filters.
+      </div>
+    </div>
+    <a class="next" href="#s9">Next: Ambient draft modal →</a>
+  </div>
+</section>
+
+<!-- ════════════ S9 — Ambient draft modal ════════════ -->
+<section class="screen" id="s9">
+  <div class="screen-head">
+    <div>
+      <h2>9. Ambient draft modal</h2>
+      <div class="ref">Wireframe #8 · Rung: <span class="rung-tag">Build · entry</span> · Decision #20 (preview before commit)</div>
+    </div>
+    <span class="ref">Triggered from intent input · #859 Gap 2</span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/canvas/new</span>
+    </div>
+    <div class="viewport-body" style="background: rgba(0,0,0,.05); padding: 20px;">
+      <div class="modal">
+        <h3>Draft a new playbook</h3>
+        <p class="mini-meta" style="margin: -10px 0 14px;">Conduct will draft the canvas, you edit before saving.</p>
+        <div class="modal-intent-input">
+          when CI fails on main, open an issue, ping the on-call in Slack, and let Claude attempt a fix as a draft PR
+        </div>
+        <div class="row-flex" style="margin-bottom: 8px;">
+          <span class="lane sec">Security</span>
+          <span class="mini-meta">Connected integrations: GitHub, Slack ✓</span>
+        </div>
+        <div class="card-title" style="margin-top: 14px;">Conduct will draft:</div>
+        <div class="preview-chain">
+          <div class="preview-block">
+            <strong>Trigger</strong>
+            CI fail<br/>on main
+          </div>
+          <span style="color: var(--text-muted);">→</span>
+          <div class="preview-block">
+            <strong>Tool</strong>
+            Open issue
+          </div>
+          <span style="color: var(--text-muted);">→</span>
+          <div class="preview-block">
+            <strong>Tool</strong>
+            Slack ping<br/>on-call
+          </div>
+          <span style="color: var(--text-muted);">→</span>
+          <div class="preview-block">
+            <strong>Agent</strong>
+            Claude<br/>drafts fix
+          </div>
+          <span style="color: var(--text-muted);">→</span>
+          <div class="preview-block">
+            <strong>Tool</strong>
+            Draft PR
+          </div>
+        </div>
+        <div class="card-title" style="margin-top: 14px;">Policies that will apply:</div>
+        <div class="modal-policies">
+          <ul>
+            <li><span class="gpill warn"><span class="gdot"></span>warn</span> <code style="font-family: ui-monospace; font-size: 11.5px;">block-gpt4-over-50c @v1</code></li>
+            <li><span class="gpill block"><span class="gdot"></span>block</span> <code style="font-family: ui-monospace; font-size: 11.5px;">require-signed-policy @v2</code></li>
+          </ul>
+        </div>
+        <div class="modal-actions">
+          <a class="btn ghost" href="#s4">Cancel</a>
+          <a class="btn primary" href="#s10">Draft on canvas →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#3 intent input (draft mode)</span>
+        <span class="chip">#4 block card (preview variant)</span>
+        <span class="chip">#1 Guard pill (predicted policies)</span>
+      </div>
+      <div style="margin-top:8px;">
+        <strong>Preview before commit</strong> — B2B users want a confirm step before LLM-generated structure lands. Decision #20.
+      </div>
+    </div>
+    <a class="next" href="#s10">Next: Canvas →</a>
+  </div>
+</section>
+
+<!-- ════════════ S10 — Canvas ════════════ -->
+<section class="screen" id="s10">
+  <div class="screen-head">
+    <div>
+      <h2>10. Canvas with predict pills — <code style="font-family:ui-monospace; font-size:14px;">/workflows/[id]</code></h2>
+      <div class="ref">Wireframe #5 · Rung: <span class="rung-tag">Build</span></div>
+    </div>
+    <span class="ref">Predict variant of Guard pill on every block</span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/workflows/pr-review-bot</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell">
+        <aside class="app-sidebar">
+          <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
+          <a href="#s4" class="sb-item">Home</a>
+          <a href="#s5" class="sb-item">Guard</a>
+          <a href="#s8" class="sb-item">Audit</a>
+          <a href="#s10" class="sb-item active">Canvas</a>
+          <a href="#s11" class="sb-item">Runs</a>
+        </aside>
+        <div class="app-main">
+          <div class="app-header">
+            <div>
+              <span class="lane eng">Engineering</span>
+              <h3 style="margin: 4px 0 0;">PR Review Bot</h3>
+            </div>
+            <div class="row-flex">
+              <span class="role-chip"><span class="role-dot"></span>developer · Sudhi</span>
+              <a class="btn primary sm" href="#s11">▶ Run</a>
+            </div>
+          </div>
+          <div class="tabbar">
+            <a class="active" href="#s10">Canvas</a>
+            <a href="#s11">Runs</a>
+            <a href="#">Settings</a>
+          </div>
+          <div class="spend-ribbon">
+            <span class="mini-meta">Projected per run</span>
+            <div class="bar"><div class="fill" style="width: 42%;"></div></div>
+            <span class="num">$0.42 / $1.00 cap</span>
+          </div>
+          <div class="canvas">
+            <div class="block-card">
+              <span class="b-type trigger">Trigger</span>
+              <div class="b-text">GitHub PR opened<div class="b-note">Repo: conductai/api · branch: main</div></div>
+              <span class="gpill predict allow"><span class="gdot"></span>predict</span>
+            </div>
+            <div class="b-arrow"></div>
+            <div class="block-card">
+              <span class="b-type memory">Memory</span>
+              <div class="b-text">Recall prior reviews for this repo<div class="b-note">→ 2,400 tokens</div></div>
+              <span class="gpill predict allow"><span class="gdot"></span>predict</span>
+            </div>
+            <div class="b-arrow"></div>
+            <div class="block-card">
+              <span class="b-type agent">Agent Step</span>
+              <div class="b-text">Claude reviews PR diff<div class="b-note" style="color: var(--warn);">⚠ projected $0.62 — would warn under <code>block-gpt4-over-50c @v1</code></div></div>
+              <span class="gpill predict warn"><span class="gdot"></span>predict</span>
+            </div>
+            <div class="b-arrow"></div>
+            <div class="block-card">
+              <span class="b-type guard">Guard</span>
+              <div class="b-text">Policy gate<div class="b-note">Evaluates 3 policies</div></div>
+              <span class="gpill predict allow"><span class="gdot"></span>predict</span>
+            </div>
+            <div class="b-arrow"></div>
+            <div class="block-card">
+              <span class="b-type tool">Tool</span>
+              <div class="b-text">github.post_review_comment<div class="b-note">→ adds inline comments on diff</div></div>
+              <span class="gpill predict allow"><span class="gdot"></span>predict</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#4 block card</span>
+        <span class="chip">#1 Guard pill (predict variant)</span>
+        <span class="chip">#6 spend ribbon (projected)</span>
+        <span class="chip">#7 role chip</span>
+      </div>
+      <div style="margin-top:8px;">
+        <strong>Predict at draft time</strong> — third block warns because projected cost would cross a policy threshold. User sees it without running. The Guard moat made visible in the editor.
+      </div>
+    </div>
+    <a class="next" href="#s11">Next: Run timeline →</a>
+  </div>
+</section>
+
+<!-- ════════════ S11 — Run timeline ════════════ -->
+<section class="screen" id="s11">
+  <div class="screen-head">
+    <div>
+      <h2>11. Run detail — <code style="font-family:ui-monospace; font-size:14px;">/workflows/[id]/runs/[run_id]</code></h2>
+      <div class="ref">Wireframe #6 · Rung: <span class="rung-tag">Run</span> · Reuses primitive #5 from Audit</div>
+    </div>
+    <span class="ref">Same surface shape as Audit, single-run filter</span>
+  </div>
+  <div class="viewport">
+    <div class="viewport-chrome">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="url">https://app.conductai.ai/workflows/pr-review-bot/runs/4823</span>
+    </div>
+    <div class="viewport-body">
+      <div class="app-shell">
+        <aside class="app-sidebar">
+          <div class="sb-brand"><span class="logo-dot">C</span> Conduct</div>
+          <a href="#s4" class="sb-item">Home</a>
+          <a href="#s5" class="sb-item">Guard</a>
+          <a href="#s8" class="sb-item">Audit</a>
+          <a href="#s10" class="sb-item">Canvas</a>
+          <a href="#s11" class="sb-item active">Runs</a>
+        </aside>
+        <div class="app-main">
+          <div class="app-header">
+            <div>
+              <span class="lane eng">Engineering</span>
+              <h3 style="margin: 4px 0 0;">Run #4823 · PR Review Bot</h3>
+              <div class="mini-meta">Started 14:28 · 2m 14s · $0.41 actual</div>
+            </div>
+            <span class="role-chip"><span class="role-dot"></span>developer · Sudhi</span>
+          </div>
+          <div class="spend-ribbon" style="margin-bottom: 18px;">
+            <span class="mini-meta">This run</span>
+            <div class="bar"><div class="fill" style="width: 41%;"></div></div>
+            <span class="num">$0.41 / $1.00 cap</span>
+          </div>
+          <div class="timeline">
+            <div class="tl-row">
+              <span class="tl-time">14:28:02</span>
+              <span class="tl-actor">Trigger</span>
+              <div class="tl-action">GitHub PR #4823 opened <span class="detail">conductai/api</span></div>
+              <div class="tl-meta"><span class="gpill allow"><span class="gdot"></span>allow</span><span class="tl-cost">$0.00</span></div>
+            </div>
+            <div class="tl-row">
+              <span class="tl-time">14:28:04</span>
+              <span class="tl-actor">Memory</span>
+              <div class="tl-action">Recall prior reviews <span class="detail">2,400 tok</span></div>
+              <div class="tl-meta"><span class="gpill allow"><span class="gdot"></span>allow</span><span class="tl-cost">$0.01</span></div>
+            </div>
+            <div class="tl-row">
+              <span class="tl-time">14:28:05</span>
+              <span class="tl-actor">Agent</span>
+              <div class="tl-action">Claude reviews PR diff <span class="detail">claude-sonnet-4-6</span></div>
+              <div class="tl-meta"><span class="gpill warn"><span class="gdot"></span>warn · 80% of per-call cap</span><span class="tl-cost">$0.38</span></div>
+            </div>
+            <div class="tl-row" style="padding-top: 4px; padding-bottom: 14px; padding-left: 102px;">
+              <span></span><span></span>
+              <div class="tl-action mini-meta">Policy: <code style="color: var(--accent-2); font-family: ui-monospace; font-size: 11px;">block-gpt4-over-50c @v1</code></div>
+              <span></span>
+            </div>
+            <div class="tl-row">
+              <span class="tl-time">14:30:11</span>
+              <span class="tl-actor">Guard</span>
+              <div class="tl-action">Policy gate — <strong>3 policies evaluated</strong></div>
+              <div class="tl-meta"><span class="gpill allow"><span class="gdot"></span>allow</span><span class="tl-cost">$0.00</span></div>
+            </div>
+            <div class="tl-row">
+              <span class="tl-time">14:30:12</span>
+              <span class="tl-actor">Tool</span>
+              <div class="tl-action">github.post_review_comment <span class="detail">2 inline comments</span></div>
+              <div class="tl-meta"><span class="gpill allow"><span class="gdot"></span>allow</span><span class="ec">SOC 2 CC6.1</span><span class="tl-cost">$0.02</span></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top: 18px; background: var(--ok); color: #fff; border-color: var(--ok);">
+            <strong>✓ Run complete</strong> — review comment posted on PR #4823.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footnote">
+    <div class="ft-left">
+      <span class="lbl">Primitives</span>
+      <div class="chips">
+        <span class="chip">#5 timeline row (same as Audit)</span>
+        <span class="chip">#1 Guard pill (per step)</span>
+        <span class="chip">#2 evidence chip (final tool row)</span>
+        <span class="chip">#6 spend ribbon</span>
+      </div>
+      <div style="margin-top:8px;">
+        Structurally identical to Audit (S8) — only the filter differs. <strong>One primitive, two views</strong>. Decisions #4 + #17.
+      </div>
+    </div>
+    <a class="next" href="#s1">Back to start ↑</a>
+  </div>
+</section>
+
+<!-- ════════════ End ════════════ -->
+<footer style="max-width: 1280px; margin: 64px auto; padding: 0 32px; color: var(--text-muted); font-size: 12px; text-align: center;">
+  Conduct · UX Northstar mockup · references <code style="font-family:ui-monospace; font-size:11.5px;">UX_NORTHSTAR.md</code> · captured 2026-06-26 to 2026-07-02.
+</footer>
+
+</body>
+</html>
