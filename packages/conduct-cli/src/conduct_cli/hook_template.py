@@ -39,6 +39,8 @@ VERSION_CACHE_PATH  = GUARD_DIR / "version_cache.json"
 VERSION_CACHE_TTL   = 60   # 1 minute — matches server poll window
 WARNED_RULES_PATH   = GUARD_DIR / "warned_rules.json"
 SIGNING_KEY_PATH    = GUARD_DIR / "signing.key"
+JOURNAL_DIR         = GUARD_DIR / "journal"
+JOURNAL_PID_PATH    = JOURNAL_DIR / "drain.pid"
 
 
 _DAEMON_URL = "http://127.0.0.1:7878"
@@ -415,6 +417,82 @@ def _record_session_warn(session_id: str, rule_id: str) -> None:
         pass
 
 
+def _journal_append(payload_str, api_url):
+    """Atomically write one event to the journal for the drain daemon to pick up."""
+    try:
+        JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
+        import time, random
+        name = f"{time.time_ns()}_{random.randint(0, 9999):04d}.json"
+        entry = json.dumps({"api_url": api_url, "payload": payload_str})
+        tmp = JOURNAL_DIR / (name + ".tmp")
+        tmp.write_text(entry)
+        tmp.rename(JOURNAL_DIR / name)
+    except Exception:
+        pass
+
+
+def _ensure_drain_daemon():
+    """Start the drain daemon if it isn't already running."""
+    try:
+        if JOURNAL_PID_PATH.exists():
+            pid = int(JOURNAL_PID_PATH.read_text().strip())
+            import os as _os
+            try:
+                _os.kill(pid, 0)
+                return  # alive
+            except (ProcessLookupError, PermissionError):
+                pass
+        hook_path = Path(__file__).resolve()
+        subprocess.Popen(
+            [sys.executable, str(hook_path), "drain"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception:
+        pass
+
+
+def _run_drain_daemon():
+    """Drain journal → API. Called as: python hook.py drain"""
+    import os as _os, time as _time
+    try:
+        JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
+        JOURNAL_PID_PATH.write_text(str(_os.getpid()))
+    except Exception:
+        return
+    empty_scans = 0
+    while empty_scans < 3:
+        files = sorted(JOURNAL_DIR.glob("*.json"))
+        if not files:
+            empty_scans += 1
+            _time.sleep(2)
+            continue
+        empty_scans = 0
+        for f in files:
+            if f.name == "drain.pid":
+                continue
+            try:
+                entry = json.loads(f.read_text())
+                api_url = entry["api_url"]
+                payload = entry["payload"].encode() if isinstance(entry["payload"], str) else entry["payload"]
+                import urllib.request as _ur
+                req = _ur.Request(
+                    f"{api_url}/guard/events",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                _ur.urlopen(req, timeout=8)
+                f.unlink(missing_ok=True)
+            except Exception:
+                pass  # ponytail: leave file on failure, next scan retries
+    try:
+        JOURNAL_PID_PATH.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 def _post_event(tool_name, tool_input, decision, rule_id=None, message=None, session_id=None):
     try:
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
@@ -441,20 +519,8 @@ def _post_event(tool_name, tool_input, decision, rule_id=None, message=None, ses
         "hostname":      _platform.node(),
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-    script = (
-        "import urllib.request\n"
-        "try:\n"
-        f"    req = urllib.request.Request(\"{api_url}/guard/events\","
-        f" data={repr(payload.encode())}, headers={{\"Content-Type\": \"application/json\"}}, method=\"POST\")\n"
-        "    urllib.request.urlopen(req, timeout=5)\n"
-        "except: pass\n"
-    )
-    subprocess.Popen(
-        [sys.executable, "-c", script],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    _journal_append(payload, api_url)
+    _ensure_drain_daemon()
 
 
 def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms):
@@ -906,5 +972,7 @@ if __name__ == "__main__":
         post_usage_main()
     elif len(sys.argv) > 1 and sys.argv[1] == "post-codex":
         post_codex_main()
+    elif len(sys.argv) > 1 and sys.argv[1] == "drain":
+        _run_drain_daemon()
     else:
         main()
