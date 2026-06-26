@@ -136,14 +136,14 @@ For each rung: who, what they're trying to do, what they see today, what they sh
 | `/setup`                                                | Entry        |      | x        |       |      | slice 1 of #858 in parallel; full redesign post-doc         |
 | `/sign-in`, `/sign-up`, `/accept-invite`                | Entry        | x    |          |       |      | Clerk-shaped, leave alone                                   |
 | `/home` *(new)*                                         | Entry        |      |          |       |      | **build new** — conversational entry per #859               |
-| `/dashboard`                                            | Entry/Build  |      | x        |       |      | stops being default landing; becomes a per-lane summary     |
+| `/dashboard`                                            | Run/Govern   |      | x        |       |      | stops being default landing; reframed as "ops overview" — KPIs + SpendArc + GuardSnapshot + agent-health. Sits next to /home as a power-user deep-link, never the default route. |
 | `/projects`                                             | Build        |      | x        |       |      | reframe as workspace index; project = canvas group          |
 | `/projects/[id]`                                        | Build        |      | x        |       |      | becomes the canvas with run-history inline                  |
 | `/workflows`, `/workflows/[id]`                         | Build        | x    |          |       |      | canvas stays; only entry changes                            |
 | `/workflows/new`                                        | Build        |      | x        |       |      | ambient draft replaces blank canvas                         |
 | `/workflows/[id]/settings`                              | Build        |      |          | x     |      | merge into canvas right-panel inspector                     |
 | `/playbooks/[slug]`, `/marketplace/[slug]`              | Build        |      |          | x     |      | one canonical playbook detail view                          |
-| `/playbook-queue`                                       | Build        |      | x        |       |      | becomes a Govern surface (admin approvals) [contested]      |
+| `/playbook-queue`                                       | Govern       |      |          | x     |      | confirmed admin/security-only approval surface — merge into `/guard?tab=approvals` |
 | `/playbooks/submit`                                     | Build        | x    |          |       |      | low-traffic, leave alone                                    |
 | `/runs`, `/workflows/[id]/runs`                         | Run          |      | x        |       |      | timeline-first index                                        |
 | `/workflows/[id]/runs/[run_id]`                         | Run          |      | x        |       |      | timeline view reusing Audit primitive                       |
@@ -167,15 +167,99 @@ For each rung: who, what they're trying to do, what they see today, what they sh
 
 ---
 
-## Primitives (skeleton — content day 3)
+## Primitives
 
-- **Intent input** — chat-as-finder, lives in shell. Scoped to workspace context. Not blank-slate.
-- **Block / node card** — same card on canvas (build rung) and timeline (run rung).
-- **Guard inline pill** — decision (allow / block / warn) shown wherever an action is shown. The spine made visible.
-- **Compliance evidence chip** — links a screen element to a SOC 2 / OWASP / internal requirement. Renders in audit timeline + on compliance pack pages.
-- **Result card** — router output, search result, run summary all the same shape.
-- **Spend ribbon** — running cost displayed inline on canvas + run timeline + governance.
-- **Role chip** — RBAC made visible. User always knows what role they're acting as.
+The reusable building blocks every surface uses. The first two (Guard inline pill + compliance evidence chip) are load-bearing — Guard-on-every-rung depends on them. Spec'd day 2. The rest are listed with one-liners; specs land day 3.
+
+### 1. Guard inline pill — **load-bearing**
+
+Decision badge that appears wherever an action is shown. The visible form of the Guard spine.
+
+**Surfaces:**
+- Build (Rung 4) — on every block in the canvas, predicted from current policies
+- Run (Rung 5) — on every step in the timeline, actual decision at run time
+- Audit (Rung 3) — on every event in the timeline
+- Govern (Rung 2) — on the policy itself ("this policy blocked 47 calls this week")
+- Entry (Rung 1) — on the ambient "3 calls blocked overnight" prompt on /home
+
+**States (color + label, B2B subdued palette — not consumer red/green):**
+- `allow` — slate, no label by default; "Allowed" on hover
+- `warn` — amber, label "Warn: {short reason}" (e.g. "Warn: 80% of monthly cap")
+- `block` — red, label "Blocked: {short reason}" (e.g. "Blocked: above per-call cap")
+- `predict` — outlined (dashed) variant of allow/warn/block, used at draft time on canvas. Same colors. Hover reveals "Predicted at draft time."
+- `synthetic` — gray outlined, used for demo / mock-LLM events so they're visually distinct in audit
+
+**Anatomy:**
+- Compact (dense lists, default in timelines and canvas): 20px pill, color dot + 1-line label, click → expand inline
+- Expanded (detail views, on demand): same pill + reason text + "Policy: {name}@{version}" link → Govern policy detail
+
+**Behavior:**
+- Every pill links back to the policy that fired (Govern rung is the source of truth)
+- At draft time (Build), only `predict` variant — no actual decision yet
+- Pills are read-only in Run + Audit (events are immutable); editable on Govern (you can change the policy that produced them)
+
+**Accessibility:**
+- Color never carries information alone; the label always names the state
+- Screen-reader announces decision + reason + policy name
+- Keyboard: pill is focusable; Enter expands, Esc collapses
+
+**[contested]** Should `predict` show on canvas always, or only after the first save? Always is more honest; first-save reduces noise. Recommend always; revisit if developers complain in week-2 dogfood.
+
+### 2. Compliance evidence chip — **load-bearing**
+
+Chip that links a screen element (an event, a policy, a block, a setting) to a compliance requirement it satisfies.
+
+**Surfaces:**
+- Audit (Rung 3) — on every timeline row that maps to a requirement
+- Govern (Rung 2) — on each policy ("satisfies SOC 2 CC6.1")
+- Marketing (Entry, Rung 1) — on the homepage compliance section, linking to live evidence
+
+**Anatomy:**
+- 22px chip with framework icon (SOC 2 / ISO 27001 / EU AI Act / OWASP-for-LLMs / internal) + requirement code (e.g. `CC6.1`, `A.5.1`, `§27`)
+- Hover: framework full name + 1-line requirement summary
+- Click: → requirement definition page + the events that satisfy it
+
+**Behavior:**
+- Multiple chips per row when an event satisfies multiple frameworks (common: SOC 2 + ISO 27001 from one access-control event)
+- Bulk select on audit timeline → export to compliance pack format (PDF + JSON per framework)
+- Filter audit timeline by chip ("show me everything satisfying SOC 2 CC6.*")
+
+**Data model implications:**
+- Each event in Guard's event store needs a `satisfies: [{ framework, requirement_code }]` field (likely already partly there per Guard schema; verify day 3)
+- Requirement registry is its own thing — versioned, framework-namespaced, owned by `apps/api/app/modules/guard/compliance/` (verify location day 3)
+
+**v1 frameworks (per Lexoculus + SOC 2 capture memories):**
+1. SOC 2 (CC controls) — primary
+2. EU AI Act (§16, §27 most common) — second priority
+3. ISO 27001 — third
+4. OWASP-for-LLMs — fourth (already partly there per #828)
+5. Internal policies — fifth (customer-defined requirements)
+
+**[contested]** Display strategy when an event satisfies 4+ requirements — show first two + "+3 more"? Show a count? Use the count chip pattern Linear uses for issue labels.
+
+### 3. Intent input (day 3)
+
+Chat-as-finder, lives in the app shell. Scoped to the user's workspace context (their playbooks, their policies, their lane). Routes intent to the right surface + can draft canvas (Build rung). **Not blank-slate** — placeholder copy and suggestions are workspace-aware ("Draft a policy that blocks GPT-4 over $0.50", not "What would you like to build?").
+
+### 4. Block / node card (day 3)
+
+Same card shape on canvas (Build) and run timeline (Run). Holds: block name, lane, Guard inline pill, spend estimate / actual, run status, audit chip. Reuse means one component to keep visually coherent.
+
+### 5. Timeline row (day 3)
+
+The Audit-and-Run primitive. Established in Audit rung 3, reused in Run rung 5. Holds: timestamp, actor, action, target, Guard inline pill, compliance evidence chips, spend, drill-down link.
+
+### 6. Spend ribbon (day 3)
+
+Running cost displayed inline on canvas (Build), run timeline (Run), and as the spine of Govern's Spend tab. Always references the per-developer + per-team budgets defined in Govern.
+
+### 7. Role chip (day 3)
+
+RBAC made visible. User always knows what role they're acting as. Sits in the header next to the workspace switcher. Required for B2B audience — never hidden.
+
+### 8. Compliance pack pane (day 3)
+
+Always-on accessory on the Govern surface. Shows current framework attestations, last evidence-export date, gaps. Doubles as the click target from marketing's compliance section.
 
 ---
 
@@ -194,21 +278,26 @@ For each rung: who, what they're trying to do, what they see today, what they sh
 | 8   | Build `/home` net-new as the conversational entry; do not "wire up an existing draft" | Reuse a drafted home page from prior session | Confirmed via filesystem search — no `/home` file exists. Memory was stale, now corrected. Spec from #859 is the source. | 2026-06-26 |
 | 9   | Delete `/security` (3-line redirect file) and merge `/governance` (947 lines) into `/guard` with a redirect | Keep both as distinct surfaces | `/security` already does nothing; `/governance` is a content dupe. v3 positioning says one canonical Guard surface. | 2026-06-26 |
 | 10  | Merge `/observability` into `/runs` as a saved filter view; keep `/observability/alerts` and move it under Guard | Keep `/observability` as a parallel surface to `/runs` | Both are timeline-of-events at heart. Alerts are policy-adjacent, so they belong on the Guard side. [contested — confirm with whoever owns observability today] | 2026-06-26 |
+| 11  | `/dashboard` reframed as power-user "ops overview" (Run + Govern crossover); never default landing | Kill /dashboard entirely / keep as default landing | Real components there (SpendArc, GuardSnapshot, AgentHealth) are useful for engineering leads. Killing wastes shipped work. But landing engineers there contradicts the buyer-first journey. Compromise: it stays, just not as the front door. | 2026-06-27 |
+| 12  | `/playbook-queue` merges into `/guard?tab=approvals` (Govern) | Leave under Build / kill it | File confirmed: pending→promoted|needs_work approval flow, role-gated to admin/security. Pure governance surface. | 2026-06-27 |
+| 13  | Marketing pages are in scope for journey + entry-rung decisions, out of scope for visual / brand work | Treat marketing as entirely separate / fold all of it into the doc | Marketing IS the entry rung pre-signup; we can't ignore it without breaking the journey. But brand / visual identity is its own track per #860 out-of-scope. Split cleanly: journey calls (lead with Guard, kill /solutions as a separate page) are in; redesigning the hero is out. | 2026-06-27 |
 
 
 ---
 
-## Open questions (resolve by day 4)
+## Open questions
 
 1. ~~Does `/home` exist as a real route?~~ **Resolved day 1:** no — build new (decision #8).
 2. ~~`/governance` vs `/security` vs `/guard` — confirm which two die.~~ **Resolved day 1:** delete `/security`, merge `/governance` into `/guard` (decision #9).
 3. ~~`/observability` vs `/runs` — overlap?~~ **Resolved day 1:** merge `/observability` into `/runs`, move `/observability/alerts` under Guard (decision #10, [contested]).
-4. `/dashboard` — what is it actually for today? Who lands there? **Day 2:** read the file, name what it does, decide the redesign target (per-lane summary feels right but unverified).
-5. Marketing pages — in scope or separate track? **Day 2 decision needed.** Recommendation: in scope for the journey rung 1, but visual / brand work is the separate track.
-6. **New (day 1):** `/playbook-queue` — is this an admin approval surface (Govern) or a developer queue (Build)? Function unclear from the route name. Read file day 2.
-7. **New (day 1):** does the canvas right-panel inspector exist today, or do we need to build it before `/workflows/[id]/settings` can be merged?
-8. **New (day 1):** which compliance pack format do we standardize on for the `/audit?pack=*` export? SOC 2 is row one; ISO 27001 + EU AI Act are likely next (per Lexoculus capture memory).
+4. ~~`/dashboard` — what is it actually for today?~~ **Resolved day 2:** KPIs + SpendArc + GuardSnapshot + AgentHealth + EmptyChecklist (143-line shell + supporting components). Real ops-overview surface for engineering lead. Stops being default landing, lives next to `/home`. Decision #11.
+5. ~~Marketing pages in scope?~~ **Resolved day 2:** journey + entry rung decisions ARE in scope; visual / brand work is separate. Decision #13.
+6. ~~`/playbook-queue` role?~~ **Resolved day 2:** admin/security-only approval surface (allowed roles: admin, security; status flow pending→promoted|needs_work). Confirmed Govern, not Build. Decision #12.
+7. Canvas right-panel inspector — exists today, or do we build it before merging `/workflows/[id]/settings` in? **Day 3** — verify.
+8. Which compliance pack format do we standardize on for `/audit?pack=*` export? SOC 2 is row one; EU AI Act + ISO 27001 next (per Lexoculus capture). Spec'd in primitive #2 above (v1 priority list). **Confirm day 5** when re-spec'ing #858/#859/#826.
+9. **New (day 2):** `predict` Guard pill always-on at draft time, or only after first save? Primitive #1 recommends always; revisit week-2 dogfood.
+10. **New (day 2):** event `satisfies: [{ framework, requirement_code }]` field — does Guard's event schema already have this? Check `apps/api/app/modules/guard/` day 3.
 
 ---
 
-*End of day 1. Next: day 2 — read `/dashboard` + `/playbook-queue`, decide marketing-track scope, start primitive specs.*
+*End of day 2. Next: day 3 — finish primitive specs (#3–#8), verify canvas right-panel inspector exists, start wireframes.*
