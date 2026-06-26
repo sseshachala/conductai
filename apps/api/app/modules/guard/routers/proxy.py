@@ -30,6 +30,7 @@ import httpx
 import structlog
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -45,6 +46,9 @@ from app.runtime.pricing import get_model_rates
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/proxy", tags=["guard-proxy"])
+# Sibling router for non-proxy guard endpoints (e.g. local-audit-findings)
+# so URLs stay semantic — `/guard/local-audit-findings`, not `/proxy/...`.
+guard_router = APIRouter(prefix="/guard", tags=["guard"])
 
 
 VENDOR_DEFAULTS = {
@@ -54,6 +58,98 @@ VENDOR_DEFAULTS = {
 }
 
 MEMBER_TOKEN_PREFIX = "guard-mt-"
+
+
+# ─── Local key audit ingest ───────────────────────────────────────────────
+
+class _LocalFinding(BaseModel):
+    provider: str
+    path: str
+    masked: str
+    line: int | None = None
+
+
+class _LocalAuditIn(BaseModel):
+    user_email: str | None = None
+    findings: list[_LocalFinding] = []
+
+
+@guard_router.post("/local-audit-findings", include_in_schema=True)
+async def ingest_local_audit(request: Request, body: _LocalAuditIn):
+    """Receive pre-existing-key findings from `conduct guard sync`.
+
+    One audit_event row per finding, source='local_audit', decision='WARN'.
+    Auth: same member-token header used by the proxy routes.
+    """
+    raw = request.headers.get("x-api-key") or request.headers.get("authorization", "")
+    if raw.lower().startswith("bearer "):
+        raw = raw[7:].strip()
+    if not raw.startswith(MEMBER_TOKEN_PREFIX):
+        return _fail_closed(401, "Missing or malformed Conduct member token")
+
+    db = SessionLocal()
+    try:
+        ident = _resolve_member(db, raw)
+        if not ident:
+            return _fail_closed(401, "Conduct member token not recognized")
+        workspace_id, clerk_user_id = ident
+        set_workspace_rls(db, workspace_id)
+
+        # Replace this user's prior local_audit rows for the same paths
+        # (so we don't grow N×N noise on every re-sync).
+        paths = sorted({f.path for f in body.findings})
+        if paths:
+            db.execute(
+                text("""
+                    DELETE FROM guard_audit_events
+                    WHERE workspace_id = :ws
+                      AND source = 'local_audit'
+                      AND clerk_user_id = :uid
+                      AND input_summary = ANY(:paths)
+                """),
+                {"ws": workspace_id, "uid": clerk_user_id, "paths": paths},
+            )
+
+        now = datetime.now(timezone.utc)
+        for f in body.findings:
+            db.execute(
+                text("""
+                    INSERT INTO guard_audit_events (
+                      workspace_id, clerk_user_id, ai_tool, tool_call,
+                      source, provider, model,
+                      decision, rule_id, rule_message, ts,
+                      input_summary
+                    ) VALUES (
+                      :ws, :uid, :ai, NULL,
+                      'local_audit', :prov, NULL,
+                      'WARN', 'local_key_pre_existing',
+                      :msg, :ts, :path
+                    )
+                """),
+                {
+                    "ws": workspace_id, "uid": clerk_user_id,
+                    "ai": _tool_from_path(f.path),
+                    "prov": f.provider,
+                    "msg": f"Pre-existing {f.provider} key in {f.path}:{f.line} ({f.masked})",
+                    "ts": now,
+                    "path": f.path,
+                },
+            )
+        db.commit()
+        log.info("guard.proxy.local_audit_ingested",
+                 workspace_id=workspace_id, count=len(body.findings))
+        return {"received": len(body.findings)}
+    finally:
+        db.close()
+
+
+def _tool_from_path(path: str) -> str:
+    p = path.lower()
+    if "claude" in p:    return "claude-code"
+    if "cursor" in p:    return "cursor"
+    if "codex" in p:     return "codex"
+    if "aider" in p:     return "aider"
+    return "shell" if any(s in p for s in ("zshrc", "bashrc", "profile")) else "unknown"
 
 
 # ─── Anthropic ─────────────────────────────────────────────────────────────

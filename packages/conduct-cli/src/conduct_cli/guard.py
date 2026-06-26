@@ -863,6 +863,20 @@ def cmd_guard_sync(args):
         if newly_sourced:
             print(f"  {CYAN}Run `source {rc_path}` (or open a new shell) to activate.{RESET}")
 
+    # Local key audit — scan known config files for real provider keys that
+    # may have been pasted before the dev onboarded onto Conduct. Findings
+    # surface in /guard/audit with a 'LOCAL RISK' badge. --no-local-audit
+    # skips the scan (CI runners, dev throw-away setups, etc.)
+    if not getattr(args, "no_local_audit", False):
+        local = _scan_local_keys()
+        if local:
+            print(f"  {YELLOW}Local risk: {len(local)} pre-existing key(s) found{RESET}")
+            for f in local[:5]:
+                print(f"    [{f['provider']}] {f['path']}:{f['line']}  {f['masked']}")
+            if len(local) > 5:
+                print(f"    …{len(local) - 5} more — see /guard/audit")
+            _post_local_findings(cfg, base_url, local)
+
     if getattr(args, "cursor", False):
         _write_cursorrules(policy)
 
@@ -910,6 +924,90 @@ PROXY_OVERRIDE     = CONDUCT_DIR / "env-override"
 DEFAULT_PROXY_URL  = "https://api.conductai.ai/proxy"
 SHELL_RC_MARKER    = "# Conduct Guard Proxy — managed by `conduct guard sync`"
 SHELL_SOURCE_LINE  = "[ -f ~/.conduct/env ] && . ~/.conduct/env"
+
+
+# ── Local key audit ──────────────────────────────────────────────────────────
+# Patterns that match real provider keys (NOT our member tokens).
+# Tuples of (provider, regex). Compiled once at import.
+import re as _re
+
+_KEY_PATTERNS = [
+    ("anthropic",  _re.compile(r"sk-ant-(?:api\d+-)?[A-Za-z0-9_-]{20,}")),
+    ("openai",     _re.compile(r"sk-(?:proj-)?[A-Za-z0-9]{20,}")),   # sk-… (not sk-ant-)
+    ("perplexity", _re.compile(r"pplx-[A-Za-z0-9]{20,}")),
+]
+
+# Files to scan on the dev's machine.  Strings are user-home-relative paths.
+_SCAN_PATHS = [
+    "~/.claude/settings.json",
+    "~/.claude.json",
+    "~/.cursor/mcp.json",
+    "~/Library/Application Support/Cursor/User/settings.json",
+    "~/.codex/auth.json",
+    "~/.codex/config.toml",
+    "~/.zshrc",
+    "~/.bashrc",
+    "~/.bash_profile",
+    "~/.profile",
+    "~/.config/aider/.aider.conf.yml",
+]
+
+
+def _scan_local_keys() -> list[dict]:
+    """Scan the dev's machine for pre-existing real provider API keys.
+
+    Returns a list of findings. Each finding is dict with:
+        provider, path, masked, line (best-effort)
+
+    Skips our own guard-mt-… tokens — those aren't real keys.
+    """
+    findings: list[dict] = []
+    home = Path.home()
+    for raw in _SCAN_PATHS:
+        path = Path(raw.replace("~", str(home)))
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            text = path.read_text(errors="ignore")
+        except Exception:
+            continue
+        # OpenAI's sk- pattern will also catch sk-ant-… — order matters:
+        # try anthropic first, then strip its hits from the OpenAI pass.
+        seen: set[tuple[str, str]] = set()
+        for provider, pat in _KEY_PATTERNS:
+            for m in pat.finditer(text):
+                key = m.group(0)
+                if (provider, key) in seen:
+                    continue
+                if key.startswith("guard-mt-"):
+                    continue
+                # Compute line number for usability
+                line = text[: m.start()].count("\n") + 1
+                findings.append({
+                    "provider": provider,
+                    "path":     str(path),
+                    "masked":   key[:10] + "…" + key[-4:],
+                    "line":     line,
+                })
+                seen.add((provider, key))
+    return findings
+
+
+def _post_local_findings(cfg: dict, base_url: str, findings: list[dict]) -> None:
+    """Upload findings to /guard/local-audit-findings. Best-effort, never fatal."""
+    try:
+        _req(
+            "POST",
+            f"{base_url}/guard/local-audit-findings",
+            body={
+                "user_email": cfg.get("user_email", ""),
+                "findings":   findings,
+            },
+            api_key=cfg.get("api_key", ""),
+            token=cfg.get("member_token", ""),
+        )
+    except Exception as e:
+        print(f"  {YELLOW}Audit upload skipped: {e}{RESET}")
 
 
 def _write_proxy_env(member_token: str, proxy_url: str) -> tuple[Path, bool]:
@@ -1383,6 +1481,8 @@ def register_guard_parser(sub):
     sync_p.add_argument("--dry-run", action="store_true", help="Preview policy changes without writing anything")
     sync_p.add_argument("--proxy-url", default=None,
                         help="Override the Guard proxy URL (default: https://api.conductai.ai/proxy)")
+    sync_p.add_argument("--no-local-audit", action="store_true",
+                        help="Skip the local pre-existing API key scan")
 
     # conduct guard status
     guard_sub.add_parser("status", help="Show today's spend and violations")

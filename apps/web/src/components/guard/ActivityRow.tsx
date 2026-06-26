@@ -20,7 +20,7 @@ export interface AuditEvent {
   input_summary: string | null
   decision: string                // "allowed" | "blocked" | "warned" | "approval" | "audited"
   rule_id: string | null
-  source?: "hook" | "proxy" | "mcp" | null
+  source?: "hook" | "proxy" | "mcp" | "local_audit" | null
   provider?: string | null         // 'anthropic' | 'openai' | 'perplexity' (proxy only)
   model?: string | null            // vendor model id (proxy only)
   conductai_run_id?: string | null
@@ -74,6 +74,27 @@ export function ProxyPill() {
       }}
     >
       via proxy
+    </span>
+  )
+}
+
+export function LocalRiskPill() {
+  return (
+    <span
+      title="Pre-existing real API key detected on a dev's machine"
+      style={{
+        fontSize: 9.5,
+        fontWeight: 700,
+        letterSpacing: 0.4,
+        padding: "1px 5px",
+        borderRadius: 3,
+        background: "color-mix(in srgb, var(--err) 16%, transparent)",
+        color: "var(--err)",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+      }}
+    >
+      local risk
     </span>
   )
 }
@@ -175,8 +196,11 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       <div className="mono" style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
         {ev.source === "proxy" && ev.provider
           ? `${ev.provider}/${ev.model ?? "?"}`
-          : ev.tool_call}
+          : ev.source === "local_audit"
+            ? (ev.provider ? `${ev.provider} key found` : "local key found")
+            : ev.tool_call}
         {ev.source === "proxy" && <ProxyPill />}
+        {ev.source === "local_audit" && <LocalRiskPill />}
       </div>
       <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {ev.input_summary ? `${ev.input_summary}…` : "—"}
