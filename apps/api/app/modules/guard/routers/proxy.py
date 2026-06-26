@@ -333,13 +333,9 @@ def _vault_key(db: Session, workspace_id: str, provider: str) -> str | None:
             k = creds.get(env_var_name) or creds.get(env_var_name.lower())
         if k:
             return k
-    # ponytail: fall back to global env var so local dev works; remove when every
-    # workspace provisions its own key during onboarding.
-    return {
-        "anthropic":  settings.anthropic_api_key,
-        "openai":     settings.openai_api_key,
-        "perplexity": "",
-    }[provider] or None
+    # Fail-closed: no global env-key fallback. A misconfigured workspace
+    # gets a clean 503 instead of silently routing through our default key.
+    return None
 
 
 def _upstream_url(db: Session, workspace_id: str, provider: str) -> str:
