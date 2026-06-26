@@ -49,6 +49,33 @@ const TOOL_LABELS: Record<string, string> = {
   cursor: "Cursor", windsurf: "Windsurf", copilot: "Copilot", gemini: "Gemini",
 }
 
+export function isProxyEvent(toolCall: string | null | undefined): boolean {
+  if (!toolCall) return false
+  return /^(anthropic|openai|perplexity)\//.test(toolCall)
+}
+
+export function ProxyPill() {
+  return (
+    <span
+      title="Routed through Conduct Guard Proxy"
+      style={{
+        fontSize: 9.5,
+        fontWeight: 700,
+        letterSpacing: 0.4,
+        padding: "1px 5px",
+        borderRadius: 3,
+        background: "var(--accent-weak)",
+        color: "var(--accent-text)",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+      }}
+    >
+      via proxy
+    </span>
+  )
+}
+
+
 export function ToolBadge({ tool }: { tool: string }) {
   const norm = tool.replace(/-/g, "_")
   const color = TOOL_COLORS[tool] ?? TOOL_COLORS[norm] ?? "var(--text-3)"
@@ -142,7 +169,10 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       {!compact && (
         <div><ToolBadge tool={ev.ai_tool} /></div>
       )}
-      <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{ev.tool_call}</div>
+      <div className="mono" style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+        {ev.tool_call}
+        {isProxyEvent(ev.tool_call) && <ProxyPill />}
+      </div>
       <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {ev.input_summary ? `${ev.input_summary}…` : "—"}
       </div>
