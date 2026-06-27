@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     watchdog_interval_seconds: int = 60
 
     # Guard proxy — public URL of this server's /proxy endpoint
-    conduct_proxy_url: str = "http://localhost:8000/proxy"
+    conduct_proxy_url: str = "http://localhost:8000/proxy/anthropic"
 
     # reCAPTCHA v3 — used to verify anonymous playbook submissions
     recaptcha_secret_key: str = ""
