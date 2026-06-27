@@ -38,7 +38,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
     if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
     await fetch(`${API}/guard/proxy-config`, {
       method: "PUT", headers,
-      body: JSON.stringify({ llm_upstream: upstream, llm_upstream_api_key: upstreamKey }),
+      body: JSON.stringify({ llm_upstream: upstream, llm_upstream_api_key: upstreamKey || undefined }),
     })
     setSaving(false)
     setSaved(true)
