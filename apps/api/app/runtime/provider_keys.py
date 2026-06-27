@@ -24,9 +24,8 @@ def provider_for_model(model: str) -> str:
 
 def provider_key_exists(provider: str, env_keys: set[str]) -> bool:
     """True if provider's key is present in env_keys or platform settings."""
-    from app.core.config import settings
     env_var = ENV_VAR[provider]
-    return env_var in env_keys or bool(getattr(settings, f"{provider}_api_key", None))
+    return env_var in env_keys
 
 
 class MissingProviderKey(RuntimeError):
