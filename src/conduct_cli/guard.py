@@ -1221,7 +1221,13 @@ def _write_proxy_env(member_token: str, proxy_url: str) -> tuple[Path, bool]:
         return Path(), False
 
     existing = rc.read_text() if rc.exists() else ""
+    CLAUDE_ALIAS = "alias claude='env -u ANTHROPIC_BASE_URL claude'"
+
     if SHELL_RC_MARKER in existing:
+        # Already installed — patch in the alias if missing (upgrade path)
+        if CLAUDE_ALIAS not in existing:
+            rc.write_text(existing.rstrip() + f"\n{CLAUDE_ALIAS}\n")
+            return rc, True
         return rc, False
 
     rc.parent.mkdir(parents=True, exist_ok=True)
@@ -1230,7 +1236,7 @@ def _write_proxy_env(member_token: str, proxy_url: str) -> tuple[Path, bool]:
     addition = (
         f"\n\n{SHELL_RC_MARKER}\n"
         f"{SHELL_SOURCE_LINE}\n"
-        f"alias claude='env -u ANTHROPIC_BASE_URL claude'\n"
+        f"{CLAUDE_ALIAS}\n"
     )
     rc.write_text(existing.rstrip() + addition if existing else addition.lstrip())
     return rc, True
