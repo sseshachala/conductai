@@ -593,6 +593,7 @@ def _execute_brain(
                     "routing_reason": routing_reason,
                     "pricing_version": pricing_version,
                     "pricing_rates": pricing_rates,
+                    "upstream_url": _upstream_base_url,
                 }
                 # Extract structured values from brain output so keys like
                 # pr_url, files, approach etc. are available as direct refs.
@@ -756,6 +757,7 @@ def _execute_brain(
             "routing_reason": routing_reason,
             "pricing_version": pricing_version,
             "pricing_rates": pricing_rates,
+            "upstream_url": _upstream_base_url,
         }
         _extracted = _extract_last_json_object(result.get("output", ""))
         if _extracted:
