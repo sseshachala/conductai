@@ -7,6 +7,7 @@ export default function GuardLandingPage() {
     <>
       <HeroSection />
       <ProofStripSection />
+      <ToolsSection />
       <Phase1Section />
       <Phase2Section />
       <Phase3Section />
@@ -92,6 +93,62 @@ function ProofStripSection() {
 
         </div>
       </div>
+    </section>
+  )
+}
+
+/* ─── Tools — Works everywhere ────────────────────────────────────────── */
+
+const TOOLS = [
+  { name: "Claude Code", icon: "⬡", install: "conduct guard sync" },
+  { name: "VS Code + Copilot", icon: "⬡", install: "code --add-mcp '{...}'" },
+  { name: "Cursor", icon: "⬡", install: "conduct guard sync --cursor" },
+  { name: "Windsurf", icon: "⬡", install: "conduct guard sync --windsurf" },
+]
+
+function ToolsSection() {
+  return (
+    <section className="max-w-5xl mx-auto px-6 py-16">
+      <div className="text-center mb-10">
+        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-3">One policy. Every AI tool.</p>
+        <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight mb-4">
+          Works where your team already codes.
+        </h2>
+        <p className="text-stone-500 text-lg max-w-xl mx-auto">
+          Install once. ConductGuard enforces the same policy across every AI coding tool — no per-tool config, no gaps.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+        {[
+          { name: "Claude Code", badge: "hook + MCP" },
+          { name: "VS Code + Copilot", badge: "MCP" },
+          { name: "Cursor", badge: "MCP" },
+          { name: "Windsurf", badge: "MCP" },
+        ].map((tool) => (
+          <div key={tool.name} className="border border-stone-200 rounded-xl p-4 text-center bg-white shadow-sm">
+            <p className="font-semibold text-stone-800 text-sm mb-1">{tool.name}</p>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">
+              {tool.badge}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-stone-950 rounded-2xl p-6 text-sm font-mono text-stone-300 max-w-xl mx-auto">
+        <p className="text-stone-500 text-xs mb-3"># One command wires up every tool</p>
+        <p><span className="text-indigo-400">$</span> pip install conduct-cli</p>
+        <p><span className="text-indigo-400">$</span> conduct guard sync</p>
+        <p className="text-stone-500 mt-3 text-xs">↳ hook installed · MCP registered · policy active</p>
+      </div>
+
+      <p className="text-center text-xs text-stone-400 mt-6">
+        Also discoverable via the{" "}
+        <a href="https://registry.modelcontextprotocol.io" className="text-indigo-500 hover:underline" target="_blank" rel="noopener noreferrer">
+          MCP Registry
+        </a>
+        {" "}— install directly from VS Code or any MCP-compatible client.
+      </p>
     </section>
   )
 }
