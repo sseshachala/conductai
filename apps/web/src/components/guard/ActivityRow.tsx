@@ -325,7 +325,15 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         )}
       </div>
       {!compact && (
-        <div><ToolBadge tool={ev.ai_tool} /></div>
+        <div>
+          {ev.conductai_run_id ? (
+            <Link href={`/runs/${ev.conductai_run_id}`} style={{ textDecoration: "none" }}>
+              <ToolBadge tool={ev.ai_tool} />
+            </Link>
+          ) : (
+            <ToolBadge tool={ev.ai_tool} />
+          )}
+        </div>
       )}
       <div className="mono" style={{ fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
