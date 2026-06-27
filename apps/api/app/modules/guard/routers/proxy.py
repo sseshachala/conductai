@@ -255,15 +255,15 @@ async def _proxy(
                 "error": {"type": "guard_block", "message": decision["message"], "rule": decision["rule_id"]},
             })
 
-        # 5. Vault lookup — real vendor key + upstream URL
-        real_key = _vault_key(db, workspace_id, provider)
+        # 5. Vault lookup — upstream key wins over vendor key when set
+        upstream = _upstream_url(db, workspace_id, provider)
+        real_key = _upstream_api_key(db, workspace_id) or _vault_key(db, workspace_id, provider)
         if not real_key:
             return _fail_closed(
                 503,
-                f"No {provider} key configured for this workspace — admin must add "
-                f"it in Settings → Environments → Integrations.",
+                f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
+                f"or set LLM_UPSTREAM_API_KEY in Settings → Proxy.",
             )
-        upstream = _upstream_url(db, workspace_id, provider)
     finally:
         db.close()
 
@@ -355,6 +355,20 @@ def _vault_key(db: Session, workspace_id: str, provider: str) -> str | None:
             return k
     # Fail-closed: no global env-key fallback. A misconfigured workspace
     # gets a clean 503 instead of silently routing through our default key.
+    return None
+
+
+def _upstream_api_key(db: Session, workspace_id: str) -> str | None:
+    """Return LLM_UPSTREAM_API_KEY from proxy_config if set — used when routing through a custom gateway."""
+    row = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.handle == "proxy_config",
+    ).first()
+    if row:
+        try:
+            return (decrypt(row.encrypted_credentials) or {}).get("LLM_UPSTREAM_API_KEY") or None
+        except Exception:
+            pass
     return None
 
 
@@ -694,6 +708,7 @@ def _fail_closed(status: int, message: str) -> JSONResponse:
 
 class ProxyConfigBody(BaseModel):
     llm_upstream: str = ""
+    llm_upstream_api_key: str = ""
 
 
 @guard_router.get("/proxy-config")
@@ -707,12 +722,19 @@ def get_proxy_config(
         Integration.handle == "proxy_config",
     ).first()
     upstream = ""
+    has_upstream_key = False
     if row:
         try:
-            upstream = (decrypt(row.encrypted_credentials) or {}).get("CONDUCT_LLM_UPSTREAM", "")
+            creds = decrypt(row.encrypted_credentials) or {}
+            upstream = creds.get("CONDUCT_LLM_UPSTREAM", "")
+            has_upstream_key = bool(creds.get("LLM_UPSTREAM_API_KEY"))
         except Exception:
             pass
-    return {"conduct_proxy_url": _workspace_proxy_url(db, workspace_id), "llm_upstream": upstream}
+    return {
+        "conduct_proxy_url": _workspace_proxy_url(db, workspace_id),
+        "llm_upstream": upstream,
+        "has_upstream_key": has_upstream_key,
+    }
 
 
 @guard_router.put("/proxy-config")
@@ -722,18 +744,30 @@ def save_proxy_config(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    creds = encrypt({"CONDUCT_LLM_UPSTREAM": body.llm_upstream})
+    # Preserve existing upstream key if not being updated
     row = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
         Integration.handle == "proxy_config",
         Integration.environment_id == None,  # noqa: E711
     ).first()
+    existing: dict = {}
     if row:
-        row.encrypted_credentials = creds
+        try:
+            existing = decrypt(row.encrypted_credentials) or {}
+        except Exception:
+            pass
+
+    creds = {
+        "CONDUCT_LLM_UPSTREAM": body.llm_upstream,
+        "LLM_UPSTREAM_API_KEY": body.llm_upstream_api_key or existing.get("LLM_UPSTREAM_API_KEY", ""),
+    }
+    encrypted = encrypt(creds)
+    if row:
+        row.encrypted_credentials = encrypted
     else:
         db.add(Integration(
             workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
-            auth_method="api_key", encrypted_credentials=creds, environment_id=None,
+            auth_method="api_key", encrypted_credentials=encrypted, environment_id=None,
         ))
     db.commit()
     return {"saved": True}
