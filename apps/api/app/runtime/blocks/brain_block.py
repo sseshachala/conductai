@@ -191,6 +191,7 @@ def _execute_brain(
     block_id: str | None = None,
     playbook_slug: str | None = None,
     injected_session=None,
+    workspace_id: str = "",
 ) -> dict:
     # Import helpers from executor to avoid circular imports at module load time.
     from app.runtime.executor import (
@@ -371,8 +372,68 @@ def _execute_brain(
     if not _provider_keys[provider]:
         raise MissingProviderKey(provider, model_id)
 
+    # Resolve per-workspace upstream URL and optional gateway key from proxy_config.
+    # When CONDUCT_LLM_UPSTREAM is set, all LLM traffic routes through the
+    # customer's gateway (Portkey, Helicone, etc.) rather than the vendor directly.
+    _upstream_base_url: str | None = None
+    _upstream_key: str | None = None
+    if db and workspace_id:
+        try:
+            from sqlalchemy import text as _sql_text
+            from app.core.crypto import decrypt as _decrypt
+
+            _VENDOR_DEFAULTS = {
+                "anthropic": "https://api.anthropic.com",
+                "openai": "https://api.openai.com",
+                "perplexity": "https://api.perplexity.ai",
+            }
+
+            # Check proxy_config then env_vars for CONDUCT_LLM_UPSTREAM override.
+            for _handle in ("proxy_config", "env_vars"):
+                _row = db.execute(
+                    _sql_text("""
+                        SELECT encrypted_credentials FROM integrations
+                        WHERE workspace_id = :ws AND handle = :handle
+                          AND encrypted_credentials IS NOT NULL
+                        LIMIT 1
+                    """),
+                    {"ws": workspace_id, "handle": _handle},
+                ).fetchone()
+                if _row:
+                    try:
+                        _creds = _decrypt(_row[0]) or {}
+                        _override = _creds.get("CONDUCT_LLM_UPSTREAM") or _creds.get("conduct_llm_upstream")
+                        if _override:
+                            _upstream_base_url = f"{_override.rstrip('/')}/{provider}"
+                            break
+                    except Exception:
+                        pass
+
+            # When routing through a custom gateway, prefer the gateway's own key.
+            if _upstream_base_url:
+                from app.models.integration import Integration as _Integration
+                _pc_row = db.query(_Integration).filter(
+                    _Integration.workspace_id == workspace_id,
+                    _Integration.handle == "proxy_config",
+                ).first()
+                if _pc_row:
+                    try:
+                        _pc_creds = _decrypt(_pc_row.encrypted_credentials) or {}
+                        _upstream_key = _pc_creds.get("LLM_UPSTREAM_API_KEY") or None
+                    except Exception:
+                        pass
+        except Exception as _ue:
+            log.warning("brain.upstream_lookup_failed", workspace_id=workspace_id, error=str(_ue))
+
+    _effective_key = _upstream_key or _provider_keys[provider]
+    _effective_base_url = _upstream_base_url  # None → client uses vendor default
+
     client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
-    llm = client_for[provider](api_key=_provider_keys[provider], pricing_snapshot=pricing_snapshot)
+    llm = client_for[provider](
+        api_key=_effective_key,
+        pricing_snapshot=pricing_snapshot,
+        base_url=_effective_base_url,
+    )
 
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
