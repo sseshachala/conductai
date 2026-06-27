@@ -1,7 +1,6 @@
 "use client"
 
 import { WorkspaceProvider } from "@/lib/WorkspaceContext"
-import { useAuth } from "@clerk/nextjs"
 import { CtaLink } from "@/components/marketing/CtaLink"
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
@@ -9,24 +8,12 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
   return (
     <WorkspaceProvider clerkEnabled={clerkEnabled}>
       <div className="min-h-screen bg-white flex flex-col">
-        {clerkEnabled ? <NavUnlessSignedIn /> : <MarketingNav />}
+        <MarketingNav />
         <main className="flex-1">{children}</main>
-        {clerkEnabled ? <FooterUnlessSignedIn /> : <MarketingFooter />}
+        <MarketingFooter />
       </div>
     </WorkspaceProvider>
   )
-}
-
-function NavUnlessSignedIn() {
-  const { isSignedIn } = useAuth()
-  if (isSignedIn) return null
-  return <MarketingNav />
-}
-
-function FooterUnlessSignedIn() {
-  const { isSignedIn } = useAuth()
-  if (isSignedIn) return null
-  return <MarketingFooter />
 }
 
 function ProductsDropdown() {

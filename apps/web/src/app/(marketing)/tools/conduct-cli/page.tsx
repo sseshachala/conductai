@@ -6,6 +6,7 @@ export default function ConductCliPage() {
   return (
     <>
       <PageHook />
+      <TwoToolSection />
       <DiagnosticHero />
       <WhatItCoversSection />
       <QuickstartSection />
@@ -101,20 +102,87 @@ const SCRIPT: Segment[] = [
 function PageHook() {
   return (
     <section className="max-w-3xl mx-auto px-6 pt-16 pb-4 text-center">
-      <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-4">Conduct CLI + Agent Booster</p>
+      <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-4">Two tools. One stack.</p>
       <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-tight mb-4">
-        Your AI tools are running.<br />
+        Govern your AI agents.<br />
         <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
-          This is how you govern them from the terminal.
+          Cut the cost of running them.
         </span>
       </h1>
-      <p className="text-stone-500 leading-relaxed text-lg mb-2">
-        One install ships the platform CLI, AI policy enforcement, and a context engine that cuts token usage by 60–90%.
+      <p className="text-stone-500 leading-relaxed text-lg">
+        <code className="font-mono bg-stone-100 text-stone-700 px-1.5 py-0.5 rounded text-sm">conduct-cli</code> manages your AI platform —
+        agents, workflows, and Guard policies.{" "}
+        <code className="font-mono bg-stone-100 text-stone-700 px-1.5 py-0.5 rounded text-sm">agent-booster</code> cuts token costs 5–15x
+        by routing only the code that matters. They&apos;re independent packages that work better together.
       </p>
-      <p className="text-sm text-stone-400">
-        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">conduct-cli</code> is the platform CLI.{" "}
-        <code className="font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded text-xs">agent-booster</code> is a companion that cuts token usage, install both, they work together.
-      </p>
+    </section>
+  )
+}
+
+/* ─── Two-tool explainer ───────────────────────────────────────────────── */
+
+function TwoToolSection() {
+  return (
+    <section className="max-w-4xl mx-auto px-6 py-12">
+      <div className="grid sm:grid-cols-2 gap-6">
+
+        {/* conduct-cli */}
+        <div className="border border-stone-200 rounded-2xl p-6 bg-white">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">conduct-cli</span>
+          </div>
+          <p className="text-stone-800 font-semibold text-lg mb-2">Platform CLI</p>
+          <p className="text-stone-500 text-sm mb-4">
+            Authenticate, install agents, trigger workflows, and enforce Guard policies — all from the terminal.
+          </p>
+          <ul className="space-y-1.5 text-sm text-stone-600 font-mono">
+            <li><span className="text-indigo-400">$</span> conduct login</li>
+            <li><span className="text-indigo-400">$</span> conduct install-all</li>
+            <li><span className="text-indigo-400">$</span> conduct guard sync</li>
+            <li><span className="text-indigo-400">$</span> conduct test --all</li>
+          </ul>
+          <p className="mt-4 text-xs text-stone-400 font-mono">pip install conduct-cli</p>
+        </div>
+
+        {/* agent-booster */}
+        <div className="border border-stone-200 rounded-2xl p-6 bg-white">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">agent-booster</span>
+          </div>
+          <p className="text-stone-800 font-semibold text-lg mb-2">Token Optimizer</p>
+          <p className="text-stone-500 text-sm mb-4">
+            Parses your codebase with tree-sitter, builds a symbol index, and returns only the functions and classes relevant to each task — instead of full files.
+          </p>
+          <ul className="space-y-1.5 text-sm text-stone-600 font-mono">
+            <li><span className="text-emerald-400">$</span> booster init claude</li>
+            <li><span className="text-emerald-400">$</span> booster index &amp;&amp; booster embed</li>
+            <li><span className="text-emerald-400">$</span> booster serve</li>
+            <li><span className="text-emerald-400">$</span> booster gain</li>
+          </ul>
+          <p className="mt-4 text-xs text-stone-400 font-mono">pip install agent-booster[embed]</p>
+        </div>
+      </div>
+
+      {/* How they work together */}
+      <div className="mt-6 bg-stone-950 rounded-2xl p-6 text-sm">
+        <p className="text-stone-400 text-xs font-semibold uppercase tracking-widest mb-4">How they work together</p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 text-stone-300">
+          <div className="bg-indigo-900/40 border border-indigo-800 rounded-xl px-4 py-3 text-xs font-mono flex-1">
+            <p className="text-indigo-300 font-semibold mb-1">conduct-cli</p>
+            <p className="text-stone-400">installs agents, enforces policies, triggers runs</p>
+          </div>
+          <span className="text-stone-600 text-lg hidden sm:block">+</span>
+          <div className="bg-emerald-900/30 border border-emerald-800 rounded-xl px-4 py-3 text-xs font-mono flex-1">
+            <p className="text-emerald-300 font-semibold mb-1">agent-booster</p>
+            <p className="text-stone-400">routes only relevant symbols on every file read</p>
+          </div>
+          <span className="text-stone-600 text-lg hidden sm:block">=</span>
+          <div className="bg-stone-800 border border-stone-700 rounded-xl px-4 py-3 text-xs flex-1">
+            <p className="text-white font-semibold mb-1">Governed + cheap</p>
+            <p className="text-stone-400">policies enforced, token costs down 5–15x</p>
+          </div>
+        </div>
+      </div>
     </section>
   )
 }
