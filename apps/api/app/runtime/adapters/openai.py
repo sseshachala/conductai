@@ -25,8 +25,9 @@ def _openai_cost(model: str, usage: LLMUsage, pricing_snapshot: dict[str, Any] |
 
 
 class OpenAIClient:
-    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None, base_url: str | None = None) -> None:
+    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None, base_url: str | None = None, default_headers: dict | None = None) -> None:
         self._api_key = api_key
+        self._default_headers = default_headers or {}
         self._pricing_snapshot = pricing_snapshot
         self._base_url = base_url
 
@@ -71,6 +72,7 @@ class OpenAIClient:
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
+                **self._default_headers,
             },
             json=payload,
             timeout=60,

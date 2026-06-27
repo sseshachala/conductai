@@ -23,7 +23,7 @@ def _perplexity_cost(model: str, usage: LLMUsage, pricing_snapshot: dict[str, An
 
 
 class PerplexityClient:
-    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None, base_url: str | None = None) -> None:
+    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None, base_url: str | None = None, default_headers: dict | None = None) -> None:
         self._api_key = api_key
         self._pricing_snapshot = pricing_snapshot
         self._base_url = base_url

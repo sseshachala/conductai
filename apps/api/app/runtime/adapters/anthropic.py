@@ -27,11 +27,13 @@ def _anthropic_cost(model: str, usage: LLMUsage, pricing_snapshot: dict[str, Any
 
 
 class AnthropicClient:
-    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None, base_url: str | None = None) -> None:
+    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None, base_url: str | None = None, default_headers: dict | None = None) -> None:
         import anthropic as _anthropic
         kwargs: dict[str, Any] = {"api_key": api_key}
         if base_url is not None:
             kwargs["base_url"] = base_url
+        if default_headers:
+            kwargs["default_headers"] = default_headers
         self._client = _anthropic.Anthropic(**kwargs)
         self._pricing_snapshot = pricing_snapshot
 
