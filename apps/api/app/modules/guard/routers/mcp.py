@@ -408,6 +408,37 @@ async def mcp_endpoint(
             ai_tool = request.headers.get("x-claude-surface") or "claude_chat"
             session_id = request.headers.get("x-session-id", str(uuid.uuid4()))
 
+            # Look up active brain-block run for this workspace from Redis so
+            # guard_check calls are linked to the run without relying on Claude.
+            _redis_run_id: str | None = None
+            _redis_workflow: str | None = None
+            try:
+                import redis as _redis_mod
+                from app.core.config import settings as _cfg
+                _rv = _redis_mod.from_url(_cfg.redis_url, decode_responses=True).get(f"guard_active_run:{workspace_id}")
+                if _rv:
+                    _parts = _rv.split("|", 1)
+                    _redis_run_id = _parts[0] or None
+                    _redis_workflow = (_parts[1] or None) if len(_parts) > 1 else None
+            except Exception:
+                pass
+
+            # Look up active brain-block run for this workspace from Redis.
+            # Brain block registers itself before executing so we can correlate
+            # guard_check calls to runs without relying on Claude to pass run_id.
+            _redis_run_id: str | None = None
+            _redis_workflow: str | None = None
+            try:
+                import redis as _redis_mod
+                from app.core.config import settings as _settings
+                _rv = _redis_mod.from_url(_settings.redis_url, decode_responses=True).get(f"guard_active_run:{workspace_id}")
+                if _rv:
+                    _parts = _rv.split("|", 1)
+                    _redis_run_id = _parts[0] or None
+                    _redis_workflow = _parts[1] if len(_parts) > 1 else None
+            except Exception:
+                pass
+
             if tool_name == "guard_status":
                 rules = _get_rules(db, ws_uuid)
                 result = json.dumps({
@@ -420,8 +451,8 @@ async def mcp_endpoint(
             elif tool_name == "guard_check":
                 inner_tool  = arguments.get("tool_name", "")
                 inner_input = arguments.get("tool_input") or {}
-                _run_id   = arguments.get("conduct_run_id") or None
-                _workflow = arguments.get("conduct_workflow") or None
+                _run_id   = arguments.get("conduct_run_id") or _redis_run_id or None
+                _workflow = arguments.get("conduct_workflow") or _redis_workflow or None
                 rules = _get_rules(db, ws_uuid)
 
                 # Secret scan — fires before pattern matching so raw values never reach the log
@@ -560,8 +591,8 @@ async def mcp_endpoint(
             elif tool_name == "guard_activity":
                 summary  = arguments.get("summary", "")
                 category = arguments.get("category", "other")
-                _run_id   = arguments.get("conduct_run_id") or None
-                _workflow = arguments.get("conduct_workflow") or None
+                _run_id   = arguments.get("conduct_run_id") or _redis_run_id or None
+                _workflow = arguments.get("conduct_workflow") or _redis_workflow or None
                 _record_event(db, ws_uuid, "guard_activity", {"summary": summary, "category": category}, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                 return JSONResponse(_text(msg_id, f"Activity logged — '{summary}'"))
 
