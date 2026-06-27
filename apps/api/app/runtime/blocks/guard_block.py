@@ -18,7 +18,7 @@ from app.modules.guard.policy_engine import compute_policy
 log = structlog.get_logger(__name__)
 
 
-def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None, playbook_slug: str | None = None) -> dict:
+def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None, playbook_slug: str | None = None, workflow_id: str | None = None) -> dict:
     """Apply ConductGuard policy check at this point in the workflow.
 
     Evaluates all active team policies against the current workflow state.
@@ -153,6 +153,7 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
                 ts=now,
                 conductai_run_id=str(run_id) if run_id else None,
                 conductai_workflow=playbook_slug,
+                conductai_workflow_id=workflow_id,
             ))
             db.flush()
         except Exception:

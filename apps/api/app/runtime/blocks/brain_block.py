@@ -192,6 +192,7 @@ def _execute_brain(
     playbook_slug: str | None = None,
     injected_session=None,
     workspace_id: str = "",
+    workflow_id: str | None = None,
 ) -> dict:
     # Import helpers from executor to avoid circular imports at module load time.
     from app.runtime.executor import (
@@ -474,6 +475,7 @@ def _execute_brain(
                     cost_usd_after=cost,
                     conductai_run_id=str(run_id) if run_id else None,
                     conductai_workflow=playbook_slug,
+                    conductai_workflow_id=workflow_id,
                     ts=_dt.now(_tz.utc),
                 ))
                 _db.commit()
