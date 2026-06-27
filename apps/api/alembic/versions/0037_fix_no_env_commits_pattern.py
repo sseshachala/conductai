@@ -5,46 +5,39 @@ Revises: 0036_guard_rule_override_match_pattern
 Create Date: 2026-06-27
 """
 from alembic import op
-from sqlalchemy.sql import text
 
 revision = "0037_fix_no_env_commits_pattern"
 down_revision = "0036_guard_rule_override_match_pattern"
 branch_labels = None
 depends_on = None
 
-OLD = "git (add|commit).+\\\\.env"
-NEW = "git add\\\\b.*(\\\\s|/)\\\\.env(\\\\.[a-zA-Z]+)?(\\\\s|$)"
+# Single-escaped for Python string, double-escaped for JSONB string value
+NEW = r"git add\b.*(\s|/)\.env(\.[a-zA-Z]+)?(\s|$)"
+OLD = r"git (add|commit).+\.env"
+
+
+def _update(pattern: str) -> str:
+    # Escape single quotes for SQL, embed as JSON string literal
+    safe = pattern.replace("'", "''")
+    return f"""
+        UPDATE skill_packs
+        SET rules = (
+            SELECT jsonb_agg(
+                CASE
+                    WHEN rule->>'id' = 'no-env-commits'
+                    THEN jsonb_set(rule, '{{match_pattern}}', to_jsonb('{safe}'::text))
+                    ELSE rule
+                END
+            )
+            FROM jsonb_array_elements(rules) AS rule
+        )
+        WHERE slug = 'conduct-base'
+    """
 
 
 def upgrade() -> None:
-    op.execute(text("""
-        UPDATE skill_packs
-        SET rules = (
-            SELECT jsonb_agg(
-                CASE
-                    WHEN rule->>'id' = 'no-env-commits'
-                    THEN jsonb_set(rule, '{match_pattern}', :new_pat::jsonb)
-                    ELSE rule
-                END
-            )
-            FROM jsonb_array_elements(rules) AS rule
-        )
-        WHERE slug = 'conduct-base'
-    """).bindparams(new_pat=f'"{NEW}"'))
+    op.execute(_update(NEW))
 
 
 def downgrade() -> None:
-    op.execute(text("""
-        UPDATE skill_packs
-        SET rules = (
-            SELECT jsonb_agg(
-                CASE
-                    WHEN rule->>'id' = 'no-env-commits'
-                    THEN jsonb_set(rule, '{match_pattern}', :old_pat::jsonb)
-                    ELSE rule
-                END
-            )
-            FROM jsonb_array_elements(rules) AS rule
-        )
-        WHERE slug = 'conduct-base'
-    """).bindparams(old_pat=f'"{OLD}"'))
+    op.execute(_update(OLD))
