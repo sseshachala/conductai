@@ -258,11 +258,6 @@ def _execute_brain(
                 session.close()
             except Exception:
                 pass
-            if run_id and workspace_id:
-                try:
-                    _get_redis().delete(f"guard_active_run:{workspace_id}")
-                except Exception:
-                    pass
 
     def _dispatch_with_creds(tool_name: str, tool_input: dict) -> str:
         # Swap credential placeholders for real values in subprocess env only.
@@ -314,14 +309,6 @@ def _execute_brain(
 
     user_message = f"Workflow context so far:\n{context}{cred_section}\n\nExecute your task."
 
-    # Register this run in Redis so the Guard MCP handler can correlate
-    # guard_check calls back to the run without relying on Claude to pass run_id.
-    if run_id and workspace_id:
-        try:
-            _r = _get_redis()
-            _r.setex(f"guard_active_run:{workspace_id}", 600, f"{run_id}|{playbook_slug or ''}")
-        except Exception:
-            pass
 
     # Clarification resume: if a prior run paused this block for clarification,
     # append the answer so the LLM has full context on the second attempt.
