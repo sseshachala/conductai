@@ -431,7 +431,10 @@ def _execute_brain(
     _effective_base_url = _upstream_base_url  # None → client uses vendor default
     _extra_headers: dict | None = None
     if _upstream_base_url and _upstream_key:
-        _extra_headers = {"x-portkey-api-key": _upstream_key}
+        _extra_headers = {
+            "x-portkey-api-key": _upstream_key,
+            "x-portkey-provider": provider,  # e.g. "anthropic", "openai"
+        }
 
     client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
     _client_kwargs: dict = {
