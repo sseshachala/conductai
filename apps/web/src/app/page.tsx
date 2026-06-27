@@ -1,6 +1,14 @@
 "use client"
 
+import { useAuth } from "@clerk/nextjs"
 import BootSequence from "@/components/marketing/BootSequence"
+
+function CtaLink({ className }: { className: string }) {
+  const { isSignedIn } = useAuth()
+  return isSignedIn
+    ? <a href="https://app.conductai.ai/guard" className={className}>Go to App</a>
+    : <a href="/sign-up" className={className}>Start Free</a>
+}
 
 export default function HomePage() {
   return (
@@ -43,9 +51,7 @@ function Nav() {
       </nav>
       <div className="flex items-center gap-3">
         {/* <a href="mailto:hello@conductai.ai" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors hidden sm:block">Talk to Us</a> */}
-        <a href="/sign-up" className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors">
-          Start Free
-        </a>
+        <CtaLink className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors" />
       </div>
       </div>
     </header>
@@ -121,9 +127,7 @@ function HeroSection() {
         ))}
       </div>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-        <a href="/sign-up" className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center">
-          Start Free
-        </a>
+        <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />
         <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener" className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-base font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center">
           Book a Demo
         </a>
@@ -486,9 +490,7 @@ function GovernanceNarrativeSection() {
               The production deploy would have executed. Average cost of a prod incident at a mid-market company: $15K–$50K. $235 saved on tooling is nice. $50K in a prevented outage is a different conversation.
             </p>
           </div>
-          <a href="/sign-up" className="flex-shrink-0 rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-bold hover:bg-indigo-700 transition-colors whitespace-nowrap">
-            Start Free
-          </a>
+          <CtaLink className="flex-shrink-0 rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-bold hover:bg-indigo-700 transition-colors whitespace-nowrap" />
         </div>
 
       </div>
@@ -599,9 +601,7 @@ function FinalCTASection() {
           GitHub gives the CISO a setting. ConductGuard gives them enforcement.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <a href="/sign-up" className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center">
-            Start Free
-          </a>
+          <CtaLink className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center" />
           <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener" className="rounded-xl border border-white/40 text-white px-7 py-3.5 text-base font-semibold hover:bg-white/10 transition-colors w-full sm:w-auto text-center">
             Book a Demo
           </a>
