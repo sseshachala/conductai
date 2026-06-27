@@ -33,6 +33,32 @@ This mirrors the hook-based flow for Claude Code, but over the MCP transport ins
 
 ---
 
+## VS Code + GitHub Copilot
+
+Add to `.vscode/mcp.json` in your repo (commits with the repo so the whole team gets it):
+
+```json
+{
+  "servers": {
+    "conductguard": {
+      "type": "stdio",
+      "command": "conductguard-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+Or install via CLI:
+
+```bash
+code --add-mcp '{"name":"conductguard","command":"conductguard-mcp","args":[]}'
+```
+
+GitHub Copilot will surface `guard_status`, `guard_check`, and `guard_sync` as callable tools. Policy enforcement and spend tracking work identically to Claude Code — same policy, same dashboard.
+
+---
+
 ## Registering with Cursor
 
 Add `conductguard-mcp` to your Cursor MCP config:
