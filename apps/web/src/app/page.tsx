@@ -1,15 +1,7 @@
 "use client"
 
-import { useAuth } from "@clerk/nextjs"
 import BootSequence from "@/components/marketing/BootSequence"
-
-function CtaLink({ className }: { className: string }) {
-  const { isSignedIn, isLoaded } = useAuth()
-  if (!isLoaded) return <span className={className} aria-hidden />
-  return isSignedIn
-    ? <a href="https://app.conductai.ai/guard" className={className}>Go to App</a>
-    : <a href="/sign-up" className={className}>Start Free</a>
-}
+import { CtaLink } from "@/components/marketing/CtaLink"
 
 export default function HomePage() {
   return (
@@ -64,7 +56,7 @@ function Nav() {
 function ProductsDropdown() {
   return (
     <div className="relative group">
-      <a href="/sign-up" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+      <a href="#" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
         Products
         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
       </a>

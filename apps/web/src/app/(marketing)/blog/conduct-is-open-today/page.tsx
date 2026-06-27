@@ -1,3 +1,5 @@
+import { CtaLink } from "@/components/marketing/CtaLink"
+
 export const metadata = {
   title: "Conduct is open today. Here's the honest version. | Conduct",
   description:
@@ -237,12 +239,9 @@ export default function BlogPost() {
           <hr className="border-stone-100 mt-12 mb-8" />
           <div className="flex items-center justify-between text-sm">
             <a href="/blog" className="text-stone-400 hover:text-stone-700 transition-colors">← All posts</a>
-            <a
-              href="/sign-up"
-              className="inline-flex items-center gap-2 rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors"
-            >
+            <CtaLink className="inline-flex items-center gap-2 rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors">
               Start the afternoon →
-            </a>
+            </CtaLink>
           </div>
     </article>
   )

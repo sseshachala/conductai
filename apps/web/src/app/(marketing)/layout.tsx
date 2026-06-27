@@ -2,6 +2,7 @@
 
 import { WorkspaceProvider } from "@/lib/WorkspaceContext"
 import { useAuth } from "@clerk/nextjs"
+import { CtaLink } from "@/components/marketing/CtaLink"
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -31,7 +32,7 @@ function FooterUnlessSignedIn() {
 function ProductsDropdown() {
   return (
     <div className="relative group">
-      <a href="/sign-up" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+      <a href="#" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
         Products
         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
       </a>
@@ -81,9 +82,7 @@ function MarketingNav() {
         </nav>
         <div className="flex items-center gap-3">
           {/* <a href="mailto:hello@conductai.ai" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors hidden sm:block">Talk to Us</a> */}
-          <a href="/sign-up" className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors">
-            Start Free
-          </a>
+          <CtaLink className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors" />
         </div>
       </div>
     </header>
