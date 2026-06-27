@@ -454,7 +454,7 @@ def _execute_brain(
             return
         try:
             from app.modules.guard.models import GuardAuditEvent as _GAE
-            from app.core.database import SessionLocal as _SL, set_workspace_rls as _rls
+            from app.core.database import SessionLocal as _SL
             import uuid as _uuid
             from datetime import datetime as _dt, timezone as _tz
             _ws = _uuid.UUID(str(workspace_id))
