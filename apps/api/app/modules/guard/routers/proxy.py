@@ -62,6 +62,15 @@ VENDOR_DEFAULTS = {
 MEMBER_TOKEN_PREFIX = "guard-mt-"
 
 
+def _workspace_proxy_url(db: Session, workspace_id: str) -> str:
+    """Read CONDUCT_PROXY_URL from workspace_config, fall back to server env."""
+    row = db.execute(
+        text("SELECT value FROM workspace_config WHERE workspace_id = :ws AND key = 'CONDUCT_PROXY_URL' LIMIT 1"),
+        {"ws": workspace_id},
+    ).fetchone()
+    return row[0] if row and row[0] else settings.conduct_proxy_url
+
+
 # ─── Local key audit ingest ───────────────────────────────────────────────
 
 class _LocalFinding(BaseModel):
@@ -703,7 +712,7 @@ def get_proxy_config(
             upstream = (decrypt(row.encrypted_credentials) or {}).get("CONDUCT_LLM_UPSTREAM", "")
         except Exception:
             pass
-    return {"conduct_proxy_url": DEFAULT_PROXY_URL, "llm_upstream": upstream}
+    return {"conduct_proxy_url": _workspace_proxy_url(db, workspace_id), "llm_upstream": upstream}
 
 
 @guard_router.put("/proxy-config")

@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     watchdog_approval_timeout_minutes: int = 120
     watchdog_interval_seconds: int = 60
 
+    # Guard proxy — public URL of this server's /proxy endpoint
+    conduct_proxy_url: str = "http://localhost:8000/proxy"
+
     # reCAPTCHA v3 — used to verify anonymous playbook submissions
     recaptcha_secret_key: str = ""
     recaptcha_min_score: float = 0.5

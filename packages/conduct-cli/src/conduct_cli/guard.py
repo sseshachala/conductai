@@ -1012,12 +1012,15 @@ def cmd_guard_sync(args):
 
     # Write LLM proxy env vars so any AI tool (Claude Code, Cursor, Codex, …)
     # routes through Conduct Guard. Customer-overridable via --proxy-url or
-    # CONDUCT_PROXY_URL env var; defaults to api.conductai.ai/proxy.
-    proxy_url = (
-        getattr(args, "proxy_url", None)
-        or os.environ.get("CONDUCT_PROXY_URL")
-        or DEFAULT_PROXY_URL
-    )
+    # CONDUCT_PROXY_URL env var; otherwise fetched from server (workspace_config).
+    proxy_url = getattr(args, "proxy_url", None) or os.environ.get("CONDUCT_PROXY_URL")
+    if not proxy_url:
+        try:
+            proxy_cfg = _req("GET", f"{base_url}/guard/proxy-config", api_key=api_key,
+                             token=cfg.get("member_token", ""))
+            proxy_url = proxy_cfg.get("conduct_proxy_url") or DEFAULT_PROXY_URL
+        except Exception:
+            proxy_url = DEFAULT_PROXY_URL
     member_token = cfg.get("member_token", "")
     rc_path, newly_sourced = _write_proxy_env(member_token, proxy_url)
     if member_token:
