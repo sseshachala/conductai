@@ -1,3 +1,9 @@
+"""FastAPI app entrypoint for the Conduct backend.
+
+This module initializes and configures the core FastAPI application,
+including middleware setup, router registration, and error handling.
+"""
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
