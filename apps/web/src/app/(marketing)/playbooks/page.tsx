@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useAuth } from "@clerk/nextjs"
 
 interface Playbook {
   slug: string
@@ -125,6 +126,7 @@ export default function AutomationsPage() {
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState("All")
+  const { isSignedIn } = useAuth()
 
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL
@@ -152,7 +154,7 @@ export default function AutomationsPage() {
             <h1 className="text-2xl font-semibold text-stone-900">All Automations</h1>
             <p className="text-sm text-stone-500 mt-1">
               Pre-built YAML playbooks for AI-assisted engineering teams.{" "}
-              <Link href="/sign-up" className="text-stone-700 font-medium hover:underline">Install in your workspace →</Link>
+              <Link href={isSignedIn ? "https://app.conductai.ai/guard" : "/sign-up"} className="text-stone-700 font-medium hover:underline">Install in your workspace →</Link>
             </p>
           </div>
 

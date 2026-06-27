@@ -1,5 +1,7 @@
 "use client"
 
+import { CtaLink } from "@/components/marketing/CtaLink"
+
 export default function GuardLandingPage() {
   return (
     <>
@@ -38,9 +40,7 @@ function HeroSection() {
         GitHub gives the CISO a setting. ConductGuard gives them enforcement.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-        <a href="/sign-up" className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center">
-          Start Free
-        </a>
+        <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />
         <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener" className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-base font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center">
           Book a Demo
         </a>
@@ -213,9 +213,7 @@ function Phase2Section() {
               The production deploy would have executed. Average cost of a prod incident at a mid-market company: $15K–$50K. $235 saved on tooling is nice. $50K in a prevented outage is a different conversation.
             </p>
           </div>
-          <a href="/sign-up" className="flex-shrink-0 rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-bold hover:bg-indigo-700 transition-colors whitespace-nowrap">
-            Start Free
-          </a>
+          <CtaLink className="flex-shrink-0 rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-bold hover:bg-indigo-700 transition-colors whitespace-nowrap" />
         </div>
       </div>
     </section>
@@ -339,9 +337,7 @@ function Phase3Section() {
           <p className="text-[15px] leading-relaxed mb-6 max-w-lg mx-auto" style={{ color: "rgba(255,255,255,0.7)" }}>
             No other automation tool has either. GitHub Actions has zero memory. Copilot has no team context. Conduct compounds both: silently, continuously, from day one.
           </p>
-          <a href="/sign-up" className="inline-flex items-center rounded-xl bg-white text-violet-700 px-7 py-3.5 text-base font-bold hover:bg-violet-50 transition-colors">
-            Start Free
-          </a>
+          <CtaLink className="inline-flex items-center rounded-xl bg-white text-violet-700 px-7 py-3.5 text-base font-bold hover:bg-violet-50 transition-colors" />
         </div>
 
       </div>
@@ -362,9 +358,7 @@ function FinalCTASection() {
           One platform. Two problems solved.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <a href="/sign-up" className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center">
-            Start Free
-          </a>
+          <CtaLink className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center" />
           <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener" className="rounded-xl border border-white/40 text-white px-7 py-3.5 text-base font-semibold hover:bg-white/10 transition-colors w-full sm:w-auto text-center">
             Book a Demo
           </a>
