@@ -258,6 +258,40 @@ Run `conduct login` first — `conduct-mcp` reads credentials from `~/.conduct/c
 
 ---
 
+## VS Code + GitHub Copilot
+
+Install from the MCP registry directly in VS Code:
+
+```bash
+code --add-mcp '{"name":"conduct","command":"conduct-mcp","args":[]}'
+code --add-mcp '{"name":"conductguard","command":"conductguard-mcp","args":["--team","<workspace-id>","--token","<member-token>"]}'
+```
+
+Or add to `.vscode/mcp.json` in your repo:
+
+```json
+{
+  "servers": {
+    "conduct": {
+      "type": "stdio",
+      "command": "conduct-mcp",
+      "args": []
+    },
+    "conductguard": {
+      "type": "stdio",
+      "command": "conductguard-mcp",
+      "args": ["--team", "<workspace-id>", "--token", "<member-token>"]
+    }
+  }
+}
+```
+
+Once wired, GitHub Copilot can list your agents, trigger workflows, and check Guard policies — the same tools available in Claude Code and Cursor.
+
+**Prerequisites:** `pip install conduct-cli` + `conduct login`
+
+---
+
 ## Links
 
 - Dashboard: [conductai.ai](https://conductai.ai)
