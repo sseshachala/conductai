@@ -1016,9 +1016,14 @@ def cmd_guard_sync(args):
     proxy_url = getattr(args, "proxy_url", None) or os.environ.get("CONDUCT_PROXY_URL")
     if not proxy_url:
         try:
-            proxy_cfg = _req("GET", f"{base_url}/guard/proxy-config", api_key=api_key,
-                             token=cfg.get("member_token", ""))
-            proxy_url = proxy_cfg.get("conduct_proxy_url") or DEFAULT_PROXY_URL
+            import urllib.request as _ur, urllib.error as _ue
+            _headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
+            _token = cfg.get("member_token", "")
+            if _token:
+                _headers["Authorization"] = f"Bearer {_token}"
+            _r = _ur.Request(f"{base_url}/guard/proxy-config", headers=_headers)
+            with _ur.urlopen(_r, timeout=10) as _resp:
+                proxy_url = json.loads(_resp.read()).get("conduct_proxy_url") or DEFAULT_PROXY_URL
         except Exception:
             proxy_url = DEFAULT_PROXY_URL
     member_token = cfg.get("member_token", "")
