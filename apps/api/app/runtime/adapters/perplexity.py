@@ -27,6 +27,7 @@ class PerplexityClient:
         self._api_key = api_key
         self._pricing_snapshot = pricing_snapshot
         self._base_url = base_url
+        self._default_headers = default_headers or {}
 
     def create(
         self,
