@@ -4,7 +4,8 @@ import { useAuth } from "@clerk/nextjs"
 import BootSequence from "@/components/marketing/BootSequence"
 
 function CtaLink({ className }: { className: string }) {
-  const { isSignedIn } = useAuth()
+  const { isSignedIn, isLoaded } = useAuth()
+  if (!isLoaded) return <span className={className} aria-hidden />
   return isSignedIn
     ? <a href="https://app.conductai.ai/guard" className={className}>Go to App</a>
     : <a href="/sign-up" className={className}>Start Free</a>
