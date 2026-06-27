@@ -542,7 +542,7 @@ async def _forward(
 
     if is_stream:
         return StreamingResponse(
-            _stream_chunks(client, resp, background, audit_args),
+            _stream_chunks(client, resp, background, audit_args, upstream=upstream),
             media_type=resp.headers.get("content-type", "text/event-stream"),
         )
 
@@ -553,7 +553,7 @@ async def _forward(
     background.add_task(
         _record_audit, *audit_args[:6], audit_args[6],
         int((time.monotonic() - audit_args[7]) * 1000),
-        body=audit_args[8], response_bytes=full,
+        body=audit_args[8], response_bytes=full, upstream=upstream,
     )
     return JSONResponse(
         status_code=resp.status_code,
@@ -564,6 +564,7 @@ async def _forward(
 async def _stream_chunks(
     client: httpx.AsyncClient, resp: httpx.Response,
     background: BackgroundTasks, audit_args: tuple,
+    upstream: str | None = None,
 ) -> AsyncIterator[bytes]:
     """Pass-through every chunk. Schedule the audit event after the stream
     closes — we don't parse mid-stream in V1."""
@@ -578,14 +579,14 @@ async def _stream_chunks(
         background.add_task(
             _record_audit, *audit_args[:6], audit_args[6],
             int((time.monotonic() - audit_args[7]) * 1000),
-            body=audit_args[8], response_bytes=bytes(collected),
+            body=audit_args[8], response_bytes=bytes(collected), upstream=upstream,
         )
 
 
 def _record_audit(
     workspace_id: str, clerk_user_id: str, ai_tool: str, provider: str, model: str,
     decision: str, rule_id: str | None, duration_ms: int,
-    *, body: dict, response_bytes: bytes | None,
+    *, body: dict, response_bytes: bytes | None, upstream: str | None = None,
 ) -> None:
     """Background task — best-effort, never blocks the response."""
     db = SessionLocal()
@@ -600,13 +601,13 @@ def _record_audit(
                   source, provider, model,
                   decision, rule_id, ts,
                   tokens_before, tokens_after, duration_ms,
-                  cost_usd_after
+                  cost_usd_after, input_summary
                 ) VALUES (
                   :ws, :uid, :ai, NULL,
                   'proxy', :prov, :model,
                   :dec, :rid, :ts,
                   :tin, :tout, :dur,
-                  :cost
+                  :cost, :upstream
                 )
             """),
             {
@@ -617,6 +618,7 @@ def _record_audit(
                 "ts": datetime.now(timezone.utc),
                 "tin": in_tokens, "tout": out_tokens, "dur": duration_ms,
                 "cost": cost_usd,
+                "upstream": upstream or "vendor",
             },
         )
         db.commit()
