@@ -867,6 +867,7 @@ def _execute_brain(
     block_id: str | None = None,
     playbook_slug: str | None = None,
     injected_session=None,
+    workspace_id: str = "",
 ) -> dict:
     from app.runtime.blocks.brain_block import _execute_brain as _brain_impl
     return _brain_impl(
@@ -874,6 +875,7 @@ def _execute_brain(
         credentials=credentials, db=db, run_id=run_id,
         block_id=block_id, playbook_slug=playbook_slug,
         injected_session=injected_session,
+        workspace_id=workspace_id,
     )
 
 def _dry_run_mock(integration: str, action: str, params: dict) -> dict:
@@ -1212,7 +1214,8 @@ def _dispatch_single_block(
 
         result = _execute_brain(block, state, compiled, credentials=credentials,
                                 db=db, run_id=run_id, block_id=block_id,
-                                playbook_slug=slug, injected_session=_injected_session)
+                                playbook_slug=slug, injected_session=_injected_session,
+                                workspace_id=workspace_id_str)
 
     elif block_type == "tool":
         result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id_str)

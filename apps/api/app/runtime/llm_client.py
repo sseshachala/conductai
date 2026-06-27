@@ -165,9 +165,12 @@ class AnthropicClient:
     - Conversation history formatting (Anthropic requires raw content objects for assistant turns)
     """
 
-    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None) -> None:
+    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None, base_url: str | None = None) -> None:
         import anthropic as _anthropic
-        self._client = _anthropic.Anthropic(api_key=api_key)
+        kwargs: dict[str, Any] = {"api_key": api_key}
+        if base_url is not None:
+            kwargs["base_url"] = base_url
+        self._client = _anthropic.Anthropic(**kwargs)
         self._pricing_snapshot = pricing_snapshot
 
     def create(
@@ -252,9 +255,10 @@ class OpenAIClient:
     - Conversation history formatting for assistant/tool turns
     """
 
-    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None) -> None:
+    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None, base_url: str | None = None) -> None:
         self._api_key = api_key
         self._pricing_snapshot = pricing_snapshot
+        self._base_url = base_url
 
     def create(
         self,
@@ -293,7 +297,7 @@ class OpenAIClient:
             ]
 
         r = httpx.post(
-            "https://api.openai.com/v1/chat/completions",
+            f"{self._base_url or 'https://api.openai.com'}/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
@@ -379,9 +383,10 @@ class PerplexityClient:
     and research tasks only (no agentic loops).
     """
 
-    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None) -> None:
+    def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None, base_url: str | None = None) -> None:
         self._api_key = api_key
         self._pricing_snapshot = pricing_snapshot
+        self._base_url = base_url
 
     def create(
         self,
@@ -406,7 +411,7 @@ class PerplexityClient:
         # Perplexity Sonar models don't support tool_calls; skip tools silently.
 
         r = httpx.post(
-            "https://api.perplexity.ai/chat/completions",
+            f"{self._base_url or 'https://api.perplexity.ai'}/chat/completions",
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
