@@ -1091,7 +1091,7 @@ def cmd_guard_sync(args):
 CONDUCT_DIR        = Path.home() / ".conduct"
 PROXY_ENV_FILE     = CONDUCT_DIR / "env"
 PROXY_OVERRIDE     = CONDUCT_DIR / "env-override"
-DEFAULT_PROXY_URL  = "https://api.conductai.ai/proxy"
+DEFAULT_PROXY_URL  = "https://api.conductai.ai/proxy/anthropic"
 SHELL_RC_MARKER    = "# Conduct Guard Proxy — managed by `conduct guard sync`"
 SHELL_SOURCE_LINE  = "[ -f ~/.conduct/env ] && . ~/.conduct/env"
 
@@ -1679,7 +1679,7 @@ def register_guard_parser(sub):
     sync_p.add_argument("--cursor", action="store_true", help="Write active Guard policies to .cursorrules")
     sync_p.add_argument("--dry-run", action="store_true", help="Preview policy changes without writing anything")
     sync_p.add_argument("--proxy-url", default=None,
-                        help="Override the Guard proxy URL (default: https://api.conductai.ai/proxy)")
+                        help="Override the Guard proxy URL (default: https://api.conductai.ai/proxy/anthropic)")
     sync_p.add_argument("--no-local-audit", action="store_true",
                         help="Skip the local pre-existing API key scan")
 
