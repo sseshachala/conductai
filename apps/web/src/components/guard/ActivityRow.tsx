@@ -26,6 +26,7 @@ export interface AuditEvent {
   provider?: string | null         // 'anthropic' | 'openai' | 'perplexity' (proxy only)
   model?: string | null            // vendor model id (proxy only)
   conductai_run_id?: string | null
+  conductai_workflow?: string | null
   blast_radius?: { files: number; symbols?: number; tier: string } | null
   hostname?: string | null
   hook_session_id?: string | null
@@ -314,7 +315,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }} title={formatTs(ev.ts)}>{formatTs(ev.ts).slice(11)}</div>
       <div style={{ minWidth: 0, overflow: "hidden" }}>
         <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {ev.user_email ?? "—"}
+          {ev.user_email ?? ev.conductai_workflow ?? "—"}
         </div>
         {(ev.hook_session_id || ev.session_id) && (
           <div className="mono" style={{ fontSize: 9.5, color: "var(--text-muted)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}

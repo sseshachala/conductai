@@ -65,6 +65,8 @@ _TOOLS = [
             "properties": {
                 "tool_name":  {"type": "string", "description": "The action you are about to take (e.g. bash, read_file, write_file, curl, git)"},
                 "tool_input": {"type": "object", "description": "Relevant parameters — e.g. {\"command\": \"rm -rf /\"} or {\"file_path\": \"/etc/passwd\"}"},
+                "conduct_run_id":   {"type": "string", "description": "Conduct run ID if called from within a workflow run — pass the value from your run context."},
+                "conduct_workflow": {"type": "string", "description": "Conduct workflow slug if called from within a workflow run."},
             },
             "required": ["tool_name"],
         },
@@ -130,6 +132,8 @@ _TOOLS = [
                     "type": "string",
                     "description": "Optional category: coding, debugging, review, research, writing, devops, security, other",
                 },
+                "conduct_run_id":   {"type": "string", "description": "Conduct run ID if called from within a workflow run."},
+                "conduct_workflow": {"type": "string", "description": "Conduct workflow slug if called from within a workflow run."},
             },
             "required": ["summary"],
         },
@@ -221,6 +225,9 @@ def _record_event(
     ai_tool: str,
     user_email: str,
     session_id: str,
+    *,
+    conductai_run_id: str | None = None,
+    conductai_workflow: str | None = None,
 ) -> None:
     event = GuardAuditEvent(
         workspace_id=ws_uuid,
@@ -233,6 +240,8 @@ def _record_event(
         rule_id=rule_id,
         hook_session_id=session_id,
         ts=datetime.now(timezone.utc),
+        conductai_run_id=conductai_run_id,
+        conductai_workflow=conductai_workflow,
     )
     db.add(event)
     db.commit()
@@ -411,6 +420,8 @@ async def mcp_endpoint(
             elif tool_name == "guard_check":
                 inner_tool  = arguments.get("tool_name", "")
                 inner_input = arguments.get("tool_input") or {}
+                _run_id   = arguments.get("conduct_run_id") or None
+                _workflow = arguments.get("conduct_workflow") or None
                 rules = _get_rules(db, ws_uuid)
 
                 # Secret scan — fires before pattern matching so raw values never reach the log
@@ -420,13 +431,13 @@ async def mcp_endpoint(
                     _, _found = redact_secrets(_inp_text)
                     if _found:
                         _secret_msg = _secret_rule.get("message") or "Credential detected in tool input."
-                        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "secret-redact", ai_tool, user_email, session_id)
+                        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "secret-redact", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                         return JSONResponse(_text(msg_id, f"BLOCKED — {_secret_msg}  [types: {', '.join(_found)}]"))
 
                 rule  = _match_policy(inner_tool, inner_input, rules)
 
                 if rule is None:
-                    _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id)
+                    _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                     return JSONResponse(_text(msg_id, f"ALLOWED — no policy rule matches '{inner_tool}'."))
 
                 action  = rule.get("action", "audit")
@@ -434,7 +445,7 @@ async def mcp_endpoint(
                 message = rule.get("message") or f"Policy violation ({rule_id})"
 
                 if action == "block":
-                    _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id)
+                    _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                     return JSONResponse(_text(msg_id, f"BLOCKED — {message}  [rule: {rule_id}]"))
                 if action in ("warn", "approval"):
                     already_warned = db.query(GuardAuditEvent).filter(
@@ -445,10 +456,10 @@ async def mcp_endpoint(
                     ).first()
                     if already_warned:
                         return JSONResponse(_text(msg_id, f"ALLOWED — warning already issued this session [rule: {rule_id}]"))
-                    _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id)
+                    _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                     return JSONResponse(_text(msg_id, f"WARNING — {message}  [rule: {rule_id}]"))
 
-                _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id)
+                _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                 return JSONResponse(_text(msg_id, f"AUDITED — {message}  [rule: {rule_id}]"))
 
             elif tool_name == "guard_sync":
@@ -549,7 +560,9 @@ async def mcp_endpoint(
             elif tool_name == "guard_activity":
                 summary  = arguments.get("summary", "")
                 category = arguments.get("category", "other")
-                _record_event(db, ws_uuid, "guard_activity", {"summary": summary, "category": category}, "allowed", None, ai_tool, user_email, session_id)
+                _run_id   = arguments.get("conduct_run_id") or None
+                _workflow = arguments.get("conduct_workflow") or None
+                _record_event(db, ws_uuid, "guard_activity", {"summary": summary, "category": category}, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                 return JSONResponse(_text(msg_id, f"Activity logged — '{summary}'"))
 
             else:

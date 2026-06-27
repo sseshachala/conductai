@@ -21,6 +21,7 @@ interface BlockRow {
   output?: string
   error?: string
   costUsd?: number
+  upstreamUrl?: string
   toolCalls?: ToolCallRow[]
   budgetExhausted?: { turns: number; costUsd: number }
 }
@@ -135,6 +136,7 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
             status: "completed",
             output: outputSnippet,
             costUsd: typeof out?.cost_usd === "number" ? out.cost_usd : undefined,
+            upstreamUrl: typeof out?.upstream_url === "string" ? out.upstream_url : undefined,
           }
           setRows(Object.values(rowMapRef.current))
           onBlockStatus(block_id, "completed")
@@ -269,6 +271,11 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
                 <span className="font-semibold text-stone-700 truncate">{row.label}</span>
                 {row.costUsd !== undefined && (
                   <span className="text-stone-400 shrink-0">${row.costUsd.toFixed(3)}</span>
+                )}
+                {row.upstreamUrl && (
+                  <span className="text-[10px] font-mono text-stone-400 shrink-0 truncate max-w-[140px]" title={row.upstreamUrl}>
+                    via {row.upstreamUrl.replace(/^https?:\/\//, "").split("/")[0]}
+                  </span>
                 )}
               </div>
               {row.toolCalls && row.toolCalls.length > 0 && (
