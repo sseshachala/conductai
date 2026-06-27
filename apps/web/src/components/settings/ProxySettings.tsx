@@ -108,8 +108,8 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
         </p>
       </div>
 
-      <button onClick={save} disabled={saving} className="btn btn-primary btn-sm">
-        {saving ? "Saving…" : saved ? "Saved" : "Save"}
+      <button onClick={save} disabled={saving} className="btn btn-primary btn-sm" style={saved ? { background: "var(--green, #22c55e)", borderColor: "var(--green, #22c55e)" } : {}}>
+        {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
       </button>
     </div>
   )
