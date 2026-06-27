@@ -524,7 +524,7 @@ function WorksWithSection() {
 
         <p className="text-center text-xs text-stone-400 mt-6">
           Run <code className="font-mono bg-stone-200 px-1 rounded">booster remove &lt;platform&gt;</code> to cleanly undo booster wiring.{" "}
-          <code className="font-mono bg-stone-200 px-1 rounded">conduct guard sync</code> is the same command on every platform. Hook-level enforcement on Claude Code; MCP-level policy on Cursor, Copilot, Windsurf, and Codex.
+          <code className="font-mono bg-stone-200 px-1 rounded">conduct guard sync</code> is the same command on every platform — one policy, enforced everywhere.
         </p>
       </div>
     </section>
