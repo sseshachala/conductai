@@ -452,33 +452,38 @@ def _execute_brain(
 
     def _audit_llm_call(in_tok: int, out_tok: int, cost: float) -> None:
         """Write one guard_audit_events row per brain block execution for LLM routing visibility."""
-        if not db or not workspace_id:
+        if not workspace_id:
             return
         try:
             from app.modules.guard.models import GuardAuditEvent as _GAE
-            from app.core.database import set_workspace_rls as _rls
+            from app.core.database import SessionLocal as _SL, set_workspace_rls as _rls
             import uuid as _uuid
             from datetime import datetime as _dt, timezone as _tz
-            _rls(db, workspace_id)
-            db.add(_GAE(
-                workspace_id=_uuid.UUID(workspace_id) if isinstance(workspace_id, str) else workspace_id,
-                ai_tool="workflow",
-                tool_call="llm_call",
-                source="brain_block",
-                provider=provider,
-                model=model_id,
-                input_summary=_upstream_base_url or "vendor",
-                decision="allowed",
-                tokens_before=in_tok,
-                tokens_after=out_tok,
-                cost_usd_after=cost,
-                conductai_run_id=str(run_id) if run_id else None,
-                conductai_workflow=playbook_slug,
-                ts=_dt.now(_tz.utc),
-            ))
-            db.commit()
-        except Exception:
-            pass  # never block on telemetry
+            _ws = _uuid.UUID(workspace_id) if isinstance(workspace_id, str) else workspace_id
+            _db = _SL()
+            try:
+                _rls(_db, workspace_id)
+                _db.add(_GAE(
+                    workspace_id=_ws,
+                    ai_tool="workflow",
+                    tool_call="llm_call",
+                    source="brain_block",
+                    provider=provider,
+                    model=model_id,
+                    input_summary=_upstream_base_url or "vendor",
+                    decision="allowed",
+                    tokens_before=in_tok,
+                    tokens_after=out_tok,
+                    cost_usd_after=cost,
+                    conductai_run_id=str(run_id) if run_id else None,
+                    conductai_workflow=playbook_slug,
+                    ts=_dt.now(_tz.utc),
+                ))
+                _db.commit()
+            finally:
+                _db.close()
+        except Exception as _ae:
+            log.warning("brain.audit_llm_call_failed", error=str(_ae), workspace_id=workspace_id, run_id=str(run_id))
 
     def _record_turns(db, run_id: str | None, actual: int, exhausted: bool) -> None:
         """Persist actual_turns + budget_exhausted on the Run row for future estimation."""
