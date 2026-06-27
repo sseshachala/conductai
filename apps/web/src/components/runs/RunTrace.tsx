@@ -211,6 +211,7 @@ interface BlockRow {
   }
   provider?: string
   model?: string
+  upstreamUrl?: string
   routingReason?: string
   sandboxProvider?: string
   sandboxDecision?: string
@@ -386,6 +387,16 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
               style={{ fontSize: 10.5, color: "var(--text-muted, #a8a29e)", cursor: "default" }}
             >
               {formatModelLabel(row.model)}
+            </span>
+          )}
+
+          {/* AI Gateway badge */}
+          {row.type === "brain" && row.upstreamUrl && (
+            <span
+              title={row.upstreamUrl}
+              style={{ fontSize: 9, color: "#6b7280", background: "#f3f4f6", border: "1px solid #e5e7eb", padding: "1px 6px", borderRadius: 4, fontWeight: 500 }}
+            >
+              via {row.upstreamUrl.replace(/^https?:\/\//, "").split("/")[0]}
             </span>
           )}
 
@@ -783,6 +794,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         if (typeof out.output_tokens === "number") blockMap[ev.block_id].outputTokens = out.output_tokens
         if (typeof out.provider === "string") blockMap[ev.block_id].provider = out.provider
         if (typeof out.model === "string") blockMap[ev.block_id].model = out.model
+        if (typeof out.upstream_url === "string") blockMap[ev.block_id].upstreamUrl = out.upstream_url
         if (typeof out.routing_reason === "string") blockMap[ev.block_id].routingReason = out.routing_reason
         if (Array.isArray(out.files_changed)) blockMap[ev.block_id].filesChanged = out.files_changed as FileChanged[]
         if (typeof out.diff_stat === "string") blockMap[ev.block_id].diffStat = out.diff_stat
