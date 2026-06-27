@@ -22,7 +22,7 @@ export interface AuditEvent {
   input_summary: string | null
   decision: string                // "allowed" | "blocked" | "warned" | "approval" | "audited"
   rule_id: string | null
-  source?: "hook" | "proxy" | "mcp" | "local_audit" | null
+  source?: "hook" | "proxy" | "mcp" | "local_audit" | "brain_block" | null
   provider?: string | null         // 'anthropic' | 'openai' | 'perplexity' (proxy only)
   model?: string | null            // vendor model id (proxy only)
   conductai_run_id?: string | null
@@ -337,13 +337,18 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       )}
       <div className="mono" style={{ fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {ev.source === "proxy" && ev.provider
+          {(ev.source === "proxy" || ev.source === "brain_block") && ev.provider
             ? `${ev.provider}/${ev.model ?? "?"}`
             : ev.source === "local_audit"
               ? (ev.provider ? `${ev.provider} key found` : "local key found")
               : formatToolCall(ev.tool_call)}
         </span>
         {ev.source === "proxy" && <ProxyPill />}
+        {ev.source === "brain_block" && (
+          <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: ".06em", padding: "1px 5px", borderRadius: 3, background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
+            AGENT
+          </span>
+        )}
         {ev.source === "local_audit" && <LocalRiskPill />}
       </div>
       <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
