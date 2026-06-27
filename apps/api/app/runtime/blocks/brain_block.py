@@ -404,7 +404,7 @@ def _execute_brain(
                         _creds = _decrypt(_row[0]) or {}
                         _override = _creds.get("CONDUCT_LLM_UPSTREAM") or _creds.get("conduct_llm_upstream")
                         if _override:
-                            _upstream_base_url = f"{_override.rstrip('/')}/{provider}"
+                            _upstream_base_url = _override.rstrip('/')
                             break
                     except Exception:
                         pass
