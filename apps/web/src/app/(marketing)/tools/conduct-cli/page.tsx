@@ -484,41 +484,11 @@ function QuickstartSection() {
 /* ─── Works with ───────────────────────────────────────────────────────── */
 
 const WORKS_WITH = [
-  {
-    name: "Claude Code",
-    icon: "◈",
-    color: "text-orange-600",
-    bg: "bg-orange-50 border-orange-200",
-    desc: "booster init claude",
-  },
-  {
-    name: "Cursor",
-    icon: "⊙",
-    color: "text-blue-600",
-    bg: "bg-blue-50 border-blue-200",
-    desc: "booster init cursor",
-  },
-  {
-    name: "Windsurf",
-    icon: "◭",
-    color: "text-violet-600",
-    bg: "bg-violet-50 border-violet-200",
-    desc: "booster init windsurf",
-  },
-  {
-    name: "OpenAI Codex",
-    icon: "◎",
-    color: "text-emerald-600",
-    bg: "bg-emerald-50 border-emerald-200",
-    desc: "booster init codex",
-  },
-  {
-    name: "GitHub Copilot",
-    icon: "✦",
-    color: "text-stone-700",
-    bg: "bg-stone-100 border-stone-300",
-    desc: "conduct guard sync",
-  },
+  { name: "Claude Code",    icon: "◈", color: "text-orange-600", bg: "bg-orange-50 border-orange-200",   booster: "booster init claude",   guard: "conduct guard sync" },
+  { name: "Cursor",         icon: "⊙", color: "text-blue-600",   bg: "bg-blue-50 border-blue-200",       booster: "booster init cursor",   guard: "conduct guard sync" },
+  { name: "Windsurf",       icon: "◭", color: "text-violet-600", bg: "bg-violet-50 border-violet-200",   booster: "booster init windsurf", guard: "conduct guard sync" },
+  { name: "OpenAI Codex",   icon: "◎", color: "text-emerald-600",bg: "bg-emerald-50 border-emerald-200", booster: "booster init codex",    guard: "conduct guard sync" },
+  { name: "GitHub Copilot", icon: "✦", color: "text-stone-700",  bg: "bg-stone-100 border-stone-300",    booster: "booster init copilot",  guard: "conduct guard sync" },
 ]
 
 function WorksWithSection() {
@@ -526,25 +496,35 @@ function WorksWithSection() {
     <section className="bg-stone-50 px-6 py-20">
       <div className="max-w-4xl mx-auto">
         <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest text-center mb-3">Compatibility</p>
-        <h2 className="text-3xl font-bold text-stone-900 text-center mb-12">
+        <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
           Works with every major AI coding tool.
         </h2>
+        <p className="text-center text-stone-500 text-sm mb-10">
+          Both tools wire up with one command per platform — token savings and policy enforcement, everywhere.
+        </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
           {WORKS_WITH.map(tool => (
-            <div key={tool.name} className={`rounded-2xl border ${tool.bg} px-6 py-6 flex flex-col items-center text-center gap-3`}>
+            <div key={tool.name} className={`rounded-2xl border ${tool.bg} px-5 py-5 flex flex-col items-center text-center gap-3`}>
               <span className={`text-3xl font-black ${tool.color}`}>{tool.icon}</span>
-              <div>
-                <p className="font-semibold text-stone-900 mb-1">{tool.name}</p>
-                <code className="text-xs text-stone-500 font-mono">{tool.desc}</code>
+              <p className="font-semibold text-stone-900 text-sm">{tool.name}</p>
+              <div className="w-full space-y-1.5">
+                <div className="bg-white/70 rounded-lg px-2 py-1.5">
+                  <p className="text-[10px] text-emerald-600 font-semibold uppercase tracking-wide mb-0.5">booster</p>
+                  <code className="text-[10px] text-stone-600 font-mono">{tool.booster}</code>
+                </div>
+                <div className="bg-white/70 rounded-lg px-2 py-1.5">
+                  <p className="text-[10px] text-indigo-600 font-semibold uppercase tracking-wide mb-0.5">guard</p>
+                  <code className="text-[10px] text-stone-600 font-mono">{tool.guard}</code>
+                </div>
               </div>
             </div>
           ))}
         </div>
 
         <p className="text-center text-xs text-stone-400 mt-6">
-          The first four show exactly what files will change and ask for confirmation; run <code className="font-mono bg-stone-200 px-1 rounded">booster remove &lt;platform&gt;</code> to cleanly undo.
-          Copilot is auto-detected and wired via <code className="font-mono bg-stone-200 px-1 rounded">conduct guard sync</code> when VS Code's GitHub Copilot extension is installed.
+          Run <code className="font-mono bg-stone-200 px-1 rounded">booster remove &lt;platform&gt;</code> to cleanly undo booster wiring.{" "}
+          <code className="font-mono bg-stone-200 px-1 rounded">conduct guard sync</code> is the same command on every platform — one policy, enforced everywhere.
         </p>
       </div>
     </section>
