@@ -632,9 +632,11 @@ def _execute_brain(
                 }
                 # Extract structured values from brain output so keys like
                 # pr_url, files, approach etc. are available as direct refs.
+                # Merge extracted first so runtime telemetry keys (upstream_url,
+                # provider, model, cost_usd …) can never be overwritten by the LLM output.
                 _extracted = _extract_last_json_object(result.get("output", ""))
                 if _extracted:
-                    result.update(_extracted)
+                    result = {**_extracted, **result}
                 _audit_llm_call(total_input_tokens, total_output_tokens, cost_usd)
                 _record_turns(db, run_id, turns, False)
                 _close_session()
@@ -797,7 +799,7 @@ def _execute_brain(
         }
         _extracted = _extract_last_json_object(result.get("output", ""))
         if _extracted:
-            result.update(_extracted)
+            result = {**_extracted, **result}
         _audit_llm_call(response.usage.input_tokens, response.usage.output_tokens, response.cost_usd)
         _close_session()
         return result
