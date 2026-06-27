@@ -425,15 +425,23 @@ def _execute_brain(
         except Exception as _ue:
             log.warning("brain.upstream_lookup_failed", workspace_id=workspace_id, error=str(_ue))
 
-    _effective_key = _upstream_key or _provider_keys[provider]
+    # When routing through Portkey/Helicone: gateway key goes in x-portkey-api-key header,
+    # vendor key stays in api_key (forwarded to Anthropic by the gateway).
+    _effective_key = _provider_keys[provider]
     _effective_base_url = _upstream_base_url  # None → client uses vendor default
+    _extra_headers: dict | None = None
+    if _upstream_base_url and _upstream_key:
+        _extra_headers = {"x-portkey-api-key": _upstream_key}
 
     client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
-    llm = client_for[provider](
-        api_key=_effective_key,
-        pricing_snapshot=pricing_snapshot,
-        base_url=_effective_base_url,
-    )
+    _client_kwargs: dict = {
+        "api_key": _effective_key,
+        "pricing_snapshot": pricing_snapshot,
+        "base_url": _effective_base_url,
+    }
+    if _extra_headers:
+        _client_kwargs["default_headers"] = _extra_headers
+    llm = client_for[provider](**_client_kwargs)
 
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
