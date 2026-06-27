@@ -1039,8 +1039,8 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
 
 from app.runtime.blocks.guard_block import _execute_guard as _guard_impl
 
-def _execute_guard(block: dict, state: dict, workspace_id: str, db) -> dict:
-    return _guard_impl(block, state, workspace_id, db)
+def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None, playbook_slug: str | None = None) -> dict:
+    return _guard_impl(block, state, workspace_id, db, run_id=run_id, playbook_slug=playbook_slug)
 
 # ── main executor ─────────────────────────────────────────────────────────────
 
@@ -1131,7 +1131,7 @@ def _dispatch_single_block(
                             "id": f"__guard_{block_id}",
                             "config": {"enforcement_mode": _gc.enforcement_mode},
                         }
-                        _guard_result = _execute_guard(_guard_block, state, _ws_str, db)
+                        _guard_result = _execute_guard(_guard_block, state, _ws_str, db, run_id=run_id, playbook_slug=slug)
                         state[f"__guard_{block_id}"] = _guard_result
                         _emit(db, run_id, f"__guard_{block_id}", "guard_check", {
                             "status": _guard_result.get("status"),
@@ -1245,7 +1245,7 @@ def _dispatch_single_block(
         )
 
     elif block_type == "guard":
-        result = _execute_guard(block, state, str(workspace_id_str), db)
+        result = _execute_guard(block, state, str(workspace_id_str), db, run_id=run_id, playbook_slug=slug)
         _emit(db, run_id, block_id, "guard_check", {
             "status":           result.get("status"),
             "rules_checked":    result.get("rules_checked", 0),
