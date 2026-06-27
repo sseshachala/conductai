@@ -165,7 +165,7 @@ def _tool_from_path(path: str) -> str:
 
 # ─── Anthropic ─────────────────────────────────────────────────────────────
 
-@router.post("/v1/messages")
+@router.post("/anthropic/v1/messages")
 async def proxy_anthropic(request: Request, background: BackgroundTasks):
     return await _proxy(
         request, background,
