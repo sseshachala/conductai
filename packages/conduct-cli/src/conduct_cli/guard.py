@@ -1016,7 +1016,7 @@ def cmd_guard_sync(args):
     proxy_url = (
         getattr(args, "proxy_url", None)
         or os.environ.get("CONDUCT_PROXY_URL")
-        or f"{base_url}/proxy"
+        or DEFAULT_PROXY_URL
     )
     member_token = cfg.get("member_token", "")
     rc_path, newly_sourced = _write_proxy_env(member_token, proxy_url)
