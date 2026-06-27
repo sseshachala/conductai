@@ -1039,8 +1039,8 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
 
 from app.runtime.blocks.guard_block import _execute_guard as _guard_impl
 
-def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None, playbook_slug: str | None = None) -> dict:
-    return _guard_impl(block, state, workspace_id, db, run_id=run_id, playbook_slug=playbook_slug)
+def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None, playbook_slug: str | None = None, workflow_id: str | None = None) -> dict:
+    return _guard_impl(block, state, workspace_id, db, run_id=run_id, playbook_slug=playbook_slug, workflow_id=workflow_id)
 
 # ── main executor ─────────────────────────────────────────────────────────────
 
@@ -1131,7 +1131,7 @@ def _dispatch_single_block(
                             "id": f"__guard_{block_id}",
                             "config": {"enforcement_mode": _gc.enforcement_mode},
                         }
-                        _guard_result = _execute_guard(_guard_block, state, _ws_str, db, run_id=run_id, playbook_slug=slug)
+                        _guard_result = _execute_guard(_guard_block, state, _ws_str, db, run_id=run_id, playbook_slug=slug, workflow_id=str(version.workflow.id))
                         state[f"__guard_{block_id}"] = _guard_result
                         _emit(db, run_id, f"__guard_{block_id}", "guard_check", {
                             "status": _guard_result.get("status"),
@@ -1215,7 +1215,7 @@ def _dispatch_single_block(
         result = _execute_brain(block, state, compiled, credentials=credentials,
                                 db=db, run_id=run_id, block_id=block_id,
                                 playbook_slug=slug, injected_session=_injected_session,
-                                workspace_id=workspace_id_str)
+                                workspace_id=workspace_id_str, workflow_id=str(version.workflow.id))
 
     elif block_type == "tool":
         result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id_str)
@@ -1245,7 +1245,7 @@ def _dispatch_single_block(
         )
 
     elif block_type == "guard":
-        result = _execute_guard(block, state, str(workspace_id_str), db, run_id=run_id, playbook_slug=slug)
+        result = _execute_guard(block, state, str(workspace_id_str), db, run_id=run_id, playbook_slug=slug, workflow_id=str(version.workflow.id))
         _emit(db, run_id, block_id, "guard_check", {
             "status":           result.get("status"),
             "rules_checked":    result.get("rules_checked", 0),

@@ -27,6 +27,7 @@ export interface AuditEvent {
   model?: string | null            // vendor model id (proxy only)
   conductai_run_id?: string | null
   conductai_workflow?: string | null
+  conductai_workflow_id?: string | null
   blast_radius?: { files: number; symbols?: number; tier: string } | null
   hostname?: string | null
   hook_session_id?: string | null
@@ -327,7 +328,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       {!compact && (
         <div>
           {ev.conductai_run_id ? (
-            <Link href={`/runs/${ev.conductai_run_id}`} style={{ textDecoration: "none" }}>
+            <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} style={{ textDecoration: "none" }}>
               <ToolBadge tool={ev.ai_tool} />
             </Link>
           ) : (
@@ -356,7 +357,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       </div>
       <div>
         {ev.conductai_run_id ? (
-          <Link href={`/runs/${ev.conductai_run_id}`} style={{ display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
+          <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} style={{ display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
             <DecisionBadge decision={ev.decision} />
             <span style={{ fontSize: 11, color: "var(--accent-text)" }}>→</span>
           </Link>
