@@ -424,6 +424,9 @@ function GovernanceNarrativeSection() {
             <a href="/guard" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
               See the full Insights tab →
             </a>
+            <p className="mt-6 text-xs text-stone-400 leading-relaxed border-t border-stone-100 pt-4">
+              Whatever your team runs in Claude — a diligence desk, a security audit OS, an engineering autopilot — ConductGuard is the enforcement layer that makes it safe to hand to an executive.
+            </p>
           </div>
 
           {/* Right — narrative card */}

@@ -8,6 +8,7 @@ export default function GuardLandingPage() {
       <HeroSection />
       <ProofStripSection />
       <ToolsSection />
+      <EnforcementLayerSection />
       <Phase1Section />
       <Phase2Section />
       <Phase3Section />
@@ -149,6 +150,57 @@ function ToolsSection() {
         </a>
         {" "}— install directly from VS Code or any MCP-compatible client.
       </p>
+    </section>
+  )
+}
+
+/* ─── Phase 1 — Month 1: Visibility ───────────────────────────────────── */
+
+/* ─── Enforcement Layer ────────────────────────────────────────────────── */
+
+function EnforcementLayerSection() {
+  return (
+    <section className="bg-stone-950 px-6 py-20">
+      <div className="max-w-4xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-12 items-center">
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-4">The enforcement layer</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-5">
+              Whatever your team runs in Claude, Guard sits in front of it.
+            </h2>
+            <p className="text-stone-400 leading-relaxed mb-6">
+              Teams are building operating systems inside Claude — deal desks, security audits, engineering autopilots. The prompts are good. The reviewer is a suggestion.
+            </p>
+            <p className="text-stone-300 leading-relaxed mb-8">
+              ConductGuard is structural enforcement. Policies are evaluated against real rules, not prompt instructions. A block exits with code 2 — Claude stops. The audit trail is in your dashboard, not the chat history.
+            </p>
+            <a href="/guard" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors">
+              See how Guard enforces →
+            </a>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              { label: "Prompt-based reviewer", desc: "Model can ignore it or hallucinate compliance", bad: true },
+              { label: "ConductGuard policy", desc: "Evaluated against real rule set — block exits with code 2", bad: false },
+              { label: "Chat history audit", desc: "No structured search, no team visibility", bad: true },
+              { label: "Conduct audit log", desc: "Every run, every block, every output — searchable", bad: false },
+              { label: "Spend as an afterthought", desc: "You see the bill at end of month", bad: true },
+              { label: "Guard spend limits", desc: "Hard stops per user, per project, enforced in real time", bad: false },
+            ].map((item) => (
+              <div key={item.label} className={`flex items-start gap-3 rounded-xl px-4 py-3 border ${item.bad ? "border-stone-700 bg-stone-900" : "border-indigo-800 bg-indigo-950"}`}>
+                <span className={`mt-0.5 text-sm ${item.bad ? "text-stone-600" : "text-indigo-400"}`}>{item.bad ? "✕" : "✓"}</span>
+                <div>
+                  <p className={`text-sm font-semibold ${item.bad ? "text-stone-500 line-through" : "text-white"}`}>{item.label}</p>
+                  <p className="text-xs text-stone-500 mt-0.5">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+        </div>
+      </div>
     </section>
   )
 }
