@@ -3,12 +3,12 @@
   "name": "io.github.sseshachala/conduct-cli",
   "title": "Conduct AI",
   "description": "List agents, trigger workflows, and enforce team AI policies with ConductGuard.",
-  "version": "0.6.6",
+  "version": "0.6.10",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "conduct-cli",
-      "version": "0.6.6",
+      "version": "0.6.10",
       "transport": {
         "type": "stdio"
       },
@@ -16,6 +16,8 @@
     }
   ],
   "repository": {
-    "url": "https://github.com/sseshachala/conduct-cli"
+    "url": "https://github.com/sseshachala/conduct-cli",
+    "source": "github",
+    "id": "1271526048"
   }
 }
