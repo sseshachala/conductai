@@ -174,7 +174,7 @@ def _pack_rule_to_out(
         rule_id=rule["id"],
         description=rule.get("description"),
         match_tool=rule.get("match_tool"),
-        match_pattern=rule.get("match_pattern"),
+        match_pattern=(override.match_pattern if override and override.match_pattern else rule.get("match_pattern")),
         match_path_pattern=rule.get("match_path_pattern"),
         action=(override.action if override and override.action else rule.get("action", "block")),
         message=(override.custom_message if override and override.custom_message else rule.get("message")),
@@ -199,6 +199,7 @@ def _upsert_override(
     disabled: Optional[bool] = None,
     action: Optional[str] = None,
     message: Optional[str] = None,
+    match_pattern: Optional[str] = None,
 ) -> None:
     """Create or update a GuardRuleOverride. Fields with `None` are not touched."""
     existing = db.get(GuardRuleOverride, (workspace_id, rule_id))
@@ -210,6 +211,8 @@ def _upsert_override(
             existing.action = action
         if message is not None:
             existing.custom_message = message
+        if match_pattern is not None:
+            existing.match_pattern = match_pattern
         existing.overridden_at = now
     else:
         db.add(GuardRuleOverride(
@@ -218,6 +221,7 @@ def _upsert_override(
             disabled=bool(disabled) if disabled is not None else False,
             action=action,
             custom_message=message,
+            match_pattern=match_pattern,
             overridden_at=now,
         ))
 
@@ -526,8 +530,8 @@ def patch_policy(
     if body.enabled is not None:
         _upsert_override(db, ws_uuid, rule_id, disabled=not body.enabled)
         touched_override = True
-    if body.action is not None or body.message is not None:
-        _upsert_override(db, ws_uuid, rule_id, action=body.action, message=body.message)
+    if body.action is not None or body.message is not None or body.match_pattern is not None:
+        _upsert_override(db, ws_uuid, rule_id, action=body.action, message=body.message, match_pattern=body.match_pattern)
         touched_override = True
     if touched_override:
         db.commit()
