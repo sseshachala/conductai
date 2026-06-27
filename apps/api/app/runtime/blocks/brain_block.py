@@ -429,8 +429,11 @@ def _execute_brain(
     # vendor key stays in api_key (forwarded to Anthropic by the gateway).
     _effective_key = _provider_keys[provider]
     _effective_base_url = _upstream_base_url  # None → client uses vendor default
-    from app.runtime.adapters.gateway import gateway_headers as _gateway_headers
-    _extra_headers = _gateway_headers(_upstream_base_url, _upstream_key or "", provider) or None
+
+    from app.runtime.adapters.gateway import gateway_adapt as _gateway_adapt
+    _gw = _gateway_adapt(_upstream_base_url, _upstream_key or "", provider, model_id)
+    _extra_headers = _gw.headers or None
+    model_id = _gw.model  # use the (possibly rewritten) model name
 
     client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
     _client_kwargs: dict = {
