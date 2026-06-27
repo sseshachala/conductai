@@ -186,7 +186,7 @@
       "id": "no-env-commits",
       "description": "Block committing .env files",
       "match_tool": "bash",
-      "match_pattern": "git (add|commit).+\\.env",
+      "match_pattern": "git add\\b.*(\\s|/)\\.env(\\.[a-zA-Z]+)?(\\s|$)",
       "action": "block",
       "message": ".env files must not be committed.",
       "persona_affinity": [
