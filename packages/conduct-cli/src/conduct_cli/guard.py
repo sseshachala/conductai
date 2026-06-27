@@ -1225,7 +1225,13 @@ def _write_proxy_env(member_token: str, proxy_url: str) -> tuple[Path, bool]:
         return rc, False
 
     rc.parent.mkdir(parents=True, exist_ok=True)
-    addition = f"\n\n{SHELL_RC_MARKER}\n{SHELL_SOURCE_LINE}\n"
+    # ponytail: alias strips ANTHROPIC_BASE_URL so Claude Code auth isn't routed
+    # through the Guard proxy (Claude Code governs agents; it isn't one)
+    addition = (
+        f"\n\n{SHELL_RC_MARKER}\n"
+        f"{SHELL_SOURCE_LINE}\n"
+        f"alias claude='env -u ANTHROPIC_BASE_URL claude'\n"
+    )
     rc.write_text(existing.rstrip() + addition if existing else addition.lstrip())
     return rc, True
 
