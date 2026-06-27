@@ -262,6 +262,7 @@ class GuardRuleOverride(Base):
     action          = Column(Text, nullable=True)           # null = use pack default
     disabled        = Column(Boolean, nullable=False, default=False)
     custom_message  = Column(Text, nullable=True)
+    match_pattern   = Column(Text, nullable=True)           # null = use pack default
     overridden_by   = Column(Text, nullable=True)           # clerk_user_id
     overridden_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
