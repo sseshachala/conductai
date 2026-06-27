@@ -317,7 +317,7 @@ function DiagnosticHero() {
       {/* Badge */}
       <div className="flex items-center gap-2 mb-8">
         <span className="text-indigo-400 font-black text-lg">◈</span>
-        <span className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Agent Booster v0.3.0</span>
+        <span className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Agent Booster v0.6.4</span>
         <span className="text-[10px] font-bold bg-emerald-900 text-emerald-300 border border-emerald-700 px-2 py-0.5 rounded-full uppercase tracking-widest">Free · MIT</span>
       </div>
 
@@ -781,9 +781,17 @@ function GuardInsightsCallout() {
 
 const WHATS_NEW_ITEMS = [
   {
+    icon: "📡",
+    title: "MCP Registry listing",
+    tag: "v0.6.4 / v0.6.10",
+    desc: "Both agent-booster and conduct-cli are now published to the official MCP Registry (registry.modelcontextprotocol.io). Install directly from VS Code, Cursor, or any MCP-compatible client without manual config.",
+    color: "text-indigo-600",
+    bg: "bg-indigo-50 border-indigo-200",
+  },
+  {
     icon: "🔀",
     title: "Call graph navigation",
-    tag: "v0.3.0",
+    tag: "v0.6.4",
     desc: "expand_calls(symbol, direction) returns immediate callers or callees of any symbol. One MCP round-trip, cycle-safe depth up to 3, same-file resolution at index time, name-based cross-file resolution at query time. Stop re-searching for who calls what.",
     color: "text-violet-600",
     bg: "bg-violet-50 border-violet-200",
@@ -791,7 +799,7 @@ const WHATS_NEW_ITEMS = [
   {
     icon: "📅",
     title: "Diff-aware reads",
-    tag: "v0.3.0",
+    tag: "v0.6.4",
     desc: "Pass since='HEAD~5' or any git ref to smart_read or search_context. Returns only symbols whose lines changed in the range. Git context lives in the read now, no separate git diff parse, no whole-file scan to figure out what's new.",
     color: "text-amber-600",
     bg: "bg-amber-50 border-amber-200",
@@ -799,7 +807,7 @@ const WHATS_NEW_ITEMS = [
   {
     icon: "✅",
     title: "Test signal in every read",
-    tag: "v0.3.0",
+    tag: "v0.6.4",
     desc: "booster index --tests builds the symbol-to-test map. test_coverage('login') returns the test files that reference it. smart_read can surface the answer to 'is this code tested?' before the agent decides whether the change is safe.",
     color: "text-emerald-600",
     bg: "bg-emerald-50 border-emerald-200",
@@ -807,7 +815,7 @@ const WHATS_NEW_ITEMS = [
   {
     icon: "🕐",
     title: "Last-modified header",
-    tag: "v0.3.0",
+    tag: "v0.6.4",
     desc: "Every symbol in smart_read output now carries [last_modified: sha date] via batched git blame. One subprocess per file, max-timestamp commit per symbol range. Know whether code is hot or legacy without a separate look.",
     color: "text-rose-600",
     bg: "bg-rose-50 border-rose-200",
@@ -815,7 +823,7 @@ const WHATS_NEW_ITEMS = [
   {
     icon: "🤝",
     title: "Shared team index",
-    tag: "v0.2.30",
+    tag: "v0.6.3",
     desc: "booster index-push uploads your symbol index to the team workspace via the Guard sync channel. Teammates run booster index-pull (or just conduct guard sync) to merge it locally, no re-indexing the same repo twice. Uses the same auth as guard sync, zero new config.",
     color: "text-indigo-600",
     bg: "bg-indigo-50 border-indigo-200",
@@ -917,7 +925,7 @@ function WhatsNewSection() {
         <div className="flex items-center justify-center gap-3 mb-3">
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">What&apos;s new</p>
           <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-widest">
-            v0.2.16 – v0.2.30
+            v0.2.16 – v0.6.4
           </span>
         </div>
         <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
