@@ -3,7 +3,16 @@ import { type NextRequest, NextResponse } from "next/server"
 
 const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "/compare", "/privacy", "/terms", "/benchmark(.*)", "/eval(.*)", "/marketplace", "/playbooks", "/token-guardrails", "/docs(.*)", "/accept-invite(.*)", "/sdd(.*)", "/tools(.*)", "/about(.*)", "/blog(.*)", "/share(.*)", "/solutions(.*)", "/partners(.*)", "/guard-landing",])
 
+const isAppSubdomain = (req: NextRequest) =>
+  req.headers.get("host")?.startsWith("app.")
+
 const clerkHandler = clerkMiddleware(async (auth, req) => {
+  // app.conductai.ai/ → send logged-in users to dashboard, others to sign-in
+  if (isAppSubdomain(req) && req.nextUrl.pathname === "/") {
+    const { userId } = await auth()
+    return NextResponse.redirect(new URL(userId ? "/guard" : "/sign-in", req.url))
+  }
+
   if (isPublicRoute(req)) return
 
   const { userId } = await auth()

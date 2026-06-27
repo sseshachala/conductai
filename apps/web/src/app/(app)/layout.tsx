@@ -25,8 +25,9 @@ function SetupGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
-    if (pathname === "/setup") return
-    if (typeof window !== "undefined" && sessionStorage.getItem(SETUP_VERIFIED_KEY) === "1") return
+
+    // Skip network call if already verified this session (not on /setup)
+    if (pathname !== "/setup" && typeof window !== "undefined" && sessionStorage.getItem(SETUP_VERIFIED_KEY) === "1") return
 
     let cancelled = false
     ;(async () => {
@@ -39,9 +40,10 @@ function SetupGate({ children }: { children: React.ReactNode }) {
         const data = await res.json()
         if (cancelled) return
         if (data?.setup_completed === false) {
-          router.replace("/setup")
+          if (pathname !== "/setup") router.replace("/setup")
         } else {
           sessionStorage.setItem(SETUP_VERIFIED_KEY, "1")
+          if (pathname === "/setup") router.replace("/guard")
         }
       } catch { /* fail open */ }
     })()
