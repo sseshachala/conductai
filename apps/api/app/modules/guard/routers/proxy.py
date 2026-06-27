@@ -36,9 +36,11 @@ from sqlalchemy.orm import Session
 
 import re
 
+from app.core.auth import get_workspace_id, require_permission
 from app.core.config import settings
-from app.core.crypto import decrypt
-from app.core.database import SessionLocal
+from app.core.crypto import decrypt, encrypt
+from app.core.database import SessionLocal, get_db
+from app.models.integration import Integration
 from app.core.workspace_context import set_workspace_rls
 from app.modules.guard.policy_engine import compute_policy
 from app.runtime.pricing import get_model_rates
@@ -348,24 +350,29 @@ def _vault_key(db: Session, workspace_id: str, provider: str) -> str | None:
 
 
 def _upstream_url(db: Session, workspace_id: str, provider: str) -> str:
-    """CONDUCT_LLM_UPSTREAM override (per-workspace) wins, else vendor default."""
-    row = db.execute(
-        text("""
-            SELECT encrypted_credentials FROM integrations
-            WHERE workspace_id = :ws AND handle = 'env_vars'
-              AND encrypted_credentials IS NOT NULL
-            LIMIT 1
-        """),
-        {"ws": workspace_id},
-    ).fetchone()
-    if row:
-        try:
-            creds = decrypt(row[0]) or {}
-            override = creds.get("CONDUCT_LLM_UPSTREAM") or creds.get("conduct_llm_upstream")
-            if override:
-                return f"{override.rstrip('/')}/{provider}"
-        except Exception:
-            pass
+    """CONDUCT_LLM_UPSTREAM override (per-workspace) wins, else vendor default.
+
+    Checks proxy_config handle first (set via Settings → Proxy), then falls
+    back to env_vars for legacy compatibility.
+    """
+    for handle in ("proxy_config", "env_vars"):
+        row = db.execute(
+            text("""
+                SELECT encrypted_credentials FROM integrations
+                WHERE workspace_id = :ws AND handle = :handle
+                  AND encrypted_credentials IS NOT NULL
+                LIMIT 1
+            """),
+            {"ws": workspace_id, "handle": handle},
+        ).fetchone()
+        if row:
+            try:
+                creds = decrypt(row[0]) or {}
+                override = creds.get("CONDUCT_LLM_UPSTREAM") or creds.get("conduct_llm_upstream")
+                if override:
+                    return f"{override.rstrip('/')}/{provider}"
+            except Exception:
+                pass
     return VENDOR_DEFAULTS[provider]
 
 
@@ -672,3 +679,52 @@ def _fail_closed(status: int, message: str) -> JSONResponse:
         status_code=status,
         content={"error": {"type": "conduct_guard_proxy", "message": message}},
     )
+
+
+# ── Proxy config endpoints ────────────────────────────────────────────────────
+
+class ProxyConfigBody(BaseModel):
+    llm_upstream: str = ""
+
+
+@guard_router.get("/proxy-config")
+def get_proxy_config(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.credentials.manage")),
+):
+    row = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.handle == "proxy_config",
+    ).first()
+    upstream = ""
+    if row:
+        try:
+            upstream = (decrypt(row.encrypted_credentials) or {}).get("CONDUCT_LLM_UPSTREAM", "")
+        except Exception:
+            pass
+    return {"conduct_proxy_url": DEFAULT_PROXY_URL, "llm_upstream": upstream}
+
+
+@guard_router.put("/proxy-config")
+def save_proxy_config(
+    body: ProxyConfigBody,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.credentials.manage")),
+):
+    creds = encrypt({"CONDUCT_LLM_UPSTREAM": body.llm_upstream})
+    row = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.handle == "proxy_config",
+        Integration.environment_id == None,  # noqa: E711
+    ).first()
+    if row:
+        row.encrypted_credentials = creds
+    else:
+        db.add(Integration(
+            workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
+            auth_method="api_key", encrypted_credentials=creds, environment_id=None,
+        ))
+    db.commit()
+    return {"saved": True}
