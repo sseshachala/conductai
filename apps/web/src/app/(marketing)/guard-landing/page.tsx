@@ -9,6 +9,7 @@ export default function GuardLandingPage() {
       <ProofStripSection />
       <ToolsSection />
       <EnforcementLayerSection />
+      <ProxySection />
       <GitHubEnterpriseSection />
       <Phase1Section />
       <Phase2Section />
@@ -196,6 +197,79 @@ function EnforcementLayerSection() {
                 </div>
               </div>
             ))}
+          </div>
+
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Proxy ─────────────────────────────────────────────────────────────── */
+
+function ProxySection() {
+  return (
+    <section className="bg-white px-6 py-20">
+      <div className="max-w-4xl mx-auto">
+        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-3 text-center">Guard Proxy</p>
+        <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight leading-tight mb-4 text-center">
+          One env var. Enforcement on every LLM call.
+        </h2>
+        <p className="text-stone-500 text-lg leading-relaxed mb-12 text-center max-w-2xl mx-auto">
+          Point your AI tools at the Guard Proxy instead of Anthropic or OpenAI. Policies apply before the request forwards. Nothing changes in your code.
+        </p>
+
+        <div className="grid md:grid-cols-2 gap-10 items-start">
+
+          {/* Code block */}
+          <div className="rounded-xl bg-stone-950 p-6 font-mono text-sm leading-relaxed">
+            <p className="text-stone-500 text-xs mb-4 uppercase tracking-widest">Before</p>
+            <p className="text-stone-400">ANTHROPIC_BASE_URL=<span className="text-rose-400">https://api.anthropic.com</span></p>
+            <p className="text-stone-400 mt-1">OPENAI_BASE_URL=<span className="text-rose-400">https://api.openai.com/v1</span></p>
+
+            <div className="border-t border-stone-800 my-5" />
+
+            <p className="text-stone-500 text-xs mb-4 uppercase tracking-widest">After</p>
+            <p className="text-stone-300">ANTHROPIC_BASE_URL=<span className="text-indigo-400">https://api.conductai.ai/proxy/anthropic</span></p>
+            <p className="text-stone-300 mt-1">OPENAI_BASE_URL=<span className="text-indigo-400">https://api.conductai.ai/proxy/openai/v1</span></p>
+
+            <div className="border-t border-stone-800 my-5" />
+            <p className="text-stone-500 text-xs">Or run <span className="text-indigo-300">conduct guard sync</span> to apply automatically.</p>
+          </div>
+
+          {/* Capability list */}
+          <div className="space-y-6">
+            {[
+              {
+                icon: "🛡️",
+                title: "Policies enforced before forwarding",
+                desc: "Block secret leaks, restrict models, cap spend — evaluated against your workspace rules before the request ever reaches the provider.",
+              },
+              {
+                icon: "🔀",
+                title: "Route through your own gateway",
+                desc: "Set Portkey, Helicone, LiteLLM, or Azure OpenAI as upstream. Guard sits in front and applies policies regardless of where traffic ends up.",
+              },
+              {
+                icon: "📋",
+                title: "Every call in your audit trail",
+                desc: "Developer, tool, model, prompt summary, decision, cost — all in Guard Activity alongside your hook-layer events.",
+              },
+            ].map((item) => (
+              <div key={item.title} className="flex gap-4">
+                <span className="text-2xl mt-0.5">{item.icon}</span>
+                <div>
+                  <p className="font-semibold text-stone-900 mb-1">{item.title}</p>
+                  <p className="text-stone-500 text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+
+            <div className="pt-2">
+              <a href="/guard" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors">
+                Set up Guard Proxy →
+              </a>
+            </div>
           </div>
 
         </div>
