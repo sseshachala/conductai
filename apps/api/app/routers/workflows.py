@@ -1774,6 +1774,7 @@ def test_trigger(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.workflows.run")),
+    caller_id: str = Depends(get_user_id),
 ):
     """
     Authenticated test trigger. When payload is empty, uses the playbook's
@@ -1865,7 +1866,16 @@ def test_trigger(
     _issue = payload.get("issue") or {}
     _repo = payload.get("repository") or {}
     _label = (payload.get("label") or {}).get("name", "")
-    _initial_state: dict = {"__triggered_by": "manual:test_trigger", "__max_turns": suggested_turns}
+    _caller_email: str | None = None
+    if caller_id and not caller_id.startswith("api-key:"):
+        try:
+            from app.models.user import User as _User
+            _u = db.query(_User).filter(_User.clerk_id == caller_id).first()
+            if _u:
+                _caller_email = _u.email
+        except Exception:
+            pass
+    _initial_state: dict = {"__triggered_by": "manual:test_trigger", "__max_turns": suggested_turns, "__user_email": _caller_email}
     if _issue:
         _initial_state["github_issue"] = {
             "issue_number": _issue.get("number"),
