@@ -141,7 +141,18 @@ def main() -> None:
         pass
 
     if current_session_id:
-        _backfill_prev_session(current_session_id, cwd)
+        try:
+            import subprocess as _sp
+            _sp.Popen(
+                [sys.executable, "-c",
+                 f"import sys; sys.path.insert(0,''); "
+                 f"from conduct_cli.hooks.session_start import _backfill_prev_session; "
+                 f"_backfill_prev_session({current_session_id!r}, {cwd!r})"],
+                stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            pass
 
     _check_proxy_token()
 
