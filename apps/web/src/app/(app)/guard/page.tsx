@@ -15,6 +15,7 @@ import { useGuardSavings, type GuardSavingsSummary } from "@/hooks/useGuardSavin
 import { useTokenGuardrails, type TokenGuardrails } from "@/hooks/useTokenGuardrails"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { ByAiToolTable, type ByAiToolRow } from "@/components/guard/ByAiToolTable"
+import { formatToolCall } from "@/components/guard/ActivityRow"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,13 @@ interface GuardEvent {
   id: string
   user_email: string | null
   ai_tool: string
-  tool_call: string
+  tool_call: string | null
+  source?: string | null
+  provider?: string | null
+  model?: string | null
+  conductai_run_id?: string | null
+  conductai_workflow?: string | null
+  conductai_workflow_id?: string | null
   input_summary: string | null
   decision: "allowed" | "blocked" | "warned" | "approval"
   rule_id: string | null
@@ -1265,7 +1272,7 @@ function GuardDashboard() {
                       <AiToolBadge tool={ev.ai_tool} />
                     </td>
                     <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono, monospace)", fontSize: 12, color: "var(--text-2)", whiteSpace: "nowrap" }}>
-                      {ev.tool_call}
+                      {formatToolCall(ev.tool_call)}
                     </td>
                     <td
                       style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-3)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "copy", userSelect: "none" }}
@@ -1368,7 +1375,7 @@ function GuardDashboard() {
                 {insightsStats.blocks.slice(0, 20).map(e => (
                   <div key={e.id} style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 3 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", fontFamily: "monospace" }}>{e.tool_call}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", fontFamily: "monospace" }}>{formatToolCall(e.tool_call)}</span>
                       <span style={{ fontSize: 10, color: "var(--text-3)" }}>{new Date(e.ts).toLocaleTimeString()}</span>
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -1402,7 +1409,7 @@ function GuardDashboard() {
                       <div style={{ width: 3, borderRadius: 2, alignSelf: "stretch", background: dotColors[e.decision] ?? "var(--border)", flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", fontFamily: "monospace" }}>{e.tool_call}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", fontFamily: "monospace" }}>{formatToolCall(e.tool_call)}</span>
                           <DecisionBadge decision={e.decision} />
                         </div>
                         <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 2 }}>

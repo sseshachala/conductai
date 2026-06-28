@@ -869,6 +869,9 @@ def _execute_brain(
     injected_session=None,
     workspace_id: str = "",
     workflow_id: str | None = None,
+    user_email: str | None = None,
+    block_label: str | None = None,
+    workflow_name: str | None = None,
 ) -> dict:
     from app.runtime.blocks.brain_block import _execute_brain as _brain_impl
     return _brain_impl(
@@ -878,6 +881,9 @@ def _execute_brain(
         injected_session=injected_session,
         workspace_id=workspace_id,
         workflow_id=workflow_id,
+        user_email=user_email,
+        block_label=block_label,
+        workflow_name=workflow_name,
     )
 
 def _dry_run_mock(integration: str, action: str, params: dict) -> dict:
@@ -1041,8 +1047,8 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
 
 from app.runtime.blocks.guard_block import _execute_guard as _guard_impl
 
-def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None, playbook_slug: str | None = None, workflow_id: str | None = None) -> dict:
-    return _guard_impl(block, state, workspace_id, db, run_id=run_id, playbook_slug=playbook_slug, workflow_id=workflow_id)
+def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None, playbook_slug: str | None = None, workflow_id: str | None = None, user_email: str | None = None, workflow_name: str | None = None) -> dict:
+    return _guard_impl(block, state, workspace_id, db, run_id=run_id, playbook_slug=playbook_slug, workflow_id=workflow_id, user_email=user_email, workflow_name=workflow_name)
 
 # ── main executor ─────────────────────────────────────────────────────────────
 
@@ -1089,6 +1095,7 @@ def _dispatch_single_block(
     logic_routes: dict,
     _logic_routes_version_ref: list,  # mutable single-element list so we can mutate from caller
     sandbox_sessions: dict | None = None,
+    user_email: str | None = None,
 ) -> dict:
     if sandbox_sessions is None:
         sandbox_sessions = {}
@@ -1133,7 +1140,7 @@ def _dispatch_single_block(
                             "id": f"__guard_{block_id}",
                             "config": {"enforcement_mode": _gc.enforcement_mode},
                         }
-                        _guard_result = _execute_guard(_guard_block, state, _ws_str, db, run_id=run_id, playbook_slug=slug, workflow_id=str(version.workflow.id))
+                        _guard_result = _execute_guard(_guard_block, state, _ws_str, db, run_id=run_id, playbook_slug=slug, workflow_id=str(version.workflow.id), user_email=user_email, workflow_name=_wf_name)
                         state[f"__guard_{block_id}"] = _guard_result
                         _emit(db, run_id, f"__guard_{block_id}", "guard_check", {
                             "status": _guard_result.get("status"),
@@ -1148,6 +1155,8 @@ def _dispatch_single_block(
                     log.warning("guard.auto_hook_failed", block_id=block_id, error=str(_ge))
 
         slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
+        _wf_name = getattr(getattr(version, "workflow", None), "name", None) or slug
+        _block_label = block["data"].get("label") or block_id
         _runs_in = block.get("data", {}).get("runs_in")
         _injected_session = sandbox_sessions.get(_runs_in) if _runs_in else None
 
@@ -1217,7 +1226,8 @@ def _dispatch_single_block(
         result = _execute_brain(block, state, compiled, credentials=credentials,
                                 db=db, run_id=run_id, block_id=block_id,
                                 playbook_slug=slug, injected_session=_injected_session,
-                                workspace_id=workspace_id_str, workflow_id=str(version.workflow.id))
+                                workspace_id=workspace_id_str, workflow_id=str(version.workflow.id),
+                                user_email=user_email, block_label=_block_label, workflow_name=_wf_name)
 
     elif block_type == "tool":
         result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id_str)
@@ -1247,7 +1257,7 @@ def _dispatch_single_block(
         )
 
     elif block_type == "guard":
-        result = _execute_guard(block, state, str(workspace_id_str), db, run_id=run_id, playbook_slug=slug, workflow_id=str(version.workflow.id))
+        result = _execute_guard(block, state, str(workspace_id_str), db, run_id=run_id, playbook_slug=slug, workflow_id=str(version.workflow.id), user_email=user_email, workflow_name=_wf_name)
         _emit(db, run_id, block_id, "guard_check", {
             "status":           result.get("status"),
             "rules_checked":    result.get("rules_checked", 0),
@@ -1318,6 +1328,19 @@ def _execute_dag(
         credentials = {}
 
     run_id = run.id
+
+    # Resolve user email from triggered_by (Clerk user ID → users table)
+    _user_email: str | None = None
+    _raw_trigger = str(run.triggered_by or "")
+    if _raw_trigger and not _raw_trigger.startswith(("manual", "webhook", "schedule", "cron")):
+        try:
+            from app.models.user import User as _User
+            _u = db.query(_User).filter(_User.clerk_id == _raw_trigger).first()
+            if _u:
+                _user_email = _u.email
+        except Exception:
+            pass
+
     graph = version.graph
     nodes = graph.get("nodes", [])
     edges = graph.get("edges", [])
@@ -1418,6 +1441,7 @@ def _execute_dag(
                 logic_routes=logic_routes,
                 _logic_routes_version_ref=_lrv_ref,
                 sandbox_sessions=sandbox_sessions,
+                user_email=_user_email,
             )
 
         try:
