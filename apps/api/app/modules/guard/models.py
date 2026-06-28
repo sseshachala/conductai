@@ -82,6 +82,10 @@ class GuardSession(Base):
     client_ip = Column(String(64), nullable=True)
     os_info = Column(String(128), nullable=True)
     hostname = Column(String(255), nullable=True)
+    intent = Column(Text, nullable=True)
+    tool_sequence = Column(JSONB, nullable=True)
+    session_parse_status = Column(String(20), nullable=True)  # ok|partial|failed|unsupported
+    session_parser = Column(String(30), nullable=True)        # claude_code_v1|codex_v1
 
 
 class GuardAuditEvent(Base):
