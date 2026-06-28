@@ -29,6 +29,8 @@ interface GuardSession {
   client_ip: string | null
   os_info: string | null
   hostname: string | null
+  intent: string | null
+  session_parse_status: string | null
 }
 
 
@@ -429,8 +431,11 @@ function ActivityContent() {
               gap: 12, padding: "11px 18px", alignItems: "center",
               borderBottom: i < sessions.length - 1 ? "1px solid var(--border)" : "none",
             }}>
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {s.user_email ?? "—"}
+              <div style={{ overflow: "hidden" }}>
+                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.user_email ?? "—"}</div>
+                {s.intent && s.session_parse_status !== "failed" && (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{s.intent}</div>
+                )}
               </div>
               <div><ToolBadge tool={s.ai_tool} /></div>
               <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>

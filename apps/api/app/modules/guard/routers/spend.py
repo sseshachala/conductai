@@ -101,6 +101,8 @@ class SessionOut(BaseModel):
     client_ip: str | None = None
     os_info: str | None = None
     hostname: str | None = None
+    intent: str | None = None
+    session_parse_status: str | None = None
 
 
 class BudgetCreate(BaseModel):
@@ -376,6 +378,8 @@ def list_sessions(
             client_ip=s.client_ip,
             os_info=s.os_info,
             hostname=s.hostname,
+            intent=s.intent,
+            session_parse_status=s.session_parse_status,
         )
         for s in rows
     ]
