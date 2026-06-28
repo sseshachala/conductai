@@ -14,6 +14,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
   const [upstream, setUpstream]         = useState("")
   const [upstreamKey, setUpstreamKey]   = useState("")
   const [hasUpstreamKey, setHasUpstreamKey] = useState(false)
+  const [proxyPersona, setProxyPersona] = useState<"conservative" | "standard" | "developer">("standard")
   const [saving, setSaving]             = useState(false)
   const [saved, setSaved]               = useState(false)
   const [copied, setCopied]             = useState(false)
@@ -29,6 +30,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
       setProxyUrl(data.conduct_proxy_url ?? "")
       setUpstream(data.llm_upstream ?? "")
       setHasUpstreamKey(data.has_upstream_key ?? false)
+      setProxyPersona(data.proxy_persona ?? "standard")
     })()
   }, [workspaceId])
 
@@ -38,7 +40,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
     if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
     await fetch(`${API}/guard/proxy-config`, {
       method: "PUT", headers,
-      body: JSON.stringify({ llm_upstream: upstream, llm_upstream_api_key: upstreamKey || undefined }),
+      body: JSON.stringify({ llm_upstream: upstream, llm_upstream_api_key: upstreamKey || undefined, proxy_persona: proxyPersona }),
     })
     setSaving(false)
     setSaved(true)
@@ -85,6 +87,33 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
         <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
           Set as <code>ANTHROPIC_BASE_URL</code> / <code>OPENAI_BASE_URL</code> in your AI tools. Run <code>conduct guard sync</code> to apply automatically.
         </p>
+      </div>
+
+      {/* Proxy Enforcement Persona */}
+      <div style={{ marginBottom: 24 }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: ".06em", display: "block", marginBottom: 10 }}>
+          Proxy Enforcement Persona
+        </label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {([
+            { value: "conservative", label: "Conservative", desc: "Strictest rules — blocks most activity" },
+            { value: "standard",     label: "Standard",     desc: "Balanced enforcement (default)" },
+            { value: "developer",    label: "Developer",    desc: "Permissive — audit only, rarely blocks" },
+          ] as const).map(opt => (
+            <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input
+                type="radio" name="proxy_persona" value={opt.value}
+                checked={proxyPersona === opt.value}
+                onChange={() => setProxyPersona(opt.value)}
+                style={{ accentColor: "var(--accent)", width: 15, height: 15, flexShrink: 0 }}
+              />
+              <span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{opt.label}</span>
+                <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: 8 }}>{opt.desc}</span>
+              </span>
+            </label>
+          ))}
+        </div>
       </div>
 
       {/* LLM Upstream */}

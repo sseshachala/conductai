@@ -417,11 +417,20 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
     so the call still goes through and we don't lock customers out of LLMs if
     our cache is busted. The error is logged.
     """
-    persona = "standard"   # ponytail: hard-coded persona; per-workspace persona pick lands when needed
     db = SessionLocal()
     try:
         set_workspace_rls(db, workspace_id)
         try:
+            _pc = db.query(Integration).filter(
+                Integration.workspace_id == workspace_id,
+                Integration.handle == "proxy_config",
+            ).first()
+            persona = "standard"
+            if _pc:
+                try:
+                    persona = (decrypt(_pc.encrypted_credentials) or {}).get("PROXY_PERSONA", "standard")
+                except Exception:
+                    pass
             rules = compute_policy(db, uuid.UUID(workspace_id), persona)
         except Exception as e:
             log.warning("guard.proxy.policy_load_failed", err=str(e))
@@ -711,6 +720,7 @@ def _fail_closed(status: int, message: str) -> JSONResponse:
 class ProxyConfigBody(BaseModel):
     llm_upstream: str = ""
     llm_upstream_api_key: str = ""
+    proxy_persona: str = "standard"
 
 
 @guard_router.get("/proxy-config")
@@ -725,17 +735,20 @@ def get_proxy_config(
     ).first()
     upstream = ""
     has_upstream_key = False
+    proxy_persona = "standard"
     if row:
         try:
             creds = decrypt(row.encrypted_credentials) or {}
             upstream = creds.get("CONDUCT_LLM_UPSTREAM", "")
             has_upstream_key = bool(creds.get("LLM_UPSTREAM_API_KEY"))
+            proxy_persona = creds.get("PROXY_PERSONA", "standard")
         except Exception:
             pass
     return {
         "conduct_proxy_url": _workspace_proxy_url(db, workspace_id),
         "llm_upstream": upstream,
         "has_upstream_key": has_upstream_key,
+        "proxy_persona": proxy_persona,
     }
 
 
@@ -762,6 +775,7 @@ def save_proxy_config(
     creds = {
         "CONDUCT_LLM_UPSTREAM": body.llm_upstream,
         "LLM_UPSTREAM_API_KEY": body.llm_upstream_api_key or existing.get("LLM_UPSTREAM_API_KEY", ""),
+        "PROXY_PERSONA": body.proxy_persona or "standard",
     }
     encrypted = encrypt(creds)
     if row:
