@@ -95,6 +95,7 @@ class EventOut(BaseModel):
     cost_usd_after: float | None
     conductai_run_id: str | None
     conductai_workflow: str | None
+    conductai_workflow_id: str | None = None
     duration_ms: int | None
     blast_radius: dict | None = None
     ts: str
@@ -126,6 +127,7 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "cost_usd_after": e.cost_usd_after,
         "conductai_run_id": e.conductai_run_id,
         "conductai_workflow": e.conductai_workflow,
+        "conductai_workflow_id": e.conductai_workflow_id,
         "duration_ms": e.duration_ms,
         "blast_radius": e.blast_radius,
         "ts": e.ts.isoformat(),

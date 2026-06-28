@@ -33,6 +33,7 @@ from app.routers.api_keys import router as api_keys_router, me_router
 from app.routers.rbac import router as rbac_router, me_router as me_rbac_router
 from app.routers.mcp import router as mcp_router
 from app.routers.mcp_servers import router as mcp_servers_router
+from app.routers.conduct_mcp import router as conduct_mcp_router
 from app.routers.generate import router as generate_router
 from app.routers.compliance import router as compliance_router
 from app.routers.governance import router as governance_router
@@ -132,6 +133,7 @@ app.include_router(rbac_router)
 app.include_router(me_rbac_router)
 app.include_router(mcp_router)
 app.include_router(mcp_servers_router)
+app.include_router(conduct_mcp_router)
 app.include_router(generate_router)
 app.include_router(compliance_router)
 app.include_router(governance_router)
