@@ -28,6 +28,40 @@ def _read_template(name: str) -> str:
     return (_TEMPLATES_DIR / name).read_text()
 
 
+# ── Thin launcher content ─────────────────────────────────────────────────────
+
+_THIN_LAUNCHERS = {
+    "pretooluse": (
+        "#!/usr/bin/env python3\n"
+        "from conduct_cli.hooks.pretooluse import main; main()\n"
+    ),
+    "posttooluse": (
+        "#!/usr/bin/env python3\n"
+        "from conduct_cli.hooks.posttooluse import main; main()\n"
+    ),
+    "stop": (
+        "#!/usr/bin/env python3\n"
+        "from conduct_cli.hooks.stop import main; main()\n"
+    ),
+    "precompact": (
+        "#!/usr/bin/env python3\n"
+        "from conduct_cli.hooks.precompact import main; main()\n"
+    ),
+    "session-start": (
+        "#!/usr/bin/env python3\n"
+        "from conduct_cli.hooks.session_start import main; main()\n"
+    ),
+}
+
+# Detect whether an installed hook is already a thin launcher (contains the import)
+def _is_thin_launcher(path: Path) -> bool:
+    try:
+        text = path.read_text()
+        return "from conduct_cli.hooks." in text
+    except Exception:
+        return False
+
+
 
 
 # ── Policy engine (also embedded in hook_template.py for standalone use) ──────
@@ -139,16 +173,31 @@ def _best_python() -> str:
 # ── Hook write helper ─────────────────────────────────────────────────────────
 
 def _write_hook(path: Path) -> None:
-    """Write hook_template.py to path, then py_compile-validate it.
+    """Write a thin launcher to path (or legacy template for backward compat), then validate.
+
+    Thin launcher (new default):
+        #!/usr/bin/env python3
+        from conduct_cli.hooks.pretooluse import main; main()
+
+    If conduct_cli.hooks is not importable (e.g. editable install not set up),
+    falls back to writing the full template so hooks still work.
     On syntax failure: restores previous hook (or writes a safe stub) so the
-    system is never left without a working hook file."""
-    import py_compile, tempfile, os
-    # Stash existing hook so we can restore on failure
+    system is never left without a working hook file.
+    """
+    import py_compile
     backup = None
     if path.exists():
         backup = path.read_text()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_read_template("hook_template.py"))
+
+    # Prefer thin launcher; fall back to full template if package not importable
+    try:
+        import conduct_cli.hooks.pretooluse  # noqa: F401
+        content = _THIN_LAUNCHERS["pretooluse"]
+    except ImportError:
+        content = _read_template("hook_template.py")
+
+    path.write_text(content)
     path.chmod(0o755)
     try:
         py_compile.compile(str(path), doraise=True)
@@ -162,20 +211,33 @@ def _write_hook(path: Path) -> None:
         ) from exc
 
 
+def _write_session_hook(path: Path, launcher_key: str, template_name: str) -> None:
+    """Write a thin launcher (or legacy template) for a session hook.
+
+    If conduct_cli.hooks is importable, writes the thin launcher.
+    Falls back to the full template so old installs continue to work.
+    Also rewrites old-style (non-thin) hooks to thin launchers on sync.
+    """
+    try:
+        import conduct_cli.hooks  # noqa: F401
+        content = _THIN_LAUNCHERS[launcher_key]
+    except ImportError:
+        content = _read_template(template_name)
+    path.write_text(content)
+    path.chmod(0o755)
+
+
 def _install_session_hooks() -> None:
     """Write PreCompact + SessionStart + Stop hook scripts and register them in ~/.claude/settings.json."""
     python = _best_python()
 
-    precompact_path = GUARD_DIR / "guard-precompact.py"
+    precompact_path    = GUARD_DIR / "guard-precompact.py"
     session_start_path = GUARD_DIR / "guard-session-start.py"
-    stop_path = GUARD_DIR / "guard-stop.py"
+    stop_path          = GUARD_DIR / "guard-stop.py"
 
-    precompact_path.write_text(_read_template("hook_precompact_template.py"))
-    precompact_path.chmod(0o755)
-    session_start_path.write_text(_read_template("hook_session_start_template.py"))
-    session_start_path.chmod(0o755)
-    stop_path.write_text(_read_template("hook_stop_template.py"))
-    stop_path.chmod(0o755)
+    _write_session_hook(precompact_path,    "precompact",    "hook_precompact_template.py")
+    _write_session_hook(session_start_path, "session-start", "hook_session_start_template.py")
+    _write_session_hook(stop_path,          "stop",          "hook_stop_template.py")
 
     claude_settings = Path.home() / ".claude" / "settings.json"
     settings: dict = {}
@@ -1793,6 +1855,17 @@ def register_guard_parser(sub):
     # conduct guard skip-setup
     guard_sub.add_parser("skip-setup", help="Suppress the Guard setup reminder (does not disable Guard)")
 
+    # conduct guard debug-hook <toolname>
+    debug_hook_p = guard_sub.add_parser(
+        "debug-hook",
+        help="Run any hook standalone with JSON from stdin and print what it would do",
+    )
+    debug_hook_p.add_argument(
+        "toolname",
+        choices=["pretooluse", "posttooluse", "stop", "precompact", "session-start"],
+        help="Which hook to test",
+    )
+
     return guard_p, guard_sub
 
 
@@ -1889,6 +1962,53 @@ def cmd_guard_booster_status(args):
     print()
 
 
+def cmd_guard_debug_hook(args):
+    """Run a hook module standalone with JSON piped from stdin and print the outcome.
+
+    Usage:
+        echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}' | \\
+            conduct guard debug-hook pretooluse
+    """
+    import subprocess as _sp
+    toolname = args.toolname  # pretooluse | posttooluse | stop | precompact | session-start
+
+    module_map = {
+        "pretooluse":   "conduct_cli.hooks.pretooluse",
+        "posttooluse":  "conduct_cli.hooks.posttooluse",
+        "stop":         "conduct_cli.hooks.stop",
+        "precompact":   "conduct_cli.hooks.precompact",
+        "session-start":"conduct_cli.hooks.session_start",
+    }
+    module = module_map[toolname]
+
+    print(f"{BOLD}conduct guard debug-hook {toolname}{RESET}")
+    print(f"{GRAY}Reading JSON from stdin (send EOF when done — Ctrl+D)…{RESET}\n")
+
+    stdin_data = sys.stdin.read()
+    if not stdin_data.strip():
+        # Provide a neutral no-op payload so the hook doesn't crash
+        stdin_data = "{}"
+
+    result = _sp.run(
+        [sys.executable, "-c", f"from {module} import main; main()"],
+        input=stdin_data,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.stdout:
+        print(f"{BOLD}stdout:{RESET}")
+        print(result.stdout)
+    if result.stderr:
+        print(f"{BOLD}stderr:{RESET}")
+        print(result.stderr)
+
+    exit_label = {0: f"{GREEN}0 — allowed{RESET}", 2: f"{RED}2 — blocked{RESET}"}.get(
+        result.returncode, f"{YELLOW}{result.returncode}{RESET}"
+    )
+    print(f"\n{BOLD}Exit code:{RESET} {exit_label}")
+
+
 def dispatch_guard(args, guard_p):
     """Dispatch to the correct guard handler. Called from main()."""
     guard_command = getattr(args, "guard_command", None)
@@ -1904,6 +2024,8 @@ def dispatch_guard(args, guard_p):
         cmd_guard_install(args)
     elif guard_command == "booster-status":
         cmd_guard_booster_status(args)
+    elif guard_command == "debug-hook":
+        cmd_guard_debug_hook(args)
     else:
         guard_p.print_help()
         sys.exit(1)
