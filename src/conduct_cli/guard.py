@@ -305,6 +305,9 @@ _MCP_TARGETS = [
     (Path.home() / ".cursor"   / "mcp.json",       "Cursor"),
     (Path.home() / ".windsurf" / "mcp.json",        "Windsurf"),
     (Path.home() / ".codex"    / "mcp.json",        "Codex"),
+    # Claude Desktop — only if already installed
+    (Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json", "Claude Desktop"),
+    (Path.home() / "AppData"  / "Roaming" / "Claude" / "claude_desktop_config.json",             "Claude Desktop"),
 ]
 
 
@@ -345,6 +348,39 @@ def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
             cfg_path.write_text(json.dumps(existing, indent=2))
     if not found_any:
         print(f"  {GRAY}No AI tool configs found for MCP registration{RESET}")
+
+    # Claude Desktop doesn't source shell env — patch apiBaseUrl directly in config
+    # so all LLM calls route through the Guard proxy (PII blocking, spend limits, audit).
+    _patch_claude_desktop_proxy(api_url, member_token)
+
+
+def _patch_claude_desktop_proxy(api_url: str, member_token: str) -> None:
+    """Patch Claude Desktop config to route LLM calls through the Guard proxy.
+
+    Claude Desktop reads apiBaseUrl from its config JSON — it does not source
+    shell env vars, so ANTHROPIC_BASE_URL has no effect. We write the proxy
+    URL directly so PII blocking, spend limits, and audit apply to Desktop too.
+    """
+    proxy_url = f"{api_url}/proxy/anthropic"
+    candidates = [
+        Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json",
+        Path.home() / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json",
+    ]
+    for cfg_path in candidates:
+        if not cfg_path.exists():
+            continue
+        try:
+            cfg = json.loads(cfg_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            cfg = {}
+        current = cfg.get("apiBaseUrl", "")
+        if current == proxy_url:
+            print(f"  {GRAY}Claude Desktop proxy already set → {proxy_url}{RESET}")
+            continue
+        cfg["apiBaseUrl"] = proxy_url
+        cfg_path.write_text(json.dumps(cfg, indent=2))
+        print(f"  {GREEN}Claude Desktop proxy set → {proxy_url}{RESET}")
+        print(f"  {YELLOW}Restart Claude Desktop for proxy routing to take effect{RESET}")
 
 
 def _install_codex_hook(hook_path: Path) -> None:
