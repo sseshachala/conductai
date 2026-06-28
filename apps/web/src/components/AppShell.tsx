@@ -782,11 +782,8 @@ function AppShellInnerContent({
               {pathname.startsWith("/guard") && !collapsed && (
                 <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
-                    { label: "Overview",  href: "/guard" },
-                    { label: "Spend",     href: "/guard/spend" },
-                    { label: "Policies",  href: "/guard/policies" },
-                    { label: "Activity",     href: "/guard/activity" },
-                    { label: "Session Reports", href: "/guard/session-reports", adminOnly: true },
+                    { label: "Overview",    href: "/guard" },
+                    { label: "Policies",    href: "/guard/policies" },
                     { label: "Team Memory", href: "/guard/team-memory" },
                     { label: "Settings",    href: "/guard/settings", adminOnly: true },
                   ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
@@ -954,6 +951,13 @@ function AppShellInnerContent({
               </div>
             )}
             {collapsed && <div style={{ borderTop: "1px solid var(--border)", margin: "6px 0" }} />}
+            <SideNavItem
+              href="/logs"
+              label="Logs"
+              icon={<Icons.Pulse />}
+              active={pathname.startsWith("/logs")}
+              collapsed={collapsed}
+            />
             <SideNavItem
               href="/runs"
               label="Runs"
