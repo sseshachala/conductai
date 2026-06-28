@@ -72,7 +72,7 @@ def _backfill_prev_session(current_session_id: str, cwd: str | None) -> None:
 
         # find the project slug dir for this cwd
         if cwd:
-            slug = re.sub(r"[^a-zA-Z0-9]", "-", cwd).strip("-")
+            slug = re.sub(r"[^a-zA-Z0-9]", "-", cwd)
             project_dir = claude_projects / slug
         else:
             # fall back: pick most recently modified project dir
