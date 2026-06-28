@@ -33,23 +33,28 @@ def _read_template(name: str) -> str:
 _THIN_LAUNCHERS = {
     "pretooluse": (
         "#!/usr/bin/env python3\n"
-        "from conduct_cli.hooks.pretooluse import main; main()\n"
+        "try:\n    from conduct_cli.hooks.pretooluse import main; main()\n"
+        "except (ImportError, ModuleNotFoundError): import sys; sys.exit(0)\n"
     ),
     "posttooluse": (
         "#!/usr/bin/env python3\n"
-        "from conduct_cli.hooks.posttooluse import main; main()\n"
+        "try:\n    from conduct_cli.hooks.posttooluse import main; main()\n"
+        "except (ImportError, ModuleNotFoundError): import sys; sys.exit(0)\n"
     ),
     "stop": (
         "#!/usr/bin/env python3\n"
-        "from conduct_cli.hooks.stop import main; main()\n"
+        "try:\n    from conduct_cli.hooks.stop import main; main()\n"
+        "except (ImportError, ModuleNotFoundError): import sys; sys.exit(0)\n"
     ),
     "precompact": (
         "#!/usr/bin/env python3\n"
-        "from conduct_cli.hooks.precompact import main; main()\n"
+        "try:\n    from conduct_cli.hooks.precompact import main; main()\n"
+        "except (ImportError, ModuleNotFoundError): import sys; sys.exit(0)\n"
     ),
     "session-start": (
         "#!/usr/bin/env python3\n"
-        "from conduct_cli.hooks.session_start import main; main()\n"
+        "try:\n    from conduct_cli.hooks.session_start import main; main()\n"
+        "except (ImportError, ModuleNotFoundError): import sys; sys.exit(0)\n"
     ),
 }
 
