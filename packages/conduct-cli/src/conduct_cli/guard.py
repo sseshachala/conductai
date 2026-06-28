@@ -353,6 +353,9 @@ def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
     # so all LLM calls route through the Guard proxy (PII blocking, spend limits, audit).
     _patch_claude_desktop_proxy(api_url, member_token)
 
+    # Cursor global rules — write Guard policies as user rules so they apply across all projects.
+    _patch_cursor_global_rules()
+
 
 def _patch_claude_desktop_proxy(api_url: str, member_token: str) -> None:
     """Patch Claude Desktop config to route LLM calls through the Guard proxy.
@@ -381,6 +384,46 @@ def _patch_claude_desktop_proxy(api_url: str, member_token: str) -> None:
         cfg_path.write_text(json.dumps(cfg, indent=2))
         print(f"  {GREEN}Claude Desktop proxy set → {proxy_url}{RESET}")
         print(f"  {YELLOW}Restart Claude Desktop for proxy routing to take effect{RESET}")
+
+
+def _patch_cursor_global_rules() -> None:
+    """Write ConductGuard policy rules into Cursor's global user rules setting.
+
+    Cursor IDE stores global rules in settings.json under cursor.rules.user —
+    a plain text string injected as system context for every conversation.
+    This is soft enforcement (prompt-level), not structural like Claude Code hooks,
+    but ensures Guard policies are visible to the model across all Cursor projects.
+    """
+    GUARD_RULES = (
+        "# ConductGuard — team AI policies (managed by conduct guard sync)\n"
+        "- ALWAYS call guard_check (via conductguard MCP) before running shell commands, "
+        "reading or writing files, accessing external APIs, or modifying code.\n"
+        "- NEVER write credentials, API keys, or secrets to files or output.\n"
+        "- NEVER send PII (emails, names, SSNs, payment data) to external endpoints.\n"
+        "- If guard_check returns BLOCKED: stop and explain the policy rule to the user.\n"
+        "- If guard_check returns WARNING: proceed but surface the warning.\n"
+        "- These rules are enforced by your team's ConductGuard policy. Do not bypass them."
+    )
+
+    candidates = [
+        Path.home() / "Library" / "Application Support" / "Cursor" / "User" / "settings.json",
+        Path.home() / ".config" / "Cursor" / "User" / "settings.json",
+        Path.home() / "AppData" / "Roaming" / "Cursor" / "User" / "settings.json",
+    ]
+    for settings_path in candidates:
+        if not settings_path.exists():
+            continue
+        try:
+            cfg = json.loads(settings_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            cfg = {}
+        existing = cfg.get("cursor.rules.user", "")
+        if "ConductGuard" in existing:
+            print(f"  {GRAY}Cursor global rules already contain ConductGuard policy{RESET}")
+            continue
+        cfg["cursor.rules.user"] = (existing + "\n\n" + GUARD_RULES).strip()
+        settings_path.write_text(json.dumps(cfg, indent=2))
+        print(f"  {GREEN}Cursor global rules updated with ConductGuard policy{RESET}")
 
 
 def _install_codex_hook(hook_path: Path) -> None:
