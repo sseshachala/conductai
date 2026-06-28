@@ -57,11 +57,89 @@ def _check_proxy_token() -> None:
         pass
 
 
-def main() -> None:
+def _backfill_prev_session(current_session_id: str, cwd: str | None) -> None:
+    """Parse + PATCH the most recent completed session (the one that just ended).
+
+    Runs silently — never raises, never blocks the new session.
+    """
     try:
-        sys.stdin.read()
+        import re, urllib.request
+        from pathlib import Path as _P
+
+        claude_projects = _P.home() / ".claude" / "projects"
+        if not claude_projects.exists():
+            return
+
+        # find the project slug dir for this cwd
+        if cwd:
+            slug = re.sub(r"[^a-zA-Z0-9]", "-", cwd).strip("-")
+            project_dir = claude_projects / slug
+        else:
+            # fall back: pick most recently modified project dir
+            dirs = sorted(claude_projects.iterdir(), key=lambda d: d.stat().st_mtime, reverse=True)
+            project_dir = dirs[0] if dirs else None
+
+        if not project_dir or not project_dir.exists():
+            return
+
+        # pick the latest JSONL that isn't the current session
+        candidates = sorted(
+            (f for f in project_dir.glob("*.jsonl") if f.stem != current_session_id),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
+        )
+        if not candidates:
+            return
+
+        prev_session_id = candidates[0].stem
+
+        from conduct_cli.hooks.session_parser import parse_session
+        data = parse_session("claude_code", prev_session_id, cwd)
+
+        cfg_path = _P.home() / ".conduct" / "config.json"
+        if not cfg_path.exists():
+            return
+        cfg = json.loads(cfg_path.read_text())
+        server = cfg.get("server", "").rstrip("/")
+        api_key = cfg.get("api_key", "")
+        workspace_id = cfg.get("workspace_id") or cfg.get("workspace", "")
+        if not server:
+            return
+
+        payload = json.dumps({
+            "intent": data.intent,
+            "tool_sequence": data.tool_sequence,
+            "session_parse_status": data.status,
+            "session_parser": data.parser,
+        }).encode()
+        req = urllib.request.Request(
+            f"{server}/guard/sessions/{prev_session_id}/intent",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Workspace-ID": workspace_id,
+            },
+            method="PATCH",
+        )
+        urllib.request.urlopen(req, timeout=8)
     except Exception:
         pass
+
+
+def main() -> None:
+    current_session_id = ""
+    cwd = None
+    try:
+        raw = sys.stdin.read()
+        hook_data = json.loads(raw) if raw.strip() else {}
+        current_session_id = hook_data.get("session_id", "")
+        cwd = hook_data.get("cwd")
+    except Exception:
+        pass
+
+    if current_session_id:
+        _backfill_prev_session(current_session_id, cwd)
 
     _check_proxy_token()
 
