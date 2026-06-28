@@ -372,6 +372,8 @@ function AddRuleModal({
           zIndex: 10,
           width: "100%",
           maxWidth: 520,
+          maxHeight: "90vh",
+          overflowY: "auto",
           borderRadius: 14,
           background: "var(--surface)",
           boxShadow: "var(--shadow-lg)",
