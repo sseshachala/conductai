@@ -466,8 +466,12 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
 
 
 def _is_proxy_rule(rule: dict) -> bool:
-    """True if the rule has at least one proxy-applicable matcher."""
-    return any(k in rule for k in ("match_provider", "match_model", "match_prompt", "match_pattern"))
+    """True if the rule has at least one proxy-applicable matcher.
+    match_pattern is proxy-applicable only when match_tool is absent
+    (rules with match_tool are hook-event rules, not LLM-call rules)."""
+    if any(k in rule for k in ("match_provider", "match_model", "match_prompt")):
+        return True
+    return "match_pattern" in rule and "match_tool" not in rule
 
 
 def _rule_matches(rule: dict, provider: str, model: str, prompt_text: str) -> bool:
