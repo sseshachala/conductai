@@ -159,10 +159,18 @@ def run_drain_daemon() -> None:
                     if isinstance(entry["payload"], str)
                     else entry["payload"]
                 )
+                try:
+                    from importlib.metadata import version as _pkg_ver
+                    _ua = f"conduct-cli/{_pkg_ver('conduct-cli')}"
+                except Exception:
+                    _ua = "conduct-cli"
                 req = urllib.request.Request(
                     f"{api_url}/guard/events",
                     data=payload,
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": _ua,
+                    },
                     method="POST",
                 )
                 urllib.request.urlopen(req, timeout=8)
@@ -179,6 +187,14 @@ def run_drain_daemon() -> None:
         JOURNAL_PID_PATH.unlink(missing_ok=True)
     except Exception:
         pass
+
+
+_WAF_CHARS = str.maketrans("", "", "|;&$`<>")
+
+def _safe_summary(tool_input: dict) -> str:
+    """Summarise tool input, stripping shell metacharacters that trigger WAF rules."""
+    raw = json.dumps(tool_input)[:300]
+    return raw.translate(_WAF_CHARS)[:200]
 
 
 def post_event(
@@ -207,7 +223,7 @@ def post_event(
         "user_email":      cfg.get("user_email"),
         "ai_tool":         detect_ai_tool(),
         "tool_call":       tool_name,
-        "input_summary":   json.dumps(tool_input)[:200],
+        "input_summary":   _safe_summary(tool_input),
         "decision":        decision,
         "rule_id":         rule_id,
         "rule_message":    message,
