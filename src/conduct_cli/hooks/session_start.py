@@ -91,11 +91,6 @@ def _backfill_prev_session(current_session_id: str, cwd: str | None) -> None:
         if not candidates:
             return
 
-        prev_session_id = candidates[0].stem
-
-        from conduct_cli.hooks.session_parser import parse_session
-        data = parse_session("claude_code", prev_session_id, cwd)
-
         cfg_path = _P.home() / ".conduct" / "config.json"
         if not cfg_path.exists():
             return
@@ -106,23 +101,30 @@ def _backfill_prev_session(current_session_id: str, cwd: str | None) -> None:
         if not server:
             return
 
-        payload = json.dumps({
-            "intent": data.intent,
-            "tool_sequence": data.tool_sequence,
-            "session_parse_status": data.status,
-            "session_parser": data.parser,
-        }).encode()
-        req = urllib.request.Request(
-            f"{server}/guard/sessions/{prev_session_id}/intent",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "X-API-Key": api_key,
-                "X-Workspace-ID": workspace_id,
-            },
-            method="PATCH",
-        )
-        urllib.request.urlopen(req, timeout=8)
+        from conduct_cli.hooks.session_parser import parse_session
+        for f in candidates:
+            try:
+                sid = f.stem
+                data = parse_session("claude_code", sid, cwd)
+                payload = json.dumps({
+                    "intent": data.intent,
+                    "tool_sequence": data.tool_sequence,
+                    "session_parse_status": data.status,
+                    "session_parser": data.parser,
+                }).encode()
+                req = urllib.request.Request(
+                    f"{server}/guard/sessions/{sid}/intent",
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-API-Key": api_key,
+                        "X-Workspace-ID": workspace_id,
+                    },
+                    method="PATCH",
+                )
+                urllib.request.urlopen(req, timeout=8)
+            except Exception:
+                pass
     except Exception:
         pass
 
