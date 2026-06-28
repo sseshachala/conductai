@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "tier": "free",
   "description": "Core safety rules \u2014 destructive ops, secrets, production gates, audit. Findings vocabulary aligned to SOC 2, ISO 42001, OWASP, PCI DSS, GDPR.",
   "rules": [
@@ -671,6 +671,58 @@
       "severity": "critical",
       "recommendation": "Remove credentials from tool inputs. Use environment variables or Conduct's credential vault. Rotate any exposed credential.",
       "iso_control": "A.8.4"
+    },
+    {
+      "id": "proxy-no-credential-leak",
+      "description": "Block LLM calls containing credentials or API secrets in the prompt",
+      "match_pattern": "(DATABASE_URL|postgres(?:ql)?://|mysql://|DB_PASSWORD|STRIPE_SECRET|sk_live_[0-9a-zA-Z]{20,}|sk-ant-[a-zA-Z0-9\\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|AWS_SECRET_ACCESS_KEY)",
+      "action": "block",
+      "message": "Credential detected in prompt \u2014 request blocked before reaching LLM provider.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:6.1"
+      ],
+      "severity": "critical",
+      "recommendation": "Remove credentials from prompt. Use secret managers or environment variables."
+    },
+    {
+      "id": "proxy-no-pii-prompt",
+      "description": "Warn when LLM prompt contains likely PII (emails, SSNs, card numbers)",
+      "match_pattern": "(\\b\\d{3}-\\d{2}-\\d{4}\\b|\\b4[0-9]{12}(?:[0-9]{3})?\\b|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})",
+      "action": "warn",
+      "message": "PII detected in prompt. Verify this data is permitted to reach the LLM provider.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:6.1"
+      ],
+      "severity": "high",
+      "recommendation": "Anonymise or redact PII before sending to external LLM providers."
+    },
+    {
+      "id": "proxy-no-prompt-injection",
+      "description": "Warn on likely prompt injection attempts in user-supplied content",
+      "match_pattern": "(ignore (all |previous |prior |your )instructions|disregard (your |the )system prompt|you are now|jailbreak|act as (an? )?(unrestricted|DAN|evil))",
+      "action": "block",
+      "message": "Prompt injection pattern detected \u2014 request blocked.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ],
+      "frameworks": [
+        "OWASP:LLM01",
+        "ISO_42001:6.1"
+      ],
+      "severity": "critical",
+      "recommendation": "Sanitise user-supplied input before passing to the LLM."
     }
   ]
 }
