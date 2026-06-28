@@ -12,7 +12,8 @@ from booster.indexer import SymbolIndexer
 from booster.retriever import smart_read as _smart_read
 from booster.stats import StatsTracker
 
-_ROOT = Path.cwd()
+_ROOT = Path.cwd() if Path.cwd() != Path("/") else Path.home()
+_BOOSTER_HOME = Path.home() / ".booster"
 _SECRET = _os.environ.get("BOOSTER_SECRET", "")
 
 
@@ -283,11 +284,11 @@ def _route_model(indexer: SymbolIndexer, task: str, files: list[str]) -> dict:
 
 
 async def serve() -> None:
-    booster_dir = _ROOT / ".booster"
+    booster_dir = _BOOSTER_HOME
     booster_dir.mkdir(exist_ok=True)
     (booster_dir / "provider").write_text(_provider())
 
-    secret_file = _ROOT / ".booster" / ".secret"
+    secret_file = _BOOSTER_HOME / ".secret"
     if secret_file.exists():
         expected = secret_file.read_text().strip()
         if _SECRET and _SECRET != expected:
