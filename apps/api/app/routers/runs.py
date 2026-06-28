@@ -238,6 +238,7 @@ def create_run(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.workflows.run")),
+    caller_id: str = Depends(get_user_id),
 ):
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
@@ -246,6 +247,14 @@ def create_run(
         raise HTTPException(status_code=400, detail="Workflow has no published version")
 
     initial_state = body.initial_state or {}
+    if caller_id and not caller_id.startswith("api-key:"):
+        try:
+            from app.models.user import User as _User
+            _u = db.query(_User).filter(_User.clerk_id == caller_id).first()
+            if _u:
+                initial_state["__user_email"] = _u.email
+        except Exception:
+            pass
     if body.dry_run:
         initial_state["__dry_run"] = True
     # Resolve effective guard: per-run body.guard_enabled overrides; otherwise

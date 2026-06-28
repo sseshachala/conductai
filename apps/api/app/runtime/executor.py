@@ -1329,17 +1329,18 @@ def _execute_dag(
 
     run_id = run.id
 
-    # Resolve user email from triggered_by (Clerk user ID → users table)
-    _user_email: str | None = None
-    _raw_trigger = str(run.triggered_by or "")
-    if _raw_trigger and not _raw_trigger.startswith(("manual", "webhook", "schedule", "cron")):
-        try:
-            from app.models.user import User as _User
-            _u = db.query(_User).filter(_User.clerk_id == _raw_trigger).first()
-            if _u:
-                _user_email = _u.email
-        except Exception:
-            pass
+    # Resolve user email — from run state (set at trigger time) or triggered_by Clerk ID
+    _user_email: str | None = state.get("__user_email") or None
+    if not _user_email:
+        _raw_trigger = str(run.triggered_by or "")
+        if _raw_trigger and not _raw_trigger.startswith(("manual", "webhook", "schedule", "cron")):
+            try:
+                from app.models.user import User as _User
+                _u = db.query(_User).filter(_User.clerk_id == _raw_trigger).first()
+                if _u:
+                    _user_email = _u.email
+            except Exception:
+                pass
 
     graph = version.graph
     nodes = graph.get("nodes", [])
