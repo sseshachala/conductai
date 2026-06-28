@@ -262,6 +262,12 @@ export default function DefinitionPanel({ nodes, workflowName, runState, runSumm
                           {rd.model.replace("claude-", "").replace("-latest", "")}
                         </span>
                       )}
+                      {typeof rd.upstream_url === "string" && (
+                        <span style={{ fontSize: 9, color: "#6b7280", background: "#f3f4f6", border: "1px solid #e5e7eb", padding: "1px 5px", borderRadius: 4 }}
+                          title={rd.upstream_url}>
+                          via {rd.upstream_url.replace(/^https?:\/\//, "").split("/")[0]}
+                        </span>
+                      )}
                       {ran && (
                         <span style={{ fontSize: 10, color: "#94a3b8" }}>
                           {isOpen ? "▲ collapse" : "▼ expand"}
