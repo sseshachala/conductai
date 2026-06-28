@@ -243,13 +243,25 @@ async def _proxy(
         model = body.get("model", "unknown")
         ai_tool = request.headers.get("x-conduct-ai-tool") or _infer_ai_tool(request)
 
-        # 4. Pre-call Guard policy evaluation
+        # 4a. Resolve user email for audit rows
+        _user_email: str | None = None
+        try:
+            from app.models.user import User as _User
+            _u = db.query(_User).filter(_User.clerk_id == clerk_user_id).first()
+            if _u:
+                _user_email = _u.email
+        except Exception:
+            pass
+
+        # 4b. Pre-call Guard policy evaluation
+        prompt_summary = _flatten_prompt(body)[:200]
         decision = _evaluate_policies(workspace_id, provider, model, body)
         if decision["action"] == "BLOCK":
             background.add_task(
                 _record_audit, workspace_id, clerk_user_id, ai_tool, provider, model,
                 "BLOCK", decision["rule_id"], int((time.monotonic() - started) * 1000),
                 body=body, response_bytes=None,
+                prompt_summary=prompt_summary, user_email=_user_email,
             )
             return JSONResponse(status_code=403, content={
                 "error": {"type": "guard_block", "message": decision["message"], "rule": decision["rule_id"]},
@@ -287,7 +299,7 @@ async def _proxy(
         is_stream=is_stream,
         extra_headers=extra_headers,
         background=background,
-        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, "ALLOW", None, started, body),
+        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, "ALLOW", None, started, body, prompt_summary, _user_email),
     )
 
 
@@ -455,7 +467,7 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
 
 def _is_proxy_rule(rule: dict) -> bool:
     """True if the rule has at least one proxy-applicable matcher."""
-    return any(k in rule for k in ("match_provider", "match_model", "match_prompt"))
+    return any(k in rule for k in ("match_provider", "match_model", "match_prompt", "match_pattern"))
 
 
 def _rule_matches(rule: dict, provider: str, model: str, prompt_text: str) -> bool:
@@ -467,6 +479,9 @@ def _rule_matches(rule: dict, provider: str, model: str, prompt_text: str) -> bo
         return False
     pp = rule.get("match_prompt")
     if pp and not re.search(pp, prompt_text, re.IGNORECASE):
+        return False
+    pat = rule.get("match_pattern")
+    if pat and not re.search(pat, prompt_text, re.IGNORECASE):
         return False
     return True
 
@@ -563,6 +578,8 @@ async def _forward(
         _record_audit, *audit_args[:6], audit_args[6],
         int((time.monotonic() - audit_args[7]) * 1000),
         body=audit_args[8], response_bytes=full, upstream=upstream,
+        prompt_summary=audit_args[9] if len(audit_args) > 9 else "",
+        user_email=audit_args[10] if len(audit_args) > 10 else None,
     )
     return JSONResponse(
         status_code=resp.status_code,
@@ -589,6 +606,8 @@ async def _stream_chunks(
             _record_audit, *audit_args[:6], audit_args[6],
             int((time.monotonic() - audit_args[7]) * 1000),
             body=audit_args[8], response_bytes=bytes(collected), upstream=upstream,
+            prompt_summary=audit_args[9] if len(audit_args) > 9 else "",
+            user_email=audit_args[10] if len(audit_args) > 10 else None,
         )
 
 
@@ -596,6 +615,7 @@ def _record_audit(
     workspace_id: str, clerk_user_id: str, ai_tool: str, provider: str, model: str,
     decision: str, rule_id: str | None, duration_ms: int,
     *, body: dict, response_bytes: bytes | None, upstream: str | None = None,
+    prompt_summary: str = "", user_email: str | None = None,
 ) -> None:
     """Background task — best-effort, never blocks the response."""
     db = SessionLocal()
@@ -610,13 +630,13 @@ def _record_audit(
                   source, provider, model,
                   decision, rule_id, ts,
                   tokens_before, tokens_after, duration_ms,
-                  cost_usd_after, input_summary
+                  cost_usd_after, input_summary, user_email
                 ) VALUES (
                   :ws, :uid, :ai, NULL,
                   'proxy', :prov, :model,
                   :dec, :rid, :ts,
                   :tin, :tout, :dur,
-                  :cost, :upstream
+                  :cost, :summary, :email
                 )
             """),
             {
@@ -627,7 +647,8 @@ def _record_audit(
                 "ts": datetime.now(timezone.utc),
                 "tin": in_tokens, "tout": out_tokens, "dur": duration_ms,
                 "cost": cost_usd,
-                "upstream": upstream or "vendor",
+                "summary": prompt_summary or upstream or "vendor",
+                "email": user_email,
             },
         )
         db.commit()
