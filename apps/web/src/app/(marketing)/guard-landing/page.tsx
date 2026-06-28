@@ -9,6 +9,7 @@ export default function GuardLandingPage() {
       <ProofStripSection />
       <ToolsSection />
       <EnforcementLayerSection />
+      <GitHubEnterpriseSection />
       <Phase1Section />
       <Phase2Section />
       <Phase3Section />
@@ -154,8 +155,6 @@ function ToolsSection() {
   )
 }
 
-/* ─── Phase 1 — Month 1: Visibility ───────────────────────────────────── */
-
 /* ─── Enforcement Layer ────────────────────────────────────────────────── */
 
 function EnforcementLayerSection() {
@@ -199,6 +198,54 @@ function EnforcementLayerSection() {
             ))}
           </div>
 
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── GitHub Enterprise ────────────────────────────────────────────────── */
+
+function GitHubEnterpriseSection() {
+  return (
+    <section className="border-y border-stone-200 bg-white px-6 py-16">
+      <div className="max-w-4xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-4">GitHub Copilot Enterprise</p>
+            <h2 className="text-3xl font-black text-stone-900 tracking-tight leading-tight mb-4">
+              One API key. Every developer covered.
+            </h2>
+            <p className="text-stone-500 leading-relaxed mb-6">
+              GitHub Copilot for Business supports hosted MCP servers. Add the ConductGuard URL to your org settings once — every developer in your org gets policy enforcement automatically. No CLI install. No per-developer setup.
+            </p>
+            <div className="space-y-2 text-sm text-stone-600">
+              <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> Admin generates one API key from Settings</div>
+              <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> Paste URL into GitHub org MCP settings</div>
+              <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> All developers get Guard enforcement on next Copilot session</div>
+              <div className="flex items-center gap-2"><span className="text-emerald-500">✓</span> Full audit trail in the Conduct dashboard</div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-xl border border-stone-200 bg-stone-50 p-5">
+              <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide mb-3">MCP server URL</p>
+              <code className="block text-xs font-mono text-stone-700 break-all leading-relaxed">
+                https://api.conductai.ai/guard/mcp<br />
+                ?workspace_id=YOUR_WORKSPACE_ID
+              </code>
+            </div>
+            <div className="rounded-xl border border-stone-200 bg-stone-50 p-5">
+              <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide mb-3">Authorization header</p>
+              <code className="block text-xs font-mono text-stone-700">
+                Authorization: Bearer cond_live_xxx
+              </code>
+              <p className="text-xs text-stone-400 mt-2">Generate from conductai.ai → Settings → API Keys</p>
+            </div>
+            <p className="text-xs text-stone-400 text-center">
+              Works with GitHub Copilot for Business, Cursor, Windsurf, and any MCP-compatible AI tool.
+            </p>
+          </div>
         </div>
       </div>
     </section>

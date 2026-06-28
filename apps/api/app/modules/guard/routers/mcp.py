@@ -357,18 +357,27 @@ async def mcp_endpoint(
 
     db = SessionLocal()
     try:
-        # Validate token against guard_member_config
-        member_row = db.execute(
-            _sql("SELECT clerk_user_id FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
-            {"w": str(ws_uuid), "t": resolved_token},
-        ).fetchone()
-        if not member_row:
-            return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid token"))
-
-        clerk_user_id = member_row.clerk_user_id
-
-        # Resolve email from Clerk API (workspace_users has no email column)
-        user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
+        # Validate token — member_token (conduct login) or cond_live_ API key (Settings → API Keys)
+        import hashlib as _hashlib
+        if resolved_token.startswith("cond_live_"):
+            key_hash = _hashlib.sha256(resolved_token.encode()).hexdigest()
+            api_key_row = db.execute(
+                _sql("SELECT workspace_id, user_id FROM conduct_api_keys WHERE key_hash = :h AND (expires_at IS NULL OR expires_at > now()) LIMIT 1"),
+                {"h": key_hash},
+            ).fetchone()
+            if not api_key_row or str(api_key_row.workspace_id) != str(ws_uuid):
+                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid API key"))
+            clerk_user_id = api_key_row.user_id or "api_key"
+            user_email = get_clerk_user_email(clerk_user_id) if clerk_user_id != "api_key" else f"apikey@{workspace_id[:8]}"
+        else:
+            member_row = db.execute(
+                _sql("SELECT clerk_user_id FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
+                {"w": str(ws_uuid), "t": resolved_token},
+            ).fetchone()
+            if not member_row:
+                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid token"))
+            clerk_user_id = member_row.clerk_user_id
+            user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
 
         config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if not config:
