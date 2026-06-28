@@ -152,13 +152,13 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
     </div>
 
     {/* Right column — gateway reference */}
-    <div style={{ flex: "0 0 220px", paddingTop: 4 }}>
+    <div style={{ flex: "0 0 260px", paddingTop: 4 }}>
       <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 12 }}>Supported Gateways</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {GATEWAYS.map(g => (
           <div key={g.name}>
             <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 2 }}>{g.name}</p>
-            <code style={{ fontSize: 11, color: "var(--text-3)", wordBreak: "break-all" }}>{g.url}</code>
+            <code style={{ fontSize: 11, color: "var(--text-3)", wordBreak: "break-word", overflowWrap: "anywhere" }}>{g.url}</code>
           </div>
         ))}
       </div>
