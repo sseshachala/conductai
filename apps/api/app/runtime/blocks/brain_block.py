@@ -193,6 +193,9 @@ def _execute_brain(
     injected_session=None,
     workspace_id: str = "",
     workflow_id: str | None = None,
+    user_email: str | None = None,
+    block_label: str | None = None,
+    workflow_name: str | None = None,
 ) -> dict:
     # Import helpers from executor to avoid circular imports at module load time.
     from app.runtime.executor import (
@@ -464,7 +467,7 @@ def _execute_brain(
                 _db.add(_GAE(
                     workspace_id=_ws,
                     ai_tool="workflow",
-                    tool_call="llm_call",
+                    tool_call=block_label or block_id or "llm_call",
                     source="brain_block",
                     provider=provider,
                     model=model_id,
@@ -474,8 +477,9 @@ def _execute_brain(
                     tokens_after=out_tok,
                     cost_usd_after=cost,
                     conductai_run_id=str(run_id) if run_id else None,
-                    conductai_workflow=playbook_slug,
+                    conductai_workflow=workflow_name or playbook_slug,
                     conductai_workflow_id=workflow_id,
+                    user_email=user_email,
                     ts=_dt.now(_tz.utc),
                 ))
                 _db.commit()

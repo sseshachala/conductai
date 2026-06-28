@@ -177,7 +177,7 @@ const MCP_SERVER_LABELS: Record<string, string> = {
   plugin_vercel_vercel: "Vercel",
 }
 
-function formatToolCall(call: string | null | undefined): string {
+export function formatToolCall(call: string | null | undefined): string {
   if (!call) return "—"
   const m = call.match(/^mcp__([^_].+?)__(.+)$/)
   if (!m) return call
@@ -327,18 +327,29 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       </div>
       {!compact && (
         <div>
-          {ev.conductai_run_id ? (
-            <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} style={{ textDecoration: "none" }}>
-              <ToolBadge tool={ev.ai_tool} />
-            </Link>
+          {ev.source === "brain_block" && ev.conductai_workflow ? (
+            ev.conductai_run_id ? (
+              <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`}
+                style={{ textDecoration: "none", fontSize: 11.5, fontFamily: "var(--font-mono, monospace)", color: "var(--accent-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", maxWidth: "100%" }}>
+                {ev.conductai_workflow}
+              </Link>
+            ) : (
+              <span style={{ fontSize: 11.5, fontFamily: "var(--font-mono, monospace)", color: "var(--text-2)" }}>{ev.conductai_workflow}</span>
+            )
           ) : (
-            <ToolBadge tool={ev.ai_tool} />
+            ev.conductai_run_id ? (
+              <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} style={{ textDecoration: "none" }}>
+                <ToolBadge tool={ev.ai_tool} />
+              </Link>
+            ) : (
+              <ToolBadge tool={ev.ai_tool} />
+            )
           )}
         </div>
       )}
       <div className="mono" style={{ fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {(ev.source === "proxy" || ev.source === "brain_block") && ev.provider
+          {(ev.source === "proxy") && ev.provider
             ? `${ev.provider}/${ev.model ?? "?"}`
             : ev.source === "local_audit"
               ? (ev.provider ? `${ev.provider} key found` : "local key found")
@@ -353,7 +364,9 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         {ev.source === "local_audit" && <LocalRiskPill />}
       </div>
       <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-        {ev.input_summary ? `${ev.input_summary}…` : "—"}
+        {ev.source === "brain_block" && ev.provider && ev.model
+          ? `${ev.input_summary || "vendor"} → ${ev.provider} · ${ev.model}`
+          : ev.input_summary ? `${ev.input_summary}…` : "—"}
       </div>
       <div>
         {ev.conductai_run_id ? (
