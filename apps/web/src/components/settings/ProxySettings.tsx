@@ -89,31 +89,15 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
         </p>
       </div>
 
-      {/* Proxy Enforcement Persona */}
+      {/* Surface badge */}
       <div style={{ marginBottom: 24 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: ".06em", display: "block", marginBottom: 10 }}>
-          Proxy Enforcement Persona
+          Enforcement Surface
         </label>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {([
-            { value: "conservative", label: "Conservative", desc: "Strictest rules — blocks most activity" },
-            { value: "standard",     label: "Standard",     desc: "Balanced enforcement (default)" },
-            { value: "developer",    label: "Developer",    desc: "Permissive — audit only, rarely blocks" },
-          ] as const).map(opt => (
-            <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-              <input
-                type="radio" name="proxy_persona" value={opt.value}
-                checked={proxyPersona === opt.value}
-                onChange={() => setProxyPersona(opt.value)}
-                style={{ accentColor: "var(--accent)", width: 15, height: 15, flexShrink: 0 }}
-              />
-              <span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{opt.label}</span>
-                <span style={{ fontSize: 12, color: "var(--text-3)", marginLeft: 8 }}>{opt.desc}</span>
-              </span>
-            </label>
-          ))}
-        </div>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-bg, #ede9fe)", color: "var(--accent, #6d28d9)", borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 600 }}>
+          Proxy
+        </span>
+        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>All active proxy rules apply to every LLM call routed through this URL.</p>
       </div>
 
       {/* LLM Upstream */}
