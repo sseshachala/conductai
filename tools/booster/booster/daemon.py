@@ -150,10 +150,20 @@ class BoosterDaemon:
 
     def run(self) -> None:
         self._booster_dir.mkdir(exist_ok=True)
-        self._pid_path.write_text(str(os.getpid()))
+
+        # Kill any existing daemon before taking over the socket.
+        if self._pid_path.exists():
+            try:
+                old_pid = int(self._pid_path.read_text().strip())
+                os.kill(old_pid, signal.SIGTERM)
+                time.sleep(0.3)  # give it a moment to release the socket
+            except (ValueError, ProcessLookupError, PermissionError):
+                pass  # already dead or not ours
 
         if self._sock_path.exists():
             self._sock_path.unlink()
+
+        self._pid_path.write_text(str(os.getpid()))
 
         # Warm up the model before accepting connections
         self._get_model()
