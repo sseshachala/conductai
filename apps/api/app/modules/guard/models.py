@@ -30,7 +30,7 @@ class GuardConfig(Base):
     automation_workflow_trigger = Column(Boolean, nullable=False, default=False)
     # Dev-time persona: applies to MCP hook + daemon sync (Claude Code, Cursor, etc.).
     # 'conservative' | 'standard' | 'developer' — admin-managed; member can override.
-    persona = Column(String(20), nullable=False, default="standard")
+    persona = Column(String(20), nullable=False, default="agent")
     # Runtime persona: applies to workflow execution (guard_block.py). Defaults to
     # 'conservative' so production runs always enforce the strictest rule set
     # regardless of what dev persona the workspace runs locally. Admin-only edit.

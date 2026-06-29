@@ -279,10 +279,11 @@ async def _proxy(
         # 4c. Pre-call Guard policy evaluation
         prompt_summary = _flatten_prompt(body)[:200]
         decision = _evaluate_policies(workspace_id, provider, model, body)
-        if decision["action"] == "BLOCK":
+        _action = decision["action"]  # "BLOCK" | "WARN" | "ALLOW"
+        if _action == "BLOCK":
             background.add_task(
                 _record_audit, workspace_id, clerk_user_id, ai_tool, provider, model,
-                "BLOCK", decision["rule_id"], int((time.monotonic() - started) * 1000),
+                "blocked", decision["rule_id"], int((time.monotonic() - started) * 1000),
                 body=body, response_bytes=None,
                 prompt_summary=prompt_summary, user_email=_user_email,
                 conductai_run_id=_run_id, conductai_workflow=_workflow,
@@ -291,6 +292,10 @@ async def _proxy(
             return JSONResponse(status_code=403, content={
                 "error": {"type": "guard_block", "message": decision["message"], "rule": decision["rule_id"]},
             })
+
+        # Map internal action to audit decision string
+        _audit_decision = "warned" if _action == "WARN" else "allowed"
+        _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
 
         # 5. Vault lookup — upstream key wins over vendor key when set
         upstream = _upstream_url(db, workspace_id, provider)
@@ -324,7 +329,7 @@ async def _proxy(
         is_stream=is_stream,
         extra_headers=extra_headers,
         background=background,
-        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, "ALLOW", None, started, body, prompt_summary, _user_email, _run_id, _workflow, _workflow_id),
+        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, _audit_decision, _audit_rule_id, started, body, prompt_summary, _user_email, _run_id, _workflow, _workflow_id),
     )
 
 
@@ -777,7 +782,7 @@ def _fail_closed(status: int, message: str) -> JSONResponse:
 class ProxyConfigBody(BaseModel):
     llm_upstream: str = ""
     llm_upstream_api_key: str = ""
-    proxy_persona: str = "standard"
+    proxy_persona: str = "agent"
 
 
 @guard_router.get("/proxy-config")
@@ -798,7 +803,7 @@ def get_proxy_config(
             creds = decrypt(row.encrypted_credentials) or {}
             upstream = creds.get("CONDUCT_LLM_UPSTREAM", "")
             has_upstream_key = bool(creds.get("LLM_UPSTREAM_API_KEY"))
-            proxy_persona = creds.get("PROXY_PERSONA", "standard")
+            proxy_persona = creds.get("PROXY_PERSONA", "agent")
         except Exception:
             pass
     return {
@@ -832,7 +837,7 @@ def save_proxy_config(
     creds = {
         "CONDUCT_LLM_UPSTREAM": body.llm_upstream,
         "LLM_UPSTREAM_API_KEY": body.llm_upstream_api_key or existing.get("LLM_UPSTREAM_API_KEY", ""),
-        "PROXY_PERSONA": body.proxy_persona or "standard",
+        "PROXY_PERSONA": body.proxy_persona or "agent",
     }
     encrypted = encrypt(creds)
     if row:
