@@ -63,12 +63,7 @@ MEMBER_TOKEN_PREFIX = "guard-mt-"
 
 
 def _workspace_proxy_url(db: Session, workspace_id: str) -> str:
-    """Read CONDUCT_PROXY_URL from workspace_config, fall back to server env."""
-    row = db.execute(
-        text("SELECT value FROM workspace_config WHERE workspace_id = :ws AND key = 'CONDUCT_PROXY_URL' LIMIT 1"),
-        {"ws": workspace_id},
-    ).fetchone()
-    return row[0] if row and row[0] else settings.conduct_proxy_url
+    return settings.conduct_proxy_url
 
 
 # ─── Local key audit ingest ───────────────────────────────────────────────
@@ -658,6 +653,9 @@ def _record_audit(
     try:
         set_workspace_rls(db, workspace_id)
         in_tokens, out_tokens = _extract_token_counts(body, response_bytes)
+        if in_tokens is None and response_bytes is None:
+            # ponytail: blocked call — estimate what vendor would have consumed
+            in_tokens, out_tokens = _estimate_input_tokens(body), 0
         cost_usd = _compute_cost(provider, model, in_tokens, out_tokens)
         db.execute(
             text("""
@@ -697,6 +695,25 @@ def _record_audit(
         log.warning("guard.proxy.audit_failed", err=str(e))
     finally:
         db.close()
+
+
+def _estimate_input_tokens(body: dict) -> int:
+    """Rough token estimate from request body (chars/4). Used for blocked calls."""
+    all_text: list[str] = []
+    for msg in body.get("messages") or []:
+        content = msg.get("content")
+        if isinstance(content, str):
+            all_text.append(content)
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict):
+                    t = part.get("text") or ""
+                    if t:
+                        all_text.append(t)
+    system = body.get("system")
+    if isinstance(system, str):
+        all_text.append(system)
+    return max(1, len(" ".join(all_text)) // 4)
 
 
 def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int | None, int | None]:
