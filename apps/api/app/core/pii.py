@@ -47,8 +47,8 @@ _BARE: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\bak-[A-Za-z0-9\-_]{10,}\b"), "api_key"),
     # Stripe live/test keys that appear bare
     (re.compile(r"\b(?:sk|pk|rk|whsec)_(?:live|test)_[A-Za-z0-9]{24,}\b"), "stripe_key"),
-    # Bearer tokens in Authorization headers
-    (re.compile(r"(?i)\bBearer\s+([A-Za-z0-9\-_\.]{32,})\b"), "bearer_token"),
+    # Bearer tokens in Authorization headers (excluding Conduct's own proxy/member auth tokens)
+    (re.compile(r"(?i)\bBearer\s+(?!cond_live_|guard-mt-)([A-Za-z0-9\-_\.]{32,})\b"), "bearer_token"),
     # URL-embedded passwords: scheme://user:password@host
     (re.compile(r"(?i)([a-z][a-z0-9+\-.]*://[^:@/\s]+:)([^@/\s]{4,})(@)"), "url_password"),
 ]
@@ -64,8 +64,9 @@ _CONTEXT_KEYWORDS = (
 _CONTEXT_AWARE: list[tuple[re.Pattern, str]] = [
     # Separator is = or : only — not " — to avoid matching dict key lookups like
     # headers["Authorization"] where the closing " of the key triggers a false positive.
+    # Exclude cond_live_ and guard-mt- — Conduct's own auth tokens are not secrets to protect.
     (re.compile(
-        rf"(?i)(?:{_CONTEXT_KEYWORDS})\s*[=:]\s*['\"]?([A-Za-z0-9\-_\.+/!@#$%^&*(){{}}]{{8,}})['\"]?"
+        rf"(?i)(?:{_CONTEXT_KEYWORDS})\s*[=:]\s*['\"]?(?!cond_live_|guard-mt-)([A-Za-z0-9\-_\.+/!@#$%^&*(){{}}]{{8,}})['\"]?"
     ), "credential"),
 ]
 
