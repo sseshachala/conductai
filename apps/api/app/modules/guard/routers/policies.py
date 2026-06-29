@@ -297,8 +297,8 @@ def generate_policy(
             detail=f"Anthropic API key not configured for the {env_hint} — add it in Settings -> Environments",
         )
 
-    client = anthropic.Anthropic(api_key=api_key)
     try:
+        client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=512,
