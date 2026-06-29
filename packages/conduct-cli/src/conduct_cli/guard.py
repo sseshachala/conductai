@@ -1025,7 +1025,8 @@ def _check_and_upgrade_packages() -> None:
         try:
             with urllib.request.urlopen(f"https://pypi.org/pypi/{pkg}/json", timeout=4) as r:
                 latest = __import__("json").loads(r.read())["info"]["version"]
-            if latest != current:
+            from packaging.version import Version
+            if Version(latest) > Version(current):
                 stale.append((pkg, current, latest))
         except Exception:
             pass  # offline or PyPI down — skip silently
