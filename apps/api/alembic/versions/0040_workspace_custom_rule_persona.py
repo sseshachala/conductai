@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "0040"
-down_revision = "0039"
+down_revision = "0039_guard_session_intent"
 branch_labels = None
 depends_on = None
 
