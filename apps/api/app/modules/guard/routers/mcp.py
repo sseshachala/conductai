@@ -389,7 +389,11 @@ async def mcp_endpoint(
             if not member_row:
                 return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid token"))
             clerk_user_id = member_row.clerk_user_id
-            user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
+            user_email = (
+                get_clerk_user_email(clerk_user_id)
+                or member_row.user_email
+                or clerk_user_id
+            )
 
         config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if not config:
