@@ -357,16 +357,15 @@ def sync_policies(
     ws_uuid = _ws_uuid(workspace_id)
 
     gc = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
-    persona = (gc.persona if gc and gc.persona else "agent")
-
-    active_rules = compute_policy(db, ws_uuid, persona)
+    # ponytail: sync always uses surface="agent" — GuardConfig.persona is developer type, not surface
+    active_rules = compute_policy(db, ws_uuid, "agent")
     version_hash = hashlib.sha256(json.dumps(active_rules, sort_keys=True).encode()).hexdigest()[:16]
     version = f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}-{version_hash}"
 
     out = PolicySyncOut(
         workspace_id=workspace_id,
         version=version,
-        persona=persona,
+        persona="agent",
         fail_mode=getattr(gc, "fail_mode", "fail_open") if gc else "fail_open",
         rules=[
             PolicySyncRule(
