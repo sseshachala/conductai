@@ -253,7 +253,12 @@ async def _proxy(
         except Exception:
             pass
 
-        # 4b. Pre-call Guard policy evaluation
+        # 4b. Run context from brain block headers (workflow runs only)
+        _run_id = request.headers.get("x-conductai-run-id") or None
+        _workflow = request.headers.get("x-conductai-workflow") or None
+        _workflow_id = request.headers.get("x-conductai-workflow-id") or None
+
+        # 4c. Pre-call Guard policy evaluation
         prompt_summary = _flatten_prompt(body)[:200]
         decision = _evaluate_policies(workspace_id, provider, model, body)
         if decision["action"] == "BLOCK":
@@ -262,6 +267,8 @@ async def _proxy(
                 "BLOCK", decision["rule_id"], int((time.monotonic() - started) * 1000),
                 body=body, response_bytes=None,
                 prompt_summary=prompt_summary, user_email=_user_email,
+                conductai_run_id=_run_id, conductai_workflow=_workflow,
+                conductai_workflow_id=_workflow_id,
             )
             return JSONResponse(status_code=403, content={
                 "error": {"type": "guard_block", "message": decision["message"], "rule": decision["rule_id"]},
@@ -299,7 +306,7 @@ async def _proxy(
         is_stream=is_stream,
         extra_headers=extra_headers,
         background=background,
-        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, "ALLOW", None, started, body, prompt_summary, _user_email),
+        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, "ALLOW", None, started, body, prompt_summary, _user_email, _run_id, _workflow, _workflow_id),
     )
 
 
@@ -578,6 +585,9 @@ async def _forward(
         body=audit_args[8], response_bytes=full, upstream=upstream,
         prompt_summary=audit_args[9] if len(audit_args) > 9 else "",
         user_email=audit_args[10] if len(audit_args) > 10 else None,
+        conductai_run_id=audit_args[11] if len(audit_args) > 11 else None,
+        conductai_workflow=audit_args[12] if len(audit_args) > 12 else None,
+        conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
     )
     return JSONResponse(
         status_code=resp.status_code,
@@ -606,6 +616,9 @@ async def _stream_chunks(
             body=audit_args[8], response_bytes=bytes(collected), upstream=upstream,
             prompt_summary=audit_args[9] if len(audit_args) > 9 else "",
             user_email=audit_args[10] if len(audit_args) > 10 else None,
+            conductai_run_id=audit_args[11] if len(audit_args) > 11 else None,
+            conductai_workflow=audit_args[12] if len(audit_args) > 12 else None,
+            conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
         )
 
 
@@ -614,6 +627,8 @@ def _record_audit(
     decision: str, rule_id: str | None, duration_ms: int,
     *, body: dict, response_bytes: bytes | None, upstream: str | None = None,
     prompt_summary: str = "", user_email: str | None = None,
+    conductai_run_id: str | None = None, conductai_workflow: str | None = None,
+    conductai_workflow_id: str | None = None,
 ) -> None:
     """Background task — best-effort, never blocks the response."""
     db = SessionLocal()
@@ -628,13 +643,15 @@ def _record_audit(
                   source, provider, model,
                   decision, rule_id, ts,
                   tokens_before, tokens_after, duration_ms,
-                  cost_usd_after, input_summary, user_email
+                  cost_usd_after, input_summary, user_email,
+                  conductai_run_id, conductai_workflow, conductai_workflow_id
                 ) VALUES (
                   :ws, :uid, :ai, NULL,
                   'proxy', :prov, :model,
                   :dec, :rid, :ts,
                   :tin, :tout, :dur,
-                  :cost, :summary, :email
+                  :cost, :summary, :email,
+                  :run_id, :workflow, :workflow_id
                 )
             """),
             {
@@ -647,6 +664,9 @@ def _record_audit(
                 "cost": cost_usd,
                 "summary": prompt_summary or upstream or "vendor",
                 "email": user_email,
+                "run_id": conductai_run_id,
+                "workflow": conductai_workflow,
+                "workflow_id": conductai_workflow_id,
             },
         )
         db.commit()
