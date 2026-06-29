@@ -437,13 +437,7 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
                 Integration.workspace_id == workspace_id,
                 Integration.handle == "proxy_config",
             ).first()
-            persona = "standard"
-            if _pc:
-                try:
-                    persona = (decrypt(_pc.encrypted_credentials) or {}).get("PROXY_PERSONA", "standard")
-                except Exception:
-                    pass
-            rules = compute_policy(db, uuid.UUID(workspace_id), persona)
+            rules = compute_policy(db, uuid.UUID(workspace_id), "proxy")
         except Exception as e:
             log.warning("guard.proxy.policy_load_failed", err=str(e))
             return {"action": "ALLOW", "rule_id": "guard.engine_error", "message": None}

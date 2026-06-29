@@ -249,6 +249,7 @@ class WorkspaceCustomRule(Base):
 
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
     rule_id      = Column(Text, primary_key=True)
+    persona      = Column(Text, nullable=False, default="agent")  # "agent" or "proxy"
     body         = Column(JSONB, nullable=False)            # full rule shape (id, match_*, action, message, severity, ...)
     enabled      = Column(Boolean, nullable=False, default=True)
     created_by   = Column(Text, nullable=True)              # clerk_user_id

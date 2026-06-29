@@ -208,11 +208,8 @@ def _match_policy(tool_name: str, tool_input: dict, rules: list) -> dict | None:
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def _get_rules(db: Session, ws_uuid: uuid.UUID) -> list[dict]:
-    """Active ruleset from skill_packs JSONB via compute_policy(). Persona is
-    read from guard_config; defaults to 'standard' if absent."""
-    cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
-    persona = (cfg.persona if cfg else None) or "standard"
-    rules = compute_policy(db, ws_uuid, persona)
+    """Active ruleset for the agent persona — governs what AI does on the machine."""
+    rules = compute_policy(db, ws_uuid, "agent")
     return [
         {
             "rule_id":           r.get("id") or r.get("rule_id"),

@@ -1,741 +1,198 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "1.3.2",
+  "version": "2.0.0",
   "tier": "free",
-  "description": "Core safety rules \u2014 destructive ops, secrets, production gates, audit. Findings vocabulary aligned to SOC 2, ISO 42001, OWASP, PCI DSS, GDPR.",
+  "description": "Core AI governance rules — proxy interception and agent safety. 3 proxy rules + 13 agent rules. All based on real AI agent incidents.",
   "rules": [
     {
+      "id": "proxy-no-credential-leak",
+      "persona": "proxy",
+      "non_overridable": true,
+      "description": "Block LLM calls containing credentials in the prompt",
+      "match_pattern": "(DATABASE_URL|postgres(?:ql)?://|mysql://|DB_PASSWORD|STRIPE_SECRET|sk_live_[0-9a-zA-Z]{20,}|sk-ant-[a-zA-Z0-9\\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|AWS_SECRET_ACCESS_KEY)",
+      "action": "block",
+      "message": "Credential detected in prompt — request blocked before reaching LLM provider.",
+      "severity": "critical",
+      "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1"]
+    },
+    {
+      "id": "proxy-no-prompt-injection",
+      "persona": "proxy",
+      "non_overridable": true,
+      "description": "Block prompt injection attempts",
+      "match_pattern": "(ignore (all |previous |prior |your )instructions|disregard (your |the )system prompt|you are now|jailbreak|act as (an? )?(unrestricted|DAN|evil))",
+      "action": "block",
+      "message": "Prompt injection pattern detected — request blocked.",
+      "severity": "critical",
+      "frameworks": ["OWASP:LLM01", "ISO_42001:6.1"]
+    },
+    {
+      "id": "proxy-no-pii-prompt",
+      "persona": "proxy",
+      "non_overridable": false,
+      "description": "Warn when LLM prompt contains PII",
+      "match_pattern": "(\\b\\d{3}-\\d{2}-\\d{4}\\b|\\b4[0-9]{12}(?:[0-9]{3})?\\b|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})",
+      "action": "warn",
+      "message": "PII detected in prompt. Verify this data is permitted to reach the LLM provider.",
+      "severity": "high",
+      "frameworks": ["GDPR:Art32", "HIPAA:164.514"]
+    },
+    {
       "id": "no-rm-rf",
+      "persona": "agent",
+      "non_overridable": true,
       "description": "Block recursive deletes",
       "match_tool": "bash",
       "match_pattern": "rm\\s+-rf",
       "action": "block",
       "message": "Recursive delete blocked. Delete files individually.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
-      "severity": "high",
-      "recommendation": "Delete files individually or use a version-controlled cleanup script that can be reviewed and reverted.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "no-git-reset-hard",
-      "description": "Block hard resets",
-      "match_tool": "bash",
-      "match_pattern": "git\\s+reset\\s+--hard",
-      "action": "block",
-      "message": "Hard reset blocked. Use --soft or --mixed to preserve changes.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
-      "severity": "medium",
-      "recommendation": "Use --soft or --mixed to preserve working tree changes. For published commits, use git revert.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "no-force-push",
-      "description": "Block force pushes",
-      "match_tool": "bash",
-      "match_pattern": "git\\s+push\\s+(--force|-f)\\b",
-      "action": "block",
-      "message": "Force push blocked. Coordinate with your team before rewriting history.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
-      "severity": "high",
-      "recommendation": "Coordinate with your team before rewriting history. Use git push --force-with-lease at minimum.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "no-drop-table",
-      "description": "Block DROP TABLE statements",
-      "match_tool": "bash,edit,write",
-      "match_pattern": "DROP\\s+TABLE",
-      "action": "block",
-      "message": "DROP TABLE blocked. Use a migration with rollback.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "PCI_DSS:10.7"
-      ],
       "severity": "critical",
-      "recommendation": "Use a reversible migration. Create a backup or snapshot before destructive schema changes.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "no-truncate-table",
-      "description": "Block TRUNCATE TABLE statements",
-      "match_tool": "bash,edit,write",
-      "match_pattern": "TRUNCATE\\s+TABLE",
-      "action": "block",
-      "message": "TRUNCATE TABLE blocked. Use a migration with rollback.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "PCI_DSS:10.7"
-      ],
-      "severity": "high",
-      "recommendation": "Use a migration with rollback. For test data, use a controlled fixture reset.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "no-delete-without-where",
-      "description": "Block DELETE statements without a WHERE clause",
-      "match_tool": "bash,edit,write",
-      "match_pattern": "DELETE\\s+FROM\\s+\\w+\\s*;",
-      "action": "block",
-      "message": "DELETE without WHERE blocked. Add a WHERE clause.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
-      "severity": "high",
-      "recommendation": "Add a WHERE clause. Verify the row count with SELECT before running the DELETE.",
-      "iso_control": "A.8.4"
+      "frameworks": ["SOC2:CC6.1"]
     },
     {
       "id": "no-sudo",
+      "persona": "agent",
+      "non_overridable": true,
       "description": "Block sudo commands",
       "match_tool": "bash",
       "match_pattern": "\\bsudo\\b",
       "action": "block",
       "message": "sudo blocked. Escalating permissions via an AI agent is not permitted.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
-      "severity": "high",
-      "recommendation": "Escalating privileges via AI agents is not permitted. Run the privileged command yourself with audit logging.",
-      "iso_control": "A.8.2"
+      "severity": "critical",
+      "frameworks": ["SOC2:CC6.1"]
     },
     {
-      "id": "no-chown-root",
-      "description": "Block chown to root",
-      "match_tool": "bash",
-      "match_pattern": "chown\\s+(root|0)[\\s:]",
+      "id": "no-env-read",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block reading .env files",
+      "match_tool": "*",
+      "match_pattern": "\\.env(\\b|$)",
       "action": "block",
-      "message": "Changing ownership to root is not permitted.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
+      "message": ".env files contain secrets. Use your secrets manager instead.",
       "severity": "high",
-      "recommendation": "Use a service-specific user. Never grant agent processes root ownership.",
-      "iso_control": "A.8.2"
+      "frameworks": ["SOC2:CC6.1"]
     },
     {
       "id": "no-env-commits",
+      "persona": "agent",
+      "non_overridable": false,
       "description": "Block committing .env files",
       "match_tool": "bash",
       "match_pattern": "git add\\b.*(\\s|/)\\.env(\\.[a-zA-Z]+)?(\\s|$)",
       "action": "block",
       "message": ".env files must not be committed.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "GDPR:Art32",
-        "PCI_DSS:3.5"
-      ],
       "severity": "critical",
-      "recommendation": "Add .env to .gitignore. Store secrets in a vault (1Password, AWS Secrets Manager, Conduct credential vault).",
-      "iso_control": "A.8.4"
+      "frameworks": ["SOC2:CC6.1", "GDPR:Art32"]
     },
     {
-      "id": "no-private-key-files",
-      "description": "Block writing private key files",
-      "match_tool": "write",
-      "match_path_pattern": "\\.(pem|key|p12|pfx)$",
+      "id": "no-force-push",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block force pushes",
+      "match_tool": "bash",
+      "match_pattern": "git\\s+push\\s+(--force|-f)\\b",
       "action": "block",
-      "message": "Writing private key files is not permitted.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "PCI_DSS:3.5"
-      ],
-      "severity": "critical",
-      "recommendation": "Store private keys in a key management system (KMS, HSM, vault). Never write them to disk in source-controlled paths.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "secret-redact",
-      "description": "Block tool calls containing credentials using a 3-layer detection engine. Layer 1 (structural): unmistakable formats \u2014 AWS access keys (AKIA*), GitHub tokens (ghp_, gho_, ghs_, github_pat_), PEM private keys. Layer 2 (bare-in-text): tokens that appear without keyword context \u2014 Slack (xox*), generic secret keys (sk-, pk-), Anthropic keys (ak-), Stripe keys (sk/pk/rk/whsec_live/test_), Bearer tokens, URL-embedded passwords (scheme://user:pass@host). Layer 3 (context-aware): any value \u22658 chars following a credential keyword (api_key, token, secret, password, auth, credential, access_key, client_secret, etc.). This layer automatically catches any new service without needing a new pattern.\n",
-      "match_tool": "*",
-      "action": "block",
-      "message": "Credential detected in tool input. Remove it and use an environment variable or Conduct's credential vault instead. The value has been redacted from the audit log.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "GDPR:Art32",
-        "PCI_DSS:3.5"
-      ],
-      "severity": "critical",
-      "recommendation": "Remove credentials from tool inputs. Use environment variables or Conduct's credential vault. Rotate any exposed credential.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "proxy-no-credential-leak",
-      "description": "Block LLM calls containing credentials or API secrets in the prompt",
-      "match_pattern": "(DATABASE_URL|postgres(?:ql)?://|mysql://|DB_PASSWORD|STRIPE_SECRET|sk_live_[0-9a-zA-Z]{20,}|sk-ant-[a-zA-Z0-9\\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|AWS_SECRET_ACCESS_KEY)",
-      "action": "block",
-      "message": "Credential detected in prompt \u2014 request blocked before reaching LLM provider.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:6.1"
-      ],
-      "severity": "critical",
-      "recommendation": "Remove credentials from prompt. Use secret managers or environment variables."
-    },
-    {
-      "id": "proxy-no-prompt-injection",
-      "description": "Warn on likely prompt injection attempts in user-supplied content",
-      "match_pattern": "(ignore (all |previous |prior |your )instructions|disregard (your |the )system prompt|you are now|jailbreak|act as (an? )?(unrestricted|DAN|evil))",
-      "action": "block",
-      "message": "Prompt injection pattern detected \u2014 request blocked.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "OWASP:LLM01",
-        "ISO_42001:6.1"
-      ],
-      "severity": "critical",
-      "recommendation": "Sanitise user-supplied input before passing to the LLM."
-    },
-    {
-      "id": "no-env-read",
-      "description": "Block reading .env files containing secrets",
-      "match_tool": "*",
-      "match_pattern": "\\.env(\\b|$)",
-      "action": "block",
-      "message": ".env files contain secrets. Use your secrets manager instead.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ]
+      "message": "Force push blocked. Coordinate with your team before rewriting history.",
+      "severity": "high",
+      "frameworks": ["SOC2:CC6.1"]
     },
     {
       "id": "approve-prod-deploy",
-      "description": "Require approval for production deploys",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Warn on production deploys",
       "match_tool": "bash",
       "match_pattern": "deploy.*(prod|production)|vercel.*--prod|railway.*prod",
-      "action": "approval",
-      "message": "Production deploy requested. Approve?",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.6",
-        "SOC2:CC8.1",
-        "ISO_42001:8.5"
-      ],
+      "action": "warn",
+      "message": "Production deploy triggered by AI agent.",
       "severity": "high",
-      "recommendation": "Require explicit human approval before any production deploy. Tie approval to a named oversight officer.",
-      "iso_control": "A.8.32"
+      "frameworks": ["SOC2:CC8.1"]
     },
     {
       "id": "approve-db-migration-prod",
-      "description": "Require approval for production DB migrations",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Warn on production DB migrations",
       "match_tool": "bash",
       "match_pattern": "alembic upgrade|prisma migrate deploy",
-      "action": "approval",
-      "message": "DB migration in production. Approve?",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.6",
-        "SOC2:CC8.1",
-        "ISO_42001:8.5"
-      ],
-      "severity": "high",
-      "recommendation": "Require approval and verify the migration has been tested in staging before production.",
-      "iso_control": "A.8.32"
-    },
-    {
-      "id": "approve-terraform-destroy",
-      "description": "Require approval for terraform destroy",
-      "match_tool": "bash",
-      "match_pattern": "terraform\\s+destroy",
-      "action": "approval",
-      "message": "terraform destroy requested. Approve?",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.6",
-        "ISO_42001:8.5"
-      ],
-      "severity": "high",
-      "recommendation": "Always plan first. Require approval and a documented reason before destroying infrastructure.",
-      "iso_control": "A.8.32"
-    },
-    {
-      "id": "approve-kubectl-delete",
-      "description": "Require approval for kubectl delete",
-      "match_tool": "bash",
-      "match_pattern": "kubectl\\s+delete",
-      "action": "approval",
-      "message": "kubectl delete requested. Approve?",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.6",
-        "ISO_42001:8.5"
-      ],
-      "severity": "high",
-      "recommendation": "Require approval. For namespace-wide deletes, snapshot resources first.",
-      "iso_control": "A.8.32"
-    },
-    {
-      "id": "approve-prod-env-edit",
-      "description": "Require approval when editing production env files",
-      "match_tool": "edit,write",
-      "match_path_pattern": "\\.env\\.(prod|production|staging)$",
-      "action": "approval",
-      "message": "Production environment file modified. Approve?",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.6",
-        "SOC2:CC8.1",
-        "ISO_42001:8.5"
-      ],
-      "severity": "high",
-      "recommendation": "Production env file changes require approval and a Git commit. Use sealed-secrets pattern where possible.",
-      "iso_control": "A.8.32"
-    },
-    {
-      "id": "no-chmod-permissive",
-      "description": "Warn on world-writable or fully permissive chmod",
-      "match_tool": "bash",
-      "match_pattern": "chmod\\s+(777|a\\+w|o\\+w|0?777)",
       "action": "warn",
-      "message": "World-writable permissions detected. Confirm this is intentional.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "OWASP:A05"
-      ],
-      "severity": "medium",
-      "recommendation": "Use the most restrictive permission that works (e.g. 644 for files, 755 for directories).",
-      "iso_control": "A.8.4"
+      "message": "DB migration triggered by AI agent.",
+      "severity": "high",
+      "frameworks": ["SOC2:CC8.1"]
     },
     {
       "id": "no-hardcoded-secrets",
-      "description": "Warn on possible hardcoded secrets",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Warn when AI writes hardcoded secrets into code",
       "match_tool": "edit,write",
-      "match_pattern": "(API_KEY|SECRET|PASSWORD|TOKEN)\\s*=\\s*['\"\"][A-Za-z0-9+/]{16,}",
+      "match_pattern": "(API_KEY|SECRET|PASSWORD|TOKEN)\\s*=\\s*['\"][A-Za-z0-9+/]{16,}",
       "action": "warn",
-      "message": "Possible hardcoded secret. Use environment variables.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "GDPR:Art32",
-        "PCI_DSS:3.5",
-        "OWASP:A07"
-      ],
+      "message": "Possible hardcoded secret in generated code. Use environment variables.",
       "severity": "high",
-      "recommendation": "Read secrets from environment variables or a secrets manager. Never embed them in source code.",
-      "iso_control": "A.8.4"
+      "frameworks": ["SOC2:CC6.1"]
     },
     {
       "id": "no-aws-keys",
-      "description": "Warn on hardcoded AWS access keys",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Warn when AI writes AWS access keys into code",
       "match_tool": "edit,write",
       "match_pattern": "AKIA[0-9A-Z]{16}",
       "action": "warn",
-      "message": "Possible AWS access key detected. Use IAM roles or environment variables.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "PCI_DSS:3.5"
-      ],
+      "message": "AWS access key detected in generated code. Use IAM roles.",
       "severity": "critical",
-      "recommendation": "Use IAM roles for AWS workloads. Never embed access keys in source code.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "no-secret-in-commit-msg",
-      "description": "Warn on secret-like patterns in git commit messages",
-      "match_tool": "bash",
-      "match_pattern": "git\\s+commit\\s+.*-m.*([A-Za-z0-9+/]{32,}|sk-[a-zA-Z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})",
-      "action": "warn",
-      "message": "Possible secret detected in commit message. Remove before pushing.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "PCI_DSS:3.5"
-      ],
-      "severity": "high",
-      "recommendation": "Remove the secret from the commit message. If already committed, rotate the credential and rewrite history with git rebase.",
-      "iso_control": "A.8.4"
+      "frameworks": ["SOC2:CC6.1"]
     },
     {
       "id": "secret-stripe",
-      "description": "Warn on hardcoded Stripe live secret keys",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Warn when AI writes Stripe live keys into code",
       "match_tool": "edit,write",
       "match_pattern": "sk_live_[0-9a-zA-Z]{24,}",
       "action": "warn",
-      "message": "Stripe live secret key detected. Use environment variables \u2014 never hardcode payment credentials.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "PCI_DSS:3.5"
-      ],
+      "message": "Stripe live key detected in generated code. Use environment variables.",
       "severity": "critical",
-      "recommendation": "Use environment variables. Rotate the key in the Stripe dashboard if it has been exposed.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "secret-slack",
-      "description": "Warn on hardcoded Slack bot or user tokens",
-      "match_tool": "edit,write",
-      "match_pattern": "xox[bpoa]-[0-9A-Za-z\\-]{10,}",
-      "action": "warn",
-      "message": "Slack token detected. Store in environment variables, not source code.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
-      "severity": "high",
-      "recommendation": "Store Slack tokens in environment variables. Rotate via the Slack app dashboard if exposed.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "secret-private-key",
-      "description": "Warn on PEM private key content in edited files",
-      "match_tool": "edit,write",
-      "match_pattern": "-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
-      "action": "warn",
-      "message": "Private key content detected. Use a secrets manager \u2014 never embed keys in source.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "PCI_DSS:3.5"
-      ],
-      "severity": "critical",
-      "recommendation": "Use a secrets manager (KMS, vault). Rotate immediately if a private key has been committed.",
-      "iso_control": "A.8.4"
+      "frameworks": ["PCI_DSS:3.5"]
     },
     {
       "id": "cmd-injection",
-      "description": "Warn on shell execution with potentially user-controlled input",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Warn when AI writes shell execution with user input",
       "match_tool": "edit,write",
       "match_pattern": "(subprocess\\.(call|run|Popen|check_output)|os\\.(system|popen)|exec\\(|eval\\()",
       "action": "warn",
-      "message": "Shell execution or eval detected. Verify input is sanitised to prevent command injection.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "OWASP:A03",
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
+      "message": "Shell execution detected in generated code. Verify input is sanitised.",
       "severity": "high",
-      "recommendation": "Use subprocess with shell=False and a list of args. Never pass user input through eval/exec.",
-      "iso_control": "A.8.28"
+      "frameworks": ["OWASP:A03"]
     },
     {
       "id": "sql-injection",
-      "description": "Warn on string-formatted SQL queries (f-string or % interpolation)",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Warn when AI writes string-formatted SQL",
       "match_tool": "edit,write",
-      "match_pattern": "(f['\"].*SELECT|f['\"].*INSERT|f['\"].*UPDATE|f['\"].*DELETE|%\\s*\\(.*\\)\\s*['\"].*SELECT)",
+      "match_pattern": "(f['\"].*SELECT|f['\"].*INSERT|f['\"].*UPDATE|f['\"].*DELETE)",
       "action": "warn",
-      "message": "String-formatted SQL detected. Use parameterised queries to prevent SQL injection.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "OWASP:A03",
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "PCI_DSS:6.5.1"
-      ],
+      "message": "String-formatted SQL in generated code. Use parameterised queries.",
       "severity": "high",
-      "recommendation": "Use parameterised queries (e.g. cursor.execute(sql, params)). Never f-string user input into SQL.",
-      "iso_control": "A.8.28"
+      "frameworks": ["OWASP:A03"]
     },
     {
-      "id": "weak-hash-md5",
-      "description": "Warn on MD5 usage for security-sensitive hashing",
-      "match_tool": "edit,write",
-      "match_pattern": "(hashlib\\.md5|MD5\\(|DigestUtils\\.md5)",
-      "action": "warn",
-      "message": "MD5 is cryptographically broken. Use SHA-256 or bcrypt for security-sensitive hashing.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "OWASP:A02",
-        "SOC2:CC6.1",
-        "PCI_DSS:3.6"
-      ],
-      "severity": "medium",
-      "recommendation": "Use SHA-256 for general hashing, bcrypt/argon2 for passwords.",
-      "iso_control": "A.8.24"
-    },
-    {
-      "id": "weak-hash-sha1",
-      "description": "Warn on SHA-1 usage for security-sensitive hashing",
-      "match_tool": "edit,write",
-      "match_pattern": "(hashlib\\.sha1|SHA1\\(|DigestUtils\\.sha1)",
-      "action": "warn",
-      "message": "SHA-1 is deprecated for security use. Use SHA-256 or bcrypt for password/token hashing.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "OWASP:A02",
-        "SOC2:CC6.1",
-        "PCI_DSS:3.6"
-      ],
-      "severity": "medium",
-      "recommendation": "Use SHA-256 for general hashing, bcrypt/argon2 for passwords.",
-      "iso_control": "A.8.24"
-    },
-    {
-      "id": "warn-deterministic-compute",
-      "description": "Warn when bash is used for work that is purely deterministic \u2014 sort/dedup/count/sum pipelines that don't need LLM reasoning",
+      "id": "no-secret-in-commit-msg",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Warn on secrets in git commit messages",
       "match_tool": "bash",
-      "match_pattern": "(sort\\s+.*\\|\\s*uniq|grep\\s+-c|wc\\s+-l|awk\\s+['\"].*sum|python\\s+-c\\s+['\"].*(\\+|\\*|sum|len|sort|filter)|jq\\s+['\"]\\.|\\|\\s*(sort|uniq|wc)\\b)",
+      "match_pattern": "git\\s+commit\\s+.*-m.*([A-Za-z0-9+/]{32,}|sk-[a-zA-Z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})",
       "action": "warn",
-      "message": "Deterministic work detected \u2014 sort/dedup/count/sum doesn't need an LLM. Run this directly as a script to save tokens.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "ISO_42001:8.6"
-      ],
-      "severity": "low",
-      "recommendation": "Run deterministic shell pipelines directly as a script. Reserve LLM calls for reasoning tasks.",
-      "iso_control": "A.8.6"
-    },
-    {
-      "id": "warn-large-context-dump",
-      "description": "Warn when a single call consumes more than 50K tokens",
-      "match_tool": "*",
-      "match_tokens_before_gt": 50000,
-      "action": "warn",
-      "message": "Large context detected (>50K tokens). Use Agent Booster smart_read to retrieve only relevant symbols instead of dumping the full file or repo.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "ISO_42001:8.6"
-      ],
-      "severity": "low",
-      "recommendation": "Use Agent Booster smart_read to retrieve only relevant symbols instead of the full file.",
-      "iso_control": "A.8.6"
-    },
-    {
-      "id": "proxy-no-pii-prompt",
-      "description": "Warn when LLM prompt contains likely PII (emails, SSNs, card numbers)",
-      "match_pattern": "(\\b\\d{3}-\\d{2}-\\d{4}\\b|\\b4[0-9]{12}(?:[0-9]{3})?\\b|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})",
-      "action": "warn",
-      "message": "PII detected in prompt. Verify this data is permitted to reach the LLM provider.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:6.1"
-      ],
+      "message": "Possible secret in commit message. Remove before pushing.",
       "severity": "high",
-      "recommendation": "Anonymise or redact PII before sending to external LLM providers."
-    },
-    {
-      "id": "audit-migrations",
-      "description": "Audit migration file modifications",
-      "match_tool": "edit,write",
-      "match_path_pattern": "alembic/versions/.*\\.py$",
-      "action": "audit",
-      "message": "Migration file modified",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC7.2",
-        "ISO_42001:9.1"
-      ],
-      "severity": "low",
-      "recommendation": "Audit-only. Migration changes are recorded for review.",
-      "iso_control": "A.5.36"
-    },
-    {
-      "id": "audit-ci-config",
-      "description": "Audit CI config modifications",
-      "match_tool": "edit,write",
-      "match_path_pattern": "\\.github/workflows/.*",
-      "action": "audit",
-      "message": "CI config modified",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC7.2",
-        "ISO_42001:9.1"
-      ],
-      "severity": "low",
-      "recommendation": "Audit-only. CI config changes are recorded for review.",
-      "iso_control": "A.5.36"
-    },
-    {
-      "id": "audit-dockerfile",
-      "description": "Audit Dockerfile modifications",
-      "match_tool": "edit,write",
-      "match_path_pattern": "Dockerfile[^/]*$",
-      "action": "audit",
-      "message": "Dockerfile modified",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC7.2",
-        "ISO_42001:9.1"
-      ],
-      "severity": "low",
-      "recommendation": "Audit-only. Dockerfile changes are recorded for review.",
-      "iso_control": "A.5.36"
-    },
-    {
-      "id": "pii-redact",
-      "description": "Strip PII from Brain block context before LLM calls",
-      "match_tool": "*",
-      "action": "audit",
-      "message": "PII detected in workflow context \u2014 redacted before LLM call (email, phone, SSN, card, IP).",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "GDPR:Art32",
-        "EU_AI_ACT:Art10",
-        "ISO_42001:8.4",
-        "HIPAA:164.514"
-      ],
-      "severity": "high",
-      "recommendation": "Pseudonymise or redact PII before sending data to an LLM. Maintain a documented data-flow map for AI processing.",
-      "iso_control": "A.8.11"
+      "frameworks": ["SOC2:CC6.1"]
     }
   ]
 }
