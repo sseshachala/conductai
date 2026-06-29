@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "1.3.0",
+  "version": "1.3.2",
   "tier": "free",
   "description": "Core safety rules \u2014 destructive ops, secrets, production gates, audit. Findings vocabulary aligned to SOC 2, ISO 42001, OWASP, PCI DSS, GDPR.",
   "rules": [
@@ -143,27 +143,6 @@
       "iso_control": "A.8.2"
     },
     {
-      "id": "no-chmod-permissive",
-      "description": "Warn on world-writable or fully permissive chmod",
-      "match_tool": "bash",
-      "match_pattern": "chmod\\s+(777|a\\+w|o\\+w|0?777)",
-      "action": "warn",
-      "message": "World-writable permissions detected. Confirm this is intentional.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "OWASP:A05"
-      ],
-      "severity": "medium",
-      "recommendation": "Use the most restrictive permission that works (e.g. 644 for files, 755 for directories).",
-      "iso_control": "A.8.4"
-    },
-    {
       "id": "no-chown-root",
       "description": "Block chown to root",
       "match_tool": "bash",
@@ -204,50 +183,6 @@
       "iso_control": "A.8.4"
     },
     {
-      "id": "no-hardcoded-secrets",
-      "description": "Warn on possible hardcoded secrets",
-      "match_tool": "edit,write",
-      "match_pattern": "(API_KEY|SECRET|PASSWORD|TOKEN)\\s*=\\s*['\"\"][A-Za-z0-9+/]{16,}",
-      "action": "warn",
-      "message": "Possible hardcoded secret. Use environment variables.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "GDPR:Art32",
-        "PCI_DSS:3.5",
-        "OWASP:A07"
-      ],
-      "severity": "high",
-      "recommendation": "Read secrets from environment variables or a secrets manager. Never embed them in source code.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "no-aws-keys",
-      "description": "Warn on hardcoded AWS access keys",
-      "match_tool": "edit,write",
-      "match_pattern": "AKIA[0-9A-Z]{16}",
-      "action": "warn",
-      "message": "Possible AWS access key detected. Use IAM roles or environment variables.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "PCI_DSS:3.5"
-      ],
-      "severity": "critical",
-      "recommendation": "Use IAM roles for AWS workloads. Never embed access keys in source code.",
-      "iso_control": "A.8.4"
-    },
-    {
       "id": "no-private-key-files",
       "description": "Block writing private key files",
       "match_tool": "write",
@@ -268,12 +203,11 @@
       "iso_control": "A.8.4"
     },
     {
-      "id": "no-secret-in-commit-msg",
-      "description": "Warn on secret-like patterns in git commit messages",
-      "match_tool": "bash",
-      "match_pattern": "git\\s+commit\\s+.*-m.*([A-Za-z0-9+/]{32,}|sk-[a-zA-Z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})",
-      "action": "warn",
-      "message": "Possible secret detected in commit message. Remove before pushing.",
+      "id": "secret-redact",
+      "description": "Block tool calls containing credentials using a 3-layer detection engine. Layer 1 (structural): unmistakable formats \u2014 AWS access keys (AKIA*), GitHub tokens (ghp_, gho_, ghs_, github_pat_), PEM private keys. Layer 2 (bare-in-text): tokens that appear without keyword context \u2014 Slack (xox*), generic secret keys (sk-, pk-), Anthropic keys (ak-), Stripe keys (sk/pk/rk/whsec_live/test_), Bearer tokens, URL-embedded passwords (scheme://user:pass@host). Layer 3 (context-aware): any value \u22658 chars following a credential keyword (api_key, token, secret, password, auth, credential, access_key, client_secret, etc.). This layer automatically catches any new service without needing a new pattern.\n",
+      "match_tool": "*",
+      "action": "block",
+      "message": "Credential detected in tool input. Remove it and use an environment variable or Conduct's credential vault instead. The value has been redacted from the audit log.",
       "persona_affinity": [
         "conservative",
         "standard",
@@ -282,11 +216,60 @@
       "frameworks": [
         "SOC2:CC6.1",
         "ISO_42001:8.4",
+        "GDPR:Art32",
         "PCI_DSS:3.5"
       ],
-      "severity": "high",
-      "recommendation": "Remove the secret from the commit message. If already committed, rotate the credential and rewrite history with git rebase.",
+      "severity": "critical",
+      "recommendation": "Remove credentials from tool inputs. Use environment variables or Conduct's credential vault. Rotate any exposed credential.",
       "iso_control": "A.8.4"
+    },
+    {
+      "id": "proxy-no-credential-leak",
+      "description": "Block LLM calls containing credentials or API secrets in the prompt",
+      "match_pattern": "(DATABASE_URL|postgres(?:ql)?://|mysql://|DB_PASSWORD|STRIPE_SECRET|sk_live_[0-9a-zA-Z]{20,}|sk-ant-[a-zA-Z0-9\\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|AWS_SECRET_ACCESS_KEY)",
+      "action": "block",
+      "message": "Credential detected in prompt \u2014 request blocked before reaching LLM provider.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:6.1"
+      ],
+      "severity": "critical",
+      "recommendation": "Remove credentials from prompt. Use secret managers or environment variables."
+    },
+    {
+      "id": "proxy-no-prompt-injection",
+      "description": "Warn on likely prompt injection attempts in user-supplied content",
+      "match_pattern": "(ignore (all |previous |prior |your )instructions|disregard (your |the )system prompt|you are now|jailbreak|act as (an? )?(unrestricted|DAN|evil))",
+      "action": "block",
+      "message": "Prompt injection pattern detected \u2014 request blocked.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ],
+      "frameworks": [
+        "OWASP:LLM01",
+        "ISO_42001:6.1"
+      ],
+      "severity": "critical",
+      "recommendation": "Sanitise user-supplied input before passing to the LLM."
+    },
+    {
+      "id": "no-env-read",
+      "description": "Block reading .env files containing secrets",
+      "match_tool": "*",
+      "match_pattern": "\\.env(\\b|$)",
+      "action": "block",
+      "message": ".env files contain secrets. Use your secrets manager instead.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
     },
     {
       "id": "approve-prod-deploy",
@@ -387,64 +370,90 @@
       "iso_control": "A.8.32"
     },
     {
-      "id": "audit-migrations",
-      "description": "Audit migration file modifications",
-      "match_tool": "edit,write",
-      "match_path_pattern": "alembic/versions/.*\\.py$",
-      "action": "audit",
-      "message": "Migration file modified",
+      "id": "no-chmod-permissive",
+      "description": "Warn on world-writable or fully permissive chmod",
+      "match_tool": "bash",
+      "match_pattern": "chmod\\s+(777|a\\+w|o\\+w|0?777)",
+      "action": "warn",
+      "message": "World-writable permissions detected. Confirm this is intentional.",
       "persona_affinity": [
         "conservative",
         "standard",
         "developer"
       ],
       "frameworks": [
-        "SOC2:CC7.2",
-        "ISO_42001:9.1"
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "OWASP:A05"
       ],
-      "severity": "low",
-      "recommendation": "Audit-only. Migration changes are recorded for review.",
-      "iso_control": "A.5.36"
+      "severity": "medium",
+      "recommendation": "Use the most restrictive permission that works (e.g. 644 for files, 755 for directories).",
+      "iso_control": "A.8.4"
     },
     {
-      "id": "audit-ci-config",
-      "description": "Audit CI config modifications",
+      "id": "no-hardcoded-secrets",
+      "description": "Warn on possible hardcoded secrets",
       "match_tool": "edit,write",
-      "match_path_pattern": "\\.github/workflows/.*",
-      "action": "audit",
-      "message": "CI config modified",
+      "match_pattern": "(API_KEY|SECRET|PASSWORD|TOKEN)\\s*=\\s*['\"\"][A-Za-z0-9+/]{16,}",
+      "action": "warn",
+      "message": "Possible hardcoded secret. Use environment variables.",
       "persona_affinity": [
         "conservative",
         "standard",
         "developer"
       ],
       "frameworks": [
-        "SOC2:CC7.2",
-        "ISO_42001:9.1"
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "GDPR:Art32",
+        "PCI_DSS:3.5",
+        "OWASP:A07"
       ],
-      "severity": "low",
-      "recommendation": "Audit-only. CI config changes are recorded for review.",
-      "iso_control": "A.5.36"
+      "severity": "high",
+      "recommendation": "Read secrets from environment variables or a secrets manager. Never embed them in source code.",
+      "iso_control": "A.8.4"
     },
     {
-      "id": "audit-dockerfile",
-      "description": "Audit Dockerfile modifications",
+      "id": "no-aws-keys",
+      "description": "Warn on hardcoded AWS access keys",
       "match_tool": "edit,write",
-      "match_path_pattern": "Dockerfile[^/]*$",
-      "action": "audit",
-      "message": "Dockerfile modified",
+      "match_pattern": "AKIA[0-9A-Z]{16}",
+      "action": "warn",
+      "message": "Possible AWS access key detected. Use IAM roles or environment variables.",
       "persona_affinity": [
         "conservative",
         "standard",
         "developer"
       ],
       "frameworks": [
-        "SOC2:CC7.2",
-        "ISO_42001:9.1"
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:3.5"
       ],
-      "severity": "low",
-      "recommendation": "Audit-only. Dockerfile changes are recorded for review.",
-      "iso_control": "A.5.36"
+      "severity": "critical",
+      "recommendation": "Use IAM roles for AWS workloads. Never embed access keys in source code.",
+      "iso_control": "A.8.4"
+    },
+    {
+      "id": "no-secret-in-commit-msg",
+      "description": "Warn on secret-like patterns in git commit messages",
+      "match_tool": "bash",
+      "match_pattern": "git\\s+commit\\s+.*-m.*([A-Za-z0-9+/]{32,}|sk-[a-zA-Z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})",
+      "action": "warn",
+      "message": "Possible secret detected in commit message. Remove before pushing.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:3.5"
+      ],
+      "severity": "high",
+      "recommendation": "Remove the secret from the commit message. If already committed, rotate the credential and rewrite history with git rebase.",
+      "iso_control": "A.8.4"
     },
     {
       "id": "secret-stripe",
@@ -631,6 +640,83 @@
       "iso_control": "A.8.6"
     },
     {
+      "id": "proxy-no-pii-prompt",
+      "description": "Warn when LLM prompt contains likely PII (emails, SSNs, card numbers)",
+      "match_pattern": "(\\b\\d{3}-\\d{2}-\\d{4}\\b|\\b4[0-9]{12}(?:[0-9]{3})?\\b|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})",
+      "action": "warn",
+      "message": "PII detected in prompt. Verify this data is permitted to reach the LLM provider.",
+      "persona_affinity": [
+        "conservative",
+        "standard"
+      ],
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:6.1"
+      ],
+      "severity": "high",
+      "recommendation": "Anonymise or redact PII before sending to external LLM providers."
+    },
+    {
+      "id": "audit-migrations",
+      "description": "Audit migration file modifications",
+      "match_tool": "edit,write",
+      "match_path_pattern": "alembic/versions/.*\\.py$",
+      "action": "audit",
+      "message": "Migration file modified",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "SOC2:CC7.2",
+        "ISO_42001:9.1"
+      ],
+      "severity": "low",
+      "recommendation": "Audit-only. Migration changes are recorded for review.",
+      "iso_control": "A.5.36"
+    },
+    {
+      "id": "audit-ci-config",
+      "description": "Audit CI config modifications",
+      "match_tool": "edit,write",
+      "match_path_pattern": "\\.github/workflows/.*",
+      "action": "audit",
+      "message": "CI config modified",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "SOC2:CC7.2",
+        "ISO_42001:9.1"
+      ],
+      "severity": "low",
+      "recommendation": "Audit-only. CI config changes are recorded for review.",
+      "iso_control": "A.5.36"
+    },
+    {
+      "id": "audit-dockerfile",
+      "description": "Audit Dockerfile modifications",
+      "match_tool": "edit,write",
+      "match_path_pattern": "Dockerfile[^/]*$",
+      "action": "audit",
+      "message": "Dockerfile modified",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ],
+      "frameworks": [
+        "SOC2:CC7.2",
+        "ISO_42001:9.1"
+      ],
+      "severity": "low",
+      "recommendation": "Audit-only. Dockerfile changes are recorded for review.",
+      "iso_control": "A.5.36"
+    },
+    {
       "id": "pii-redact",
       "description": "Strip PII from Brain block context before LLM calls",
       "match_tool": "*",
@@ -650,92 +736,6 @@
       "severity": "high",
       "recommendation": "Pseudonymise or redact PII before sending data to an LLM. Maintain a documented data-flow map for AI processing.",
       "iso_control": "A.8.11"
-    },
-    {
-      "id": "secret-redact",
-      "description": "Block tool calls containing credentials using a 3-layer detection engine. Layer 1 (structural): unmistakable formats \u2014 AWS access keys (AKIA*), GitHub tokens (ghp_, gho_, ghs_, github_pat_), PEM private keys. Layer 2 (bare-in-text): tokens that appear without keyword context \u2014 Slack (xox*), generic secret keys (sk-, pk-), Anthropic keys (ak-), Stripe keys (sk/pk/rk/whsec_live/test_), Bearer tokens, URL-embedded passwords (scheme://user:pass@host). Layer 3 (context-aware): any value \u22658 chars following a credential keyword (api_key, token, secret, password, auth, credential, access_key, client_secret, etc.). This layer automatically catches any new service without needing a new pattern.\n",
-      "match_tool": "*",
-      "action": "block",
-      "message": "Credential detected in tool input. Remove it and use an environment variable or Conduct's credential vault instead. The value has been redacted from the audit log.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "GDPR:Art32",
-        "PCI_DSS:3.5"
-      ],
-      "severity": "critical",
-      "recommendation": "Remove credentials from tool inputs. Use environment variables or Conduct's credential vault. Rotate any exposed credential.",
-      "iso_control": "A.8.4"
-    },
-    {
-      "id": "proxy-no-credential-leak",
-      "description": "Block LLM calls containing credentials or API secrets in the prompt",
-      "match_pattern": "(DATABASE_URL|postgres(?:ql)?://|mysql://|DB_PASSWORD|STRIPE_SECRET|sk_live_[0-9a-zA-Z]{20,}|sk-ant-[a-zA-Z0-9\\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|AWS_SECRET_ACCESS_KEY)",
-      "action": "block",
-      "message": "Credential detected in prompt \u2014 request blocked before reaching LLM provider.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:6.1"
-      ],
-      "severity": "critical",
-      "recommendation": "Remove credentials from prompt. Use secret managers or environment variables."
-    },
-    {
-      "id": "proxy-no-pii-prompt",
-      "description": "Warn when LLM prompt contains likely PII (emails, SSNs, card numbers)",
-      "match_pattern": "(\\b\\d{3}-\\d{2}-\\d{4}\\b|\\b4[0-9]{12}(?:[0-9]{3})?\\b|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})",
-      "action": "warn",
-      "message": "PII detected in prompt. Verify this data is permitted to reach the LLM provider.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "SOC2:CC6.1",
-        "ISO_42001:6.1"
-      ],
-      "severity": "high",
-      "recommendation": "Anonymise or redact PII before sending to external LLM providers."
-    },
-    {
-      "id": "proxy-no-prompt-injection",
-      "description": "Warn on likely prompt injection attempts in user-supplied content",
-      "match_pattern": "(ignore (all |previous |prior |your )instructions|disregard (your |the )system prompt|you are now|jailbreak|act as (an? )?(unrestricted|DAN|evil))",
-      "action": "block",
-      "message": "Prompt injection pattern detected \u2014 request blocked.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "OWASP:LLM01",
-        "ISO_42001:6.1"
-      ],
-      "severity": "critical",
-      "recommendation": "Sanitise user-supplied input before passing to the LLM."
-    },
-    {
-      "id": "no-env-read",
-      "description": "Block reading .env files containing secrets",
-      "match_tool": "bash,read",
-      "match_pattern": "\\.env(\\b|$)",
-      "action": "block",
-      "message": ".env files contain secrets. Use your secrets manager instead.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ]
     }
   ]
 }
