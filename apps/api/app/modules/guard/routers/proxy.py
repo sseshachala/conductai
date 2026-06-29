@@ -253,6 +253,8 @@ async def _proxy(
             workspace_id = str(row.workspace_id)
             clerk_user_id = row.user_id or "api_key"
             set_workspace_rls(db, workspace_id)
+            from app.core.auth import get_clerk_user_email
+            _ws_key_email = get_clerk_user_email(clerk_user_id) if clerk_user_id != "api_key" else None
         else:
             ident = _resolve_member(db, token)
             if not ident:
@@ -270,14 +272,15 @@ async def _proxy(
         ai_tool = request.headers.get("x-conduct-ai-tool") or _infer_ai_tool(request)
 
         # 4a. Resolve user email for audit rows
-        _user_email: str | None = None
-        try:
-            from app.models.user import User as _User
-            _u = db.query(_User).filter(_User.clerk_id == clerk_user_id).first()
-            if _u:
-                _user_email = _u.email
-        except Exception:
-            pass
+        _user_email: str | None = locals().get("_ws_key_email") or None
+        if not _user_email:
+            try:
+                from app.models.user import User as _User
+                _u = db.query(_User).filter(_User.clerk_id == clerk_user_id).first()
+                if _u:
+                    _user_email = _u.email
+            except Exception:
+                pass
 
         # 4b. Run context from brain block headers (workflow runs only)
         _run_id = request.headers.get("x-conductai-run-id") or None
