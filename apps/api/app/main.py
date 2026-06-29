@@ -147,10 +147,7 @@ app.include_router(share_router)
 
 
 @app.on_event("startup")
-def _warm_eval_cache() -> None:
-    """Pre-compute the structural eval report in the background so the first
-    real request hits the cache instead of paying the full scoring cost.
-    Also auto-seeds builtin Guard policies if the YAML has changed."""
+def _startup() -> None:
     import threading
     from app.routers.eval import _cached_report
 
@@ -161,7 +158,16 @@ def _warm_eval_cache() -> None:
         except Exception as exc:
             log.warning("eval.cache_warm_failed", error=str(exc))
 
+    def _seed() -> None:
+        try:
+            from scripts.seed_skill_packs import run as seed_skill_packs
+            seed_skill_packs(dry_run=False)
+            log.info("guard.skill_packs_seeded")
+        except Exception as exc:
+            log.warning("guard.skill_packs_seed_failed", error=str(exc))
+
     threading.Thread(target=_warm, daemon=True, name="eval-cache-warmer").start()
+    threading.Thread(target=_seed, daemon=True, name="skill-pack-seeder").start()
 
 
 @app.get("/health")
