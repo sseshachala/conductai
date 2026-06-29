@@ -439,7 +439,6 @@ async def mcp_endpoint(
                 _workflow = arguments.get("conduct_workflow") or None
                 rules = _get_rules(db, ws_uuid)
 
-                # Secret scan — fires before pattern matching so raw values never reach the log
                 _secret_rule = next((r for r in rules if r.get("rule_id") == "secret-redact"), None)
                 if _secret_rule:
                     _inp_text = json.dumps(inner_input)
