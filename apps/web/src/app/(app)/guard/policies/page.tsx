@@ -222,6 +222,7 @@ interface AddRuleFormData {
   match_path_pattern: string
   action: PolicyAction
   message: string
+  persona: "agent" | "proxy"
 }
 
 const EMPTY_FORM: AddRuleFormData = {
@@ -232,6 +233,7 @@ const EMPTY_FORM: AddRuleFormData = {
   match_path_pattern: "",
   action: "block",
   message: "",
+  persona: "agent",
 }
 
 // Shared field styles
@@ -329,7 +331,8 @@ function AddRuleModal({
         throw new Error(body?.detail ?? `HTTP ${res.status}`)
       }
       const data = await res.json()
-      setForm({
+      setForm(prev => ({
+        ...prev,
         rule_id: data.rule_id ?? "",
         description: data.description ?? "",
         match_tool: (data.match_tool as MatchTool) ?? "*",
@@ -337,7 +340,7 @@ function AddRuleModal({
         match_path_pattern: data.match_path_pattern ?? "",
         action: (data.action as PolicyAction) ?? "block",
         message: data.message ?? "",
-      })
+      }))
       setErrors({})
     } catch (e) {
       setAiError(e instanceof Error ? e.message : "Couldn't generate a rule — try being more specific.")
@@ -504,6 +507,32 @@ function AddRuleModal({
             <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
             <span style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap" }}>or fill manually</span>
             <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+          </div>
+
+          {/* Persona */}
+          <div>
+            <label style={labelStyle}>Persona</label>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              {(["agent", "proxy"] as const).map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => set("persona", p)}
+                  style={{
+                    flex: 1, padding: "6px 0", borderRadius: 8, fontSize: 12.5, fontWeight: 500,
+                    border: `1px solid ${form.persona === p ? "var(--accent)" : "var(--border)"}`,
+                    background: form.persona === p ? "var(--accent-bg, #eff6ff)" : "var(--surface)",
+                    color: form.persona === p ? "var(--accent)" : "var(--text-3)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {p === "agent" ? "Agent" : "Proxy"}
+                </button>
+              ))}
+            </div>
+            <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--text-muted)" }}>
+              Agent: rules enforced on Claude Code. Proxy: rules enforced at the LLM gateway.
+            </p>
           </div>
 
           {/* Rule ID */}
@@ -783,6 +812,7 @@ function PoliciesContent() {
         message: formData.message.trim(),
         enabled: true,
         builtin: false,
+        persona: formData.persona,
       }
       if (formData.match_path_pattern.trim()) body.match_path_pattern = formData.match_path_pattern.trim()
       if (teamId) body.workspace_id = teamId
