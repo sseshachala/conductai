@@ -1,6 +1,12 @@
 "use client"
 
 import Link from "next/link"
+
+const displayEmail = (v: string | null | undefined): string => {
+  if (!v) return "—"
+  if (v.startsWith("user_")) return "unknown user"
+  return v
+}
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAuth, useUser } from "@clerk/nextjs"
@@ -432,7 +438,7 @@ function ActivityContent() {
               borderBottom: i < sessions.length - 1 ? "1px solid var(--border)" : "none",
             }}>
               <div style={{ overflow: "hidden" }}>
-                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.user_email ?? "—"}</div>
+                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayEmail(s.user_email)}</div>
                 {s.intent && s.session_parse_status !== "failed" && (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{s.intent}</div>
                 )}

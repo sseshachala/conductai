@@ -8,6 +8,12 @@ import {
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
+
+const displayEmail = (v: string | null | undefined): string => {
+  if (!v) return "—"
+  if (v.startsWith("user_")) return "unknown user"
+  return v
+}
 import { GuardShell } from "@/components/guard/GuardShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
@@ -1220,10 +1226,10 @@ function GuardDashboard() {
                       {ev.user_email ? (
                         <>
                           <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {ev.user_email.split("@")[0]}
+                            {displayEmail(ev.user_email).split("@")[0]}
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ev.user_email}>
-                            {ev.user_email}
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={displayEmail(ev.user_email)}>
+                            {displayEmail(ev.user_email)}
                           </div>
                         </>
                       ) : (
@@ -1347,7 +1353,7 @@ function GuardDashboard() {
                     {e.input_summary && (
                       <div style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.input_summary}</div>
                     )}
-                    {e.user_email && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{e.user_email}</div>}
+                    {e.user_email && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{displayEmail(e.user_email)}</div>}
                   </div>
                 ))}
               </div>
@@ -1375,7 +1381,7 @@ function GuardDashboard() {
                           <DecisionBadge decision={e.decision} />
                         </div>
                         <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 2 }}>
-                          {e.user_email ?? "—"} · {new Date(e.ts).toLocaleString()}
+                          {displayEmail(e.user_email)} · {new Date(e.ts).toLocaleString()}
                         </div>
                       </div>
                     </div>
@@ -1406,7 +1412,7 @@ function GuardDashboard() {
               <tbody>
                 {recentSessions.slice(0, 8).map((s, i) => (
                   <tr key={s.id} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-2)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.user_email ?? "—"}</td>
+                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-2)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayEmail(s.user_email)}</td>
                     <td style={{ padding: "9px 16px" }}><span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-text)", background: "var(--surface-3)", borderRadius: 4, padding: "1px 6px" }}>{s.ai_tool}</span></td>
                     <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, fontWeight: 600, color: "var(--text)" }}>{s.hostname ?? "—"}</td>
                     <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-3)" }}>{s.client_ip ?? "—"}</td>
