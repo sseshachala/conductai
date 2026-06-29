@@ -457,6 +457,8 @@ def _execute_brain(
         if _internal_key:
             _extra_headers["x-conductai-internal"] = _internal_key
             _extra_headers["x-conductai-workspace-id"] = str(workspace_id)
+            if user_email:
+                _extra_headers["x-conductai-user-email"] = user_email
 
     client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
     _client_kwargs: dict = {

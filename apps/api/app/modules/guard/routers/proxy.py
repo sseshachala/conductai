@@ -240,10 +240,11 @@ async def _proxy(
     try:
         if _is_internal:
             workspace_id = request.headers.get("x-conductai-workspace-id", "")
-            clerk_user_id = "system"
             if not workspace_id:
                 return _fail_closed(400, "X-Conductai-Workspace-Id required for internal proxy calls")
             set_workspace_rls(db, workspace_id)
+            _internal_email = request.headers.get("x-conductai-user-email") or None
+            clerk_user_id = _internal_email or "system"
         else:
             ident = _resolve_member(db, token)
             if not ident:
