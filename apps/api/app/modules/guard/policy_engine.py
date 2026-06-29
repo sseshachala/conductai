@@ -67,7 +67,7 @@ def invalidate_policy_cache(db: Session, workspace_id: uuid.UUID) -> None:
 # ── Internal ──────────────────────────────────────────────────────────────────
 
 def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dict]:
-    # 1. collect rules from installed packs, in install order
+    # 1. collect rules from installed packs, filtered by persona
     installed = (
         db.query(WorkspaceSkillPack)
         .filter(WorkspaceSkillPack.workspace_id == workspace_id)
@@ -81,9 +81,15 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
         if not pack:
             continue
         for rule in pack.rules:
-            affinity = rule.get("persona_affinity", PERSONAS)
-            if persona not in affinity:
-                continue
+            # v2.0.0 packs use "persona" field; v1.x packs use "persona_affinity" — support both
+            rule_persona = rule.get("persona")
+            if rule_persona:
+                if rule_persona != persona:
+                    continue
+            else:
+                affinity = rule.get("persona_affinity", PERSONAS)
+                if persona not in affinity:
+                    continue
             rules[rule["id"]] = dict(rule)
 
     # 1b. merge workspace custom rules on top (workspace-defined wins on rule_id collision)
@@ -92,6 +98,7 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
         .filter(
             WorkspaceCustomRule.workspace_id == workspace_id,
             WorkspaceCustomRule.enabled.is_(True),
+            WorkspaceCustomRule.persona == persona,
         )
         .all()
     )
