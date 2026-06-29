@@ -253,25 +253,11 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
                 <span style={{ fontSize: 13, color: "var(--text-2)" }}>{guardEnabled ? "Enforcing" : "Bypassed (use with caution)"}</span>
               </div>
               {guardEnabled && (
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  <label style={{ fontSize: 12, color: "var(--text-muted)" }}>Persona</label>
-                  <select
-                    value={persona}
-                    onChange={e => setPersona(e.target.value)}
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "6px 10px",
-                      fontSize: 13,
-                      background: "var(--surface)",
-                      color: "var(--text)",
-                    }}
-                  >
-                    <option value="">{`Inherit from workspace (currently: ${workspaceRuntimePersona.charAt(0).toUpperCase() + workspaceRuntimePersona.slice(1)})`}</option>
-                    <option value="conservative">Conservative (strictest — recommended)</option>
-                    <option value="standard">Standard</option>
-                    <option value="developer">Developer</option>
-                  </select>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <label style={{ fontSize: 12, color: "var(--text-muted)" }}>Surface</label>
+                  <span style={{ display: "inline-flex", alignItems: "center", background: "var(--accent-bg, #ede9fe)", color: "var(--accent, #6d28d9)", borderRadius: 6, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>
+                    Agent
+                  </span>
                 </div>
               )}
               <button
