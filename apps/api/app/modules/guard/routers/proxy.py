@@ -222,17 +222,34 @@ async def _proxy(
     # 1. Extract member token from whichever auth header the SDK sent
     raw = request.headers.get(auth_header_in, "")
     token = _extract_member_token(raw, bearer=bearer)
-    if not token:
+
+    # Internal server-to-server bypass (brain block / runtime calling its own proxy).
+    # Requires CLI_API_KEY header + X-Conductai-Workspace-Id. No member token needed.
+    _internal_key = request.headers.get("x-conductai-internal", "")
+    _is_internal = bool(
+        _internal_key
+        and settings.cli_api_key
+        and _internal_key == settings.cli_api_key
+    )
+
+    if not token and not _is_internal:
         return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
 
-    # 2. Resolve workspace + user via guard_member_config
+    # 2. Resolve workspace + user
     db = SessionLocal()
     try:
-        ident = _resolve_member(db, token)
-        if not ident:
-            return _fail_closed(401, "Conduct member token not recognized — run `conduct guard sync` to refresh")
-        workspace_id, clerk_user_id = ident
-        set_workspace_rls(db, workspace_id)
+        if _is_internal:
+            workspace_id = request.headers.get("x-conductai-workspace-id", "")
+            clerk_user_id = "system"
+            if not workspace_id:
+                return _fail_closed(400, "X-Conductai-Workspace-Id required for internal proxy calls")
+            set_workspace_rls(db, workspace_id)
+        else:
+            ident = _resolve_member(db, token)
+            if not ident:
+                return _fail_closed(401, "Conduct member token not recognized — run `conduct guard sync` to refresh")
+            workspace_id, clerk_user_id = ident
+            set_workspace_rls(db, workspace_id)
 
         # 3. Parse request body
         try:
@@ -294,7 +311,7 @@ async def _proxy(
              "connection", "content-type", "accept", "user-agent"}
     extra_headers = {
         k.lower(): v for k, v in request.headers.items()
-        if k.lower() not in _skip and not k.lower().startswith("x-conduct-")
+        if k.lower() not in _skip and not k.lower().startswith("x-conduct")
     }
     return await _forward(
         upstream=upstream,

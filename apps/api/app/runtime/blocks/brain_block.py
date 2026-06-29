@@ -451,6 +451,12 @@ def _execute_brain(
         _extra_headers["x-conductai-workflow"] = workflow_name or playbook_slug or ""
     if workflow_id:
         _extra_headers["x-conductai-workflow-id"] = str(workflow_id)
+    # Internal auth — lets proxy skip member token validation for runtime calls.
+    if _proxy_base and workspace_id:
+        _internal_key = os.environ.get("CLI_API_KEY", "")
+        if _internal_key:
+            _extra_headers["x-conductai-internal"] = _internal_key
+            _extra_headers["x-conductai-workspace-id"] = str(workspace_id)
 
     client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
     _client_kwargs: dict = {
