@@ -531,7 +531,7 @@ function AddRuleModal({
               ))}
             </div>
             <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--text-muted)" }}>
-              Agent: rules enforced on Claude Code. Proxy: rules enforced at the LLM gateway.
+              Agent: rules enforced on AI tools and agents. Proxy: rules enforced at the LLM gateway.
             </p>
           </div>
 
