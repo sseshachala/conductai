@@ -31,7 +31,6 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
   const [guardEnabled, setGuardEnabled] = useState(true)
   const [persona, setPersona] = useState<string>("")
   const [guardSaving, setGuardSaving] = useState(false)
-  const [guardSaved, setGuardSaved] = useState(false)
   const [workspaceRuntimePersona, setWorkspaceRuntimePersona] = useState<string>("conservative")
   const [turnsSaving, setTurnsSaving] = useState(false)
   const [turnsSaved, setTurnsSaved] = useState(false)
@@ -94,9 +93,8 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
     setWorkflow(prev => prev ? { ...prev, environment_id: envId } : prev)
   }
 
-  async function saveGuard() {
+  async function saveGuard(enabled = guardEnabled) {
     setGuardSaving(true)
-    setGuardSaved(false)
     try {
       const token = getToken ? await getToken() : null
       const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -104,11 +102,9 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
         method: "PUT",
         headers,
-        body: JSON.stringify({ guard_enabled: guardEnabled, runtime_persona: persona || null }),
+        body: JSON.stringify({ guard_enabled: enabled, runtime_persona: persona || null }),
       })
       if (!res.ok) throw new Error("Failed to save Guard settings")
-      setGuardSaved(true)
-      setTimeout(() => setGuardSaved(false), 2000)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save Guard settings")
     } finally {
@@ -243,7 +239,7 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
                 <button
                   type="button"
-                  onClick={() => setGuardEnabled(v => !v)}
+                  onClick={() => { const next = !guardEnabled; setGuardEnabled(next); saveGuard(next) }}
                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${guardEnabled ? "bg-violet-600" : "bg-stone-300"}`}
                   role="switch"
                   aria-checked={guardEnabled}
@@ -260,14 +256,7 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
                   </a>
                 </div>
               )}
-              <button
-                onClick={saveGuard}
-                disabled={guardSaving}
-                className="btn btn-primary btn-sm"
-                style={{ opacity: guardSaving ? 0.5 : 1 }}
-              >
-                {guardSaved ? "Saved \u2713" : guardSaving ? "Saving\u2026" : "Save Guard settings"}
-              </button>
+              {guardSaving && <span style={{ fontSize: 12, color: "var(--text-3)" }}>Saving…</span>}
             </div>
 
             {/* Turn budget */}
