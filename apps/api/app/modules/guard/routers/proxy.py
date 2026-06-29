@@ -227,6 +227,9 @@ async def _proxy(
         and _internal_key == settings.cli_api_key
     )
 
+    # cond_live_ workspace API key — no CLI needed, long-lived
+    _ws_api_key = token if (token and token.startswith("cond_live_")) else None
+
     if not token and not _is_internal:
         return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
 
@@ -240,6 +243,16 @@ async def _proxy(
             set_workspace_rls(db, workspace_id)
             _internal_email = request.headers.get("x-conductai-user-email") or None
             clerk_user_id = _internal_email or "system"
+        elif _ws_api_key:
+            import hashlib
+            from app.models.conduct_api_key import ConductApiKey
+            key_hash = hashlib.sha256(_ws_api_key.encode()).hexdigest()
+            row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
+            if not row:
+                return _fail_closed(401, "Invalid workspace API key")
+            workspace_id = str(row.workspace_id)
+            clerk_user_id = row.user_id or "api_key"
+            set_workspace_rls(db, workspace_id)
         else:
             ident = _resolve_member(db, token)
             if not ident:
