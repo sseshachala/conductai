@@ -262,10 +262,14 @@ def _record_event(
         try:
             cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
             if cfg and cfg.notify_on_block:
+                from app.core.auth import get_clerk_user_info
+                info = get_clerk_user_info(clerk_user_id)
+                display_name = info.get("name") or info.get("email") or user_email or clerk_user_id
+                display_email = info.get("email") or user_email or ""
                 icon = "🚨" if decision == "blocked" else "⚠️"
                 _slack_notify(db, cfg, (
                     f"{icon} *Guard {decision}* — `{rule_id or 'unknown'}`\n"
-                    f"• User: `{user_email or 'unknown'}`\n"
+                    f"• User: {display_name} ({display_email})\n"
                     f"• Tool: `{tool_name}`\n"
                     f"• Session: `{session_id or 'n/a'}`"
                 ))
