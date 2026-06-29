@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
@@ -684,6 +685,11 @@ export default function PoliciesPage() {
 
 function PoliciesContent() {
   const { getToken } = useAuth()
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const p = searchParams.get("persona")
+    if (p) setTimeout(() => document.getElementById(`section-${p}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 300)
+  }, [searchParams])
   const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
@@ -1043,7 +1049,7 @@ function PoliciesContent() {
               return (
                 <>
                   {/* Proxy section */}
-                  <div style={{ marginBottom: 28 }}>
+                  <div id="section-proxy" style={{ marginBottom: 28 }}>
                     <SectionHeader
                       title="Proxy Rules"
                       description="Governs what leaves your network to the LLM provider"
@@ -1056,7 +1062,7 @@ function PoliciesContent() {
                   </div>
 
                   {/* Agent section */}
-                  <div style={{ marginBottom: 20 }}>
+                  <div id="section-agent" style={{ marginBottom: 20 }}>
                     <SectionHeader
                       title="Agent Rules"
                       description="Governs what AI agents do on your machine"
