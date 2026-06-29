@@ -1055,7 +1055,7 @@ function PoliciesContent() {
                   <div
                     key={p.id}
                     className="card"
-                    style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 0, opacity: p.enabled ? 1 : 0.62 }}
+                    style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 0, opacity: p.enabled ? 1 : 0.62, minHeight: 96 }}
                   >
                     {/* Card header */}
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -1071,7 +1071,7 @@ function PoliciesContent() {
                             </span>
                           )}
                         </div>
-                        <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.45 }}>
+                        <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                           {p.description || p.message || "—"}
                         </p>
                       </div>
