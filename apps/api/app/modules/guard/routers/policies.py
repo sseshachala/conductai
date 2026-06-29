@@ -11,6 +11,7 @@ POST   /guard/policies/reinstall-base — re-install the conduct-base pack
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import uuid
 from datetime import datetime, timezone
@@ -288,7 +289,7 @@ def generate_policy(
     from app.routers.generate import _resolve_anthropic_key
 
     resolved_ws = body.workspace_id or workspace_id
-    api_key = _resolve_anthropic_key(resolved_ws, body.environment_id, db)
+    api_key = _resolve_anthropic_key(resolved_ws, body.environment_id, db) or os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         env_hint = "selected environment" if body.environment_id else "Default environment"
         raise HTTPException(
