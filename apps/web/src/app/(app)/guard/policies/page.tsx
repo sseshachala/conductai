@@ -31,6 +31,8 @@ interface Policy {
   last_triggered?: string | null
   updated_at?: string
   persona_affinity?: string[]
+  persona?: "agent" | "proxy"
+  non_overridable?: boolean
 }
 
 const PACK_LABELS: { id: string; name: string }[] = [
@@ -40,6 +42,28 @@ const PACK_LABELS: { id: string; name: string }[] = [
   { id: "conduct-pci-dss", name: "PCI-DSS" },
   { id: "conduct-base",    name: "Base" },
 ]
+
+// ─── Lock icon ────────────────────────────────────────────────────────────────
+
+function LockIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ color: "var(--text-muted)", flexShrink: 0 }}
+      aria-label="Non-overridable"
+    >
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  )
+}
 
 
 // ─── Action icon avatar ───────────────────────────────────────────────────────
@@ -643,9 +667,6 @@ function PoliciesContent() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [confirmDeleteValue, setConfirmDeleteValue] = useState("")
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
-  const [installedPacks, setInstalledPacks] = useState<Set<string>>(new Set())
-  const [activePackFilter, setActivePackFilter] = useState<string | null>(null)
-  const [activePersonaFilter, setActivePersonaFilter] = useState<string | null>(null)
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -684,20 +705,6 @@ function PoliciesContent() {
     }
     load()
   }, [apiUrl, authHeaders, teamId])
-
-  useEffect(() => {
-    if (!teamId) return
-    authHeaders().then(headers =>
-      fetch(`${apiUrl}/compliance/packs/installed?workspace_id=${encodeURIComponent(teamId ?? "")}`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (d?.installed) {
-            setInstalledPacks(new Set<string>(d.installed))
-          }
-        })
-        .catch(() => {})
-    )
-  }, [apiUrl, teamId, authHeaders])
 
   useEffect(() => {
     const msg = sessionStorage.getItem("guard.policies.saved")
@@ -795,12 +802,9 @@ function PoliciesContent() {
     }
   }
 
-  const baseVisible = activePackFilter
-    ? policies.filter(p => p.pack_id === activePackFilter)
-    : policies
-  const visiblePolicies = activePersonaFilter
-    ? baseVisible.filter(p => (p.persona_affinity ?? []).includes(activePersonaFilter))
-    : baseVisible
+  // Split into proxy vs agent sections; old rules without `persona` default to "agent"
+  const proxyPolicies = policies.filter(p => p.persona === "proxy")
+  const agentPolicies = policies.filter(p => !p.persona || p.persona === "agent")
 
   const latestUpdated = policies
     .map(p => p.updated_at)
@@ -823,7 +827,7 @@ function PoliciesContent() {
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
           <span style={{ fontSize: 13.5, color: "var(--text-3)" }}>
             Rules sync to every developer&apos;s machine within <strong style={{ color: "var(--text)" }}>60 seconds</strong>.
-            {" "}{visiblePolicies.filter(p => p.enabled).length} active.
+            {" "}{policies.filter(p => p.enabled).length} active.
           </span>
           {canWrite && (
             <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
@@ -839,15 +843,6 @@ function PoliciesContent() {
                   <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                 </svg>
                 {refreshing ? "Refreshing…" : "Refresh built-ins"}
-              </button>
-              <button
-                onClick={() => setShowModal(true)}
-                className="btn btn-primary btn-sm"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                New policy
               </button>
             </div>
           )}
@@ -895,190 +890,33 @@ function PoliciesContent() {
 
         {!loading && !error && policies.length > 0 && (
           <>
-            <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
-            {/* Left sidebar */}
-            <div style={{ width: 190, flexShrink: 0 }}>
-              {/* All */}
-              {(() => {
-                const active = !activePackFilter
-                return (
-                  <button
-                    onClick={() => setActivePackFilter(null)}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
-                      border: "none", borderRadius: 8, padding: "7px 10px",
-                      fontSize: 12.5, fontWeight: active ? 600 : 400,
-                      color: active ? "var(--accent)" : "var(--text-3)",
-                      cursor: "pointer", textAlign: "left", marginBottom: 2,
-                    }}
-                  >
-                    <span>All</span>
-                    <span style={{
-                      marginLeft: 8, fontSize: 10.5,
-                      background: active ? "var(--accent)" : "var(--surface-2, #f4f4f5)",
-                      color: active ? "#fff" : "var(--text-muted)",
-                      borderRadius: 99, padding: "1px 7px", fontWeight: 600,
-                    }}>{policies.filter(p => p.enabled).length}/{policies.length}</span>
-                  </button>
-                )
-              })()}
-
-              {installedPacks.size > 0 && (
-                <>
-                  <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "2px 10px 6px" }}>Skill Packs</div>
-                  {PACK_LABELS.filter(p => installedPacks.has(p.id)).map(pack => {
-                    const active = activePackFilter === pack.id
-                    const count = policies.filter(p => p.pack_id === pack.id).length
-                    return (
-                      <button
-                        key={pack.id}
-                        onClick={() => setActivePackFilter(active ? null : pack.id)}
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between",
-                          width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
-                          border: "none", borderRadius: 8, padding: "7px 10px",
-                          fontSize: 12.5, fontWeight: active ? 600 : 400,
-                          color: active ? "var(--accent)" : "var(--text-3)",
-                          cursor: "pointer", textAlign: "left", marginBottom: 2,
-                        }}
-                      >
-                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pack.name}</span>
-                        <span style={{
-                          marginLeft: 6, fontSize: 9.5, fontWeight: 700, flexShrink: 0,
-                          background: "var(--accent-weak)", color: "var(--accent-text)",
-                          borderRadius: 99, padding: "1px 6px",
-                        }}>{count}</span>
-                      </button>
-                    )
-                  })}
-                </>
-              )}
-              {(() => {
-                const personaDefs = [
-                  { id: "conservative", label: "Conservative" },
-                  { id: "standard",     label: "Standard"     },
-                  { id: "developer",    label: "Developer"    },
-                ] as const
-                const personaCounts = personaDefs.map(pd => policies.filter(p => (p.persona_affinity ?? []).includes(pd.id)).length)
-                if (personaCounts.every(c => c === 0)) return null
-                return (
-                  <>
-                    <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "2px 10px 6px" }}>Persona</div>
-                    {personaDefs.map(({ id, label }, idx) => {
-                      const active = activePersonaFilter === id
-                      const count = personaCounts[idx]
-                      return (
-                        <button
-                          key={id}
-                          onClick={() => setActivePersonaFilter(active ? null : id)}
-                          style={{
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                            width: "100%", background: active ? "var(--accent-bg, #eff6ff)" : "none",
-                            border: "none", borderRadius: 8, padding: "7px 10px",
-                            fontSize: 12.5, fontWeight: active ? 600 : 400,
-                            color: active ? "var(--accent)" : "var(--text-3)",
-                            cursor: "pointer", textAlign: "left", marginBottom: 2,
-                          }}
-                        >
-                          <span>{label}</span>
-                          <span style={{
-                            marginLeft: 6, fontSize: 10.5, flexShrink: 0,
-                            background: active ? "var(--accent)" : "var(--surface-2, #f4f4f5)",
-                            color: active ? "#fff" : "var(--text-muted)",
-                            borderRadius: 99, padding: "1px 7px", fontWeight: 600,
-                          }}>{count}</span>
-                        </button>
-                      )
-                    })}
-                  </>
-                )
-              })()}
-            </div>
-
-            {/* Right: header + 2-column card grid */}
+            {/* Main content — two sections */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              {activePackFilter && (
-                <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                    {PACK_LABELS.find(p => p.id === activePackFilter)?.name ?? activePackFilter}
-                  </span>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    — {visiblePolicies.filter(p => p.enabled).length} of {visiblePolicies.length} active
-                  </span>
-                </div>
-              )}
-            {visiblePolicies.length === 0 && (
-              <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No policies match this filter.</p>
-              </div>
-            )}
             {(() => {
-              // Group visiblePolicies by pack_id. Custom rules (no pack_id) go first.
-              const customRules = visiblePolicies.filter(p => !p.pack_id)
-              // Preserve pack order from PACK_LABELS, only include packs present in visible set
-              const packGroups: { packId: string; packName: string; rules: Policy[] }[] = PACK_LABELS
-                .map(pl => ({
-                  packId: pl.id,
-                  packName: pl.name,
-                  rules: visiblePolicies.filter(p => p.pack_id === pl.id),
-                }))
-                .filter(g => g.rules.length > 0)
-
-              async function handleBulkToggle(packId: string, packName: string, enable: boolean) {
-                const group = visiblePolicies.filter(p => p.pack_id === packId)
-                const label = enable ? "Enable" : "Disable"
-                if (!window.confirm(`${label} all ${group.length} rules in ${packName}?`)) return
-                const headers = await authHeaders()
-                // Optimistic update
-                setPolicies(ps => ps.map(p => p.pack_id === packId ? { ...p, enabled: enable } : p))
-                try {
-                  await Promise.all(group.map(p =>
-                    fetch(`${apiUrl}/guard/policies/${p.id}?workspace_id=${encodeURIComponent(teamId ?? "")}`, {
-                      method: "PATCH", headers,
-                      body: JSON.stringify({ enabled: enable }),
-                    })
-                  ))
-                } catch {
-                  // Rollback on error
-                  setPolicies(ps => ps.map(p => p.pack_id === packId ? { ...p, enabled: !enable } : p))
-                  setError(`Failed to ${label.toLowerCase()} pack rules. Please try again.`)
-                }
-              }
-
-              function renderCard(p: Policy, inPackSection: boolean) {
+              function renderCard(p: Policy) {
                 const expanded = expandedIds.has(p.id)
                 const hasDetails = !!(p.match_pattern || p.match_path_pattern || p.message)
+                const locked = !!p.non_overridable
                 return (
                   <div
                     key={p.id}
                     className="card"
                     style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 0, opacity: p.enabled ? 1 : 0.62, minHeight: 96 }}
                   >
-                    {/* Card header */}
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                       <ActionAvatar action={p.action} />
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 4 }}>
                           <span className="mono" style={{ fontWeight: 650, fontSize: 12.5 }}>{p.rule_id}</span>
+                          {locked && <LockIcon />}
                           <ActionBadge action={p.action} />
-                          {/* Only show pack chip when NOT inside a pack section header */}
-                          {!inPackSection && (p.builtin || p.pack_id) && (
-                            <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px" }}>
-                              {p.pack_id ? (PACK_LABELS.find(pl => pl.id === p.pack_id)?.name ?? p.pack_id) : "base"}
-                            </span>
-                          )}
                         </div>
                         <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                           {p.description || p.message || "—"}
                         </p>
                       </div>
-
-                      {/* Right controls */}
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                        {!p.builtin && canWrite && (
+                        {!p.builtin && !locked && canWrite && (
                           <button
                             type="button"
                             onClick={() => {
@@ -1096,56 +934,32 @@ function PoliciesContent() {
                             </svg>
                           </button>
                         )}
-                        {canWrite
-                          ? <Toggle enabled={p.enabled} onChange={() => handleToggle(p.id)} />
-                          : <span style={{ width: 40, height: 23, borderRadius: 20, background: p.enabled ? "var(--accent)" : "var(--border-2)", display: "inline-block", opacity: 0.5 }} />
+                        {locked
+                          ? <span style={{ width: 40, height: 23, borderRadius: 20, background: "var(--border-2)", display: "inline-block", opacity: 0.4, cursor: "not-allowed" }} title="Non-overridable" />
+                          : canWrite
+                            ? <Toggle enabled={p.enabled} onChange={() => handleToggle(p.id)} />
+                            : <span style={{ width: 40, height: 23, borderRadius: 20, background: p.enabled ? "var(--accent)" : "var(--border-2)", display: "inline-block", opacity: 0.5 }} />
                         }
                       </div>
                     </div>
 
-                    {/* Footer: last triggered + persona chips + expand toggle */}
                     <div style={{ display: "flex", alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
                       <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                         Last hit: <strong style={{ color: "var(--text-2)" }}>{formatLastTriggered(p.last_triggered)}</strong>
                       </span>
-                      {(p.persona_affinity ?? []).length > 0 && (
-                        (p.persona_affinity ?? []).length < 3 ? (
-                          <span style={{ display: "flex", gap: 3, marginLeft: 8, alignItems: "center" }}>
-                            {(p.persona_affinity ?? []).map(pa => (
-                              <span key={pa} title={pa} style={{
-                                fontSize: 10, borderRadius: 99,
-                                padding: "1px 6px", fontWeight: 600,
-                                background: pa === "conservative" ? "var(--err-bg)" : pa === "standard" ? "var(--warn-bg)" : "var(--ok-bg)",
-                                color: pa === "conservative" ? "var(--err)" : pa === "standard" ? "var(--warn)" : "var(--ok)",
-                                border: `1px solid ${pa === "conservative" ? "var(--err-bd)" : pa === "standard" ? "var(--warn-bd)" : "var(--ok-bd)"}`,
-                              }}>
-                                {pa}
-                              </span>
-                            ))}
-                          </span>
-                        ) : (
-                          <span style={{ marginLeft: 8, fontSize: 10, borderRadius: 99, padding: "1px 6px", fontWeight: 600, background: "var(--surface-2)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>
-                            all personas
-                          </span>
-                        )
-                      )}
                       {hasDetails && (
                         <button
                           onClick={() => toggleExpand(p.id)}
                           style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 11.5, color: "var(--accent)", display: "flex", alignItems: "center", gap: 3, padding: 0 }}
                         >
                           {expanded ? "Hide details" : "Show details"}
-                          <svg
-                            width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-                            style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform .15s" }}
-                          >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform .15s" }}>
                             <polyline points="6 9 12 15 18 9" />
                           </svg>
                         </button>
                       )}
                     </div>
 
-                    {/* Expanded detail panel */}
                     {expanded && hasDetails && (
                       <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
                         {p.match_tool && (
@@ -1178,49 +992,50 @@ function PoliciesContent() {
                 )
               }
 
+              function SectionHeader({ title, description, addHref }: { title: string; description: string; addHref: string }) {
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    <div>
+                      <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)" }}>{title}</span>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 8 }}>{description}</span>
+                    </div>
+                    <span style={{ height: 1, flex: 1, background: "var(--border)" }} />
+                    {canWrite && (
+                      <a href={addHref} className="btn btn-ghost btn-sm" style={{ fontSize: 11.5, padding: "3px 10px", textDecoration: "none" }}>
+                        + Add rule
+                      </a>
+                    )}
+                  </div>
+                )
+              }
+
               return (
                 <>
-                  {/* Custom rules — no section header, rendered flat */}
-                  {customRules.length > 0 && (
-                    <>
-                      {packGroups.length > 0 && (
-                        <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)" }}>Custom Rules</span>
-                          <span style={{ height: 1, flex: 1, background: "var(--border)" }} />
-                        </div>
-                      )}
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start", marginBottom: packGroups.length > 0 ? 20 : 0 }}>
-                        {customRules.map(p => renderCard(p, false))}
-                      </div>
-                    </>
-                  )}
+                  {/* Proxy section */}
+                  <div style={{ marginBottom: 28 }}>
+                    <SectionHeader
+                      title="Proxy Rules"
+                      description="Governs what leaves your network to the LLM provider"
+                      addHref="/guard/policies/new?persona=proxy"
+                    />
+                    {proxyPolicies.length === 0
+                      ? <div className="card" style={{ padding: "24px", textAlign: "center" }}><p style={{ fontSize: 12, color: "var(--text-muted)" }}>No proxy rules.</p></div>
+                      : <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>{proxyPolicies.map(p => renderCard(p))}</div>
+                    }
+                  </div>
 
-                  {/* Pack sections */}
-                  {packGroups.map(({ packId, packName, rules }) => {
-                    const allEnabled = rules.every(p => p.enabled)
-                    return (
-                      <div key={packId} style={{ marginBottom: 20 }}>
-                        {/* Section header */}
-                        <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)" }}>{packName}</span>
-                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{rules.length} rules</span>
-                          <span style={{ height: 1, flex: 1, background: "var(--border)" }} />
-                          {canWrite && (
-                            <button
-                              onClick={() => handleBulkToggle(packId, packName, !allEnabled)}
-                              className="btn btn-ghost btn-sm"
-                              style={{ fontSize: 11.5, padding: "3px 10px" }}
-                            >
-                              {allEnabled ? "Disable pack" : "Enable pack"}
-                            </button>
-                          )}
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>
-                          {rules.map(p => renderCard(p, true))}
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {/* Agent section */}
+                  <div style={{ marginBottom: 20 }}>
+                    <SectionHeader
+                      title="Agent Rules"
+                      description="Governs what AI agents do on your machine"
+                      addHref="/guard/policies/new?persona=agent"
+                    />
+                    {agentPolicies.length === 0
+                      ? <div className="card" style={{ padding: "24px", textAlign: "center" }}><p style={{ fontSize: 12, color: "var(--text-muted)" }}>No agent rules.</p></div>
+                      : <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>{agentPolicies.map(p => renderCard(p))}</div>
+                    }
+                  </div>
                 </>
               )
             })()}
@@ -1231,8 +1046,7 @@ function PoliciesContent() {
                 Policy last updated: {formatUpdatedAt(latestUpdated)} · Synced to developers
               </p>
             )}
-            </div>{/* end right col */}
-            </div>{/* end sidebar+grid flex */}
+            </div>{/* end main col */}
           </>
         )}
       </GuardShell>
