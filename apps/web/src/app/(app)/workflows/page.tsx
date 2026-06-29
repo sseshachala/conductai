@@ -18,6 +18,7 @@ interface Workflow {
   last_run_status: string | null
   last_run_at: string | null
   project_name: string | null
+  guard_enabled: boolean | null
 }
 
 function timeAgo(ts: string): string {
@@ -487,7 +488,10 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
                             style={{ fontWeight: 650, fontSize: 14, background: "transparent", border: "none", borderBottom: "1px solid var(--accent)", outline: "none", width: "100%" }}
                           />
                         ) : (
-                          <div style={{ fontWeight: 650, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.name}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{ fontWeight: 650, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.name}</div>
+                            {w.guard_enabled === false && <span style={{ fontSize: 10, fontWeight: 600, color: "var(--warn, #b45309)", background: "var(--warn-bg, #fef3c7)", borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap" }}>Guard off</span>}
+                          </div>
                         )}
                         <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>edited {timeAgo(w.updated_at)}</div>
                       </div>
@@ -613,7 +617,10 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
                               style={{ fontWeight: 650, fontSize: 15, background: "transparent", border: "none", borderBottom: "1px solid var(--accent)", outline: "none", width: "100%" }}
                             />
                           ) : (
-                            <div style={{ fontWeight: 650, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.name}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <div style={{ fontWeight: 650, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.name}</div>
+                              {w.guard_enabled === false && <span style={{ fontSize: 10, fontWeight: 600, color: "var(--warn, #b45309)", background: "var(--warn-bg, #fef3c7)", borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap" }}>Guard off</span>}
+                            </div>
                           )}
                           <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>edited {timeAgo(w.updated_at)}</div>
                         </div>
