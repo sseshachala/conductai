@@ -315,8 +315,10 @@ except Exception:
         # (e.g. `gh issue create --body "...rm -rf..."` should not match no-rm-rf).
         if tool_name == "Bash" and tool_input.get("command"):
             input_text = _bash_operator_signature(tool_input["command"])
+            full_command = tool_input["command"]
         else:
             input_text = json.dumps(tool_input)
+            full_command = None
         path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
 
         for rule in rules:
@@ -327,8 +329,10 @@ except Exception:
             pattern = rule.get("match_pattern")
             if pattern:
                 try:
+                    # match against operator signature first; fall back to full command for path patterns
                     if not re.search(pattern, input_text, re.IGNORECASE):
-                        continue
+                        if full_command is None or not re.search(pattern, full_command, re.IGNORECASE):
+                            continue
                 except re.error:
                     continue
             path_pattern = rule.get("match_path_pattern")
