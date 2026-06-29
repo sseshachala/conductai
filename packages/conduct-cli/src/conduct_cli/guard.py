@@ -22,11 +22,6 @@ CONFIG_PATH  = GUARD_DIR / "config.json"
 POLICY_PATH  = GUARD_DIR / "policy.json"
 
 # ── Hook templates — loaded from real .py files (no string embedding) ─────────
-_TEMPLATES_DIR = Path(__file__).parent
-
-def _read_template(name: str) -> str:
-    return (_TEMPLATES_DIR / name).read_text()
-
 
 # ── Thin launcher content ─────────────────────────────────────────────────────
 
@@ -195,12 +190,7 @@ def _write_hook(path: Path) -> None:
         backup = path.read_text()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Prefer thin launcher; fall back to full template if package not importable
-    try:
-        import conduct_cli.hooks.pretooluse  # noqa: F401
-        content = _THIN_LAUNCHERS["pretooluse"]
-    except ImportError:
-        content = _read_template("hook_template.py")
+    content = _THIN_LAUNCHERS["pretooluse"]
 
     path.write_text(content)
     path.chmod(0o755)
@@ -216,18 +206,8 @@ def _write_hook(path: Path) -> None:
         ) from exc
 
 
-def _write_session_hook(path: Path, launcher_key: str, template_name: str) -> None:
-    """Write a thin launcher (or legacy template) for a session hook.
-
-    If conduct_cli.hooks is importable, writes the thin launcher.
-    Falls back to the full template so old installs continue to work.
-    Also rewrites old-style (non-thin) hooks to thin launchers on sync.
-    """
-    try:
-        import conduct_cli.hooks  # noqa: F401
-        content = _THIN_LAUNCHERS[launcher_key]
-    except ImportError:
-        content = _read_template(template_name)
+def _write_session_hook(path: Path, launcher_key: str) -> None:
+    content = _THIN_LAUNCHERS[launcher_key]
     path.write_text(content)
     path.chmod(0o755)
 
@@ -240,9 +220,9 @@ def _install_session_hooks() -> None:
     session_start_path = GUARD_DIR / "guard-session-start.py"
     stop_path          = GUARD_DIR / "guard-stop.py"
 
-    _write_session_hook(precompact_path,    "precompact",    "hook_precompact_template.py")
-    _write_session_hook(session_start_path, "session-start", "hook_session_start_template.py")
-    _write_session_hook(stop_path,          "stop",          "hook_stop_template.py")
+    _write_session_hook(precompact_path,    "precompact")
+    _write_session_hook(session_start_path, "session-start")
+    _write_session_hook(stop_path,          "stop")
 
     claude_settings = Path.home() / ".claude" / "settings.json"
     settings: dict = {}
