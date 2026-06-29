@@ -276,13 +276,15 @@ function AddRuleModal({
   onClose,
   onSubmit,
   submitting,
+  initialPersona,
 }: {
   onClose: () => void
   onSubmit: (data: AddRuleFormData) => Promise<void>
   submitting: boolean
+  initialPersona?: "agent" | "proxy"
 }) {
   const { getToken } = useAuth()
-  const [form, setForm] = useState<AddRuleFormData>(EMPTY_FORM)
+  const [form, setForm] = useState<AddRuleFormData>({ ...EMPTY_FORM, persona: initialPersona ?? "agent" })
   const [errors, setErrors] = useState<Partial<Record<keyof AddRuleFormData, string>>>({})
   const [aiPrompt, setAiPrompt] = useState("")
   const [aiGenerating, setAiGenerating] = useState(false)
@@ -689,6 +691,7 @@ function PoliciesContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
+  const [modalPersona, setModalPersona] = useState<"agent" | "proxy">("agent")
   const [submitting, setSubmitting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -1020,7 +1023,7 @@ function PoliciesContent() {
                 )
               }
 
-              function SectionHeader({ title, description, addHref }: { title: string; description: string; addHref: string }) {
+              function SectionHeader({ title, description, onAdd }: { title: string; description: string; onAdd: () => void }) {
                 return (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                     <div>
@@ -1029,9 +1032,9 @@ function PoliciesContent() {
                     </div>
                     <span style={{ height: 1, flex: 1, background: "var(--border)" }} />
                     {canWrite && (
-                      <a href={addHref} className="btn btn-ghost btn-sm" style={{ fontSize: 11.5, padding: "3px 10px", textDecoration: "none" }}>
+                      <button type="button" onClick={onAdd} className="btn btn-ghost btn-sm" style={{ fontSize: 11.5, padding: "3px 10px" }}>
                         + Add rule
-                      </a>
+                      </button>
                     )}
                   </div>
                 )
@@ -1044,7 +1047,7 @@ function PoliciesContent() {
                     <SectionHeader
                       title="Proxy Rules"
                       description="Governs what leaves your network to the LLM provider"
-                      addHref="/guard/policies/new?persona=proxy"
+                      onAdd={() => { setModalPersona("proxy"); setShowModal(true) }}
                     />
                     {proxyPolicies.length === 0
                       ? <div className="card" style={{ padding: "24px", textAlign: "center" }}><p style={{ fontSize: 12, color: "var(--text-muted)" }}>No proxy rules.</p></div>
@@ -1057,7 +1060,7 @@ function PoliciesContent() {
                     <SectionHeader
                       title="Agent Rules"
                       description="Governs what AI agents do on your machine"
-                      addHref="/guard/policies/new?persona=agent"
+                      onAdd={() => { setModalPersona("agent"); setShowModal(true) }}
                     />
                     {agentPolicies.length === 0
                       ? <div className="card" style={{ padding: "24px", textAlign: "center" }}><p style={{ fontSize: 12, color: "var(--text-muted)" }}>No agent rules.</p></div>
@@ -1084,6 +1087,7 @@ function PoliciesContent() {
           onClose={() => setShowModal(false)}
           onSubmit={handleAddRule}
           submitting={submitting}
+          initialPersona={modalPersona}
         />
       )}
 
