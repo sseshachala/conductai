@@ -227,10 +227,11 @@ async def _proxy(
         and _internal_key == settings.cli_api_key
     )
 
-    # cond_live_ workspace API key — no CLI needed, long-lived
-    _ws_api_key = token if (token and token.startswith("cond_live_")) else None
+    # cond_live_ workspace API key — read from raw before member-token filter strips it
+    _raw_key = raw[7:].strip() if bearer and raw.lower().startswith("bearer ") else raw
+    _ws_api_key = _raw_key if _raw_key.startswith("cond_live_") else None
 
-    if not token and not _is_internal:
+    if not token and not _is_internal and not _ws_api_key:
         return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
 
     # 2. Resolve workspace + user
