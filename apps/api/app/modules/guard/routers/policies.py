@@ -58,6 +58,8 @@ class PolicyOut(BaseModel):
     enabled: bool
     builtin: bool
     pack_id: Optional[str] = None
+    persona: str = "agent"
+    non_overridable: bool = False
     persona_affinity: list[str] = []
     recommendation: Optional[str] = None
     frameworks: list[str] = []
@@ -75,6 +77,7 @@ class PolicyCreate(BaseModel):
     match_path_pattern: Optional[str] = None
     action: str
     message: Optional[str] = None
+    persona: str = "agent"
     persona_affinity: Optional[list[str]] = None
     recommendation: Optional[str] = None
     frameworks: Optional[list[str]] = None
@@ -151,6 +154,8 @@ def _custom_to_out(row: WorkspaceCustomRule) -> PolicyOut:
         enabled=bool(row.enabled),
         builtin=False,
         pack_id=None,
+        persona=row.persona or "agent",
+        non_overridable=False,
         persona_affinity=body.get("persona_affinity") or [],
         recommendation=body.get("recommendation"),
         frameworks=body.get("frameworks") or [],
@@ -181,6 +186,8 @@ def _pack_rule_to_out(
         enabled=not (override and override.disabled),
         builtin=True,
         pack_id=pack_slug,
+        persona=rule.get("persona") or "agent",
+        non_overridable=bool(rule.get("non_overridable", False)),
         persona_affinity=rule.get("persona_affinity") or [],
         recommendation=rule.get("recommendation"),
         frameworks=rule.get("frameworks") or [],
@@ -477,6 +484,7 @@ def create_policy(
     row = WorkspaceCustomRule(
         workspace_id=ws_uuid,
         rule_id=body.rule_id,
+        persona=body.persona,
         body=rule_body,
         enabled=True,
     )

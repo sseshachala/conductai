@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
@@ -19,6 +19,7 @@ type MatchTool = "bash" | "edit" | "write" | "read" | "*"
 interface GeneratedPolicy {
   rule_id: string
   description: string
+  persona: "agent" | "proxy"
   match_tool: MatchTool
   match_pattern: string
   match_path_pattern: string
@@ -187,6 +188,29 @@ function ReviewCard({
           />
         </div>
 
+        {/* persona */}
+        <div>
+          <FieldLabel hint="Agent: what AI does on your machine. Proxy: what leaves your network to the LLM.">Persona</FieldLabel>
+          <div style={{ display: "flex", gap: 8 }}>
+            {(["agent", "proxy"] as const).map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => set("persona", p)}
+                style={{
+                  flex: 1, height: 36, borderRadius: 8, fontSize: 13, fontWeight: 500,
+                  border: `1px solid ${policy.persona === p ? "var(--accent)" : "var(--border)"}`,
+                  background: policy.persona === p ? "var(--accent-bg, #eff6ff)" : "var(--surface)",
+                  color: policy.persona === p ? "var(--accent)" : "var(--text-3)",
+                  cursor: "pointer",
+                }}
+              >
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* match_tool */}
         <div>
           <FieldLabel>Match tool</FieldLabel>
@@ -310,6 +334,8 @@ function ReviewCard({
 
 export default function NewPolicyPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialPersona = (searchParams.get("persona") === "proxy" ? "proxy" : "agent") as "agent" | "proxy"
   const { getToken } = useAuth()
   const { teamId } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
@@ -370,6 +396,7 @@ export default function NewPolicyPage() {
         match_path_pattern: data.match_path_pattern ?? "",
         action: (data.action as PolicyAction) ?? "block",
         message: data.message ?? "",
+        persona: initialPersona,
       })
     } catch (e) {
       setGenerateError(e instanceof Error ? e.message : "Failed to generate rule. Please try again.")
@@ -402,6 +429,7 @@ export default function NewPolicyPage() {
         message: generatedPolicy.message.trim(),
         enabled: true,
         builtin: false,
+        persona: generatedPolicy.persona,
       }
       if (generatedPolicy.match_path_pattern.trim()) {
         body.match_path_pattern = generatedPolicy.match_path_pattern.trim()
@@ -520,6 +548,7 @@ export default function NewPolicyPage() {
                         setGeneratedPolicy({
                           rule_id: data.rule_id ?? "",
                           description: data.description ?? "",
+                          persona: initialPersona,
                           match_tool: (data.match_tool as MatchTool) ?? "*",
                           match_pattern: data.match_pattern ?? "",
                           match_path_pattern: data.match_path_pattern ?? "",
