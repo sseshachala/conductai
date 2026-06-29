@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "tier": "free",
   "description": "Core safety rules \u2014 destructive ops, secrets, production gates, audit. Findings vocabulary aligned to SOC 2, ISO 42001, OWASP, PCI DSS, GDPR.",
   "rules": [
@@ -723,6 +723,19 @@
       ],
       "severity": "critical",
       "recommendation": "Sanitise user-supplied input before passing to the LLM."
+    },
+    {
+      "id": "no-env-read",
+      "description": "Block reading .env files containing secrets",
+      "match_tool": "bash,read",
+      "match_pattern": "\\.env(\\b|$)",
+      "action": "block",
+      "message": ".env files contain secrets. Use your secrets manager instead.",
+      "persona_affinity": [
+        "conservative",
+        "standard",
+        "developer"
+      ]
     }
   ]
 }
