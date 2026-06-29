@@ -1488,6 +1488,21 @@ def _ensure_booster(root: Path) -> None:
             pass
         print(f"  {GREEN}Agent Booster:{RESET} {symbols_count} symbols indexed — Read/Grep intercept active")
 
+    # Keep BOOSTER_SECRET in .mcp.json in sync with ~/.booster/.secret
+    secret_file = Path.home() / ".booster" / ".secret"
+    mcp_json = root / ".mcp.json"
+    if secret_file.exists() and mcp_json.exists():
+        try:
+            expected = secret_file.read_text().strip()
+            data = json.loads(mcp_json.read_text())
+            server = data.get("mcpServers", {}).get("agent-booster", {})
+            if server.get("env", {}).get("BOOSTER_SECRET") != expected:
+                server.setdefault("env", {})["BOOSTER_SECRET"] = expected
+                mcp_json.write_text(json.dumps(data, indent=2) + "\n")
+                print(f"  {GREEN}Agent Booster:{RESET} refreshed BOOSTER_SECRET in .mcp.json")
+        except Exception:
+            pass
+
 
 def _report_savings(cfg: dict, base_url: str, api_key: str) -> None:
     import subprocess
