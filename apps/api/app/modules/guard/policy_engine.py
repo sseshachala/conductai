@@ -98,7 +98,7 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
         .filter(
             WorkspaceCustomRule.workspace_id == workspace_id,
             WorkspaceCustomRule.enabled.is_(True),
-            WorkspaceCustomRule.persona == persona,
+            (WorkspaceCustomRule.persona == persona) | (WorkspaceCustomRule.persona.is_(None)),
         )
         .all()
     )
