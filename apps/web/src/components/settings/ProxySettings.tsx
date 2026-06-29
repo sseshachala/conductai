@@ -85,7 +85,8 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
           </button>
         </div>
         <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
-          Set as <code>ANTHROPIC_BASE_URL</code> / <code>OPENAI_BASE_URL</code> in your AI tools. Run <code>conduct guard sync</code> to apply automatically.
+          Set as <code>ANTHROPIC_BASE_URL</code> / <code>OPENAI_BASE_URL</code> in your AI tools.
+          Use your member token (<code>conduct guard sync</code>) or a workspace API key (Settings → API Keys) as the API key.
         </p>
       </div>
 
