@@ -433,12 +433,24 @@ def _execute_brain(
     # When routing through Portkey/Helicone: gateway key goes in x-portkey-api-key header,
     # vendor key stays in api_key (forwarded to Anthropic by the gateway).
     _effective_key = _provider_keys[provider]
-    _effective_base_url = _upstream_base_url  # None → client uses vendor default
+
+    # Route through Conduct proxy so Guard evaluates every LLM call.
+    # Proxy handles upstream forwarding (Portkey/LiteLLM) from workspace proxy_config.
+    _proxy_base = os.environ.get("CONDUCT_PROXY_BASE_URL", "").rstrip("/")
+    _effective_base_url = f"{_proxy_base}/{provider}" if _proxy_base else _upstream_base_url
 
     from app.runtime.adapters.gateway import gateway_adapt as _gateway_adapt
     _gw = _gateway_adapt(_upstream_base_url, _upstream_key or "", provider, model_id)
-    _extra_headers = _gw.headers or None
+    _extra_headers = _gw.headers or {}
     model_id = _gw.model  # use the (possibly rewritten) model name
+
+    # Pass run context so proxy audit rows link back to the run + workflow.
+    if run_id:
+        _extra_headers["x-conductai-run-id"] = str(run_id)
+    if workflow_name or playbook_slug:
+        _extra_headers["x-conductai-workflow"] = workflow_name or playbook_slug or ""
+    if workflow_id:
+        _extra_headers["x-conductai-workflow-id"] = str(workflow_id)
 
     client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
     _client_kwargs: dict = {
@@ -451,42 +463,6 @@ def _execute_brain(
     llm = client_for[provider](**_client_kwargs)
 
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
-
-    def _audit_llm_call(in_tok: int, out_tok: int, cost: float) -> None:
-        """Write one guard_audit_events row per brain block execution for LLM routing visibility."""
-        if not workspace_id:
-            return
-        try:
-            from app.modules.guard.models import GuardAuditEvent as _GAE
-            from app.core.database import SessionLocal as _SL
-            import uuid as _uuid
-            from datetime import datetime as _dt, timezone as _tz
-            _ws = _uuid.UUID(str(workspace_id))
-            _db = _SL()
-            try:
-                _db.add(_GAE(
-                    workspace_id=_ws,
-                    ai_tool="workflow",
-                    tool_call=block_label or block_id or "llm_call",
-                    source="brain_block",
-                    provider=provider,
-                    model=model_id,
-                    input_summary=_upstream_base_url or "vendor",
-                    decision="allowed",
-                    tokens_before=in_tok,
-                    tokens_after=out_tok,
-                    cost_usd_after=cost,
-                    conductai_run_id=str(run_id) if run_id else None,
-                    conductai_workflow=workflow_name or playbook_slug,
-                    conductai_workflow_id=workflow_id,
-                    user_email=user_email,
-                    ts=_dt.now(_tz.utc),
-                ))
-                _db.commit()
-            finally:
-                _db.close()
-        except Exception as _ae:
-            log.warning("brain.audit_llm_call_failed", error=str(_ae), workspace_id=workspace_id, run_id=str(run_id))
 
     def _record_turns(db, run_id: str | None, actual: int, exhausted: bool) -> None:
         """Persist actual_turns + budget_exhausted on the Run row for future estimation."""
@@ -643,7 +619,6 @@ def _execute_brain(
                 _extracted = _extract_last_json_object(result.get("output", ""))
                 if _extracted:
                     result = {**_extracted, **result}
-                _audit_llm_call(total_input_tokens, total_output_tokens, cost_usd)
                 _record_turns(db, run_id, turns, False)
                 _close_session()
                 return result
@@ -806,6 +781,5 @@ def _execute_brain(
         _extracted = _extract_last_json_object(result.get("output", ""))
         if _extracted:
             result = {**_extracted, **result}
-        _audit_llm_call(response.usage.input_tokens, response.usage.output_tokens, response.cost_usd)
         _close_session()
         return result
