@@ -691,6 +691,22 @@ def _record_audit(
             },
         )
         db.commit()
+
+        if decision == "blocked":
+            try:
+                from app.modules.guard.models import GuardConfig
+                from app.modules.guard.routers.events import _send_guard_slack
+                import uuid as _uuid
+                cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == _uuid.UUID(workspace_id)).first()
+                if cfg and cfg.notify_on_block:
+                    _send_guard_slack(db, cfg, (
+                        f"🚨 *Guard blocked* — `{rule_id or 'proxy'}`\n"
+                        f"• User: {user_email or clerk_user_id}\n"
+                        f"• Provider: `{provider}` · Model: `{model}`\n"
+                        f"• Via: proxy"
+                    ))
+            except Exception:
+                pass
     except Exception as e:
         log.warning("guard.proxy.audit_failed", err=str(e))
     finally:
