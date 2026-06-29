@@ -18,12 +18,6 @@ export const GUARD_TABS = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const PERSONA_BADGE: Record<string, { emoji: string; color: string }> = {
-  conservative: { emoji: "🔴", color: "#dc2626" },
-  standard:     { emoji: "🟡", color: "#d97706" },
-  developer:    { emoji: "🟢", color: "#16a34a" },
-}
-
 function relativeTime(ts: Date | null | undefined): string {
   if (!ts) return "never"
   const sec = Math.floor((Date.now() - ts.getTime()) / 1000)
@@ -42,10 +36,10 @@ export interface GuardShellProps {
   lastFetched?: Date | null
   /** Controls the green "live" / grey "offline" badge. Defaults to true. */
   live?: boolean
-  /** Active persona name — renders a coloured badge next to the live badge. */
-  persona?: string
-  /** Number of rules for the active persona — appended to the persona badge. */
-  ruleCount?: number | null
+  /** Agent rule count — shown in header badge. */
+  agentCount?: number | null
+  /** Proxy rule count — shown in header badge. */
+  proxyCount?: number | null
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -54,8 +48,8 @@ export function GuardShell({
   children,
   lastFetched,
   live = true,
-  persona,
-  ruleCount,
+  agentCount,
+  proxyCount,
 }: GuardShellProps) {
   const pathname = usePathname()
   const [, setTick] = useState(0)
@@ -85,7 +79,7 @@ export function GuardShell({
                 offline
               </span>
             )}
-            {persona && (
+            {(agentCount != null || proxyCount != null) && (
               <span style={{
                 marginTop: 2,
                 fontSize: 11.5,
@@ -96,8 +90,7 @@ export function GuardShell({
                 color: "var(--text-2)",
                 border: "1px solid var(--border)",
               }}>
-                {PERSONA_BADGE[persona]?.emoji ?? "🟡"} {persona.charAt(0).toUpperCase() + persona.slice(1)}
-                {ruleCount != null ? ` · ${ruleCount} rules` : ""}
+                {agentCount ?? 0} agent · {proxyCount ?? 0} proxy
               </span>
             )}
           </div>

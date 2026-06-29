@@ -16,6 +16,7 @@ import { useTokenGuardrails, type TokenGuardrails } from "@/hooks/useTokenGuardr
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { ByAiToolTable, type ByAiToolRow } from "@/components/guard/ByAiToolTable"
 import { formatToolCall } from "@/components/guard/ActivityRow"
+import { DecisionBadge } from "@/components/guard/DecisionBadge"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,18 +87,8 @@ const AI_TOOL_BADGES: Record<string, { label: string; bg: string; color: string 
   gemini:         { label: "Gemini",         bg: "rgba(249,115,22,0.10)",        color: "rgb(234,88,12)"      },
 }
 
-const DECISION_CONFIG: Record<
-  string,
-  { label: string; dotColor?: string; bg?: string; color?: string }
-> = {
-  allowed:  { label: "allowed",          dotColor: "var(--ok)"                                    },
-  blocked:  { label: "blocked",          bg: "var(--err-bg)",   color: "var(--err)"               },
-  warned:   { label: "warned",           bg: "var(--warn-bg)",  color: "var(--warn)"              },
-  approval: { label: "approval pending", bg: "var(--info-bg)",  color: "var(--info)"              },
-}
-
 const ALL_TOOLS     = ["claude_code", "claude_chat", "claude_desktop", "claude_work", "codex", "codex_cli", "cursor", "windsurf", "copilot", "gemini"]
-const ALL_DECISIONS = ["allowed", "blocked", "warned", "approval"]
+const ALL_DECISIONS = ["allowed", "blocked", "warned", "audited", "approval"]
 
 // ─── Helper components ────────────────────────────────────────────────────────
 
@@ -152,32 +143,6 @@ function AiToolBadge({ tool }: { tool: string }) {
   )
 }
 
-function DecisionBadge({ decision }: { decision: string }) {
-  const cfg = DECISION_CONFIG[decision]
-  if (!cfg) return <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{decision}</span>
-
-  if (decision === "allowed") {
-    return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--ok)" }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.dotColor, display: "inline-block" }} />
-      </span>
-    )
-  }
-  return (
-    <span style={{
-      display: "inline-flex",
-      alignItems: "center",
-      fontSize: 12,
-      fontWeight: 500,
-      padding: "2px 8px",
-      borderRadius: 999,
-      background: cfg.bg,
-      color: cfg.color,
-    }}>
-      {cfg.label}
-    </span>
-  )
-}
 
 type TrendPeriod = "Daily" | "Weekly" | "Monthly"
 interface TrendPoint { date: string; claude: number; codex: number; other: number }
@@ -470,8 +435,8 @@ function GuardDashboard() {
   const [live, setLive]               = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [chartToken, setChartToken]   = useState<string | null>(null)
-  const [persona, setPersona]         = useState<string>("standard")
-  const [ruleCount, setRuleCount]     = useState<number | null>(null)
+  const [agentCount, setAgentCount]   = useState<number | null>(null)
+  const [proxyCount, setProxyCount]   = useState<number | null>(null)
 
   const PAGE_SIZE = 100
 
@@ -572,19 +537,16 @@ function GuardDashboard() {
     } catch {
       // non-fatal
     }
-    // Persona + rule count — non-fatal, best-effort
-    try {
-      const pr = await fetch(`${base}/guard/config/persona`, { headers: { ...headers, "x-workspace-id": teamId } })
-      if (pr.ok) {
-        const pd = await pr.json()
-        if (pd?.persona) setPersona(pd.persona)
-      }
-    } catch { /* non-fatal */ }
+    // Rule counts by persona — non-fatal, best-effort
     try {
       const sr = await fetch(`${base}/guard/policies?workspace_id=${teamId}`, { headers })
       if (sr.ok) {
         const sd = await sr.json()
-        if (Array.isArray(sd)) setRuleCount(sd.filter((r: any) => r.enabled && !r.archived_at).length)
+        if (Array.isArray(sd)) {
+          const active = sd.filter((r: any) => r.enabled && !r.archived_at)
+          setAgentCount(active.filter((r: any) => r.persona === "agent").length)
+          setProxyCount(active.filter((r: any) => r.persona === "proxy").length)
+        }
       }
     } catch { /* non-fatal */ }
   }, [buildHeaders, teamId])
@@ -816,7 +778,7 @@ function GuardDashboard() {
   }
 
   return (
-    <GuardShell live={live} lastFetched={lastUpdated} persona={persona} ruleCount={ruleCount}>
+    <GuardShell live={live} lastFetched={lastUpdated} agentCount={agentCount} proxyCount={proxyCount}>
 
       {/* Viewer-scoped notice */}
       {!loading && !permissionsLoading && !permissions.canViewAllActivity && (

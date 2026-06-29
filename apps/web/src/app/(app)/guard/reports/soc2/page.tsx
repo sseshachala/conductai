@@ -115,10 +115,10 @@ function Soc2Report() {
         .report-shell th, .report-shell td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #ececec; vertical-align: top; }
         .report-shell th { font-weight: 600; background: #f5f5f5; }
         .report-shell .decision { font-weight: 600; text-transform: uppercase; font-size: 10px; }
-        .report-shell .decision.blocked { color: #b91c1c; }
-        .report-shell .decision.warned { color: #92400e; }
-        .report-shell .decision.allowed { color: #15803d; }
-        .report-shell .decision.audited { color: #1d4ed8; }
+        .report-shell .decision.blocked { color: var(--err); }
+        .report-shell .decision.warned  { color: var(--warn); }
+        .report-shell .decision.allowed { color: var(--ok); }
+        .report-shell .decision.audited { color: var(--info); }
         .report-shell .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 10px 0 18px; }
         .report-shell .kpi { padding: 12px 14px; border: 1px solid #e5e5e5; border-radius: 6px; }
         .report-shell .kpi-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #777; }
@@ -146,8 +146,8 @@ function Soc2Report() {
 
         <div className="kpis">
           <div className="kpi"><div className="kpi-label">Events screened</div><div className="kpi-value">{total.toLocaleString()}</div></div>
-          <div className="kpi"><div className="kpi-label">Blocked</div><div className="kpi-value" style={{ color: "#b91c1c" }}>{blocked.toLocaleString()}</div></div>
-          <div className="kpi"><div className="kpi-label">Warned</div><div className="kpi-value" style={{ color: "#92400e" }}>{warned.toLocaleString()}</div></div>
+          <div className="kpi"><div className="kpi-label">Blocked</div><div className="kpi-value" style={{ color: "var(--err)" }}>{blocked.toLocaleString()}</div></div>
+          <div className="kpi"><div className="kpi-label">Warned</div><div className="kpi-value" style={{ color: "var(--warn)" }}>{warned.toLocaleString()}</div></div>
         </div>
 
         <h2>SOC 2 control coverage</h2>

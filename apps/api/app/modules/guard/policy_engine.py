@@ -31,7 +31,7 @@ from app.modules.guard.models import (
     WorkspaceSkillPack,
 )
 
-PERSONAS = ["conservative", "standard", "developer"]
+PERSONAS = ["agent", "proxy"]
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

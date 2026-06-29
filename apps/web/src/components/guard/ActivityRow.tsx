@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { DecisionBadge } from "./DecisionBadge"
 
 /**
  * Shared event row used by /guard/activity (full feed) and /governance
@@ -125,23 +126,7 @@ export function ToolBadge({ tool }: { tool: string }) {
   )
 }
 
-export function DecisionBadge({ decision }: { decision: string }) {
-  // Consistent palette across the app (matches Guard policy badges):
-  //   blocked → red    (var(--err))
-  //   warned  → yellow (var(--warn))
-  //   audited → blue   (var(--info))  — recorded only, no action
-  //   allowed → green  (var(--ok))    — explicit pass
-  const cls =
-    decision === "allowed"   ? "sbadge ok"
-    : decision === "audited" ? "sbadge info"
-    : decision === "blocked" ? "sbadge err"
-    : decision === "warned"  ? "sbadge warn"
-    : decision === "approval"? "sbadge warn"
-    :                          "sbadge warn"
-  return (
-    <span className={cls} style={{ textTransform: "capitalize" }}>{decision}</span>
-  )
-}
+export { DecisionBadge } from "./DecisionBadge"
 
 export function BlastRadiusBadge({ br }: { br: { tier: string; files: number } }) {
   const colors: Record<string, { bg: string; text: string }> = {

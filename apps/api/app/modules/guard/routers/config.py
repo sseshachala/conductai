@@ -256,7 +256,7 @@ class ResyncOut(BaseModel):
     resync_requested_at: str
 
 
-_VALID_PERSONAS = {"conservative", "standard", "developer"}
+_VALID_PERSONAS = {"agent", "proxy"}
 
 
 class PersonaOut(BaseModel):
@@ -290,7 +290,7 @@ def get_persona(
         raise HTTPException(status_code=422, detail="Invalid workspace_id")
 
     cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
-    workspace_default = (cfg.persona if cfg and cfg.persona else "standard")
+    workspace_default = (cfg.persona if cfg and cfg.persona else "agent")
     workspace_runtime = (cfg.runtime_persona if cfg and cfg.runtime_persona else "conservative")
 
     member = (
@@ -355,8 +355,8 @@ def set_persona(
         db.commit()
         log.info("guard.persona_set_member", workspace_id=workspace_id, developer_id=body.developer_id, persona=body.persona)
         cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
-        workspace_default = cfg.persona if cfg else "standard"
-        workspace_runtime = cfg.runtime_persona if cfg else "conservative"
+        workspace_default = cfg.persona if cfg else "agent"
+        workspace_runtime = cfg.runtime_persona if cfg else "agent"
         return PersonaOut(
             persona=body.persona, assigned_by="admin",
             workspace_default=workspace_default,
@@ -373,7 +373,7 @@ def set_persona(
     return PersonaOut(
         persona=body.persona, assigned_by="admin",
         workspace_default=body.persona,
-        workspace_runtime_persona=cfg.runtime_persona or "conservative",
+        workspace_runtime_persona=cfg.runtime_persona or "agent",
     )
 
 
@@ -405,9 +405,9 @@ def set_runtime_persona(
 
     log.info("guard.runtime_persona_set", workspace_id=workspace_id, persona=body.persona)
     return PersonaOut(
-        persona=cfg.persona or "standard",
+        persona=cfg.persona or "agent",
         assigned_by="admin",
-        workspace_default=cfg.persona or "standard",
+        workspace_default=cfg.persona or "agent",
         workspace_runtime_persona=body.persona,
     )
 
@@ -492,7 +492,7 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
     # Active ruleset comes from skill_packs JSONB via compute_policy().
     # Persona is read from guard_config above (config.persona, defaults to 'standard').
     from app.modules.guard.policy_engine import compute_policy
-    persona = (config.persona or "standard")
+    persona = (config.persona or "agent")
     computed = compute_policy(db, config.workspace_id, persona)
     rules = [
         {

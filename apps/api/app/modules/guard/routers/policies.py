@@ -357,7 +357,7 @@ def sync_policies(
     ws_uuid = _ws_uuid(workspace_id)
 
     gc = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
-    persona = (gc.persona if gc and gc.persona else "standard")
+    persona = (gc.persona if gc and gc.persona else "agent")
 
     active_rules = compute_policy(db, ws_uuid, persona)
     version_hash = hashlib.sha256(json.dumps(active_rules, sort_keys=True).encode()).hexdigest()[:16]
@@ -474,7 +474,7 @@ def create_policy(
         "match_path_pattern": body.match_path_pattern,
         "action": body.action,
         "message": body.message,
-        "persona_affinity": body.persona_affinity or ["conservative", "standard", "developer"],
+        "persona_affinity": body.persona_affinity or ["agent", "proxy"],
         "recommendation": body.recommendation,
         "frameworks": body.frameworks or [],
         "severity": body.severity or "medium",
