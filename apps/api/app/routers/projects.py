@@ -253,13 +253,7 @@ def list_projects(
             ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
         """), {"ws": str(project_id), "uid": user_id, "token": member_token, "now": now})
 
-        # 6. Seed workspace config — CONDUCT_PROXY_URL from server env
-        from app.core.config import settings as _settings
-        db.execute(text("""
-            INSERT INTO workspace_config (id, workspace_id, key, value, created_at, updated_at)
-            VALUES (gen_random_uuid(), :ws, 'CONDUCT_PROXY_URL', :url, :now, :now)
-            ON CONFLICT (workspace_id, key) DO UPDATE SET value = EXCLUDED.value
-        """), {"ws": str(project_id), "url": _settings.conduct_proxy_url, "now": now})
+        # ponytail: CONDUCT_PROXY_URL removed from workspace_config — always served from settings.conduct_proxy_url
 
         # 7. Pre-seed Conduct AI Guard MCP server
         # Token goes in encrypted_auth (rendered as Authorization: Bearer header
