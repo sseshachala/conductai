@@ -134,6 +134,30 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
     }
 
 
+def notify_guard_block(
+    db: Session, workspace_id, *,
+    decision: str, rule_id: str | None,
+    user_email: str | None, tool: str | None = None,
+    provider: str | None = None, source: str = "hook",
+) -> None:
+    """Single entry point for Guard block/warn Slack notifications."""
+    import uuid as _uuid
+    from app.modules.guard.models import GuardConfig as _GC
+    ws = _uuid.UUID(str(workspace_id)) if not isinstance(workspace_id, _uuid.UUID) else workspace_id
+    cfg = db.query(_GC).filter(_GC.workspace_id == ws).first()
+    if not cfg or not cfg.notify_on_block:
+        return
+    icon = "🚨" if decision == "blocked" else "⚠️"
+    lines = [f"{icon} *Guard {decision}* — `{rule_id or source}`"]
+    if user_email:
+        lines.append(f"• User: {user_email}")
+    if tool:
+        lines.append(f"• Tool: `{tool}`")
+    if provider:
+        lines.append(f"• Provider: `{provider}` · via {source}")
+    _send_guard_slack(db, cfg, "\n".join(lines))
+
+
 def _send_guard_slack(db: Session, config: GuardConfig, text_msg: str) -> None:
     """Fire-and-forget Slack notification. Silently skips if not configured."""
     from app.core.crypto import decrypt

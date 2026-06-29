@@ -30,7 +30,6 @@ from app.core.auth import get_clerk_user_email
 from app.core.pii import redact_secrets
 from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardMemberConfig
 from app.modules.guard.policy_engine import compute_policy
-from app.modules.guard.routers.events import _send_guard_slack as _slack_notify
 
 router = APIRouter(prefix="/guard/mcp", tags=["guard-mcp"])
 
@@ -257,21 +256,11 @@ def _record_event(
     # Slack notification — one path for all blocks/warns
     if decision in ("blocked", "warned"):
         try:
-            cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
-            if cfg and cfg.notify_on_block:
-                from app.core.auth import get_clerk_user_info
-                info = get_clerk_user_info(clerk_user_id)
-                display_name = info.get("name") or info.get("email") or user_email or clerk_user_id
-                display_email = info.get("email") or user_email or ""
-                icon = "🚨" if decision == "blocked" else "⚠️"
-                _slack_notify(db, cfg, (
-                    f"{icon} *Guard {decision}* — `{rule_id or 'unknown'}`\n"
-                    f"• User: {display_name} ({display_email})\n"
-                    f"• Tool: `{tool_name}`\n"
-                    f"• Session: `{session_id or 'n/a'}`"
-                ))
+            from app.modules.guard.routers.events import notify_guard_block
+            notify_guard_block(db, ws_uuid, decision=decision, rule_id=rule_id,
+                               user_email=user_email, tool=tool_name, source="hook")
         except Exception:
-            pass  # never crash event recording on Slack failure
+            pass
 
 
 # ── JSON-RPC response helpers ─────────────────────────────────────────────────
