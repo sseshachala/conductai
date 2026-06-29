@@ -1217,7 +1217,7 @@ def cmd_guard_sync(args):
 CONDUCT_DIR        = Path.home() / ".conduct"
 PROXY_ENV_FILE     = CONDUCT_DIR / "env"
 PROXY_OVERRIDE     = CONDUCT_DIR / "env-override"
-DEFAULT_PROXY_URL  = "https://api.conductai.ai/proxy/anthropic"
+DEFAULT_PROXY_URL  = "https://api.conductai.ai/proxy"
 SHELL_RC_MARKER    = "# Conduct Guard Proxy — managed by `conduct guard sync`"
 SHELL_SOURCE_LINE  = "[ -f ~/.conduct/env ] && . ~/.conduct/env"
 
