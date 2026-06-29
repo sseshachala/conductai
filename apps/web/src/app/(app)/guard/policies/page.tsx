@@ -379,13 +379,8 @@ function AddRuleModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.3)",
-        backdropFilter: "blur(4px)",
+        background: "rgba(0,0,0,0.25)",
         zIndex: 50,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
       }}
     >
       <div
@@ -395,16 +390,19 @@ function AddRuleModal({
       />
       <div
         style={{
-          position: "relative",
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
           zIndex: 10,
-          width: "100%",
-          maxWidth: 520,
-          maxHeight: "90vh",
+          width: 480,
+          maxWidth: "100vw",
           overflowY: "auto",
-          borderRadius: 14,
           background: "var(--surface)",
-          boxShadow: "var(--shadow-lg)",
-          border: "1px solid var(--border)",
+          boxShadow: "-4px 0 24px rgba(0,0,0,0.12)",
+          borderLeft: "1px solid var(--border)",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
         {/* Modal header */}
@@ -437,7 +435,7 @@ function AddRuleModal({
         </div>
 
         {/* Modal form */}
-        <form onSubmit={handleSubmit} style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <form onSubmit={handleSubmit} style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
 
           {/* AI generate */}
           <div style={{ background: "var(--surface-2)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
