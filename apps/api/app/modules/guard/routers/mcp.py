@@ -383,7 +383,7 @@ async def mcp_endpoint(
             user_email = get_clerk_user_email(clerk_user_id) if clerk_user_id != "api_key" else f"apikey@{workspace_id[:8]}"
         else:
             member_row = db.execute(
-                _sql("SELECT clerk_user_id FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
+                _sql("SELECT clerk_user_id, user_email FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
                 {"w": str(ws_uuid), "t": resolved_token},
             ).fetchone()
             if not member_row:
