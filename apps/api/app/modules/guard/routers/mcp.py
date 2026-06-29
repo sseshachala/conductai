@@ -162,10 +162,17 @@ def _detect_surface(client_info: dict) -> str:
 
 # ── Policy matching ───────────────────────────────────────────────────────────
 
+_ACTION_PRIORITY = {"block": 0, "approval": 1, "warn": 2, "audit": 3}
+
+
 def _match_policy(tool_name: str, tool_input: dict, rules: list) -> dict | None:
+    """Return the most restrictive matching rule (block > approval > warn > audit)."""
     inp_text  = json.dumps(tool_input)
     path_keys = ["file_path", "path", "command"]
     path_text = " ".join(str(tool_input.get(k, "")) for k in path_keys)
+
+    best: dict | None = None
+    best_priority = 999
 
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
@@ -190,8 +197,12 @@ def _match_policy(tool_name: str, tool_input: dict, rules: list) -> dict | None:
             except re.error:
                 continue
 
-        return rule
-    return None
+        priority = _ACTION_PRIORITY.get(rule.get("action", "audit"), 3)
+        if priority < best_priority:
+            best_priority = priority
+            best = rule
+
+    return best
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
