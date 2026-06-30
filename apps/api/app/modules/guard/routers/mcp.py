@@ -15,6 +15,7 @@ deprecation warning (issue #800). Slated for removal in issue #810.
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -137,7 +138,108 @@ _TOOLS = [
             "required": ["summary"],
         },
     },
+    {
+        "name": "conduct_list_agents",
+        "description": "List all installed agents in your Conduct workspace.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "conduct_list_projects",
+        "description": "List all projects in your Conduct workspace.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "conduct_list_playbooks",
+        "description": "List available Conduct playbooks (workflow templates).",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "conduct_run_workflow",
+        "description": "Trigger a workflow run in Conduct. Returns the run ID.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": "string", "description": "The workflow UUID to run"},
+                "payload":     {"type": "object", "description": "Optional trigger payload (key-value pairs)"},
+            },
+            "required": ["workflow_id"],
+        },
+    },
+    {
+        "name": "conduct_get_run",
+        "description": "Get the status and result of a workflow run.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": "string"},
+                "run_id":      {"type": "string"},
+            },
+            "required": ["workflow_id", "run_id"],
+        },
+    },
 ]
+
+
+
+# ── Conduct platform helpers ──────────────────────────────────────────────────
+
+def _list_agents(db, ws_uuid: uuid.UUID) -> list[dict]:
+    rows = db.execute(
+        _sql("SELECT id, name, status FROM agents WHERE workspace_id = :w ORDER BY name LIMIT 100"),
+        {"w": str(ws_uuid)},
+    ).fetchall()
+    return [{"id": str(r.id), "name": r.name, "status": r.status} for r in rows]
+
+
+def _list_projects(db, ws_uuid: uuid.UUID) -> list[dict]:
+    rows = db.execute(
+        _sql("SELECT id, name, description FROM projects WHERE workspace_id = :w ORDER BY name LIMIT 100"),
+        {"w": str(ws_uuid)},
+    ).fetchall()
+    return [{"id": str(r.id), "name": r.name, "description": r.description} for r in rows]
+
+
+def _list_playbooks(db, ws_uuid: uuid.UUID) -> list[dict]:
+    rows = db.execute(
+        _sql("SELECT id, name, description FROM playbooks WHERE workspace_id = :w ORDER BY name LIMIT 100"),
+        {"w": str(ws_uuid)},
+    ).fetchall()
+    return [{"id": str(r.id), "name": r.name, "description": r.description} for r in rows]
+
+
+def _run_workflow(db, ws_uuid: uuid.UUID, workflow_id: str, payload: dict, user_email: str) -> dict:
+    row = db.execute(
+        _sql("SELECT id FROM workflows WHERE id = :wf AND workspace_id = :ws LIMIT 1"),
+        {"wf": workflow_id, "ws": str(ws_uuid)},
+    ).fetchone()
+    if not row:
+        raise ValueError(f"workflow {workflow_id} not found")
+    run_id = str(uuid.uuid4())
+    db.execute(
+        _sql("""
+            INSERT INTO runs (id, workflow_id, workspace_id, status, triggered_by, payload, created_at)
+            VALUES (:id, :wf, :ws, 'pending', :by, :pl, :ts)
+        """),
+        {"id": run_id, "wf": workflow_id, "ws": str(ws_uuid),
+         "by": user_email, "pl": json.dumps(payload), "ts": datetime.now(timezone.utc)},
+    )
+    db.commit()
+    return {"run_id": run_id, "status": "pending"}
+
+
+def _get_run_status(db, ws_uuid: uuid.UUID, workflow_id: str, run_id: str) -> dict:
+    row = db.execute(
+        _sql("SELECT status, outcome, started_at, completed_at FROM runs WHERE id = :r AND workflow_id = :wf AND workspace_id = :ws LIMIT 1"),
+        {"r": run_id, "wf": workflow_id, "ws": str(ws_uuid)},
+    ).fetchone()
+    if not row:
+        raise ValueError(f"run {run_id} not found")
+    return {
+        "status":       row.status,
+        "outcome":      row.outcome,
+        "started_at":   row.started_at.isoformat() if row.started_at else None,
+        "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+    }
 
 
 # ── Surface detection ─────────────────────────────────────────────────────────
@@ -312,7 +414,16 @@ async def mcp_sse(
     import asyncio
 
     if not _extract_token(request, token):
-        return JSONResponse(status_code=401, content={"error": "missing or invalid token"})
+        return JSONResponse(
+            status_code=401,
+            content={"error": "missing or invalid token"},
+            headers={
+                "WWW-Authenticate": (
+                    'Bearer realm="https://api.conductai.ai/guard/mcp",'
+                    f' resource_metadata="https://api.conductai.ai/.well-known/oauth-protected-resource/guard/mcp?workspace_id={workspace_id}"'
+                )
+            },
+        )
 
     async def event_stream():
         yield ": keepalive\n\n"
@@ -570,6 +681,37 @@ async def mcp_endpoint(
                 _record_event(db, ws_uuid, "guard_activity", {"summary": summary, "category": category}, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                 return JSONResponse(_text(msg_id, f"Activity logged — '{summary}'"))
 
+            elif tool_name == "conduct_list_agents":
+                return JSONResponse(_text(msg_id, json.dumps(_list_agents(db, ws_uuid), indent=2)))
+
+            elif tool_name == "conduct_list_projects":
+                return JSONResponse(_text(msg_id, json.dumps(_list_projects(db, ws_uuid), indent=2)))
+
+            elif tool_name == "conduct_list_playbooks":
+                return JSONResponse(_text(msg_id, json.dumps(_list_playbooks(db, ws_uuid), indent=2)))
+
+            elif tool_name == "conduct_run_workflow":
+                wf_id   = arguments.get("workflow_id", "")
+                payload = arguments.get("payload") or {}
+                if not wf_id:
+                    return JSONResponse(_text(msg_id, "Error — workflow_id is required."))
+                try:
+                    result = _run_workflow(db, ws_uuid, wf_id, payload, user_email)
+                    return JSONResponse(_text(msg_id, json.dumps(result, indent=2)))
+                except ValueError as e:
+                    return JSONResponse(_text(msg_id, f"Error — {e}"))
+
+            elif tool_name == "conduct_get_run":
+                wf_id  = arguments.get("workflow_id", "")
+                run_id = arguments.get("run_id", "")
+                if not wf_id or not run_id:
+                    return JSONResponse(_text(msg_id, "Error — workflow_id and run_id are required."))
+                try:
+                    result = _get_run_status(db, ws_uuid, wf_id, run_id)
+                    return JSONResponse(_text(msg_id, json.dumps(result, indent=2)))
+                except ValueError as e:
+                    return JSONResponse(_text(msg_id, f"Error — {e}"))
+
             else:
                 return JSONResponse(_text(msg_id, f"Unknown tool: {tool_name}"))
 
@@ -581,5 +723,89 @@ async def mcp_endpoint(
                 return JSONResponse(_err(msg_id, -32601, f"Method not found: {method}"))
             return JSONResponse(status_code=204, content=None)
 
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# OAuth support endpoints
+# ---------------------------------------------------------------------------
+
+well_known_router = APIRouter(tags=["guard-mcp"])
+
+
+@well_known_router.get("/.well-known/oauth-protected-resource/guard/mcp")
+async def oauth_protected_resource(workspace_id: str | None = Query(None)):
+    """RFC 9728 — tells OAuth clients where the authorization server lives.
+
+    workspace_id is echoed into the resource URI so it flows into the RFC 8707
+    resource parameter that MCP clients (Claude.ai) send to the authorize endpoint.
+    """
+    resource = "https://api.conductai.ai/guard/mcp"
+    if workspace_id:
+        resource += f"?workspace_id={workspace_id}"
+    return JSONResponse({
+        "resource": resource,
+        "authorization_servers": [os.environ.get("APP_URL", "https://app.conductai.ai")],
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["guard:read"],
+    })
+
+
+@router.post("/oauth/member-token")
+async def oauth_member_token(request: Request):
+    """Exchange a Clerk JWT for a guard member_token (called by the Next.js complete handler).
+
+    Validates the Clerk token, then upserts the user into guard_member_config
+    and returns their member_token. Creates one on first call.
+    """
+    import secrets as _secrets
+    from app.core.auth import _verify_clerk_token
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"error": "missing Clerk token"})
+
+    clerk_token = auth_header[7:].strip()
+    claims = _verify_clerk_token(clerk_token)
+    if not claims:
+        return JSONResponse(status_code=401, content={"error": "invalid Clerk token"})
+
+    body = await request.json()
+    workspace_id = body.get("workspace_id", "")
+    email = body.get("email", "")
+
+    if not workspace_id or not email:
+        return JSONResponse(status_code=422, content={"error": "workspace_id and email required"})
+
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        return JSONResponse(status_code=422, content={"error": "invalid workspace_id"})
+
+    clerk_user_id = claims.get("sub", email)
+
+    db = SessionLocal()
+    try:
+        existing = db.execute(
+            _sql("SELECT member_token FROM guard_member_config WHERE workspace_id = :ws AND clerk_user_id = :uid AND active = true LIMIT 1"),
+            {"ws": str(ws_uuid), "uid": clerk_user_id},
+        ).fetchone()
+
+        if existing:
+            member_token = existing.member_token
+        else:
+            member_token = _secrets.token_hex(32)
+            db.execute(
+                _sql("""
+                    INSERT INTO guard_member_config (workspace_id, clerk_user_id, user_email, member_token, active, joined_at)
+                    VALUES (:ws, :uid, :email, :token, true, :now)
+                    ON CONFLICT (workspace_id, clerk_user_id) DO UPDATE SET active = true
+                """),
+                {"ws": str(ws_uuid), "uid": clerk_user_id, "email": email, "token": member_token, "now": datetime.now(timezone.utc)},
+            )
+            db.commit()
+
+        return JSONResponse({"member_token": member_token})
     finally:
         db.close()
