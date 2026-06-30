@@ -33,29 +33,31 @@ def _generate_token() -> tuple[str, str]:
 
 
 def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, plaintext: str) -> None:
-    """Upsert CONDUCT_AGENT_TOKEN into the environment's credentials."""
+    """Merge CONDUCT_AGENT_TOKEN into the env_vars credential blob for the environment."""
     existing = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
-        Integration.handle == "CONDUCT_AGENT_TOKEN",
+        Integration.handle == "env_vars",
         Integration.environment_id == environment_id,
     ).first()
 
     if existing:
-        existing.encrypted_credentials = encrypt({"value": plaintext})
+        current = decrypt(existing.encrypted_credentials) if existing.encrypted_credentials else {}
+        current["CONDUCT_AGENT_TOKEN"] = plaintext
+        existing.encrypted_credentials = encrypt(current)
     else:
         stmt = (
             pg_insert(Integration)
             .values(
                 workspace_id=workspace_id,
                 service="agent_identity",
-                handle="CONDUCT_AGENT_TOKEN",
+                handle="env_vars",
                 auth_method="api_key",
-                encrypted_credentials=encrypt({"value": plaintext}),
+                encrypted_credentials=encrypt({"CONDUCT_AGENT_TOKEN": plaintext}),
                 environment_id=environment_id,
             )
             .on_conflict_do_update(
                 constraint="uq_integrations_workspace_handle_env",
-                set_=dict(encrypted_credentials=encrypt({"value": plaintext})),
+                set_=dict(encrypted_credentials=encrypt({"CONDUCT_AGENT_TOKEN": plaintext})),
             )
         )
         db.execute(stmt)
