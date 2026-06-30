@@ -12,5 +12,6 @@ class AgentIdentity(Base):
     provider        = Column(String(50),              nullable=False, default="conduct")
     token_prefix    = Column(String(30),              nullable=False)
     token_encrypted = Column(Text,                    nullable=False)
+    environment_id  = Column(String(36),              nullable=True)
     created_at      = Column(DateTime(timezone=True), nullable=False)
     last_used_at    = Column(DateTime(timezone=True), nullable=True)
