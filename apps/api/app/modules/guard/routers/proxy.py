@@ -219,13 +219,35 @@ async def _proxy(
     token = _extract_member_token(raw, bearer=bearer)
 
     # Internal server-to-server bypass (brain block / runtime calling its own proxy).
-    # Requires CLI_API_KEY header + X-Conductai-Workspace-Id. No member token needed.
+    # Accepts either CLI_API_KEY (legacy) or a cond_agt_ Agent Identity token.
     _internal_key = request.headers.get("x-conductai-internal", "")
     _is_internal = bool(
         _internal_key
         and settings.cli_api_key
         and _internal_key == settings.cli_api_key
     )
+    _agent_identity_id: str | None = None
+    if _internal_key and not _is_internal and _internal_key.startswith("cond_agt_"):
+        # Validate against agent_identities table — query by workspace first for efficiency
+        _hdr_ws = request.headers.get("x-conductai-workspace-id", "")
+        if _hdr_ws:
+            from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
+            from app.core.crypto import decrypt as _decrypt
+            _ai_db = SessionLocal()
+            try:
+                _candidates = _ai_db.query(_AgentIdentity).filter(
+                    _AgentIdentity.workspace_id == _hdr_ws
+                ).all()
+                for _cand in _candidates:
+                    try:
+                        if _decrypt(_cand.token_encrypted).get("token") == _internal_key:
+                            _is_internal = True
+                            _agent_identity_id = _cand.id
+                            break
+                    except Exception:
+                        pass
+            finally:
+                _ai_db.close()
 
     # cond_live_ workspace API key — read from raw before member-token filter strips it
     _raw_key = raw[7:].strip() if bearer and raw.lower().startswith("bearer ") else raw
@@ -244,6 +266,13 @@ async def _proxy(
             set_workspace_rls(db, workspace_id)
             _internal_email = request.headers.get("x-conductai-user-email") or None
             clerk_user_id = _internal_email or "system"
+            if _agent_identity_id:
+                from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
+                from datetime import datetime, timezone as _tz
+                _id_row = db.query(_AgentIdentity).filter(_AgentIdentity.id == _agent_identity_id).first()
+                if _id_row:
+                    _id_row.last_used_at = datetime.now(_tz.utc)
+                    db.commit()
         elif _ws_api_key:
             import hashlib
             from app.models.conduct_api_key import ConductApiKey
