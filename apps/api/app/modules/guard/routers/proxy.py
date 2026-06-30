@@ -226,39 +226,37 @@ async def _proxy(
         and settings.cli_api_key
         and _internal_key == settings.cli_api_key
     )
+    # ponytail: flag only — DB validation deferred into main db block (one session, not two)
+    _needs_agent_validation = bool(_internal_key and not _is_internal and _internal_key.startswith("cond_agt_"))
     _agent_identity_id: str | None = None
-    if _internal_key and not _is_internal and _internal_key.startswith("cond_agt_"):
-        # Validate against agent_identities table — query by workspace first for efficiency
-        _hdr_ws = request.headers.get("x-conductai-workspace-id", "")
-        if _hdr_ws:
-            from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
-            from app.core.crypto import decrypt as _decrypt
-            _ai_db = SessionLocal()
-            try:
-                _candidates = _ai_db.query(_AgentIdentity).filter(
-                    _AgentIdentity.workspace_id == _hdr_ws
-                ).all()
-                for _cand in _candidates:
-                    try:
-                        if _decrypt(_cand.token_encrypted).get("token") == _internal_key:
-                            _is_internal = True
-                            _agent_identity_id = _cand.id
-                            break
-                    except Exception:
-                        pass
-            finally:
-                _ai_db.close()
 
     # cond_live_ workspace API key — read from raw before member-token filter strips it
     _raw_key = raw[7:].strip() if bearer and raw.lower().startswith("bearer ") else raw
     _ws_api_key = _raw_key if _raw_key.startswith("cond_live_") else None
 
-    if not token and not _is_internal and not _ws_api_key:
+    if not token and not _is_internal and not _needs_agent_validation and not _ws_api_key:
         return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
 
     # 2. Resolve workspace + user
     db = SessionLocal()
     try:
+        if _needs_agent_validation and not _is_internal:
+            _hdr_ws = request.headers.get("x-conductai-workspace-id", "")
+            if not _hdr_ws:
+                return _fail_closed(400, "X-Conductai-Workspace-Id required for agent identity calls")
+            from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
+            from app.core.crypto import decrypt as _decrypt
+            for _cand in db.query(_AgentIdentity).filter(_AgentIdentity.workspace_id == _hdr_ws).all():
+                try:
+                    if _decrypt(_cand.token_encrypted).get("token") == _internal_key:
+                        _is_internal = True
+                        _agent_identity_id = _cand.id
+                        break
+                except Exception:
+                    pass
+            if not _is_internal:
+                return _fail_closed(401, "Agent Identity token not recognized")
+
         if _is_internal:
             workspace_id = request.headers.get("x-conductai-workspace-id", "")
             if not workspace_id:
