@@ -439,13 +439,14 @@ async def mcp_endpoint(
                 _workflow = arguments.get("conduct_workflow") or None
                 rules = _get_rules(db, ws_uuid)
 
-                gc = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
-                if gc and gc.secret_scan_enabled:
+                _secret_rule = next((r for r in rules if r.get("rule_id") == "secret-redact"), None)
+                if _secret_rule:
                     _inp_text = json.dumps(inner_input)
                     _, _found = redact_secrets(_inp_text)
                     if _found:
+                        _secret_msg = _secret_rule.get("message") or "Credential detected in tool input."
                         _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "secret-redact", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
-                        return JSONResponse(_text(msg_id, f"BLOCKED — Credential detected in tool input. Remove secrets before passing to AI tools.  [types: {', '.join(_found)}]"))
+                        return JSONResponse(_text(msg_id, f"BLOCKED — {_secret_msg}  [types: {', '.join(_found)}]"))
 
                 rule  = _match_policy(inner_tool, inner_input, rules)
 

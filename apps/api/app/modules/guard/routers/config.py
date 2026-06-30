@@ -41,7 +41,6 @@ class ConfigOut(BaseModel):
     notify_on_budget: bool
     automation_security_scan: bool = False
     automation_workflow_trigger: bool = False
-    secret_scan_enabled: bool = True
     created_at: datetime
     updated_at: datetime | None
     automation_warnings: list[str] = []
@@ -59,7 +58,6 @@ class ConfigPatch(BaseModel):
     notify_on_budget: bool | None = None
     automation_security_scan: bool | None = None
     automation_workflow_trigger: bool | None = None
-    secret_scan_enabled: bool | None = None
 
 
 class InstallStatusOut(BaseModel):
@@ -109,7 +107,6 @@ def _config_to_out(cfg: GuardConfig) -> ConfigOut:
         notify_on_budget=cfg.notify_on_budget,
         automation_security_scan=bool(cfg.automation_security_scan),
         automation_workflow_trigger=bool(cfg.automation_workflow_trigger),
-        secret_scan_enabled=bool(getattr(cfg, "secret_scan_enabled", True)),
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
     )
@@ -230,8 +227,6 @@ def patch_config(
         config.automation_security_scan = body.automation_security_scan
     if body.automation_workflow_trigger is not None:
         config.automation_workflow_trigger = body.automation_workflow_trigger
-    if body.secret_scan_enabled is not None:
-        config.secret_scan_enabled = body.secret_scan_enabled
     config.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(config)

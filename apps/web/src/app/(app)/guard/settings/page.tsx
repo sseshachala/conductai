@@ -19,7 +19,6 @@ interface TeamPrefs {
   notify_on_budget: boolean
   automation_security_scan: boolean
   automation_workflow_trigger: boolean
-  secret_scan_enabled: boolean
 }
 
 
@@ -81,7 +80,6 @@ function SettingsContent() {
     notify_on_budget: true,
     automation_security_scan: false,
     automation_workflow_trigger: false,
-    secret_scan_enabled: true,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -134,7 +132,6 @@ function SettingsContent() {
         notify_on_budget: data.notify_on_budget ?? true,
         automation_security_scan: data.automation_security_scan ?? false,
         automation_workflow_trigger: data.automation_workflow_trigger ?? false,
-        secret_scan_enabled: data.secret_scan_enabled ?? true,
       })
       if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
       if (data.fail_mode) setFailMode(data.fail_mode as "fail_open" | "fail_closed")
@@ -193,7 +190,7 @@ function SettingsContent() {
   }
 
 
-  async function handleToggle(field: "notify_on_block" | "notify_on_budget" | "secret_scan_enabled", value: boolean) {
+  async function handleToggle(field: "notify_on_block" | "notify_on_budget", value: boolean) {
     setPrefs(p => ({ ...p, [field]: value }))
     try {
       await patch({ [field]: value })
@@ -641,22 +638,6 @@ function SettingsContent() {
             <a href="/integrations" className="btn btn-ghost btn-sm" style={{ textDecoration: "none" }}>
               Manage MCP →
             </a>
-          </div>
-
-          {/* Secret scanning */}
-          <div className="card" style={{ marginTop: 20, padding: "14px 20px", display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5 }}>Credential scanning</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                Block tool calls that contain API keys, tokens, or passwords in their input.
-                Disable if your team intentionally passes credentials through AI tools.
-              </div>
-            </div>
-            <GuardToggle
-              on={prefs.secret_scan_enabled}
-              onClick={() => handleToggle("secret_scan_enabled", !prefs.secret_scan_enabled)}
-              disabled={!isAdmin}
-            />
           </div>
 
           {/* Automation — hidden until operation cleanup complete */}
