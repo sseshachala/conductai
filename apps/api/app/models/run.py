@@ -14,6 +14,7 @@ class Run(Base):
     workflow_version_id = Column(UUID(as_uuid=True), ForeignKey("workflow_versions.id", ondelete="CASCADE"), nullable=False)
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     triggered_by = Column(String(255), nullable=True)  # user_id / 'webhook' / 'schedule'
+    agent_role_id = Column(String(36), nullable=True)
     status = Column(String(50), nullable=False, default="pending")  # pending/running/paused/succeeded/failed/cancelled
     started_at = Column(DateTime(timezone=True), nullable=True)
     paused_at = Column(DateTime(timezone=True), nullable=True)

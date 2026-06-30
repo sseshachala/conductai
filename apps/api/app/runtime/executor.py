@@ -1729,6 +1729,18 @@ def execute_run(run_id: str):
         credentials = CredentialStore(_raw_creds)
         del _raw_creds  # drop the plain dict reference immediately
 
+        # Stamp agent_role_id on the run if CONDUCT_AGENT_TOKEN is in credentials.
+        _agent_token_creds = credentials.get("CONDUCT_AGENT_TOKEN") or {}
+        if isinstance(_agent_token_creds, dict) and _agent_token_creds.get("value"):
+            from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
+            _identity = db.query(_AgentIdentity).filter(
+                _AgentIdentity.workspace_id == workspace_id_str,
+                _AgentIdentity.environment_id == str(env_id or ""),
+            ).first()
+            if _identity and not run.agent_role_id:
+                run.agent_role_id = str(_identity.id)
+                db.commit()
+
         final_state = _execute_dag(
             run=run,
             version=version,
