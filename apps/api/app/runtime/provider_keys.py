@@ -38,3 +38,16 @@ class MissingProviderKey(RuntimeError):
             f"{self.env_var} is not set for {provider} model "
             f"'{model or 'default'}' — add it under Settings → Environments"
         )
+
+
+class MissingAgentToken(RuntimeError):
+    """Raised during preflight when CONDUCT_AGENT_TOKEN is not in the environment."""
+    def __init__(self):
+        super().__init__(
+            "Agent Identity token required. Go to Agent ID in the sidebar, "
+            "issue a token, and assign it to this agent's environment."
+        )
+
+
+def agent_token_exists(env_keys: set[str]) -> bool:
+    return "CONDUCT_AGENT_TOKEN" in env_keys
