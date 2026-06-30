@@ -28,7 +28,6 @@ class GuardConfig(Base):
     alert_slack_integration_id = Column(UUID(as_uuid=True), nullable=True)
     automation_security_scan = Column(Boolean, nullable=False, default=False)
     automation_workflow_trigger = Column(Boolean, nullable=False, default=False)
-    secret_scan_enabled = Column(Boolean, nullable=False, default=True)
     # Dev-time persona: applies to MCP hook + daemon sync (Claude Code, Cursor, etc.).
     # 'conservative' | 'standard' | 'developer' — admin-managed; member can override.
     persona = Column(String(20), nullable=False, default="agent")
