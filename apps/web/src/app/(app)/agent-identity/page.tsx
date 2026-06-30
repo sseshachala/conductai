@@ -13,6 +13,12 @@ interface AgentIdentity {
   token_prefix: string
   created_at: string
   last_used_at: string | null
+  environment_id: string | null
+}
+
+interface Env {
+  id: string
+  name: string
 }
 
 export default function AgentIdentityPage() {
@@ -35,10 +41,12 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const canCreate = role === "admin" || role === "developer"
 
   const [identities, setIdentities] = useState<AgentIdentity[]>([])
+  const [envs, setEnvs] = useState<Env[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState("")
+  const [newEnvId, setNewEnvId] = useState("")
   const [newToken, setNewToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -58,8 +66,12 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
     if (!workspaceId || !apiUrl) return
     try {
       const h = await headers()
-      const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/agent-identities`, { headers: h })
-      if (r.ok) setIdentities(await r.json())
+      const [idRes, envRes] = await Promise.all([
+        fetch(`${apiUrl}/workspaces/${workspaceId}/agent-identities`, { headers: h }),
+        fetch(`${apiUrl}/environments`, { headers: h }),
+      ])
+      if (idRes.ok) setIdentities(await idRes.json())
+      if (envRes.ok) setEnvs(await envRes.json())
     } catch {}
     setLoading(false)
   }, [workspaceId, apiUrl, headers])
@@ -75,12 +87,13 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
       const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/agent-identities`, {
         method: "POST",
         headers: h,
-        body: JSON.stringify({ name: newName.trim() }),
+        body: JSON.stringify({ name: newName.trim(), environment_id: newEnvId || null }),
       })
       if (r.ok) {
         const data = await r.json()
         setNewToken(data.token)
         setNewName("")
+        setNewEnvId("")
         setShowCreate(false)
         await load()
       } else {
@@ -97,17 +110,10 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
     try {
       const h = await headers()
       const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/agent-identities/${id}/regenerate`, {
-        method: "POST",
-        headers: h,
+        method: "POST", headers: h,
       })
-      if (r.ok) {
-        const data = await r.json()
-        setNewToken(data.token)
-        await load()
-      } else {
-        const body = await r.json().catch(() => ({}))
-        setError(body.detail ?? "Could not regenerate token.")
-      }
+      if (r.ok) { setNewToken((await r.json()).token); await load() }
+      else setError((await r.json().catch(() => ({}))).detail ?? "Could not regenerate token.")
     } catch { setError("Could not regenerate token — check your connection.") }
     setRegenerating(null)
   }
@@ -121,10 +127,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
       const h = await headers()
       const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/agent-identities/${id}`, { method: "DELETE", headers: h })
       if (r.ok) setIdentities(x => x.filter(i => i.id !== id))
-      else {
-        const body = await r.json().catch(() => ({}))
-        setError(body.detail ?? "Could not delete — please try again.")
-      }
+      else setError((await r.json().catch(() => ({}))).detail ?? "Could not delete.")
     } catch { setError("Could not delete — check your connection.") }
     setDeleting(null)
   }
@@ -141,9 +144,14 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
     return new Date(d).toLocaleDateString("en-GB", { month: "short", day: "numeric", year: "numeric" })
   }
 
+  function envName(id: string | null) {
+    if (!id) return "—"
+    return envs.find(e => e.id === id)?.name ?? "—"
+  }
+
   return (
     <AppShell>
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0 }}>Agent Identity</h1>
@@ -177,7 +185,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
               </button>
             </div>
             <p style={{ fontSize: 12, color: "var(--text-2)", margin: 0 }}>
-              Set this as CONDUCT_AGENT_TOKEN in your agent environment.
+              Added as CONDUCT_AGENT_TOKEN to the selected environment automatically.
             </p>
             <button onClick={() => setNewToken(null)} style={{ fontSize: 12, color: "var(--warn)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", textAlign: "left", padding: 0 }}>
               Saved it, dismiss
@@ -186,7 +194,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         )}
 
         {canCreate && showCreate && (
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input
               type="text"
               value={newName}
@@ -196,6 +204,14 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
               autoFocus
               style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none" }}
             />
+            <select
+              value={newEnvId}
+              onChange={e => setNewEnvId(e.target.value)}
+              style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none", minWidth: 160 }}
+            >
+              <option value="">No environment</option>
+              {envs.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
             <button onClick={create} disabled={creating || !newName.trim()} className="btn btn-primary btn-sm" style={{ opacity: (creating || !newName.trim()) ? 0.4 : 1 }}>
               {creating ? "Issuing..." : "Issue token"}
             </button>
@@ -211,20 +227,15 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
           ) : (
             identities.map((identity, i) => (
               <div key={identity.id} style={{ borderBottom: i < identities.length - 1 ? "1px solid var(--border)" : "none" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.4fr 0.7fr 0.9fr 0.9fr auto", gap: 14, padding: "14px 20px", alignItems: "center" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr 0.9fr 0.8fr 0.8fr auto", gap: 14, padding: "14px 20px", alignItems: "center" }}>
                   <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--text)" }}>{identity.name}</div>
                   <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{identity.token_prefix}...</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{identity.provider}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{envName(identity.environment_id)}</div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Created {fmt(identity.created_at)}</div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Used {fmt(identity.last_used_at)}</div>
                   <div style={{ display: "flex", gap: 4 }}>
                     {canCreate && (
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ fontSize: 11.5 }}
-                        onClick={() => regenerate(identity.id)}
-                        disabled={regenerating === identity.id}
-                      >
+                      <button className="btn btn-ghost btn-sm" style={{ fontSize: 11.5 }} onClick={() => regenerate(identity.id)} disabled={regenerating === identity.id}>
                         {regenerating === identity.id ? "..." : "Regenerate"}
                       </button>
                     )}
@@ -237,18 +248,14 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                           else { setDeleteConfirmId(identity.id); setDeleteConfirmValue("") }
                         }}
                         disabled={deleting === identity.id}
-                      >
-                        x
-                      </button>
+                      >x</button>
                     )}
                   </div>
                 </div>
 
                 {isAdmin && deleteConfirmId === identity.id && (
                   <div style={{ margin: "0 20px 12px", padding: "10px 12px", border: "1px solid var(--err-bd)", borderRadius: 10, background: "var(--err-bg)", display: "flex", flexDirection: "column", gap: 8 }}>
-                    <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
-                      Type <strong>{identity.name}</strong> to confirm deletion.
-                    </p>
+                    <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>Type <strong>{identity.name}</strong> to confirm deletion.</p>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <input
                         value={deleteConfirmValue}
@@ -260,12 +267,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                         placeholder={identity.name}
                         style={{ flex: 1, minWidth: 0, fontSize: 12, border: "1px solid var(--err-bd)", borderRadius: 8, padding: "6px 10px", outline: "none", background: "var(--surface)", color: "var(--text)" }}
                       />
-                      <button
-                        onClick={() => del(identity.id)}
-                        disabled={deleting === identity.id || deleteConfirmValue !== identity.name}
-                        className="btn btn-sm"
-                        style={{ background: "var(--err)", color: "#fff", border: "none", opacity: (deleting === identity.id || deleteConfirmValue !== identity.name) ? 0.4 : 1 }}
-                      >
+                      <button onClick={() => del(identity.id)} disabled={deleting === identity.id || deleteConfirmValue !== identity.name} className="btn btn-sm" style={{ background: "var(--err)", color: "#fff", border: "none", opacity: (deleting === identity.id || deleteConfirmValue !== identity.name) ? 0.4 : 1 }}>
                         {deleting === identity.id ? "Deleting..." : "Delete"}
                       </button>
                       <button onClick={() => { setDeleteConfirmId(null); setDeleteConfirmValue("") }} className="btn btn-ghost btn-sm">Cancel</button>
@@ -278,7 +280,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         </div>
 
         <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          Tokens are stored encrypted. Conduct never sees the plaintext again after issuance. Admins and developers can issue tokens. Only admins can delete.
+          Tokens are stored encrypted. Conduct never sees the plaintext again after issuance. When assigned to an environment, CONDUCT_AGENT_TOKEN is added automatically. Admins and developers can issue tokens. Only admins can delete.
         </p>
       </div>
     </AppShell>
