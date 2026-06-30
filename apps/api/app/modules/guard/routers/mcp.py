@@ -775,18 +775,29 @@ async def oauth_member_token(request: Request):
     workspace_id = body.get("workspace_id", "")
     email = body.get("email", "")
 
-    if not workspace_id or not email:
-        return JSONResponse(status_code=422, content={"error": "workspace_id and email required"})
-
-    try:
-        ws_uuid = uuid.UUID(workspace_id)
-    except ValueError:
-        return JSONResponse(status_code=422, content={"error": "invalid workspace_id"})
+    if not email:
+        return JSONResponse(status_code=422, content={"error": "email required"})
 
     clerk_user_id = claims.get("sub", email)
 
     db = SessionLocal()
     try:
+        # If no workspace_id provided (Claude.ai doesn't send resource param),
+        # look up the user's most recently joined workspace.
+        if not workspace_id:
+            row = db.execute(
+                _sql("SELECT workspace_id FROM guard_member_config WHERE clerk_user_id = :uid AND active = true ORDER BY joined_at DESC LIMIT 1"),
+                {"uid": clerk_user_id},
+            ).fetchone()
+            if not row:
+                return JSONResponse(status_code=404, content={"error": "no guard workspace found for this user — join via invite first"})
+            workspace_id = str(row.workspace_id)
+
+        try:
+            ws_uuid = uuid.UUID(workspace_id)
+        except ValueError:
+            return JSONResponse(status_code=422, content={"error": "invalid workspace_id"})
+
         existing = db.execute(
             _sql("SELECT member_token FROM guard_member_config WHERE workspace_id = :ws AND clerk_user_id = :uid AND active = true LIMIT 1"),
             {"ws": str(ws_uuid), "uid": clerk_user_id},
