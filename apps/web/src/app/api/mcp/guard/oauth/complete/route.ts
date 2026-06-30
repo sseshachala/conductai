@@ -25,6 +25,8 @@ function verifyStateCookie(val: string) {
 
 export async function GET(req: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.conductai.ai';
+  // Use server-only API_URL (no NEXT_PUBLIC prefix) so it's never baked at build time
+  const apiUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'https://api.conductai.ai';
 
   const stateCookie = req.cookies.get('mcp_oauth_state')?.value;
   if (!stateCookie) {
@@ -50,7 +52,6 @@ export async function GET(req: NextRequest) {
   }
 
   const clerkToken = await session.getToken();
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.conductai.ai';
   const tokenRes = await fetch(`${apiUrl}/guard/mcp/oauth/member-token`, {
     method: 'POST',
     headers: {
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
     const errBody = await tokenRes.text().catch(() => 'unreadable');
     const wsid = oauthState.workspaceId || '(empty)';
     return NextResponse.redirect(
-      `${appUrl}/sign-in?error=mcp_member_token_failed&status=${tokenRes.status}&ws=${wsid}&detail=${encodeURIComponent(errBody.slice(0, 100))}`
+      `${appUrl}/sign-in?error=mcp_member_token_failed&status=${tokenRes.status}&ws=${wsid}&api=${encodeURIComponent(apiUrl)}&detail=${encodeURIComponent(errBody.slice(0, 100))}`
     );
   }
 
