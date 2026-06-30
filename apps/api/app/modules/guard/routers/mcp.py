@@ -402,7 +402,7 @@ def _extract_token(request: Request, query_token: str | None) -> str | None:
 @router.get("")
 async def mcp_sse(
     request: Request,
-    workspace_id: str = Query(...),
+    workspace_id: str | None = Query(None),
     token: str | None = Query(None),
 ):
     """SSE endpoint required by MCP Streamable HTTP transport (GET establishes the stream).
@@ -410,17 +410,19 @@ async def mcp_sse(
     holds the connection open with keepalive pings until the client disconnects.
 
     Auth: Authorization: Bearer <token> header preferred. ?token= legacy fallback.
+    workspace_id is optional — when omitted, the Bearer token identifies the workspace.
     """
     import asyncio
 
     if not _extract_token(request, token):
+        ws_param = f"?workspace_id={workspace_id}" if workspace_id else ""
         return JSONResponse(
             status_code=401,
             content={"error": "missing or invalid token"},
             headers={
                 "WWW-Authenticate": (
                     'Bearer realm="https://api.conductai.ai/guard/mcp",'
-                    f' resource_metadata="https://api.conductai.ai/.well-known/oauth-protected-resource/guard/mcp?workspace_id={workspace_id}"'
+                    f' resource_metadata="https://api.conductai.ai/.well-known/oauth-protected-resource/guard/mcp{ws_param}"'
                 )
             },
         )
@@ -444,7 +446,7 @@ async def mcp_sse(
 @router.post("")
 async def mcp_endpoint(
     request: Request,
-    workspace_id: str = Query(..., description="Guard workspace UUID"),
+    workspace_id: str | None = Query(None, description="Guard workspace UUID — optional when using OAuth Bearer token"),
     token: str | None = Query(None, description="Legacy fallback; prefer Authorization: Bearer header"),
 ):
     """Stateless MCP JSON-RPC endpoint for Claude.ai / Claude Desktop / Claude for Work."""
@@ -456,11 +458,6 @@ async def mcp_endpoint(
     msg_id = body.get("id")
     method = body.get("method", "")
     params = body.get("params") or {}
-
-    try:
-        ws_uuid = uuid.UUID(workspace_id)
-    except ValueError:
-        return JSONResponse(status_code=422, content=_err(msg_id, -32600, "invalid workspace_id"))
 
     # Header-first, query-fallback per issue #800
     resolved_token = _extract_token(request, token)
@@ -477,15 +474,31 @@ async def mcp_endpoint(
                 _sql("SELECT workspace_id, user_id FROM conduct_api_keys WHERE key_hash = :h AND (expires_at IS NULL OR expires_at > now()) LIMIT 1"),
                 {"h": key_hash},
             ).fetchone()
-            if not api_key_row or str(api_key_row.workspace_id) != str(ws_uuid):
+            if not api_key_row:
                 return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid API key"))
+            if workspace_id and str(api_key_row.workspace_id) != str(uuid.UUID(workspace_id)):
+                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid API key"))
+            ws_uuid = api_key_row.workspace_id
             clerk_user_id = api_key_row.user_id or "api_key"
-            user_email = get_clerk_user_email(clerk_user_id) if clerk_user_id != "api_key" else f"apikey@{workspace_id[:8]}"
+            user_email = get_clerk_user_email(clerk_user_id) if clerk_user_id != "api_key" else f"apikey@{str(ws_uuid)[:8]}"
         else:
-            member_row = db.execute(
-                _sql("SELECT clerk_user_id FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
-                {"w": str(ws_uuid), "t": resolved_token},
-            ).fetchone()
+            # member_token — look up workspace from token when workspace_id not in URL
+            if workspace_id:
+                try:
+                    ws_uuid = uuid.UUID(workspace_id)
+                except ValueError:
+                    return JSONResponse(status_code=422, content=_err(msg_id, -32600, "invalid workspace_id"))
+                member_row = db.execute(
+                    _sql("SELECT clerk_user_id FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
+                    {"w": str(ws_uuid), "t": resolved_token},
+                ).fetchone()
+            else:
+                member_row = db.execute(
+                    _sql("SELECT clerk_user_id, workspace_id FROM guard_member_config WHERE member_token = :t AND active = true LIMIT 1"),
+                    {"t": resolved_token},
+                ).fetchone()
+                if member_row:
+                    ws_uuid = member_row.workspace_id
             if not member_row:
                 return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid token"))
             clerk_user_id = member_row.clerk_user_id
