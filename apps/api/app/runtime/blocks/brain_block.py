@@ -454,6 +454,11 @@ def _execute_brain(
     # Internal auth — proxy validates CONDUCT_AGENT_TOKEN issued via Agent Identity.
     if _proxy_base and workspace_id:
         _internal_key = _env_vars.get("CONDUCT_AGENT_TOKEN", "")
+        if not _internal_key:
+            raise RuntimeError(
+                "Agent Identity token required. Go to Agent ID in the sidebar, "
+                "issue a token, and assign it to this agent's environment."
+            )
         if _internal_key:
             _extra_headers["x-conductai-internal"] = _internal_key
             _extra_headers["x-conductai-workspace-id"] = str(workspace_id)
