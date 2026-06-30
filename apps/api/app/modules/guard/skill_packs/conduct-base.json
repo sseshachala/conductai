@@ -183,18 +183,6 @@
       "frameworks": ["OWASP:A03"]
     },
     {
-      "id": "secret-redact",
-      "persona": "agent",
-      "non_overridable": false,
-      "description": "Block tool calls that contain credentials or API keys in their input",
-      "match_tool": "*",
-      "match_pattern": "",
-      "action": "block",
-      "message": "Credential detected in tool input. Remove secrets before passing to AI tools.",
-      "severity": "critical",
-      "frameworks": ["SOC2:CC6.1", "OWASP:A02"]
-    },
-    {
       "id": "no-secret-in-commit-msg",
       "persona": "agent",
       "non_overridable": false,
