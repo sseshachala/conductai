@@ -42,9 +42,7 @@ export async function GET(req: NextRequest) {
   const cookieVal = `${encoded}.${sign(encoded)}`;
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.conductai.ai';
-  const res = NextResponse.redirect(
-    `${appUrl}/sign-in?redirect_url=${encodeURIComponent('/api/mcp/guard/oauth/complete')}`
-  );
+  const res = NextResponse.redirect(`${appUrl}/api/mcp/guard/oauth/complete`);
   res.cookies.set('mcp_oauth_state', cookieVal, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
