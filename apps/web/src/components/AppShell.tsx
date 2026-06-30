@@ -1018,7 +1018,7 @@ function AppShellInnerContent({
           <SideNavItem
             href="/agent-identity"
             label="Agent ID"
-            icon={<Icons.Gear />}
+            icon={<Icons.Lock />}
             active={pathname.startsWith("/agent-identity")}
             collapsed={collapsed}
           />
