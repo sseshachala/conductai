@@ -25,8 +25,7 @@ function verifyStateCookie(val: string) {
 
 export async function GET(req: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.conductai.ai';
-  // Use server-only API_URL (no NEXT_PUBLIC prefix) so it's never baked at build time
-  const apiUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'https://api.conductai.ai';
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.conductai.ai';
 
   const stateCookie = req.cookies.get('mcp_oauth_state')?.value;
   if (!stateCookie) {
