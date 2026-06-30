@@ -452,10 +452,9 @@ def _execute_brain(
     if workflow_id:
         _extra_headers["x-conductai-workflow-id"] = str(workflow_id)
     # Internal auth — proxy validates CONDUCT_AGENT_TOKEN issued via Agent Identity.
-    # Stored under handle "CONDUCT_AGENT_TOKEN" with key "value".
+    # Stored in env_vars handle so it appears as a plain env var.
     if _proxy_base and workspace_id:
-        _agent_creds = (credentials or {}).get("CONDUCT_AGENT_TOKEN") or {}
-        _internal_key = (_agent_creds.get("value") or _env_vars.get("CONDUCT_AGENT_TOKEN", ""))
+        _internal_key = _env_vars.get("CONDUCT_AGENT_TOKEN", "")
         if not _internal_key:
             raise RuntimeError(
                 "Agent Identity token required. Go to Agent ID in the sidebar, "
