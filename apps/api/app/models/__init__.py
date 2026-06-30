@@ -19,6 +19,7 @@ from app.modules.guard.models import (
     GuardAuditEvent,
     GuardSpendBudget,
 )
+from app.modules.agent_identity.models import AgentIdentity
 
 __all__ = [
     "Organization", "Workspace", "User", "WorkspaceUser", "Project",
@@ -28,4 +29,5 @@ __all__ = [
     "GuardConfig", "GuardMemberConfig", "GuardSession",
     "GuardAuditEvent", "GuardSpendBudget",
     "Role", "Permission",
+    "AgentIdentity",
 ]

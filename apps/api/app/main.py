@@ -43,6 +43,7 @@ from app.routers.session_reports import router as session_reports_router
 from app.routers.team_memory import router as team_memory_router
 from app.routers.meta import router as meta_router
 from app.routers.share import router as share_router
+from app.modules.agent_identity.router import router as agent_identity_router
 
 setup_logging()
 log = structlog.get_logger(__name__)
@@ -144,6 +145,7 @@ app.include_router(session_reports_router)
 app.include_router(team_memory_router)
 app.include_router(meta_router)
 app.include_router(share_router)
+app.include_router(agent_identity_router)
 
 
 @app.on_event("startup")
