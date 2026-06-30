@@ -54,7 +54,7 @@ function ProductsDropdown() {
 
 function MarketingNav() {
   return (
-    <header className="sticky top-0 bg-white/95 backdrop-blur-sm z-[300] border-b border-stone-100">
+    <header className="sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
       <div className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
         <a href="/">
           <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
