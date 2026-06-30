@@ -972,7 +972,10 @@ function PoliciesContent() {
                           </button>
                         )}
                         {locked
-                          ? <span style={{ width: 40, height: 23, borderRadius: 20, background: "var(--border-2)", display: "inline-block", opacity: 0.4, cursor: "not-allowed" }} title="Non-overridable" />
+                          ? <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                              <span style={{ width: 40, height: 23, borderRadius: 20, background: "var(--border-2)", display: "inline-block", opacity: 0.4, cursor: "not-allowed" }} />
+                              <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Required</span>
+                            </span>
                           : canWrite
                             ? <Toggle enabled={p.enabled} onChange={() => handleToggle(p.id)} />
                             : <span style={{ width: 40, height: 23, borderRadius: 20, background: p.enabled ? "var(--accent)" : "var(--border-2)", display: "inline-block", opacity: 0.5 }} />
