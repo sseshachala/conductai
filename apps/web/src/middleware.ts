@@ -1,7 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { type NextRequest, NextResponse } from "next/server"
 
-const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "/compare", "/privacy", "/terms", "/benchmark(.*)", "/eval(.*)", "/marketplace", "/playbooks", "/token-guardrails", "/docs(.*)", "/accept-invite(.*)", "/sdd(.*)", "/tools(.*)", "/about(.*)", "/blog(.*)", "/share(.*)", "/solutions(.*)", "/partners(.*)", "/guard-landing",])
+const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "/compare", "/privacy", "/terms", "/benchmark(.*)", "/eval(.*)", "/marketplace", "/playbooks", "/token-guardrails", "/docs(.*)", "/accept-invite(.*)", "/sdd(.*)", "/tools(.*)", "/about(.*)", "/blog(.*)", "/share(.*)", "/solutions(.*)", "/partners(.*)", "/guard-landing", "/api/mcp/guard/oauth/(.*)", "/.well-known/(.*)",])
 
 const isAppSubdomain = (req: NextRequest) =>
   req.headers.get("host")?.startsWith("app.")
