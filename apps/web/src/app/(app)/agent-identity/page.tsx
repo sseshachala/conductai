@@ -43,8 +43,8 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const [identities, setIdentities] = useState<AgentIdentity[]>([])
   const [envs, setEnvs] = useState<Env[]>([])
   const [loading, setLoading] = useState(true)
+  const [showDrawer, setShowDrawer] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState("")
   const [newEnvId, setNewEnvId] = useState("")
   const [newToken, setNewToken] = useState<string | null>(null)
@@ -78,6 +78,9 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
 
   useEffect(() => { load() }, [load])
 
+  function openDrawer() { setNewName(""); setNewEnvId(""); setError(null); setShowDrawer(true) }
+  function closeDrawer() { setShowDrawer(false); setError(null) }
+
   async function create() {
     if (!newName.trim()) return
     setCreating(true)
@@ -92,9 +95,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
       if (r.ok) {
         const data = await r.json()
         setNewToken(data.token)
-        setNewName("")
-        setNewEnvId("")
-        setShowCreate(false)
+        closeDrawer()
         await load()
       } else {
         const body = await r.json().catch(() => ({}))
@@ -106,29 +107,21 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
 
   async function regenerate(id: string) {
     setRegenerating(id)
-    setError(null)
     try {
       const h = await headers()
-      const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/agent-identities/${id}/regenerate`, {
-        method: "POST", headers: h,
-      })
+      const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/agent-identities/${id}/regenerate`, { method: "POST", headers: h })
       if (r.ok) { setNewToken((await r.json()).token); await load() }
-      else setError((await r.json().catch(() => ({}))).detail ?? "Could not regenerate token.")
-    } catch { setError("Could not regenerate token — check your connection.") }
+    } catch {}
     setRegenerating(null)
   }
 
   async function del(id: string) {
-    setDeleteConfirmId(null)
-    setDeleteConfirmValue("")
-    setDeleting(id)
-    setError(null)
+    setDeleteConfirmId(null); setDeleteConfirmValue(""); setDeleting(id)
     try {
       const h = await headers()
       const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/agent-identities/${id}`, { method: "DELETE", headers: h })
       if (r.ok) setIdentities(x => x.filter(i => i.id !== id))
-      else setError((await r.json().catch(() => ({}))).detail ?? "Could not delete.")
-    } catch { setError("Could not delete — check your connection.") }
+    } catch {}
     setDeleting(null)
   }
 
@@ -159,19 +152,12 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
               Issue tokens for your agents. Each agent gets its own credential, not shared with users.
             </p>
           </div>
-          {canCreate && !showCreate && (
-            <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={() => setShowCreate(true)}>
+          {canCreate && (
+            <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={openDrawer}>
               + Issue token
             </button>
           )}
         </div>
-
-        {error && (
-          <div className="card" style={{ padding: "12px 16px", background: "var(--err-bg)", borderColor: "var(--err-bd)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <p style={{ fontSize: 12.5, color: "var(--err)", margin: 0 }}>{error}</p>
-            <button onClick={() => setError(null)} style={{ fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer", opacity: 0.7 }}>x</button>
-          </div>
-        )}
 
         {newToken && (
           <div className="card" style={{ padding: "16px 18px", background: "var(--warn-bg)", borderColor: "var(--warn-bd)", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -190,32 +176,6 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
             <button onClick={() => setNewToken(null)} style={{ fontSize: 12, color: "var(--warn)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", textAlign: "left", padding: 0 }}>
               Saved it, dismiss
             </button>
-          </div>
-        )}
-
-        {canCreate && showCreate && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              type="text"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") setShowCreate(false) }}
-              placeholder="Token name (e.g. PR Reviewer, BugHunter)"
-              autoFocus
-              style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none" }}
-            />
-            <select
-              value={newEnvId}
-              onChange={e => setNewEnvId(e.target.value)}
-              style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none", minWidth: 160 }}
-            >
-              <option value="">No environment</option>
-              {envs.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
-            <button onClick={create} disabled={creating || !newName.trim()} className="btn btn-primary btn-sm" style={{ opacity: (creating || !newName.trim()) ? 0.4 : 1 }}>
-              {creating ? "Issuing..." : "Issue token"}
-            </button>
-            <button onClick={() => setShowCreate(false)} className="btn btn-ghost btn-sm">Cancel</button>
           </div>
         )}
 
@@ -252,7 +212,6 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                     )}
                   </div>
                 </div>
-
                 {isAdmin && deleteConfirmId === identity.id && (
                   <div style={{ margin: "0 20px 12px", padding: "10px 12px", border: "1px solid var(--err-bd)", borderRadius: 10, background: "var(--err-bg)", display: "flex", flexDirection: "column", gap: 8 }}>
                     <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>Type <strong>{identity.name}</strong> to confirm deletion.</p>
@@ -283,6 +242,68 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
           Tokens are stored encrypted. Conduct never sees the plaintext again after issuance. When assigned to an environment, CONDUCT_AGENT_TOKEN is added automatically. Admins and developers can issue tokens. Only admins can delete.
         </p>
       </div>
+
+      {/* Right drawer */}
+      {showDrawer && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", zIndex: 50 }}>
+          <div onClick={closeDrawer} style={{ position: "absolute", inset: 0 }} aria-hidden="true" />
+          <div style={{
+            position: "absolute", top: 0, right: 0, bottom: 0, zIndex: 10,
+            width: 440, maxWidth: "100vw", overflowY: "auto",
+            background: "var(--surface)", boxShadow: "-4px 0 24px rgba(0,0,0,0.12)",
+            borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column",
+          }}>
+            {/* Header */}
+            <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Issue Agent Token</h2>
+              <button onClick={closeDrawer} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--text-muted)", lineHeight: 1 }}>x</button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 18, flex: 1 }}>
+              {error && (
+                <div style={{ padding: "10px 14px", background: "var(--err-bg)", border: "1px solid var(--err-bd)", borderRadius: 8, fontSize: 12.5, color: "var(--err)" }}>{error}</div>
+              )}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)" }}>Token name</label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") closeDrawer() }}
+                  placeholder="e.g. PR Reviewer, BugHunter"
+                  autoFocus
+                  style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "9px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none", width: "100%", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)" }}>Environment</label>
+                <select
+                  value={newEnvId}
+                  onChange={e => setNewEnvId(e.target.value)}
+                  style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "9px 12px", fontSize: 13.5, color: "var(--text)", background: "var(--surface)", outline: "none", width: "100%", boxSizing: "border-box" }}
+                >
+                  <option value="">No environment</option>
+                  {envs.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                  CONDUCT_AGENT_TOKEN will be added to the selected environment automatically.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border)", display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={closeDrawer} className="btn btn-ghost btn-sm">Cancel</button>
+              <button onClick={create} disabled={creating || !newName.trim()} className="btn btn-primary btn-sm" style={{ opacity: (creating || !newName.trim()) ? 0.4 : 1 }}>
+                {creating ? "Issuing..." : "Issue token"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }
