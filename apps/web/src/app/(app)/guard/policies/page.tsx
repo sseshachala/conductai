@@ -703,6 +703,10 @@ function PoliciesContent() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [confirmDeleteValue, setConfirmDeleteValue] = useState("")
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editAction, setEditAction] = useState<PolicyAction>("block")
+  const [editMessage, setEditMessage] = useState("")
+  const [editSaving, setEditSaving] = useState(false)
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -786,6 +790,24 @@ function PoliciesContent() {
     } catch (e) {
       setPolicies(ps => ps.map(p => p.id === id ? { ...p, enabled: prev.enabled } : p))
       setError(e instanceof Error ? e.message : "Failed to update rule. Please try again.")
+    }
+  }
+
+  async function handleEditSave(id: string) {
+    setEditSaving(true)
+    try {
+      const headers = await authHeaders()
+      const res = await fetch(`${apiUrl}/guard/policies/${id}?workspace_id=${encodeURIComponent(teamId ?? "")}`, {
+        method: "PATCH", headers,
+        body: JSON.stringify({ action: editAction, message: editMessage || undefined }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setPolicies(ps => ps.map(p => p.id === id ? { ...p, action: editAction, message: editMessage || p.message } : p))
+      setEditId(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save")
+    } finally {
+      setEditSaving(false)
     }
   }
 
@@ -953,6 +975,18 @@ function PoliciesContent() {
                         </p>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                        {!locked && canWrite && p.builtin && (
+                          <button
+                            type="button"
+                            onClick={() => { setEditId(editId === p.id ? null : p.id); setEditAction(p.action); setEditMessage(p.message ?? "") }}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: editId === p.id ? "var(--accent)" : "var(--text-muted)", padding: 3 }}
+                            title="Override action"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                          </button>
+                        )}
                         {!p.builtin && !locked && canWrite && (
                           <button
                             type="button"
@@ -982,6 +1016,36 @@ function PoliciesContent() {
                         }
                       </div>
                     </div>
+
+                    {editId === p.id && (
+                      <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <label style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 500, whiteSpace: "nowrap" }}>Action</label>
+                          <select
+                            value={editAction}
+                            onChange={e => setEditAction(e.target.value as PolicyAction)}
+                            style={{ ...fieldStyle, width: "auto", fontSize: 12 }}
+                          >
+                            <option value="block">Block</option>
+                            <option value="warn">Warn</option>
+                            <option value="audit">Audit</option>
+                          </select>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <label style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 500, whiteSpace: "nowrap" }}>Message</label>
+                          <input
+                            value={editMessage}
+                            onChange={e => setEditMessage(e.target.value)}
+                            placeholder={p.message ?? "Override message (optional)"}
+                            style={{ ...fieldStyle, fontSize: 12 }}
+                          />
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => handleEditSave(p.id)} disabled={editSaving} className="btn btn-primary btn-sm">{editSaving ? "Saving…" : "Save override"}</button>
+                          <button onClick={() => setEditId(null)} className="btn btn-ghost btn-sm">Cancel</button>
+                        </div>
+                      </div>
+                    )}
 
                     <div style={{ display: "flex", alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
                       <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
