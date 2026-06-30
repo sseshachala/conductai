@@ -41,9 +41,7 @@ def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, pla
     ).first()
 
     if existing:
-        current = decrypt(existing.encrypted_credentials) if existing.encrypted_credentials else {}
-        current["CONDUCT_AGENT_TOKEN"] = plaintext
-        existing.encrypted_credentials = encrypt(current)
+        existing.encrypted_credentials = encrypt({"value": plaintext})
     else:
         stmt = (
             pg_insert(Integration)
@@ -52,12 +50,12 @@ def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, pla
                 service="agent_identity",
                 handle="CONDUCT_AGENT_TOKEN",
                 auth_method="api_key",
-                encrypted_credentials=encrypt({"CONDUCT_AGENT_TOKEN": plaintext}),
+                encrypted_credentials=encrypt({"value": plaintext}),
                 environment_id=environment_id,
             )
             .on_conflict_do_update(
                 constraint="uq_integrations_workspace_handle_env",
-                set_=dict(encrypted_credentials=encrypt({"CONDUCT_AGENT_TOKEN": plaintext})),
+                set_=dict(encrypted_credentials=encrypt({"value": plaintext})),
             )
         )
         db.execute(stmt)
