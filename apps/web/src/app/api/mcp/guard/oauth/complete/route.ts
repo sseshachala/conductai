@@ -61,7 +61,11 @@ export async function GET(req: NextRequest) {
   });
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(`${appUrl}/sign-in?error=mcp_member_token_failed`);
+    const errBody = await tokenRes.text().catch(() => 'unreadable');
+    const wsid = oauthState.workspaceId || '(empty)';
+    return NextResponse.redirect(
+      `${appUrl}/sign-in?error=mcp_member_token_failed&status=${tokenRes.status}&ws=${wsid}&detail=${encodeURIComponent(errBody.slice(0, 100))}`
+    );
   }
 
   const { member_token } = await tokenRes.json();
