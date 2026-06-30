@@ -1164,7 +1164,7 @@ def validate_workflow(
             if decrypted.get("api_key"):
                 available_env_keys.add("ANTHROPIC_API_KEY")
 
-    from app.runtime.provider_keys import provider_for_model, provider_key_exists, ENV_VAR
+    from app.runtime.provider_keys import provider_for_model, provider_key_exists, agent_token_exists, ENV_VAR
 
     errors = []
 
@@ -1204,6 +1204,9 @@ def validate_workflow(
             if not provider_key_exists(brain_provider, available_env_keys):
                 errors.append({"block_id": block_id, "label": label,
                                 "message": f"{ENV_VAR[brain_provider]} is not set for {brain_provider} model '{brain_model or 'default'}' — add it under Settings → Environments"})
+            if os.environ.get("CONDUCT_PROXY_BASE_URL") and not agent_token_exists(available_env_keys):
+                errors.append({"block_id": block_id, "label": label,
+                                "message": "Agent Identity token required — go to Agent ID in the sidebar, issue a token, and assign it to this agent's environment"})
 
             # Execution provider credential checks
             runs_on = data.get("runs_on") or {}
