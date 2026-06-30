@@ -451,9 +451,9 @@ def _execute_brain(
         _extra_headers["x-conductai-workflow"] = workflow_name or playbook_slug or ""
     if workflow_id:
         _extra_headers["x-conductai-workflow-id"] = str(workflow_id)
-    # Internal auth — lets proxy skip member token validation for runtime calls.
+    # Internal auth — proxy validates CONDUCT_AGENT_TOKEN issued via Agent Identity.
     if _proxy_base and workspace_id:
-        _internal_key = os.environ.get("CLI_API_KEY", "")
+        _internal_key = _env_vars.get("CONDUCT_AGENT_TOKEN", "")
         if _internal_key:
             _extra_headers["x-conductai-internal"] = _internal_key
             _extra_headers["x-conductai-workspace-id"] = str(workspace_id)
