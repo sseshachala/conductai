@@ -40,7 +40,7 @@ def _generate_token() -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 @router.post(
-    "/",
+    "",
     response_model=AgentIdentityCreated,
     status_code=201,
 )
@@ -87,7 +87,7 @@ def create_agent_identity(
 # ---------------------------------------------------------------------------
 
 @router.get(
-    "/",
+    "",
     response_model=list[AgentIdentityOut],
 )
 def list_agent_identities(
