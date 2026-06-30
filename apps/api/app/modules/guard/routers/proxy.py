@@ -712,8 +712,15 @@ def _record_audit(
         if decision == "blocked":
             try:
                 from app.modules.guard.routers.events import notify_guard_block
+                _display_email = user_email
+                if not _display_email and clerk_user_id:
+                    try:
+                        from app.core.auth import get_clerk_user_email as _get_email
+                        _display_email = _get_email(clerk_user_id)
+                    except Exception:
+                        pass
                 notify_guard_block(db, workspace_id, decision=decision, rule_id=rule_id,
-                                   user_email=user_email or clerk_user_id,
+                                   user_email=_display_email or "unknown user",
                                    provider=provider, source="proxy")
             except Exception:
                 pass
