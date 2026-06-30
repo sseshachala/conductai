@@ -483,17 +483,13 @@ async def mcp_endpoint(
             user_email = get_clerk_user_email(clerk_user_id) if clerk_user_id != "api_key" else f"apikey@{workspace_id[:8]}"
         else:
             member_row = db.execute(
-                _sql("SELECT clerk_user_id, user_email FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
+                _sql("SELECT clerk_user_id FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
                 {"w": str(ws_uuid), "t": resolved_token},
             ).fetchone()
             if not member_row:
                 return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid token"))
             clerk_user_id = member_row.clerk_user_id
-            user_email = (
-                get_clerk_user_email(clerk_user_id)
-                or member_row.user_email
-                or clerk_user_id
-            )
+            user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
 
         config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if not config:
@@ -809,11 +805,11 @@ async def oauth_member_token(request: Request):
             member_token = _secrets.token_hex(32)
             db.execute(
                 _sql("""
-                    INSERT INTO guard_member_config (workspace_id, clerk_user_id, user_email, member_token, active, joined_at)
-                    VALUES (:ws, :uid, :email, :token, true, :now)
+                    INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
+                    VALUES (:ws, :uid, :token, true, :now)
                     ON CONFLICT (workspace_id, clerk_user_id) DO UPDATE SET active = true
                 """),
-                {"ws": str(ws_uuid), "uid": clerk_user_id, "email": email, "token": member_token, "now": datetime.now(timezone.utc)},
+                {"ws": str(ws_uuid), "uid": clerk_user_id, "token": member_token, "now": datetime.now(timezone.utc)},
             )
             db.commit()
 
