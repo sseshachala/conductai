@@ -1,3 +1,4 @@
+import uuid as _uuid
 """
 Guard Proxy — universal LLM gateway.
 
@@ -252,7 +253,7 @@ async def _proxy(
             _token_hash = _rt_hashlib.sha256(_internal_key.encode()).hexdigest()
             _rt = db.query(_AgentRunToken).filter(
                 _AgentRunToken.token_hash == _token_hash,
-                _AgentRunToken.workspace_id == _hdr_ws,
+                _AgentRunToken.workspace_id == _uuid.UUID(_hdr_ws),
                 _AgentRunToken.invalidated_at == None,  # noqa: E711
             ).first()
             if not _rt:
