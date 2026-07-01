@@ -353,19 +353,22 @@ def _execute_brain(
 
     # BYO key: workspace credential (handle or flat env_var) → platform default
     _env_vars = (credentials or {}).get("env_vars") or {}
-    _anthropic_key = (
+    def _clean(v: str | None) -> str | None:
+        return v.strip() if isinstance(v, str) else v
+
+    _anthropic_key = _clean(
         (credentials or {}).get("anthropic", {}).get("api_key")
         or _env_vars.get("anthropic_api_key")
         or _env_vars.get("ANTHROPIC_API_KEY")
         or settings.anthropic_api_key
     )
-    _openai_key = (
+    _openai_key = _clean(
         (credentials or {}).get("openai", {}).get("api_key")
         or _env_vars.get("openai_api_key")
         or _env_vars.get("OPENAI_API_KEY")
         or settings.openai_api_key
     )
-    _perplexity_key = (
+    _perplexity_key = _clean(
         (credentials or {}).get("perplexity", {}).get("api_key")
         or _env_vars.get("perplexity_api_key")
         or _env_vars.get("PERPLEXITY_API_KEY")
