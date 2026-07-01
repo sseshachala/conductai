@@ -139,10 +139,14 @@ function ToolsSection() {
       </div>
 
       <div className="bg-stone-950 rounded-2xl p-6 text-sm font-mono text-stone-300 max-w-xl mx-auto">
-        <p className="text-stone-500 text-xs mb-3"># One command wires up every tool</p>
+        <p className="text-stone-500 text-xs mb-3"># Install, sync, discover, validate</p>
         <p><span className="text-indigo-400">$</span> pip install conduct-cli</p>
         <p><span className="text-indigo-400">$</span> conduct guard sync</p>
-        <p className="text-stone-500 mt-3 text-xs">↳ hook installed · MCP registered · policy active</p>
+        <p className="text-stone-500 text-xs">↳ hook installed · MCP registered · policy active</p>
+        <p className="mt-2"><span className="text-indigo-400">$</span> conduct guard discover</p>
+        <p className="text-stone-500 text-xs">↳ Guard covers 9 of 11 agents · 2 uncovered (instructions shown)</p>
+        <p className="mt-2"><span className="text-indigo-400">$</span> conduct guard lint</p>
+        <p className="text-stone-500 text-xs">↳ 12 rules · no issues · policy is valid</p>
       </div>
 
       <p className="text-center text-xs text-stone-400 mt-6">
@@ -305,8 +309,7 @@ function GitHubEnterpriseSection() {
             <div className="rounded-xl border border-stone-200 bg-stone-50 p-5">
               <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide mb-3">MCP server URL</p>
               <code className="block text-xs font-mono text-stone-700 break-all leading-relaxed">
-                https://api.conductai.ai/guard/mcp<br />
-                ?workspace_id=YOUR_WORKSPACE_ID
+                https://api.conductai.ai/guard/mcp
               </code>
             </div>
             <div className="rounded-xl border border-stone-200 bg-stone-50 p-5">
@@ -332,8 +335,8 @@ function Phase1Section() {
   const cards = [
     {
       icon: "🔍",
-      title: "Every tool detected automatically",
-      body: "Claude Code, Cursor, Copilot, Codex. Guard detects them from the CLI hook. Zero manual registration.",
+      title: "Shadow AI discovered in seconds",
+      body: "conduct guard discover scans your machine and shows coverage instantly — \"Guard covers 9 of 11 agents.\" Every uncovered tool gets step-by-step remediation instructions.",
     },
     {
       icon: "💸",
@@ -344,6 +347,11 @@ function Phase1Section() {
       icon: "📋",
       title: "Full audit trail from day one",
       body: "Every tool call logged with decision, developer identity, and timestamp. One place, always current.",
+    },
+    {
+      icon: "✅",
+      title: "Validate policy before it hits prod",
+      body: "conduct guard lint checks every rule locally — unique IDs, valid regexes, correct actions. Ship with confidence, not a prayer.",
     },
   ]
 
@@ -359,7 +367,7 @@ function Phase1Section() {
             Within 10 minutes of install, you see every AI tool your team is running, what it&apos;s spending, and what it&apos;s doing. No manual registration. No config changes.
           </p>
         </div>
-        <div className="grid md:grid-cols-3 gap-5">
+        <div className="grid sm:grid-cols-2 gap-5">
           {cards.map(c => (
             <div key={c.title} className="rounded-2xl border border-stone-200 p-6 hover:border-stone-300 hover:shadow-sm transition-all">
               <span className="text-2xl mb-3 block">{c.icon}</span>

@@ -95,6 +95,7 @@ function HeroSection() {
   const chips = [
     "22 agent templates",
     "4 AI providers",
+    "Shadow AI discovery",
     "Real-time spend limits",
     "Full audit trail",
     "Zero infrastructure changes",

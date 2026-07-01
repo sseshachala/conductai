@@ -24,6 +24,16 @@ interface Summary {
   coverage_pct: number
 }
 
+interface Scan {
+  id: string
+  triggered_by: string
+  status: "running" | "complete" | "failed"
+  agents_found: number | null
+  guard_coverage: number | null
+  started_at: string
+  completed_at: string | null
+}
+
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://api.conductai.ai"
 
 const FRAMEWORK_LABELS: Record<string, string> = {
@@ -129,6 +139,7 @@ export default function DiscoveryPage() {
   const workspaceId = activeWorkspace?.id ?? null
   const [summary, setSummary] = useState<Summary | null>(null)
   const [agents, setAgents]   = useState<DiscoveredAgent[]>([])
+  const [scans, setScans]     = useState<Scan[]>([])
   const [loading, setLoading] = useState(true)
   const [registering, setRegistering] = useState<string | null>(null)
   const [modalAgent, setModalAgent] = useState<DiscoveredAgent | null>(null)
@@ -137,13 +148,15 @@ export default function DiscoveryPage() {
     const token = await getToken()
     const hdrs  = { Authorization: `Bearer ${token}`, "x-workspace-id": workspaceId ?? "" }
 
-    const [sumRes, agentRes] = await Promise.all([
+    const [sumRes, agentRes, scanRes] = await Promise.all([
       fetch(`${API}/guard/discover/summary`, { headers: hdrs }),
       fetch(`${API}/guard/discover/agents`,  { headers: hdrs }),
+      fetch(`${API}/guard/discover/scans`,   { headers: hdrs }),
     ])
 
     if (sumRes.ok)   setSummary(await sumRes.json())
     if (agentRes.ok) setAgents(await agentRes.json())
+    if (scanRes.ok)  setScans(await scanRes.json())
     setLoading(false)
   }, [getToken, workspaceId])
 
@@ -270,6 +283,45 @@ export default function DiscoveryPage() {
               Run <code className="bg-stone-100 px-1 rounded">conduct guard discover</code> again to refresh.
               GitHub scan coming in v2.
             </p>
+
+            {/* Scan history */}
+            {scans.length > 0 && (
+              <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-stone-200">
+                  <p className="text-sm font-medium text-stone-700">Scan History</p>
+                </div>
+                <table className="w-full text-sm">
+                  <thead className="bg-stone-50 border-b border-stone-200">
+                    <tr>
+                      <th className="text-left px-4 py-2 text-xs font-medium text-stone-500 uppercase tracking-wide">When</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium text-stone-500 uppercase tracking-wide">Triggered by</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium text-stone-500 uppercase tracking-wide">Agents found</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium text-stone-500 uppercase tracking-wide">Under Guard</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium text-stone-500 uppercase tracking-wide">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {scans.map(s => (
+                      <tr key={s.id} className="hover:bg-stone-50 transition-colors">
+                        <td className="px-4 py-2.5 text-stone-500 text-xs">
+                          {new Date(s.started_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                        </td>
+                        <td className="px-4 py-2.5 text-stone-600 font-mono text-xs">{s.triggered_by}</td>
+                        <td className="px-4 py-2.5 text-stone-700">{s.agents_found ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-stone-700">{s.guard_coverage ?? "—"}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                            s.status === "complete" ? "bg-green-100 text-green-700" :
+                            s.status === "failed"   ? "bg-red-100 text-red-700" :
+                                                      "bg-yellow-100 text-yellow-700"
+                          }`}>{s.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -641,18 +641,18 @@ function WorksWithSection() {
                 <div>
                   <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wide mb-1">Guard — policy enforcement</p>
                   <div className="bg-white rounded-lg px-4 py-2.5 font-mono text-xs text-stone-700 break-all">
-                    https://api.conductai.ai/guard/mcp?workspace_id=YOUR_WORKSPACE_ID
+                    https://api.conductai.ai/guard/mcp
                   </div>
                 </div>
                 <div>
                   <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide mb-1">Conduct — agents, workflows, runs</p>
                   <div className="bg-white rounded-lg px-4 py-2.5 font-mono text-xs text-stone-700 break-all">
-                    https://api.conductai.ai/conduct/mcp?workspace_id=YOUR_WORKSPACE_ID
+                    https://api.conductai.ai/conduct/mcp
                   </div>
                 </div>
               </div>
               <p className="text-stone-400 text-xs mt-3">
-                Set <code className="font-mono bg-white/70 px-1 rounded">Authorization: Bearer YOUR_TOKEN</code> in the Headers field. Get your workspace ID and token from{" "}
+                Set <code className="font-mono bg-white/70 px-1 rounded">Authorization: Bearer YOUR_TOKEN</code> in the Headers field. Get your token from{" "}
                 <span className="text-indigo-600">conductai.ai → Settings → API Keys</span>.
               </p>
             </div>
