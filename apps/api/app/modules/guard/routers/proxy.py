@@ -228,6 +228,7 @@ async def _proxy(
         and _internal_key == settings.cli_api_key
     )
     # ponytail: flag only — DB validation deferred into main db block (one session, not two)
+    _needs_run_token_validation = bool(_internal_key and not _is_internal and _internal_key.startswith("cond_run_"))
     _needs_agent_validation = bool(_internal_key and not _is_internal and _internal_key.startswith("cond_agt_"))
     _agent_identity_id: str | None = None
 
@@ -235,12 +236,32 @@ async def _proxy(
     _raw_key = raw[7:].strip() if bearer and raw.lower().startswith("bearer ") else raw
     _ws_api_key = _raw_key if _raw_key.startswith("cond_live_") else None
 
-    if not token and not _is_internal and not _needs_agent_validation and not _ws_api_key:
+    if not token and not _is_internal and not _needs_agent_validation and not _needs_run_token_validation and not _ws_api_key:
         return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
 
     # 2. Resolve workspace + user
     db = SessionLocal()
     try:
+        if _needs_run_token_validation and not _is_internal:
+            import hashlib as _rt_hashlib
+            from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
+            from datetime import datetime, timezone
+            _hdr_ws = request.headers.get("x-conductai-workspace-id", "")
+            if not _hdr_ws:
+                return _fail_closed(400, "X-Conductai-Workspace-Id required for run token calls")
+            _token_hash = _rt_hashlib.sha256(_internal_key.encode()).hexdigest()
+            _rt = db.query(_AgentRunToken).filter(
+                _AgentRunToken.token_hash == _token_hash,
+                _AgentRunToken.workspace_id == _hdr_ws,
+                _AgentRunToken.invalidated_at == None,  # noqa: E711
+            ).first()
+            if not _rt:
+                return _fail_closed(401, "Run token not found or already invalidated")
+            _is_internal = True
+            if not _rt.first_used_at:
+                _rt.first_used_at = datetime.now(timezone.utc)
+                db.commit()
+
         if _needs_agent_validation and not _is_internal:
             _hdr_ws = request.headers.get("x-conductai-workspace-id", "")
             if not _hdr_ws:

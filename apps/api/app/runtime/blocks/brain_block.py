@@ -515,9 +515,10 @@ def _execute_brain(
         _extra_headers["x-conductai-workflow"] = workflow_name or playbook_slug or ""
     if workflow_id:
         _extra_headers["x-conductai-workflow-id"] = str(workflow_id)
-    # Authenticate with the Conduct proxy using the agent identity token (CONDUCT_AGENT_TOKEN).
+    # Authenticate with the Conduct proxy.
+    # Prefer ephemeral run token (minted per-run), fall back to long-lived agent identity token.
     if _conduct_proxy_url and not _upstream_base_url and workspace_id:
-        _agent_token = _env_vars.get("CONDUCT_AGENT_TOKEN", "")
+        _agent_token = _env_vars.get("CONDUCT_RUN_TOKEN") or _env_vars.get("CONDUCT_AGENT_TOKEN", "")
         if _agent_token:
             _extra_headers["x-conductai-internal"] = _agent_token
         _extra_headers["x-conductai-workspace-id"] = str(workspace_id)
