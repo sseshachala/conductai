@@ -1767,13 +1767,26 @@ def execute_run(run_id: str):
         _run_token_plaintext: str | None = None
 
         if _should_mint:
+            # Resolve agent_identity_id: use stamped role or look up by env directly.
+            # run.agent_role_id is only set when CONDUCT_AGENT_TOKEN is in env_vars,
+            # but an AgentIdentity may exist for this env even without that token.
+            from app.modules.agent_identity.models import AgentIdentity as _AgentIdentityMint
+            _mint_identity_id = run.agent_role_id
+            if not _mint_identity_id and env_id:
+                _mint_id_row = db.query(_AgentIdentityMint).filter(
+                    _AgentIdentityMint.workspace_id == workspace_id_str,
+                    _AgentIdentityMint.environment_id == str(env_id),
+                ).first()
+                if _mint_id_row:
+                    _mint_identity_id = str(_mint_id_row.id)
+
             # ponytail: fail-open — token mint failure must never abort a run
             try:
                 _run_token_plaintext = "cond_run_" + _uuid_mod.uuid4().hex
                 _run_token_hash = _hashlib.sha256(_run_token_plaintext.encode()).hexdigest()
                 _rt_row = _AgentRunToken(
                     id=str(_uuid_mod.uuid4()),
-                    agent_identity_id=run.agent_role_id,  # may be None
+                    agent_identity_id=_mint_identity_id,  # None only if no identity for this env
                     workspace_id=run.workspace_id,
                     run_id=str(run.id),
                     token_hash=_run_token_hash,
