@@ -859,6 +859,7 @@ def _fail_closed(status: int, message: str) -> JSONResponse:
 class ProxyConfigBody(BaseModel):
     llm_upstream: str = ""
     llm_upstream_api_key: str = ""
+    environment_id: str | None = None
 
 
 @guard_router.get("/proxy-config")
@@ -894,8 +895,6 @@ def save_proxy_config(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    from app.models.environment import Environment
-
     # Preserve existing upstream key if not supplied in the form
     ws_row = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
@@ -925,20 +924,19 @@ def save_proxy_config(
             auth_method="api_key", encrypted_credentials=encrypted, environment_id=None,
         ))
 
-    # Push the same settings to every environment so brain blocks pick it up
-    envs = db.query(Environment).filter(Environment.workspace_id == workspace_id).all()
-    for env in envs:
+    # Push to the selected environment if specified
+    if body.environment_id:
         env_row = db.query(Integration).filter(
             Integration.workspace_id == workspace_id,
             Integration.handle == "proxy_config",
-            Integration.environment_id == env.id,
+            Integration.environment_id == body.environment_id,
         ).first()
         if env_row:
             env_row.encrypted_credentials = encrypted
         else:
             db.add(Integration(
                 workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
-                auth_method="api_key", encrypted_credentials=encrypted, environment_id=env.id,
+                auth_method="api_key", encrypted_credentials=encrypted, environment_id=body.environment_id,
             ))
 
     db.commit()
