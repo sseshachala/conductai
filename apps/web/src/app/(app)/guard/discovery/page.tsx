@@ -234,51 +234,37 @@ export default function DiscoveryPage() {
             )}
 
             {/* Agent table */}
-            <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-stone-50 border-b border-stone-200">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-stone-500 uppercase tracking-wide">Agent</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-stone-500 uppercase tracking-wide">Source</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-stone-500 uppercase tracking-wide">Location</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-stone-500 uppercase tracking-wide">Risk</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-stone-500 uppercase tracking-wide">Status</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {agents.slice(0, agentLimit).map(a => (
-                    <tr key={a.id} className="hover:bg-stone-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-stone-800">{FRAMEWORK_LABELS[a.framework ?? ""] ?? a.name ?? a.framework ?? "Unknown"}</p>
-                        <p className="text-xs text-stone-400">{a.framework}</p>
-                      </td>
-                      <td className="px-4 py-3 text-stone-500 capitalize">{a.source ?? "—"}</td>
-                      <td className="px-4 py-3 text-stone-400 text-xs font-mono truncate max-w-48">{a.location ?? "—"}</td>
-                      <td className="px-4 py-3"><RiskBadge score={a.risk_score} /></td>
-                      <td className="px-4 py-3"><GuardBadge under={a.under_guard} /></td>
-                      <td className="px-4 py-3 text-right">
-                        {!a.under_guard && (() => {
-                          const { type } = remediationFor(a)
-                          if (type === "sync") {
-                            return (
-                              <span className="text-xs text-stone-400 italic">Run <code className="bg-stone-100 px-1 rounded">conduct guard sync</code></span>
-                            )
-                          }
-                          return (
-                            <button
-                              onClick={() => setModalAgent(a)}
-                              className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                            >
-                              Bring under Guard
-                            </button>
-                          )
-                        })()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="card" style={{ overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 1.8fr 0.7fr 0.9fr 1fr", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                {["Agent", "Source", "Location", "Risk", "Status", ""].map((h, i) => (
+                  <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
+                ))}
+              </div>
+              {agents.slice(0, agentLimit).map((a, i) => (
+                <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 1.8fr 0.7fr 0.9fr 1fr", gap: 12, padding: "11px 18px", alignItems: "center", borderBottom: i < Math.min(agents.length, agentLimit) - 1 ? "1px solid var(--border)" : "none" }}>
+                  <div>
+                    <p className="text-sm font-medium text-stone-800">{FRAMEWORK_LABELS[a.framework ?? ""] ?? a.name ?? a.framework ?? "Unknown"}</p>
+                    <p className="text-xs text-stone-400">{a.framework}</p>
+                  </div>
+                  <div className="text-sm text-stone-500 capitalize">{a.source ?? "—"}</div>
+                  <div className="text-xs font-mono text-stone-400 truncate">{a.location ?? "—"}</div>
+                  <div><RiskBadge score={a.risk_score} /></div>
+                  <div><GuardBadge under={a.under_guard} /></div>
+                  <div className="text-right">
+                    {!a.under_guard && (() => {
+                      const { type } = remediationFor(a)
+                      if (type === "sync") return (
+                        <span className="text-xs text-stone-400 italic">Run <code className="bg-stone-100 px-1 rounded">conduct guard sync</code></span>
+                      )
+                      return (
+                        <button onClick={() => setModalAgent(a)} className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+                          Bring under Guard
+                        </button>
+                      )
+                    })()}
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="flex items-center justify-between">
@@ -298,46 +284,33 @@ export default function DiscoveryPage() {
 
             {/* Scan history */}
             {scans.length > 0 && (
-              <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-stone-200">
-                  <p className="text-sm font-medium text-stone-700">Scan History</p>
+              <div className="card" style={{ overflow: "hidden" }}>
+                <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                  <p className="eyebrow">Scan History</p>
                 </div>
-                <table className="w-full text-sm">
-                  <thead className="bg-stone-50 border-b border-stone-200">
-                    <tr>
-                      <th className="text-left px-4 py-2 text-xs font-medium text-stone-500 uppercase tracking-wide">When</th>
-                      <th className="text-left px-4 py-2 text-xs font-medium text-stone-500 uppercase tracking-wide">Triggered by</th>
-                      <th className="text-left px-4 py-2 text-xs font-medium text-stone-500 uppercase tracking-wide">Agents found</th>
-                      <th className="text-left px-4 py-2 text-xs font-medium text-stone-500 uppercase tracking-wide">Under Guard</th>
-                      <th className="text-left px-4 py-2 text-xs font-medium text-stone-500 uppercase tracking-wide">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {scans.slice(0, scanLimit).map(s => (
-                      <tr key={s.id} className="hover:bg-stone-50 transition-colors">
-                        <td className="px-4 py-2.5 text-stone-500 text-xs">
-                          {new Date(s.started_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                        </td>
-                        <td className="px-4 py-2.5 text-stone-600 font-mono text-xs">{s.triggered_by}</td>
-                        <td className="px-4 py-2.5 text-stone-700">{s.agents_found ?? "—"}</td>
-                        <td className="px-4 py-2.5 text-stone-700">{s.guard_coverage ?? "—"}</td>
-                        <td className="px-4 py-2.5">
-                          <span className={`text-xs px-2 py-0.5 rounded font-medium ${
-                            s.status === "complete" ? "bg-green-100 text-green-700" :
-                            s.status === "failed"   ? "bg-red-100 text-red-700" :
-                                                      "bg-yellow-100 text-yellow-700"
-                          }`}>{s.status}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.2fr 0.8fr 0.8fr 0.8fr", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                  {["When", "Triggered by", "Agents found", "Under Guard", "Status"].map((h, i) => (
+                    <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
+                  ))}
+                </div>
+                {scans.slice(0, scanLimit).map((s, i) => (
+                  <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1.4fr 1.2fr 0.8fr 0.8fr 0.8fr", gap: 12, padding: "11px 18px", alignItems: "center", borderBottom: i < Math.min(scans.length, scanLimit) - 1 ? "1px solid var(--border)" : "none" }}>
+                    <div className="text-xs text-stone-500">{new Date(s.started_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</div>
+                    <div className="text-xs font-mono text-stone-600">{s.triggered_by}</div>
+                    <div className="text-sm text-stone-700">{s.agents_found ?? "—"}</div>
+                    <div className="text-sm text-stone-700">{s.guard_coverage ?? "—"}</div>
+                    <div>
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                        s.status === "complete" ? "bg-green-100 text-green-700" :
+                        s.status === "failed"   ? "bg-red-100 text-red-700" :
+                                                  "bg-yellow-100 text-yellow-700"
+                      }`}>{s.status}</span>
+                    </div>
+                  </div>
+                ))}
                 {scans.length > scanLimit && (
-                  <div className="px-4 py-3 border-t border-stone-200">
-                    <button
-                      onClick={() => setScanLimit(n => n + 10)}
-                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-                    >
+                  <div style={{ padding: "10px 18px", borderTop: "1px solid var(--border)" }}>
+                    <button onClick={() => setScanLimit(n => n + 10)} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
                       Load more ({scans.length - scanLimit} remaining)
                     </button>
                   </div>
