@@ -37,6 +37,7 @@ class Workflow(Base):
     source = Column(String(32), nullable=True)
     # Per-workflow Guard config (#? — moved from per-run modal to Settings tab)
     guard_enabled   = Column(Boolean, nullable=False, default=True, server_default="true")
+    agent_identity_required = Column(Boolean, nullable=False, default=True, server_default="true")
     runtime_persona = Column(String(20), nullable=True)  # NULL = inherit workspace runtime_persona
 
 

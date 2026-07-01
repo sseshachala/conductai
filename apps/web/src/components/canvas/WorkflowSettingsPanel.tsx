@@ -9,6 +9,7 @@ interface WorkflowDetail {
   default_mode: string
   environment_id: string | null
   default_max_turns: number | null
+  agent_identity_required: boolean
 }
 
 interface Environment {
@@ -29,6 +30,8 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
   const [loading, setLoading] = useState(true)
   const [turnsInput, setTurnsInput] = useState("")
   const [guardEnabled, setGuardEnabled] = useState(true)
+  const [agentIdentityRequired, setAgentIdentityRequired] = useState(true)
+  const [agentIdentitySaving, setAgentIdentitySaving] = useState(false)
   const [persona, setPersona] = useState<string>("")
   const [guardSaving, setGuardSaving] = useState(false)
   const [workspaceRuntimePersona, setWorkspaceRuntimePersona] = useState<string>("conservative")
@@ -60,6 +63,7 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
           setWorkflow(wf)
           setTurnsInput(wf.default_max_turns ? String(wf.default_max_turns) : "")
           setGuardEnabled(wf.guard_enabled !== false)
+          setAgentIdentityRequired(wf.agent_identity_required !== false)
           setPersona(wf.runtime_persona || "")
           // Resolve what "Inherit from workspace" currently means.
           try {
@@ -109,6 +113,27 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
       setError(e instanceof Error ? e.message : "Failed to save Guard settings")
     } finally {
       setGuardSaving(false)
+    }
+  }
+
+  async function saveAgentIdentity(required = agentIdentityRequired) {
+    setAgentIdentitySaving(true)
+    try {
+      const token = getToken ? await getToken() : null
+      const h: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) h["Authorization"] = `Bearer ${token}`
+      const wsId = activeWorkspace?.id ?? ""
+      if (wsId) h["X-Workspace-ID"] = wsId
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
+        method: "PUT",
+        headers: h,
+        body: JSON.stringify({ agent_identity_required: required }),
+      })
+      if (!res.ok) throw new Error("Failed to save Agent Identity setting")
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save Agent Identity setting")
+    } finally {
+      setAgentIdentitySaving(false)
     }
   }
 
@@ -257,6 +282,29 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
                 </div>
               )}
               {guardSaving && <span style={{ fontSize: 12, color: "var(--text-3)" }}>Saving…</span>}
+            </div>
+
+            {/* Agent Identity */}
+            <div className="card" style={{ padding: "16px 20px" }}>
+              <p className="eyebrow" style={{ marginBottom: 4 }}>Agent Identity Required</p>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                Each run mints a short-lived token. Disable only if using a long-lived CONDUCT_AGENT_TOKEN in the environment.
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => { const next = !agentIdentityRequired; setAgentIdentityRequired(next); saveAgentIdentity(next) }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${agentIdentityRequired ? "bg-violet-600" : "bg-stone-300"}`}
+                  role="switch"
+                  aria-checked={agentIdentityRequired}
+                >
+                  <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${agentIdentityRequired ? "translate-x-4" : "translate-x-0"}`} />
+                </button>
+                <span style={{ fontSize: 13, color: "var(--text-2)" }}>
+                  {agentIdentityRequired ? "Short-lived token per run" : "Long-lived env token"}
+                </span>
+              </div>
+              {agentIdentitySaving && <span style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8, display: "block" }}>Saving…</span>}
             </div>
 
             {/* Turn budget */}
