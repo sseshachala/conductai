@@ -383,6 +383,7 @@ def _execute_brain(
     # customer's gateway (Portkey, Helicone, etc.) rather than the vendor directly.
     _upstream_base_url: str | None = None
     _upstream_key: str | None = None
+    _conduct_proxy_url: str | None = None
     if db and workspace_id:
         try:
             from sqlalchemy import text as _sql_text
@@ -394,51 +395,110 @@ def _execute_brain(
                 "perplexity": "https://api.perplexity.ai",
             }
 
-            # Check proxy_config then env_vars for CONDUCT_LLM_UPSTREAM override.
-            for _handle in ("proxy_config", "env_vars"):
-                _row = db.execute(
+            # Resolve the environment_id for this run via the workflow so we can
+            # prefer the per-environment proxy_config row over the workspace-level one.
+            _env_id: str | None = None
+            if workflow_id and db:
+                try:
+                    _wf_row = db.execute(
+                        _sql_text("SELECT environment_id FROM workflows WHERE id = :wf LIMIT 1"),
+                        {"wf": workflow_id},
+                    ).fetchone()
+                    if _wf_row and _wf_row[0]:
+                        _env_id = str(_wf_row[0])
+                except Exception:
+                    pass
+
+            # Load proxy_config: prefer environment-scoped row, fall back to workspace row.
+            _pc_creds: dict = {}
+            if _env_id:
+                _env_pc_row = db.execute(
                     _sql_text("""
                         SELECT encrypted_credentials FROM integrations
-                        WHERE workspace_id = :ws AND handle = :handle
+                        WHERE workspace_id = :ws AND handle = 'proxy_config'
+                          AND environment_id = :env
                           AND encrypted_credentials IS NOT NULL
                         LIMIT 1
                     """),
-                    {"ws": workspace_id, "handle": _handle},
+                    {"ws": workspace_id, "env": _env_id},
                 ).fetchone()
-                if _row:
+                if _env_pc_row:
                     try:
-                        _creds = _decrypt(_row[0]) or {}
-                        _override = _creds.get("CONDUCT_LLM_UPSTREAM") or _creds.get("conduct_llm_upstream")
-                        if _override:
-                            _upstream_base_url = _override.rstrip('/')
-                            break
+                        _pc_creds = _decrypt(_env_pc_row[0]) or {}
                     except Exception:
                         pass
 
-            # When routing through a custom gateway, prefer the gateway's own key.
-            if _upstream_base_url:
-                from app.models.integration import Integration as _Integration
-                _pc_row = db.query(_Integration).filter(
-                    _Integration.workspace_id == workspace_id,
-                    _Integration.handle == "proxy_config",
-                ).first()
-                if _pc_row:
+            if not _pc_creds:
+                _ws_pc_row = db.execute(
+                    _sql_text("""
+                        SELECT encrypted_credentials FROM integrations
+                        WHERE workspace_id = :ws AND handle = 'proxy_config'
+                          AND environment_id IS NULL
+                          AND encrypted_credentials IS NOT NULL
+                        LIMIT 1
+                    """),
+                    {"ws": workspace_id},
+                ).fetchone()
+                if _ws_pc_row:
                     try:
-                        _pc_creds = _decrypt(_pc_row.encrypted_credentials) or {}
-                        _upstream_key = _pc_creds.get("LLM_UPSTREAM_API_KEY") or None
+                        _pc_creds = _decrypt(_ws_pc_row[0]) or {}
                     except Exception:
                         pass
+
+            # Extract Conduct proxy URL and BYO upstream from the resolved row.
+            if _pc_creds:
+                _raw_proxy_url = _pc_creds.get("CONDUCT_PROXY_BASE_URL", "").rstrip("/")
+                if _raw_proxy_url:
+                    _conduct_proxy_url = _raw_proxy_url
+                _llm_override = _pc_creds.get("CONDUCT_LLM_UPSTREAM") or _pc_creds.get("conduct_llm_upstream")
+                if _llm_override:
+                    _upstream_base_url = _llm_override.rstrip("/")
+                    _upstream_key = _pc_creds.get("LLM_UPSTREAM_API_KEY") or None
+
+            # When CONDUCT_LLM_UPSTREAM was not in proxy_config, also check env_vars handle.
+            if not _upstream_base_url:
+                _ev_row = db.execute(
+                    _sql_text("""
+                        SELECT encrypted_credentials FROM integrations
+                        WHERE workspace_id = :ws AND handle = 'env_vars'
+                          AND encrypted_credentials IS NOT NULL
+                        LIMIT 1
+                    """),
+                    {"ws": workspace_id},
+                ).fetchone()
+                if _ev_row:
+                    try:
+                        _ev_creds = _decrypt(_ev_row[0]) or {}
+                        _ev_override = _ev_creds.get("CONDUCT_LLM_UPSTREAM") or _ev_creds.get("conduct_llm_upstream")
+                        if _ev_override:
+                            _upstream_base_url = _ev_override.rstrip("/")
+                    except Exception:
+                        pass
+
         except Exception as _ue:
             log.warning("brain.upstream_lookup_failed", workspace_id=workspace_id, error=str(_ue))
+
+    # Dev/local fallback: read Conduct proxy config from environment variables when
+    # no proxy_config row exists (e.g. local development without a seeded environment).
+    if not _conduct_proxy_url:
+        _env_proxy_base = os.environ.get("CONDUCT_PROXY_BASE_URL", "").rstrip("/")
+        if _env_proxy_base:
+            _conduct_proxy_url = _env_proxy_base
 
     # When routing through Portkey/Helicone: gateway key goes in x-portkey-api-key header,
     # vendor key stays in api_key (forwarded to Anthropic by the gateway).
     _effective_key = _provider_keys[provider]
 
-    # Route through Conduct proxy so Guard evaluates every LLM call.
-    # Proxy handles upstream forwarding (Portkey/LiteLLM) from workspace proxy_config.
-    _proxy_base = os.environ.get("CONDUCT_PROXY_BASE_URL", "").rstrip("/")
-    _effective_base_url = f"{_proxy_base}/{provider}" if _proxy_base else _upstream_base_url
+    # Determine effective base URL:
+    #   - BYO gateway (CONDUCT_LLM_UPSTREAM) → route directly, skip Conduct proxy.
+    #   - Conduct proxy configured → route through Guard for policy evaluation.
+    #   - Neither → call vendor API directly.
+    if _upstream_base_url:
+        _effective_base_url = _upstream_base_url  # BYO gateway
+    elif _conduct_proxy_url:
+        _effective_base_url = f"{_conduct_proxy_url}/{provider}"
+    else:
+        _effective_base_url = None
 
     from app.runtime.adapters.gateway import gateway_adapt as _gateway_adapt
     _gw = _gateway_adapt(_upstream_base_url, _upstream_key or "", provider, model_id)
@@ -452,20 +512,14 @@ def _execute_brain(
         _extra_headers["x-conductai-workflow"] = workflow_name or playbook_slug or ""
     if workflow_id:
         _extra_headers["x-conductai-workflow-id"] = str(workflow_id)
-    # Internal auth — proxy validates CONDUCT_AGENT_TOKEN issued via Agent Identity.
-    # Stored in env_vars handle so it appears as a plain env var.
-    if _proxy_base and workspace_id:
-        _internal_key = _env_vars.get("CONDUCT_AGENT_TOKEN", "")
-        if not _internal_key:
-            raise RuntimeError(
-                "Agent Identity token required. Go to Agent ID in the sidebar, "
-                "issue a token, and assign it to this agent's environment."
-            )
-        if _internal_key:
-            _extra_headers["x-conductai-internal"] = _internal_key
-            _extra_headers["x-conductai-workspace-id"] = str(workspace_id)
-            if user_email:
-                _extra_headers["x-conductai-user-email"] = user_email
+    # Authenticate with the Conduct proxy using the agent identity token (CONDUCT_AGENT_TOKEN).
+    if _conduct_proxy_url and not _upstream_base_url and workspace_id:
+        _agent_token = _env_vars.get("CONDUCT_AGENT_TOKEN", "")
+        if _agent_token:
+            _extra_headers["x-conductai-internal"] = _agent_token
+        _extra_headers["x-conductai-workspace-id"] = str(workspace_id)
+        if user_email:
+            _extra_headers["x-conductai-user-email"] = user_email
 
     client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
     _client_kwargs: dict = {

@@ -40,6 +40,7 @@ from app.core.auth import get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.database import SessionLocal, get_db
+from app.models.conduct_api_key import ConductApiKey
 from app.models.integration import Integration
 from app.core.workspace_context import set_workspace_rls
 from app.modules.guard.policy_engine import compute_policy
@@ -895,7 +896,7 @@ def save_proxy_config(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    # Preserve existing upstream key if not supplied in the form
+    # Preserve existing upstream key if not supplied
     ws_row = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
         Integration.handle == "proxy_config",
@@ -909,34 +910,43 @@ def save_proxy_config(
             pass
 
     api_key = body.llm_upstream_api_key or existing.get("LLM_UPSTREAM_API_KEY", "")
-    creds = {
+
+    ws_creds = {
         "CONDUCT_LLM_UPSTREAM": body.llm_upstream,
         "LLM_UPSTREAM_API_KEY": api_key,
     }
-    encrypted = encrypt(creds)
+    ws_encrypted = encrypt(ws_creds)
 
-    # Save workspace-level row (environment_id=None)
     if ws_row:
-        ws_row.encrypted_credentials = encrypted
+        ws_row.encrypted_credentials = ws_encrypted
     else:
         db.add(Integration(
             workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
-            auth_method="api_key", encrypted_credentials=encrypted, environment_id=None,
+            auth_method="api_key", encrypted_credentials=ws_encrypted, environment_id=None,
         ))
 
-    # Push to the selected environment if specified
+    # Push LLM upstream config to the selected environment so brain blocks pick it up at run time.
+    # Auth to the Conduct proxy uses CONDUCT_AGENT_TOKEN (agent identity token) — no key generated here.
     if body.environment_id:
         env_row = db.query(Integration).filter(
             Integration.workspace_id == workspace_id,
             Integration.handle == "proxy_config",
             Integration.environment_id == body.environment_id,
         ).first()
+        env_creds = {
+            "CONDUCT_PROXY_BASE_URL": settings.conduct_proxy_url,
+            "CONDUCT_LLM_UPSTREAM": body.llm_upstream,
+            "LLM_UPSTREAM_API_KEY": api_key,
+        }
+        env_encrypted = encrypt(env_creds)
+
         if env_row:
-            env_row.encrypted_credentials = encrypted
+            env_row.encrypted_credentials = env_encrypted
         else:
             db.add(Integration(
                 workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
-                auth_method="api_key", encrypted_credentials=encrypted, environment_id=body.environment_id,
+                auth_method="api_key", encrypted_credentials=env_encrypted,
+                environment_id=body.environment_id,
             ))
 
     db.commit()
