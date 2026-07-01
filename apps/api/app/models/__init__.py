@@ -20,6 +20,7 @@ from app.modules.guard.models import (
     GuardSpendBudget,
 )
 from app.modules.agent_identity.models import AgentIdentity
+from app.modules.agent_identity.run_token_model import AgentRunToken  # noqa
 
 __all__ = [
     "Organization", "Workspace", "User", "WorkspaceUser", "Project",
@@ -30,4 +31,5 @@ __all__ = [
     "GuardAuditEvent", "GuardSpendBudget",
     "Role", "Permission",
     "AgentIdentity",
+    "AgentRunToken",
 ]

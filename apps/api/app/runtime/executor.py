@@ -1658,6 +1658,7 @@ def execute_run(run_id: str):
     are skipped (their previous output is preserved).
     """
     db = SessionLocal()
+    _run_token_row_id: str | None = None  # declared before try so finally can reference it
     try:
         run = db.query(Run).filter(Run.id == run_id).first()
         if not run:
@@ -1755,6 +1756,35 @@ def execute_run(run_id: str):
                 run.agent_role_id = str(_identity.id)
                 db.commit()
 
+        # Mint ephemeral run token (short-lived, invalidated in finally).
+        import hashlib as _hashlib
+        import uuid as _uuid_mod
+        from datetime import datetime as _dt, timezone as _rtz
+        from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
+
+        _run_token_plaintext: str | None = None
+
+        _run_token_plaintext = "cond_run_" + _uuid_mod.uuid4().hex
+        _run_token_hash = _hashlib.sha256(_run_token_plaintext.encode()).hexdigest()
+        _rt_row = _AgentRunToken(
+            id=str(_uuid_mod.uuid4()),
+            agent_identity_id=run.agent_role_id,  # may be None
+            workspace_id=run.workspace_id,
+            run_id=str(run.id),
+            token_hash=_run_token_hash,
+            created_at=_dt.now(_rtz.utc),
+        )
+        db.add(_rt_row)
+        db.commit()
+        _run_token_row_id = _rt_row.id
+
+        # Inject ephemeral run token into in-memory env_vars for this run.
+        # CredentialStore._data is the underlying dict — mutate env_vars in-place.
+        _ev = credentials.get("env_vars") or {}
+        if isinstance(_ev, dict):
+            _ev["CONDUCT_RUN_TOKEN"] = _run_token_plaintext
+            credentials._data["env_vars"] = _ev
+
         final_state = _execute_dag(
             run=run,
             version=version,
@@ -1787,4 +1817,19 @@ def execute_run(run_id: str):
         except Exception:
             pass
     finally:
+        # Invalidate ephemeral run token so it cannot be replayed after the run ends.
+        if _run_token_row_id:
+            try:
+                from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
+                from datetime import datetime as _dt, timezone as _rtz
+                _inv_db = SessionLocal()
+                try:
+                    _rt = _inv_db.query(_AgentRunToken).filter(_AgentRunToken.id == _run_token_row_id).first()
+                    if _rt and not _rt.invalidated_at:
+                        _rt.invalidated_at = _dt.now(_rtz.utc)
+                        _inv_db.commit()
+                finally:
+                    _inv_db.close()
+            except Exception:
+                pass  # never let token cleanup crash the run
         db.close()
