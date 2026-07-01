@@ -1211,6 +1211,7 @@ def cmd_guard_sync(args):
             [_conduct, "guard", "discover"],
             stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
         )
+        print(f"  {CYAN}Discovery daemon started{RESET} — agent inventory updating in background")
     except Exception:
         pass
 
