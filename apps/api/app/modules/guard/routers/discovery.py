@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id
+from app.core.auth import get_guard_hook_auth as get_workspace_id
 from app.core.database import get_db
 from app.modules.guard.models import DiscoveredAgent, DiscoveryScan
 
