@@ -1330,7 +1330,7 @@ def _execute_dag(
     run_id = run.id
 
     # Resolve user email — from run state (set at trigger time) or triggered_by Clerk ID
-    _user_email: str | None = state.get("__user_email") or None
+    _user_email: str | None = initial_state.get("__user_email") or None
     if not _user_email:
         _raw_trigger = str(run.triggered_by or "")
         if _raw_trigger and not _raw_trigger.startswith(("manual", "webhook", "schedule", "cron")):
@@ -1702,11 +1702,16 @@ def execute_run(run_id: str):
             else:
                 cred_rows = []
 
-        _raw_creds: dict[str, Any] = {
-            row.handle: decrypt(row.encrypted_credentials)
-            for row in cred_rows
-            if row.encrypted_credentials
-        }
+        _raw_creds: dict[str, Any] = {}
+        for row in cred_rows:
+            if not row.encrypted_credentials:
+                continue
+            decrypted = decrypt(row.encrypted_credentials)
+            if row.handle in _raw_creds and isinstance(_raw_creds[row.handle], dict) and isinstance(decrypted, dict):
+                # ponytail: merge same-handle dicts (env_vars + agent_identity both use handle="env_vars")
+                _raw_creds[row.handle] = {**_raw_creds[row.handle], **decrypted}
+            else:
+                _raw_creds[row.handle] = decrypted
 
         # Fallback: merge in any missing handles from the Default environment
         # so integrations connected globally are always available
