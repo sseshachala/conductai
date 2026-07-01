@@ -859,7 +859,6 @@ def _fail_closed(status: int, message: str) -> JSONResponse:
 class ProxyConfigBody(BaseModel):
     llm_upstream: str = ""
     llm_upstream_api_key: str = ""
-    proxy_persona: str = "agent"
 
 
 @guard_router.get("/proxy-config")
@@ -874,20 +873,17 @@ def get_proxy_config(
     ).first()
     upstream = ""
     has_upstream_key = False
-    proxy_persona = "standard"
     if row:
         try:
             creds = decrypt(row.encrypted_credentials) or {}
             upstream = creds.get("CONDUCT_LLM_UPSTREAM", "")
             has_upstream_key = bool(creds.get("LLM_UPSTREAM_API_KEY"))
-            proxy_persona = creds.get("PROXY_PERSONA", "agent")
         except Exception:
             pass
     return {
         "conduct_proxy_url": _workspace_proxy_url(db, workspace_id),
         "llm_upstream": upstream,
         "has_upstream_key": has_upstream_key,
-        "proxy_persona": proxy_persona,
     }
 
 
@@ -917,7 +913,6 @@ def save_proxy_config(
     creds = {
         "CONDUCT_LLM_UPSTREAM": body.llm_upstream,
         "LLM_UPSTREAM_API_KEY": api_key,
-        "PROXY_PERSONA": body.proxy_persona or "agent",
     }
     encrypted = encrypt(creds)
 
