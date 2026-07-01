@@ -1758,13 +1758,12 @@ function TabMcpTools() {
       </section>
 
       <section id="mcp-workspace-url" className="scroll-mt-8">
-        <h3 className="text-2xl font-semibold text-stone-900 mb-3">Your workspace URL</h3>
+        <h3 className="text-2xl font-semibold text-stone-900 mb-3">MCP server URL</h3>
         <p className="text-stone-600 mb-4">
-          Grab the URL from your <a href="/integrations" className="text-indigo-600 underline">MCP servers page</a>{" "}
-          (click <em>Edit</em> on the <strong>Conduct AI Guard</strong> row, then <em>Reveal</em> + <em>Copy</em>).
-          The shape (URL + header) looks like:
+          The URL is the same for everyone — no workspace ID in the path. Your Bearer token scopes
+          the connection to your org automatically.
         </p>
-        <Pre>https://api.conductai.ai/guard/mcp?workspace_id=&lt;your-ws&gt;
+        <Pre>https://api.conductai.ai/guard/mcp
 Authorization: Bearer &lt;your-token&gt;</Pre>
         <p className="text-sm text-stone-500 mt-3">
           The token is scoped to the member who copies it. Treat it like a personal access token —
@@ -1789,7 +1788,7 @@ Authorization: Bearer &lt;your-token&gt;</Pre>
         <Pre>{`{
   "mcpServers": {
     "conduct-guard": {
-      "url": "https://api.conductai.ai/guard/mcp?workspace_id=<your-ws>",
+      "url": "https://api.conductai.ai/guard/mcp",
       "headers": { "Authorization": "Bearer <your-token>" }
     }
   }
@@ -1818,7 +1817,7 @@ Authorization: Bearer &lt;your-token&gt;</Pre>
         </p>
         <Pre>{`# ~/.codex/config.toml
 [mcp_servers.conduct-guard]
-url = "https://api.conductai.ai/guard/mcp?workspace_id=<your-ws>"
+url = "https://api.conductai.ai/guard/mcp"
 bearer_token = "<your-token>"`}</Pre>
         <p className="text-stone-600 mt-3">Restart your Codex session to pick up the new server.</p>
       </section>
@@ -1843,7 +1842,7 @@ bearer_token = "<your-token>"`}</Pre>
         <Pre>{`{
   "mcp.servers": {
     "conduct-guard": {
-      "url": "https://api.conductai.ai/guard/mcp?workspace_id=<your-ws>",
+      "url": "https://api.conductai.ai/guard/mcp",
       "headers": { "Authorization": "Bearer <your-token>" }
     }
   }
@@ -1878,7 +1877,7 @@ bearer_token = "<your-token>"`}</Pre>
 {
   "mcpServers": {
     "conduct-guard": {
-      "url": "https://api.conductai.ai/guard/mcp?workspace_id=<your-ws>",
+      "url": "https://api.conductai.ai/guard/mcp",
       "headers": { "Authorization": "Bearer <your-token>" }
     }
   }
