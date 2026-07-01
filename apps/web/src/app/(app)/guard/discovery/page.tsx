@@ -143,6 +143,8 @@ export default function DiscoveryPage() {
   const [loading, setLoading] = useState(true)
   const [registering, setRegistering] = useState<string | null>(null)
   const [modalAgent, setModalAgent] = useState<DiscoveredAgent | null>(null)
+  const [agentLimit, setAgentLimit] = useState(10)
+  const [scanLimit, setScanLimit]   = useState(10)
 
   const load = useCallback(async () => {
     const token = await getToken()
@@ -245,7 +247,7 @@ export default function DiscoveryPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {agents.map(a => (
+                  {agents.slice(0, agentLimit).map(a => (
                     <tr key={a.id} className="hover:bg-stone-50 transition-colors">
                       <td className="px-4 py-3">
                         <p className="font-medium text-stone-800">{FRAMEWORK_LABELS[a.framework ?? ""] ?? a.name ?? a.framework ?? "Unknown"}</p>
@@ -279,10 +281,20 @@ export default function DiscoveryPage() {
               </table>
             </div>
 
-            <p className="text-xs text-stone-400">
-              Run <code className="bg-stone-100 px-1 rounded">conduct guard discover</code> again to refresh.
-              GitHub scan coming in v2.
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-stone-400">
+                Run <code className="bg-stone-100 px-1 rounded">conduct guard discover</code> again to refresh.
+                GitHub scan coming in v2.
+              </p>
+              {agents.length > agentLimit && (
+                <button
+                  onClick={() => setAgentLimit(n => n + 10)}
+                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                >
+                  Load more ({agents.length - agentLimit} remaining)
+                </button>
+              )}
+            </div>
 
             {/* Scan history */}
             {scans.length > 0 && (
@@ -301,7 +313,7 @@ export default function DiscoveryPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
-                    {scans.map(s => (
+                    {scans.slice(0, scanLimit).map(s => (
                       <tr key={s.id} className="hover:bg-stone-50 transition-colors">
                         <td className="px-4 py-2.5 text-stone-500 text-xs">
                           {new Date(s.started_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
@@ -320,6 +332,16 @@ export default function DiscoveryPage() {
                     ))}
                   </tbody>
                 </table>
+                {scans.length > scanLimit && (
+                  <div className="px-4 py-3 border-t border-stone-200">
+                    <button
+                      onClick={() => setScanLimit(n => n + 10)}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                    >
+                      Load more ({scans.length - scanLimit} remaining)
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </>
