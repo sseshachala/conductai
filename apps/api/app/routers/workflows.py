@@ -568,6 +568,8 @@ def update_workflow(
 
     if body.guard_enabled is not None:
         workflow.guard_enabled = body.guard_enabled
+    if body.agent_identity_required is not None:
+        workflow.agent_identity_required = body.agent_identity_required
     if body.runtime_persona is not None:
         workflow.runtime_persona = (body.runtime_persona or None)  # empty string → NULL (inherit)
 
@@ -1074,6 +1076,29 @@ def preflight_workflow(
     ).first()
     if not workflow or not workflow.current_version:
         raise HTTPException(status_code=404, detail="Workflow not found")
+
+    # Case 3: flag=false + no CONDUCT_AGENT_TOKEN in env → block before run starts
+    if not workflow.agent_identity_required:
+        from app.models.integration import Integration
+        from app.core.crypto import decrypt as _decrypt
+        env_id = workflow.environment_id
+        _has_token = False
+        if env_id:
+            _env_row = db.query(Integration).filter(
+                Integration.workspace_id == workspace_id,
+                Integration.handle == "env_vars",
+                Integration.environment_id == env_id,
+            ).first()
+            if _env_row:
+                try:
+                    _has_token = bool((_decrypt(_env_row.encrypted_credentials) or {}).get("CONDUCT_AGENT_TOKEN"))
+                except Exception:
+                    pass
+        if not _has_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Agent identity not configured. Add CONDUCT_AGENT_TOKEN to the environment, or enable 'Agent Identity Required' in workflow settings.",
+            )
 
     graph = workflow.current_version.graph or {}
     # min_turns: max of YAML-declared min_turns input default and workflow-level DB override

@@ -24,6 +24,7 @@ class WorkflowUpdate(BaseModel):
     name: Optional[str] = None
     graph: Optional[WorkflowGraph] = None
     guard_enabled:   Optional[bool] = None
+    agent_identity_required: Optional[bool] = None
     runtime_persona: Optional[str]  = None  # 'conservative' | 'standard' | 'developer' | None to inherit
 
 
@@ -54,6 +55,8 @@ class WorkflowOut(BaseModel):
     playbook_slug: Optional[str] = None
     default_max_turns: Optional[int] = None
     project_name: Optional[str] = None
+    guard_enabled: bool = True
+    agent_identity_required: bool = True
 
     class Config:
         from_attributes = True
