@@ -1936,7 +1936,20 @@ def _discover_config_agents() -> list[tuple]:
     for base in search_paths:
         if not base.exists():
             continue
-        for env_file in list(base.glob(".env")) + list(base.glob("**/.env")):
+        try:
+            candidates = list(base.glob(".env"))
+            # ponytail: shallow glob only — deep ** hits system dirs (WhatsApp containers etc.)
+            for sub in base.iterdir() if base.exists() else []:
+                try:
+                    if sub.is_dir() and not sub.name.startswith("."):
+                        env = sub / ".env"
+                        if env.exists():
+                            candidates.append(env)
+                except OSError:
+                    pass
+        except OSError:
+            continue
+        for env_file in candidates:
             if str(env_file) in seen_envs or ".git" in str(env_file):
                 continue
             seen_envs.add(str(env_file))
@@ -1945,7 +1958,7 @@ def _discover_config_agents() -> list[tuple]:
                 found_keys = [k for k in LLM_KEYS if k in content]
                 if found_keys:
                     results.append(("env-agent", env_file, False))  # .env with LLM key = unregistered
-            except Exception:
+            except OSError:
                 pass
 
     return results
