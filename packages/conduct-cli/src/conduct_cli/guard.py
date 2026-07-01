@@ -2110,8 +2110,9 @@ def cmd_guard_discover(args):
 
     cfg      = _load_guard_config()
     api_url  = _api_url(cfg)
+    token    = cfg.get("member_token", "")
     api_key  = cfg.get("api_key", "")
-    hdrs     = {"X-Api-Key": api_key, "Content-Type": "application/json"}
+    hdrs     = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     # Config file scan — detect AI tools from known config dirs
     config_agents = []
@@ -2161,7 +2162,7 @@ def cmd_guard_discover(args):
     # POST to API
     try:
         payload = {"triggered_by": "cli", "agents": all_agents}
-        _req("POST", f"{api_url}/guard/discover/scan", body=payload, api_key=api_key)
+        _req("POST", f"{api_url}/guard/discover/scan", body=payload, token=token, api_key=api_key)
     except SystemExit:
         pass  # 401/network errors — local output still useful
 
