@@ -1100,21 +1100,6 @@ def preflight_workflow(
                 detail="Agent identity not configured. Add CONDUCT_AGENT_TOKEN to the environment, or enable 'Agent Identity Required' in workflow settings.",
             )
 
-    # Case 1: flag=true → verify AgentIdentity exists for this env
-    if workflow.agent_identity_required:
-        from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
-        _pf_identity = None
-        if workflow.environment_id:
-            _pf_identity = db.query(_AgentIdentity).filter(
-                _AgentIdentity.workspace_id == workspace_id,
-                _AgentIdentity.environment_id == str(workflow.environment_id),
-            ).first()
-        if not _pf_identity:
-            raise HTTPException(
-                status_code=400,
-                detail="No Agent Identity assigned to this workflow's environment. Go to Agent Identity and assign one.",
-            )
-
     graph = workflow.current_version.graph or {}
     # min_turns: max of YAML-declared min_turns input default and workflow-level DB override
     yaml_min = 0
