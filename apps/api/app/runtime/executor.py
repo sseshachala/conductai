@@ -522,6 +522,15 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
         category = "approval"
         stop_reason = "human_rejected"
         next_action = "Review rejection feedback, update the plan, and rerun for approval."
+    elif msg == "Connection error." or "APIConnectionError" in type(exc).__name__:
+        # Unwrap the real cause (httpx error) for a more useful message.
+        cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+        cause_msg = str(cause) if cause else ""
+        code = "LLM_CONNECTION_ERROR"
+        category = "connectivity"
+        stop_reason = "exception"
+        msg = f"LLM connection failed — {cause_msg}" if cause_msg else "LLM connection failed (check proxy URL and agent token)"
+        next_action = "Check that the Conduct proxy URL is reachable and CONDUCT_AGENT_TOKEN is set in this environment."
 
     return {
         "code": code,
