@@ -47,6 +47,76 @@ function RiskBadge({ score }: { score: number | null }) {
   return <span className={`text-xs px-2 py-0.5 rounded font-medium ${color}`}>{label}</span>
 }
 
+const CONFIG_SOURCES = new Set(["claude-code", "cursor", "codex", "windsurf", "vscode", "copilot"])
+
+function remediationFor(a: DiscoveredAgent): { type: "sync" | "proxy" | "env" } {
+  if (a.source === "config" || CONFIG_SOURCES.has(a.framework ?? "")) return { type: "sync" }
+  if (a.source === "env") return { type: "env" }
+  return { type: "proxy" }
+}
+
+function RemediationModal({ agent, onClose }: { agent: DiscoveredAgent; onClose: () => void }) {
+  const label = FRAMEWORK_LABELS[agent.framework ?? ""] ?? agent.name ?? agent.framework ?? "this agent"
+  const { type } = remediationFor(agent)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="font-semibold text-stone-900">Bring {label} under Guard</p>
+            <p className="text-xs text-stone-400 mt-0.5">{agent.framework} · {agent.source}</p>
+          </div>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-600 text-lg leading-none">×</button>
+        </div>
+
+        {type === "sync" && (
+          <div className="space-y-3">
+            <p className="text-sm text-stone-600">
+              This tool is governed by the Guard hook. Run sync to (re)install the hook and download the latest policies.
+            </p>
+            <code className="block bg-stone-100 text-stone-800 text-xs px-4 py-3 rounded-lg">
+              conduct guard sync
+            </code>
+            <p className="text-xs text-stone-400">After sync, run <code className="bg-stone-100 px-1 rounded">conduct guard discover</code> to verify coverage.</p>
+          </div>
+        )}
+
+        {type === "proxy" && (
+          <div className="space-y-3">
+            <p className="text-sm text-stone-600">
+              Route this agent&apos;s LLM calls through the Guard proxy. Set these env vars before running your agent:
+            </p>
+            <code className="block bg-stone-100 text-stone-800 text-xs px-4 py-3 rounded-lg whitespace-pre">
+{`export OPENAI_BASE_URL=https://api.conductai.ai/proxy/openai
+export ANTHROPIC_BASE_URL=https://api.conductai.ai/proxy/anthropic`}
+            </code>
+            <p className="text-xs text-stone-400">Or set <code className="bg-stone-100 px-1 rounded">CONDUCT_LLM_PROXY</code> if your framework reads a single proxy URL.</p>
+          </div>
+        )}
+
+        {type === "env" && (
+          <div className="space-y-3">
+            <p className="text-sm text-stone-600">
+              A raw LLM API key was found in <code className="bg-stone-100 px-1 rounded text-xs">{agent.location ?? ".env"}</code>.
+              Replace it with the Guard proxy so calls are governed:
+            </p>
+            <code className="block bg-stone-100 text-stone-800 text-xs px-4 py-3 rounded-lg whitespace-pre">
+{`# Remove the raw key and use the Guard proxy instead
+OPENAI_BASE_URL=https://api.conductai.ai/proxy/openai
+ANTHROPIC_BASE_URL=https://api.conductai.ai/proxy/anthropic`}
+            </code>
+            <p className="text-xs text-stone-400">Your team&apos;s credentials stay in the Guard vault — no key needed in the .env file.</p>
+          </div>
+        )}
+
+        <div className="pt-2 flex justify-end">
+          <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg bg-stone-100 text-stone-700 hover:bg-stone-200 transition-colors">Done</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function GuardBadge({ under }: { under: boolean }) {
   return under
     ? <span className="text-xs px-2 py-0.5 rounded font-medium bg-green-100 text-green-700">Under Guard</span>
@@ -61,6 +131,7 @@ export default function DiscoveryPage() {
   const [agents, setAgents]   = useState<DiscoveredAgent[]>([])
   const [loading, setLoading] = useState(true)
   const [registering, setRegistering] = useState<string | null>(null)
+  const [modalAgent, setModalAgent] = useState<DiscoveredAgent | null>(null)
 
   const load = useCallback(async () => {
     const token = await getToken()
@@ -94,6 +165,7 @@ export default function DiscoveryPage() {
 
   return (
     <AppShell><GuardShell>
+      {modalAgent && <RemediationModal agent={modalAgent} onClose={() => setModalAgent(null)} />}
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
 
         {/* Header */}
@@ -171,15 +243,22 @@ export default function DiscoveryPage() {
                       <td className="px-4 py-3"><RiskBadge score={a.risk_score} /></td>
                       <td className="px-4 py-3"><GuardBadge under={a.under_guard} /></td>
                       <td className="px-4 py-3 text-right">
-                        {!a.under_guard && (
-                          <button
-                            onClick={() => register(a.id)}
-                            disabled={registering === a.id}
-                            className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                          >
-                            {registering === a.id ? "Registering..." : "Bring under Guard"}
-                          </button>
-                        )}
+                        {!a.under_guard && (() => {
+                          const { type } = remediationFor(a)
+                          if (type === "sync") {
+                            return (
+                              <span className="text-xs text-stone-400 italic">Run <code className="bg-stone-100 px-1 rounded">conduct guard sync</code></span>
+                            )
+                          }
+                          return (
+                            <button
+                              onClick={() => setModalAgent(a)}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                            >
+                              Bring under Guard
+                            </button>
+                          )
+                        })()}
                       </td>
                     </tr>
                   ))}
