@@ -589,14 +589,22 @@ def _execute_brain(
                 response.cost_usd = 0.0  # ponytail: no charge on replay
                 log.debug("brain.llm_cache_hit", run_id=run_id, block_id=block_id, turn=turns)
             else:
-                response = llm.create(
-                    model=model_id,
-                    max_tokens=4096,
-                    system=full_system,
-                    tools=_active_tools,
-                    messages=messages,
-                    cache_system=True,
-                )
+                try:
+                    response = llm.create(
+                        model=model_id,
+                        max_tokens=4096,
+                        system=full_system,
+                        tools=_active_tools,
+                        messages=messages,
+                        cache_system=True,
+                    )
+                except Exception as _llm_err:
+                    _cause = getattr(_llm_err, "__cause__", None) or getattr(_llm_err, "__context__", None)
+                    log.error("brain.llm_call_failed",
+                              error=str(_llm_err), cause=str(_cause),
+                              base_url=_effective_base_url, turn=turns,
+                              run_id=run_id, block_id=block_id)
+                    raise
                 _cache_set(run_id, block_id, turns, response.to_cache_dict())
             turns += 1
             total_input_tokens       += response.usage.input_tokens

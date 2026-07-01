@@ -1567,10 +1567,10 @@ def _execute_dag(
                     scope.set_tag("blocked_host", blocked_host)
                     sentry_sdk.capture_exception(e)
             failed = True
-            fail_error = str(e)
             fail_summary = _classify_failure(e, block_id)
+            fail_error = fail_summary["message"]
             _emit(db, run_id, block_id, "block_failed", {
-                "error": str(e),
+                "error": fail_summary["message"],
                 "failure": fail_summary,
                 "reason_code": fail_summary["code"],
                 "next_action": fail_summary["next_action"],
@@ -1587,10 +1587,10 @@ def _execute_dag(
                     scope.set_tag("workspace_id", str(workspace_id_str))
                     sentry_sdk.capture_exception(e)
             failed = True
-            fail_error = str(e)
             fail_summary = _classify_failure(e, block_id)
+            fail_error = fail_summary["message"]
             _emit(db, run_id, block_id, "block_failed", {
-                "error": str(e),
+                "error": fail_summary["message"],
                 "failure": fail_summary,
                 "reason_code": fail_summary["code"],
                 "next_action": fail_summary["next_action"],
