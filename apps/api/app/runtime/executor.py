@@ -1756,56 +1756,28 @@ def execute_run(run_id: str):
                 run.agent_role_id = str(_identity.id)
                 db.commit()
 
-        # Mint ephemeral run token only when agent_identity_required=True (default).
-        # When False, long-lived CONDUCT_AGENT_TOKEN in env is used as-is.
-        _should_mint = getattr(getattr(version, "workflow", None), "agent_identity_required", True)
-        import hashlib as _hashlib
-        import uuid as _uuid_mod
-        from datetime import datetime as _dt, timezone as _rtz
+        # Read pre-minted agent run token (created at trigger time).
+        # Inject into env_vars, clear encrypted plaintext, invalidate in finally.
         from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
-
-        _run_token_plaintext: str | None = None
-
-        if _should_mint:
-            # Resolve agent_identity_id: use stamped role or look up by env directly.
-            # run.agent_role_id is only set when CONDUCT_AGENT_TOKEN is in env_vars,
-            # but an AgentIdentity may exist for this env even without that token.
-            from app.modules.agent_identity.models import AgentIdentity as _AgentIdentityMint
-            _mint_identity_id = run.agent_role_id
-            if not _mint_identity_id and env_id:
-                _mint_id_row = db.query(_AgentIdentityMint).filter(
-                    _AgentIdentityMint.workspace_id == workspace_id_str,
-                    _AgentIdentityMint.environment_id == str(env_id),
-                ).first()
-                if _mint_id_row:
-                    _mint_identity_id = str(_mint_id_row.id)
-
-            # ponytail: fail-open — token mint failure must never abort a run
+        from app.core.crypto import decrypt as _rt_decrypt
+        _rt = db.query(_AgentRunToken).filter(
+            _AgentRunToken.run_id == str(run.id),
+            _AgentRunToken.invalidated_at == None,  # noqa: E711
+        ).first()
+        if _rt:
+            _run_token_row_id = _rt.id
             try:
-                _run_token_plaintext = "cond_run_" + _uuid_mod.uuid4().hex
-                _run_token_hash = _hashlib.sha256(_run_token_plaintext.encode()).hexdigest()
-                _rt_row = _AgentRunToken(
-                    id=str(_uuid_mod.uuid4()),
-                    agent_identity_id=_mint_identity_id,  # None only if no identity for this env
-                    workspace_id=run.workspace_id,
-                    run_id=str(run.id),
-                    token_hash=_run_token_hash,
-                    created_at=_dt.now(_rtz.utc),
-                )
-                db.add(_rt_row)
-                db.commit()
-                _run_token_row_id = _rt_row.id
+                _plaintext = (_rt_decrypt(_rt.token_encrypted) or {}).get("token") if _rt.token_encrypted else None
+                if _plaintext:
+                    _ev = credentials.get("env_vars") or {}
+                    if isinstance(_ev, dict):
+                        _ev["CONDUCT_RUN_TOKEN"] = _plaintext
+                        credentials._data["env_vars"] = _ev
+                    # Clear encrypted plaintext after injection
+                    _rt.token_encrypted = None
+                    db.commit()
             except Exception:
-                _run_token_plaintext = None
-                db.rollback()
-
-            # Inject ephemeral run token into in-memory env_vars for this run.
-            # CredentialStore._data is the underlying dict — mutate env_vars in-place.
-            if _run_token_plaintext:
-                _ev = credentials.get("env_vars") or {}
-                if isinstance(_ev, dict):
-                    _ev["CONDUCT_RUN_TOKEN"] = _run_token_plaintext
-                    credentials._data["env_vars"] = _ev
+                pass  # fail-open: run proceeds without short-lived token
 
         final_state = _execute_dag(
             run=run,
