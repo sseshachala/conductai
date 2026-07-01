@@ -832,7 +832,7 @@ function PoliciesContent() {
     setSubmitting(true)
     try {
       const headers = await authHeaders()
-      const body: Record<string, unknown> = {
+      const rule: Record<string, unknown> = {
         rule_id: formData.rule_id.trim(),
         description: formData.description.trim(),
         match_tool: formData.match_tool,
@@ -843,7 +843,21 @@ function PoliciesContent() {
         builtin: false,
         persona: formData.persona,
       }
-      if (formData.match_path_pattern.trim()) body.match_path_pattern = formData.match_path_pattern.trim()
+      if (formData.match_path_pattern.trim()) rule.match_path_pattern = formData.match_path_pattern.trim()
+
+      // Lint before saving
+      const lintRes = await fetch(
+        `${apiUrl}/guard/policies/lint?workspace_id=${encodeURIComponent(teamId ?? "")}`,
+        { method: "POST", headers, body: JSON.stringify({ rules: [rule] }) }
+      )
+      if (lintRes.ok) {
+        const { errors } = await lintRes.json() as { errors: { field: string; message: string }[] }
+        if (errors.length > 0) {
+          throw new Error(errors.map(e => `${e.field}: ${e.message}`).join(" · "))
+        }
+      }
+
+      const body = { ...rule }
       if (teamId) body.workspace_id = teamId
 
       const res = await fetch(`${apiUrl}/guard/policies`, {

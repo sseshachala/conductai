@@ -99,6 +99,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/dashboard')) return ['Dashboard']
   if (pathname.startsWith('/guard/spend')) return ['Guard', 'Spend']
   if (pathname.startsWith('/guard/policies')) return ['Guard', 'Policies']
+  if (pathname.startsWith('/guard/discovery')) return ['Guard', 'Discovery']
   if (pathname.startsWith('/guard/activity')) return ['Guard', 'Activity']
   if (pathname.startsWith('/guard/settings')) return ['Guard', 'Settings']
   if (pathname.startsWith('/governance')) return ['Governance']
@@ -136,6 +137,7 @@ const PALETTE_COMMANDS = [
   { group: "GOVERN", label: "Guard · Overview", href: "/guard", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Spend", href: "/guard/spend", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Policies", href: "/guard/policies", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Discovery", href: "/guard/discovery", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Activity", href: "/guard/activity", icon: "Shield" as const },
   { group: "WORKSPACE", label: "Integrations", href: "/integrations", icon: "Gear" as const },
   { group: "WORKSPACE", label: "Agent ID", href: "/agent-identity", icon: "Gear" as const },

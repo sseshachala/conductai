@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 const TABS = [
   { label: "Overview",     href: "/guard" },
   { label: "Policies",     href: "/guard/policies" },
+  { label: "Discovery",    href: "/guard/discovery" },
   { label: "Spend",        href: "/guard/spend" },
   { label: "Activity",     href: "/guard/activity" },
   { label: "Tool Errors & Warnings", href: "/guard/tool-errors" },

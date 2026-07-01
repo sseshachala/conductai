@@ -304,3 +304,34 @@ class WorkspaceSigningKey(Base):
         default=lambda: datetime.now(timezone.utc),
     )
     rotated_at   = Column(DateTime(timezone=True), nullable=True)
+
+
+class DiscoveryScan(Base):
+    __tablename__ = "discovery_scans"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id   = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    triggered_by   = Column(String(20), nullable=False)    # cli | schedule
+    status         = Column(String(20), nullable=False)    # running | complete | failed
+    agents_found   = Column(Integer, nullable=True)
+    guard_coverage = Column(Integer, nullable=True)        # count under Guard
+    scan_config    = Column(JSONB, nullable=True)
+    started_at     = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    completed_at   = Column(DateTime(timezone=True), nullable=True)
+
+
+class DiscoveredAgent(Base):
+    __tablename__ = "discovered_agents"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id  = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    scan_id       = Column(UUID(as_uuid=True), ForeignKey("discovery_scans.id", ondelete="CASCADE"), nullable=True)
+    name          = Column(Text, nullable=True)
+    framework     = Column(String(50), nullable=True)   # langchain|crewai|autogen|claude-code|copilot|cursor|codex|windsurf
+    source        = Column(String(20), nullable=True)   # config | process
+    location      = Column(Text, nullable=True)         # config path | process cmd
+    evidence      = Column(JSONB, nullable=True)
+    risk_score    = Column(Integer, nullable=True)      # 0-100
+    under_guard   = Column(Boolean, nullable=False, default=False)
+    first_seen_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_seen_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

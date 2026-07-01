@@ -139,6 +139,22 @@ _TOOLS = [
         },
     },
     {
+        "name": "guard_discover",
+        "description": "Show all AI agents discovered in this org and Guard coverage. Returns total agents found, how many are under Guard, coverage %, and a list of shadow agents not yet governed.",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "guard_discover_register",
+        "description": "Bring a discovered shadow agent under Guard governance by agent ID.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_id": {"type": "string", "description": "Agent ID from guard_discover results"},
+            },
+            "required": ["agent_id"],
+        },
+    },
+    {
         "name": "conduct_list_agents",
         "description": "List all installed agents in your Conduct workspace.",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
@@ -689,6 +705,40 @@ async def mcp_endpoint(
                 _workflow = arguments.get("conduct_workflow") or None
                 _record_event(db, ws_uuid, "guard_activity", {"summary": summary, "category": category}, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                 return JSONResponse(_text(msg_id, f"Activity logged — '{summary}'"))
+
+            elif tool_name == "guard_discover":
+                from app.modules.guard.models import DiscoveredAgent
+                total   = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id == ws_uuid).count()
+                covered = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id == ws_uuid, DiscoveredAgent.under_guard == True).count()
+                missing = total - covered
+                pct     = round(covered / total * 100) if total else 0
+                shadow  = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id == ws_uuid, DiscoveredAgent.under_guard == False).limit(20).all()
+                shadow_list = [{"id": str(a.id), "name": a.name, "framework": a.framework, "source": a.source, "location": a.location} for a in shadow]
+                result = {"total": total, "under_guard": covered, "missing": missing, "coverage_pct": pct, "shadow_agents": shadow_list}
+                if total == 0:
+                    msg = "No discovery scan found. Run `conduct guard discover` from your machine first."
+                else:
+                    msg = f"Guard coverage: {covered} of {total} agents ({pct}%)\n{missing} shadow agents not under Guard.\n\n" + json.dumps(shadow_list, indent=2)
+                return JSONResponse(_text(msg_id, msg))
+
+            elif tool_name == "guard_discover_register":
+                import uuid as _uuid
+                from app.modules.guard.models import DiscoveredAgent
+                from datetime import datetime, timezone
+                agent_id = arguments.get("agent_id", "")
+                try:
+                    row = db.query(DiscoveredAgent).filter(
+                        DiscoveredAgent.id == _uuid.UUID(agent_id),
+                        DiscoveredAgent.workspace_id == ws_uuid,
+                    ).first()
+                    if not row:
+                        return JSONResponse(_text(msg_id, f"Agent {agent_id} not found."))
+                    row.under_guard = True
+                    row.last_seen_at = datetime.now(timezone.utc)
+                    db.commit()
+                    return JSONResponse(_text(msg_id, f"Agent '{row.name or agent_id}' ({row.framework}) is now under Guard."))
+                except Exception as e:
+                    return JSONResponse(_text(msg_id, f"Error registering agent: {e}"))
 
             elif tool_name == "conduct_list_agents":
                 return JSONResponse(_text(msg_id, json.dumps(_list_agents(db, ws_uuid), indent=2)))
