@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
+import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
@@ -92,7 +93,7 @@ export default function DiscoveryPage() {
   const barColor    = coveragePct >= 70 ? "bg-green-500" : coveragePct >= 40 ? "bg-yellow-500" : "bg-red-500"
 
   return (
-    <GuardShell>
+    <AppShell><GuardShell>
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
 
         {/* Header */}
@@ -193,6 +194,6 @@ export default function DiscoveryPage() {
           </>
         )}
       </div>
-    </GuardShell>
+    </GuardShell></AppShell>
   )
 }
