@@ -898,31 +898,53 @@ def save_proxy_config(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    # Preserve existing upstream key if not being updated
-    row = db.query(Integration).filter(
+    from app.models.environment import Environment
+
+    # Preserve existing upstream key if not supplied in the form
+    ws_row = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
         Integration.handle == "proxy_config",
         Integration.environment_id == None,  # noqa: E711
     ).first()
     existing: dict = {}
-    if row:
+    if ws_row:
         try:
-            existing = decrypt(row.encrypted_credentials) or {}
+            existing = decrypt(ws_row.encrypted_credentials) or {}
         except Exception:
             pass
 
+    api_key = body.llm_upstream_api_key or existing.get("LLM_UPSTREAM_API_KEY", "")
     creds = {
         "CONDUCT_LLM_UPSTREAM": body.llm_upstream,
-        "LLM_UPSTREAM_API_KEY": body.llm_upstream_api_key or existing.get("LLM_UPSTREAM_API_KEY", ""),
+        "LLM_UPSTREAM_API_KEY": api_key,
         "PROXY_PERSONA": body.proxy_persona or "agent",
     }
     encrypted = encrypt(creds)
-    if row:
-        row.encrypted_credentials = encrypted
+
+    # Save workspace-level row (environment_id=None)
+    if ws_row:
+        ws_row.encrypted_credentials = encrypted
     else:
         db.add(Integration(
             workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
             auth_method="api_key", encrypted_credentials=encrypted, environment_id=None,
         ))
+
+    # Push the same settings to every environment so brain blocks pick it up
+    envs = db.query(Environment).filter(Environment.workspace_id == workspace_id).all()
+    for env in envs:
+        env_row = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.handle == "proxy_config",
+            Integration.environment_id == env.id,
+        ).first()
+        if env_row:
+            env_row.encrypted_credentials = encrypted
+        else:
+            db.add(Integration(
+                workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
+                auth_method="api_key", encrypted_credentials=encrypted, environment_id=env.id,
+            ))
+
     db.commit()
     return {"saved": True}
