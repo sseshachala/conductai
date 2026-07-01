@@ -1203,6 +1203,17 @@ def cmd_guard_sync(args):
     except Exception:
         pass
 
+    # Run shadow agent discovery in background — results pushed to API, visible in /guard/discovery
+    try:
+        import subprocess as _sp, shutil as _shutil
+        _conduct = _shutil.which("conduct") or sys.executable
+        _sp.Popen(
+            [_conduct, "guard", "discover"],
+            stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+        )
+    except Exception:
+        pass
+
     print(f"\n{BOLD}Policy refreshed ({rule_count} rule(s)).{RESET}")
 
     # Print Claude.ai remote MCP URL — requires one-time browser paste
@@ -1867,7 +1878,285 @@ def register_guard_parser(sub):
         help="Which hook to test",
     )
 
+    # conduct guard discover
+    discover_p = guard_sub.add_parser("discover", help="Scan for AI agents and show Guard coverage")
+    discover_p.add_argument("--config-only", action="store_true", help="Skip process scan, config files only")
+    discover_p.add_argument("--report", default=None, metavar="FILE", help="Write full JSON report to file")
+
+    # conduct guard lint [--file PATH]
+    lint_p = guard_sub.add_parser("lint", help="Validate local policy — show errors and warnings")
+    lint_p.add_argument("--file", default=None, metavar="FILE",
+                        help="Path to policy YAML/JSON (default: ~/.conductguard/policy.json)")
+
     return guard_p, guard_sub
+
+
+def _discover_config_agents() -> list[tuple]:
+    """Detect installed AI tools from config dirs + .env files. No cross-module import.
+    Returns list of (name, config_path, under_guard) tuples.
+    """
+    home = Path.home()
+    results = []
+
+    def _mcp_registered(path: Path) -> bool:
+        try:
+            import json as _j
+            d = _j.loads(path.read_text()) if path.exists() else {}
+            return "conduct" in d.get("mcpServers", {})
+        except Exception:
+            return False
+
+    def _hook_registered(path: Path) -> bool:
+        try:
+            import json as _j
+            d = _j.loads(path.read_text()) if path.exists() else {}
+            hooks = d.get("hooks", {})
+            return any("conductguard" in str(h).lower() or "conduct" in str(h).lower()
+                       for h in hooks.get("PreToolUse", []))
+        except Exception:
+            return False
+
+    # Known tool config locations
+    TOOLS = [
+        ("claude-code", home / ".claude",  home / ".claude"  / "settings.json", "mcp"),
+        ("codex",       home / ".codex",   home / ".codex"   / "mcp.json",       "mcp"),
+        ("cursor",      home / ".cursor",  home / ".cursor"  / "mcp.json",       "mcp"),
+        ("windsurf",    home / ".codeium" / "windsurf", home / ".codeium" / "windsurf" / "mcp_config.json", "mcp"),
+    ]
+    for name, check_dir, config_path, _ in TOOLS:
+        if check_dir.exists():
+            under = _mcp_registered(config_path) or _hook_registered(config_path)
+            results.append((name, config_path, under))
+
+    # .env file scan for LLM API keys — shadow agents not using known tools
+    LLM_KEYS = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "COHERE_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY"]
+    search_paths = [home, home / "projects", home / "code", home / "dev", Path.cwd()]
+    seen_envs: set[str] = set()
+    for base in search_paths:
+        if not base.exists():
+            continue
+        for env_file in list(base.glob(".env")) + list(base.glob("**/.env")):
+            if str(env_file) in seen_envs or ".git" in str(env_file):
+                continue
+            seen_envs.add(str(env_file))
+            try:
+                content = env_file.read_text(errors="ignore")
+                found_keys = [k for k in LLM_KEYS if k in content]
+                if found_keys:
+                    results.append(("env-agent", env_file, False))  # .env with LLM key = unregistered
+            except Exception:
+                pass
+
+    return results
+
+
+def _scan_processes() -> list[dict]:
+    """Detect AI agent processes using psutil. Returns list of discovered agent dicts."""
+    try:
+        import psutil
+    except ImportError:
+        return []
+
+    # Known framework signatures: (framework_name, cmdline_patterns)
+    SIGNATURES = [
+        ("langchain",      ["langchain"]),
+        ("crewai",         ["crewai", "crew_ai"]),
+        ("autogen",        ["autogen", "pyautogen"]),
+        ("openai-agents",  ["openai-agents", "openai_agents"]),
+        ("llama-index",    ["llama_index", "llamaindex"]),
+        ("claude-code",    ["claude"]),
+        ("codex",          ["codex"]),
+        ("cursor",         ["cursor"]),
+        ("windsurf",       ["windsurf"]),
+        ("copilot",        ["copilot-language-server", "github.copilot"]),
+    ]
+
+    found = []
+    seen = set()
+    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+        try:
+            cmdline = " ".join(proc.info["cmdline"] or []).lower()
+            name    = (proc.info["name"] or "").lower()
+            combined = f"{name} {cmdline}"
+            for framework, patterns in SIGNATURES:
+                if any(p in combined for p in patterns):
+                    key = (framework, proc.info["name"])
+                    if key not in seen:
+                        seen.add(key)
+                        found.append({
+                            "name": proc.info["name"],
+                            "framework": framework,
+                            "source": "process",
+                            "location": f"pid:{proc.info['pid']} {proc.info['name']}",
+                            "evidence": {"pid": proc.info["pid"], "cmdline": cmdline[:200]},
+                            "risk_score": 60,
+                        })
+                    break
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    return found
+
+
+def cmd_guard_lint(args):
+    """Validate the local policy file and report errors / warnings."""
+    import json as _json, re as _re
+
+    policy_path = getattr(args, "file", None)
+    if policy_path:
+        from pathlib import Path as _Path
+        p = _Path(policy_path).expanduser().resolve()
+        if not p.exists():
+            print(f"  {RED}File not found: {p}{RESET}")
+            sys.exit(1)
+        raw = p.read_text()
+    else:
+        policy = _load_policy()
+        raw = None
+
+    if raw is not None:
+        try:
+            policy = _json.loads(raw)
+        except Exception:
+            try:
+                import yaml as _yaml
+                policy = _yaml.safe_load(raw)
+            except Exception as e:
+                print(f"  {RED}Cannot parse file: {e}{RESET}")
+                sys.exit(1)
+
+    rules     = policy.get("rules", [])
+    fail_mode = policy.get("fail_mode")
+
+    # ── local lint (no API call needed) ──────────────────────────────────────
+    VALID_ACTIONS    = {"block", "warn", "audit", "approval", "inject"}
+    VALID_FAIL_MODES = {"fail_open", "fail_closed"}
+    MATCH_FIELDS     = {"match_tool", "match_pattern", "match_path_pattern",
+                        "match_command_word", "match_tokens_before_gt"}
+
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    seen_ids: set[str] = set()
+
+    if fail_mode and fail_mode not in VALID_FAIL_MODES:
+        errors.append({"rule_id": "(policy)", "field": "fail_mode",
+                       "message": f"must be one of: {', '.join(sorted(VALID_FAIL_MODES))}"})
+
+    for i, rule in enumerate(rules):
+        rid = rule.get("rule_id") or rule.get("id") or f"(rule[{i}])"
+        if not rule.get("rule_id") and not rule.get("id"):
+            errors.append({"rule_id": rid, "field": "rule_id", "message": "rule_id is required"})
+        if rid in seen_ids:
+            errors.append({"rule_id": rid, "field": "rule_id", "message": f"Duplicate rule_id '{rid}'"})
+        seen_ids.add(rid)
+
+        action = rule.get("action")
+        if not action:
+            errors.append({"rule_id": rid, "field": "action", "message": "action is required"})
+        elif action not in VALID_ACTIONS:
+            errors.append({"rule_id": rid, "field": "action",
+                           "message": f"'{action}' must be one of: {', '.join(sorted(VALID_ACTIONS))}"})
+
+        for rf in ("match_pattern", "match_path_pattern"):
+            val = rule.get(rf)
+            if val:
+                try:
+                    _re.compile(val)
+                except _re.error as e:
+                    errors.append({"rule_id": rid, "field": rf, "message": f"Invalid regex: {e}"})
+
+        if not any(rule.get(f) for f in MATCH_FIELDS):
+            warnings.append({"rule_id": rid, "field": "match_*",
+                             "message": "No match condition — rule fires on every tool call"})
+
+        tokens = rule.get("match_tokens_before_gt")
+        if tokens is not None and (not isinstance(tokens, int) or tokens <= 0):
+            errors.append({"rule_id": rid, "field": "match_tokens_before_gt",
+                           "message": "must be a positive integer"})
+
+    # ── output ────────────────────────────────────────────────────────────────
+    print(f"\n  {BOLD}Policy lint{RESET} — {len(rules)} rule(s)\n")
+
+    if not errors and not warnings:
+        print(f"  {GREEN}No issues found{RESET}\n")
+        return
+
+    for e in errors:
+        print(f"  {RED}ERROR{RESET}  [{e['rule_id']}] {e['field']}: {e['message']}")
+    for w in warnings:
+        print(f"  {YELLOW}WARN{RESET}   [{w['rule_id']}] {w['field']}: {w['message']}")
+
+    print()
+    if errors:
+        sys.exit(1)
+
+
+def cmd_guard_discover(args):
+    """Scan for AI agents across config files and processes, report Guard coverage."""
+    import json as _json
+
+    cfg      = _load_guard_config()
+    api_url  = _api_url(cfg)
+    token    = cfg.get("member_token", "")
+    hdrs     = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    # Config file scan — detect AI tools from known config dirs
+    config_agents = []
+    for name, config_path, mcp_key in _discover_config_agents():
+        under = mcp_key
+        config_agents.append({
+            "name": name,
+            "framework": name,
+            "source": "config",
+            "location": str(config_path),
+            "evidence": {"config_path": str(config_path), "under_guard": under},
+            "risk_score": 20 if under else 70,
+            "under_guard": under,
+        })
+
+    # Process scan
+    process_agents: list[dict] = []
+    if not getattr(args, "config_only", False):
+        process_agents = _scan_processes()
+        # Mark as under Guard if same framework is already registered
+        registered_frameworks = {a["framework"] for a in config_agents if a["under_guard"]}
+        for a in process_agents:
+            a["under_guard"] = a["framework"] in registered_frameworks
+
+    all_agents = config_agents + process_agents
+    total      = len(all_agents)
+    covered    = sum(1 for a in all_agents if a["under_guard"])
+    missing    = total - covered
+    pct        = round(covered / total * 100) if total else 0
+
+    # Print coverage meter
+    print(f"\n  Discovered {total} AI agents across your environment\n")
+    config_count  = len(config_agents)
+    process_count = len(process_agents)
+    config_cov    = sum(1 for a in config_agents if a["under_guard"])
+    process_cov   = sum(1 for a in process_agents if a["under_guard"])
+    if config_count:
+        print(f"  Config files:  {config_count:3d} agents   ({config_cov} under Guard, {config_count - config_cov} not)")
+    if process_count:
+        print(f"  Processes:     {process_count:3d} running   ({process_cov} under Guard, {process_count - process_cov} not)")
+    print(f"  {'─' * 52}")
+    print(f"  Guard coverage: {covered} of {total} agents  ({pct}%)\n")
+    if missing:
+        print(f"  Run: conduct guard discover --register to close the gap")
+    print(f"  GitHub scan available — coming in v2\n")
+
+    # POST to API
+    try:
+        payload = {"triggered_by": "cli", "agents": all_agents}
+        resp = _req("POST", f"{api_url}/guard/discover/scan", body=payload, token=token)
+    except Exception:
+        pass  # local output still useful even if API is down
+
+    # Write report if requested
+    report_path = getattr(args, "report", None)
+    if report_path:
+        report = {"total": total, "under_guard": covered, "missing": missing, "coverage_pct": pct, "agents": all_agents}
+        Path(report_path).write_text(_json.dumps(report, indent=2))
+        print(f"  Report written to {report_path}")
 
 
 def cmd_guard_booster_status(args):
@@ -2023,6 +2312,10 @@ def dispatch_guard(args, guard_p):
         cmd_guard_audit(args)
     elif guard_command == "install":
         cmd_guard_install(args)
+    elif guard_command == "discover":
+        cmd_guard_discover(args)
+    elif guard_command == "lint":
+        cmd_guard_lint(args)
     elif guard_command == "booster-status":
         cmd_guard_booster_status(args)
     elif guard_command == "debug-hook":
