@@ -171,3 +171,50 @@ def regenerate_agent_identity(
         last_used_at=row.last_used_at, environment_id=row.environment_id,
         token=plaintext,
     )
+
+
+@router.get("/{identity_id}/run-tokens")
+def list_run_tokens(
+    workspace_id: str,
+    identity_id: str,
+    _ws: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+):
+    from app.modules.agent_identity.run_token_model import AgentRunToken
+    from app.models.run import Run
+    from app.models.workflow_version import WorkflowVersion
+    from app.models.workflow import Workflow
+
+    rows = (
+        db.query(AgentRunToken)
+        .filter(
+            AgentRunToken.agent_identity_id == identity_id,
+            AgentRunToken.workspace_id == uuid.UUID(workspace_id),
+        )
+        .order_by(AgentRunToken.created_at.desc())
+        .limit(50)
+        .all()
+    )
+
+    result = []
+    for r in rows:
+        workflow_name = None
+        run = db.query(Run).filter(Run.id == r.run_id).first()
+        if run:
+            try:
+                wv = db.query(WorkflowVersion).filter(WorkflowVersion.id == run.workflow_version_id).first()
+                if wv:
+                    wf = db.query(Workflow).filter(Workflow.id == wv.workflow_id).first()
+                    workflow_name = wf.name if wf else None
+            except Exception:
+                pass
+        result.append({
+            "id": r.id,
+            "run_id": r.run_id,
+            "workflow_name": workflow_name,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "first_used_at": r.first_used_at.isoformat() if r.first_used_at else None,
+            "invalidated_at": r.invalidated_at.isoformat() if r.invalidated_at else None,
+        })
+    return result
