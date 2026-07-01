@@ -112,7 +112,7 @@ export default function DefinitionPanel({ nodes, workflowName, runState, runSumm
   const hasRun = !!runSummary
   const isLive = runSummary?.status === "running" || runSummary?.status === "pending"
   const totalCost = hasRun
-    ? Object.values(runState ?? {}).reduce((sum, b) => sum + (b.cost_usd ?? 0), 0)
+    ? Object.values(runState ?? {}).reduce((sum, b) => sum + (b?.cost_usd ?? 0), 0)
     : 0
 
   function toggle(id: string) {
