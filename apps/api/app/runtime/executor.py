@@ -1764,26 +1764,32 @@ def execute_run(run_id: str):
 
         _run_token_plaintext: str | None = None
 
-        _run_token_plaintext = "cond_run_" + _uuid_mod.uuid4().hex
-        _run_token_hash = _hashlib.sha256(_run_token_plaintext.encode()).hexdigest()
-        _rt_row = _AgentRunToken(
-            id=str(_uuid_mod.uuid4()),
-            agent_identity_id=run.agent_role_id,  # may be None
-            workspace_id=run.workspace_id,
-            run_id=str(run.id),
-            token_hash=_run_token_hash,
-            created_at=_dt.now(_rtz.utc),
-        )
-        db.add(_rt_row)
-        db.commit()
-        _run_token_row_id = _rt_row.id
+        # ponytail: fail-open — token mint failure must never abort a run
+        try:
+            _run_token_plaintext = "cond_run_" + _uuid_mod.uuid4().hex
+            _run_token_hash = _hashlib.sha256(_run_token_plaintext.encode()).hexdigest()
+            _rt_row = _AgentRunToken(
+                id=str(_uuid_mod.uuid4()),
+                agent_identity_id=run.agent_role_id,  # may be None
+                workspace_id=run.workspace_id,
+                run_id=str(run.id),
+                token_hash=_run_token_hash,
+                created_at=_dt.now(_rtz.utc),
+            )
+            db.add(_rt_row)
+            db.commit()
+            _run_token_row_id = _rt_row.id
+        except Exception:
+            _run_token_plaintext = None
+            db.rollback()
 
         # Inject ephemeral run token into in-memory env_vars for this run.
         # CredentialStore._data is the underlying dict — mutate env_vars in-place.
-        _ev = credentials.get("env_vars") or {}
-        if isinstance(_ev, dict):
-            _ev["CONDUCT_RUN_TOKEN"] = _run_token_plaintext
-            credentials._data["env_vars"] = _ev
+        if _run_token_plaintext:
+            _ev = credentials.get("env_vars") or {}
+            if isinstance(_ev, dict):
+                _ev["CONDUCT_RUN_TOKEN"] = _run_token_plaintext
+                credentials._data["env_vars"] = _ev
 
         final_state = _execute_dag(
             run=run,
