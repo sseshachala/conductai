@@ -10,6 +10,7 @@ export const GUARD_TABS = [
   { href: "/guard",                 label: "Overview"        },
   { href: "/guard/spend",           label: "Spend"           },
   { href: "/guard/policies",        label: "Policies"        },
+  { href: "/guard/discovery",       label: "Discovery"       },
   { href: "/guard/activity",        label: "Activity"        },
   { href: "/guard/session-reports", label: "Session Reports" },
   { href: "/guard/team-memory",     label: "Team Memory"     },
