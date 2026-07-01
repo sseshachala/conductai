@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_guard_hook_auth as get_workspace_id
+from app.core.auth import get_guard_hook_auth, get_workspace_id
 from app.core.database import get_db
 from app.modules.guard.models import DiscoveredAgent, DiscoveryScan
 
@@ -69,7 +69,7 @@ class ScanOut(BaseModel):
 @router.post("/scan", status_code=201)
 def ingest_scan(
     body: ScanIn,
-    workspace_id: str = Depends(get_workspace_id),
+    workspace_id: str = Depends(get_guard_hook_auth),
     db: Session = Depends(get_db),
 ):
     """CLI pushes discovery scan results. Creates scan record + upserts agents."""
