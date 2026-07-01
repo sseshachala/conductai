@@ -21,6 +21,15 @@ interface Env {
   name: string
 }
 
+interface RunToken {
+  id: string
+  run_id: string
+  workflow_name: string | null
+  created_at: string | null
+  first_used_at: string | null
+  invalidated_at: string | null
+}
+
 export default function AgentIdentityPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <WithAuth />
@@ -54,6 +63,9 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const [deleting, setDeleting] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [runTokens, setRunTokens] = useState<Record<string, RunToken[]>>({})
+  const [loadingTokens, setLoadingTokens] = useState<string | null>(null)
 
   const headers = useCallback(async (): Promise<Record<string, string>> => {
     const h: Record<string, string> = { "Content-Type": "application/json" }
@@ -142,6 +154,21 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
     return envs.find(e => e.id === id)?.name ?? "—"
   }
 
+  async function loadRunTokens(identityId: string) {
+    if (runTokens[identityId]) {
+      setExpandedId(expandedId === identityId ? null : identityId)
+      return
+    }
+    setLoadingTokens(identityId)
+    try {
+      const h = await headers()
+      const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/agent-identities/${identityId}/run-tokens`, { headers: h })
+      if (r.ok) { const data = await r.json(); setRunTokens(prev => ({ ...prev, [identityId]: data })) }
+    } catch {}
+    setLoadingTokens(null)
+    setExpandedId(identityId)
+  }
+
   return (
     <AppShell>
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
@@ -188,7 +215,13 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
             identities.map((identity, i) => (
               <div key={identity.id} style={{ borderBottom: i < identities.length - 1 ? "1px solid var(--border)" : "none" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr 0.9fr 0.8fr 0.8fr auto", gap: 14, padding: "14px 20px", alignItems: "center" }}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--text)" }}>{identity.name}</div>
+                  <button
+                    onClick={() => loadRunTokens(identity.id)}
+                    style={{ fontWeight: 600, fontSize: 13.5, color: "var(--text)", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, display: "flex", alignItems: "center", gap: 5 }}
+                  >
+                    {identity.name}
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{expandedId === identity.id ? "▲" : "▼"}</span>
+                  </button>
                   <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{identity.token_prefix}...</div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{envName(identity.environment_id)}</div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Created {fmt(identity.created_at)}</div>
@@ -231,6 +264,46 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                       </button>
                       <button onClick={() => { setDeleteConfirmId(null); setDeleteConfirmValue("") }} className="btn btn-ghost btn-sm">Cancel</button>
                     </div>
+                  </div>
+                )}
+                {expandedId === identity.id && (
+                  <div style={{ margin: "0 20px 14px", borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                    {loadingTokens === identity.id ? (
+                      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>Loading run history...</p>
+                    ) : (runTokens[identity.id] ?? []).length === 0 ? (
+                      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>No runs yet for this identity.</p>
+                    ) : (
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ color: "var(--text-muted)" }}>
+                            <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500 }}>Workflow</th>
+                            <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500 }}>Run</th>
+                            <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500 }}>Created</th>
+                            <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500 }}>First used</th>
+                            <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500 }}>Invalidated</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(runTokens[identity.id] ?? []).map(rt => (
+                            <tr key={rt.id} style={{ borderTop: "1px solid var(--border)" }}>
+                              <td style={{ padding: "5px 8px", color: "var(--text)" }}>{rt.workflow_name ?? "—"}</td>
+                              <td style={{ padding: "5px 8px" }}>
+                                <a href={`/runs/${rt.run_id}`} style={{ color: "var(--accent)", textDecoration: "none", fontFamily: "monospace" }}>
+                                  {rt.run_id.slice(0, 8)}
+                                </a>
+                              </td>
+                              <td style={{ padding: "5px 8px", color: "var(--text-muted)" }}>{fmt(rt.created_at)}</td>
+                              <td style={{ padding: "5px 8px", color: rt.first_used_at ? "var(--ok)" : "var(--text-muted)" }}>
+                                {rt.first_used_at ? fmt(rt.first_used_at) : "—"}
+                              </td>
+                              <td style={{ padding: "5px 8px", color: rt.invalidated_at ? "var(--text-muted)" : "var(--ok)" }}>
+                                {rt.invalidated_at ? fmt(rt.invalidated_at) : "active"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 )}
               </div>
