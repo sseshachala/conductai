@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "conduct-cli"
 version = "0.6.29"
-description = "CLI for Conduct AI — install agents, manage projects, run tests"
+description = "CLI for Conduct AI — secure, govern, install agents, manage projects, run tests"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
