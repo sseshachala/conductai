@@ -14,7 +14,6 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
   const [upstream, setUpstream]         = useState("")
   const [upstreamKey, setUpstreamKey]   = useState("")
   const [hasUpstreamKey, setHasUpstreamKey] = useState(false)
-  const [proxyPersona, setProxyPersona] = useState<"conservative" | "standard" | "developer">("standard")
   const [saving, setSaving]             = useState(false)
   const [saved, setSaved]               = useState(false)
   const [copied, setCopied]             = useState(false)
@@ -30,7 +29,6 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
       setProxyUrl(data.conduct_proxy_url ?? "")
       setUpstream(data.llm_upstream ?? "")
       setHasUpstreamKey(data.has_upstream_key ?? false)
-      setProxyPersona(data.proxy_persona ?? "standard")
     })()
   }, [workspaceId])
 
@@ -40,7 +38,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
     if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
     await fetch(`${API}/guard/proxy-config`, {
       method: "PUT", headers,
-      body: JSON.stringify({ llm_upstream: upstream, llm_upstream_api_key: upstreamKey || undefined, proxy_persona: proxyPersona }),
+      body: JSON.stringify({ llm_upstream: upstream, llm_upstream_api_key: upstreamKey || undefined }),
     })
     setSaving(false)
     setSaved(true)
