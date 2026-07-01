@@ -1100,6 +1100,21 @@ def preflight_workflow(
                 detail="Agent identity not configured. Add CONDUCT_AGENT_TOKEN to the environment, or enable 'Agent Identity Required' in workflow settings.",
             )
 
+    # Case 1: flag=true → verify AgentIdentity exists for this env
+    if workflow.agent_identity_required:
+        from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
+        _pf_identity = None
+        if workflow.environment_id:
+            _pf_identity = db.query(_AgentIdentity).filter(
+                _AgentIdentity.workspace_id == workspace_id,
+                _AgentIdentity.environment_id == str(workflow.environment_id),
+            ).first()
+        if not _pf_identity:
+            raise HTTPException(
+                status_code=400,
+                detail="No Agent Identity assigned to this workflow's environment. Go to Agent Identity and assign one.",
+            )
+
     graph = workflow.current_version.graph or {}
     # min_turns: max of YAML-declared min_turns input default and workflow-level DB override
     yaml_min = 0
@@ -1970,6 +1985,40 @@ def test_trigger(
     )
     db.add(run)
     db.commit()
+
+    # Mint agent run token at trigger time so audit log entry exists before run starts
+    if workflow.agent_identity_required:
+        try:
+            import hashlib as _ht_hash, uuid as _ht_uuid
+            from datetime import datetime as _ht_dt, timezone as _ht_tz
+            from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
+            from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
+            from app.core.crypto import encrypt as _ht_encrypt
+
+            _ht_identity = None
+            if workflow.environment_id:
+                _ht_identity = db.query(_AgentIdentity).filter(
+                    _AgentIdentity.workspace_id == str(workflow.workspace_id),
+                    _AgentIdentity.environment_id == str(workflow.environment_id),
+                ).first()
+
+            if _ht_identity:
+                _ht_plaintext = "cond_run_" + _ht_uuid.uuid4().hex
+                _ht_hash_val = _ht_hash.sha256(_ht_plaintext.encode()).hexdigest()
+                _ht_row = _AgentRunToken(
+                    id=str(_ht_uuid.uuid4()),
+                    agent_identity_id=str(_ht_identity.id),
+                    workspace_id=run.workspace_id,
+                    run_id=str(run.id),
+                    token_hash=_ht_hash_val,
+                    token_encrypted=_ht_encrypt({"token": _ht_plaintext}),
+                    created_at=_ht_dt.now(_ht_tz.utc),
+                )
+                db.add(_ht_row)
+                db.commit()
+        except Exception as _ht_err:
+            import logging as _ht_log
+            _ht_log.getLogger(__name__).warning("agent_run_token.mint_failed run_id=%s err=%s", run.id, _ht_err)
 
     try:
         r = _redis_mod.from_url(_settings.redis_url, decode_responses=True)
