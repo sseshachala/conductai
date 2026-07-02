@@ -9,6 +9,7 @@ interface RunToken {
   id: string
   run_id: string
   token_prefix: string | null
+  workflow_id: string | null
   workflow_name: string | null
   created_at: string | null
   first_used_at: string | null
@@ -95,9 +96,14 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                         {rt.token_prefix ? `${rt.token_prefix}...` : "—"}
                       </code>
                     </td>
-                    <td style={{ padding: "8px 16px", color: "var(--text)" }}>{rt.workflow_name ?? "—"}</td>
                     <td style={{ padding: "8px 16px" }}>
-                      <a href={`/runs/${rt.run_id}`} style={{ color: "var(--accent)", textDecoration: "none", fontFamily: "monospace", fontSize: 11.5 }}>
+                      {rt.workflow_id
+                        ? <a href={`/workflows/${rt.workflow_id}`} style={{ color: "var(--text)", textDecoration: "none" }} onMouseEnter={e => (e.currentTarget.style.textDecoration = "underline")} onMouseLeave={e => (e.currentTarget.style.textDecoration = "none")}>{rt.workflow_name ?? "—"}</a>
+                        : <span style={{ color: "var(--text)" }}>{rt.workflow_name ?? "—"}</span>
+                      }
+                    </td>
+                    <td style={{ padding: "8px 16px" }}>
+                      <a href={rt.workflow_id ? `/workflows/${rt.workflow_id}/runs/${rt.run_id}` : `/runs/${rt.run_id}`} style={{ color: "var(--accent)", textDecoration: "none", fontFamily: "monospace", fontSize: 11.5 }}>
                         {rt.run_id.slice(0, 8)}
                       </a>
                     </td>
