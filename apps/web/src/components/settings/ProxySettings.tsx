@@ -4,8 +4,6 @@ import { useState, useEffect } from "react"
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ""
 
-interface Env { id: string; name: string }
-
 interface Props {
   workspaceId: string
   getToken: (() => Promise<string | null>) | null
@@ -16,8 +14,6 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
   const [upstream, setUpstream]             = useState("")
   const [upstreamKey, setUpstreamKey]       = useState("")
   const [hasUpstreamKey, setHasUpstreamKey] = useState(false)
-  const [envs, setEnvs]                     = useState<Env[]>([])
-  const [selectedEnvId, setSelectedEnvId]   = useState("")
   const [saving, setSaving]                 = useState(false)
   const [saved, setSaved]                   = useState(false)
   const [copied, setCopied]                 = useState(false)
@@ -27,20 +23,12 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
     ;(async () => {
       const headers: Record<string, string> = { "X-Workspace-ID": workspaceId }
       if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-      const [cfgRes, envRes] = await Promise.all([
-        fetch(`${API}/guard/proxy-config`, { headers }),
-        fetch(`${API}/environments`, { headers }),
-      ])
+      const cfgRes = await fetch(`${API}/guard/proxy-config`, { headers })
       if (cfgRes.ok) {
         const data = await cfgRes.json()
         setProxyUrl(data.conduct_proxy_url ?? "")
         setUpstream(data.llm_upstream ?? "")
         setHasUpstreamKey(data.has_upstream_key ?? false)
-      }
-      if (envRes.ok) {
-        const data: Env[] = await envRes.json()
-        setEnvs(data)
-        if (data.length > 0) setSelectedEnvId(data[0].id)
       }
     })()
   }, [workspaceId])
@@ -51,7 +39,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
     if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
     await fetch(`${API}/guard/proxy-config`, {
       method: "PUT", headers,
-      body: JSON.stringify({ llm_upstream: upstream, llm_upstream_api_key: upstreamKey || undefined, environment_id: selectedEnvId || null }),
+      body: JSON.stringify({ llm_upstream: upstream, llm_upstream_api_key: upstreamKey || undefined }),
     })
     setSaving(false)
     setSaved(true)
@@ -139,23 +127,6 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
         />
         <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
           Sent as the auth header to your upstream gateway. If empty, Guard uses the vendor key from your Environments vault.
-        </p>
-      </div>
-
-      {/* Environment selector */}
-      <div style={{ marginBottom: 28 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: ".06em", display: "block", marginBottom: 8 }}>
-          Environment
-        </label>
-        <select
-          value={selectedEnvId} onChange={e => setSelectedEnvId(e.target.value)}
-          style={{ width: "100%", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", color: "var(--text)" }}
-        >
-          <option value="">No environment (workspace-level only)</option>
-          {envs.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </select>
-        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
-          Upstream settings will be pushed to this environment so agents can use them at run time.
         </p>
       </div>
 

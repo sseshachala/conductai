@@ -384,8 +384,6 @@ def _execute_brain(
     # Resolve per-workspace upstream URL and optional gateway key from proxy_config.
     # When CONDUCT_LLM_UPSTREAM is set, all LLM traffic routes through the
     # customer's gateway (Portkey, Helicone, etc.) rather than the vendor directly.
-    _upstream_base_url: str | None = None
-    _upstream_key: str | None = None
     _conduct_proxy_url: str | None = None
     if db and workspace_id:
         try:
@@ -448,35 +446,12 @@ def _execute_brain(
                     except Exception:
                         pass
 
-            # Extract Conduct proxy URL and BYO upstream from the resolved row.
+            # Extract Conduct proxy URL from proxy_config.
+            # CONDUCT_LLM_UPSTREAM is the proxy's concern — brain_block never reads it.
             if _pc_creds:
                 _raw_proxy_url = _pc_creds.get("CONDUCT_PROXY_BASE_URL", "").rstrip("/")
                 if _raw_proxy_url:
                     _conduct_proxy_url = _raw_proxy_url
-                _llm_override = _pc_creds.get("CONDUCT_LLM_UPSTREAM") or _pc_creds.get("conduct_llm_upstream")
-                if _llm_override:
-                    _upstream_base_url = _llm_override.rstrip("/")
-                    _upstream_key = _pc_creds.get("LLM_UPSTREAM_API_KEY") or None
-
-            # When CONDUCT_LLM_UPSTREAM was not in proxy_config, also check env_vars handle.
-            if not _upstream_base_url:
-                _ev_row = db.execute(
-                    _sql_text("""
-                        SELECT encrypted_credentials FROM integrations
-                        WHERE workspace_id = :ws AND handle = 'env_vars'
-                          AND encrypted_credentials IS NOT NULL
-                        LIMIT 1
-                    """),
-                    {"ws": workspace_id},
-                ).fetchone()
-                if _ev_row:
-                    try:
-                        _ev_creds = _decrypt(_ev_row[0]) or {}
-                        _ev_override = _ev_creds.get("CONDUCT_LLM_UPSTREAM") or _ev_creds.get("conduct_llm_upstream")
-                        if _ev_override:
-                            _upstream_base_url = _ev_override.rstrip("/")
-                    except Exception:
-                        pass
 
         except Exception as _ue:
             log.warning("brain.upstream_lookup_failed", workspace_id=workspace_id, error=str(_ue))
@@ -492,21 +467,19 @@ def _execute_brain(
     # vendor key stays in api_key (forwarded to Anthropic by the gateway).
     _effective_key = _provider_keys[provider]
 
-    # Determine effective base URL:
-    #   - BYO gateway (CONDUCT_LLM_UPSTREAM) → route directly, skip Conduct proxy.
-    #   - Conduct proxy configured → route through Guard for policy evaluation.
-    #   - Neither → call vendor API directly.
-    if _upstream_base_url:
-        _effective_base_url = _upstream_base_url  # BYO gateway
-    elif _conduct_proxy_url:
+    # Guard proxy is always first. brain_block never routes to BYO gateway directly.
+    # The proxy reads CONDUCT_LLM_UPSTREAM from proxy_config and handles BYO forwarding.
+    if _conduct_proxy_url:
         _effective_base_url = f"{_conduct_proxy_url}/{provider}"
     else:
         _effective_base_url = None
 
+    # Gateway adapt only when no Guard proxy (dev/local mode without proxy).
+    # When Guard proxy is active, it handles BYO gateway routing internally.
     from app.runtime.adapters.gateway import gateway_adapt as _gateway_adapt
-    _gw = _gateway_adapt(_upstream_base_url, _upstream_key or "", provider, model_id)
+    _gw = _gateway_adapt(None if _conduct_proxy_url else None, "", provider, model_id)
     _extra_headers = _gw.headers or {}
-    model_id = _gw.model  # use the (possibly rewritten) model name
+    model_id = _gw.model
 
     # Pass run context so proxy audit rows link back to the run + workflow.
     if run_id:
@@ -517,7 +490,7 @@ def _execute_brain(
         _extra_headers["x-conductai-workflow-id"] = str(workflow_id)
     # Authenticate with the Conduct proxy.
     # Prefer ephemeral run token (minted per-run), fall back to long-lived agent identity token.
-    if _conduct_proxy_url and not _upstream_base_url and workspace_id:
+    if _conduct_proxy_url and workspace_id:
         _agent_token = _env_vars.get("CONDUCT_RUN_TOKEN") or _env_vars.get("CONDUCT_AGENT_TOKEN", "")
         if _agent_token:
             _extra_headers["x-conductai-internal"] = _agent_token
@@ -691,7 +664,7 @@ def _execute_brain(
                     "routing_reason": routing_reason,
                     "pricing_version": pricing_version,
                     "pricing_rates": pricing_rates,
-                    "upstream_url": _upstream_base_url,
+                    "upstream_url": _effective_base_url,
                 }
                 # Extract structured values from brain output so keys like
                 # pr_url, files, approach etc. are available as direct refs.
@@ -857,7 +830,7 @@ def _execute_brain(
             "routing_reason": routing_reason,
             "pricing_version": pricing_version,
             "pricing_rates": pricing_rates,
-            "upstream_url": _upstream_base_url,
+            "upstream_url": _effective_base_url,
         }
         _extracted = _extract_last_json_object(result.get("output", ""))
         if _extracted:

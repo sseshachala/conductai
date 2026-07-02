@@ -881,7 +881,6 @@ def _fail_closed(status: int, message: str) -> JSONResponse:
 class ProxyConfigBody(BaseModel):
     llm_upstream: str = ""
     llm_upstream_api_key: str = ""
-    environment_id: str | None = None
 
 
 @guard_router.get("/proxy-config")
@@ -945,30 +944,6 @@ def save_proxy_config(
             workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
             auth_method="api_key", encrypted_credentials=ws_encrypted, environment_id=None,
         ))
-
-    # Push LLM upstream config to the selected environment so brain blocks pick it up at run time.
-    # Auth to the Conduct proxy uses CONDUCT_AGENT_TOKEN (agent identity token) — no key generated here.
-    if body.environment_id:
-        env_row = db.query(Integration).filter(
-            Integration.workspace_id == workspace_id,
-            Integration.handle == "proxy_config",
-            Integration.environment_id == body.environment_id,
-        ).first()
-        env_creds = {
-            "CONDUCT_PROXY_BASE_URL": settings.conduct_proxy_url,
-            "CONDUCT_LLM_UPSTREAM": body.llm_upstream,
-            "LLM_UPSTREAM_API_KEY": api_key,
-        }
-        env_encrypted = encrypt(env_creds)
-
-        if env_row:
-            env_row.encrypted_credentials = env_encrypted
-        else:
-            db.add(Integration(
-                workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
-                auth_method="api_key", encrypted_credentials=env_encrypted,
-                environment_id=body.environment_id,
-            ))
 
     db.commit()
     return {"saved": True}
