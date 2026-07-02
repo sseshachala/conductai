@@ -381,87 +381,9 @@ def _execute_brain(
     if not _provider_keys[provider]:
         raise MissingProviderKey(provider, model_id)
 
-    # Resolve per-workspace upstream URL and optional gateway key from proxy_config.
-    # When CONDUCT_LLM_UPSTREAM is set, all LLM traffic routes through the
-    # customer's gateway (Portkey, Helicone, etc.) rather than the vendor directly.
-    _conduct_proxy_url: str | None = None
-    if db and workspace_id:
-        try:
-            from sqlalchemy import text as _sql_text
-            from app.core.crypto import decrypt as _decrypt
-
-            _VENDOR_DEFAULTS = {
-                "anthropic": "https://api.anthropic.com",
-                "openai": "https://api.openai.com",
-                "perplexity": "https://api.perplexity.ai",
-            }
-
-            # Resolve the environment_id for this run via the workflow so we can
-            # prefer the per-environment proxy_config row over the workspace-level one.
-            _env_id: str | None = None
-            if workflow_id and db:
-                try:
-                    _wf_row = db.execute(
-                        _sql_text("SELECT environment_id FROM workflows WHERE id = :wf LIMIT 1"),
-                        {"wf": workflow_id},
-                    ).fetchone()
-                    if _wf_row and _wf_row[0]:
-                        _env_id = str(_wf_row[0])
-                except Exception:
-                    pass
-
-            # Load proxy_config: prefer environment-scoped row, fall back to workspace row.
-            _pc_creds: dict = {}
-            if _env_id:
-                _env_pc_row = db.execute(
-                    _sql_text("""
-                        SELECT encrypted_credentials FROM integrations
-                        WHERE workspace_id = :ws AND handle = 'proxy_config'
-                          AND environment_id = :env
-                          AND encrypted_credentials IS NOT NULL
-                        LIMIT 1
-                    """),
-                    {"ws": workspace_id, "env": _env_id},
-                ).fetchone()
-                if _env_pc_row:
-                    try:
-                        _pc_creds = _decrypt(_env_pc_row[0]) or {}
-                    except Exception:
-                        pass
-
-            if not _pc_creds:
-                _ws_pc_row = db.execute(
-                    _sql_text("""
-                        SELECT encrypted_credentials FROM integrations
-                        WHERE workspace_id = :ws AND handle = 'proxy_config'
-                          AND environment_id IS NULL
-                          AND encrypted_credentials IS NOT NULL
-                        LIMIT 1
-                    """),
-                    {"ws": workspace_id},
-                ).fetchone()
-                if _ws_pc_row:
-                    try:
-                        _pc_creds = _decrypt(_ws_pc_row[0]) or {}
-                    except Exception:
-                        pass
-
-            # Extract Conduct proxy URL from proxy_config.
-            # CONDUCT_LLM_UPSTREAM is the proxy's concern — brain_block never reads it.
-            if _pc_creds:
-                _raw_proxy_url = _pc_creds.get("CONDUCT_PROXY_BASE_URL", "").rstrip("/")
-                if _raw_proxy_url:
-                    _conduct_proxy_url = _raw_proxy_url
-
-        except Exception as _ue:
-            log.warning("brain.upstream_lookup_failed", workspace_id=workspace_id, error=str(_ue))
-
-    # Dev/local fallback: read Conduct proxy config from environment variables when
-    # no proxy_config row exists (e.g. local development without a seeded environment).
-    if not _conduct_proxy_url:
-        _env_proxy_base = os.environ.get("CONDUCT_PROXY_BASE_URL", "").rstrip("/")
-        if _env_proxy_base:
-            _conduct_proxy_url = _env_proxy_base
+    # Guard proxy URL is a platform constant — same for every workspace.
+    # brain_block always routes through it; the proxy handles BYO forwarding internally.
+    _conduct_proxy_url: str = settings.conduct_proxy_url.rstrip("/")
 
     # When routing through Portkey/Helicone: gateway key goes in x-portkey-api-key header,
     # vendor key stays in api_key (forwarded to Anthropic by the gateway).
