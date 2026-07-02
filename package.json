@@ -1,0 +1,9 @@
+{
+  "name": "conductai",
+  "private": true,
+  "workspaces": ["apps/web"],
+  "devDependencies": {
+    "turbo": "^2.5.0"
+  },
+  "packageManager": "npm@10.9.0"
+}

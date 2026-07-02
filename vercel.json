@@ -1,0 +1,7 @@
+{
+  "buildCommand": "npx turbo run build --filter=marshal-web",
+  "outputDirectory": "apps/web/.next",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "ignoreCommand": "! git diff HEAD~1 --name-only | grep -q '^apps/web/'"
+}
