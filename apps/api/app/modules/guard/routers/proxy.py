@@ -25,6 +25,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import AsyncIterator
+from urllib.parse import urlparse as _urlparse
 
 import httpx
 import structlog
@@ -653,20 +654,26 @@ async def _forward(
     if extra_headers:
         headers.update(extra_headers)
 
+    # Build full URL: strip any path prefix the upstream already contains so
+    # upstream="/v1" + path="/v1/messages" doesn't produce double /v1/v1/messages.
+    _up_path = _urlparse(upstream).path.rstrip("/")
+    _req_path = path[len(_up_path):] if _up_path and path.startswith(_up_path) else path
+    _full_url = upstream.rstrip("/") + _req_path
+
     # ponytail: a single shared async client would be better for connection
     # pooling. Per-call is fine until QPS warrants it.
-    client = httpx.AsyncClient(base_url=upstream, timeout=httpx.Timeout(600.0))
+    client = httpx.AsyncClient(timeout=httpx.Timeout(600.0))
 
     try:
-        req = client.build_request("POST", path, json=body, headers=headers)
-        log.info("guard.proxy.forward", upstream=upstream, path=path,
+        req = client.build_request("POST", _full_url, json=body, headers=headers)
+        log.info("guard.proxy.forward", url=_full_url,
                  headers={k: v for k, v in headers.items() if "key" not in k.lower() and "auth" not in k.lower()})
         resp = await client.send(req, stream=True)
     except httpx.HTTPError as e:
         await client.aclose()
-        log.warning("guard.proxy.upstream_unreachable", upstream=upstream, path=path,
+        log.warning("guard.proxy.upstream_unreachable", url=_full_url,
                     exc_type=type(e).__name__, err=str(e))
-        return _fail_closed(502, f"Upstream {upstream}{path} unreachable: {type(e).__name__}")
+        return _fail_closed(502, f"Upstream {_full_url} unreachable: {type(e).__name__}")
 
     if resp.status_code >= 400:
         # Read the error body, close client, return as-is so the SDK sees the
