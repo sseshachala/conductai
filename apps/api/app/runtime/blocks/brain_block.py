@@ -396,12 +396,7 @@ def _execute_brain(
     else:
         _effective_base_url = None
 
-    # Gateway adapt only when no Guard proxy (dev/local mode without proxy).
-    # When Guard proxy is active, it handles BYO gateway routing internally.
-    from app.runtime.adapters.gateway import gateway_adapt as _gateway_adapt
-    _gw = _gateway_adapt(None if _conduct_proxy_url else None, "", provider, model_id)
-    _extra_headers = _gw.headers or {}
-    model_id = _gw.model
+    _extra_headers: dict = {}
 
     # Pass run context so proxy audit rows link back to the run + workflow.
     if run_id:
