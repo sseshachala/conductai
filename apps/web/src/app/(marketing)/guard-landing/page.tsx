@@ -10,6 +10,7 @@ export default function GuardLandingPage() {
       <ToolsSection />
       <EnforcementLayerSection />
       <ProxySection />
+      <ProxyCompareSection />
       <GitHubEnterpriseSection />
       <Phase1Section />
       <Phase2Section />
@@ -277,6 +278,74 @@ function ProxySection() {
           </div>
 
         </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Proxy Comparison ─────────────────────────────────────────────────── */
+
+function ProxyCompareSection() {
+  const rows = [
+    { cap: "LLM calls reach the model",          direct: true,  byo: true,  guard: true,  guardByo: true  },
+    { cap: "Observability / logging",             direct: false, byo: true,  guard: true,  guardByo: true  },
+    { cap: "Cost tracking",                       direct: false, byo: "By API key", guard: "By agent", guardByo: "By agent" },
+    { cap: "Policy enforcement (block / warn)",   direct: false, byo: false, guard: true,  guardByo: true  },
+    { cap: "Blocks the call before it sends",     direct: false, byo: false, guard: true,  guardByo: true  },
+    { cap: "Agent identity on every call",        direct: false, byo: false, guard: true,  guardByo: true  },
+    { cap: "Audit trail tied to run + workflow",  direct: false, byo: false, guard: true,  guardByo: true  },
+    { cap: "Spend budget per agent / workflow",   direct: false, byo: false, guard: true,  guardByo: true  },
+    { cap: "Custom routing / caching",            direct: false, byo: true,  guard: true,  guardByo: true  },
+  ]
+
+  function Cell({ val }: { val: boolean | string }) {
+    if (val === true)  return <span className="text-emerald-500 font-bold text-base">✓</span>
+    if (val === false) return <span className="text-stone-300 text-base">—</span>
+    return <span className="text-stone-500 text-xs leading-tight">{val}</span>
+  }
+
+  const cols = ["", "Direct LLM", "Portkey / Helicone", "Guard Proxy", "Guard + BYO"]
+
+  return (
+    <section className="bg-stone-50 px-6 py-20">
+      <div className="max-w-5xl mx-auto">
+        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-3 text-center">Why Guard Proxy</p>
+        <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight leading-tight mb-4 text-center">
+          Observe or enforce — pick one. Unless you use Guard.
+        </h2>
+        <p className="text-stone-500 text-base leading-relaxed mb-12 text-center max-w-2xl mx-auto">
+          Portkey and Helicone sit beside the call and observe. Guard sits in front and can stop it.
+          Set an LLM upstream in Proxy Settings to keep Portkey&apos;s routing with Guard&apos;s enforcement on top.
+        </p>
+
+        <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-stone-100">
+                {cols.map((c, i) => (
+                  <th key={c} className={`px-5 py-4 text-left font-semibold ${i === 0 ? "text-stone-400 w-64" : i === 3 ? "text-indigo-600 bg-indigo-50" : i === 4 ? "text-indigo-700 bg-indigo-50" : "text-stone-700"}`}>
+                    {c}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={row.cap} className={`border-b border-stone-50 ${ri % 2 === 0 ? "bg-white" : "bg-stone-50/60"}`}>
+                  <td className="px-5 py-3.5 text-stone-600 font-medium">{row.cap}</td>
+                  <td className="px-5 py-3.5 text-center"><Cell val={row.direct} /></td>
+                  <td className="px-5 py-3.5 text-center"><Cell val={row.byo} /></td>
+                  <td className="px-5 py-3.5 text-center bg-indigo-50/40"><Cell val={row.guard} /></td>
+                  <td className="px-5 py-3.5 text-center bg-indigo-50/40"><Cell val={row.guardByo} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="text-stone-400 text-xs text-center mt-5">
+          Custom routing in Guard Proxy: set any LLM upstream (Portkey, LiteLLM, Azure OpenAI) in Settings → Proxy.
+        </p>
       </div>
     </section>
   )
