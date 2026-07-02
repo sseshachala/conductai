@@ -4,7 +4,17 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "outputs": [".next/**", "!.next/cache/**"],
+      "env": [
+        "CLERK_SECRET_KEY",
+        "MCP_OAUTH_SECRET",
+        "NEXT_PUBLIC_API_URL",
+        "NEXT_PUBLIC_APP_URL",
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+        "NEXT_PUBLIC_RECAPTCHA_SITE_KEY",
+        "VERCEL_ENV",
+        "VERCEL_URL"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]
