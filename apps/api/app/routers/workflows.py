@@ -1988,32 +1988,25 @@ def test_trigger(
                 ).first()
 
             if not _ht_identity:
-                import logging as _ht_log
-                _ht_log.getLogger(__name__).warning(
-                    "agent_run_token.no_identity run_id=%s workflow_id=%s env_id=%s",
-                    run.id, workflow.id, workflow.environment_id,
-                )
+                pass  # no agent identity configured for this env, skip minting
             if _ht_identity:
                 _ht_plaintext = "cond_run_" + _ht_uuid.uuid4().hex
                 _ht_hash_val = _ht_hash.sha256(_ht_plaintext.encode()).hexdigest()
+                _ht_prefix = _ht_plaintext[:16]
                 _ht_row = _AgentRunToken(
                     id=str(_ht_uuid.uuid4()),
                     agent_identity_id=str(_ht_identity.id),
                     workspace_id=run.workspace_id,
                     run_id=str(run.id),
                     token_hash=_ht_hash_val,
+                    token_prefix=_ht_prefix,
                     token_encrypted=_ht_encrypt({"token": _ht_plaintext}),
                     created_at=_ht_dt.now(_ht_tz.utc),
                 )
                 db.add(_ht_row)
                 db.commit()
-        except Exception as _ht_err:
-            import logging as _ht_log, traceback as _ht_tb
-            _ht_log.getLogger(__name__).warning(
-                "agent_run_token.mint_failed run_id=%s workflow_id=%s env_id=%s identity_found=%s err=%s\n%s",
-                run.id, workflow.id, workflow.environment_id, _ht_identity is not None,
-                _ht_err, _ht_tb.format_exc()
-            )
+        except Exception:
+            pass  # ponytail: mint failure is non-fatal, run proceeds without run token
 
     try:
         r = _redis_mod.from_url(_settings.redis_url, decode_responses=True)

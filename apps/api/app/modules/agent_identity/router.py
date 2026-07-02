@@ -184,20 +184,6 @@ def list_run_tokens(
     from app.modules.agent_identity.run_token_model import AgentRunToken
     from app.models.run import Run
     from app.models.workflow import Workflow, WorkflowVersion
-    import logging as _log
-    _logger = _log.getLogger(__name__)
-
-    # Debug: count ALL rows for this workspace and for this identity
-    _total = db.query(AgentRunToken).filter(
-        AgentRunToken.workspace_id == uuid.UUID(workspace_id)
-    ).count()
-    _by_identity = db.query(AgentRunToken).filter(
-        AgentRunToken.agent_identity_id == identity_id
-    ).count()
-    _logger.warning(
-        "run_tokens.query identity_id=%s workspace_id=%s total_in_ws=%s by_identity=%s",
-        identity_id, workspace_id, _total, _by_identity
-    )
 
     rows = (
         db.query(AgentRunToken)
@@ -225,6 +211,7 @@ def list_run_tokens(
         result.append({
             "id": r.id,
             "run_id": r.run_id,
+            "token_prefix": r.token_prefix,
             "workflow_name": workflow_name,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "first_used_at": r.first_used_at.isoformat() if r.first_used_at else None,
