@@ -199,19 +199,23 @@ def list_run_tokens(
     result = []
     for r in rows:
         workflow_name = None
+        workflow_id = None
         run = db.query(Run).filter(Run.id == r.run_id).first()
         if run:
             try:
                 wv = db.query(WorkflowVersion).filter(WorkflowVersion.id == run.workflow_version_id).first()
                 if wv:
                     wf = db.query(Workflow).filter(Workflow.id == wv.workflow_id).first()
-                    workflow_name = wf.name if wf else None
+                    if wf:
+                        workflow_name = wf.name
+                        workflow_id = str(wf.id)
             except Exception:
                 pass
         result.append({
             "id": r.id,
             "run_id": r.run_id,
             "token_prefix": r.token_prefix,
+            "workflow_id": workflow_id,
             "workflow_name": workflow_name,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "first_used_at": r.first_used_at.isoformat() if r.first_used_at else None,
@@ -242,19 +246,23 @@ def list_workspace_run_tokens(
     result = []
     for r in rows:
         workflow_name = None
+        workflow_id = None
         run = db.query(Run).filter(Run.id == r.run_id).first()
         if run:
             try:
                 wv = db.query(WorkflowVersion).filter(WorkflowVersion.id == run.workflow_version_id).first()
                 if wv:
                     wf = db.query(Workflow).filter(Workflow.id == wv.workflow_id).first()
-                    workflow_name = wf.name if wf else None
+                    if wf:
+                        workflow_name = wf.name
+                        workflow_id = str(wf.id)
             except Exception:
                 pass
         result.append({
             "id": r.id,
             "run_id": r.run_id,
             "token_prefix": r.token_prefix,
+            "workflow_id": workflow_id,
             "workflow_name": workflow_name,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "first_used_at": r.first_used_at.isoformat() if r.first_used_at else None,
