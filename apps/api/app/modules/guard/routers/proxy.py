@@ -358,9 +358,12 @@ async def _proxy(
         _audit_decision = "warned" if _action == "WARN" else "allowed"
         _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
 
-        # 5. Vault lookup — upstream key wins over vendor key when set
+        # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
+        # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
         upstream = _upstream_url(db, workspace_id, provider)
-        real_key = _upstream_api_key(db, workspace_id) or _vault_key(db, workspace_id, provider)
+        _upstream_key = _upstream_api_key(db, workspace_id)
+        _vault_key_val = _vault_key(db, workspace_id, provider)
+        real_key = _upstream_key or _vault_key_val
         if not real_key:
             return _fail_closed(
                 503,
@@ -391,6 +394,9 @@ async def _proxy(
         extra_headers=extra_headers,
         background=background,
         audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, _audit_decision, _audit_rule_id, started, body, prompt_summary, _user_email, _run_id, _workflow, _workflow_id),
+        upstream_api_key=_upstream_key,
+        vendor_key=_vault_key_val,
+        provider=provider,
     )
 
 
@@ -619,12 +625,29 @@ async def _forward(
     auth_header_out: str, bearer: bool, is_stream: bool,
     background: BackgroundTasks, audit_args: tuple,
     extra_headers: dict | None = None,
+    upstream_api_key: str | None = None,
+    vendor_key: str | None = None,
+    provider: str = "",
 ) -> StreamingResponse | JSONResponse:
     headers = {
         "content-type": "application/json",
         "accept": "text/event-stream" if is_stream else "application/json",
     }
-    headers[auth_header_out] = f"Bearer {real_key}" if bearer else real_key
+
+    # When routing through a BYO gateway (Portkey, Helicone, etc.), use gateway-specific
+    # auth headers. upstream_api_key = gateway key, vendor_key = real vendor API key.
+    _upstream_lower = upstream.lower()
+    if upstream_api_key and ("portkey.ai" in _upstream_lower or "helicone.ai" in _upstream_lower
+                              or ".azure.com" in _upstream_lower):
+        from app.runtime.adapters.gateway import gateway_adapt as _gw_adapt
+        _gw = _gw_adapt(upstream, upstream_api_key, provider, "")
+        headers.update(_gw.headers)
+        # Vendor key goes in the standard provider auth header so the gateway can forward it
+        if vendor_key:
+            headers[auth_header_out] = f"Bearer {vendor_key}" if bearer else vendor_key
+    else:
+        headers[auth_header_out] = f"Bearer {real_key}" if bearer else real_key
+
     if upstream.startswith(VENDOR_DEFAULTS["anthropic"]):
         headers["anthropic-version"] = "2023-06-01"
     if extra_headers:
