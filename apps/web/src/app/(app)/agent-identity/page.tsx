@@ -320,7 +320,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                       <tr key={rt.id} style={{ borderTop: "1px solid var(--border)" }}>
                         <td style={{ padding: "8px 16px" }}>
                           <code className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", background: "var(--bg)", padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)" }}>
-                            {rt.token_prefix ? `${rt.token_prefix}...` : "cond_run_???"}
+                            {rt.token_prefix ? `${rt.token_prefix}...` : "—"}
                           </code>
                         </td>
                         <td style={{ padding: "8px 16px", color: "var(--text)" }}>{rt.workflow_name ?? "—"}</td>
