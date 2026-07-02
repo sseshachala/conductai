@@ -649,10 +649,14 @@ async def _forward(
     else:
         headers[auth_header_out] = f"Bearer {real_key}" if bearer else real_key
 
-    if upstream.startswith(VENDOR_DEFAULTS["anthropic"]):
-        headers["anthropic-version"] = "2023-06-01"
+    # anthropic-version is required for Anthropic-compatible endpoints regardless of upstream
+    if provider == "anthropic":
+        headers.setdefault("anthropic-version", "2023-06-01")
     if extra_headers:
         headers.update(extra_headers)
+
+    # Strip whitespace/newlines from all header values — stored keys can have trailing \n
+    headers = {k: str(v).strip() for k, v in headers.items()}
 
     # Build full URL: strip any path prefix the upstream already contains so
     # upstream="/v1" + path="/v1/messages" doesn't produce double /v1/v1/messages.
@@ -669,11 +673,13 @@ async def _forward(
         log.info("guard.proxy.forward", url=_full_url,
                  headers={k: v for k, v in headers.items() if "key" not in k.lower() and "auth" not in k.lower()})
         resp = await client.send(req, stream=True)
-    except httpx.HTTPError as e:
+    except Exception as e:
         await client.aclose()
+        import traceback as _tb
         log.warning("guard.proxy.upstream_unreachable", url=_full_url,
-                    exc_type=type(e).__name__, err=str(e))
-        return _fail_closed(502, f"Upstream {_full_url} unreachable: {type(e).__name__}")
+                    exc_type=type(e).__name__, err=str(e),
+                    traceback=_tb.format_exc())
+        return _fail_closed(502, f"Upstream {_full_url} unreachable: {type(e).__name__}: {e}")
 
     if resp.status_code >= 400:
         # Read the error body, close client, return as-is so the SDK sees the
