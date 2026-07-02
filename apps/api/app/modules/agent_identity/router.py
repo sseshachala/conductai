@@ -185,6 +185,20 @@ def list_run_tokens(
     from app.models.run import Run
     from app.models.workflow_version import WorkflowVersion
     from app.models.workflow import Workflow
+    import logging as _log
+    _logger = _log.getLogger(__name__)
+
+    # Debug: count ALL rows for this workspace and for this identity
+    _total = db.query(AgentRunToken).filter(
+        AgentRunToken.workspace_id == uuid.UUID(workspace_id)
+    ).count()
+    _by_identity = db.query(AgentRunToken).filter(
+        AgentRunToken.agent_identity_id == identity_id
+    ).count()
+    _logger.warning(
+        "run_tokens.query identity_id=%s workspace_id=%s total_in_ws=%s by_identity=%s",
+        identity_id, workspace_id, _total, _by_identity
+    )
 
     rows = (
         db.query(AgentRunToken)
