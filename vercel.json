@@ -3,5 +3,5 @@
   "outputDirectory": ".next",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "ignoreCommand": "! git diff HEAD~1 --name-only | grep -q '^apps/web/'"
+  "ignoreCommand": "! git diff HEAD~1 --name-only | grep -qE '^apps/web/|^vercel\\.json$|^turbo\\.json$|^package\\.json$'"
 }
