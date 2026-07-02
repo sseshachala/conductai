@@ -288,23 +288,20 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
             <div className="card" style={{ padding: "16px 20px" }}>
               <p className="eyebrow" style={{ marginBottom: 4 }}>Agent Identity Required</p>
               <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                Each run mints a short-lived token. Disable only if using a long-lived CONDUCT_AGENT_TOKEN in the environment.
+                Each run mints a short-lived token scoped to that run.
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <button
                   type="button"
-                  onClick={() => { const next = !agentIdentityRequired; setAgentIdentityRequired(next); saveAgentIdentity(next) }}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${agentIdentityRequired ? "bg-violet-600" : "bg-stone-300"}`}
+                  disabled
+                  className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent bg-violet-600 opacity-60 cursor-not-allowed"
                   role="switch"
-                  aria-checked={agentIdentityRequired}
+                  aria-checked={true}
                 >
-                  <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${agentIdentityRequired ? "translate-x-4" : "translate-x-0"}`} />
+                  <span className="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow translate-x-4" />
                 </button>
-                <span style={{ fontSize: 13, color: "var(--text-2)" }}>
-                  {agentIdentityRequired ? "Short-lived token per run" : "Long-lived env token"}
-                </span>
+                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Short-lived token per run</span>
               </div>
-              {agentIdentitySaving && <span style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8, display: "block" }}>Saving…</span>}
             </div>
 
             {/* Turn budget */}
