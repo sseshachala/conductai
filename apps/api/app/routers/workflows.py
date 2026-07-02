@@ -1987,6 +1987,12 @@ def test_trigger(
                     _AgentIdentity.environment_id == str(workflow.environment_id),
                 ).first()
 
+            if not _ht_identity:
+                import logging as _ht_log
+                _ht_log.getLogger(__name__).warning(
+                    "agent_run_token.no_identity run_id=%s workflow_id=%s env_id=%s",
+                    run.id, workflow.id, workflow.environment_id,
+                )
             if _ht_identity:
                 _ht_plaintext = "cond_run_" + _ht_uuid.uuid4().hex
                 _ht_hash_val = _ht_hash.sha256(_ht_plaintext.encode()).hexdigest()
@@ -2002,8 +2008,12 @@ def test_trigger(
                 db.add(_ht_row)
                 db.commit()
         except Exception as _ht_err:
-            import logging as _ht_log
-            _ht_log.getLogger(__name__).warning("agent_run_token.mint_failed run_id=%s err=%s", run.id, _ht_err)
+            import logging as _ht_log, traceback as _ht_tb
+            _ht_log.getLogger(__name__).warning(
+                "agent_run_token.mint_failed run_id=%s workflow_id=%s env_id=%s identity_found=%s err=%s\n%s",
+                run.id, workflow.id, workflow.environment_id, _ht_identity is not None,
+                _ht_err, _ht_tb.format_exc()
+            )
 
     try:
         r = _redis_mod.from_url(_settings.redis_url, decode_responses=True)
