@@ -13,6 +13,7 @@ class AgentRunToken(Base):
     workspace_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     run_id = Column(String(36), nullable=False, index=True)
     token_hash = Column(String(64), nullable=False)
+    token_prefix = Column(String(20), nullable=True)
     token_encrypted = Column(Text, nullable=True)  # cleared after executor reads it
     created_at = Column(DateTime(timezone=True), nullable=False)
     first_used_at = Column(DateTime(timezone=True), nullable=True)
