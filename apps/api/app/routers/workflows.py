@@ -1077,28 +1077,6 @@ def preflight_workflow(
     if not workflow or not workflow.current_version:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    # Case 3: flag=false + no CONDUCT_AGENT_TOKEN in env → block before run starts
-    if not workflow.agent_identity_required:
-        from app.models.integration import Integration
-        from app.core.crypto import decrypt as _decrypt
-        env_id = workflow.environment_id
-        _has_token = False
-        if env_id:
-            _env_row = db.query(Integration).filter(
-                Integration.workspace_id == workspace_id,
-                Integration.handle == "env_vars",
-                Integration.environment_id == env_id,
-            ).first()
-            if _env_row:
-                try:
-                    _has_token = bool((_decrypt(_env_row.encrypted_credentials) or {}).get("CONDUCT_AGENT_TOKEN"))
-                except Exception:
-                    pass
-        if not _has_token:
-            raise HTTPException(
-                status_code=400,
-                detail="Agent identity not configured. Add CONDUCT_AGENT_TOKEN to the environment, or enable 'Agent Identity Required' in workflow settings.",
-            )
 
     graph = workflow.current_version.graph or {}
     # min_turns: max of YAML-declared min_turns input default and workflow-level DB override
@@ -1971,42 +1949,28 @@ def test_trigger(
     db.add(run)
     db.commit()
 
-    # Mint agent run token at trigger time so audit log entry exists before run starts
-    if workflow.agent_identity_required:
-        try:
-            import hashlib as _ht_hash, uuid as _ht_uuid
-            from datetime import datetime as _ht_dt, timezone as _ht_tz
-            from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
-            from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
-            from app.core.crypto import encrypt as _ht_encrypt
+    # Mint a short-lived run token for every run (audit log + proxy auth)
+    try:
+        import hashlib as _ht_hash, uuid as _ht_uuid
+        from datetime import datetime as _ht_dt, timezone as _ht_tz
+        from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
+        from app.core.crypto import encrypt as _ht_encrypt
 
-            _ht_identity = None
-            if workflow.environment_id:
-                _ht_identity = db.query(_AgentIdentity).filter(
-                    _AgentIdentity.workspace_id == str(workflow.workspace_id),
-                    _AgentIdentity.environment_id == str(workflow.environment_id),
-                ).first()
-
-            if not _ht_identity:
-                pass  # no agent identity configured for this env, skip minting
-            if _ht_identity:
-                _ht_plaintext = "cond_run_" + _ht_uuid.uuid4().hex
-                _ht_hash_val = _ht_hash.sha256(_ht_plaintext.encode()).hexdigest()
-                _ht_prefix = _ht_plaintext[:16]
-                _ht_row = _AgentRunToken(
-                    id=str(_ht_uuid.uuid4()),
-                    agent_identity_id=str(_ht_identity.id),
-                    workspace_id=run.workspace_id,
-                    run_id=str(run.id),
-                    token_hash=_ht_hash_val,
-                    token_prefix=_ht_prefix,
-                    token_encrypted=_ht_encrypt({"token": _ht_plaintext}),
-                    created_at=_ht_dt.now(_ht_tz.utc),
-                )
-                db.add(_ht_row)
-                db.commit()
-        except Exception:
-            pass  # ponytail: mint failure is non-fatal, run proceeds without run token
+        _ht_plaintext = "cond_run_" + _ht_uuid.uuid4().hex
+        _ht_row = _AgentRunToken(
+            id=str(_ht_uuid.uuid4()),
+            agent_identity_id=None,
+            workspace_id=run.workspace_id,
+            run_id=str(run.id),
+            token_hash=_ht_hash.sha256(_ht_plaintext.encode()).hexdigest(),
+            token_prefix=_ht_plaintext[:16],
+            token_encrypted=_ht_encrypt({"token": _ht_plaintext}),
+            created_at=_ht_dt.now(_ht_tz.utc),
+        )
+        db.add(_ht_row)
+        db.commit()
+    except Exception:
+        pass  # ponytail: mint failure is non-fatal, run proceeds without run token
 
     try:
         r = _redis_mod.from_url(_settings.redis_url, decode_responses=True)
