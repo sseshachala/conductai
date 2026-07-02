@@ -502,7 +502,7 @@ def _upstream_url(db: Session, workspace_id: str, provider: str) -> str:
                 creds = decrypt(row[0]) or {}
                 override = creds.get("CONDUCT_LLM_UPSTREAM") or creds.get("conduct_llm_upstream")
                 if override:
-                    return f"{override.rstrip('/')}/{provider}"
+                    return override.rstrip("/")
             except Exception:
                 pass
     return VENDOR_DEFAULTS[provider]
