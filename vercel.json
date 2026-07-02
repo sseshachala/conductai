@@ -1,7 +1,7 @@
 {
   "buildCommand": "npx turbo run build --filter=marshal-web",
   "outputDirectory": ".next",
-  "installCommand": "npm install",
+  "installCommand": "npm ci --prefer-offline",
   "framework": "nextjs",
   "ignoreCommand": "! git diff HEAD~1 --name-only | grep -qE '^apps/web/|^vercel\\.json$|^turbo\\.json$|^package\\.json$'"
 }
