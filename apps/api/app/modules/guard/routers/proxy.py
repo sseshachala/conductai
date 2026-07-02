@@ -634,17 +634,17 @@ async def _forward(
         "accept": "text/event-stream" if is_stream else "application/json",
     }
 
-    # When routing through a BYO gateway (Portkey, Helicone, etc.), use gateway-specific
-    # auth headers. upstream_api_key = gateway key, vendor_key = real vendor API key.
-    _upstream_lower = upstream.lower()
-    if upstream_api_key and ("portkey.ai" in _upstream_lower or "helicone.ai" in _upstream_lower
-                              or ".azure.com" in _upstream_lower):
+    # When routing through a BYO gateway, use gateway-specific auth headers.
+    # gateway_adapt returns non-empty headers for known gateways (Portkey, Helicone, Azure).
+    if upstream_api_key:
         from app.runtime.adapters.gateway import gateway_adapt as _gw_adapt
         _gw = _gw_adapt(upstream, upstream_api_key, provider, "")
-        headers.update(_gw.headers)
-        # Vendor key goes in the standard provider auth header so the gateway can forward it
-        if vendor_key:
-            headers[auth_header_out] = f"Bearer {vendor_key}" if bearer else vendor_key
+        if _gw.headers:
+            headers.update(_gw.headers)
+            if vendor_key:
+                headers[auth_header_out] = f"Bearer {vendor_key}" if bearer else vendor_key
+        else:
+            headers[auth_header_out] = f"Bearer {real_key}" if bearer else real_key
     else:
         headers[auth_header_out] = f"Bearer {real_key}" if bearer else real_key
 
