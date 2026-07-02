@@ -659,11 +659,14 @@ async def _forward(
 
     try:
         req = client.build_request("POST", path, json=body, headers=headers)
+        log.info("guard.proxy.forward", upstream=upstream, path=path,
+                 headers={k: v for k, v in headers.items() if "key" not in k.lower() and "auth" not in k.lower()})
         resp = await client.send(req, stream=True)
     except httpx.HTTPError as e:
         await client.aclose()
-        log.warning("guard.proxy.upstream_unreachable", err=str(e))
-        return _fail_closed(502, f"Upstream {upstream} unreachable")
+        log.warning("guard.proxy.upstream_unreachable", upstream=upstream, path=path,
+                    exc_type=type(e).__name__, err=str(e))
+        return _fail_closed(502, f"Upstream {upstream}{path} unreachable: {type(e).__name__}")
 
     if resp.status_code >= 400:
         # Read the error body, close client, return as-is so the SDK sees the
