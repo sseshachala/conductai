@@ -26,6 +26,8 @@ import numpy as np
 _DEBOUNCE_S = 2.0
 _SOCKET_NAME = "daemon.sock"
 _PID_NAME = "daemon.pid"
+_HEARTBEAT_NAME = "heartbeat"
+_HEARTBEAT_TIMEOUT_S = 300  # exit if no MCP activity for 5 minutes
 _SKIP_DIRS = {"node_modules", ".venv", "__pycache__", ".git", ".booster", "worktrees", ".next", "dist", "build"}
 _WATCH_EXTS = {".py", ".ts", ".tsx", ".js", ".jsx"}
 
@@ -148,6 +150,23 @@ class BoosterDaemon:
         t = threading.Thread(target=_reindex_worker, daemon=True)
         t.start()
 
+    def _start_heartbeat_watchdog(self) -> None:
+        hb_path = self._booster_dir / _HEARTBEAT_NAME
+
+        def _watch() -> None:
+            # Give the MCP server 60s to write its first heartbeat before enforcing.
+            time.sleep(60)
+            while True:
+                time.sleep(30)
+                if not hb_path.exists():
+                    continue
+                age = time.time() - hb_path.stat().st_mtime
+                if age > _HEARTBEAT_TIMEOUT_S:
+                    os.kill(os.getpid(), signal.SIGTERM)
+                    return
+
+        threading.Thread(target=_watch, daemon=True).start()
+
     def run(self) -> None:
         self._booster_dir.mkdir(exist_ok=True)
 
@@ -169,6 +188,7 @@ class BoosterDaemon:
         self._get_model()
 
         self._start_watcher()
+        self._start_heartbeat_watchdog()
 
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         server.bind(str(self._sock_path))

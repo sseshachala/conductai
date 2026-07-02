@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os as _os
+import time as _time
 from pathlib import Path
 
 from mcp.server import Server
@@ -147,8 +148,14 @@ async def list_tools() -> list[Tool]:
     return tools
 
 
+def _touch_heartbeat() -> None:
+    hb = _ROOT / ".booster" / "heartbeat"
+    hb.write_text(str(_time.time()))
+
+
 @app.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    _touch_heartbeat()
     indexer = _get_indexer()
 
     if name == "get_symbols":
