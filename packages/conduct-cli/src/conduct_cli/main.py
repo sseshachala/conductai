@@ -2736,19 +2736,17 @@ def cmd_test_guard(args):
     """Test each guard policy rule with a matching synthetic tool call."""
     import json as _json
     import re as _re
-    from conduct_cli.guard import CONFIG_PATH, POLICY_PATH
+    from conduct_cli.guard import _load_guard_config, _load_policy, active_policy_path
 
-    try:
-        cfg = _json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
-    except Exception:
-        cfg = {}
+    cfg = _load_guard_config()
+    pol_path = active_policy_path()  # workspace-scoped
 
-    if not POLICY_PATH.exists():
+    if not pol_path.exists():
         print(f"{RED}No policy file found. Run: conduct guard sync{RESET}")
         sys.exit(1)
 
     try:
-        policy = _json.loads(POLICY_PATH.read_text())
+        policy = _load_policy()
     except Exception as e:
         print(f"{RED}Could not load policy: {e}{RESET}")
         sys.exit(1)
