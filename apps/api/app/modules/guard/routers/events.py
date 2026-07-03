@@ -384,25 +384,14 @@ def ingest_event(
     try:
         _loc = body.hostname or "local"
         _framework = body.ai_tool or "unknown"
-        _existing = db.query(DiscoveredAgent).filter(
-            DiscoveredAgent.workspace_id == ws_uuid,
-            DiscoveredAgent.framework == _framework,
-            DiscoveredAgent.source == "hook",
-        ).first()
-        if _existing:
-            _existing.under_guard = True
-            _existing.last_seen_at = now
-        else:
-            db.add(DiscoveredAgent(
-                workspace_id=ws_uuid,
-                name=_framework,
-                framework=_framework,
-                source="hook",
-                location=_loc,
-                under_guard=True,
-                first_seen_at=now,
-                last_seen_at=now,
-            ))
+        db.execute(_sql("""
+            INSERT INTO discovered_agents
+                (id, workspace_id, name, framework, source, location, under_guard, first_seen_at, last_seen_at)
+            VALUES
+                (gen_random_uuid(), :ws, :name, :fw, 'hook', :loc, true, :now, :now)
+            ON CONFLICT (workspace_id, framework, source)
+            DO UPDATE SET under_guard = true, last_seen_at = :now
+        """), {"ws": ws_uuid, "name": _framework, "fw": _framework, "loc": _loc, "now": now})
     except Exception:
         pass  # never block a hook event over a telemetry write
 
