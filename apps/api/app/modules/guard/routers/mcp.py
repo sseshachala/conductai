@@ -29,7 +29,7 @@ from sqlalchemy import text as _sql
 from app.core.database import SessionLocal
 from app.core.auth import get_clerk_user_email
 from app.core.pii import redact_secrets
-from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardMemberConfig
+from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardMemberConfig
 from app.modules.guard.policy_engine import compute_policy
 
 router = APIRouter(prefix="/guard/mcp", tags=["guard-mcp"])
@@ -557,6 +557,32 @@ async def mcp_endpoint(
             # Remote MCP = always a web surface; clientInfo not available on tools/call
             ai_tool = request.headers.get("x-claude-surface") or "claude_chat"
             session_id = request.headers.get("x-session-id", str(uuid.uuid4()))
+
+            # Self-register: every tool call proves this agent is under Guard.
+            try:
+                _now = datetime.now(timezone.utc)
+                _existing = db.query(DiscoveredAgent).filter(
+                    DiscoveredAgent.workspace_id == ws_uuid,
+                    DiscoveredAgent.framework == ai_tool,
+                    DiscoveredAgent.source == "mcp",
+                ).first()
+                if _existing:
+                    _existing.under_guard = True
+                    _existing.last_seen_at = _now
+                else:
+                    db.add(DiscoveredAgent(
+                        workspace_id=ws_uuid,
+                        name=ai_tool,
+                        framework=ai_tool,
+                        source="mcp",
+                        location="remote-mcp",
+                        under_guard=True,
+                        first_seen_at=_now,
+                        last_seen_at=_now,
+                    ))
+                db.commit()
+            except Exception:
+                pass  # never block a tool call over a telemetry write
 
 
             if tool_name == "guard_status":
