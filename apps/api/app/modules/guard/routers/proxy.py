@@ -920,27 +920,31 @@ def _fail_closed(status: int, message: str) -> JSONResponse:
 class ProxyConfigBody(BaseModel):
     llm_upstream: str = ""
     llm_upstream_api_key: str = ""
+    environment_id: str = ""
 
 
 @guard_router.get("/proxy-config")
 def get_proxy_config(
+    environment_id: str = "",
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    row = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id,
-        Integration.handle == "proxy_config",
-    ).first()
     upstream = ""
     has_upstream_key = False
-    if row:
-        try:
-            creds = decrypt(row.encrypted_credentials) or {}
-            upstream = creds.get("CONDUCT_LLM_UPSTREAM", "")
-            has_upstream_key = bool(creds.get("LLM_UPSTREAM_API_KEY"))
-        except Exception:
-            pass
+    if environment_id:
+        row = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.handle == "env_vars",
+            Integration.environment_id == environment_id,
+        ).first()
+        if row:
+            try:
+                creds = decrypt(row.encrypted_credentials) or {}
+                upstream = creds.get("PROXY_CONFIG_LLM_UPSTREAM", "")
+                has_upstream_key = bool(creds.get("PROXY_CONFIG_LLM_UPSTREAM_API_KEY"))
+            except Exception:
+                pass
     return {
         "conduct_proxy_url": _workspace_proxy_url(db, workspace_id),
         "llm_upstream": upstream,
@@ -955,33 +959,39 @@ def save_proxy_config(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    # Preserve existing upstream key if not supplied
-    ws_row = db.query(Integration).filter(
+    if not body.environment_id:
+        raise HTTPException(status_code=422, detail="environment_id is required")
+
+    # Read existing env_vars for this environment — preserve all other keys
+    env_row = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
-        Integration.handle == "proxy_config",
-        Integration.environment_id == None,  # noqa: E711
+        Integration.handle == "env_vars",
+        Integration.environment_id == body.environment_id,
     ).first()
+
     existing: dict = {}
-    if ws_row:
+    if env_row:
         try:
-            existing = decrypt(ws_row.encrypted_credentials) or {}
+            existing = decrypt(env_row.encrypted_credentials) or {}
         except Exception:
             pass
 
-    api_key = body.llm_upstream_api_key or existing.get("LLM_UPSTREAM_API_KEY", "")
+    # Preserve existing upstream key if not supplied
+    api_key = body.llm_upstream_api_key or existing.get("PROXY_CONFIG_LLM_UPSTREAM_API_KEY", "")
 
-    ws_creds = {
-        "CONDUCT_LLM_UPSTREAM": body.llm_upstream,
-        "LLM_UPSTREAM_API_KEY": api_key,
-    }
-    ws_encrypted = encrypt(ws_creds)
+    existing["PROXY_CONFIG_LLM_UPSTREAM"] = body.llm_upstream
+    if api_key:
+        existing["PROXY_CONFIG_LLM_UPSTREAM_API_KEY"] = api_key
 
-    if ws_row:
-        ws_row.encrypted_credentials = ws_encrypted
+    encrypted = encrypt(existing)
+
+    if env_row:
+        env_row.encrypted_credentials = encrypted
     else:
         db.add(Integration(
-            workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
-            auth_method="api_key", encrypted_credentials=ws_encrypted, environment_id=None,
+            workspace_id=workspace_id, service="env_vars", handle="env_vars",
+            auth_method="api_key", encrypted_credentials=encrypted,
+            environment_id=body.environment_id,
         ))
 
     db.commit()
