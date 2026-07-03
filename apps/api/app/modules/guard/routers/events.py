@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, _clerk_enabled, _verify_clerk_token
 from app.core.database import SessionLocal, get_db
-from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget
+from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget
 
 router = APIRouter(prefix="/guard/events", tags=["guard"])
 
@@ -379,6 +379,32 @@ def ingest_event(
     )
     db.add(event)
     db.flush()  # get event.id before commit
+
+    # Self-register: every hook event proves this agent is under Guard.
+    try:
+        _loc = body.hostname or "local"
+        _framework = body.ai_tool or "unknown"
+        _existing = db.query(DiscoveredAgent).filter(
+            DiscoveredAgent.workspace_id == ws_uuid,
+            DiscoveredAgent.framework == _framework,
+            DiscoveredAgent.source == "hook",
+        ).first()
+        if _existing:
+            _existing.under_guard = True
+            _existing.last_seen_at = now
+        else:
+            db.add(DiscoveredAgent(
+                workspace_id=ws_uuid,
+                name=_framework,
+                framework=_framework,
+                source="hook",
+                location=_loc,
+                under_guard=True,
+                first_seen_at=now,
+                last_seen_at=now,
+            ))
+    except Exception:
+        pass  # never block a hook event over a telemetry write
 
     # 2. Auto-resolve or create a GuardSession from hook_session_id
     resolved_session_id = body.session_id
