@@ -553,7 +553,7 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
         )}
         {expanded && row.output && (
           <pre className="mono" style={rawOutputPreStyle}>
-            {JSON.stringify(row.output, null, 2)}
+            {JSON.stringify(row.output, null, 2).replace(/\\u[\dA-Fa-f]{4}/g, m => String.fromCharCode(parseInt(m.slice(2), 16)))}
           </pre>
         )}
         {expanded && row.error && row.status === "failed" && (
