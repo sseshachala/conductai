@@ -774,6 +774,26 @@ def cmd_guard_install(args):
     if signing_key_hex:
         _write_signing_key(signing_key_hex)
 
+    # Start watch daemon — auto-discovers agents every 15 min, no user action needed.
+    try:
+        import subprocess as _sp, sys as _sys
+        running, _ = _is_watch_running()
+        if not running:
+            log_file = open(_WATCH_LOG, "a")
+            proc = _sp.Popen(
+                [_sys.executable, "-c",
+                 "from conduct_cli.guard import _watch_loop; _watch_loop()"],
+                start_new_session=True,
+                stdout=log_file,
+                stderr=log_file,
+            )
+            _WATCH_PID.write_text(str(proc.pid))
+            print(f"  {GREEN}Guard watch:{RESET} background discovery daemon started (pid {proc.pid})")
+        else:
+            print(f"  {GREEN}Guard watch:{RESET} already running")
+    except Exception:
+        pass  # non-fatal
+
 
 def _write_signing_key(hex_key: str) -> None:
     """Write a hex-encoded signing key to ~/.conductguard/signing.key.
@@ -2021,6 +2041,19 @@ _WATCH_LOG  = Path.home() / ".conductguard" / "watch.log"
 _WATCH_INTERVAL = 15 * 60  # seconds
 
 
+def _is_watch_running():
+    """Returns (is_running: bool, pid: int | None)."""
+    if not _WATCH_PID.exists():
+        return False, None
+    try:
+        pid = int(_WATCH_PID.read_text().strip())
+        os.kill(pid, 0)
+        return True, pid
+    except (ValueError, ProcessLookupError):
+        _WATCH_PID.unlink(missing_ok=True)
+        return False, None
+
+
 def _watch_loop():
     """Background loop — runs discover+push every 15 min. Invoked as subprocess."""
     import time, json as _json
@@ -2060,27 +2093,22 @@ def cmd_guard_watch(args):
     """Start/stop/status the background discovery daemon."""
     import signal as _signal
 
-    def _is_running():
-        if not _WATCH_PID.exists():
-            return False, None
-        try:
-            pid = int(_WATCH_PID.read_text().strip())
-            os.kill(pid, 0)  # 0 = check existence only
-            return True, pid
-        except (ValueError, ProcessLookupError):
-            _WATCH_PID.unlink(missing_ok=True)
-            return False, None
-
     if getattr(args, "status", False):
-        running, pid = _is_running()
+        running, pid = _is_watch_running()
         if running:
             print(f"  Guard watch daemon running (pid {pid})")
+            log_tail = ""
+            if _WATCH_LOG.exists():
+                lines = _WATCH_LOG.read_text().splitlines()
+                log_tail = "\n".join(lines[-5:])
+            if log_tail:
+                print(f"  Last log:\n{log_tail}")
         else:
             print("  Guard watch daemon not running. Start with: conduct guard watch")
         return
 
     if getattr(args, "stop", False):
-        running, pid = _is_running()
+        running, pid = _is_watch_running()
         if not running:
             print("  Guard watch daemon is not running.")
             return
@@ -2090,7 +2118,7 @@ def cmd_guard_watch(args):
         return
 
     # Start
-    running, pid = _is_running()
+    running, pid = _is_watch_running()
     if running:
         print(f"  Guard watch daemon already running (pid {pid}). Stop with: conduct guard watch --stop")
         return
