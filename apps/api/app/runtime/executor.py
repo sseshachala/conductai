@@ -1207,14 +1207,14 @@ def _dispatch_single_block(
                             sandbox_sessions[_auto_key] = _auto_session
                             _injected_session = _auto_session
                             _emit(db, run_id, block_id, "sandbox_routing", {
-                                "decision": "sandbox",
+                                "decision": "container",
                                 "complexity": _complexity,
                                 "provider": _provider,
                                 "reason": f"complexity={_complexity} → {_provider} sandbox auto-provisioned",
                             })
                         else:
                             _emit(db, run_id, block_id, "sandbox_routing", {
-                                "decision": "proxy",
+                                "decision": "managed",
                                 "complexity": _complexity,
                                 "reason": f"complexity={_complexity} but no sandbox credentials → proxy mode",
                             })
@@ -1227,7 +1227,7 @@ def _dispatch_single_block(
                         })
                 else:
                     _emit(db, run_id, block_id, "sandbox_routing", {
-                        "decision": "proxy",
+                        "decision": "managed",
                         "complexity": _complexity,
                         "reason": f"complexity={_complexity} → proxy mode",
                     })
