@@ -15,8 +15,6 @@ interface Env {
 }
 
 export default function ProxySettings({ workspaceId, getToken }: Props) {
-  const [envs, setEnvs]                     = useState<Env[]>([])
-  const [envId, setEnvId]                   = useState("")
   const [proxyUrl, setProxyUrl]             = useState("")
   const [upstream, setUpstream]             = useState("")
   const [upstreamKey, setUpstreamKey]       = useState("")
@@ -25,13 +23,33 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
   const [saved, setSaved]                   = useState(false)
   const [copied, setCopied]                 = useState(false)
 
+  const [envs, setEnvs]       = useState<Env[]>([])
+  const [pushEnvId, setPushEnvId] = useState("")
+  const [pushing, setPushing] = useState(false)
+  const [pushed, setPushed]   = useState(false)
+
   async function headers(): Promise<Record<string, string>> {
     const h: Record<string, string> = { "X-Workspace-ID": workspaceId }
     if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
     return h
   }
 
-  // Load environments on mount, auto-select first
+  // Load workspace-level proxy config
+  useEffect(() => {
+    if (!workspaceId) return
+    ;(async () => {
+      const h = await headers()
+      const r = await fetch(`${API}/guard/proxy-config`, { headers: h })
+      if (r.ok) {
+        const data = await r.json()
+        setProxyUrl(data.conduct_proxy_url ?? "")
+        setUpstream(data.llm_upstream ?? "")
+        setHasUpstreamKey(data.has_upstream_key ?? false)
+      }
+    })()
+  }, [workspaceId])
+
+  // Load environments for push target
   useEffect(() => {
     if (!workspaceId) return
     ;(async () => {
@@ -40,35 +58,17 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
       if (r.ok) {
         const data: Env[] = await r.json()
         setEnvs(data)
-        if (data.length > 0) setEnvId(data[0].id)
+        if (data.length > 0) setPushEnvId(data[0].id)
       }
     })()
   }, [workspaceId])
 
-  // Load proxy config when environment changes
-  useEffect(() => {
-    if (!workspaceId || !envId) return
-    ;(async () => {
-      const h = await headers()
-      const r = await fetch(`${API}/guard/proxy-config?environment_id=${envId}`, { headers: h })
-      if (r.ok) {
-        const data = await r.json()
-        setProxyUrl(data.conduct_proxy_url ?? "")
-        setUpstream(data.llm_upstream ?? "")
-        setHasUpstreamKey(data.has_upstream_key ?? false)
-        setUpstreamKey("")
-      }
-    })()
-  }, [workspaceId, envId])
-
   async function save() {
-    if (!envId) return
     setSaving(true)
     const h = { ...(await headers()), "Content-Type": "application/json" }
     await fetch(`${API}/guard/proxy-config`, {
       method: "PUT", headers: h,
       body: JSON.stringify({
-        environment_id: envId,
         llm_upstream: upstream,
         llm_upstream_api_key: upstreamKey || undefined,
       }),
@@ -77,6 +77,19 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
     setSaved(true)
     if (upstreamKey) { setHasUpstreamKey(true); setUpstreamKey("") }
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function push() {
+    if (!pushEnvId) return
+    setPushing(true)
+    const h = { ...(await headers()), "Content-Type": "application/json" }
+    await fetch(`${API}/guard/proxy-config/push`, {
+      method: "POST", headers: h,
+      body: JSON.stringify({ environment_id: pushEnvId }),
+    })
+    setPushing(false)
+    setPushed(true)
+    setTimeout(() => setPushed(false), 2000)
   }
 
   function copy() {
@@ -97,26 +110,9 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
     <div style={{ display: "flex", gap: 40, alignItems: "flex-start" }}>
       <div style={{ flex: "0 0 560px" }}>
         <p style={{ fontSize: 13, color: "var(--text-3)", marginBottom: 24, lineHeight: 1.6 }}>
-          Guard always intercepts LLM traffic and enforces policies before forwarding.
-          Set an upstream to route through your own gateway (Portkey, Azure OpenAI, LiteLLM).
+          Guard intercepts LLM traffic and enforces policies before forwarding.
+          Configure your upstream gateway once, then push to any environment.
         </p>
-
-        {/* Environment selector */}
-        <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: ".06em", display: "block", marginBottom: 8 }}>
-            Environment
-          </label>
-          <select
-            value={envId}
-            onChange={e => setEnvId(e.target.value)}
-            style={{ width: "100%", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", color: "var(--text)" }}
-          >
-            {envs.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-          <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
-            Proxy config is stored per environment. Each environment can route to a different upstream.
-          </p>
-        </div>
 
         {/* Conduct Proxy URL — read only */}
         <div style={{ marginBottom: 24 }}>
@@ -159,7 +155,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
             style={{ width: "100%", fontFamily: "monospace", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", color: "var(--text)" }}
           />
           <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
-            Guard forwards here instead of the vendor API. Stored as <code>PROXY_CONFIG_LLM_UPSTREAM</code> in the environment.
+            Guard forwards here instead of the vendor API.
           </p>
         </div>
 
@@ -173,14 +169,41 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
             placeholder={hasUpstreamKey ? "••••••••  (set — enter new value to rotate)" : "sk-… or portkey API key"}
             style={{ width: "100%", fontFamily: "monospace", fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", color: "var(--text)" }}
           />
-          <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
-            Stored as <code>PROXY_CONFIG_LLM_UPSTREAM_API_KEY</code> in the environment.
-          </p>
         </div>
 
-        <button onClick={save} disabled={saving || !envId} className="btn btn-primary btn-sm" style={saved ? { background: "var(--green, #22c55e)", borderColor: "var(--green, #22c55e)" } : {}}>
+        <button onClick={save} disabled={saving} className="btn btn-primary btn-sm" style={saved ? { background: "var(--green, #22c55e)", borderColor: "var(--green, #22c55e)" } : {}}>
           {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
         </button>
+
+        {/* Divider */}
+        <hr style={{ margin: "32px 0", borderColor: "var(--border)" }} />
+
+        {/* Push to environment */}
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: ".06em", display: "block", marginBottom: 8 }}>
+            Push to Environment
+          </label>
+          <p style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
+            Copies the upstream URL and key into an environment's variables so workflows running in that environment use this gateway.
+          </p>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <select
+              value={pushEnvId}
+              onChange={e => setPushEnvId(e.target.value)}
+              style={{ flex: 1, fontSize: 13, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", color: "var(--text)" }}
+            >
+              {envs.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+            <button
+              onClick={push}
+              disabled={pushing || !pushEnvId || !upstream}
+              className="btn btn-secondary btn-sm"
+              style={pushed ? { background: "var(--green, #22c55e)", borderColor: "var(--green, #22c55e)", color: "#fff" } : {}}
+            >
+              {pushing ? "Pushing…" : pushed ? "Pushed ✓" : "Push"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Right column — gateway reference */}
