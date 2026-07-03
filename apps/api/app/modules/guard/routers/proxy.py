@@ -527,10 +527,6 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
     try:
         set_workspace_rls(db, workspace_id)
         try:
-            _pc = db.query(Integration).filter(
-                Integration.workspace_id == workspace_id,
-                Integration.handle == "proxy_config",
-            ).first()
             rules = compute_policy(db, uuid.UUID(workspace_id), "proxy")
         except Exception as e:
             log.warning("guard.proxy.policy_load_failed", err=str(e))
