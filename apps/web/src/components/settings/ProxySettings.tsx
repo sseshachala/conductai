@@ -196,7 +196,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
             </select>
             <button
               onClick={push}
-              disabled={pushing || !pushEnvId || !upstream}
+              disabled={pushing || !pushEnvId}
               className="btn btn-secondary btn-sm"
               style={pushed ? { background: "var(--green, #22c55e)", borderColor: "var(--green, #22c55e)", color: "#fff" } : {}}
             >
