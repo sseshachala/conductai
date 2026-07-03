@@ -127,6 +127,16 @@ ANTHROPIC_BASE_URL=https://api.conductai.ai/proxy/anthropic`}
   )
 }
 
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 2)  return "just now"
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
 function isStale(lastSeen: string): boolean {
   return Date.now() - new Date(lastSeen).getTime() > 24 * 60 * 60 * 1000
 }
@@ -239,13 +249,13 @@ export default function DiscoveryPage() {
 
             {/* Agent table */}
             <div className="card" style={{ overflow: "hidden" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 1.8fr 0.7fr 0.9fr 1fr", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                {["Agent", "Source", "Location", "Risk", "Status", ""].map((h, i) => (
+              <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.7fr 1.6fr 0.7fr 0.9fr 0.9fr 1fr", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                {["Agent", "Source", "Location", "Risk", "Status", "Last seen", ""].map((h, i) => (
                   <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
                 ))}
               </div>
               {agents.slice(0, agentLimit).map((a, i) => (
-                <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 1.8fr 0.7fr 0.9fr 1fr", gap: 12, padding: "11px 18px", alignItems: "center", borderBottom: i < Math.min(agents.length, agentLimit) - 1 ? "1px solid var(--border)" : "none" }}>
+                <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1.6fr 0.7fr 1.6fr 0.7fr 0.9fr 0.9fr 1fr", gap: 12, padding: "11px 18px", alignItems: "center", borderBottom: i < Math.min(agents.length, agentLimit) - 1 ? "1px solid var(--border)" : "none" }}>
                   <div>
                     <p className="text-sm font-medium text-stone-800">{FRAMEWORK_LABELS[a.framework ?? ""] ?? a.name ?? a.framework ?? "Unknown"}</p>
                     <p className="text-xs text-stone-400">{a.framework}</p>
@@ -254,6 +264,9 @@ export default function DiscoveryPage() {
                   <div className="text-xs font-mono text-stone-400 truncate">{a.location ?? "—"}</div>
                   <div><RiskBadge score={a.risk_score} /></div>
                   <div><GuardBadge under={a.under_guard} lastSeen={a.last_seen_at} /></div>
+                  <div className="text-xs text-stone-400" title={new Date(a.last_seen_at).toLocaleString()}>
+                    {relativeTime(a.last_seen_at)}
+                  </div>
                   <div className="text-right">
                     {!a.under_guard && (() => {
                       const { type } = remediationFor(a)
