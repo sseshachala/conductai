@@ -197,6 +197,7 @@ def _execute_brain(
     user_email: str | None = None,
     block_label: str | None = None,
     workflow_name: str | None = None,
+    environment_id: str | None = None,
 ) -> dict:
     # Import helpers from executor to avoid circular imports at module load time.
     from app.runtime.executor import (
@@ -412,6 +413,8 @@ def _execute_brain(
         if _agent_token:
             _extra_headers["x-conductai-internal"] = _agent_token
         _extra_headers["x-conductai-workspace-id"] = str(workspace_id)
+        if environment_id:
+            _extra_headers["x-conductai-environment-id"] = str(environment_id)
         if user_email:
             _extra_headers["x-conductai-user-email"] = user_email
 
