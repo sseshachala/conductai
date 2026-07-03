@@ -127,10 +127,14 @@ ANTHROPIC_BASE_URL=https://api.conductai.ai/proxy/anthropic`}
   )
 }
 
-function GuardBadge({ under }: { under: boolean }) {
-  return under
-    ? <span className="text-xs px-2 py-0.5 rounded font-medium bg-green-100 text-green-700">Under Guard</span>
-    : <span className="text-xs px-2 py-0.5 rounded font-medium bg-red-100 text-red-700">Missing from Guard</span>
+function isStale(lastSeen: string): boolean {
+  return Date.now() - new Date(lastSeen).getTime() > 24 * 60 * 60 * 1000
+}
+
+function GuardBadge({ under, lastSeen }: { under: boolean; lastSeen: string }) {
+  if (!under) return <span className="text-xs px-2 py-0.5 rounded font-medium bg-red-100 text-red-700">Missing from Guard</span>
+  if (isStale(lastSeen)) return <span className="text-xs px-2 py-0.5 rounded font-medium bg-yellow-100 text-yellow-700" title="Hook hasn't fired in 24h — agent may be uninstalled">Stale</span>
+  return <span className="text-xs px-2 py-0.5 rounded font-medium bg-green-100 text-green-700">Under Guard</span>
 }
 
 export default function DiscoveryPage() {
@@ -249,7 +253,7 @@ export default function DiscoveryPage() {
                   <div className="text-sm text-stone-500 capitalize">{a.source ?? "—"}</div>
                   <div className="text-xs font-mono text-stone-400 truncate">{a.location ?? "—"}</div>
                   <div><RiskBadge score={a.risk_score} /></div>
-                  <div><GuardBadge under={a.under_guard} /></div>
+                  <div><GuardBadge under={a.under_guard} lastSeen={a.last_seen_at} /></div>
                   <div className="text-right">
                     {!a.under_guard && (() => {
                       const { type } = remediationFor(a)
@@ -269,8 +273,7 @@ export default function DiscoveryPage() {
 
             <div className="flex items-center justify-between">
               <p className="text-xs text-stone-400">
-                Run <code className="bg-stone-100 px-1 rounded">conduct guard discover</code> again to refresh.
-                GitHub scan coming in v2.
+                Auto-refreshes every 15 min via <code className="bg-stone-100 px-1 rounded">conduct guard watch</code>. Yellow = hook silent &gt;24h.
               </p>
               {agents.length > agentLimit && (
                 <button
