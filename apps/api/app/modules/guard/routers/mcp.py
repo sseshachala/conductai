@@ -561,25 +561,14 @@ async def mcp_endpoint(
             # Self-register: every tool call proves this agent is under Guard.
             try:
                 _now = datetime.now(timezone.utc)
-                _existing = db.query(DiscoveredAgent).filter(
-                    DiscoveredAgent.workspace_id == ws_uuid,
-                    DiscoveredAgent.framework == ai_tool,
-                    DiscoveredAgent.source == "mcp",
-                ).first()
-                if _existing:
-                    _existing.under_guard = True
-                    _existing.last_seen_at = _now
-                else:
-                    db.add(DiscoveredAgent(
-                        workspace_id=ws_uuid,
-                        name=ai_tool,
-                        framework=ai_tool,
-                        source="mcp",
-                        location="remote-mcp",
-                        under_guard=True,
-                        first_seen_at=_now,
-                        last_seen_at=_now,
-                    ))
+                db.execute(_sql("""
+                    INSERT INTO discovered_agents
+                        (id, workspace_id, name, framework, source, location, under_guard, first_seen_at, last_seen_at)
+                    VALUES
+                        (gen_random_uuid(), :ws, :name, :fw, 'mcp', 'remote-mcp', true, :now, :now)
+                    ON CONFLICT (workspace_id, framework, source)
+                    DO UPDATE SET under_guard = true, last_seen_at = :now
+                """), {"ws": ws_uuid, "name": ai_tool, "fw": ai_tool, "now": _now})
                 db.commit()
             except Exception:
                 pass  # never block a tool call over a telemetry write
