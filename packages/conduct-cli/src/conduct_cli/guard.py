@@ -18,8 +18,36 @@ CYAN   = "\033[36m"
 YELLOW = "\033[33m"
 
 GUARD_DIR    = Path.home() / ".conductguard"
-CONFIG_PATH  = GUARD_DIR / "config.json"
-POLICY_PATH  = GUARD_DIR / "policy.json"
+CONFIG_PATH  = GUARD_DIR / "config.json"   # legacy / fallback
+POLICY_PATH  = GUARD_DIR / "policy.json"   # legacy / fallback
+_CONDUCT_CFG = Path.home() / ".conduct" / "config.json"
+
+
+def _active_workspace_id() -> str | None:
+    """Active workspace from conduct switch — updates at runtime."""
+    try:
+        if _CONDUCT_CFG.exists():
+            return json.loads(_CONDUCT_CFG.read_text()).get("workspace")
+    except Exception:
+        pass
+    return None
+
+
+def _ws_config_path(ws_id: str) -> Path:
+    return GUARD_DIR / "workspaces" / f"{ws_id}.json"
+
+
+def _ws_policy_path(ws_id: str) -> Path:
+    return GUARD_DIR / f"policy_{ws_id}.json"
+
+
+def active_policy_path() -> Path:
+    ws_id = _active_workspace_id()
+    if ws_id:
+        p = _ws_policy_path(ws_id)
+        if p.exists():
+            return p
+    return POLICY_PATH
 
 # ── Hook templates — loaded from real .py files (no string embedding) ─────────
 
@@ -102,11 +130,8 @@ def _bash_command_words(cmd: str) -> list[str]:
 
 def _check_policy(tool_name, tool_input, tokens_before=0):
     """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
-    if not POLICY_PATH.exists():
-        return None, "allow", None, None
-    try:
-        policy = _json.loads(POLICY_PATH.read_text())
-    except Exception:
+    policy = _load_policy()
+    if not policy.get("rules"):
         return None, "allow", None, None
 
     rules      = policy.get("rules", [])
@@ -305,14 +330,27 @@ def _ensure_persona(workspace_id: str, api_key: str, base_url: str) -> str:
     return chosen
 
 
-def _load_guard_config() -> dict:
+def _load_guard_config(workspace_id: str | None = None) -> dict:
+    ws_id = workspace_id or _active_workspace_id()
+    if ws_id:
+        p = _ws_config_path(ws_id)
+        if p.exists():
+            return json.loads(p.read_text())
+    # fallback to legacy single-workspace config
     if CONFIG_PATH.exists():
         return json.loads(CONFIG_PATH.read_text())
     return {}
 
 
-def _save_guard_config(data: dict):
+def _save_guard_config(data: dict, workspace_id: str | None = None):
     GUARD_DIR.mkdir(parents=True, exist_ok=True)
+    ws_id = workspace_id or data.get("workspace_id") or _active_workspace_id()
+    if ws_id:
+        p = _ws_config_path(ws_id)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(data, indent=2))
+        p.chmod(0o600)
+    # always write legacy path so old hook versions keep working
     CONFIG_PATH.write_text(json.dumps(data, indent=2))
     CONFIG_PATH.chmod(0o600)
 
@@ -572,13 +610,22 @@ def _req(method: str, url: str, body=None, token: str = None, api_key: str = Non
 
 
 
-def _save_policy(policy: dict):
+def _save_policy(policy: dict, workspace_id: str | None = None):
     GUARD_DIR.mkdir(parents=True, exist_ok=True)
+    ws_id = workspace_id or _active_workspace_id()
+    if ws_id:
+        _ws_policy_path(ws_id).write_text(json.dumps(policy, indent=2))
+    # always write legacy path for old hook versions
     POLICY_PATH.write_text(json.dumps(policy, indent=2))
 
 
-def _load_policy() -> dict:
+def _load_policy(workspace_id: str | None = None) -> dict:
     try:
+        ws_id = workspace_id or _active_workspace_id()
+        if ws_id:
+            p = _ws_policy_path(ws_id)
+            if p.exists():
+                return json.loads(p.read_text())
         return json.loads(POLICY_PATH.read_text())
     except Exception:
         return {"rules": []}
@@ -1654,13 +1701,7 @@ def cmd_guard_status(args):
             pass
 
     # Load local policy for rule count
-    rule_count = 0
-    if POLICY_PATH.exists():
-        try:
-            policy     = json.loads(POLICY_PATH.read_text())
-            rule_count = len(policy.get("rules", []))
-        except Exception:
-            pass
+    rule_count = len(_load_policy().get("rules", []))
 
     # Fetch today's spend
     spend = {}
@@ -2057,13 +2098,16 @@ def _is_watch_running():
 def _watch_loop():
     """Background loop — runs discover+push every 15 min. Invoked as subprocess."""
     import time, json as _json
-    cfg     = _load_guard_config()
-    api_url = _api_url(cfg)
-    token   = cfg.get("member_token", "")
-    api_key = cfg.get("api_key", "")
+    # resolve config at each iteration so workspace switches are picked up
+    def _cfg():
+        return _load_guard_config()
 
     while True:
         try:
+            c       = _cfg()
+            api_url = _api_url(c)
+            token   = c.get("member_token", "")
+            api_key = c.get("api_key", "")
             agents = []
             for name, config_path, mcp_key in _discover_config_agents():
                 agents.append({

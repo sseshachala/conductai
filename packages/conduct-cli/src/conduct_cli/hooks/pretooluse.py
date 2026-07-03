@@ -18,6 +18,7 @@ from conduct_cli.hooks.base import (
     JOURNAL_DIR,
     JOURNAL_PID_PATH,
     POLICY_PATH,
+    active_policy_path,
     SIGNING_KEY_PATH,
     VERSION_CACHE_PATH,
     VERSION_CACHE_TTL,
@@ -152,18 +153,20 @@ def _post_signature_invalid_event(expected_sig, computed_sig, policy_version, ho
 def _maybe_sync_policy() -> None:
     """Sync policy from daemon (instant) or remote API (once per minute). Never raises."""
     try:
-        cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+        cfg = load_config()
         workspace_id = cfg.get("workspace_id")
         api_key      = cfg.get("api_key", "")
         api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
         if not workspace_id:
             return
 
+        pol_path = active_policy_path()
+
         if _daemon_alive():
             url = f"{_DAEMON_URL}/policy?workspace_id={workspace_id}"
             with urllib.request.urlopen(url, timeout=1) as resp:
                 remote = json.loads(resp.read())
-            POLICY_PATH.write_text(json.dumps(remote, indent=2))
+            pol_path.write_text(json.dumps(remote, indent=2))
             return
 
         if VERSION_CACHE_PATH.exists():
@@ -188,8 +191,8 @@ def _maybe_sync_policy() -> None:
         remote_version = remote.get("version", "")
         local_version  = ""
         local_policy: dict = {}
-        if POLICY_PATH.exists():
-            local_policy  = json.loads(POLICY_PATH.read_text())
+        if pol_path.exists():
+            local_policy  = json.loads(pol_path.read_text())
             local_version = local_policy.get("version", "")
 
         old_mode = local_policy.get("fail_mode", "fail_open")
@@ -207,7 +210,7 @@ def _maybe_sync_policy() -> None:
                 return
 
         if remote_version != local_version:
-            POLICY_PATH.write_text(json.dumps(remote, indent=2))
+            pol_path.write_text(json.dumps(remote, indent=2))
         VERSION_CACHE_PATH.write_text(json.dumps({"ts": time.time(), "version": remote_version}))
     except Exception:
         pass
@@ -292,10 +295,11 @@ def _bash_operator_signature(command: str) -> str:
 
 def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
     """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
-    if not POLICY_PATH.exists():
+    pol_path = active_policy_path()
+    if not pol_path.exists():
         return None, "allow", None, None
     try:
-        policy = json.loads(POLICY_PATH.read_text())
+        policy = json.loads(pol_path.read_text())
     except Exception:
         return None, "allow", None, None
 
@@ -409,7 +413,7 @@ def main() -> None:
     _this_file = Path(__file__).resolve()
 
     # Fail-closed gate
-    if _get_fail_mode() == "fail_closed" and not POLICY_PATH.exists():
+    if _get_fail_mode() == "fail_closed" and not active_policy_path().exists():
         tool_name  = (data.get("tool_name") or "").lower()
         tool_input = data.get("tool_input") or {}
         session_id = data.get("session_id")
