@@ -926,6 +926,7 @@ def get_proxy_config(
     upstream = ""
     has_upstream_key = False
     if environment_id:
+        # Try proxy_config handle first (current storage)
         row = db.query(Integration).filter(
             Integration.workspace_id == workspace_id,
             Integration.handle == "proxy_config",
@@ -938,6 +939,20 @@ def get_proxy_config(
                 has_upstream_key = bool(creds.get("LLM_UPSTREAM_API_KEY"))
             except Exception:
                 pass
+        if not upstream:
+            # Fallback: env_vars with PROXY_CONFIG_* prefix (data saved by older code versions)
+            ev_row = db.query(Integration).filter(
+                Integration.workspace_id == workspace_id,
+                Integration.handle == "env_vars",
+                Integration.environment_id == environment_id,
+            ).first()
+            if ev_row:
+                try:
+                    creds = decrypt(ev_row.encrypted_credentials) or {}
+                    upstream = creds.get("PROXY_CONFIG_LLM_UPSTREAM", "")
+                    has_upstream_key = bool(creds.get("PROXY_CONFIG_LLM_UPSTREAM_API_KEY"))
+                except Exception:
+                    pass
     return {
         "conduct_proxy_url": _workspace_proxy_url(db, workspace_id),
         "llm_upstream": upstream,
