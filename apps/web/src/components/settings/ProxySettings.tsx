@@ -27,6 +27,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
   const [pushEnvId, setPushEnvId] = useState("")
   const [pushing, setPushing] = useState(false)
   const [pushed, setPushed]   = useState(false)
+  const [pushError, setPushError] = useState("")
 
   async function headers(): Promise<Record<string, string>> {
     const h: Record<string, string> = { "X-Workspace-ID": workspaceId }
@@ -81,6 +82,12 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
 
   async function push() {
     if (!pushEnvId) return
+    if (!upstream) {
+      setPushError("Save a proxy URL first before pushing to an environment.")
+      setTimeout(() => setPushError(""), 3000)
+      return
+    }
+    setPushError("")
     setPushing(true)
     const h = { ...(await headers()), "Content-Type": "application/json" }
     await fetch(`${API}/guard/proxy-config/push`, {
@@ -203,6 +210,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
               {pushing ? "Pushing…" : pushed ? "Pushed ✓" : "Push"}
             </button>
           </div>
+          {pushError && <p style={{ fontSize: 12, color: "var(--red, #ef4444)", marginTop: 6 }}>{pushError}</p>}
         </div>
       </div>
 
