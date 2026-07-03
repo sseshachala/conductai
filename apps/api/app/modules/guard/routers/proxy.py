@@ -913,46 +913,28 @@ def _fail_closed(status: int, message: str) -> JSONResponse:
 class ProxyConfigBody(BaseModel):
     llm_upstream: str = ""
     llm_upstream_api_key: str = ""
-    environment_id: str = ""
 
 
 @guard_router.get("/proxy-config")
 def get_proxy_config(
-    environment_id: str = "",
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     upstream = ""
     has_upstream_key = False
-    if environment_id:
-        # Try proxy_config handle first (current storage)
-        row = db.query(Integration).filter(
-            Integration.workspace_id == workspace_id,
-            Integration.handle == "proxy_config",
-            Integration.environment_id == environment_id,
-        ).first()
-        if row:
-            try:
-                creds = decrypt(row.encrypted_credentials) or {}
-                upstream = creds.get("LLM_UPSTREAM", "")
-                has_upstream_key = bool(creds.get("LLM_UPSTREAM_API_KEY"))
-            except Exception:
-                pass
-        if not upstream:
-            # Fallback: env_vars with PROXY_CONFIG_* prefix (data saved by older code versions)
-            ev_row = db.query(Integration).filter(
-                Integration.workspace_id == workspace_id,
-                Integration.handle == "env_vars",
-                Integration.environment_id == environment_id,
-            ).first()
-            if ev_row:
-                try:
-                    creds = decrypt(ev_row.encrypted_credentials) or {}
-                    upstream = creds.get("PROXY_CONFIG_LLM_UPSTREAM", "")
-                    has_upstream_key = bool(creds.get("PROXY_CONFIG_LLM_UPSTREAM_API_KEY"))
-                except Exception:
-                    pass
+    row = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.handle == "proxy_config",
+        Integration.environment_id.is_(None),
+    ).first()
+    if row:
+        try:
+            creds = decrypt(row.encrypted_credentials) or {}
+            upstream = creds.get("LLM_UPSTREAM", "")
+            has_upstream_key = bool(creds.get("LLM_UPSTREAM_API_KEY"))
+        except Exception:
+            pass
     return {
         "conduct_proxy_url": _workspace_proxy_url(db, workspace_id),
         "llm_upstream": upstream,
@@ -967,13 +949,10 @@ def save_proxy_config(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    if not body.environment_id:
-        raise HTTPException(status_code=422, detail="environment_id is required")
-
     pc_row = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
         Integration.handle == "proxy_config",
-        Integration.environment_id == body.environment_id,
+        Integration.environment_id.is_(None),
     ).first()
 
     existing: dict = {}
@@ -998,8 +977,70 @@ def save_proxy_config(
         db.add(Integration(
             workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
             auth_method="api_key", encrypted_credentials=encrypted,
-            environment_id=body.environment_id,
+            environment_id=None,
         ))
 
     db.commit()
     return {"saved": True}
+
+
+class ProxyConfigPushBody(BaseModel):
+    environment_id: str
+
+
+@guard_router.post("/proxy-config/push")
+def push_proxy_config(
+    body: ProxyConfigPushBody,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.credentials.manage")),
+):
+    if not body.environment_id:
+        raise HTTPException(status_code=422, detail="environment_id is required")
+
+    # Read workspace-level proxy config
+    pc_row = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.handle == "proxy_config",
+        Integration.environment_id.is_(None),
+    ).first()
+    if not pc_row:
+        raise HTTPException(status_code=404, detail="No proxy config saved yet")
+
+    try:
+        pc_creds = decrypt(pc_row.encrypted_credentials) or {}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to read proxy config")
+
+    upstream = pc_creds.get("LLM_UPSTREAM", "")
+    upstream_key = pc_creds.get("LLM_UPSTREAM_API_KEY", "")
+
+    # Merge into target environment's env_vars (preserve other keys)
+    ev_row = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.handle == "env_vars",
+        Integration.environment_id == body.environment_id,
+    ).first()
+
+    ev_creds: dict = {}
+    if ev_row:
+        try:
+            ev_creds = decrypt(ev_row.encrypted_credentials) or {}
+        except Exception:
+            pass
+
+    ev_creds["PROXY_CONFIG_LLM_UPSTREAM"] = upstream
+    if upstream_key:
+        ev_creds["PROXY_CONFIG_LLM_UPSTREAM_API_KEY"] = upstream_key
+
+    encrypted = encrypt(ev_creds)
+    if ev_row:
+        ev_row.encrypted_credentials = encrypted
+    else:
+        db.add(Integration(
+            workspace_id=workspace_id, service="env_vars", handle="env_vars",
+            auth_method="api_key", encrypted_credentials=encrypted,
+            environment_id=body.environment_id,
+        ))
+    db.commit()
+    return {"pushed": True}
