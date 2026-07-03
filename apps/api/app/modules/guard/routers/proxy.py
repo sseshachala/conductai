@@ -337,6 +337,7 @@ async def _proxy(
         _run_id = request.headers.get("x-conductai-run-id") or None
         _workflow = request.headers.get("x-conductai-workflow") or None
         _workflow_id = request.headers.get("x-conductai-workflow-id") or None
+        _environment_id = request.headers.get("x-conductai-environment-id") or None
 
         # 4c. Pre-call Guard policy evaluation
         prompt_summary = _flatten_prompt(body)[:200]
@@ -361,9 +362,9 @@ async def _proxy(
 
         # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
         # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
-        upstream = _upstream_url(db, workspace_id, provider)
-        _upstream_key = _upstream_api_key(db, workspace_id)
-        _vault_key_val = _vault_key(db, workspace_id, provider)
+        upstream = _upstream_url(db, workspace_id, provider, _environment_id)
+        _upstream_key = _upstream_api_key(db, workspace_id, _environment_id)
+        _vault_key_val = _vault_key(db, workspace_id, provider, _environment_id)
         real_key = _upstream_key or _vault_key_val
         if not real_key:
             return _fail_closed(
@@ -430,78 +431,73 @@ def _resolve_member(db: Session, token: str) -> tuple[str, str] | None:
     return (row[0], row[1]) if row else None
 
 
-def _vault_key(db: Session, workspace_id: str, provider: str) -> str | None:
-    """Find the workspace's real vendor key.
-
-    Reuses the existing pattern from generate.py: workspace integrations carry
-    encrypted_credentials keyed by handle. Falls back to settings.* env var so
-    local dev / tests still work without per-workspace setup.
-    """
-    rows = db.execute(
-        text("""
-            SELECT handle, encrypted_credentials
-            FROM integrations
-            WHERE workspace_id = :ws
-              AND handle IN (:provider, 'env_vars')
-              AND encrypted_credentials IS NOT NULL
-        """),
-        {"ws": workspace_id, "provider": provider},
-    ).fetchall()
+def _vault_key(db: Session, workspace_id: str, provider: str, environment_id: str | None = None) -> str | None:
+    """Find the real vendor API key from env_vars for the workflow's environment."""
     env_var_name = {
         "anthropic":  "ANTHROPIC_API_KEY",
         "openai":     "OPENAI_API_KEY",
         "perplexity": "PERPLEXITY_API_KEY",
     }[provider]
-    for handle, enc in rows:
-        try:
-            creds = decrypt(enc) or {}
-        except Exception:
-            continue
-        if handle == provider:
-            k = creds.get("api_key")
-        else:
-            k = creds.get(env_var_name) or creds.get(env_var_name.lower())
-        if k:
-            return k
-    # Fail-closed: no global env-key fallback. A misconfigured workspace
-    # gets a clean 503 instead of silently routing through our default key.
-    return None
 
+    # Try environment-scoped env_vars first, then workspace-wide fallback
+    candidates = []
+    if environment_id:
+        candidates.append({"ws": workspace_id, "env_id": environment_id})
+    # workspace-wide fallback (environment_id IS NULL)
+    candidates.append({"ws": workspace_id, "env_id": None})
 
-def _upstream_api_key(db: Session, workspace_id: str) -> str | None:
-    """Return LLM_UPSTREAM_API_KEY from proxy_config if set — used when routing through a custom gateway."""
-    row = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id,
-        Integration.handle == "proxy_config",
-    ).first()
-    if row:
-        try:
-            return (decrypt(row.encrypted_credentials) or {}).get("LLM_UPSTREAM_API_KEY") or None
-        except Exception:
-            pass
-    return None
-
-
-def _upstream_url(db: Session, workspace_id: str, provider: str) -> str:
-    """CONDUCT_LLM_UPSTREAM override (per-workspace) wins, else vendor default.
-
-    Checks proxy_config handle first (set via Settings → Proxy), then falls
-    back to env_vars for legacy compatibility.
-    """
-    for handle in ("proxy_config", "env_vars"):
-        row = db.execute(
-            text("""
-                SELECT encrypted_credentials FROM integrations
-                WHERE workspace_id = :ws AND handle = :handle
+    for params in candidates:
+        env_filter = "AND environment_id = :env_id" if params["env_id"] else "AND environment_id IS NULL"
+        rows = db.execute(
+            text(f"""
+                SELECT handle, encrypted_credentials
+                FROM integrations
+                WHERE workspace_id = :ws
+                  AND handle IN (:provider, 'env_vars')
                   AND encrypted_credentials IS NOT NULL
-                LIMIT 1
+                  {env_filter}
             """),
-            {"ws": workspace_id, "handle": handle},
-        ).fetchone()
+            {"ws": params["ws"], "provider": provider, "env_id": params["env_id"]},
+        ).fetchall()
+        for handle, enc in rows:
+            try:
+                creds = decrypt(enc) or {}
+            except Exception:
+                continue
+            k = creds.get("api_key") if handle == provider else (creds.get(env_var_name) or creds.get(env_var_name.lower()))
+            if k:
+                return k
+    return None
+
+
+def _upstream_api_key(db: Session, workspace_id: str, environment_id: str | None = None) -> str | None:
+    """Return PROXY_CONFIG_LLM_UPSTREAM_API_KEY from env_vars for the workflow's environment."""
+    if environment_id:
+        row = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.handle == "env_vars",
+            Integration.environment_id == environment_id,
+        ).first()
         if row:
             try:
-                creds = decrypt(row[0]) or {}
-                override = creds.get("CONDUCT_LLM_UPSTREAM") or creds.get("conduct_llm_upstream")
+                return (decrypt(row.encrypted_credentials) or {}).get("PROXY_CONFIG_LLM_UPSTREAM_API_KEY") or None
+            except Exception:
+                pass
+    return None
+
+
+def _upstream_url(db: Session, workspace_id: str, provider: str, environment_id: str | None = None) -> str:
+    """Return BYO upstream URL from env_vars for the workflow's environment, else vendor default."""
+    if environment_id:
+        row = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.handle == "env_vars",
+            Integration.environment_id == environment_id,
+        ).first()
+        if row:
+            try:
+                creds = decrypt(row.encrypted_credentials) or {}
+                override = creds.get("PROXY_CONFIG_LLM_UPSTREAM")
                 if override:
                     return override.rstrip("/")
             except Exception:
