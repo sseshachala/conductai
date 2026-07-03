@@ -1884,6 +1884,11 @@ def register_guard_parser(sub):
     discover_p.add_argument("--config-only", action="store_true", help="Skip process scan, config files only")
     discover_p.add_argument("--report", default=None, metavar="FILE", help="Write full JSON report to file")
 
+    # conduct guard watch
+    watch_p = guard_sub.add_parser("watch", help="Start background daemon — scans every 15 min, auto-pushes to Guard")
+    watch_p.add_argument("--stop",   action="store_true", help="Stop the running watch daemon")
+    watch_p.add_argument("--status", action="store_true", help="Show whether the watch daemon is running")
+
     # conduct guard lint [--file PATH]
     lint_p = guard_sub.add_parser("lint", help="Validate local policy — show errors and warnings")
     lint_p.add_argument("--file", default=None, metavar="FILE",
@@ -2009,6 +2014,101 @@ def _scan_processes() -> list[dict]:
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
     return found
+
+
+_WATCH_PID  = Path.home() / ".conductguard" / "watch.pid"
+_WATCH_LOG  = Path.home() / ".conductguard" / "watch.log"
+_WATCH_INTERVAL = 15 * 60  # seconds
+
+
+def _watch_loop():
+    """Background loop — runs discover+push every 15 min. Invoked as subprocess."""
+    import time, json as _json
+    cfg     = _load_guard_config()
+    api_url = _api_url(cfg)
+    token   = cfg.get("member_token", "")
+    api_key = cfg.get("api_key", "")
+
+    while True:
+        try:
+            agents = []
+            for name, config_path, mcp_key in _discover_config_agents():
+                agents.append({
+                    "name": name, "framework": name, "source": "config",
+                    "location": str(config_path),
+                    "evidence": {"config_path": str(config_path), "under_guard": mcp_key},
+                    "risk_score": 20 if mcp_key else 70,
+                    "under_guard": mcp_key,
+                })
+            try:
+                process_agents = _scan_processes()
+                registered = {a["framework"] for a in agents if a["under_guard"]}
+                for a in process_agents:
+                    a["under_guard"] = a["framework"] in registered
+                agents += process_agents
+            except Exception:
+                pass
+            _req("POST", f"{api_url}/guard/discover/scan",
+                 body={"triggered_by": "watch", "agents": agents},
+                 token=token, api_key=api_key)
+        except Exception:
+            pass
+        time.sleep(_WATCH_INTERVAL)
+
+
+def cmd_guard_watch(args):
+    """Start/stop/status the background discovery daemon."""
+    import signal as _signal
+
+    def _is_running():
+        if not _WATCH_PID.exists():
+            return False, None
+        try:
+            pid = int(_WATCH_PID.read_text().strip())
+            os.kill(pid, 0)  # 0 = check existence only
+            return True, pid
+        except (ValueError, ProcessLookupError):
+            _WATCH_PID.unlink(missing_ok=True)
+            return False, None
+
+    if getattr(args, "status", False):
+        running, pid = _is_running()
+        if running:
+            print(f"  Guard watch daemon running (pid {pid})")
+        else:
+            print("  Guard watch daemon not running. Start with: conduct guard watch")
+        return
+
+    if getattr(args, "stop", False):
+        running, pid = _is_running()
+        if not running:
+            print("  Guard watch daemon is not running.")
+            return
+        os.kill(pid, _signal.SIGTERM)
+        _WATCH_PID.unlink(missing_ok=True)
+        print(f"  Guard watch daemon stopped (pid {pid}).")
+        return
+
+    # Start
+    running, pid = _is_running()
+    if running:
+        print(f"  Guard watch daemon already running (pid {pid}). Stop with: conduct guard watch --stop")
+        return
+
+    _WATCH_PID.parent.mkdir(parents=True, exist_ok=True)
+    log_file = open(_WATCH_LOG, "a")
+    import subprocess, sys as _sys
+    proc = subprocess.Popen(
+        [_sys.executable, "-c",
+         "from conduct_cli.guard import _watch_loop; _watch_loop()"],
+        start_new_session=True,
+        stdout=log_file,
+        stderr=log_file,
+    )
+    _WATCH_PID.write_text(str(proc.pid))
+    print(f"  Guard watch daemon started (pid {proc.pid}).")
+    print(f"  Scans every 15 min — results visible at conductai.ai/guard/discovery")
+    print(f"  Stop with: conduct guard watch --stop")
 
 
 def cmd_guard_lint(args):
@@ -2329,6 +2429,8 @@ def dispatch_guard(args, guard_p):
         cmd_guard_install(args)
     elif guard_command == "discover":
         cmd_guard_discover(args)
+    elif guard_command == "watch":
+        cmd_guard_watch(args)
     elif guard_command == "lint":
         cmd_guard_lint(args)
     elif guard_command == "booster-status":
