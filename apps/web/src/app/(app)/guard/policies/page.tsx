@@ -949,7 +949,7 @@ function PoliciesContent() {
           <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
             <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>ConductGuard not set up</p>
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 0 }}>
-              Run <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4 }}>conduct guard init</code> in your terminal to get started.
+              Run <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4 }}>conduct guard install</code> in your terminal to get started.
             </p>
           </div>
         )}

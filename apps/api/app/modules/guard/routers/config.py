@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, get_user_id, require_workspace_role, require_permission
 from app.core.database import get_db
+from app.models.workspace import Workspace
 from app.modules.guard.models import GuardConfig, GuardMemberConfig, WorkspaceSkillPack
 
 router = APIRouter(prefix="/guard/config", tags=["guard-config"])
@@ -121,6 +122,7 @@ def get_install_status(
     user_id: str = Depends(get_user_id),
 ):
     """Return whether Guard is installed for the workspace.
+    Guard is considered installed if ANY workspace in the org has a GuardConfig row.
     Auto-provisions a guard_member_config entry for the calling user if they are
     a workspace member (idempotent).
     """
@@ -129,7 +131,13 @@ def get_install_status(
     except ValueError:
         return InstallStatusOut(installed=False)
 
-    config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    # Check org-level: Guard is installed if any workspace in the org has a config row.
+    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
+    if ws and ws.org_id:
+        org_ws_subq = db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
+        config = db.query(GuardConfig).filter(GuardConfig.workspace_id.in_(org_ws_subq)).first()
+    else:
+        config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     if not config:
         return InstallStatusOut(installed=False)
 

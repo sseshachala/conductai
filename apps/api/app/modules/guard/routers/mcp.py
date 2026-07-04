@@ -29,6 +29,7 @@ from sqlalchemy import text as _sql
 from app.core.database import SessionLocal
 from app.core.auth import get_clerk_user_email
 from app.core.pii import redact_secrets
+from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardMemberConfig
 from app.modules.guard.policy_engine import compute_policy
 
@@ -723,11 +724,17 @@ async def mcp_endpoint(
 
             elif tool_name == "guard_discover":
                 from app.modules.guard.models import DiscoveredAgent
-                total   = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id == ws_uuid).count()
-                covered = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id == ws_uuid, DiscoveredAgent.under_guard == True).count()
+                _ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
+                _org_ws = (
+                    db.query(Workspace.id).filter(Workspace.org_id == _ws.org_id)
+                    if _ws and _ws.org_id
+                    else db.query(Workspace.id).filter(Workspace.id == ws_uuid)
+                )
+                total   = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(_org_ws)).count()
+                covered = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(_org_ws), DiscoveredAgent.under_guard == True).count()
                 missing = total - covered
                 pct     = round(covered / total * 100) if total else 0
-                shadow  = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id == ws_uuid, DiscoveredAgent.under_guard == False).limit(20).all()
+                shadow  = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(_org_ws), DiscoveredAgent.under_guard == False).limit(20).all()
                 shadow_list = [{"id": str(a.id), "name": a.name, "framework": a.framework, "source": a.source, "location": a.location} for a in shadow]
                 result = {"total": total, "under_guard": covered, "missing": missing, "coverage_pct": pct, "shadow_agents": shadow_list}
                 if total == 0:

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, get_guard_hook_auth
 from app.core.database import get_db
+from app.models.workspace import Workspace
 from app.modules.guard.models import (
     GuardAuditEvent,
     GuardConfig,
@@ -138,6 +139,18 @@ def _ws_uuid(workspace_id: str) -> uuid.UUID:
         return uuid.UUID(workspace_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid workspace_id")
+
+
+def _org_ws_subquery(db: Session, workspace_id: str):
+    """Return a subquery of all workspace IDs in the same org.
+
+    Falls back to a single-workspace filter when the workspace has no org_id.
+    """
+    ws_uuid = _ws_uuid(workspace_id)
+    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
+    if ws and ws.org_id:
+        return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
+    return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 
 def _custom_to_out(row: WorkspaceCustomRule) -> PolicyOut:
@@ -401,13 +414,14 @@ def list_policies(
 ):
     """List all policies for a workspace — custom rules + active pack rules."""
     ws_uuid = _ws_uuid(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
 
     out: list[PolicyOut] = []
 
     # 1. Custom rules
     customs = (
         db.query(WorkspaceCustomRule)
-        .filter(WorkspaceCustomRule.workspace_id == ws_uuid)
+        .filter(WorkspaceCustomRule.workspace_id.in_(org_ws))
         .order_by(WorkspaceCustomRule.created_at.asc())
         .all()
     )
@@ -416,14 +430,14 @@ def list_policies(
     # 2. Pack rules (with overrides applied)
     installed = (
         db.query(WorkspaceSkillPack)
-        .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
+        .filter(WorkspaceSkillPack.workspace_id.in_(org_ws))
         .order_by(WorkspaceSkillPack.installed_at)
         .all()
     )
     overrides = {
         o.rule_id: o
         for o in db.query(GuardRuleOverride)
-        .filter(GuardRuleOverride.workspace_id == ws_uuid)
+        .filter(GuardRuleOverride.workspace_id.in_(org_ws))
         .all()
     }
     seen: set[str] = set()

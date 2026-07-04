@@ -16,9 +16,25 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.core.auth import get_workspace_id
 from app.core.database import get_db
+from app.models.workspace import Workspace
 from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardDeveloperTools, GuardSession, GuardSpendBudget
 
 router = APIRouter(prefix="/guard/spend", tags=["guard"])
+
+
+def _org_ws_subquery(db: Session, workspace_id: str):
+    """Return a subquery of all workspace IDs in the same org.
+
+    Falls back to a single-workspace filter when the workspace has no org_id.
+    """
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        return db.query(Workspace.id).filter(Workspace.id == None)  # noqa: E711 — safe empty subquery
+    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
+    if ws and ws.org_id:
+        return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
+    return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 
 def _now() -> datetime:
@@ -164,8 +180,8 @@ def get_spend_summary(
 
 
 def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) -> "SpendSummary":
-    ws_uuid = uuid.UUID(workspace_id)
     period_start = _parse_period_start(month)
+    org_ws = _org_ws_subquery(db, workspace_id)
 
     # Aggregate totals
     totals = (
@@ -176,7 +192,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
             func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("cost_after"),
         )
         .filter(
-            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= period_start,
         )
         .one()
@@ -201,7 +217,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
             func.coalesce(func.sum(GuardAuditEvent.cost_usd_before) - func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("saved_usd"),
         )
         .filter(
-            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= period_start,
             GuardAuditEvent.user_email.isnot(None),
         )
@@ -215,7 +231,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
     session_rows = (
         db.query(GuardSession.user_email, func.count(GuardSession.id))
         .filter(
-            GuardSession.workspace_id == ws_uuid,
+            GuardSession.workspace_id.in_(org_ws),
             GuardSession.started_at >= period_start,
             GuardSession.user_email.isnot(None),
         )
@@ -230,7 +246,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
     tool_coverage: dict[str, GuardDeveloperTools] = {}
     coverage_rows = (
         db.query(GuardDeveloperTools)
-        .filter(GuardDeveloperTools.workspace_id == workspace_id)
+        .filter(GuardDeveloperTools.workspace_id.in_(org_ws))
         .all()
     )
     for tc in coverage_rows:
@@ -263,7 +279,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
             func.coalesce(func.sum(func.coalesce(GuardAuditEvent.cost_usd_before, 0.0) - func.coalesce(GuardAuditEvent.cost_usd_after, 0.0)), 0.0).label("cost_saved"),
         )
         .filter(
-            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= period_start,
         )
         .group_by(GuardAuditEvent.ai_tool)
@@ -287,13 +303,13 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
     today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
     events_today = int(
         db.query(func.count(GuardAuditEvent.id))
-        .filter(GuardAuditEvent.workspace_id == ws_uuid, GuardAuditEvent.ts >= today_start)
+        .filter(GuardAuditEvent.workspace_id.in_(org_ws), GuardAuditEvent.ts >= today_start)
         .scalar() or 0
     )
     blocked_today = int(
         db.query(func.count(GuardAuditEvent.id))
         .filter(
-            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= today_start,
             GuardAuditEvent.decision == "blocked",
         )
@@ -304,7 +320,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
             func.sum(GuardAuditEvent.tokens_before - GuardAuditEvent.tokens_after), 0
         ))
         .filter(
-            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= today_start,
             GuardAuditEvent.tokens_before.isnot(None),
             GuardAuditEvent.tokens_after.isnot(None),
@@ -313,15 +329,16 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
     )
 
     # Count distinct developers who opened a Guard session in the period
+    org_ws_ids = [str(r[0]) for r in org_ws.all()]
     active_developers = int(db.execute(
         text("""
             SELECT COUNT(DISTINCT COALESCE(user_email, clerk_user_id))
             FROM guard_sessions
-            WHERE workspace_id = :ws
+            WHERE workspace_id = ANY(:ws_ids)
               AND started_at >= :since
               AND (user_email IS NOT NULL OR clerk_user_id IS NOT NULL)
         """),
-        {"ws": str(ws_uuid), "since": period_start},
+        {"ws_ids": org_ws_ids, "since": period_start},
     ).scalar() or 0)
 
     return SpendSummary(
@@ -351,10 +368,10 @@ def list_sessions(
     db: Session = Depends(get_db),
 ):
     """List sessions with cumulative spend totals."""
-    ws_uuid = uuid.UUID(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
     rows = (
         db.query(GuardSession)
-        .filter(GuardSession.workspace_id == ws_uuid)
+        .filter(GuardSession.workspace_id.in_(org_ws))
         .order_by(GuardSession.started_at.desc())
         .offset(offset)
         .limit(limit)
@@ -496,9 +513,10 @@ def list_budgets(
 ):
     """List all budgets for a workspace, each annotated with current month usage."""
     ws_uuid = uuid.UUID(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
     budgets = (
         db.query(GuardSpendBudget)
-        .filter(GuardSpendBudget.workspace_id == ws_uuid)
+        .filter(GuardSpendBudget.workspace_id.in_(org_ws))
         .order_by(GuardSpendBudget.created_at.asc())
         .all()
     )
@@ -506,7 +524,7 @@ def list_budgets(
         r.clerk_user_id: r.user_email
         for r in db.query(GuardSession.clerk_user_id, GuardSession.user_email)
         .filter(
-            GuardSession.workspace_id == ws_uuid,
+            GuardSession.workspace_id.in_(org_ws),
             GuardSession.clerk_user_id.isnot(None),
             GuardSession.user_email.isnot(None),
         )
