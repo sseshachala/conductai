@@ -150,10 +150,10 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
             label = payload.get("label") or payload.get("type", "")
             print(f"{BLUE}    ▶ {prefix}{label}{RESET}")
         elif kind == "block_completed":
-            summary = payload.get("summary") or json.dumps(payload, default=str)[:120]
+            summary = payload.get("summary") or json.dumps(payload, default=str, ensure_ascii=False)[:120]
             print(f"{GREEN}    ✓ {prefix}{summary}{RESET}")
         elif kind == "block_failed":
-            err = payload.get("error", json.dumps(payload, default=str)[:200])
+            err = payload.get("error", json.dumps(payload, default=str, ensure_ascii=False)[:200])
             print(f"{RED}    ✗ {prefix}{err}{RESET}")
         elif kind == "brain_tool_call":
             summary = payload.get("summary", payload.get("tool", ""))
@@ -164,7 +164,7 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
             err = payload.get("error", "")
             print(f"{BOLD}{RED}    ✗ failed: {err}{RESET}")
         else:
-            print(f"{GRAY}    {kind}: {json.dumps(payload, default=str)[:120]}{RESET}")
+            print(f"{GRAY}    {kind}: {json.dumps(payload, default=str, ensure_ascii=False)[:120]}{RESET}")
 
         if kind in ("run_completed", "run_failed"):
             return kind == "run_completed"
