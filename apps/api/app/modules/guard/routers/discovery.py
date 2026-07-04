@@ -23,13 +23,14 @@ router = APIRouter(prefix="/guard/discover", tags=["guard"])
 def _org_ws_subquery(db: Session, workspace_id: str):
     """Return a subquery of all workspace IDs in the same org.
 
-    Falls back to a single-workspace filter when the workspace has no org_id.
+    Resolution: org_id (when set) → owner_id (same person's workspaces) → single workspace.
     """
     ws_uuid = uuid.UUID(workspace_id)
     ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
     if ws and ws.org_id:
         return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
-    # Fallback: org_id not set — scope to the single workspace
+    if ws and ws.owner_id:
+        return db.query(Workspace.id).filter(Workspace.owner_id == ws.owner_id)
     return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 

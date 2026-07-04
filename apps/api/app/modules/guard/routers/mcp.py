@@ -725,11 +725,12 @@ async def mcp_endpoint(
             elif tool_name == "guard_discover":
                 from app.modules.guard.models import DiscoveredAgent
                 _ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
-                _org_ws = (
-                    db.query(Workspace.id).filter(Workspace.org_id == _ws.org_id)
-                    if _ws and _ws.org_id
-                    else db.query(Workspace.id).filter(Workspace.id == ws_uuid)
-                )
+                if _ws and _ws.org_id:
+                    _org_ws = db.query(Workspace.id).filter(Workspace.org_id == _ws.org_id)
+                elif _ws and _ws.owner_id:
+                    _org_ws = db.query(Workspace.id).filter(Workspace.owner_id == _ws.owner_id)
+                else:
+                    _org_ws = db.query(Workspace.id).filter(Workspace.id == ws_uuid)
                 total   = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(_org_ws)).count()
                 covered = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(_org_ws), DiscoveredAgent.under_guard == True).count()
                 missing = total - covered
