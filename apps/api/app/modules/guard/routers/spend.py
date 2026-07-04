@@ -34,6 +34,8 @@ def _org_ws_subquery(db: Session, workspace_id: str):
     ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
     if ws and ws.org_id:
         return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
+    if ws and ws.owner_id:
+        return db.query(Workspace.id).filter(Workspace.owner_id == ws.owner_id)
     return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 

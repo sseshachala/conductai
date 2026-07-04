@@ -131,13 +131,15 @@ def get_install_status(
     except ValueError:
         return InstallStatusOut(installed=False)
 
-    # Check org-level: Guard is installed if any workspace in the org has a config row.
+    # Check org-level: org_id → owner_id (same person's workspaces) → single workspace
     ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
     if ws and ws.org_id:
         org_ws_subq = db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
-        config = db.query(GuardConfig).filter(GuardConfig.workspace_id.in_(org_ws_subq)).first()
+    elif ws and ws.owner_id:
+        org_ws_subq = db.query(Workspace.id).filter(Workspace.owner_id == ws.owner_id)
     else:
-        config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+        org_ws_subq = db.query(Workspace.id).filter(Workspace.id == ws_uuid)
+    config = db.query(GuardConfig).filter(GuardConfig.workspace_id.in_(org_ws_subq)).first()
     if not config:
         return InstallStatusOut(installed=False)
 
