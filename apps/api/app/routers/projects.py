@@ -617,9 +617,15 @@ def add_member(
         ws_row = db.execute(text("SELECT name FROM workspaces WHERE id = :id"), {"id": workspace_id}).fetchone()
         workspace_name = ws_row.name if ws_row else "your workspace"
 
-        # Guard is available by default for workspace members — sync is the only setup step needed
+        # Guard is org-level — check if any workspace in the org has Guard installed
         guard_row = db.execute(
-            text("SELECT id FROM guard_config WHERE workspace_id::text = :ws LIMIT 1"),
+            text("""
+                SELECT gc.id FROM guard_config gc
+                JOIN workspaces w ON w.id = gc.workspace_id
+                WHERE w.org_id = (SELECT org_id FROM workspaces WHERE id::text = :ws)
+                   OR gc.workspace_id::text = :ws
+                LIMIT 1
+            """),
             {"ws": workspace_id},
         ).fetchone()
         guard_invite_cmd = "conduct guard sync" if guard_row else ""
