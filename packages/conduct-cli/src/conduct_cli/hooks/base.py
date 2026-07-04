@@ -17,9 +17,8 @@ from typing import Literal, Optional
 # ── Canonical paths ───────────────────────────────────────────────────────────
 
 GUARD_DIR          = Path.home() / ".conductguard"
-CONFIG_PATH        = GUARD_DIR / "config.json"   # legacy / fallback
-POLICY_PATH        = GUARD_DIR / "policy.json"   # legacy / fallback
-_CONDUCT_CFG       = Path.home() / ".conduct" / "config.json"
+CONFIG_PATH        = GUARD_DIR / "config.json"
+POLICY_PATH        = GUARD_DIR / "policy.json"
 BUDGET_CACHE_PATH  = GUARD_DIR / "budget_cache.json"
 BUDGET_CACHE_TTL   = 300   # seconds
 VERSION_CACHE_PATH = GUARD_DIR / "version_cache.json"
@@ -43,23 +42,9 @@ class HookResult:
 
 # ── Config loading ────────────────────────────────────────────────────────────
 
-def _active_workspace_id() -> str | None:
-    try:
-        if _CONDUCT_CFG.exists():
-            return json.loads(_CONDUCT_CFG.read_text()).get("workspace")
-    except Exception:
-        pass
-    return None
-
-
 def load_config() -> dict:
-    """Load Guard config for the active workspace, falling back to legacy single config."""
+    """Load Guard config from ~/.conductguard/config.json."""
     try:
-        ws_id = _active_workspace_id()
-        if ws_id:
-            p = GUARD_DIR / "workspaces" / f"{ws_id}.json"
-            if p.exists():
-                return json.loads(p.read_text())
         if CONFIG_PATH.exists():
             return json.loads(CONFIG_PATH.read_text())
     except Exception:
@@ -68,12 +53,7 @@ def load_config() -> dict:
 
 
 def active_policy_path() -> Path:
-    """Return per-workspace policy path, or legacy fallback."""
-    ws_id = _active_workspace_id()
-    if ws_id:
-        p = GUARD_DIR / f"policy_{ws_id}.json"
-        if p.exists():
-            return p
+    """Return policy path: ~/.conductguard/policy.json."""
     return POLICY_PATH
 
 
