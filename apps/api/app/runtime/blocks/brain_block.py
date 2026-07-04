@@ -585,6 +585,7 @@ def _execute_brain(
                     "pricing_version": pricing_version,
                     "pricing_rates": pricing_rates,
                     "upstream_url": _effective_base_url,
+                    "llm_upstream": _env_vars.get("PROXY_CONFIG_LLM_UPSTREAM") or None,
                 }
                 # Extract structured values from brain output so keys like
                 # pr_url, files, approach etc. are available as direct refs.
@@ -751,6 +752,7 @@ def _execute_brain(
             "pricing_version": pricing_version,
             "pricing_rates": pricing_rates,
             "upstream_url": _effective_base_url,
+            "llm_upstream": _env_vars.get("PROXY_CONFIG_LLM_UPSTREAM") or None,
         }
         _extracted = _extract_last_json_object(result.get("output", ""))
         if _extracted:
