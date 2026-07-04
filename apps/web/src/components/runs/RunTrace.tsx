@@ -212,6 +212,7 @@ interface BlockRow {
   provider?: string
   model?: string
   upstreamUrl?: string
+  llmUpstream?: string
   routingReason?: string
   sandboxProvider?: string
   sandboxDecision?: string
@@ -397,6 +398,15 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
               style={{ fontSize: 9, color: "#6b7280", background: "#f3f4f6", border: "1px solid #e5e7eb", padding: "1px 6px", borderRadius: 4, fontWeight: 500 }}
             >
               via {row.upstreamUrl.replace(/^https?:\/\//, "").split("/")[0]}
+            </span>
+          )}
+          {/* LLM upstream badge — shown only when env has PROXY_CONFIG_LLM_UPSTREAM */}
+          {row.type === "brain" && row.llmUpstream && (
+            <span
+              title={row.llmUpstream}
+              style={{ fontSize: 9, color: "#7c3aed", background: "#ede9fe", border: "1px solid #ddd6fe", padding: "1px 6px", borderRadius: 4, fontWeight: 500 }}
+            >
+              → {row.llmUpstream.replace(/^https?:\/\//, "").split("/")[0]}
             </span>
           )}
 
@@ -795,6 +805,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         if (typeof out.provider === "string") blockMap[ev.block_id].provider = out.provider
         if (typeof out.model === "string") blockMap[ev.block_id].model = out.model
         if (typeof out.upstream_url === "string") blockMap[ev.block_id].upstreamUrl = out.upstream_url
+        if (typeof out.llm_upstream === "string") blockMap[ev.block_id].llmUpstream = out.llm_upstream
         if (typeof out.routing_reason === "string") blockMap[ev.block_id].routingReason = out.routing_reason
         if (Array.isArray(out.files_changed)) blockMap[ev.block_id].filesChanged = out.files_changed as FileChanged[]
         if (typeof out.diff_stat === "string") blockMap[ev.block_id].diffStat = out.diff_stat
