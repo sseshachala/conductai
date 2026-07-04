@@ -18,6 +18,7 @@ export default function HomePage() {
         <GovernanceNarrativeSection />
         <GuardLearnsTeaser />
         <PersonasSection />
+        <DemoVideoSection />
         <FinalCTASection />
       </main>
       <PageFooter />
@@ -586,6 +587,28 @@ function PersonasSection() {
 }
 
 /* ─── Final CTA ────────────────────────────────────────────────────────── */
+
+function DemoVideoSection() {
+  return (
+    <section className="py-24 px-6 bg-stone-950">
+      <div className="max-w-4xl mx-auto text-center">
+        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3">See it in action</p>
+        <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-10">
+          AI governance in under 60 seconds
+        </h2>
+        <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
+          <iframe
+            className="absolute inset-0 w-full h-full rounded-2xl"
+            src="https://www.youtube.com/embed/yGY5TrG7Ydg"
+            title="Conduct AI demo"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
 
 function FinalCTASection() {
   return (
