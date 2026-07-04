@@ -14,9 +14,23 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_guard_hook_auth, get_workspace_id
 from app.core.database import get_db
+from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, DiscoveryScan
 
 router = APIRouter(prefix="/guard/discover", tags=["guard"])
+
+
+def _org_ws_subquery(db: Session, workspace_id: str):
+    """Return a subquery of all workspace IDs in the same org.
+
+    Falls back to a single-workspace filter when the workspace has no org_id.
+    """
+    ws_uuid = uuid.UUID(workspace_id)
+    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
+    if ws and ws.org_id:
+        return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
+    # Fallback: org_id not set — scope to the single workspace
+    return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -129,9 +143,10 @@ def list_scans(
     db: Session = Depends(get_db),
     limit: int = Query(20, le=100),
 ):
+    org_ws = _org_ws_subquery(db, workspace_id)
     rows = (
         db.query(DiscoveryScan)
-        .filter(DiscoveryScan.workspace_id == uuid.UUID(workspace_id))
+        .filter(DiscoveryScan.workspace_id.in_(org_ws))
         .order_by(DiscoveryScan.started_at.desc())
         .limit(limit)
         .all()
@@ -150,8 +165,9 @@ def list_agents(
     under_guard: Optional[bool] = Query(None),
     limit: int = Query(100, le=500),
 ):
+    org_ws = _org_ws_subquery(db, workspace_id)
     q = db.query(DiscoveredAgent).filter(
-        DiscoveredAgent.workspace_id == uuid.UUID(workspace_id)
+        DiscoveredAgent.workspace_id.in_(org_ws)
     )
     if under_guard is not None:
         q = q.filter(DiscoveredAgent.under_guard == under_guard)
@@ -189,10 +205,10 @@ def discovery_summary(
     db: Session = Depends(get_db),
 ):
     """Coverage meter: total found, under Guard, coverage %."""
-    ws_uuid = uuid.UUID(workspace_id)
-    total = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id == ws_uuid).count()
+    org_ws = _org_ws_subquery(db, workspace_id)
+    total = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(org_ws)).count()
     covered = db.query(DiscoveredAgent).filter(
-        DiscoveredAgent.workspace_id == ws_uuid,
+        DiscoveredAgent.workspace_id.in_(org_ws),
         DiscoveredAgent.under_guard == True,
     ).count()
     pct = round(covered / total * 100) if total else 0

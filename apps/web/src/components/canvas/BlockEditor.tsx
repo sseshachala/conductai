@@ -819,7 +819,7 @@ function GuardBlockPanel({
         {isAdmin ? (
           <>
             <p className="text-[10px] text-red-600 leading-relaxed">
-              This block enforces spend caps, tool blocks, and audit policies — but Guard is not installed for this workspace.
+              This block enforces spend caps, tool blocks, and audit policies — but Guard is not set up for your organization.
             </p>
             <a
               href="/marketplace?tab=modules"
@@ -830,7 +830,7 @@ function GuardBlockPanel({
           </>
         ) : (
           <p className="text-[10px] text-red-600 leading-relaxed">
-            Guard is not installed for this workspace. Ask your workspace admin to install it in Settings → Modules.
+            Guard is not set up for your organization. Ask your workspace admin to install it in Settings → Modules.
           </p>
         )}
       </div>

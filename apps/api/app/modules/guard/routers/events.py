@@ -18,12 +18,26 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, _clerk_enabled, _verify_clerk_token
 from app.core.database import SessionLocal, get_db
+from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget
 
 router = APIRouter(prefix="/guard/events", tags=["guard"])
 
 SSE_POLL_INTERVAL = 2    # seconds between DB polls
 SSE_MAX_DURATION  = 300  # reconnect after 5 min
+
+
+def _org_ws_subquery(db, workspace_id: str):
+    """Return a subquery of all workspace IDs in the same org.
+
+    Falls back to a single-workspace filter when the workspace has no org_id.
+    """
+    import uuid as _uuid
+    ws_uuid = _uuid.UUID(workspace_id)
+    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
+    if ws and ws.org_id:
+        return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
+    return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 
 def _now() -> datetime:
@@ -601,10 +615,9 @@ def list_events(
     offset: int = Query(default=0, ge=0),
 ):
     """Paginated, filterable audit event list for a workspace."""
-    import uuid
-    ws_uuid = uuid.UUID(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
 
-    q = db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id == ws_uuid)
+    q = db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id.in_(org_ws))
     if decision:
         q = q.filter(GuardAuditEvent.decision == decision)
     if ai_tool:
@@ -638,11 +651,10 @@ def cost_trend(
 ):
     """Return aggregated cost per period, split by ai_tool (claude-code vs codex).
     tz_offset shifts timestamps into the user's local day before bucketing."""
-    import uuid
     from datetime import timedelta
     from sqlalchemy import func, text as _text
 
-    ws_uuid = uuid.UUID(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
     now = _now()
 
     # Shift: convert UTC ts → local ts by adding the offset, then date_trunc
@@ -674,7 +686,7 @@ def cost_trend(
             func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("cost"),
         )
         .filter(
-            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= since,
             GuardAuditEvent.cost_usd_after.isnot(None),
         )
@@ -704,14 +716,13 @@ def cost_trend(
 
 def _fetch_new_events(workspace_id: str, since: datetime) -> tuple[list[dict], datetime]:
     """Query DB for events newer than `since`. Returns (events, new_cursor)."""
-    import uuid
-    ws_uuid = uuid.UUID(workspace_id)
     db = SessionLocal()
     try:
+        org_ws = _org_ws_subquery(db, workspace_id)
         rows = (
             db.query(GuardAuditEvent)
             .filter(
-                GuardAuditEvent.workspace_id == ws_uuid,
+                GuardAuditEvent.workspace_id.in_(org_ws),
                 GuardAuditEvent.ts > since,
             )
             .order_by(GuardAuditEvent.ts.asc())
@@ -818,11 +829,11 @@ def list_unified_activity(
     offset: int = Query(default=0, ge=0),
 ):
     """One feed, three sources later (policy + tool today, run pending)."""
-    import uuid
-    ws_uuid = uuid.UUID(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
+    ws_ids = [str(r[0]) for r in org_ws.all()]
 
-    where = ["workspace_id = :w"]
-    params: dict = {"w": str(ws_uuid)}
+    where = ["workspace_id = ANY(:ws_ids)"]
+    params: dict = {"ws_ids": ws_ids}
     if source:
         if source not in ("policy", "tool"):
             raise HTTPException(status_code=422, detail="source must be policy|tool")

@@ -758,10 +758,10 @@ function GuardDashboard() {
           marginRight: "auto",
         }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
-            Guard is not installed for this workspace.
+            Guard is not set up for your organization.
           </div>
           <p style={{ fontSize: 13, color: "var(--text-3)", marginBottom: 20, lineHeight: 1.6 }}>
-            Go to Settings → Modules to install.
+            Ask your workspace admin to run `conduct guard install` to get started.
           </p>
           <Link
             href="/settings/modules"
