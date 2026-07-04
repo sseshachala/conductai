@@ -97,24 +97,10 @@ def _load_conduct_config() -> dict:
     return {}
 
 
-def _active_guard_policy_path() -> Path:
-    try:
-        cfg = json.loads(CONDUCT_CONFIG_PATH.read_text()) if CONDUCT_CONFIG_PATH.exists() else {}
-        ws_id = cfg.get("workspace")
-        if ws_id:
-            p = GUARD_DIR / f"policy_{ws_id}.json"
-            if p.exists():
-                return p
-    except Exception:
-        pass
-    return GUARD_POLICY_PATH
-
-
 def _load_guard_policy() -> dict:
-    p = _active_guard_policy_path()
-    if p.exists():
+    if GUARD_POLICY_PATH.exists():
         try:
-            return json.loads(p.read_text())
+            return json.loads(GUARD_POLICY_PATH.read_text())
         except Exception:
             pass
     return {"rules": []}
