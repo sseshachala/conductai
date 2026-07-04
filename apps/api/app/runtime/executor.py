@@ -1107,6 +1107,7 @@ def _dispatch_single_block(
     _logic_routes_version_ref: list,  # mutable single-element list so we can mutate from caller
     sandbox_sessions: dict | None = None,
     user_email: str | None = None,
+    env_id=None,
 ) -> dict:
     if sandbox_sessions is None:
         sandbox_sessions = {}
@@ -1304,6 +1305,7 @@ def _execute_dag(
     credentials: dict | None = None,
     allowed_hosts: list[str] | None = None,
     workspace_id_str: str = "",
+    env_id=None,
 ) -> dict:
     """
     Execute the compiled DAG for a run, block by block.
@@ -1455,6 +1457,7 @@ def _execute_dag(
                 _logic_routes_version_ref=_lrv_ref,
                 sandbox_sessions=sandbox_sessions,
                 user_email=_user_email,
+                env_id=env_id,
             )
 
         try:
@@ -1790,6 +1793,7 @@ def execute_run(run_id: str):
             credentials=credentials,
             allowed_hosts=allowed_hosts,
             workspace_id_str=str(workspace_id_str),
+            env_id=env_id,
         )
         _emit_run_analytics(run, version, final_state, db, outcome=run.status, error="")
         _enqueue_online_eval(str(run.id))
