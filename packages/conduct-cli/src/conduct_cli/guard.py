@@ -1,3 +1,4 @@
+from __future__ import annotations
 """conduct guard — team policy + MCP registration subcommand."""
 
 import json
