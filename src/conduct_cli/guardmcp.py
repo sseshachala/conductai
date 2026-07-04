@@ -24,28 +24,9 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-GUARD_DIR    = Path.home() / ".conductguard"
-POLICY_PATH  = GUARD_DIR / "policy.json"
-CONFIG_PATH  = GUARD_DIR / "config.json"
-_CONDUCT_CFG = Path.home() / ".conduct" / "config.json"
-
-
-def _active_workspace_id() -> str | None:
-    try:
-        if _CONDUCT_CFG.exists():
-            return json.loads(_CONDUCT_CFG.read_text()).get("workspace")
-    except Exception:
-        pass
-    return None
-
-
-def _active_policy_path() -> Path:
-    ws_id = _active_workspace_id()
-    if ws_id:
-        p = GUARD_DIR / f"policy_{ws_id}.json"
-        if p.exists():
-            return p
-    return POLICY_PATH
+GUARD_DIR   = Path.home() / ".conductguard"
+POLICY_PATH = GUARD_DIR / "policy.json"
+CONFIG_PATH = GUARD_DIR / "config.json"
 
 PROTOCOL_VERSION = "2024-11-05"
 
@@ -141,26 +122,20 @@ _TOOLS = [
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _load_policy() -> dict:
-    p = _active_policy_path()
-    if p.exists():
+    if POLICY_PATH.exists():
         try:
-            return json.loads(p.read_text())
+            return json.loads(POLICY_PATH.read_text())
         except Exception:
             pass
     return {"rules": []}
 
 
 def _load_config() -> dict:
-    try:
-        ws_id = _active_workspace_id()
-        if ws_id:
-            p = GUARD_DIR / "workspaces" / f"{ws_id}.json"
-            if p.exists():
-                return json.loads(p.read_text())
-        if CONFIG_PATH.exists():
+    if CONFIG_PATH.exists():
+        try:
             return json.loads(CONFIG_PATH.read_text())
-    except Exception:
-        pass
+        except Exception:
+            pass
     return {}
 
 
@@ -185,7 +160,7 @@ def _maybe_sync() -> None:
             ws_id = cfg.get("workspace_id", "")
             if ws_id:
                 with urllib.request.urlopen(f"{_DAEMON_URL}/policy?workspace_id={ws_id}", timeout=1) as r:
-                    _active_policy_path().write_text(r.read().decode())
+                    POLICY_PATH.write_text(r.read().decode())
             return
     except Exception:
         pass  # fall through to CLI sync
@@ -362,7 +337,7 @@ def _handle_guard_sync(workspace_id: str, token: str) -> str:
         with urllib.request.urlopen(req, timeout=10) as resp:
             policy = json.loads(resp.read())
         GUARD_DIR.mkdir(parents=True, exist_ok=True)
-        _active_policy_path().write_text(json.dumps(policy, indent=2))
+        POLICY_PATH.write_text(json.dumps(policy, indent=2))
         rule_count = len(policy.get("rules", []))
         return f"Policy synced — {rule_count} rule(s) active (version: {policy.get('version', 'unknown')})."
     except urllib.error.HTTPError as e:

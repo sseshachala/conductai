@@ -18,35 +18,11 @@ CYAN   = "\033[36m"
 YELLOW = "\033[33m"
 
 GUARD_DIR    = Path.home() / ".conductguard"
-CONFIG_PATH  = GUARD_DIR / "config.json"   # legacy / fallback
-POLICY_PATH  = GUARD_DIR / "policy.json"   # legacy / fallback
-_CONDUCT_CFG = Path.home() / ".conduct" / "config.json"
-
-
-def _active_workspace_id() -> str | None:
-    """Active workspace from conduct switch — updates at runtime."""
-    try:
-        if _CONDUCT_CFG.exists():
-            return json.loads(_CONDUCT_CFG.read_text()).get("workspace")
-    except Exception:
-        pass
-    return None
-
-
-def _ws_config_path(ws_id: str) -> Path:
-    return GUARD_DIR / "workspaces" / f"{ws_id}.json"
-
-
-def _ws_policy_path(ws_id: str) -> Path:
-    return GUARD_DIR / f"policy_{ws_id}.json"
+CONFIG_PATH  = GUARD_DIR / "config.json"
+POLICY_PATH  = GUARD_DIR / "policy.json"
 
 
 def active_policy_path() -> Path:
-    ws_id = _active_workspace_id()
-    if ws_id:
-        p = _ws_policy_path(ws_id)
-        if p.exists():
-            return p
     return POLICY_PATH
 
 # ── Hook templates — loaded from real .py files (no string embedding) ─────────
@@ -331,26 +307,16 @@ def _ensure_persona(workspace_id: str, api_key: str, base_url: str) -> str:
 
 
 def _load_guard_config(workspace_id: str | None = None) -> dict:
-    ws_id = workspace_id or _active_workspace_id()
-    if ws_id:
-        p = _ws_config_path(ws_id)
-        if p.exists():
-            return json.loads(p.read_text())
-    # fallback to legacy single-workspace config
     if CONFIG_PATH.exists():
-        return json.loads(CONFIG_PATH.read_text())
+        try:
+            return json.loads(CONFIG_PATH.read_text())
+        except Exception:
+            pass
     return {}
 
 
 def _save_guard_config(data: dict, workspace_id: str | None = None):
     GUARD_DIR.mkdir(parents=True, exist_ok=True)
-    ws_id = workspace_id or data.get("workspace_id") or _active_workspace_id()
-    if ws_id:
-        p = _ws_config_path(ws_id)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(data, indent=2))
-        p.chmod(0o600)
-    # always write legacy path so old hook versions keep working
     CONFIG_PATH.write_text(json.dumps(data, indent=2))
     CONFIG_PATH.chmod(0o600)
 
@@ -612,20 +578,11 @@ def _req(method: str, url: str, body=None, token: str = None, api_key: str = Non
 
 def _save_policy(policy: dict, workspace_id: str | None = None):
     GUARD_DIR.mkdir(parents=True, exist_ok=True)
-    ws_id = workspace_id or _active_workspace_id()
-    if ws_id:
-        _ws_policy_path(ws_id).write_text(json.dumps(policy, indent=2))
-    # always write legacy path for old hook versions
     POLICY_PATH.write_text(json.dumps(policy, indent=2))
 
 
 def _load_policy(workspace_id: str | None = None) -> dict:
     try:
-        ws_id = workspace_id or _active_workspace_id()
-        if ws_id:
-            p = _ws_policy_path(ws_id)
-            if p.exists():
-                return json.loads(p.read_text())
         return json.loads(POLICY_PATH.read_text())
     except Exception:
         return {"rules": []}
