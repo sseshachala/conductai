@@ -14,7 +14,6 @@ deprecation warning (issue #800). Slated for removal in issue #810.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -31,7 +30,7 @@ from app.core.database import SessionLocal
 from app.core.auth import get_clerk_user_email
 from app.core.pii import redact_secrets
 from app.models.workspace import Workspace
-from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardMemberConfig
+from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardMemberConfig, chain_hash_for_insert
 from app.modules.guard.policy_engine import compute_policy
 
 router = APIRouter(prefix="/guard/mcp", tags=["guard-mcp"])
@@ -357,17 +356,7 @@ def _record_event(
     conductai_workflow: str | None = None,
 ) -> None:
     ts = datetime.now(timezone.utc)
-    # ponytail: per-workspace SELECT FOR UPDATE — serialises concurrent inserts, upgrade to per-org lock if throughput demands
-    last = (
-        db.query(GuardAuditEvent.entry_hash)
-        .filter(GuardAuditEvent.workspace_id == ws_uuid)
-        .order_by(GuardAuditEvent.ts.desc())
-        .with_for_update(skip_locked=False)
-        .first()
-    )
-    prev_hash = (last.entry_hash or "") if last else ""
-    _tool = tool_name or ""
-    entry_hash = hashlib.sha256(f"{ts.isoformat()}|{_tool}|{decision}|{prev_hash}".encode()).hexdigest()
+    prev_hash, entry_hash = chain_hash_for_insert(db, ws_uuid, ts, tool_name, decision)
 
     event = GuardAuditEvent(
         workspace_id=ws_uuid,

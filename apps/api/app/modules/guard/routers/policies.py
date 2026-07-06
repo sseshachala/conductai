@@ -252,6 +252,9 @@ def _upsert_override(
 def _write_audit(db: Session, workspace_id: uuid.UUID, tool_call: str, rule_id: str, action: str) -> None:
     """Non-fatal audit row for policy mutations."""
     try:
+        from app.modules.guard.models import chain_hash_for_insert
+        ts = datetime.now(timezone.utc)
+        prev_h, entry_h = chain_hash_for_insert(db, workspace_id, ts, tool_call, "allowed")
         db.add(GuardAuditEvent(
             workspace_id=workspace_id,
             clerk_user_id=None,
@@ -260,7 +263,9 @@ def _write_audit(db: Session, workspace_id: uuid.UUID, tool_call: str, rule_id: 
             decision="allowed",
             rule_id=rule_id,
             input_summary=f"rule_id={rule_id} action={action}"[:500],
-            ts=datetime.now(timezone.utc),
+            ts=ts,
+            previous_hash=prev_h,
+            entry_hash=entry_h,
         ))
         db.commit()
     except Exception:

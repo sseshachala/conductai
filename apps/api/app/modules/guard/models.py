@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 from datetime import datetime, timezone
 
@@ -5,6 +6,22 @@ from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey,
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, JSONB, UUID
 
 from app.core.database import Base
+
+
+def chain_hash_for_insert(db, ws_uuid, ts: datetime, tool_call, decision: str):
+    """Returns (previous_hash, entry_hash) for a new GuardAuditEvent row.
+    Acquires a per-workspace row lock to serialise concurrent inserts."""
+    last = (
+        db.query(GuardAuditEvent.entry_hash)
+        .filter(GuardAuditEvent.workspace_id == ws_uuid)
+        .order_by(GuardAuditEvent.ts.desc())
+        .with_for_update(skip_locked=False)
+        .first()
+    )
+    prev = (last.entry_hash or "") if last else ""
+    _tool = tool_call or ""
+    entry = hashlib.sha256(f"{ts.isoformat()}|{_tool}|{decision}|{prev}".encode()).hexdigest()
+    return prev, entry
 
 
 class GuardConfig(Base):

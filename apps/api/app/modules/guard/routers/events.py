@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id, _clerk_enabled, _verify_clerk_token
 from app.core.database import SessionLocal, get_db
 from app.models.workspace import Workspace
-from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget
+from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget, chain_hash_for_insert
 
 router = APIRouter(prefix="/guard/events", tags=["guard"])
 
@@ -116,6 +116,7 @@ class EventOut(BaseModel):
     duration_ms: int | None
     blast_radius: dict | None = None
     ts: str
+    entry_hash: str | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -148,6 +149,7 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "duration_ms": e.duration_ms,
         "blast_radius": e.blast_radius,
         "ts": e.ts.isoformat(),
+        "entry_hash": e.entry_hash,
     }
 
 
@@ -370,19 +372,7 @@ def ingest_event(
     now = _now()
 
     # 1. Compute hash-chain fields before insert
-    # ponytail: per-workspace SELECT FOR UPDATE — serialises concurrent hook ingests
-    last = (
-        db.query(GuardAuditEvent.entry_hash)
-        .filter(GuardAuditEvent.workspace_id == ws_uuid)
-        .order_by(GuardAuditEvent.ts.desc())
-        .with_for_update(skip_locked=False)
-        .first()
-    )
-    prev_hash = (last.entry_hash or "") if last else ""
-    _tool = body.tool_call or ""
-    entry_hash = hashlib.sha256(
-        f"{now.isoformat()}|{_tool}|{body.decision}|{prev_hash}".encode()
-    ).hexdigest()
+    prev_hash, entry_hash = chain_hash_for_insert(db, ws_uuid, now, body.tool_call, body.decision)
 
     # 2. Write the audit event
     event = GuardAuditEvent(

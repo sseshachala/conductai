@@ -12,7 +12,7 @@ import uuid as _uuid
 from datetime import datetime, timezone
 
 import structlog
-from app.modules.guard.models import GuardAuditEvent, GuardConfig
+from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert, GuardConfig
 from app.modules.guard.policy_engine import compute_policy
 
 log = structlog.get_logger(__name__)
@@ -141,6 +141,7 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
 
     def _record_event(policy: dict, decision: str) -> None:
         try:
+            prev_h, entry_h = chain_hash_for_insert(db, ws_uuid, now, block_id, decision)
             db.add(GuardAuditEvent(
                 workspace_id=ws_uuid,
                 ai_tool="workflow",
@@ -155,6 +156,8 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
                 conductai_workflow=workflow_name or playbook_slug,
                 conductai_workflow_id=workflow_id,
                 user_email=user_email,
+                previous_hash=prev_h,
+                entry_hash=entry_h,
             ))
             db.flush()
         except Exception:
