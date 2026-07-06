@@ -91,13 +91,21 @@ def ingest_scan(
     ws_uuid = uuid.UUID(workspace_id)
     now = datetime.now(timezone.utc)
 
-    under_guard_count = sum(1 for a in body.agents if a.under_guard)
+    # Deduplicate by (framework, source) — keep the under_guard=True entry if present
+    seen: dict[tuple, object] = {}
+    for a in body.agents:
+        key = (a.framework, a.source)
+        if key not in seen or a.under_guard:
+            seen[key] = a
+    agents = list(seen.values())
+
+    under_guard_count = sum(1 for a in agents if a.under_guard)
 
     scan = DiscoveryScan(
         workspace_id=ws_uuid,
         triggered_by=body.triggered_by,
         status="complete",
-        agents_found=len(body.agents),
+        agents_found=len(agents),
         guard_coverage=under_guard_count,
         started_at=now,
         completed_at=now,
@@ -105,7 +113,7 @@ def ingest_scan(
     db.add(scan)
     db.flush()
 
-    for a in body.agents:
+    for a in agents:
         # upsert key matches unique constraint: workspace_id + framework + source
         existing = (
             db.query(DiscoveredAgent)
@@ -136,7 +144,7 @@ def ingest_scan(
             ))
 
     db.commit()
-    return {"scan_id": str(scan.id), "agents_found": len(body.agents), "guard_coverage": under_guard_count}
+    return {"scan_id": str(scan.id), "agents_found": len(agents), "guard_coverage": under_guard_count}
 
 
 @router.get("/scans", response_model=list[ScanOut])
