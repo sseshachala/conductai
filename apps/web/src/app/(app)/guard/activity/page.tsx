@@ -99,6 +99,7 @@ function ActivityContent() {
   const [live, setLive] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const offsetRef = useRef(0)
+  const [chainStatus, setChainStatus] = useState<{ valid: boolean; total: number; verified_from: string | null } | null>(null)
 
   // Filters
   const [filterDecision, setFilterDecision] = useState("")
@@ -107,6 +108,20 @@ function ActivityContent() {
   const [filterSince, setFilterSince] = useState("")
   const [filterUntil, setFilterUntil] = useState("")
   const [filterRuleId, setFilterRuleId] = useState("")
+
+  // Fetch audit chain status on load
+  useEffect(() => {
+    if (!teamId) return
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL
+    getToken().then(token => {
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) headers["Authorization"] = `Bearer ${token}`
+      fetch(`${base}/guard/events/audit/verify?workspace_id=${teamId}`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => d && setChainStatus(d))
+        .catch(() => {})
+    })
+  }, [teamId])
 
   // Hydrate filters from URL on first load — lets callers like the governance
   // dashboard deep-link with ?rule_id=foo or ?decision=blocked.
@@ -246,6 +261,24 @@ function ActivityContent() {
           }}
         >
           You can view your own activity only. Contact your admin to request broader access.
+        </div>
+      )}
+
+      {/* Audit chain badge */}
+      {chainStatus && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20,
+            background: chainStatus.valid ? "var(--ok-bg)" : "var(--block-bg)",
+            color: chainStatus.valid ? "var(--ok)" : "var(--block)",
+            border: `1px solid ${chainStatus.valid ? "var(--ok-bd)" : "var(--block-bd)"}`,
+          }}>
+            {chainStatus.valid ? "Chain verified" : "Chain broken"}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            {chainStatus.total} chained {chainStatus.total === 1 ? "event" : "events"}
+            {chainStatus.verified_from && ` from ${new Date(chainStatus.verified_from).toLocaleDateString()}`}
+          </span>
         </div>
       )}
 

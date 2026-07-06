@@ -14,6 +14,7 @@ deprecation warning (issue #800). Slated for removal in issue #810.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -355,6 +356,19 @@ def _record_event(
     conductai_run_id: str | None = None,
     conductai_workflow: str | None = None,
 ) -> None:
+    ts = datetime.now(timezone.utc)
+    # ponytail: per-workspace SELECT FOR UPDATE — serialises concurrent inserts, upgrade to per-org lock if throughput demands
+    last = (
+        db.query(GuardAuditEvent.entry_hash)
+        .filter(GuardAuditEvent.workspace_id == ws_uuid)
+        .order_by(GuardAuditEvent.ts.desc())
+        .with_for_update(skip_locked=False)
+        .first()
+    )
+    prev_hash = (last.entry_hash or "") if last else ""
+    _tool = tool_name or ""
+    entry_hash = hashlib.sha256(f"{ts.isoformat()}|{_tool}|{decision}|{prev_hash}".encode()).hexdigest()
+
     event = GuardAuditEvent(
         workspace_id=ws_uuid,
         clerk_user_id=user_email,
@@ -365,9 +379,11 @@ def _record_event(
         decision=decision,
         rule_id=rule_id,
         hook_session_id=session_id,
-        ts=datetime.now(timezone.utc),
+        ts=ts,
         conductai_run_id=conductai_run_id,
         conductai_workflow=conductai_workflow,
+        previous_hash=prev_hash,
+        entry_hash=entry_hash,
     )
     db.add(event)
     db.commit()

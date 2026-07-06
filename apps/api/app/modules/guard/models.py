@@ -122,6 +122,9 @@ class GuardAuditEvent(Base):
         default=lambda: datetime.now(timezone.utc),
     )
     duration_ms = Column(Integer, nullable=True)
+    # hash-chain integrity — do not UPDATE or DELETE rows, chain breaks
+    previous_hash = Column(Text, nullable=True)
+    entry_hash = Column(Text, nullable=True)
 
 
 class GuardSavings(Base):
