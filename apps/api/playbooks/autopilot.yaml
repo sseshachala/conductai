@@ -102,7 +102,12 @@ blocks:
   implement_fix:
     type: brain
     mode: agentic
-    model: "{{inputs.model}}"
+    runs_on: e2b
+    max_turns: 50
+    model: >-
+      {%- if plan_fix.complexity == 'large' -%}claude-opus-4-7
+      {%- elif plan_fix.complexity == 'medium' -%}claude-sonnet-4-6
+      {%- else -%}claude-haiku-4-5-20251001{%- endif -%}
     label: Implement fix
     description: |
       You are an expert software engineer.
@@ -155,7 +160,12 @@ blocks:
   run_tests:
     type: brain
     mode: agentic
-    model: "{{inputs.model}}"
+    runs_on: e2b
+    max_turns: 25
+    model: >-
+      {%- if plan_fix.complexity == 'large' -%}claude-sonnet-4-6
+      {%- elif plan_fix.complexity == 'medium' -%}claude-sonnet-4-6
+      {%- else -%}claude-haiku-4-5-20251001{%- endif -%}
     label: Run tests & fix
     description: |
       IMPORTANT: This is a fresh sandbox — there is no pre-existing repo directory.
