@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id, _clerk_enabled, _verify_clerk_token
 from app.core.database import SessionLocal, get_db
 from app.models.workspace import Workspace
-from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget, chain_hash_for_insert
+from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget, chain_hash_for_insert, get_policy_hash
 
 router = APIRouter(prefix="/guard/events", tags=["guard"])
 
@@ -117,6 +117,7 @@ class EventOut(BaseModel):
     blast_radius: dict | None = None
     ts: str
     entry_hash: str | None = None
+    policy_hash: str | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -150,6 +151,7 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "blast_radius": e.blast_radius,
         "ts": e.ts.isoformat(),
         "entry_hash": e.entry_hash,
+        "policy_hash": e.policy_hash,
     }
 
 
@@ -371,8 +373,9 @@ def ingest_event(
 
     now = _now()
 
-    # 1. Compute hash-chain fields before insert
+    # 1. Compute hash-chain + policy BOM fields before insert
     prev_hash, entry_hash = chain_hash_for_insert(db, ws_uuid, now, body.tool_call, body.decision)
+    policy_hash = get_policy_hash(db, ws_uuid)
 
     # 2. Write the audit event
     event = GuardAuditEvent(
@@ -400,6 +403,7 @@ def ingest_event(
         ts=now,
         previous_hash=prev_hash,
         entry_hash=entry_hash,
+        policy_hash=policy_hash,
     )
     db.add(event)
     db.flush()  # get event.id before commit
