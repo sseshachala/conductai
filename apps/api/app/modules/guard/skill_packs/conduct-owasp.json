@@ -1,135 +1,208 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "tier": "paid",
-  "description": "OWASP Top 10 enforcement rules",
+  "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents",
   "rules": [
     {
       "id": "owasp_injection_guard",
-      "description": "Block SQL string concatenation (OWASP A03)",
+      "description": "Block SQL string concatenation (OWASP Web A03)",
       "match_tool": "bash,edit,write",
       "match_pattern": "SELECT\\s+.*\\+|execute\\(.*f['\"]",
       "action": "block",
       "message": "Possible SQL injection \u2014 use parameterised queries.",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "OWASP:A03",
-        "SOC2:CC6.1",
-        "ISO_42001:8.4",
-        "PCI_DSS:6.5.1"
-      ],
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP:A03", "SOC2:CC6.1", "ISO_42001:8.4", "PCI_DSS:6.5.1"],
       "severity": "high",
       "recommendation": "Use parameterised queries. Never concatenate or f-string user input into SQL or shell commands.",
       "iso_control": "A.8.28"
     },
     {
       "id": "owasp_crypto_guard",
-      "description": "Warn on MD5/SHA1 for passwords (OWASP A02)",
+      "description": "Warn on MD5/SHA1 for passwords (OWASP Web A02)",
       "match_tool": "edit,write",
       "match_pattern": "md5|sha1",
       "action": "warn",
       "message": "MD5/SHA1 is weak for password hashing \u2014 use bcrypt or argon2.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "OWASP:A02",
-        "SOC2:CC6.1",
-        "PCI_DSS:3.6",
-        "ISO_42001:8.24"
-      ],
+      "persona_affinity": ["conservative", "standard", "developer"],
+      "frameworks": ["OWASP:A02", "SOC2:CC6.1", "PCI_DSS:3.6", "ISO_42001:8.24"],
       "severity": "medium",
       "recommendation": "Use SHA-256 or stronger for general hashing, bcrypt/argon2 for passwords, AES-GCM for symmetric encryption.",
       "iso_control": "A.8.24"
     },
     {
       "id": "owasp_weak_session_guard",
-      "description": "Block weak session token generation (OWASP A07)",
+      "description": "Block weak session token generation (OWASP Web A07)",
       "match_tool": "edit,write",
       "match_pattern": "random\\.random\\(\\).*session|Math\\.random\\(\\).*token",
       "action": "block",
       "message": "Weak randomness for session/token \u2014 use secrets.token_hex().",
-      "persona_affinity": [
-        "conservative",
-        "standard"
-      ],
-      "frameworks": [
-        "OWASP:A07",
-        "SOC2:CC6.1",
-        "ISO_42001:8.5"
-      ],
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP:A07", "SOC2:CC6.1", "ISO_42001:8.5"],
       "severity": "high",
       "recommendation": "Use a cryptographically secure session secret (>=32 bytes). Rotate session secrets regularly.",
       "iso_control": "A.8.5"
     },
     {
       "id": "owasp_ssrf_guard",
-      "description": "Warn on unvalidated URL fetch (OWASP A10)",
+      "description": "Warn on unvalidated URL fetch (OWASP Web A10)",
       "match_tool": "edit,write",
       "match_pattern": "requests\\.get\\(.*request\\.|fetch\\(.*req\\.(query|body|params)",
       "action": "warn",
       "message": "Possible SSRF \u2014 validate and allowlist URLs before outbound requests.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "OWASP:A10",
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
+      "persona_affinity": ["conservative", "standard", "developer"],
+      "frameworks": ["OWASP:A10", "SOC2:CC6.1", "ISO_42001:8.4"],
       "severity": "high",
       "recommendation": "Allowlist outbound destinations. Block requests to internal IP ranges (RFC1918, link-local, metadata endpoints).",
       "iso_control": "A.8.28"
     },
     {
       "id": "owasp_eval_guard",
-      "description": "Block eval() calls (OWASP A03)",
+      "description": "Block eval() calls (OWASP Web A03)",
       "match_tool": "edit,write",
       "match_pattern": "\\beval\\s*\\(",
       "action": "block",
       "message": "eval() enables code injection \u2014 avoid it.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "OWASP:A03",
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
+      "persona_affinity": ["conservative", "standard", "developer"],
+      "frameworks": ["OWASP:A03", "SOC2:CC6.1", "ISO_42001:8.4"],
       "severity": "critical",
       "recommendation": "Never use eval() or exec() with untrusted input. Parse explicit data formats (JSON/YAML) instead.",
       "iso_control": "A.8.28"
     },
     {
       "id": "owasp_xss_guard",
-      "description": "Warn on innerHTML assignment (XSS)",
+      "description": "Warn on innerHTML assignment (OWASP Web A03 / XSS)",
       "match_tool": "edit,write",
       "match_pattern": "innerHTML\\s*=",
       "action": "warn",
       "message": "innerHTML assignment can introduce XSS \u2014 use textContent or DOMPurify.",
-      "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
-      ],
-      "frameworks": [
-        "OWASP:A03",
-        "SOC2:CC6.1",
-        "ISO_42001:8.4"
-      ],
+      "persona_affinity": ["conservative", "standard", "developer"],
+      "frameworks": ["OWASP:A03", "SOC2:CC6.1", "ISO_42001:8.4"],
       "severity": "medium",
-      "recommendation": "Escape user-controlled content before rendering. Use framework-native templating (e.g. React JSX, Django auto-escape) instead of innerHTML.",
+      "recommendation": "Escape user-controlled content before rendering. Use framework-native templating instead of innerHTML.",
       "iso_control": "A.8.28"
+    },
+
+    {
+      "id": "no_prompt_inject",
+      "description": "Block prompt injection attempts that try to override agent instructions (OWASP Agentic A01)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "ignore (previous|prior|above) instructions|disregard (your|all) (instructions|rules)|you are now (a|an) (unrestricted|free)|DAN |jailbreak",
+      "action": "block",
+      "message": "Prompt injection pattern detected \u2014 content appears to override agent instructions (OWASP Agentic A01).",
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP_AGENTIC:A01"],
+      "severity": "critical",
+      "recommendation": "Never embed text that overrides system instructions. Validate all external content before passing to an agent."
+    },
+    {
+      "id": "no_sensitive_data_exfil",
+      "description": "Block credential exfiltration via curl or outbound network calls (OWASP Agentic A02)",
+      "match_tool": "bash",
+      "match_pattern": "curl.*(sk-|Bearer |api_key|secret_key|AWS_SECRET|ANTHROPIC_API_KEY|OPENAI_API_KEY)",
+      "action": "block",
+      "message": "Possible credential exfiltration \u2014 sensitive data must not be transmitted externally (OWASP Agentic A02).",
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP_AGENTIC:A02", "SOC2:CC6.1"],
+      "severity": "critical",
+      "recommendation": "Never pass API keys or secrets as curl data. Use a secret manager or environment variable injection."
+    },
+    {
+      "id": "no_unsigned_package",
+      "description": "Warn on packages installed from non-standard or HTTP sources (OWASP Agentic A03 — supply chain)",
+      "match_tool": "bash",
+      "match_pattern": "pip install.*(git\\+http://|--index-url http:|--extra-index-url http:)|npm install.*(--registry http:)",
+      "action": "warn",
+      "message": "Installing package from an unverified source \u2014 confirm the package is trusted (OWASP Agentic A03).",
+      "persona_affinity": ["conservative", "standard", "developer"],
+      "frameworks": ["OWASP_AGENTIC:A03"],
+      "severity": "high",
+      "recommendation": "Use HTTPS registries only. Pin dependency versions and verify checksums."
+    },
+    {
+      "id": "no_overreach_shell",
+      "description": "Block destructive system-wide shell commands that exceed project scope (OWASP Agentic A04 — excessive agency)",
+      "match_tool": "bash",
+      "match_pattern": "rm -rf /[a-z]|chmod -R 777|chown -R root|dd if=.*of=/dev|mkfs\\.|shred /dev",
+      "action": "block",
+      "message": "Destructive system-wide command blocked \u2014 scope exceeds project boundaries (OWASP Agentic A04).",
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP_AGENTIC:A04"],
+      "severity": "critical",
+      "recommendation": "Scope all file operations to the project directory. Use targeted rm, not recursive root deletes."
+    },
+    {
+      "id": "no_model_extract",
+      "description": "Block copying or exfiltrating ML model weights (OWASP Agentic A05 — model theft)",
+      "match_tool": "bash",
+      "match_pattern": "(cp|scp|rsync|curl -o).*(safetensors|gguf|\\.bin|\\.pt|\\.ckpt)|(safetensors|gguf|\\.pt|\\.ckpt).*(cp |scp |rsync |upload)",
+      "action": "block",
+      "message": "Model weight extraction blocked \u2014 copying model files externally is not permitted (OWASP Agentic A05).",
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP_AGENTIC:A05"],
+      "severity": "high",
+      "recommendation": "Model files must not leave the secure compute environment. Use the model registry API for distribution."
+    },
+    {
+      "id": "no_covert_channel",
+      "description": "Warn on suspicious outbound callbacks or data exfiltration endpoints (OWASP Agentic A06)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "ngrok\\.io|requestbin\\.com|hookbin\\.com|pipedream\\.net|webhook\\.site|burpcollaborator",
+      "action": "warn",
+      "message": "Possible covert callback channel detected \u2014 verify this outbound destination is intentional (OWASP Agentic A06).",
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP_AGENTIC:A06"],
+      "severity": "high",
+      "recommendation": "All outbound webhook destinations must be allowlisted. Never use public request inspection services in production."
+    },
+    {
+      "id": "no_audit_bypass",
+      "description": "Block attempts to disable audit logging or monitoring (OWASP Agentic A07 — insufficient monitoring)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "AUDIT_LOG.*=.*(false|0|null|none)|logging\\.disable\\(|audit.*enabled.*=.*false",
+      "action": "block",
+      "message": "Audit logging must remain enabled \u2014 disabling it is not permitted (OWASP Agentic A07).",
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP_AGENTIC:A07", "SOC2:CC7.2"],
+      "severity": "critical",
+      "recommendation": "Audit logs are a compliance requirement. Use log level adjustment, not log disabling."
+    },
+    {
+      "id": "no_unverified_deploy",
+      "description": "Warn on force-pushing or deploying without test validation (OWASP Agentic A08 — over-reliance)",
+      "match_tool": "bash",
+      "match_pattern": "git push.*--force.*(main|master|prod)|deploy.*--skip.?tests|kubectl apply.*--validate=false",
+      "action": "warn",
+      "message": "Deploying without validation \u2014 AI-generated code should be verified before production push (OWASP Agentic A08).",
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP_AGENTIC:A08"],
+      "severity": "medium",
+      "recommendation": "Always run tests before deploying AI-generated code. Use CI gates, not --force pushes."
+    },
+    {
+      "id": "no_privilege_escalat",
+      "description": "Block privilege escalation beyond sudo (OWASP Agentic A09)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "chmod [0-9]*[4-7][0-9][0-9] .*|setuid|setgid|visudo|echo.*>>.*/etc/sudoers|pkexec",
+      "action": "block",
+      "message": "Privilege escalation pattern blocked \u2014 modifying system permissions is not permitted (OWASP Agentic A09).",
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP_AGENTIC:A09"],
+      "severity": "critical",
+      "recommendation": "Use role-based access control. Never modify sudoers or set SUID bits programmatically."
+    },
+    {
+      "id": "no_budget_bypass",
+      "description": "Block attempts to override spend limits or rate controls (OWASP Agentic A10 — model DoS)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "budget.*=.*-1|rate_limit.*=.*0|max_tokens.*[=:].*[0-9]{5,}|spend_limit.*=.*(null|none|-1)",
+      "action": "block",
+      "message": "Budget or rate-limit bypass blocked \u2014 spend controls must remain active (OWASP Agentic A10).",
+      "persona_affinity": ["conservative", "standard"],
+      "frameworks": ["OWASP_AGENTIC:A10"],
+      "severity": "high",
+      "recommendation": "Set explicit token budgets per agent. Never set unlimited or negative spend limits."
     }
   ]
 }
