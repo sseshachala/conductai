@@ -95,7 +95,6 @@ def _execute_memory_inner(
                            (embedding <=> CAST(:vec AS vector)) AS distance
                     FROM agent_memory
                     WHERE workspace_id = :ws
-                      AND playbook_slug = :slug
                       AND scope = :scope
                       AND key = :key
                       AND embedding IS NOT NULL
@@ -105,7 +104,6 @@ def _execute_memory_inner(
                 {
                     "vec": str(query_vec),
                     "ws": workspace_id,
-                    "slug": playbook_slug,
                     "scope": scope,
                     "key": key,
                     "lim": limit,
@@ -115,7 +113,6 @@ def _execute_memory_inner(
             # No embedding provider (or dimension mismatch) — fall back to recency.
             rows = db.query(AgentMemory).filter(
                 AgentMemory.workspace_id == workspace_id,
-                AgentMemory.playbook_slug == playbook_slug,
                 AgentMemory.scope == scope,
                 AgentMemory.key == key,
             ).order_by(AgentMemory.created_at.desc()).limit(limit).all()
