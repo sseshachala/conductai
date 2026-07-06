@@ -58,6 +58,7 @@ class GuardConfig(Base):
     # 'conservative' so production runs always enforce the strictest rule set
     # regardless of what dev persona the workspace runs locally. Admin-only edit.
     runtime_persona = Column(String(20), nullable=False, default="conservative")
+    deny_on_error = Column(Boolean, nullable=False, default=True)  # fail-closed on policy eval error
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

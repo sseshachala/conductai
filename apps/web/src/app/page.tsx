@@ -337,9 +337,9 @@ function TwoLanesSection() {
               🛡️ Guard
             </span>
             <div>
-              <h3 className="text-2xl font-bold text-white tracking-tight mb-2">Govern every agent at runtime</h3>
+              <h3 className="text-2xl font-bold text-white tracking-tight mb-2">Every agent action is structurally governed</h3>
               <p className="text-stone-400 leading-relaxed text-sm">
-                The Friday deploy that would have gone through unreviewed, blocked. The secret that would have landed in a commit message, caught. At the moment the agent acts, not the morning after.
+                One env var routes every LLM call through Guard — regardless of framework, language, or developer discipline. Actions Guard denies are not unlikely. They are structurally impossible.
               </p>
             </div>
             <ul className="space-y-2.5 flex-1">

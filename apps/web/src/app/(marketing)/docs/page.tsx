@@ -749,7 +749,7 @@ function TabGuard() {
             GitHub gives the CISO a setting. ConductGuard gives them enforcement.
           </p>
           <p className="text-xs text-indigo-700 mt-1 leading-relaxed">
-            Most AI tool governance is a toggle the user can flip off. Guard enforces policy at every tool call, across every AI client, with admin-locked rules the developer cannot override.
+            Most AI tool governance is a toggle the user can flip off. Guard is a proxy — one env var routes every LLM call through it regardless of framework, language, or developer discipline. Actions Guard denies are not unlikely. They are structurally impossible.
           </p>
         </div>
         <p className="text-stone-500 text-sm mb-6 leading-relaxed">

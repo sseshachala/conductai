@@ -596,7 +596,14 @@ async def mcp_endpoint(
                 inner_input = arguments.get("tool_input") or {}
                 _run_id   = arguments.get("conduct_run_id") or None
                 _workflow = arguments.get("conduct_workflow") or None
-                rules = _get_rules(db, ws_uuid)
+                try:
+                    rules = _get_rules(db, ws_uuid)
+                except Exception as _eval_err:
+                    _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+                    if _cfg and not _cfg.deny_on_error:
+                        return JSONResponse(_text(msg_id, f"ALLOWED — policy eval error (fail-open): {_eval_err}"))
+                    _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "policy_eval_error", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
+                    return JSONResponse(_text(msg_id, f"BLOCKED — policy evaluation failed. Request denied by fail-closed default."))
 
                 rule  = _match_policy(inner_tool, inner_input, rules)
 
