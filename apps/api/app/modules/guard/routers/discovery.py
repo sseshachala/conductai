@@ -106,20 +106,21 @@ def ingest_scan(
     db.flush()
 
     for a in body.agents:
-        # upsert by workspace + framework + location
+        # upsert key matches unique constraint: workspace_id + framework + source
         existing = (
             db.query(DiscoveredAgent)
             .filter(
                 DiscoveredAgent.workspace_id == ws_uuid,
                 DiscoveredAgent.framework == a.framework,
-                DiscoveredAgent.location == a.location,
+                DiscoveredAgent.source == a.source,
             )
             .first()
         )
         if existing:
-            existing.scan_id = scan.id
+            existing.scan_id    = scan.id
             existing.under_guard = a.under_guard
             existing.risk_score = a.risk_score
+            existing.location   = a.location
             existing.last_seen_at = now
         else:
             db.add(DiscoveredAgent(
