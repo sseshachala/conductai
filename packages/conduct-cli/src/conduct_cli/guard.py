@@ -2448,7 +2448,7 @@ def cmd_guard_debug_hook(args):
 
 # ── OWASP Agentic Top 10 mapping ──────────────────────────────────────────────
 
-_PRIV_KEYWORDS = ["privilege", "escalat", "role_abuse", "admin_access", "su_", "_su_", "runasroot"]
+_PRIV_KEYWORDS = ["privilege", "escalat", "role_abuse", "admin_access", "no-sudo", "nosudo", "runasroot"]
 
 _OWASP_MAP: list[tuple[list[str], str, str]] = [
     (["prompt_inject", "injection", "jailbreak", "override_system", "indirect_prompt"],
@@ -2457,7 +2457,7 @@ _OWASP_MAP: list[tuple[list[str], str, str]] = [
      "A02", "Sensitive Information Disclosure"),
     (["supply_chain", "dependency", "package", "malicious_package", "unsigned"],
      "A03", "Supply Chain Vulnerabilities"),
-    (["excessive_agency", "scope", "overreach", "unauthorized_action", "out_of_scope"],
+    (["excessive_agency", "no-rm-rf", "norms", "rmrf", "scope", "overreach", "unauthorized_action", "out_of_scope", "shell_destruct"],
      "A04", "Excessive Agency"),
     (["model_theft", "model_extract", "weights"],
      "A05", "Model Theft"),
@@ -2539,7 +2539,7 @@ def cmd_verify(args) -> None:
         rule_id  = ev.get("rule_id") or ev.get("rule_message") or ""
         owasp_code, owasp_title = _map_owasp(rule_id)
         findings.append({
-            "timestamp":   ev.get("timestamp", ev.get("created_at", ""))[:19].replace("T", " "),
+            "timestamp":   (ev.get("timestamp") or ev.get("created_at") or "")[:19].replace("T", " ") or "—",
             "tool":        ev.get("ai_tool") or "—",
             "action":      (ev.get("tool_call") or "—")[:40],
             "decision":    decision,
