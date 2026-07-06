@@ -2446,6 +2446,185 @@ def cmd_guard_debug_hook(args):
     print(f"\n{BOLD}Exit code:{RESET} {exit_label}")
 
 
+# ── OWASP Agentic Top 10 mapping ──────────────────────────────────────────────
+
+_PRIV_KEYWORDS = ["privilege", "escalat", "role_abuse", "admin_access", "su_", "_su_", "runasroot"]
+
+_OWASP_MAP: list[tuple[list[str], str, str]] = [
+    (["prompt_inject", "injection", "jailbreak", "override_system", "indirect_prompt"],
+     "A01", "Prompt Injection"),
+    (["secret", "credential", "token_leak", "api_key_leak", "password", "sensitive_data", "pii", "exfil"],
+     "A02", "Sensitive Information Disclosure"),
+    (["supply_chain", "dependency", "package", "malicious_package", "unsigned"],
+     "A03", "Supply Chain Vulnerabilities"),
+    (["excessive_agency", "scope", "overreach", "unauthorized_action", "out_of_scope"],
+     "A04", "Excessive Agency"),
+    (["model_theft", "model_extract", "weights"],
+     "A05", "Model Theft"),
+    (["communication", "callback", "exfiltrate_output", "covert_channel"],
+     "A06", "Agentic Communication Vulnerabilities"),
+    (["unmonitored", "no_audit", "policy_eval_error", "policy_signature_invalid"],
+     "A07", "Insufficient Monitoring and Logging"),
+    (["hallucin", "unverified", "over_reliance", "fabricat"],
+     "A08", "Over-reliance on Model Outputs"),
+    (_PRIV_KEYWORDS,
+     "A09", "Privilege Escalation"),
+    (["budget", "rate_limit", "dos", "denial", "hard_cap", "spend"],
+     "A10", "Model Denial of Service"),
+]
+
+_OWASP_UNKNOWN = ("A??", "Uncategorised")
+
+
+def _map_owasp(rule_id: str) -> tuple[str, str]:
+    key = (rule_id or "").lower()
+    for keywords, code, title in _OWASP_MAP:
+        if any(k in key for k in keywords):
+            return code, title
+    return _OWASP_UNKNOWN
+
+
+def cmd_verify(args) -> None:
+    """conduct verify — map guard audit events to OWASP Agentic Top 10; exit non-zero in CI."""
+    import json as _json
+    import datetime as _dt
+
+    evidence_path = getattr(args, "evidence", None)
+    strict        = getattr(args, "strict", False)
+    fmt           = getattr(args, "format", "text")
+    since_str     = getattr(args, "since", None) or "24h"
+
+    # ── load events ──────────────────────────────────────────────────────────
+    if evidence_path:
+        try:
+            raw = _json.loads(Path(evidence_path).read_text())
+        except FileNotFoundError:
+            print(f"{RED}✗ File not found: {evidence_path}{RESET}", file=sys.stderr)
+            sys.exit(2)
+        except _json.JSONDecodeError as exc:
+            print(f"{RED}✗ Invalid JSON: {exc}{RESET}", file=sys.stderr)
+            sys.exit(2)
+        events = raw if isinstance(raw, list) else raw.get("events", [])
+    else:
+        cfg          = _require_guard_config()
+        workspace_id = cfg.get("workspace_id")
+        user_email   = cfg.get("user_email", "")
+        api_key      = cfg.get("api_key", "")
+        base_url     = _api_url(cfg)
+        since_iso    = _parse_since(since_str)
+        resp = _req(
+            "GET",
+            (
+                f"{base_url}/guard/events"
+                f"?workspace_id={workspace_id}"
+                f"&user_email={user_email}"
+                f"&since={since_iso}"
+                f"&limit=200"
+            ),
+            api_key=api_key,
+        )
+        events = resp if isinstance(resp, list) else resp.get("events", [])
+
+    if not events:
+        if fmt == "json":
+            print(_json.dumps({"status": "pass", "violations": 0, "findings": []}, indent=2))
+        else:
+            print(f"{GREEN}✓ No guard events found — nothing to verify.{RESET}")
+        return
+
+    # ── classify ──────────────────────────────────────────────────────────────
+    findings: list[dict] = []
+    for ev in events:
+        decision = ev.get("decision", "allowed")
+        rule_id  = ev.get("rule_id") or ev.get("rule_message") or ""
+        owasp_code, owasp_title = _map_owasp(rule_id)
+        findings.append({
+            "timestamp":   ev.get("timestamp", ev.get("created_at", ""))[:19].replace("T", " "),
+            "tool":        ev.get("ai_tool") or "—",
+            "action":      (ev.get("tool_call") or "—")[:40],
+            "decision":    decision,
+            "rule_id":     rule_id or "—",
+            "owasp":       owasp_code,
+            "owasp_title": owasp_title,
+            "entry_hash":  (ev.get("entry_hash") or "")[:12] or None,
+            "policy_hash": (ev.get("policy_hash") or "")[:12] or None,
+        })
+
+    blocked_count = sum(1 for f in findings if f["decision"] == "blocked")
+    warned_count  = sum(1 for f in findings if f["decision"] == "warned")
+    total         = len(findings)
+
+    owasp_counts: dict[str, int] = {}
+    for f in findings:
+        if f["decision"] in ("blocked", "warned"):
+            owasp_counts[f["owasp"]] = owasp_counts.get(f["owasp"], 0) + 1
+
+    # ── output ───────────────────────────────────────────────────────────────
+    if fmt == "json":
+        out = {
+            "status":             "fail" if (strict and blocked_count) else "pass",
+            "generated_at":       _dt.datetime.utcnow().isoformat() + "Z",
+            "summary":            {"total": total, "blocked": blocked_count, "warned": warned_count},
+            "owasp_distribution": owasp_counts,
+            "findings":           findings,
+        }
+        print(_json.dumps(out, indent=2))
+    else:
+        print()
+        print(f"{BOLD}conduct verify — OWASP Agentic Top 10 Report{RESET}")
+        print("─" * 78)
+
+        if owasp_counts:
+            print(f"\n{BOLD}OWASP Distribution{RESET}")
+            for _kws, code, title in _OWASP_MAP:
+                count = owasp_counts.get(code, 0)
+                if count:
+                    bar   = "█" * min(count, 20)
+                    label = f"{code}: {title}"
+                    print(f"  {label:<40} {RED}{bar} {count}{RESET}")
+            unk = owasp_counts.get("A??", 0)
+            if unk:
+                print(f"  {'A??: Uncategorised':<40} {GRAY}{'█' * min(unk, 20)} {unk}{RESET}")
+
+        print(f"\n{BOLD}{'Timestamp':<20} {'Tool':<14} {'Decision':<10} {'OWASP':<5} Rule{RESET}")
+        print("─" * 78)
+        for f in findings:
+            if f["decision"] == "blocked":
+                dec_col = f"{RED}blocked{RESET}"
+            elif f["decision"] == "warned":
+                dec_col = f"{YELLOW}warned{RESET}"
+            elif f["decision"] == "audited":
+                dec_col = f"{BLUE}audited{RESET}"
+            else:
+                dec_col = f"{GRAY}{f['decision']}{RESET}"
+            chain_note = f"  {GRAY}chain:{f['entry_hash']}{RESET}" if f["entry_hash"] else ""
+            print(
+                f"  {f['timestamp']:<20} {f['tool']:<14} {dec_col:<10} "
+                f"{f['owasp']:<5} {f['rule_id']}{chain_note}"
+            )
+
+        print()
+        if blocked_count:
+            status_icon  = f"{RED}✗{RESET}"
+            status_label = f"{RED}FAIL{RESET}" if strict else f"{YELLOW}WARN{RESET}"
+        else:
+            status_icon  = f"{GREEN}✓{RESET}"
+            status_label = f"{GREEN}PASS{RESET}"
+
+        print(
+            f"  {status_icon} {status_label}  "
+            f"{total} events  ·  "
+            f"{RED if blocked_count else GRAY}{blocked_count} blocked{RESET}  ·  "
+            f"{YELLOW if warned_count else GRAY}{warned_count} warned{RESET}"
+        )
+        if strict and blocked_count:
+            print(f"\n  {RED}Strict mode: non-zero exit — {blocked_count} blocked event(s).{RESET}")
+        print()
+
+    if strict and blocked_count:
+        sys.exit(1)
+
+
 def dispatch_guard(args, guard_p):
     """Dispatch to the correct guard handler. Called from main()."""
     guard_command = getattr(args, "guard_command", None)
