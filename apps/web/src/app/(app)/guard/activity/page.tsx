@@ -100,6 +100,7 @@ function ActivityContent() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const offsetRef = useRef(0)
   const [chainStatus, setChainStatus] = useState<{ valid: boolean; total: number; verified_from: string | null } | null>(null)
+  const [advisoryMode, setAdvisoryMode] = useState(false)
 
   // Filters
   const [filterDecision, setFilterDecision] = useState("")
@@ -109,7 +110,7 @@ function ActivityContent() {
   const [filterUntil, setFilterUntil] = useState("")
   const [filterRuleId, setFilterRuleId] = useState("")
 
-  // Fetch audit chain status on load
+  // Fetch audit chain status + advisory mode on load
   useEffect(() => {
     if (!teamId) return
     const base = process.env.NEXT_PUBLIC_API_BASE_URL
@@ -119,6 +120,10 @@ function ActivityContent() {
       fetch(`${base}/guard/events/audit/verify?workspace_id=${teamId}`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(d => d && setChainStatus(d))
+        .catch(() => {})
+      fetch(`${base}/guard/config?workspace_id=${teamId}`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => d && setAdvisoryMode(d.advisory_mode ?? false))
         .catch(() => {})
     })
   }, [teamId])
@@ -246,7 +251,7 @@ function ActivityContent() {
   }
 
   return (
-    <GuardShell live={live} lastFetched={lastUpdated}>
+    <GuardShell live={live} lastFetched={lastUpdated} advisory={advisoryMode}>
       {/* Viewer-scoped notice */}
       {!permissionsLoading && !permissions.canViewAllActivity && (
         <div

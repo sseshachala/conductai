@@ -59,6 +59,7 @@ class GuardConfig(Base):
     # regardless of what dev persona the workspace runs locally. Admin-only edit.
     runtime_persona = Column(String(20), nullable=False, default="conservative")
     deny_on_error = Column(Boolean, nullable=False, default=True)  # fail-closed on policy eval error
+    advisory_mode = Column(Boolean, nullable=False, default=False)  # log all, block nothing
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

@@ -605,6 +605,9 @@ async def mcp_endpoint(
                     _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "policy_eval_error", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                     return JSONResponse(_text(msg_id, f"BLOCKED — policy evaluation failed. Request denied by fail-closed default."))
 
+                _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+                _advisory = _cfg.advisory_mode if _cfg else False
+
                 rule  = _match_policy(inner_tool, inner_input, rules)
 
                 if rule is None:
@@ -614,6 +617,10 @@ async def mcp_endpoint(
                 action  = rule.get("action", "audit")
                 rule_id = rule.get("rule_id", "unknown")
                 message = rule.get("message") or f"Policy violation ({rule_id})"
+
+                if _advisory:
+                    _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
+                    return JSONResponse(_text(msg_id, f"ALLOWED (advisory) — {message}  [rule: {rule_id}]"))
 
                 if action == "block":
                     _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)

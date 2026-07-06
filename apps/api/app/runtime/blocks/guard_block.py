@@ -97,6 +97,7 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
     # independent of the workspace's dev persona. Closes #776.
     cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     persona = (cfg.runtime_persona if cfg else None) or "conservative"
+    advisory = getattr(cfg, "advisory_mode", False) if cfg else False
     try:
         policies = compute_policy(db, ws_uuid, persona)
     except Exception as _eval_err:
@@ -192,6 +193,11 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
         v_rule_id = v.get("id") or v.get("rule_id")
         message = v.get("message") or f"Policy violation: {v_rule_id}"
         action  = v.get("action")
+
+        if advisory:
+            _record_event(v, "audited")
+            warnings.append({"rule_id": v_rule_id, "message": f"[advisory] {message}"})
+            continue
 
         if action == "block":
             _record_event(v, "blocked")
