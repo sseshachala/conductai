@@ -224,6 +224,11 @@ def _get_fail_mode() -> str:
     return mode if mode in ("fail_open", "fail_closed") else "fail_open"
 
 
+def _get_advisory_mode() -> bool:
+    cfg = load_config()
+    return bool(cfg.get("advisory_mode", False))
+
+
 # ── Budget cache ──────────────────────────────────────────────────────────────
 
 def _load_budget_cache():
@@ -451,6 +456,10 @@ def main() -> None:
     tool_input = data.get("tool_input") or {}
 
     _, action, rule_id, message = check_policy(tool_name, tool_input)
+
+    if _get_advisory_mode() and action in ("block", "warn", "approval"):
+        post_event(tool_name, tool_input, "audited", rule_id, f"[advisory] {message}", session_id, drain_via=_this_file)
+        sys.exit(0)
 
     decision = {"block": "blocked", "warn": "warned", "approval": "blocked"}.get(action, "allowed")
     if action == "warn" and session_id and rule_id and _already_warned_this_session(session_id, rule_id):
