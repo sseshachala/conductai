@@ -1245,7 +1245,7 @@ def cmd_guard_sync(args):
     # Print Claude.ai remote MCP URL — requires one-time browser paste
     member_token = cfg.get("member_token", "")
     if workspace_id and member_token:
-        mcp_url = f"https://api.conductai.ai/guard/mcp?workspace_id={workspace_id}"
+        mcp_url = "https://api.conductai.ai/guard/mcp"
         print(f"\n{BOLD}Claude.ai{RESET} (one-time browser setup):")
         print(f"  Settings → MCP Servers → Add custom server")
         print(f"  URL:    {CYAN}{mcp_url}{RESET}")
