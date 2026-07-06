@@ -2539,7 +2539,7 @@ def cmd_verify(args) -> None:
         rule_id  = ev.get("rule_id") or ev.get("rule_message") or ""
         owasp_code, owasp_title = _map_owasp(rule_id)
         findings.append({
-            "timestamp":   (ev.get("timestamp") or ev.get("created_at") or "")[:19].replace("T", " ") or "—",
+            "timestamp":   (ev.get("ts") or ev.get("timestamp") or ev.get("created_at") or "")[:19].replace("T", " ") or "—",
             "tool":        ev.get("ai_tool") or "—",
             "action":      (ev.get("tool_call") or "—")[:40],
             "decision":    decision,
