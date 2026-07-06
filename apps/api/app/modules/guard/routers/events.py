@@ -4,6 +4,7 @@ GET  /guard/events          — paginated list, filterable
 GET  /guard/events/stream   — SSE real-time feed
 """
 import asyncio
+import hashlib
 import json
 from datetime import datetime, timezone
 
@@ -368,7 +369,22 @@ def ingest_event(
 
     now = _now()
 
-    # 1. Write the audit event
+    # 1. Compute hash-chain fields before insert
+    # ponytail: per-workspace SELECT FOR UPDATE — serialises concurrent hook ingests
+    last = (
+        db.query(GuardAuditEvent.entry_hash)
+        .filter(GuardAuditEvent.workspace_id == ws_uuid)
+        .order_by(GuardAuditEvent.ts.desc())
+        .with_for_update(skip_locked=False)
+        .first()
+    )
+    prev_hash = (last.entry_hash or "") if last else ""
+    _tool = body.tool_call or ""
+    entry_hash = hashlib.sha256(
+        f"{now.isoformat()}|{_tool}|{body.decision}|{prev_hash}".encode()
+    ).hexdigest()
+
+    # 2. Write the audit event
     event = GuardAuditEvent(
         workspace_id=ws_uuid,
         clerk_user_id=body.clerk_user_id,
@@ -392,6 +408,8 @@ def ingest_event(
         hook_session_id=body.hook_session_id,
         blast_radius=body.blast_radius,
         ts=now,
+        previous_hash=prev_hash,
+        entry_hash=entry_hash,
     )
     db.add(event)
     db.flush()  # get event.id before commit
@@ -881,4 +899,49 @@ def list_unified_activity(
         ],
         "limit":  limit,
         "offset": offset,
+    }
+
+
+# ── Audit chain verification ───────────────────────────────────────────────────
+
+@router.get("/audit/verify")
+def verify_audit_chain(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Walk the hash chain for this workspace. Returns valid=True if unbroken.
+    Only rows with entry_hash set (post-migration) are verified."""
+    import uuid as _uuid
+    ws_uuid = _uuid.UUID(workspace_id)
+
+    rows = (
+        db.query(GuardAuditEvent.ts, GuardAuditEvent.tool_call, GuardAuditEvent.decision,
+                 GuardAuditEvent.previous_hash, GuardAuditEvent.entry_hash)
+        .filter(GuardAuditEvent.workspace_id == ws_uuid, GuardAuditEvent.entry_hash.isnot(None))
+        .order_by(GuardAuditEvent.ts.asc())
+        .all()
+    )
+
+    if not rows:
+        return {"valid": True, "total": 0, "verified_from": None, "broken_at": None}
+
+    prev = ""
+    for row in rows:
+        expected = hashlib.sha256(
+            f"{row.ts.isoformat()}|{row.tool_call or ''}|{row.decision}|{prev}".encode()
+        ).hexdigest()
+        if expected != row.entry_hash:
+            return {
+                "valid": False,
+                "total": len(rows),
+                "verified_from": rows[0].ts.isoformat(),
+                "broken_at": row.ts.isoformat(),
+            }
+        prev = row.entry_hash
+
+    return {
+        "valid": True,
+        "total": len(rows),
+        "verified_from": rows[0].ts.isoformat(),
+        "broken_at": None,
     }
