@@ -3097,6 +3097,11 @@ def main():
     sub.add_parser("sync", help="Sync Guard policies (and Security Loop policies if installed)")
 
     # conduct test-guard / test-security / test-security-verify
+    verify_p = sub.add_parser("verify", help="Map guard events to OWASP Agentic Top 10 and verify chain integrity")
+    verify_p.add_argument("--evidence", metavar="FILE", default=None, help="JSON evidence file (guard events). Omit to fetch from API.")
+    verify_p.add_argument("--strict",   action="store_true",           help="Exit 1 if any blocked events found (CI mode)")
+    verify_p.add_argument("--format",   choices=["text", "json"],      default="text", help="Output format (default: text)")
+    verify_p.add_argument("--since",    default="24h",                 help="Time window when fetching from API (e.g. 7d, 24h)")
     sub.add_parser("test-guard",            help="Fire a synthetic event per guard policy rule and show decisions")
     sub.add_parser("test-security",         help="Post a synthetic finding per security classifier pattern")
     sub.add_parser("test-security-verify",  help="Post test findings and verify full triage pipeline end-to-end")
@@ -3190,6 +3195,8 @@ def main():
         cmd_skill(args)
     elif args.command == "sync":
         cmd_sync(args)
+    elif args.command == "verify":
+        _guard.cmd_verify(args)
     elif args.command == "test-guard":
         cmd_test_guard(args)
     elif args.command == "test-security":

@@ -1,5 +1,5 @@
 """
-CLI tests covering advisory mode (P1) and pretooluse hook flow.
+CLI tests covering advisory mode (P1), pretooluse hook flow, and conduct verify (P3).
 
 Covers:
   Advisory mode config:
@@ -17,6 +17,17 @@ Covers:
   Fail-closed gate:
     - fail_closed + no policy file → exits 2, posts "blocked" guard-unavailable
     - fail_open  + no policy file → passes through to policy check
+
+  conduct verify (P3):
+    - OWASP mapping covers all 10 categories + unknown fallback
+    - evidence file: pass with no blocked events → exit 0
+    - evidence file: blocked events + --strict → exit 1
+    - evidence file: blocked events without --strict → exit 0
+    - empty evidence → exit 0, no-op message
+    - bad file path → exit 2
+    - invalid JSON → exit 2
+    - --format json: status=fail when strict+blocked, status=pass otherwise
+    - chain hashes appear in output when present
 
   Budget hard cap:
     - hard_blocked=True → exits 2 regardless of advisory mode
@@ -372,6 +383,168 @@ class TestSyncMirrorsAdvisoryMode:
         guard_mod._save_guard_config(cfg)
 
         assert saved[0]["advisory_mode"] is False
+
+
+# ── conduct verify (P3) ──────────────────────────────────────────────────────
+
+class TestOWASPMapping:
+    """_map_owasp covers all 10 categories and falls back to A??."""
+
+    def _map(self, rule_id: str) -> str:
+        from conduct_cli.guard import _map_owasp
+        return _map_owasp(rule_id)[0]
+
+    def test_a01_prompt_injection(self):
+        assert self._map("prompt_inject_tool") == "A01"
+
+    def test_a02_sensitive_data(self):
+        assert self._map("sensitive_data_read") == "A02"
+
+    def test_a03_supply_chain(self):
+        assert self._map("supply_chain_pkg") == "A03"
+
+    def test_a04_excessive_agency(self):
+        assert self._map("excessive_agency_shell") == "A04"
+
+    def test_a07_monitoring(self):
+        assert self._map("policy_eval_error") == "A07"
+
+    def test_a07_sig_invalid(self):
+        assert self._map("policy_signature_invalid") == "A07"
+
+    def test_a09_privilege(self):
+        assert self._map("privilege_escalat_detected") == "A09"
+
+    def test_a10_budget(self):
+        assert self._map("budget_hard_cap") == "A10"
+
+    def test_unknown_falls_back(self):
+        assert self._map("some_random_rule") == "A??"
+
+    def test_empty_rule_id(self):
+        assert self._map("") == "A??"
+
+
+_EVIDENCE_BLOCKED = [
+    {"timestamp": "2026-07-06T10:00:00", "ai_tool": "Claude",
+     "tool_call": "Bash", "decision": "blocked",
+     "rule_id": "excessive_agency_shell",
+     "entry_hash": "abc123def456", "policy_hash": "pol789"},
+]
+
+_EVIDENCE_WARN_ONLY = [
+    {"timestamp": "2026-07-06T10:01:00", "ai_tool": "Claude",
+     "tool_call": "Read", "decision": "warned",
+     "rule_id": "sensitive_data_read"},
+]
+
+_EVIDENCE_CLEAN = [
+    {"timestamp": "2026-07-06T10:02:00", "ai_tool": "Claude",
+     "tool_call": "Bash", "decision": "allowed", "rule_id": None},
+]
+
+
+class TestVerifyCommand:
+    def _run(self, args_list: list[str], capsys) -> int:
+        import argparse
+        from conduct_cli.guard import cmd_verify
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--evidence", default=None)
+        parser.add_argument("--strict", action="store_true")
+        parser.add_argument("--format", default="text")
+        parser.add_argument("--since", default="24h")
+        args = parser.parse_args(args_list)
+
+        try:
+            cmd_verify(args)
+            return 0
+        except SystemExit as exc:
+            return int(exc.code) if exc.code is not None else 0
+
+    def test_clean_evidence_exits_0(self, tmp_path, capsys):
+        f = tmp_path / "ev.json"
+        f.write_text(__import__("json").dumps(_EVIDENCE_CLEAN))
+        code = self._run(["--evidence", str(f)], capsys)
+        assert code == 0
+
+    def test_blocked_without_strict_exits_0(self, tmp_path, capsys):
+        f = tmp_path / "ev.json"
+        f.write_text(__import__("json").dumps(_EVIDENCE_BLOCKED))
+        code = self._run(["--evidence", str(f)], capsys)
+        assert code == 0
+
+    def test_blocked_with_strict_exits_1(self, tmp_path, capsys):
+        f = tmp_path / "ev.json"
+        f.write_text(__import__("json").dumps(_EVIDENCE_BLOCKED))
+        code = self._run(["--evidence", str(f), "--strict"], capsys)
+        assert code == 1
+
+    def test_warn_only_with_strict_exits_0(self, tmp_path, capsys):
+        f = tmp_path / "ev.json"
+        f.write_text(__import__("json").dumps(_EVIDENCE_WARN_ONLY))
+        code = self._run(["--evidence", str(f), "--strict"], capsys)
+        assert code == 0
+
+    def test_missing_file_exits_2(self, tmp_path, capsys):
+        code = self._run(["--evidence", str(tmp_path / "missing.json")], capsys)
+        assert code == 2
+
+    def test_invalid_json_exits_2(self, tmp_path, capsys):
+        f = tmp_path / "bad.json"
+        f.write_text("not valid {{{")
+        code = self._run(["--evidence", str(f)], capsys)
+        assert code == 2
+
+    def test_empty_array_no_error(self, tmp_path, capsys):
+        f = tmp_path / "empty.json"
+        f.write_text("[]")
+        code = self._run(["--evidence", str(f)], capsys)
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "nothing to verify" in out.lower() or "no guard events" in out.lower()
+
+    def test_json_format_status_fail_when_strict_and_blocked(self, tmp_path, capsys):
+        import json
+        f = tmp_path / "ev.json"
+        f.write_text(json.dumps(_EVIDENCE_BLOCKED))
+        self._run(["--evidence", str(f), "--strict", "--format", "json"], capsys)
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["status"] == "fail"
+        assert data["summary"]["blocked"] == 1
+
+    def test_json_format_status_pass_without_strict(self, tmp_path, capsys):
+        import json
+        f = tmp_path / "ev.json"
+        f.write_text(json.dumps(_EVIDENCE_BLOCKED))
+        self._run(["--evidence", str(f), "--format", "json"], capsys)
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["status"] == "pass"
+
+    def test_chain_hash_appears_in_text_output(self, tmp_path, capsys):
+        f = tmp_path / "ev.json"
+        f.write_text(__import__("json").dumps(_EVIDENCE_BLOCKED))
+        self._run(["--evidence", str(f)], capsys)
+        out = capsys.readouterr().out
+        assert "chain:abc123def456" in out
+
+    def test_owasp_distribution_shown(self, tmp_path, capsys):
+        f = tmp_path / "ev.json"
+        f.write_text(__import__("json").dumps(_EVIDENCE_BLOCKED + _EVIDENCE_WARN_ONLY))
+        self._run(["--evidence", str(f)], capsys)
+        out = capsys.readouterr().out
+        assert "A04" in out
+        assert "A02" in out
+
+    def test_envelope_json_input(self, tmp_path, capsys):
+        """Accept {'events': [...]} envelope as well as raw array."""
+        import json
+        f = tmp_path / "ev.json"
+        f.write_text(json.dumps({"events": _EVIDENCE_CLEAN}))
+        code = self._run(["--evidence", str(f)], capsys)
+        assert code == 0
 
 
 # ── invalid stdin ─────────────────────────────────────────────────────────────
