@@ -1927,16 +1927,28 @@ def _discover_config_agents() -> list[tuple]:
 
     def _mcp_registered(path: Path) -> bool:
         try:
+            if not path.exists():
+                return False
+            text = path.read_text()
+            if path.suffix == ".toml":
+                # conduct-mcp or conductai in mcp_servers section
+                return "conduct" in text and "mcp_servers" in text
             import json as _j
-            d = _j.loads(path.read_text()) if path.exists() else {}
+            d = _j.loads(text)
             return "conduct" in d.get("mcpServers", {})
         except Exception:
             return False
 
     def _hook_registered(path: Path) -> bool:
         try:
+            if not path.exists():
+                # Codex: check hooks.json sibling
+                hooks_path = path.parent / "hooks.json"
+                if hooks_path.exists():
+                    return "conductguard" in hooks_path.read_text()
+                return False
             import json as _j
-            d = _j.loads(path.read_text()) if path.exists() else {}
+            d = _j.loads(path.read_text())
             hooks = d.get("hooks", {})
             return any("conductguard" in str(h).lower() or "conduct" in str(h).lower()
                        for h in hooks.get("PreToolUse", []))
@@ -1946,7 +1958,7 @@ def _discover_config_agents() -> list[tuple]:
     # Known tool config locations
     TOOLS = [
         ("claude-code", home / ".claude",  home / ".claude"  / "settings.json", "mcp"),
-        ("codex",       home / ".codex",   home / ".codex"   / "mcp.json",       "mcp"),
+        ("codex",       home / ".codex",   home / ".codex"   / "config.toml",    "mcp"),
         ("cursor",      home / ".cursor",  home / ".cursor"  / "mcp.json",       "mcp"),
         ("windsurf",    home / ".codeium" / "windsurf", home / ".codeium" / "windsurf" / "mcp_config.json", "mcp"),
     ]
