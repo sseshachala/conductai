@@ -8,6 +8,12 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSON, JSONB, UUID
 from app.core.database import Base
 
 
+def get_policy_hash(db, ws_uuid, persona: str = "agent") -> str | None:
+    """Snapshot the active policy version_hash for a workspace at decision time. Returns None if no cache yet."""
+    row = db.get(GuardPolicyCache, (ws_uuid, persona))
+    return row.version_hash if row else None
+
+
 def chain_hash_for_insert(db, ws_uuid, ts: datetime, tool_call, decision: str):
     """Returns (previous_hash, entry_hash) for a new GuardAuditEvent row.
     Acquires a per-workspace row lock to serialise concurrent inserts."""
@@ -142,6 +148,7 @@ class GuardAuditEvent(Base):
     # hash-chain integrity — do not UPDATE or DELETE rows, chain breaks
     previous_hash = Column(Text, nullable=True)
     entry_hash = Column(Text, nullable=True)
+    policy_hash = Column(Text, nullable=True)  # version_hash from GuardPolicyCache at decision time
 
 
 class GuardSavings(Base):

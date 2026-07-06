@@ -33,6 +33,8 @@ export interface AuditEvent {
   hostname?: string | null
   hook_session_id?: string | null
   session_id?: string | null
+  entry_hash?: string | null
+  policy_hash?: string | null
 }
 
 const TOOL_COLORS: Record<string, string> = {
@@ -270,6 +272,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
   isLast?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
+  const [open, setOpen] = useState(false)
 
   if (ev.rule_id === "policy_signature_invalid") {
     return <SignatureTamperRow ev={ev} isLast={isLast} />
@@ -284,18 +287,21 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
     : hovered ? "var(--surface-2)" : "transparent"
 
   return (
+    <>
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={() => setOpen(o => !o)}
       style={{
         display: "grid",
         gridTemplateColumns: cols,
         gap: 12,
         padding: "10px 18px",
-        borderBottom: isLast ? "none" : "1px solid var(--border)",
+        borderBottom: (isLast && !open) ? "none" : "1px solid var(--border)",
         alignItems: "center",
         background: bg,
         transition: "background .1s",
+        cursor: "pointer",
       }}
     >
       <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }} title={formatTs(ev.ts)}>{formatTs(ev.ts).slice(11)}</div>
@@ -377,6 +383,67 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         </div>
       )}
     </div>
+    {open && (
+      <div style={{
+        padding: "12px 18px 14px",
+        borderBottom: isLast ? "none" : "1px solid var(--border)",
+        background: "var(--surface-2)",
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: "8px 24px",
+        fontSize: 11,
+      }}>
+        {ev.input_summary && (
+          <div style={{ gridColumn: "1 / -1" }}>
+            <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Input</span>
+            <span className="mono" style={{ color: "var(--text-2)", wordBreak: "break-all" }}>{ev.input_summary}</span>
+          </div>
+        )}
+        <div>
+          <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Time</span>
+          <span className="mono" style={{ color: "var(--text-2)" }}>{new Date(ev.ts).toLocaleString()}</span>
+        </div>
+        {ev.policy_hash && (
+          <div>
+            <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Policy</span>
+            <span className="mono" style={{ color: "var(--text-2)" }} title={ev.policy_hash}>sha:{ev.policy_hash.slice(0, 8)}</span>
+          </div>
+        )}
+        {ev.entry_hash && (
+          <div>
+            <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Chain</span>
+            <span className="mono" style={{ color: "var(--text-2)" }} title={ev.entry_hash}>sha:{ev.entry_hash.slice(0, 8)}</span>
+          </div>
+        )}
+        {ev.blast_radius && (
+          <div>
+            <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Blast radius</span>
+            <span style={{ color: "var(--text-2)" }}>{ev.blast_radius.files} files · {ev.blast_radius.tier}</span>
+          </div>
+        )}
+        {(ev.provider || ev.model) && (
+          <div>
+            <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Model</span>
+            <span className="mono" style={{ color: "var(--text-2)" }}>{[ev.provider, ev.model].filter(Boolean).join(" / ")}</span>
+          </div>
+        )}
+        {ev.rule_id && (
+          <div>
+            <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Rule</span>
+            <span className="mono" style={{ color: "var(--err)" }}>{ev.rule_id}</span>
+          </div>
+        )}
+        {(ev.hostname || ev.hook_session_id) && (
+          <div style={{ gridColumn: "1 / -1" }}>
+            <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Session</span>
+            <span className="mono" style={{ color: "var(--text-2)" }}>
+              {ev.hostname && <>{ev.hostname} · </>}{ev.hook_session_id ?? ev.session_id ?? "—"}
+            </span>
+          </div>
+        )}
+      </div>
+    )}
+    </>
   )
 }
 

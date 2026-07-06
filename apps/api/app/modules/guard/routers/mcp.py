@@ -30,7 +30,7 @@ from app.core.database import SessionLocal
 from app.core.auth import get_clerk_user_email
 from app.core.pii import redact_secrets
 from app.models.workspace import Workspace
-from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardMemberConfig, chain_hash_for_insert
+from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardMemberConfig, chain_hash_for_insert, get_policy_hash
 from app.modules.guard.policy_engine import compute_policy
 
 router = APIRouter(prefix="/guard/mcp", tags=["guard-mcp"])
@@ -357,6 +357,7 @@ def _record_event(
 ) -> None:
     ts = datetime.now(timezone.utc)
     prev_hash, entry_hash = chain_hash_for_insert(db, ws_uuid, ts, tool_name, decision)
+    policy_hash = get_policy_hash(db, ws_uuid)
 
     event = GuardAuditEvent(
         workspace_id=ws_uuid,
@@ -373,6 +374,7 @@ def _record_event(
         conductai_workflow=conductai_workflow,
         previous_hash=prev_hash,
         entry_hash=entry_hash,
+        policy_hash=policy_hash,
     )
     db.add(event)
     db.commit()
