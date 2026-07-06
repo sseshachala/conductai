@@ -124,6 +124,37 @@ That's it. Policy enforcement is active from the next tool call.
 | `conduct guard sync` | Pull latest policy, write hook to `~/.conductguard/hook.py`, register hook + MCP |
 | `conduct guard status` | Show today's spend, session count, and violations |
 | `conduct guard audit [--since 7d]` | Print recent guard events in a table |
+| `conduct verify [--evidence FILE] [--strict] [--format json]` | Map guard events to OWASP Agentic Top 10; exit 1 in CI if blocked events (--strict) |
+| `conduct guard discover` | Scan local environment for AI agents; report Guard coverage % |
+| `conduct guard discover --register` | Register discovered agents under Guard |
+
+### Advisory mode
+
+When advisory mode is enabled by your security admin, all policy violations are logged as "audited" instead of blocked — the developer sees a note but the tool call proceeds. The hook still posts every event to the audit log.
+
+To check if advisory mode is active:
+```bash
+conduct guard sync   # shows "· advisory" badge if active
+conduct guard status
+```
+
+### conduct verify
+
+```bash
+# Map last 24h of guard events to OWASP Agentic Top 10
+conduct verify
+
+# Use a saved evidence file
+conduct verify --evidence ./conduct-evidence.json
+
+# CI mode — exit 1 if any blocked events
+conduct verify --strict
+
+# JSON output for downstream tooling
+conduct verify --format json
+```
+
+OWASP mapping: `no-rm-rf` → A04 Excessive Agency, `no-sudo` → A09 Privilege Escalation, `policy_signature_invalid` → A07 Insufficient Monitoring, etc. All 10 categories covered.
 
 ### How the PreToolUse hook works
 

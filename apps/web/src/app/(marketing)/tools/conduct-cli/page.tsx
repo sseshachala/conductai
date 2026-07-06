@@ -140,6 +140,7 @@ function TwoToolSection() {
             <li><span className="text-indigo-400">$</span> conduct login</li>
             <li><span className="text-indigo-400">$</span> conduct install-all</li>
             <li><span className="text-indigo-400">$</span> conduct guard sync</li>
+            <li><span className="text-indigo-400">$</span> conduct verify --strict</li>
             <li><span className="text-indigo-400">$</span> conduct test --all</li>
           </ul>
           <p className="mt-4 text-xs text-stone-400 font-mono">pip install conduct-cli</p>
@@ -409,6 +410,30 @@ function WhatItCoversSection() {
       color: "text-emerald-600",
       bg: "bg-emerald-50 border-emerald-200",
     },
+    {
+      icon: "⊛",
+      binary: "conduct verify --strict",
+      title: "OWASP Agentic Top 10",
+      desc: "Maps every guard event to the OWASP Agentic Top 10. Run in CI with --strict to exit 1 if any blocked events exist. JSON output for downstream tooling.",
+      color: "text-rose-600",
+      bg: "bg-rose-50 border-rose-200",
+    },
+    {
+      icon: "◎",
+      binary: "conduct guard discover",
+      title: "Agent Discovery",
+      desc: "Scans the local environment for AI agents and reports Guard coverage percentage. Add --register to bring discovered agents under Guard automatically.",
+      color: "text-amber-600",
+      bg: "bg-amber-50 border-amber-200",
+    },
+    {
+      icon: "◬",
+      binary: "advisory mode",
+      title: "Advisory Mode",
+      desc: "Log-all, block-nothing governance mode. Security admins enable it per workspace — violations are audited instead of blocked, so developers see a note but the tool call proceeds. Hash-chain audit log keeps every event tamper-evident.",
+      color: "text-teal-600",
+      bg: "bg-teal-50 border-teal-200",
+    },
   ] as const
 
   return (
@@ -418,11 +443,12 @@ function WhatItCoversSection() {
           What&apos;s included
         </p>
         <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
-          One package. Three capabilities.
+          One package. Six capabilities.
         </h2>
         <p className="text-center text-stone-500 text-sm max-w-xl mx-auto mb-12">
-          conduct-cli ships the platform CLI, the ConductGuard MCP server, and atomic workspace
-          switching &mdash; everything your team needs to run agents safely from the terminal.
+          conduct-cli ships the platform CLI, ConductGuard MCP, atomic workspace switching, OWASP
+          Agentic Top 10 verification, agent discovery, and advisory mode &mdash; everything your
+          team needs to run agents safely from the terminal.
         </p>
 
         <div className="grid sm:grid-cols-3 gap-6">
@@ -888,6 +914,9 @@ function GuardInsightsCallout() {
             "Every blocked tool call logged with who, what, and when",
             "Coverage table: which developers have Guard wired",
             "Events feed: real-time stream of policy enforcement",
+            "OWASP Agentic Top 10 mapping via conduct verify — use in CI with --strict",
+            "Advisory mode: log-all, block-nothing governance for gradual rollouts",
+            "Hash-chain audit log: tamper-evident, cryptographically linked events",
           ].map((point) => (
             <div
               key={point}
