@@ -41,6 +41,8 @@ export interface GuardShellProps {
   agentCount?: number | null
   /** Proxy rule count — shown in header badge. */
   proxyCount?: number | null
+  /** Shows "Advisory" badge when Guard is in advisory mode. */
+  advisory?: boolean
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -51,6 +53,7 @@ export function GuardShell({
   live = true,
   agentCount,
   proxyCount,
+  advisory = false,
 }: GuardShellProps) {
   const pathname = usePathname()
   const [, setTick] = useState(0)
@@ -78,6 +81,11 @@ export function GuardShell({
             ) : (
               <span className="sbadge" style={{ marginTop: 2, background: "var(--surface-3)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>
                 offline
+              </span>
+            )}
+            {advisory && (
+              <span style={{ marginTop: 2, fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 20, background: "var(--warn-bg)", color: "var(--warn)", border: "1px solid var(--warn-bd)", letterSpacing: ".04em" }}>
+                ADVISORY
               </span>
             )}
             {(agentCount != null || proxyCount != null) && (

@@ -20,6 +20,7 @@ interface TeamPrefs {
   automation_security_scan: boolean
   automation_workflow_trigger: boolean
   deny_on_error: boolean
+  advisory_mode: boolean
 }
 
 
@@ -82,6 +83,7 @@ function SettingsContent() {
     automation_security_scan: false,
     automation_workflow_trigger: false,
     deny_on_error: true,
+    advisory_mode: false,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -136,6 +138,7 @@ function SettingsContent() {
         automation_security_scan: data.automation_security_scan ?? false,
         automation_workflow_trigger: data.automation_workflow_trigger ?? false,
         deny_on_error: data.deny_on_error ?? true,
+        advisory_mode: data.advisory_mode ?? false,
       })
       if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
       if (data.fail_mode) setFailMode(data.fail_mode as "fail_open" | "fail_closed")

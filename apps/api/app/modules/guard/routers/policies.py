@@ -111,6 +111,7 @@ class PolicySyncOut(BaseModel):
     version: str
     persona: str
     fail_mode: str = "fail_open"   # CLI hook reads this to decide outage behavior
+    advisory_mode: bool = False     # CLI hook reads this to skip blocking
     rules: list[PolicySyncRule]
     signature: Optional[str] = None    # HMAC-SHA256 hex; present when workspace has a signing key
     signed_at: Optional[str] = None    # ISO-8601 timestamp of when the signature was computed
@@ -387,6 +388,7 @@ def sync_policies(
         version=version,
         persona="agent",
         fail_mode=getattr(gc, "fail_mode", "fail_open") if gc else "fail_open",
+        advisory_mode=getattr(gc, "advisory_mode", False) if gc else False,
         rules=[
             PolicySyncRule(
                 rule_id=r["id"],

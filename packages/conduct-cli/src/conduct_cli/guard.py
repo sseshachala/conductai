@@ -751,9 +751,11 @@ def cmd_guard_install(args):
         # even when POLICY_PATH is missing or unreadable.
         cfg = _load_guard_config()
         cfg["fail_mode"] = policy.get("fail_mode", "fail_open")
+        cfg["advisory_mode"] = policy.get("advisory_mode", False)
         _save_guard_config(cfg)
         rule_count = len(policy.get("rules", []))
-        print(f"  {GREEN}Guard policies:{RESET} {rule_count} rule(s) active · fail mode: {cfg['fail_mode']}")
+        advisory_label = " · advisory" if cfg["advisory_mode"] else ""
+        print(f"  {GREEN}Guard policies:{RESET} {rule_count} rule(s) active · fail mode: {cfg['fail_mode']}{advisory_label}")
     except SystemExit:
         rule_count = 0
 
