@@ -98,6 +98,8 @@ class SpendSummary(BaseModel):
     total_saved_pct: int
     total_cost_usd: float
     total_saved_usd: float
+    sessions: int = 0
+    hook_sessions: int = 0
     by_developer: list[DeveloperSpend]
     by_ai_tool: list[ToolSpend]
 
@@ -176,6 +178,8 @@ def get_spend_summary(
             total_saved_pct=0,
             total_cost_usd=0.0,
             total_saved_usd=0.0,
+            sessions=0,
+            hook_sessions=0,
             by_developer=[],
             by_ai_tool=[],
         )
@@ -343,6 +347,30 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         {"ws_ids": org_ws_ids, "since": period_start},
     ).scalar() or 0)
 
+    # Proxy session count (guard_sessions rows)
+    sessions_count = int(
+        db.query(func.count(GuardSession.id))
+        .filter(
+            GuardSession.workspace_id.in_(org_ws),
+            GuardSession.started_at >= period_start,
+        )
+        .scalar() or 0
+    )
+
+    # Pure hook session count — distinct hook_session_id in audit events
+    # where session_id IS NULL (no proxy), scoped to today to match the
+    # stat-card time window the CLI uses.
+    hook_sessions_count = int(
+        db.query(func.count(func.distinct(GuardAuditEvent.hook_session_id)))
+        .filter(
+            GuardAuditEvent.workspace_id.in_(org_ws),
+            GuardAuditEvent.hook_session_id.isnot(None),
+            GuardAuditEvent.session_id.is_(None),
+            GuardAuditEvent.ts >= today_start,
+        )
+        .scalar() or 0
+    )
+
     return SpendSummary(
         workspace_id=workspace_id,
         period=month or _period_label(),
@@ -355,6 +383,8 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         total_saved_pct=total_saved_pct,
         total_cost_usd=round(total_cost_usd, 6),
         total_saved_usd=round(total_saved_usd, 6),
+        sessions=sessions_count,
+        hook_sessions=hook_sessions_count,
         by_developer=by_developer,
         by_ai_tool=by_ai_tool,
     )

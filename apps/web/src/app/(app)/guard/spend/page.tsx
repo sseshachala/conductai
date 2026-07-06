@@ -15,6 +15,7 @@ import { ByAiToolTable } from "@/components/guard/ByAiToolTable"
 interface DeveloperSpend {
   email: string
   sessions: number
+  hook_sessions: number
   tokens_after: number
   cost_usd: number
   saved_usd: number
@@ -39,6 +40,8 @@ interface SpendData {
   total_saved_pct: number
   total_cost_usd: number
   total_saved_usd: number
+  sessions: number
+  hook_sessions: number
   by_developer: DeveloperSpend[]
   by_ai_tool: AiToolBreakdown[]
 }
@@ -895,7 +898,10 @@ function SpendContent() {
                     →
                   </a>
                 </div>
-                <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{dev.sessions}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span className="mono" style={{ fontSize: 12, color: "var(--text-2)" }}>{dev.sessions} <span style={{ fontSize: 10, color: "var(--text-3)", fontFamily: "inherit" }}>proxy</span></span>
+                  <span className="mono" style={{ fontSize: 12, color: "var(--text-3)" }}>{dev.hook_sessions ?? 0} <span style={{ fontSize: 10, color: "var(--text-3)", fontFamily: "inherit" }}>direct</span></span>
+                </div>
                 <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{formatTokens(dev.tokens_after)}</div>
                 <div className="mono" style={{ fontSize: 12.5, color: "var(--text-2)" }}>
                   {CURRENCY_SYMBOLS[currency]}{fromUsd(dev.cost_usd, currency).toFixed(2)}
