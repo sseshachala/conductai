@@ -97,7 +97,30 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
     # independent of the workspace's dev persona. Closes #776.
     cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     persona = (cfg.runtime_persona if cfg else None) or "conservative"
-    policies = compute_policy(db, ws_uuid, persona)
+    try:
+        policies = compute_policy(db, ws_uuid, persona)
+    except Exception as _eval_err:
+        deny = cfg.deny_on_error if cfg else True
+        if not deny:
+            return {"result": "policy eval error (fail-open)", "violations": [], "warnings": []}
+        now = datetime.now(timezone.utc)
+        try:
+            prev_h, entry_h = chain_hash_for_insert(db, ws_uuid, now, block.get("id", "guard"), "blocked")
+            pol_h = get_policy_hash(db, ws_uuid)
+            db.add(GuardAuditEvent(
+                workspace_id=ws_uuid, ai_tool="workflow",
+                tool_call=block.get("id", "guard"), decision="blocked",
+                rule_id="policy_eval_error", rule_message=str(_eval_err)[:500],
+                ts=now, user_email=user_email,
+                conductai_run_id=str(run_id) if run_id else None,
+                conductai_workflow=workflow_name or playbook_slug,
+                conductai_workflow_id=workflow_id,
+                previous_hash=prev_h, entry_hash=entry_h, policy_hash=pol_h,
+            ))
+            db.flush()
+        except Exception:
+            pass
+        raise RuntimeError(f"Guard: policy evaluation failed (fail-closed). {_eval_err}") from _eval_err
     if rule_ids_filter:
         policies = [p for p in policies if (p.get("id") or p.get("rule_id")) in rule_ids_filter]
 

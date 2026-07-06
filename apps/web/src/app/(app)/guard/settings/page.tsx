@@ -19,6 +19,7 @@ interface TeamPrefs {
   notify_on_budget: boolean
   automation_security_scan: boolean
   automation_workflow_trigger: boolean
+  deny_on_error: boolean
 }
 
 
@@ -80,6 +81,7 @@ function SettingsContent() {
     notify_on_budget: true,
     automation_security_scan: false,
     automation_workflow_trigger: false,
+    deny_on_error: true,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -88,6 +90,7 @@ function SettingsContent() {
   // Enforcement mode
   const [enforcementMode, setEnforcementMode] = useState<"block" | "warn" | "audit">("warn")
   const [failMode, setFailMode] = useState<"fail_open" | "fail_closed">("fail_open")
+  const [denyOnError, setDenyOnError] = useState(true)
   const [enforcementError, setEnforcementError] = useState<string | null>(null)
 
   // Re-sync state
@@ -132,9 +135,11 @@ function SettingsContent() {
         notify_on_budget: data.notify_on_budget ?? true,
         automation_security_scan: data.automation_security_scan ?? false,
         automation_workflow_trigger: data.automation_workflow_trigger ?? false,
+        deny_on_error: data.deny_on_error ?? true,
       })
       if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
       if (data.fail_mode) setFailMode(data.fail_mode as "fail_open" | "fail_closed")
+      if (data.deny_on_error !== undefined) setDenyOnError(data.deny_on_error)
       setLastFetched(new Date())
       // Load sync coverage + member token in parallel
       fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers })
@@ -524,6 +529,30 @@ function SettingsContent() {
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
                   Change takes effect on each machine the next time <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "0 4px", borderRadius: 3 }}>conduct guard sync</code> runs (≤60s for active CLI sessions).
                 </div>
+              </div>
+
+              {/* Policy eval error behavior */}
+              <div className="card" style={{ padding: "18px 20px" }}>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>Policy error behavior</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                  What Guard does if policy evaluation throws an unexpected error
+                </div>
+                <label style={{ display: "flex", gap: 11, alignItems: "flex-start", cursor: isAdmin ? "pointer" : "default" }}
+                  onClick={async () => {
+                    if (!isAdmin) return
+                    const next = !denyOnError
+                    setDenyOnError(next)
+                    try { await patch({ deny_on_error: next } as never) }
+                    catch { setDenyOnError(!next) }
+                  }}>
+                  <GuardToggle on={denyOnError} onClick={() => {}} disabled={!isAdmin} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>Fail closed on error</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                      Block the request and write an audit entry if the policy engine throws. Recommended. Disable only if you prefer fail-open during policy engine incidents.
+                    </div>
+                  </div>
+                </label>
               </div>
 
               {/* Re-sync */}

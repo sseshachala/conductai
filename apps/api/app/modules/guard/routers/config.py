@@ -45,6 +45,7 @@ class ConfigOut(BaseModel):
     created_at: datetime
     updated_at: datetime | None
     automation_warnings: list[str] = []
+    deny_on_error: bool = True
 
     class Config:
         from_attributes = True
@@ -59,6 +60,7 @@ class ConfigPatch(BaseModel):
     notify_on_budget: bool | None = None
     automation_security_scan: bool | None = None
     automation_workflow_trigger: bool | None = None
+    deny_on_error: bool | None = None
 
 
 class InstallStatusOut(BaseModel):
@@ -237,6 +239,8 @@ def patch_config(
         config.automation_security_scan = body.automation_security_scan
     if body.automation_workflow_trigger is not None:
         config.automation_workflow_trigger = body.automation_workflow_trigger
+    if body.deny_on_error is not None:
+        config.deny_on_error = body.deny_on_error
     config.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(config)
