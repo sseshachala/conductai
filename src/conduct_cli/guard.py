@@ -1699,7 +1699,8 @@ def cmd_guard_status(args):
     violations = [e for e in events if e.get("decision") == "blocked"]
 
     # Format spend figures
-    sessions        = spend.get("sessions", 0)
+    proxy_sessions  = spend.get("sessions", 0)
+    hook_sessions   = spend.get("hook_sessions", 0)
     tokens_used     = spend.get("tokens_used", 0)
     token_saved_pct = spend.get("token_saved_pct", 0)
     cost            = spend.get("cost_usd", 0.0)
@@ -1707,14 +1708,16 @@ def cmd_guard_status(args):
 
     viol_summary = ""
     if violations:
-        rule_names = ", ".join(v.get("rule", "unknown") for v in violations[:3])
+        rule_names = ", ".join(v.get("rule_id") or v.get("rule", "unknown") for v in violations[:3])
         viol_summary = f"  ({rule_names} — blocked)"
+
+    session_str = f"{proxy_sessions} proxy  ·  {hook_sessions} direct"
 
     print(f"\n{BOLD}Guard status{RESET} — {user_email}")
     print(f"{rule_count} polic{'y' if rule_count == 1 else 'ies'} active")
     print()
     print(f"Today:")
-    print(f"  Sessions: {sessions}")
+    print(f"  Sessions: {session_str}")
     print(f"  Tokens used: {tokens_used:,}  (saved {token_saved_pct}% via optimization)")
     print(f"  Cost: ${cost:.2f}  (saved ${cost_saved:.2f})")
     print(f"  Violations: {len(violations)}{viol_summary}")
