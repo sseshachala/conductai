@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import structlog
 from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert, get_policy_hash, GuardConfig
 from app.modules.guard.policy_engine import compute_policy
-from app.models.workspace import Workspace
+from app.modules.guard.routers.proxy import _canonical_workspace_id
 
 log = structlog.get_logger(__name__)
 
@@ -96,19 +96,8 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
     # the workspace's configured persona (defaults to 'standard').
     # Workflow runtime always uses runtime_persona (defaults to 'conservative'),
     # independent of the workspace's dev persona. Closes #776.
-    # Resolve to owner's canonical workspace for org-level policy enforcement.
-    policy_ws_uuid = ws_uuid
-    if ws_uuid:
-        ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
-        if ws and ws.owner_id:
-            canonical = (
-                db.query(Workspace)
-                .filter(Workspace.owner_id == ws.owner_id)
-                .order_by(Workspace.created_at.asc())
-                .first()
-            )
-            if canonical:
-                policy_ws_uuid = canonical.id
+    # Resolve to owner's canonical workspace for org-level policy enforcement (cached).
+    policy_ws_uuid = _uuid.UUID(_canonical_workspace_id(str(ws_uuid))) if ws_uuid else ws_uuid
 
     cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == policy_ws_uuid).first()
     persona = (cfg.runtime_persona if cfg else None) or "conservative"

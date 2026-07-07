@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from functools import lru_cache
 from datetime import datetime, timezone
 from typing import AsyncIterator
 from urllib.parse import urlparse as _urlparse
@@ -526,6 +527,18 @@ def _resolve_canonical_workspace(db: Session, workspace_id: str) -> str:
     return workspace_id
 
 
+@lru_cache(maxsize=256)
+def _canonical_workspace_id(workspace_id: str) -> str:
+    """Cached owner→canonical resolution. One DB round-trip per unique workspace_id
+    per worker process lifetime. Workspace topology changes rarely enough that
+    stale entries (cleared on worker restart) are acceptable."""
+    db = SessionLocal()
+    try:
+        return _resolve_canonical_workspace(db, workspace_id)
+    finally:
+        db.close()
+
+
 def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict) -> dict:
     """Pre-call Guard policy evaluation.
 
@@ -546,7 +559,7 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
     """
     db = SessionLocal()
     try:
-        policy_ws_id = _resolve_canonical_workspace(db, workspace_id)
+        policy_ws_id = _canonical_workspace_id(workspace_id)
 
         set_workspace_rls(db, policy_ws_id)
         try:
