@@ -11,10 +11,9 @@
       "match_tool": "edit,write",
       "match_pattern": "(password|secret|api_key)\\s*=\\s*['\"][^'\"]{8,}",
       "action": "block",
-      "message": "Hardcoded credential \u2014 use environment variables or a secrets manager.",
+      "message": "Hardcoded credential — use environment variables or a secrets manager.",
       "persona_affinity": [
-        "conservative",
-        "standard"
+        "agent"
       ],
       "frameworks": [
         "SOC2:CC6.1",
@@ -32,11 +31,9 @@
       "match_tool": "edit,write",
       "match_pattern": "(console\\.log|print|logger)\\(.*email",
       "action": "warn",
-      "message": "Possible PII in logs \u2014 scrub before production.",
+      "message": "Possible PII in logs — scrub before production.",
       "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
+        "agent"
       ],
       "frameworks": [
         "SOC2:CC6.7",
@@ -56,9 +53,7 @@
       "action": "warn",
       "message": "DEBUG=True must not reach production.",
       "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
+        "agent"
       ],
       "frameworks": [
         "SOC2:CC6.6",
@@ -76,11 +71,9 @@
       "match_tool": "write",
       "match_pattern": "open\\(['\"].*secret.*['\"],\\s*['\"]w",
       "action": "warn",
-      "message": "Writing sensitive data unencrypted \u2014 use a secrets manager.",
+      "message": "Writing sensitive data unencrypted — use a secrets manager.",
       "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
+        "agent"
       ],
       "frameworks": [
         "SOC2:CC6.1",
