@@ -33,8 +33,14 @@ def active_policy_path() -> Path:
 _THIN_LAUNCHERS = {
     "pretooluse": (
         "#!/usr/bin/env python3\n"
-        "try:\n    from conduct_cli.hooks.pretooluse import main; main()\n"
-        "except (ImportError, ModuleNotFoundError): import sys; sys.exit(0)\n"
+        "import sys\n"
+        "_cmd = sys.argv[1] if len(sys.argv) > 1 else ''\n"
+        "if _cmd == 'post':\n"
+        "    try:\n        from conduct_cli.hooks.posttooluse import main; main()\n"
+        "    except (ImportError, ModuleNotFoundError): sys.exit(0)\n"
+        "else:\n"
+        "    try:\n        from conduct_cli.hooks.pretooluse import main; main()\n"
+        "    except (ImportError, ModuleNotFoundError): sys.exit(0)\n"
     ),
     "posttooluse": (
         "#!/usr/bin/env python3\n"
