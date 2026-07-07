@@ -55,6 +55,8 @@ interface SpendStats {
   events_today: number
   blocked_today: number
   tokens_saved_today: number
+  sessions: number
+  hook_sessions: number
 }
 
 interface ToolCoverageRow {
@@ -872,6 +874,12 @@ function GuardDashboard() {
                   onClick={() => setFilterDecision(prev => prev === "blocked" ? "all" : "blocked")}
                   active={filterDecision === "blocked"}
                   sub={blockedToday > 0 ? "click to filter" : "none blocked"}
+                />
+                <GuardStatCard
+                  label="Sessions today"
+                  value={(stats?.sessions ?? 0) + (stats?.hook_sessions ?? 0)}
+                  tone="plain"
+                  sub={`${stats?.sessions ?? 0} proxy · ${stats?.hook_sessions ?? 0} direct`}
                 />
                 <GuardStatCard
                   label="Tokens saved"
