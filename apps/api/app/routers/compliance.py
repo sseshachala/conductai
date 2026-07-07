@@ -203,7 +203,8 @@ def uninstall_pack(
     )
 
     if deleted:
-        invalidate_policy_cache(db, ws_uuid)
+        for row in db.query(Workspace.id).filter(Workspace.id.in_(org_ws)).all():
+            invalidate_policy_cache(db, row[0])
 
     db.commit()
 
