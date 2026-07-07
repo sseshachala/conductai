@@ -63,11 +63,12 @@ export function GuardShell({
 }: GuardShellProps) {
   const pathname = usePathname()
   const [, setTick] = useState(0)
-  const { role } = useGuardRole()
+  const { role, loading: roleLoading } = useGuardRole()
 
-  const visibleTabs = GUARD_TABS.filter(
-    t => !t.roles || (role && t.roles.includes(role))
-  )
+  // Show all tabs during load to avoid nav flash for admins
+  const visibleTabs = roleLoading
+    ? GUARD_TABS
+    : GUARD_TABS.filter(t => !t.roles || (role && t.roles.includes(role)))
 
   // Re-render every 10 s so the relative timestamp stays fresh
   useEffect(() => {
