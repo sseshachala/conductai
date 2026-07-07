@@ -3,18 +3,24 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useGuardRole } from "@/hooks/useGuardRole"
+import type { GuardRole } from "@/hooks/useGuardRole"
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 
-export const GUARD_TABS = [
+type TabDef = { href: string; label: string; roles?: GuardRole[] }
+
+// roles = undefined means visible to all; otherwise restrict to listed roles
+export const GUARD_TABS: TabDef[] = [
   { href: "/guard",                 label: "Overview"        },
-  { href: "/guard/spend",           label: "Spend"           },
+  { href: "/guard/spend",           label: "Spend",           roles: ["admin"] },
   { href: "/guard/policies",        label: "Policies"        },
-  { href: "/guard/discovery",       label: "Discovery"       },
   { href: "/guard/activity",        label: "Activity"        },
-  { href: "/guard/session-reports", label: "Session Reports" },
-  { href: "/guard/team-memory",     label: "Team Memory"     },
-  { href: "/guard/settings",        label: "Settings"        },
+  { href: "/guard/discovery",       label: "Discovery"       },
+  { href: "/governance",            label: "Compliance",      roles: ["admin", "security"] },
+  { href: "/guard/session-reports", label: "Session Reports", roles: ["admin"] },
+  { href: "/guard/team-memory",     label: "Team Memory",     roles: ["admin"] },
+  { href: "/guard/settings",        label: "Settings",        roles: ["admin"] },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -57,6 +63,11 @@ export function GuardShell({
 }: GuardShellProps) {
   const pathname = usePathname()
   const [, setTick] = useState(0)
+  const { role } = useGuardRole()
+
+  const visibleTabs = GUARD_TABS.filter(
+    t => !t.roles || (role && t.roles.includes(role))
+  )
 
   // Re-render every 10 s so the relative timestamp stays fresh
   useEffect(() => {
@@ -117,7 +128,7 @@ export function GuardShell({
 
       {/* Tab nav */}
       <div className="guard-tab-nav">
-        {GUARD_TABS.map(tab => {
+        {visibleTabs.map(tab => {
           const isActive = tab.href === "/guard"
             ? pathname === "/guard"
             : pathname?.startsWith(tab.href)
