@@ -227,7 +227,7 @@ def post_event(
         "clerk_user_id":   cfg.get("user_email"),
         "user_email":      cfg.get("user_email"),
         "ai_tool":         detect_ai_tool(),
-        "tool_call":       tool_name,
+        "tool_call":       tool_name[:255],
         "input_summary":   _safe_summary(tool_input),
         "decision":        decision,
         "rule_id":         rule_id,
