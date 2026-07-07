@@ -395,6 +395,21 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
     )
 
 
+# ── TEMP DEBUG — remove after diagnosing spend issue ─────────────────────────
+
+@router.get("/debug-error")
+def debug_spend_error(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    import traceback
+    try:
+        result = _get_spend_summary_inner(db, workspace_id, None)
+        return {"ok": True, "events_today": result.events_today, "hook_sessions": result.hook_sessions}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "traceback": traceback.format_exc()}
+
+
 # ── GET /guard/spend/sessions ─────────────────────────────────────────────────
 
 @router.get("/sessions", response_model=list[SessionOut])
