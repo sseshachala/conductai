@@ -58,6 +58,20 @@ def _post_intent(session_id: str, ai_tool: str, cwd: str | None) -> None:
         print("Guard: session parse failed", file=sys.stderr)
 
 
+def _spawn_session_report(session_id: str) -> None:
+    """Fire paxel analysis + Guard push in a detached subprocess. Never blocks."""
+    try:
+        import subprocess
+        subprocess.Popen(
+            [sys.executable, "-m", "conduct_cli.hooks.session_report_push", session_id],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+
 def main() -> None:
     try:
         raw  = sys.stdin.read()
@@ -80,6 +94,9 @@ def main() -> None:
         _post_intent(session_id, ai_tool, cwd)
     except Exception:
         pass
+
+    # Fire paxel analysis in background — non-blocking, posts to /guard/session-reports
+    _spawn_session_report(session_id)
 
     sys.exit(0)
 
