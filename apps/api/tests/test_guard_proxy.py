@@ -124,3 +124,29 @@ def test_workspace_not_found_resolves_to_self():
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = None
     assert _resolve_canonical_workspace(db, WS_A) == WS_A
+
+
+def test_canonical_workspace_id_is_cached(monkeypatch):
+    """_canonical_workspace_id returns same result without hitting DB twice."""
+    from app.modules.guard.routers.proxy import _canonical_workspace_id, _resolve_canonical_workspace
+    calls = []
+
+    def fake_resolve(db, ws_id):
+        calls.append(ws_id)
+        return ws_id
+
+    # Clear lru_cache between tests
+    _canonical_workspace_id.cache_clear()
+    monkeypatch.setattr(
+        "app.modules.guard.routers.proxy._resolve_canonical_workspace", fake_resolve
+    )
+    monkeypatch.setattr(
+        "app.modules.guard.routers.proxy.SessionLocal", lambda: MagicMock()
+    )
+
+    _canonical_workspace_id.cache_clear()
+    result1 = _canonical_workspace_id(WS_A)
+    result2 = _canonical_workspace_id(WS_A)
+
+    assert result1 == result2
+    assert len(calls) == 1  # DB hit only once
