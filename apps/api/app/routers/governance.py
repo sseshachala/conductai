@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_permission, get_workspace_id
 from app.core.database import get_db
+from app.models.workspace import Workspace
 from app.modules.guard.models import (
     GuardAuditEvent,
     SkillPack,
@@ -107,13 +108,23 @@ def _split_framework(token: str) -> tuple[str, str | None]:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+def _org_ws_subquery(db: Session, workspace_id: str):
+    ws_uuid = uuid.UUID(workspace_id)
+    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
+    if ws and ws.org_id:
+        return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
+    if ws and ws.owner_id:
+        return db.query(Workspace.id).filter(Workspace.owner_id == ws.owner_id)
+    return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
+
+
 def _compute_framework_coverage(db: Session, workspace_id: str) -> FrameworksOut:
     """Shared logic — called by the public endpoint and by /narrative."""
-    ws_uuid = uuid.UUID(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
 
     installed = (
         db.query(WorkspaceSkillPack)
-        .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
+        .filter(WorkspaceSkillPack.workspace_id.in_(org_ws))
         .all()
     )
 
@@ -197,6 +208,7 @@ def get_narrative(
     period=month → month-to-date
     """
     ws_uuid = uuid.UUID(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
     now = datetime.now(timezone.utc)
     if period == "month":
         window_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -208,7 +220,7 @@ def get_narrative(
 
     installed_packs = (
         db.query(WorkspaceSkillPack)
-        .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
+        .filter(WorkspaceSkillPack.workspace_id.in_(org_ws))
         .count()
     )
 
@@ -323,12 +335,13 @@ def get_rules_for_control(
     """Return all rules covering a specific control in a framework, plus how
     many times each rule has fired in the last 30 days."""
     ws_uuid = uuid.UUID(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
     target_token_prefix = f"{framework}:{control}"
     target_token_bare = framework  # rules may tag bare framework w/o control
 
     installed = (
         db.query(WorkspaceSkillPack)
-        .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
+        .filter(WorkspaceSkillPack.workspace_id.in_(org_ws))
         .all()
     )
 
