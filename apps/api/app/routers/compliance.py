@@ -17,10 +17,21 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
+from app.models.workspace import Workspace
 from app.modules.guard.models import SkillPack, WorkspaceSkillPack
 from app.modules.guard.policy_engine import invalidate_policy_cache
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
+
+
+def _org_ws_subquery(db: Session, workspace_id: str):
+    ws_uuid = uuid.UUID(workspace_id)
+    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
+    if ws and ws.org_id:
+        return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
+    if ws and ws.owner_id:
+        return db.query(Workspace.id).filter(Workspace.owner_id == ws.owner_id)
+    return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 
 def _latest_pack(db: Session, slug: str) -> SkillPack | None:
@@ -78,10 +89,11 @@ def list_installed_packs(
 ):
     """Return installed pack slugs (e.g. 'conduct-owasp'). Single identifier
     scheme across the entire surface — slugs only, no legacy translation."""
-    ws_uuid = uuid.UUID(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
     rows = (
         db.query(WorkspaceSkillPack.pack_slug)
-        .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
+        .filter(WorkspaceSkillPack.workspace_id.in_(org_ws))
+        .distinct()
         .all()
     )
     return InstalledPacksOut(installed=sorted(r[0] for r in rows))
@@ -99,8 +111,12 @@ def get_pack_detail(
     pack = _latest_pack(db, pack_id)
     if not pack:
         raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
-    ws_uuid = uuid.UUID(workspace_id)
-    installed = db.get(WorkspaceSkillPack, (ws_uuid, pack.slug)) is not None
+    org_ws = _org_ws_subquery(db, workspace_id)
+    installed = (
+        db.query(WorkspaceSkillPack)
+        .filter(WorkspaceSkillPack.workspace_id.in_(org_ws), WorkspaceSkillPack.pack_slug == pack.slug)
+        .first()
+    ) is not None
     rules_out = [
         PackRuleOut(
             id=r.get("id") or r.get("rule_id") or "",
@@ -172,6 +188,7 @@ def uninstall_pack(
 ):
     slug = pack_id
     ws_uuid = uuid.UUID(workspace_id)
+    org_ws = _org_ws_subquery(db, workspace_id)
 
     pack = _latest_pack(db, slug)
     rules_count = len(pack.rules or []) if pack else 0
@@ -179,7 +196,7 @@ def uninstall_pack(
     deleted = (
         db.query(WorkspaceSkillPack)
         .filter(
-            WorkspaceSkillPack.workspace_id == ws_uuid,
+            WorkspaceSkillPack.workspace_id.in_(org_ws),
             WorkspaceSkillPack.pack_slug == slug,
         )
         .delete(synchronize_session=False)
