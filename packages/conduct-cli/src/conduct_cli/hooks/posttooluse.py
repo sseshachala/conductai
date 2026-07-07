@@ -247,7 +247,51 @@ def _scan_codex_tokens(transcript_path: str):
     return 0, 0
 
 
-def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms) -> None:
+def _compute_blast_radius(tool_name: str, tool_input: dict, tool_response: str) -> "dict | None":
+    """Classify blast radius after tool execution. Returns None for read-only tools."""
+    import re as _re
+
+    READ_ONLY = {"read", "ls", "glob", "search", "grep", "websearch", "webfetch", "computer"}
+    if tool_name in READ_ONLY:
+        return None
+
+    files = 0
+    symbols: "int | None" = None
+    tier = "local"
+
+    if tool_name in ("bash", "terminal"):
+        cmd = (tool_input.get("command") or "").lower()
+        if _re.search(r"\brm\s+.*-rf|\brm\s+-rf", cmd):
+            tier = "destructive"
+        elif _re.search(r"\bgit\s+(push|commit|merge|rebase|reset|tag)\b", cmd):
+            tier = "repo"
+        elif _re.search(r"\b(curl|wget|fetch)\b|https?://", cmd):
+            tier = "network"
+        # count path-like lines in output as proxy for files touched
+        lines = (tool_response or "").splitlines()
+        files = min(sum(1 for l in lines if "/" in l or ("." in l and len(l) < 200)), 50)
+
+    elif tool_name in ("write",):
+        files = 1
+        content = tool_input.get("content") or ""
+        symbols = len(content.splitlines()) or None
+
+    elif tool_name in ("edit", "str_replace_based_edit_tool", "str_replace_editor"):
+        files = 1
+        new_str = tool_input.get("new_string") or tool_input.get("new_content") or ""
+        symbols = len(new_str.splitlines()) or None
+
+    elif tool_name in ("multiedit",):
+        edits = tool_input.get("edits") or []
+        files = len(edits)
+
+    else:
+        files = 1  # unknown write-like tool
+
+    return {"files": files, "symbols": symbols, "tier": tier}
+
+
+def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms, blast_radius=None) -> None:
     """Fire-and-forget POST to /guard/events/usage."""
     cfg = load_config()
     workspace_id = cfg.get("workspace_id")
@@ -261,6 +305,7 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms)
         "tokens_output":   tokens_output,
         "duration_ms":     duration_ms,
         "ai_tool":         detect_ai_tool(),
+        "blast_radius":    blast_radius,
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     script = (
@@ -300,7 +345,7 @@ def post_codex_main() -> None:
     transcript_path = args.get("transcript_path", "")
     tokens_in, tokens_out = _scan_codex_tokens(transcript_path)
     if tokens_in or tokens_out:
-        _post_usage(args.get("session_id"), args.get("tool_name"), tokens_in, tokens_out, None)
+        _post_usage(args.get("session_id"), args.get("tool_name"), tokens_in, tokens_out, None, args.get("blast_radius"))
     sys.exit(0)
 
 
@@ -320,6 +365,10 @@ def main() -> None:
     is_codex      = (tool_use_id or "").startswith("call_")
     session_id    = data.get("session_id") or (f"transcript:{transcript_path}" if transcript_path else None)
 
+    tool_response = data.get("tool_response") or data.get("output") or ""
+    tool_input    = data.get("tool_input") or {}
+    blast_radius  = _compute_blast_radius(tool_name, tool_input, str(tool_response))
+
     if is_codex and transcript_path:
         import uuid as _uuid
         pending = GUARD_DIR / f"codex_pending_{_uuid.uuid4().hex[:8]}.json"
@@ -328,6 +377,7 @@ def main() -> None:
                 "session_id":      session_id,
                 "tool_name":       tool_name,
                 "transcript_path": transcript_path,
+                "blast_radius":    blast_radius,
             }))
             subprocess.Popen(
                 [sys.executable, str(_this_file), "post-codex", str(pending)],
@@ -339,7 +389,7 @@ def main() -> None:
             pass
     elif transcript_path:
         tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
-        _post_usage(session_id, tool_name, tokens_input, tokens_output, None)
+        _post_usage(session_id, tool_name, tokens_input, tokens_output, None, blast_radius)
         _, action, rule_id, message = check_policy(tool_name, {}, tokens_before=tokens_input)
         if action in ("warn", "block"):
             decision = "warned" if action == "warn" else "blocked"
@@ -348,10 +398,7 @@ def main() -> None:
             else:
                 if action == "warn" and session_id and rule_id:
                     _record_session_warn(session_id, rule_id)
-                post_event(tool_name, {}, decision, rule_id, message, session_id, drain_via=_this_file)
-
-    tool_response = data.get("tool_response") or data.get("output") or ""
-    tool_input    = data.get("tool_input") or {}
+                post_event(tool_name, {}, decision, rule_id, message, session_id, drain_via=_this_file, blast_radius=blast_radius)
     _maybe_emit_security_finding(str(tool_response), session_id, tool_name, tool_input)
 
     sys.exit(0)

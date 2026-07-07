@@ -83,6 +83,7 @@ class UsageUpdate(BaseModel):
     tokens_output: int
     duration_ms: int | None = None
     ai_tool: str | None = None   # for pricing
+    blast_radius: dict | None = None
 
 
 class UsageOut(BaseModel):
@@ -607,6 +608,8 @@ def update_usage(
     event.cost_usd_after  = cost_after
     if body.duration_ms is not None:
         event.duration_ms = body.duration_ms
+    if body.blast_radius is not None:
+        event.blast_radius = body.blast_radius
 
     db.commit()
 
