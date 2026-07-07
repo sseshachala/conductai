@@ -599,10 +599,10 @@ function SettingsContent() {
               )}
             </div>
 
-            {/* Active (auto-detected) status — shown first */}
+            {/* Detected (auto) status — shown first */}
             <div style={{ padding: "4px 20px 8px" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Active</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Detected from installed tools and active policies — flip to inactive when the underlying tool is removed.</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Detected</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Passive detection from installed tools and active policies. Full enforcement coming in a future release.</div>
               {tokenGuardrails === null ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {[...Array(4)].map((_, i) => (
@@ -611,20 +611,20 @@ function SettingsContent() {
                 </div>
               ) : (
                 ([
-                  { key: "deterministic_offload", label: "Deterministic offload", desc: "Routes deterministic compute tasks (string ops, arithmetic, format conversion) off the LLM and onto local code." },
-                  { key: "output_compression",    label: "Output compression",    desc: "RTK rewrites verbose tool output to compact summaries so the model spends tokens on signal, not boilerplate." },
-                  { key: "structured_retrieval",  label: "Structured retrieval",  desc: "Agent Booster pulls only the relevant slice of files instead of the whole file, cutting read-token cost on every agent turn." },
-                  { key: "metrics_budgets",       label: "Metrics & budgets",     desc: "Per-workspace and per-developer spend budgets that block runs when limits are exceeded and warn before they're hit." },
+                  { key: "deterministic_offload", label: "Deterministic offload", desc: "Detects whether the warn-deterministic-compute policy is active. In-sandbox offloading coming soon." },
+                  { key: "output_compression",    label: "Output compression",    desc: "Detects RTK install. RTK compresses terminal output today — sandbox run compression coming soon." },
+                  { key: "structured_retrieval",  label: "Structured retrieval",  desc: "Detects Agent Booster install. Smart file reads inside sandbox runs coming soon." },
+                  { key: "metrics_budgets",       label: "Metrics & budgets",     desc: "Spend budgets enforced on proxy traffic. Workflow run budget enforcement coming soon." },
                 ] as const).map((item, i) => {
-                  const active = tokenGuardrails[item.key] ?? false
+                  const detected = tokenGuardrails[item.key] ?? false
                   return (
                     <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 0", borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
                       <div>
                         <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{item.label}</div>
                         <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</div>
                       </div>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: active ? "var(--ok)" : "var(--text-3)", flexShrink: 0, marginLeft: 12 }}>
-                        {active ? "Active" : "Inactive"}
+                      <span style={{ fontSize: 11, fontWeight: 600, color: detected ? "var(--ok)" : "var(--text-3)", flexShrink: 0, marginLeft: 12 }}>
+                        {detected ? "Detected" : "Not detected"}
                       </span>
                     </div>
                   )
@@ -632,24 +632,29 @@ function SettingsContent() {
               )}
             </div>
 
-            {/* Manual toggles — shown below Active */}
+            {/* Manual toggles — shown below Detected */}
             <div style={{ padding: "4px 20px 16px", borderTop: "1px solid var(--border)" }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Toggleable</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Workspace-wide knobs your admin controls — flip these off if you want to opt out for the whole team.</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Workspace-wide controls — flip off to opt the whole team out.</div>
               {([
-                { key: "prompt_caching",   label: "Prompt caching",   desc: "System prompts and shared context are cached on every agent run so repeat calls don't re-pay for the same tokens." },
-                { key: "model_routing",    label: "Model routing",    desc: "Each agent run picks the cheapest model tier that can handle the task — small tasks go to Haiku, hard ones escalate." },
-                { key: "prompt_splitting", label: "Prompt splitting", desc: "Agent Templates enforce composable YAML skills, so prompts stay small and shared chunks get cached across blocks." },
+                { key: "prompt_caching",   label: "Prompt caching",   desc: "System prompts cached on every agent run — repeat calls don't re-pay for the same tokens. Enforced.", pending: false },
+                { key: "model_routing",    label: "Model routing",    desc: "Each run routes to the cheapest model tier that can handle the task — Haiku for simple, Opus for complex. Enforced.", pending: false },
+                { key: "prompt_splitting", label: "Prompt splitting", desc: "Split large prompts into chunks to stay within context limits. Not yet implemented.", pending: true },
               ] as const).map(item => (
                 <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.label}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, display: "flex", alignItems: "center", gap: 8 }}>
+                      {item.label}
+                      {item.pending && (
+                        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".04em", color: "#92400e", background: "#fef3c7", borderRadius: 4, padding: "1px 5px" }}>PENDING</span>
+                      )}
+                    </div>
                     <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</div>
                   </div>
                   <GuardToggle
                     on={guardrailState[item.key]}
                     onClick={() => handleGuardrailToggle(item.key, !guardrailState[item.key])}
-                    disabled={!isAdmin}
+                    disabled={!isAdmin || item.pending}
                   />
                 </div>
               ))}
