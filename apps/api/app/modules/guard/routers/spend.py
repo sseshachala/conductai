@@ -361,19 +361,14 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
     # Use hook_session_id when available (Claude Code sets it); fall back to
     # coalescing with ai_tool+user_email so Codex events (which may omit
     # session_id in hook stdin) still count.
+    # hook_session_id is set by CC/Codex hooks; proxy events never set it.
+    # Can't use session_id.is_(None) — the events router now auto-creates a
+    # GuardSession for hook events, so session_id is always non-NULL.
     hook_sessions_count = int(
-        db.query(func.count(func.distinct(
-            func.coalesce(
-                GuardAuditEvent.hook_session_id,
-                func.concat(
-                    func.coalesce(GuardAuditEvent.ai_tool, ""),
-                    func.coalesce(GuardAuditEvent.user_email, ""),
-                ),
-            )
-        )))
+        db.query(func.count(func.distinct(GuardAuditEvent.hook_session_id)))
         .filter(
             GuardAuditEvent.workspace_id.in_(org_ws),
-            GuardAuditEvent.session_id.is_(None),
+            GuardAuditEvent.hook_session_id.isnot(None),
             GuardAuditEvent.ts >= today_start,
         )
         .scalar() or 0
