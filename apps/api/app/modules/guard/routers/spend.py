@@ -304,9 +304,9 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         for row in tool_rows
     ]
 
-    # Today stats — for the dashboard stat cards
-    from datetime import date
-    today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
+    # "Today" = rolling 24h window so UTC-midnight cutoff doesn't swallow
+    # events from users in western timezones working late.
+    today_start = now - timedelta(hours=24)
     events_today = int(
         db.query(func.count(GuardAuditEvent.id))
         .filter(GuardAuditEvent.workspace_id.in_(org_ws), GuardAuditEvent.ts >= today_start)
@@ -357,14 +357,22 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         .scalar() or 0
     )
 
-    # Pure hook session count — distinct hook_session_id in audit events
-    # where session_id IS NULL (no proxy), scoped to today to match the
-    # stat-card time window the CLI uses.
+    # Direct hook session count — distinct sessions in the 24h window.
+    # Use hook_session_id when available (Claude Code sets it); fall back to
+    # coalescing with ai_tool+user_email so Codex events (which may omit
+    # session_id in hook stdin) still count.
     hook_sessions_count = int(
-        db.query(func.count(func.distinct(GuardAuditEvent.hook_session_id)))
+        db.query(func.count(func.distinct(
+            func.coalesce(
+                GuardAuditEvent.hook_session_id,
+                func.concat(
+                    func.coalesce(GuardAuditEvent.ai_tool, ""),
+                    func.coalesce(GuardAuditEvent.user_email, ""),
+                ),
+            )
+        )))
         .filter(
             GuardAuditEvent.workspace_id.in_(org_ws),
-            GuardAuditEvent.hook_session_id.isnot(None),
             GuardAuditEvent.session_id.is_(None),
             GuardAuditEvent.ts >= today_start,
         )
