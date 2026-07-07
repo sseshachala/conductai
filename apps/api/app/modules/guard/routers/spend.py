@@ -249,10 +249,12 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
             session_counts[email] = cnt
 
     # Tool coverage per developer (latest snapshot, keyed by email)
+    # guard_developer_tools.workspace_id is Text; org_ws returns UUIDs — must cast to str
+    _ws_strs = [str(r[0]) for r in org_ws.all()]
     tool_coverage: dict[str, GuardDeveloperTools] = {}
     coverage_rows = (
         db.query(GuardDeveloperTools)
-        .filter(GuardDeveloperTools.workspace_id.in_(org_ws))
+        .filter(GuardDeveloperTools.workspace_id.in_(_ws_strs))
         .all()
     )
     for tc in coverage_rows:
@@ -335,7 +337,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
     )
 
     # Count distinct developers who opened a Guard session in the period
-    org_ws_ids = [str(r[0]) for r in org_ws.all()]
+    org_ws_ids = _ws_strs  # already materialized above for tool_coverage
     active_developers = int(db.execute(
         text("""
             SELECT COUNT(DISTINCT COALESCE(user_email, clerk_user_id))
