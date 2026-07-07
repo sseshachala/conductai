@@ -166,6 +166,27 @@ def test_read_tokens_extracts_from_valid_transcript(tmp_path):
 
 # ── 5. Journal payload structure ─────────────────────────────────────────────
 
+def test_post_event_tool_call_fits_db_column(tmp_path):
+    """tool_call in journal payload must not exceed 255 chars (DB column limit)."""
+    from conduct_cli.hooks import base
+
+    journal_dir = tmp_path / "journal"
+    cfg = {"workspace_id": "test-ws", "user_email": "x@x.com", "api_url": "https://api.conductai.ai"}
+    long_name = "mcp__" + "x" * 260  # deliberately over 255
+
+    with (
+        patch.object(base, "JOURNAL_DIR", journal_dir),
+        patch.object(base, "JOURNAL_PID_PATH", journal_dir / "drain.pid"),
+        patch.object(base, "load_config", return_value=cfg),
+        patch.object(base, "ensure_drain_daemon"),
+    ):
+        base.post_event(long_name, {}, "allowed", session_id="s")
+
+    files = list(journal_dir.glob("*.json"))
+    payload = json.loads(json.loads(files[0].read_text())["payload"])
+    assert len(payload["tool_call"]) <= 255, "tool_call must be truncated to 255 chars"
+
+
 def test_post_event_journal_payload_has_required_fields(tmp_path):
     """post_event must journal a payload with workspace_id and hook_session_id."""
     from conduct_cli.hooks import base
