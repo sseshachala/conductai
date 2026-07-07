@@ -7,15 +7,13 @@
   "rules": [
     {
       "id": "hipaa_phi_field",
-      "description": "Warn on PHI field access (HIPAA \u00a7164.312)",
+      "description": "Warn on PHI field access (HIPAA §164.312)",
       "match_tool": "edit,write,bash",
       "match_pattern": "(patient_id|ssn|dob|date_of_birth|medical_record)",
       "action": "warn",
-      "message": "PHI field \u2014 ensure encrypted at rest and access is logged.",
+      "message": "PHI field — ensure encrypted at rest and access is logged.",
       "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
+        "agent"
       ],
       "frameworks": [
         "HIPAA:164.514",
@@ -32,10 +30,9 @@
       "match_tool": "edit,write,bash",
       "match_pattern": "http://.*patient|http://.*health",
       "action": "block",
-      "message": "PHI over plain HTTP is a HIPAA violation \u2014 use HTTPS.",
+      "message": "PHI over plain HTTP is a HIPAA violation — use HTTPS.",
       "persona_affinity": [
-        "conservative",
-        "standard"
+        "agent"
       ],
       "frameworks": [
         "HIPAA:164.312",
@@ -52,11 +49,9 @@
       "match_tool": "edit,write",
       "match_pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
       "action": "block",
-      "message": "Social Security Number detected \u2014 never store in source.",
+      "message": "Social Security Number detected — never store in source.",
       "persona_affinity": [
-        "conservative",
-        "standard",
-        "developer"
+        "agent"
       ],
       "frameworks": [
         "HIPAA:164.514",
