@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "conduct-cli"
-version = "0.7.6"
+version = "0.7.7"
 description = "CLI for Conduct AI — secure, govern, install agents, manage projects, run tests"
 readme = "README.md"
 license = { text = "MIT" }
@@ -37,7 +37,7 @@ Repository  = "https://github.com/sseshachala/conductai"
 conduct           = "conduct_cli.main:main"
 conduct-mcp       = "conduct_cli.mcp_server:main"
 conductguard-mcp  = "conduct_cli.guardmcp:main"
-conductguard-post = "conduct_cli.guard:post_usage_main"
+conductguard-post = "conduct_cli.hooks.posttooluse:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
