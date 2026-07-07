@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import structlog
 from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert, get_policy_hash, GuardConfig
 from app.modules.guard.policy_engine import compute_policy
+from app.models.workspace import Workspace
 
 log = structlog.get_logger(__name__)
 
@@ -95,11 +96,25 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
     # the workspace's configured persona (defaults to 'standard').
     # Workflow runtime always uses runtime_persona (defaults to 'conservative'),
     # independent of the workspace's dev persona. Closes #776.
-    cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    # Resolve to owner's canonical workspace for org-level policy enforcement.
+    policy_ws_uuid = ws_uuid
+    if ws_uuid:
+        ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
+        if ws and ws.owner_id:
+            canonical = (
+                db.query(Workspace)
+                .filter(Workspace.owner_id == ws.owner_id)
+                .order_by(Workspace.created_at.asc())
+                .first()
+            )
+            if canonical:
+                policy_ws_uuid = canonical.id
+
+    cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == policy_ws_uuid).first()
     persona = (cfg.runtime_persona if cfg else None) or "conservative"
     advisory = getattr(cfg, "advisory_mode", False) if cfg else False
     try:
-        policies = compute_policy(db, ws_uuid, persona)
+        policies = compute_policy(db, policy_ws_uuid, persona)
     except Exception as _eval_err:
         deny = cfg.deny_on_error if cfg else True
         if not deny:
