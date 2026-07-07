@@ -6,11 +6,29 @@ on:
       - "cli/v*"   # trigger on tags like cli/v0.2.0
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package + test deps
+        working-directory: packages/conduct-cli
+        run: pip install -e ".[booster]" pytest
+
+      - name: Run hook dispatch tests
+        working-directory: packages/conduct-cli
+        run: pytest tests/test_hook_dispatch.py -v
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write   # required for trusted publishing (no API token needed)
+      id-token: write
       contents: read
 
     steps:
