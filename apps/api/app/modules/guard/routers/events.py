@@ -846,7 +846,7 @@ def list_unified_activity(
     org_ws = _org_ws_subquery(db, workspace_id)
     ws_ids = [str(r[0]) for r in org_ws.all()]
 
-    where = ["workspace_id = ANY(:ws_ids)"]
+    where = ["workspace_id::text = ANY(:ws_ids)"]
     params: dict = {"ws_ids": ws_ids}
     if source:
         if source not in ("policy", "tool"):

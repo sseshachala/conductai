@@ -343,7 +343,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         text("""
             SELECT COUNT(DISTINCT COALESCE(user_email, clerk_user_id))
             FROM guard_sessions
-            WHERE workspace_id = ANY(:ws_ids)
+            WHERE workspace_id::text = ANY(:ws_ids)
               AND started_at >= :since
               AND (user_email IS NOT NULL OR clerk_user_id IS NOT NULL)
         """),
