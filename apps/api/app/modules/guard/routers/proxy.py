@@ -43,6 +43,7 @@ from app.core.crypto import decrypt, encrypt
 from app.core.database import SessionLocal, get_db
 from app.models.conduct_api_key import ConductApiKey
 from app.models.integration import Integration
+from app.models.workspace import Workspace
 from app.core.workspace_context import set_workspace_rls
 from app.modules.guard.policy_engine import compute_policy
 from app.runtime.pricing import get_model_rates
@@ -526,9 +527,23 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
     """
     db = SessionLocal()
     try:
-        set_workspace_rls(db, workspace_id)
+        # Resolve to owner's canonical workspace so policy is org-level.
+        # Single-workspace owners resolve to themselves — no behavior change.
+        policy_ws_id = workspace_id
+        ws = db.query(Workspace).filter(Workspace.id == uuid.UUID(workspace_id)).first()
+        if ws and ws.owner_id:
+            canonical = (
+                db.query(Workspace)
+                .filter(Workspace.owner_id == ws.owner_id)
+                .order_by(Workspace.created_at.asc())
+                .first()
+            )
+            if canonical:
+                policy_ws_id = str(canonical.id)
+
+        set_workspace_rls(db, policy_ws_id)
         try:
-            rules = compute_policy(db, uuid.UUID(workspace_id), "proxy")
+            rules = compute_policy(db, uuid.UUID(policy_ws_id), "proxy")
         except Exception as e:
             log.warning("guard.proxy.policy_load_failed", err=str(e))
             return {"action": "ALLOW", "rule_id": "guard.engine_error", "message": None}
