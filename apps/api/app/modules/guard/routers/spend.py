@@ -6,11 +6,12 @@ GET  /guard/spend/budgets          — list all budgets with current month usage
 GET  /guard/spend/budget-check     — hard-cap check called by the guard hook (no Clerk auth)
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func, distinct, or_, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from fastapi import HTTPException
@@ -164,7 +165,7 @@ def get_spend_summary(
     """Spend summary for a workspace for the given month (defaults to current calendar month)."""
     try:
         return _get_spend_summary_inner(db, workspace_id, month)
-    except Exception as exc:
+    except OperationalError as exc:
         _log.error("guard.spend_summary_error", workspace_id=workspace_id, exc=str(exc), exc_info=True)
         return SpendSummary(
             workspace_id=workspace_id,
