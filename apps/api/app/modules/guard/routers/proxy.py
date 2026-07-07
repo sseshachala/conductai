@@ -507,6 +507,25 @@ def _upstream_url(db: Session, workspace_id: str, provider: str, environment_id:
     return VENDOR_DEFAULTS[provider]
 
 
+def _resolve_canonical_workspace(db: Session, workspace_id: str) -> str:
+    """Return the oldest workspace under the same owner (org-level policy source).
+    Falls back to workspace_id itself if no owner or no siblings."""
+    try:
+        ws = db.query(Workspace).filter(Workspace.id == uuid.UUID(workspace_id)).first()
+    except Exception:
+        return workspace_id
+    if ws and ws.owner_id:
+        canonical = (
+            db.query(Workspace)
+            .filter(Workspace.owner_id == ws.owner_id)
+            .order_by(Workspace.created_at.asc())
+            .first()
+        )
+        if canonical:
+            return str(canonical.id)
+    return workspace_id
+
+
 def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict) -> dict:
     """Pre-call Guard policy evaluation.
 
@@ -527,19 +546,7 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
     """
     db = SessionLocal()
     try:
-        # Resolve to owner's canonical workspace so policy is org-level.
-        # Single-workspace owners resolve to themselves — no behavior change.
-        policy_ws_id = workspace_id
-        ws = db.query(Workspace).filter(Workspace.id == uuid.UUID(workspace_id)).first()
-        if ws and ws.owner_id:
-            canonical = (
-                db.query(Workspace)
-                .filter(Workspace.owner_id == ws.owner_id)
-                .order_by(Workspace.created_at.asc())
-                .first()
-            )
-            if canonical:
-                policy_ws_id = str(canonical.id)
+        policy_ws_id = _resolve_canonical_workspace(db, workspace_id)
 
         set_workspace_rls(db, policy_ws_id)
         try:

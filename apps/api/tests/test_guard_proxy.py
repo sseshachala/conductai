@@ -64,3 +64,63 @@ def test_extract_token_counts_returns_none_on_garbage():
 def test_vendor_defaults_cover_v1_providers():
     assert set(VENDOR_DEFAULTS) == {"anthropic", "openai", "perplexity"}
     assert MEMBER_TOKEN_PREFIX == "guard-mt-"
+
+
+# ── canonical workspace resolution ───────────────────────────────────────────
+
+from unittest.mock import MagicMock, patch
+import uuid as _uuid
+from app.modules.guard.routers.proxy import _resolve_canonical_workspace
+
+
+def _ws(id_str: str, owner_id: str | None = None, created_at=None):
+    from datetime import datetime
+    w = MagicMock()
+    w.id = _uuid.UUID(id_str)
+    w.owner_id = owner_id
+    w.created_at = created_at or datetime(2024, 1, 1)
+    return w
+
+
+WS_A = "00000000-0000-0000-0000-000000000001"
+WS_B = "00000000-0000-0000-0000-000000000002"
+OWNER = "owner-x"
+
+
+def test_single_workspace_resolves_to_itself():
+    """Owner with one workspace → same workspace returned."""
+    ws = _ws(WS_A, owner_id=OWNER)
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = ws
+    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = ws
+    assert _resolve_canonical_workspace(db, WS_A) == WS_A
+
+
+def test_multi_workspace_resolves_to_oldest():
+    """Owner with two workspaces → oldest (WS_A) returned when called with WS_B."""
+    from datetime import datetime
+    ws_a = _ws(WS_A, owner_id=OWNER, created_at=datetime(2024, 1, 1))
+    ws_b = _ws(WS_B, owner_id=OWNER, created_at=datetime(2024, 6, 1))
+
+    db = MagicMock()
+    # First call: lookup WS_B by id
+    db.query.return_value.filter.return_value.first.return_value = ws_b
+    # Second call: canonical query returns WS_A (oldest)
+    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = ws_a
+
+    assert _resolve_canonical_workspace(db, WS_B) == WS_A
+
+
+def test_no_owner_id_resolves_to_self():
+    """Workspace with no owner_id → falls back to itself."""
+    ws = _ws(WS_A, owner_id=None)
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = ws
+    assert _resolve_canonical_workspace(db, WS_A) == WS_A
+
+
+def test_workspace_not_found_resolves_to_self():
+    """DB returns None → falls back to original workspace_id."""
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    assert _resolve_canonical_workspace(db, WS_A) == WS_A
