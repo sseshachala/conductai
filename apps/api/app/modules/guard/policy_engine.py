@@ -165,3 +165,40 @@ def _write_cache(
             version_hash=version_hash,
             computed_at=datetime.now(timezone.utc),
         ))
+
+
+
+# ── Canonical workspace resolution ────────────────────────────────────────────
+# Shared by proxy.py and guard_block.py — lives here to avoid cross-layer imports.
+
+from functools import lru_cache as _lru_cache
+from app.core.database import SessionLocal as _SessionLocal
+from app.models.workspace import Workspace as _Workspace
+
+
+def _resolve_canonical_workspace(db: Session, workspace_id: str) -> str:
+    """Return oldest workspace under the same owner. Falls back to workspace_id."""
+    try:
+        ws = db.query(_Workspace).filter(_Workspace.id == uuid.UUID(workspace_id)).first()
+    except Exception:
+        return workspace_id
+    if ws and ws.owner_id:
+        canonical = (
+            db.query(_Workspace)
+            .filter(_Workspace.owner_id == ws.owner_id)
+            .order_by(_Workspace.created_at.asc())
+            .first()
+        )
+        if canonical:
+            return str(canonical.id)
+    return workspace_id
+
+
+@_lru_cache(maxsize=256)
+def canonical_workspace_id(workspace_id: str) -> str:
+    """Cached version — one DB round-trip per unique workspace_id per worker."""
+    db = _SessionLocal()
+    try:
+        return _resolve_canonical_workspace(db, workspace_id)
+    finally:
+        db.close()

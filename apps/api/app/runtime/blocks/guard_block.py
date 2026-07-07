@@ -13,8 +13,7 @@ from datetime import datetime, timezone
 
 import structlog
 from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert, get_policy_hash, GuardConfig
-from app.modules.guard.policy_engine import compute_policy
-from app.modules.guard.routers.proxy import _canonical_workspace_id
+from app.modules.guard.policy_engine import compute_policy, canonical_workspace_id as _canonical_workspace_id
 
 log = structlog.get_logger(__name__)
 

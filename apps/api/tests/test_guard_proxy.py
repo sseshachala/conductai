@@ -70,7 +70,7 @@ def test_vendor_defaults_cover_v1_providers():
 
 from unittest.mock import MagicMock, patch
 import uuid as _uuid
-from app.modules.guard.routers.proxy import _resolve_canonical_workspace
+from app.modules.guard.policy_engine import _resolve_canonical_workspace
 
 
 def _ws(id_str: str, owner_id: str | None = None, created_at=None):
@@ -128,7 +128,7 @@ def test_workspace_not_found_resolves_to_self():
 
 def test_canonical_workspace_id_is_cached(monkeypatch):
     """_canonical_workspace_id returns same result without hitting DB twice."""
-    from app.modules.guard.routers.proxy import _canonical_workspace_id, _resolve_canonical_workspace
+    from app.modules.guard.policy_engine import canonical_workspace_id as _canonical_workspace_id, _resolve_canonical_workspace
     calls = []
 
     def fake_resolve(db, ws_id):
@@ -138,10 +138,10 @@ def test_canonical_workspace_id_is_cached(monkeypatch):
     # Clear lru_cache between tests
     _canonical_workspace_id.cache_clear()
     monkeypatch.setattr(
-        "app.modules.guard.routers.proxy._resolve_canonical_workspace", fake_resolve
+        "app.modules.guard.policy_engine._resolve_canonical_workspace", fake_resolve
     )
     monkeypatch.setattr(
-        "app.modules.guard.routers.proxy.SessionLocal", lambda: MagicMock()
+        "app.modules.guard.policy_engine._SessionLocal", lambda: MagicMock()
     )
 
     _canonical_workspace_id.cache_clear()
