@@ -41,6 +41,12 @@ def test_hook_py_dispatches_default_to_pretooluse():
     assert "pretooluse" in content, "hook.py must route default to pretooluse"
 
 
+def test_hook_py_dispatches_drain_to_run_drain_daemon():
+    content = _hook_py_content()
+    assert "drain" in content, "hook.py must branch on 'drain' arg"
+    assert "run_drain_daemon" in content, "hook.py must route 'drain' to run_drain_daemon"
+
+
 def test_hook_py_is_valid_python():
     import py_compile, tempfile, os
     content = _hook_py_content()
