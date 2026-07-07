@@ -211,6 +211,7 @@ def post_event(
     session_id: Optional[str] = None,
     *,
     drain_via: Optional[Path] = None,
+    blast_radius: "dict | None" = None,
 ) -> None:
     """Post one guard event via the journal/drain pattern.  Never raises.
 
@@ -235,6 +236,7 @@ def post_event(
         "hook_session_id": session_id,
         "os_info":         _os_info,
         "hostname":        _platform.node(),
+        "blast_radius":    blast_radius,
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     journal_append(payload, api_url)

@@ -972,28 +972,37 @@ function GuardDashboard() {
 
       {/* ── 7 Token Guardrails widget ───────────────────────────────────────── */}
       {!loading && (() => {
+        // enforcement: "enforced" = actively blocking/saving | "configured" = stored, partial | "detected" = passive only | "pending" = not yet built
         const guardrailItems = [
-          { label: "Prompt caching",        key: "prompt_caching",        manual: true  },
-          { label: "Model routing",         key: "model_routing",         manual: true  },
-          { label: "Prompt splitting",      key: "prompt_splitting",      manual: true  },
-          { label: "Deterministic offload", key: "deterministic_offload", manual: false },
-          { label: "Output compression",    key: "output_compression",    manual: false },
-          { label: "Structured retrieval",  key: "structured_retrieval",  manual: false },
-          { label: "Metrics & budgets",     key: "metrics_budgets",       manual: false },
+          { label: "Prompt caching",        key: "prompt_caching",        enforcement: "enforced",   tip: "Active on all workflow runs. Proxy layer gap tracked in #898." },
+          { label: "Model routing",         key: "model_routing",         enforcement: "enforced",   tip: "Always routes tasks to cheapest capable model tier." },
+          { label: "Prompt splitting",      key: "prompt_splitting",      enforcement: "pending",    tip: "Not yet implemented — large prompts are not split. Tracked in #900." },
+          { label: "Deterministic offload", key: "deterministic_offload", enforcement: "detected",   tip: "Detects whether the rule is active. Actual offloading not yet implemented. Tracked in #901." },
+          { label: "Output compression",    key: "output_compression",    enforcement: "detected",   tip: "Detects RTK install. Sandbox output compression not yet implemented. Tracked in #902." },
+          { label: "Structured retrieval",  key: "structured_retrieval",  enforcement: "detected",   tip: "Detects Agent Booster install. Smart file reads inside sandboxes not yet implemented. Tracked in #902." },
+          { label: "Metrics & budgets",     key: "metrics_budgets",       enforcement: "configured", tip: "Guard spend budgets enforced on proxy traffic. Workflow run enforcement gap tracked in #903." },
         ].map(item => ({
           ...item,
           ok: guardrails ? guardrails[item.key as keyof TokenGuardrails] as boolean : true,
-          tip: item.manual
-            ? "Configured in Settings → Token Guardrails"
-            : "Auto-detected from installed tools and policies",
         }))
-        const activeCount = guardrailItems.filter(g => g.ok).length
+
+        const enforcedCount = guardrailItems.filter(g => g.enforcement === "enforced" && g.ok).length
+        const configuredCount = guardrailItems.filter(g => g.enforcement === "configured" && g.ok).length
+
+        const badgeStyle = (enforcement: string, ok: boolean) => {
+          if (!ok) return { color: "var(--text-muted)", background: "var(--surface-3)" }
+          if (enforcement === "enforced")   return { color: "#166534", background: "#dcfce7" }
+          if (enforcement === "configured") return { color: "#6366f1", background: "#eef2ff" }
+          if (enforcement === "detected")   return { color: "var(--text-muted)", background: "var(--surface-3)" }
+          return { color: "#92400e", background: "#fef3c7" } // pending
+        }
+
         return (
           <div className="card" style={{ marginBottom: 20, padding: "16px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <div className="eyebrow">Token abuse guardrails</div>
-              <span style={{ fontSize: 11, fontWeight: 600, color: activeCount === 7 ? "var(--ok)" : "var(--warn)" }}>
-                {activeCount}/7 active
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ok)" }}>
+                {enforcedCount} enforced · {configuredCount} configured
               </span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
@@ -1013,20 +1022,17 @@ function GuardDashboard() {
                   </span>
                   <span style={{
                     fontSize: 9, fontWeight: 600, letterSpacing: ".02em",
-                    color: g.manual ? "var(--accent-text, #6366f1)" : "var(--text-muted)",
-                    background: g.manual ? "var(--accent-weak, #eef2ff)" : "var(--surface-3)",
                     borderRadius: 4, padding: "1px 5px",
+                    ...badgeStyle(g.enforcement, g.ok),
                   }}>
-                    {g.manual ? "config" : "auto"}
+                    {g.enforcement}
                   </span>
                 </div>
               ))}
             </div>
-            {activeCount < 7 && (
+            {(
               <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-3)" }}>
-                Configure manual guardrails in{" "}
-                <a href="/guard/settings" style={{ color: "var(--accent)", textDecoration: "none" }}>Settings → Token Guardrails</a>.
-                Auto-detected guardrails update when tools are installed or removed.
+                <strong>enforced</strong> — active now &nbsp;·&nbsp; <strong>configured</strong> — partial coverage &nbsp;·&nbsp; <strong>detected</strong> — passive only &nbsp;·&nbsp; <strong>pending</strong> — not yet built
               </div>
             )}
           </div>
