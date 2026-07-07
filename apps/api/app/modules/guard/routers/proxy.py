@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from functools import lru_cache
+
 from datetime import datetime, timezone
 from typing import AsyncIterator
 from urllib.parse import urlparse as _urlparse
@@ -46,7 +46,7 @@ from app.models.conduct_api_key import ConductApiKey
 from app.models.integration import Integration
 from app.models.workspace import Workspace
 from app.core.workspace_context import set_workspace_rls
-from app.modules.guard.policy_engine import compute_policy
+from app.modules.guard.policy_engine import compute_policy, canonical_workspace_id as _canonical_workspace_id
 from app.runtime.pricing import get_model_rates
 
 
@@ -506,37 +506,6 @@ def _upstream_url(db: Session, workspace_id: str, provider: str, environment_id:
             except Exception:
                 pass
     return VENDOR_DEFAULTS[provider]
-
-
-def _resolve_canonical_workspace(db: Session, workspace_id: str) -> str:
-    """Return the oldest workspace under the same owner (org-level policy source).
-    Falls back to workspace_id itself if no owner or no siblings."""
-    try:
-        ws = db.query(Workspace).filter(Workspace.id == uuid.UUID(workspace_id)).first()
-    except Exception:
-        return workspace_id
-    if ws and ws.owner_id:
-        canonical = (
-            db.query(Workspace)
-            .filter(Workspace.owner_id == ws.owner_id)
-            .order_by(Workspace.created_at.asc())
-            .first()
-        )
-        if canonical:
-            return str(canonical.id)
-    return workspace_id
-
-
-@lru_cache(maxsize=256)
-def _canonical_workspace_id(workspace_id: str) -> str:
-    """Cached owner→canonical resolution. One DB round-trip per unique workspace_id
-    per worker process lifetime. Workspace topology changes rarely enough that
-    stale entries (cleared on worker restart) are acceptable."""
-    db = SessionLocal()
-    try:
-        return _resolve_canonical_workspace(db, workspace_id)
-    finally:
-        db.close()
 
 
 def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict) -> dict:
