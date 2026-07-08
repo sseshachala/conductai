@@ -225,9 +225,10 @@ function ActivityContent() {
     return () => clearInterval(t)
   }, [load])
 
-  // SSE real-time feed — connects once teamId + token are ready, reconnects on timeout
+  // SSE real-time feed — only active when streaming=true (user clicked Go Live)
+  const LIVE_EVENT_CAP = 500
   useEffect(() => {
-    if (!teamId) return
+    if (!streaming || !teamId) return
     let es: EventSource | null = null
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -238,7 +239,6 @@ function ActivityContent() {
       const url = `${base}/guard/events/stream?workspace_id=${teamId}&token=${encodeURIComponent(token)}`
       es = new EventSource(url)
       esRef.current = es
-      es.onopen = () => setStreaming(true)
       es.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data)
@@ -251,14 +251,14 @@ function ActivityContent() {
             setEvents(prev => {
               const ids = new Set(prev.map(ev => ev.id))
               const fresh = (msg.events as AuditEvent[]).filter(ev => !ids.has(ev.id))
-              return fresh.length > 0 ? [...fresh.reverse(), ...prev] : prev
+              if (!fresh.length) return prev
+              return [...fresh.reverse(), ...prev].slice(0, LIVE_EVENT_CAP)
             })
             setLastUpdated(new Date())
           }
         } catch { /* ignore parse errors */ }
       }
       es.onerror = () => {
-        setStreaming(false)
         es?.close()
         reconnectTimer = setTimeout(connect, 5000)
       }
@@ -268,10 +268,9 @@ function ActivityContent() {
     return () => {
       es?.close()
       esRef.current = null
-      setStreaming(false)
       if (reconnectTimer) clearTimeout(reconnectTimer)
     }
-  }, [teamId, getToken])
+  }, [streaming, teamId, getToken])
 
   useEffect(() => {
     if (activeView !== "sessions") return
@@ -301,7 +300,7 @@ function ActivityContent() {
   }
 
   return (
-    <GuardShell live={streaming || live} lastFetched={lastUpdated} advisory={advisoryMode}>
+    <GuardShell live={live} lastFetched={lastUpdated} advisory={advisoryMode}>
       {/* Viewer-scoped notice */}
       {!permissionsLoading && !permissions.canViewAllActivity && (
         <div
@@ -455,6 +454,16 @@ function ActivityContent() {
           <span className="conduct-pulse-dot" style={{ background: "var(--ok)" }} />
           Realtime · every tool call logged
         </span>
+
+        {/* Go Live toggle */}
+        <button
+          onClick={() => setStreaming(s => !s)}
+          className={`btn btn-sm ${streaming ? "btn-ghost" : ""}`}
+          style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}
+        >
+          {streaming && <span className="conduct-pulse-dot" style={{ background: "var(--ok)" }} />}
+          {streaming ? "Stop" : "Go Live"}
+        </button>
 
         {/* Export CSV */}
         {permissions.canExportActivity && (
