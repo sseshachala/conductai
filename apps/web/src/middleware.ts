@@ -6,11 +6,22 @@ const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "
 const isAppSubdomain = (req: NextRequest) =>
   req.headers.get("host")?.startsWith("app.")
 
+const MARKETING_TO_APP: Record<string, string> = {
+  "/guard": "/theguard",
+}
+
 const clerkHandler = clerkMiddleware(async (auth, req) => {
   // app.conductai.ai/ → send logged-in users to dashboard, others to sign-in
   if (isAppSubdomain(req) && req.nextUrl.pathname === "/") {
     const { userId } = await auth()
     return NextResponse.redirect(new URL(userId ? "/theguard" : "/sign-in", req.url))
+  }
+
+  // Redirect logged-in users from marketing pages to their app equivalents
+  const appDest = MARKETING_TO_APP[req.nextUrl.pathname]
+  if (appDest) {
+    const { userId } = await auth()
+    if (userId) return NextResponse.redirect(new URL(appDest, req.url))
   }
 
   if (isPublicRoute(req)) return
