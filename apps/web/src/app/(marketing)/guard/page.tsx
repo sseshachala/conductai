@@ -17,6 +17,7 @@ export default function GuardLandingPage() {
       <Phase2Section />
       <Phase3Section />
       <MCPSection />
+      <EnterpriseGradeSection />
       <FinalCTASection />
     </>
   )
@@ -894,6 +895,73 @@ resp, _ := client.Do(req)
         </p>
       </div>
     </div>
+  )
+}
+
+/* ─── Enterprise grade ─────────────────────────────────────────────────── */
+
+function EnterpriseGradeSection() {
+  const decisions = [
+    {
+      label: "Fail-closed by default",
+      body: "If the Guard API is unreachable, tool calls are blocked — not silently allowed. Every new workspace starts fail-closed. Fail-open is available but you have to choose it.",
+      tag: "Incident response",
+    },
+    {
+      label: "30-second policy propagation",
+      body: "When you revoke a rule, every developer's machine picks it up within 30 seconds — automatically, with no manual sync. The background drain daemon refreshes policy on every active session.",
+      tag: "Policy enforcement",
+    },
+    {
+      label: "SHA-256 hash chain, one-click verification",
+      body: "Every audit event is linked to the previous one via a SHA-256 chain. A CISO can open the Governance page, click Verify integrity, and confirm the log has not been altered — no CLI needed.",
+      tag: "Audit trail",
+    },
+    {
+      label: "Real-time incident feed",
+      body: "The activity feed streams new events within two seconds of each tool call. Click Go Live during an incident and watch blocks appear across your team in real time, without refreshing.",
+      tag: "Live monitoring",
+    },
+    {
+      label: "Daemon health visible in guard status",
+      body: "The background event daemon self-heals: stale processes are detected, killed, and replaced on the next tool call. `conduct guard status` shows running, stale, or not running — not a silent gap.",
+      tag: "Reliability",
+    },
+    {
+      label: "Proxy coverage check in every status call",
+      body: "`conduct guard status` shows which AI providers are actually routed through the Guard proxy in the current shell — and flags the ones that are not, with the exact command to fix it.",
+      tag: "Coverage visibility",
+    },
+  ]
+
+  return (
+    <section className="bg-stone-950 px-6 py-24 border-t border-stone-900">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-14">
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3">Built for enterprise security</p>
+          <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-5">
+            Six decisions that separate<br />governance from compliance theater.
+          </h2>
+          <p className="text-stone-400 text-lg leading-relaxed max-w-2xl mx-auto">
+            Every tool claims to govern AI. These are the choices that show we actually thought about what happens when things go wrong.
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {decisions.map((d) => (
+            <div key={d.label} className="rounded-2xl border border-stone-800 bg-stone-900 p-6 flex flex-col gap-3">
+              <span className="text-xs font-bold uppercase tracking-widest text-indigo-400">{d.tag}</span>
+              <h3 className="text-base font-bold text-white leading-snug">{d.label}</h3>
+              <p className="text-sm text-stone-400 leading-relaxed">{d.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-center text-stone-600 text-xs mt-10">
+          All six shipped in the same week. None were on a roadmap — they came from asking what a CISO would ask during a board demo.
+        </p>
+      </div>
+    </section>
   )
 }
 
