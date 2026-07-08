@@ -15,6 +15,7 @@ export default function GuardLandingPage() {
       <Phase1Section />
       <Phase2Section />
       <Phase3Section />
+      <MCPSection />
       <FinalCTASection />
     </>
   )
@@ -647,6 +648,105 @@ function Phase3Section() {
           <CtaLink className="inline-flex items-center rounded-xl bg-white text-violet-700 px-7 py-3.5 text-base font-bold hover:bg-violet-50 transition-colors" />
         </div>
 
+      </div>
+    </section>
+  )
+}
+
+/* ─── MCP ──────────────────────────────────────────────────────────────── */
+
+function MCPSection() {
+  const clients = [
+    { name: "Claude Desktop", icon: "🖥️" },
+    { name: "Claude.ai", icon: "🌐" },
+    { name: "Cursor", icon: "⚡" },
+    { name: "Windsurf", icon: "🏄" },
+    { name: "VS Code Copilot", icon: "💠" },
+    { name: "Codex CLI", icon: "⌨️" },
+    { name: "Devin", icon: "🤖" },
+    { name: "Any MCP agent", icon: "🔌" },
+  ]
+  return (
+    <section className="bg-stone-950 px-6 py-24">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-14">
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3">MCP-native governance</p>
+          <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-5">
+            If your AI agent speaks MCP,<br />ConductGuard already governs it.
+          </h2>
+          <p className="text-stone-400 text-lg leading-relaxed max-w-2xl mx-auto">
+            No CLI install. No hook. No code changes. Any agent that connects to <code className="text-indigo-300 text-base">conductguard-mcp</code> inherits your team&apos;s policies the moment it starts.
+          </p>
+        </div>
+
+        {/* Client grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-12">
+          {clients.map(c => (
+            <div key={c.name} className="rounded-xl border border-stone-800 bg-stone-900 px-4 py-4 flex items-center gap-3">
+              <span className="text-xl">{c.icon}</span>
+              <span className="text-sm font-medium text-stone-300">{c.name}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Two columns: how it works + what gets enforced */}
+        <div className="grid md:grid-cols-2 gap-6 mb-10">
+          <div className="rounded-2xl border border-stone-800 bg-stone-900 p-8">
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-4">How it works</p>
+            <ol className="space-y-4">
+              {[
+                ["Agent connects", "Any MCP-capable agent adds conductguard-mcp as a server — one URL, one API key."],
+                ["Policy syncs", "Your active ConductGuard policy propagates instantly. No redeploy required."],
+                ["Every tool call checked", "guard_check fires before the agent acts. Block, warn, or audit — your rules, enforced."],
+                ["Audit trail written", "Every decision logged to the same Flight Recorder your security team already uses."],
+              ].map(([step, desc], i) => (
+                <li key={step} className="flex gap-4">
+                  <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-white mb-0.5">{step}</p>
+                    <p className="text-sm text-stone-400 leading-relaxed">{desc}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="rounded-2xl border border-stone-800 bg-stone-900 p-8">
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-4">What gets enforced</p>
+            <ul className="space-y-3">
+              {[
+                ["Prompt injection", "Malicious instructions in external content intercepted before the model sees them."],
+                ["Credential exposure", "API keys and secrets blocked from leaving your network in LLM calls."],
+                ["PII in prompts", "Patient data, PII flagged before it reaches the provider."],
+                ["Spend limits", "Per-developer token budgets enforced across every connected agent."],
+                ["Blast radius tracking", "Every action scored by scope — local / repo / network / destructive."],
+                ["Full audit trail", "Tamper-evident hash chain. SOC2 auditors get proof, not promises."],
+              ].map(([label, desc]) => (
+                <li key={label} className="flex gap-3">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0 mt-[7px]" />
+                  <div>
+                    <span className="text-sm font-semibold text-white">{label} — </span>
+                    <span className="text-sm text-stone-400">{desc}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Connect snippet */}
+        <div className="rounded-2xl border border-stone-800 bg-stone-900 px-8 py-6">
+          <p className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-3">Add to any MCP client</p>
+          <pre className="text-sm font-mono text-indigo-300 leading-relaxed overflow-x-auto">{`{
+  "mcpServers": {
+    "conductguard": {
+      "url": "https://api.conductai.ai/guard/mcp",
+      "headers": { "Authorization": "Bearer <your-api-key>" }
+    }
+  }
+}`}</pre>
+          <p className="text-xs text-stone-500 mt-3">Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, and any MCP-compatible agent.</p>
+        </div>
       </div>
     </section>
   )
