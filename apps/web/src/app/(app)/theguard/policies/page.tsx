@@ -879,8 +879,8 @@ function PoliciesContent() {
   // Build tabs: Agent + Proxy (custom rules) + one per installed pack
   const installedPackIds = [...new Set(policies.filter(p => p.pack_id).map(p => p.pack_id!))]
   const policyTabs = [
-    { id: "agent", label: "Agent", count: policies.filter(p => !p.pack_id && (!p.persona || p.persona === "agent")).length },
-    { id: "proxy", label: "Proxy", count: policies.filter(p => !p.pack_id && p.persona === "proxy").length },
+    { id: "agent", label: "Agent", count: policies.filter(p => !p.persona || p.persona === "agent").length },
+    { id: "proxy", label: "Proxy", count: policies.filter(p => p.persona === "proxy").length },
     ...installedPackIds.map(id => ({
       id,
       label: PACK_LABELS.find(l => l.id === id)?.name ?? id,
@@ -888,9 +888,9 @@ function PoliciesContent() {
     })),
   ]
   const visiblePolicies = policyTab === "agent"
-    ? policies.filter(p => !p.pack_id && (!p.persona || p.persona === "agent"))
+    ? policies.filter(p => !p.persona || p.persona === "agent")
     : policyTab === "proxy"
-    ? policies.filter(p => !p.pack_id && p.persona === "proxy")
+    ? policies.filter(p => p.persona === "proxy")
     : policies.filter(p => p.pack_id === policyTab)
 
   const latestUpdated = policies
