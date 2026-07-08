@@ -1291,7 +1291,7 @@ function GuardDashboard() {
           {filteredEvents.length > 5 && (
             <div style={{ display: "flex", justifyContent: "center", paddingTop: 14, paddingBottom: 6 }}>
               <a
-                href="/guard/activity"
+                href="/theguard/activity"
                 style={{ fontSize: 13, fontWeight: 500, color: "var(--accent-text)", textDecoration: "none" }}
               >
                 View all {filteredEvents.length} events →
@@ -1410,7 +1410,7 @@ function GuardDashboard() {
         <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
           <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Recent sessions</span>
-            <a href="/guard/activity" style={{ fontSize: 11, color: "var(--accent-text)", textDecoration: "none" }}>View all →</a>
+            <a href="/theguard/activity" style={{ fontSize: 11, color: "var(--accent-text)", textDecoration: "none" }}>View all →</a>
           </div>
           {recentSessions.length === 0 ? (
             <div style={{ padding: 24, color: "var(--text-3)", fontSize: 13 }}>No sessions yet</div>

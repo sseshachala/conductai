@@ -97,16 +97,20 @@ const Icons = {
 
 function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/dashboard')) return ['Dashboard']
-  if (pathname.startsWith('/guard/spend')) return ['Guard', 'Spend']
-  if (pathname.startsWith('/guard/policies')) return ['Guard', 'Policies']
-  if (pathname.startsWith('/guard/discovery')) return ['Guard', 'Discovery']
-  if (pathname.startsWith('/guard/activity')) return ['Guard', 'Activity']
-  if (pathname.startsWith('/guard/settings')) return ['Guard', 'Settings']
+  if (pathname.startsWith('/theguard/spend')) return ['Guard', 'Spend']
+  if (pathname.startsWith('/theguard/policies')) return ['Guard', 'Policies']
+  if (pathname.startsWith('/theguard/discovery')) return ['Guard', 'Discovery']
+  if (pathname.startsWith('/theguard/activity')) return ['Guard', 'Activity']
+  if (pathname.startsWith('/theguard/settings')) return ['Guard', 'Settings']
   if (pathname.startsWith('/governance')) return ['Governance']
-  if (pathname.startsWith('/guard')) return ['Guard', 'Overview']
+  if (pathname.startsWith('/theguard')) return ['Guard', 'Overview']
   if (pathname.startsWith('/settings')) return ['Settings']
   if (pathname.startsWith('/marketplace')) return ['Marketplace']
   if (pathname.startsWith('/playbooks')) return ['Automations']
+  if (pathname.startsWith('/logs/guard')) return ['Logs', 'Guard']
+  if (pathname.startsWith('/logs/runs')) return ['Logs', 'Runs']
+  if (pathname.startsWith('/logs/observability')) return ['Logs', 'Observability']
+  if (pathname.startsWith('/logs')) return ['Logs']
   if (pathname.startsWith('/runs')) return ['Runs']
   if (pathname.startsWith('/observability')) return ['Observability']
   if (pathname.startsWith('/eval')) return ['Quality']
@@ -134,11 +138,11 @@ const PALETTE_COMMANDS = [
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
   { group: "GOVERN", label: "Governance", href: "/governance", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Overview", href: "/guard", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Spend", href: "/guard/spend", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Policies", href: "/guard/policies", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Discovery", href: "/guard/discovery", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Activity", href: "/guard/activity", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Overview", href: "/theguard", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Spend", href: "/theguard/spend", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Policies", href: "/theguard/policies", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Discovery", href: "/theguard/discovery", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Activity", href: "/theguard/activity", icon: "Shield" as const },
   { group: "WORKSPACE", label: "Integrations", href: "/integrations", icon: "Gear" as const },
   { group: "WORKSPACE", label: "Agent ID", href: "/agent-identity", icon: "Gear" as const },
   { group: "WORKSPACE", label: "Settings · Environments", href: "/settings", icon: "Gear" as const },
@@ -775,22 +779,23 @@ function AppShellInnerContent({
                 collapsed={collapsed}
               />
               <SideNavItem
-                href="/guard"
+                href="/theguard"
                 label="Guard"
                 icon={<Icons.Shield />}
-                active={pathname.startsWith("/guard")}
+                active={pathname.startsWith("/theguard")}
                 collapsed={collapsed}
               />
-              {/* Guard sub-nav — auto-expand when on any /guard route */}
-              {pathname.startsWith("/guard") && !collapsed && (
+              {/* Guard sub-nav — auto-expand when on any /theguard route */}
+              {pathname.startsWith("/theguard") && !collapsed && (
                 <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
-                    { label: "Overview",    href: "/guard" },
-                    { label: "Policies",    href: "/guard/policies" },
-                    { label: "Team Memory", href: "/guard/team-memory" },
-                    { label: "Settings",    href: "/guard/settings", adminOnly: true },
+                    { label: "Overview",    href: "/theguard" },
+                    { label: "Policies",    href: "/theguard/policies" },
+                    { label: "Team Memory", href: "/theguard/team-memory" },
+                    { label: "Activity",    href: "/logs/guard" },
+                    { label: "Settings",    href: "/theguard/settings", adminOnly: true },
                   ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
-                    const subActive = sub.href === "/guard" ? pathname === "/guard" : pathname.startsWith(sub.href)
+                    const subActive = sub.href === "/theguard" ? pathname === "/theguard" : pathname.startsWith(sub.href)
                     return (
                       <Link
                         key={sub.href}
@@ -955,27 +960,43 @@ function AppShellInnerContent({
             )}
             {collapsed && <div style={{ borderTop: "1px solid var(--border)", margin: "6px 0" }} />}
             <SideNavItem
-              href="/logs"
+              href="/logs/guard"
               label="Logs"
               icon={<Icons.Pulse />}
-              active={pathname.startsWith("/logs")}
+              active={pathname.startsWith("/logs") || pathname.startsWith("/runs") || pathname.startsWith("/observability")}
               collapsed={collapsed}
             />
-            <SideNavItem
-              href="/runs"
-              label="Runs"
-              icon={<Icons.Pulse />}
-              active={pathname.startsWith("/runs")}
-              collapsed={collapsed}
-              badge={activeRunsCount}
-            />
-            <SideNavItem
-              href="/observability"
-              label="Observability"
-              icon={<Icons.Eye />}
-              active={pathname.startsWith("/observability")}
-              collapsed={collapsed}
-            />
+            {(pathname.startsWith("/logs") || pathname.startsWith("/runs") || pathname.startsWith("/observability")) && !collapsed && (
+              <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+                {[
+                  { label: "Guard", href: "/logs/guard" },
+                  { label: "Runs", href: "/logs/runs" },
+                  { label: "Observability", href: "/logs/observability" },
+                ].map(sub => {
+                  const subActive = pathname.startsWith(sub.href)
+                  return (
+                    <Link
+                      key={sub.href}
+                      href={sub.href}
+                      style={{
+                        display: "block",
+                        padding: "5px 10px",
+                        borderRadius: 7,
+                        fontSize: 13,
+                        fontWeight: subActive ? 600 : 400,
+                        color: subActive ? "var(--accent-text)" : "var(--text-3)",
+                        background: subActive ? "var(--accent-weak)" : "transparent",
+                        textDecoration: "none",
+                      }}
+                      onMouseEnter={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
+                      onMouseLeave={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
+                    >
+                      {sub.label}
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
             <SideNavItem
               href="/eval"
               label="Quality"

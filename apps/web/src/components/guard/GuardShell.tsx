@@ -12,15 +12,15 @@ type TabDef = { href: string; label: string; roles?: GuardRole[] }
 
 // roles = undefined means visible to all; otherwise restrict to listed roles
 export const GUARD_TABS: TabDef[] = [
-  { href: "/guard",                 label: "Overview"        },
-  { href: "/guard/spend",           label: "Spend",           roles: ["admin"] },
-  { href: "/guard/policies",        label: "Policies"        },
-  { href: "/guard/activity",        label: "Activity"        },
-  { href: "/guard/discovery",       label: "Discovery"       },
-  { href: "/governance",            label: "Compliance",      roles: ["admin", "security"] },
-  { href: "/guard/session-reports", label: "Session Reports", roles: ["admin"] },
-  { href: "/guard/team-memory",     label: "Team Memory",     roles: ["admin"] },
-  { href: "/guard/settings",        label: "Settings",        roles: ["admin"] },
+  { href: "/theguard",                 label: "Overview"        },
+  { href: "/theguard/spend",           label: "Spend",           roles: ["admin"] },
+  { href: "/theguard/policies",        label: "Policies"        },
+  { href: "/theguard/activity",        label: "Flight Recorder" },
+  { href: "/theguard/discovery",       label: "Discovery"       },
+  { href: "/governance",               label: "Compliance",      roles: ["admin", "security"] },
+  { href: "/theguard/session-reports", label: "Session Reports", roles: ["admin"] },
+  { href: "/theguard/team-memory",     label: "Team Memory",     roles: ["admin"] },
+  { href: "/theguard/settings",        label: "Settings",        roles: ["admin"] },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -130,8 +130,8 @@ export function GuardShell({
       {/* Tab nav */}
       <div className="guard-tab-nav">
         {visibleTabs.map(tab => {
-          const isActive = tab.href === "/guard"
-            ? pathname === "/guard"
+          const isActive = tab.href === "/theguard"
+            ? pathname === "/theguard"
             : pathname?.startsWith(tab.href)
           return (
             <Link

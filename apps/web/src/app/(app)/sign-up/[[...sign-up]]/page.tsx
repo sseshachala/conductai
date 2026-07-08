@@ -6,7 +6,7 @@ export default function SignUpPage() {
       <div className="space-y-4 text-center">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-stone-900">Conduct</h1>
-          <p className="text-sm text-stone-500 mt-1">AI agent orchestration for engineering teams</p>
+          <p className="text-sm text-stone-500 mt-1">Runtime AI governance for engineering teams</p>
         </div>
         <SignUp />
       </div>

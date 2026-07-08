@@ -161,7 +161,7 @@ function TwoToolSection() {
             <li><span className="text-emerald-400">$</span> booster serve</li>
             <li><span className="text-emerald-400">$</span> booster gain</li>
           </ul>
-          <p className="mt-4 text-xs text-stone-400 font-mono">pip install agent-booster[embed]</p>
+
         </div>
       </div>
 
@@ -316,12 +316,7 @@ function DiagnosticHero() {
 
   return (
     <section className="flex flex-col items-center px-6 pt-16 pb-24">
-      {/* Badge */}
-      <div className="flex items-center gap-2 mb-8">
-        <span className="text-indigo-400 font-black text-lg">◈</span>
-        <span className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Agent Booster v0.6.4</span>
-        <span className="text-[10px] font-bold bg-emerald-900 text-emerald-300 border border-emerald-700 px-2 py-0.5 rounded-full uppercase tracking-widest">Free · MIT</span>
-      </div>
+
 
       {/* Chat window */}
       <div className="w-full max-w-2xl rounded-2xl bg-stone-950 border border-stone-800 overflow-hidden shadow-xl">
@@ -358,8 +353,8 @@ function DiagnosticHero() {
       {done && (
         <div className="mt-8 flex flex-col sm:flex-row items-center gap-4">
           <div className="flex items-center rounded-xl bg-stone-950 border border-stone-800 px-5 py-3">
-            <code className="font-mono text-sm text-emerald-400">pip install agent-booster[full]</code>
-            <CopyButton text="pip install 'agent-booster[full]'" />
+            <code className="font-mono text-sm text-emerald-400">pip install conduct-cli</code>
+            <CopyButton text="pip install conduct-cli" />
           </div>
           <a
             href="https://github.com/sseshachala/conduct-cli"
@@ -579,11 +574,7 @@ function QuickstartSection() {
             <InlineCodeBlock comment="platform CLI, run agents, manage workspaces, enforce policies">pip install conduct-cli</InlineCodeBlock>
           </div>
           <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2. Install Agent Booster</p>
-            <InlineCodeBlock comment="token savings companion, includes embeddings + file watcher">pip install agent-booster[full]</InlineCodeBlock>
-          </div>
-          <div>
-            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 3. Start</p>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Step 2. Start</p>
             <InlineCodeBlock comment="detects Claude/Cursor/Codex, wires hooks, indexes, starts daemon">booster start</InlineCodeBlock>
             <p className="mt-2 text-xs text-stone-400">Detects which AI tools are present (Claude Code, Cursor, Windsurf, Codex), wires each one automatically, indexes the project, and starts a background daemon. Fully reversible with <code className="font-mono bg-stone-100 px-1 rounded text-stone-600">booster remove claude</code>.</p>
           </div>
@@ -932,7 +923,7 @@ function GuardInsightsCallout() {
 
         <div className="text-center">
           <a
-            href="/guard/insights"
+            href="/guard"
             className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
           >
             Open Guard Insights &rarr;

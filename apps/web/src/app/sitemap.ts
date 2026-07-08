@@ -4,8 +4,12 @@ const SITE = "https://conductai.ai"
 
 const staticRoutes: Array<{ path: string; priority: number; changeFrequency: "daily" | "weekly" | "monthly" }> = [
   { path: "/", priority: 1.0, changeFrequency: "weekly" },
-  { path: "/guard-landing", priority: 0.9, changeFrequency: "weekly" },
+  { path: "/guard", priority: 0.9, changeFrequency: "weekly" },
   { path: "/solutions", priority: 0.8, changeFrequency: "monthly" },
+  { path: "/solutions/engineering-leaders", priority: 0.8, changeFrequency: "monthly" },
+  { path: "/solutions/security-compliance", priority: 0.8, changeFrequency: "monthly" },
+  { path: "/registry", priority: 0.8, changeFrequency: "weekly" },
+  { path: "/open-source", priority: 0.7, changeFrequency: "monthly" },
   { path: "/playbooks", priority: 0.8, changeFrequency: "weekly" },
   { path: "/marketplace", priority: 0.7, changeFrequency: "weekly" },
   { path: "/sdd", priority: 0.7, changeFrequency: "monthly" },

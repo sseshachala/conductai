@@ -112,7 +112,7 @@ function SessionReportDetailContent() {
       {/* Back link */}
       <div style={{ marginBottom: 16 }}>
         <Link
-          href="/guard/session-reports"
+          href="/theguard/session-reports"
           style={{ fontSize: 13, color: "var(--text-3)", textDecoration: "none" }}
         >
           ← Session Reports

@@ -151,7 +151,7 @@ function ConductGuardModule() {
       {/* Installed state */}
       {isInstalled && config && (
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-          <Link href="/guard" className="btn btn-ghost btn-sm" style={{ color: "var(--accent-text)" }}>
+          <Link href="/theguard" className="btn btn-ghost btn-sm" style={{ color: "var(--accent-text)" }}>
             Go to Guard dashboard →
           </Link>
         </div>
