@@ -414,6 +414,8 @@ def _extract_token(request: Request, query_token: str | None) -> str | None:
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         return auth[7:].strip() or None
+    if auth:  # bare token (e.g. Smithery sends Authorization: <token> without Bearer prefix)
+        return auth.strip() or None
     if query_token:
         # Deprecation signal — every URL-token request is logged so we can track
         # when it's safe to drop the fallback.
