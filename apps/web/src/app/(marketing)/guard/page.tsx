@@ -230,16 +230,16 @@ function ProxySection() {
         <div className="grid md:grid-cols-2 gap-10 items-start">
 
           {/* Code block */}
-          <div className="rounded-xl bg-stone-950 p-6 font-mono text-sm leading-relaxed">
+          <div className="rounded-xl bg-stone-950 p-6 font-mono text-sm leading-relaxed overflow-x-auto">
             <p className="text-stone-500 text-xs mb-4 uppercase tracking-widest">Before</p>
-            <p className="text-stone-400">ANTHROPIC_BASE_URL=<span className="text-rose-400">https://api.anthropic.com</span></p>
-            <p className="text-stone-400 mt-1">OPENAI_BASE_URL=<span className="text-rose-400">https://api.openai.com/v1</span></p>
+            <p className="text-stone-400 break-all">ANTHROPIC_BASE_URL=<span className="text-rose-400">https://api.anthropic.com</span></p>
+            <p className="text-stone-400 mt-1 break-all">OPENAI_BASE_URL=<span className="text-rose-400">https://api.openai.com/v1</span></p>
 
             <div className="border-t border-stone-800 my-5" />
 
             <p className="text-stone-500 text-xs mb-4 uppercase tracking-widest">After</p>
-            <p className="text-stone-300">ANTHROPIC_BASE_URL=<span className="text-indigo-400">https://api.conductai.ai/proxy/anthropic</span></p>
-            <p className="text-stone-300 mt-1">OPENAI_BASE_URL=<span className="text-indigo-400">https://api.conductai.ai/proxy/openai/v1</span></p>
+            <p className="text-stone-300 break-all">ANTHROPIC_BASE_URL=<span className="text-indigo-400">https://api.conductai.ai/proxy/anthropic</span></p>
+            <p className="text-stone-300 mt-1 break-all">OPENAI_BASE_URL=<span className="text-indigo-400">https://api.conductai.ai/proxy/openai/v1</span></p>
 
             <div className="border-t border-stone-800 my-5" />
             <p className="text-stone-500 text-xs">Or run <span className="text-indigo-300">conduct guard sync</span> to apply automatically.</p>
