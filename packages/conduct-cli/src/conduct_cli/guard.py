@@ -2508,144 +2508,102 @@ def _map_owasp(rule_id: str) -> tuple[str, str]:
     return _OWASP_UNKNOWN
 
 
+_GRADE_COLORS = {"A": "\033[32m", "B": "\033[32m", "C": "\033[33m", "D": "\033[33m", "F": "\033[31m"}
+_GRADE_ORDER  = ["A", "B", "C", "D", "F"]
+
+
+def _grade_below(actual: str, minimum: str) -> bool:
+    return _GRADE_ORDER.index(actual) > _GRADE_ORDER.index(minimum.upper())
+
+
 def cmd_verify(args) -> None:
-    """conduct verify — map guard audit events to OWASP Agentic Top 10; exit non-zero in CI."""
+    """conduct verify — governance grade + OWASP Agentic Top 10 coverage."""
     import json as _json
-    import datetime as _dt
 
-    evidence_path = getattr(args, "evidence", None)
-    strict        = getattr(args, "strict", False)
-    fmt           = getattr(args, "format", "text")
-    since_str     = getattr(args, "since", None) or "24h"
+    evidence_out = getattr(args, "evidence", None)
+    badge        = getattr(args, "badge", False)
+    min_grade    = getattr(args, "min_grade", None)
+    strict       = getattr(args, "strict", False)
+    fmt          = getattr(args, "format", "text")
 
-    # ── load events ──────────────────────────────────────────────────────────
-    if evidence_path:
-        try:
-            raw = _json.loads(Path(evidence_path).read_text())
-        except FileNotFoundError:
-            print(f"{RED}✗ File not found: {evidence_path}{RESET}", file=sys.stderr)
-            sys.exit(2)
-        except _json.JSONDecodeError as exc:
-            print(f"{RED}✗ Invalid JSON: {exc}{RESET}", file=sys.stderr)
-            sys.exit(2)
-        events = raw if isinstance(raw, list) else raw.get("events", [])
-    else:
-        cfg          = _require_guard_config()
-        workspace_id = cfg.get("workspace_id")
-        user_email   = cfg.get("user_email", "")
-        api_key      = cfg.get("api_key", "")
-        base_url     = _api_url(cfg)
-        since_iso    = _parse_since(since_str)
-        resp = _req(
-            "GET",
-            (
-                f"{base_url}/guard/events"
-                f"?workspace_id={workspace_id}"
-                f"&user_email={user_email}"
-                f"&since={since_iso}"
-                f"&limit=200"
-            ),
-            api_key=api_key,
-        )
-        events = resp if isinstance(resp, list) else resp.get("events", [])
+    cfg          = _require_guard_config()
+    workspace_id = cfg.get("workspace_id")
+    api_key      = cfg.get("api_key", "")
+    base_url     = _api_url(cfg)
 
-    if not events:
-        if fmt == "json":
-            print(_json.dumps({"status": "pass", "violations": 0, "findings": []}, indent=2))
-        else:
-            print(f"{GREEN}✓ No guard events found — nothing to verify.{RESET}")
+    # ── fetch evidence from API ───────────────────────────────────────────────
+    ev = _req(
+        "GET",
+        f"{base_url}/guard/verify/evidence?workspace_id={workspace_id}",
+        api_key=api_key,
+    )
+
+    grade        = ev.get("grade", "F")
+    coverage_pct = ev.get("coverage_pct", 0)
+    score        = ev.get("score", 0)
+    blocked_24h  = ev.get("blocked_24h", 0)
+    controls     = ev.get("controls", [])
+    generated_at = ev.get("generated_at", "")
+
+    # ── --badge ───────────────────────────────────────────────────────────────
+    if badge:
+        color = {"A": "brightgreen", "B": "green", "C": "yellow", "D": "orange", "F": "red"}.get(grade, "lightgrey")
+        print(f"![Conduct Guard](https://img.shields.io/badge/Guard-Grade_{grade}-{color})")
         return
 
-    # ── classify ──────────────────────────────────────────────────────────────
-    findings: list[dict] = []
-    for ev in events:
-        decision = ev.get("decision", "allowed")
-        rule_id  = ev.get("rule_id") or ev.get("rule_message") or ""
-        owasp_code, owasp_title = _map_owasp(rule_id)
-        findings.append({
-            "timestamp":   (ev.get("ts") or ev.get("timestamp") or ev.get("created_at") or "")[:19].replace("T", " ") or "—",
-            "tool":        ev.get("ai_tool") or "—",
-            "action":      (ev.get("tool_call") or "—")[:40],
-            "decision":    decision,
-            "rule_id":     rule_id or "—",
-            "owasp":       owasp_code,
-            "owasp_title": owasp_title,
-            "entry_hash":  (ev.get("entry_hash") or "")[:12] or None,
-            "policy_hash": (ev.get("policy_hash") or "")[:12] or None,
-        })
-
-    blocked_count = sum(1 for f in findings if f["decision"] == "blocked")
-    warned_count  = sum(1 for f in findings if f["decision"] == "warned")
-    total         = len(findings)
-
-    owasp_counts: dict[str, int] = {}
-    for f in findings:
-        if f["decision"] in ("blocked", "warned"):
-            owasp_counts[f["owasp"]] = owasp_counts.get(f["owasp"], 0) + 1
-
-    # ── output ───────────────────────────────────────────────────────────────
-    if fmt == "json":
-        out = {
-            "status":             "fail" if (strict and blocked_count) else "pass",
-            "generated_at":       _dt.datetime.utcnow().isoformat() + "Z",
-            "summary":            {"total": total, "blocked": blocked_count, "warned": warned_count},
-            "owasp_distribution": owasp_counts,
-            "findings":           findings,
+    # ── --evidence (write artifact) ───────────────────────────────────────────
+    if evidence_out:
+        artifact = {
+            "grade":        grade,
+            "coverage_pct": coverage_pct,
+            "score":        score,
+            "blocked_24h":  blocked_24h,
+            "controls":     controls,
+            "generated_at": generated_at,
+            "workspace_id": workspace_id,
         }
-        print(_json.dumps(out, indent=2))
+        Path(evidence_out).write_text(_json.dumps(artifact, indent=2))
+        print(f"{GREEN}✓ Evidence artifact written to {evidence_out}{RESET}")
+
+    # ── output ────────────────────────────────────────────────────────────────
+    if fmt == "json":
+        print(_json.dumps(ev, indent=2))
     else:
+        grade_color = _GRADE_COLORS.get(grade, GRAY)
         print()
-        print(f"{BOLD}conduct verify — OWASP Agentic Top 10 Report{RESET}")
-        print("─" * 78)
-
-        if owasp_counts:
-            print(f"\n{BOLD}OWASP Distribution{RESET}")
-            for _kws, code, title in _OWASP_MAP:
-                count = owasp_counts.get(code, 0)
-                if count:
-                    bar   = "█" * min(count, 20)
-                    label = f"{code}: {title}"
-                    print(f"  {label:<40} {RED}{bar} {count}{RESET}")
-            unk = owasp_counts.get("A??", 0)
-            if unk:
-                print(f"  {'A??: Uncategorised':<40} {GRAY}{'█' * min(unk, 20)} {unk}{RESET}")
-
-        print(f"\n{BOLD}{'Timestamp':<20} {'Tool':<14} {'Decision':<10} {'OWASP':<5} Rule{RESET}")
-        print("─" * 78)
-        for f in findings:
-            if f["decision"] == "blocked":
-                dec_col = f"{RED}blocked{RESET}"
-            elif f["decision"] == "warned":
-                dec_col = f"{YELLOW}warned{RESET}"
-            elif f["decision"] == "audited":
-                dec_col = f"{BLUE}audited{RESET}"
+        print(f"{BOLD}conduct verify — Governance Grade{RESET}")
+        print("─" * 60)
+        print(f"\n  Grade:    {grade_color}{BOLD}{grade}{RESET}  (score {score}/100)")
+        print(f"  Coverage: {coverage_pct}% of OWASP ASI controls active")
+        print(f"  Blocked (24h): {blocked_24h}")
+        print()
+        print(f"{BOLD}  {'Control':<8} {'Status':<10} Name{RESET}")
+        print("  " + "─" * 56)
+        for c in controls:
+            status = c.get("status", "missing")
+            if status == "active":
+                sc = f"{GREEN}active   {RESET}"
+            elif status == "partial":
+                sc = f"{YELLOW}partial  {RESET}"
             else:
-                dec_col = f"{GRAY}{f['decision']}{RESET}"
-            chain_note = f"  {GRAY}chain:{f['entry_hash']}{RESET}" if f["entry_hash"] else ""
-            print(
-                f"  {f['timestamp']:<20} {f['tool']:<14} {dec_col:<10} "
-                f"{f['owasp']:<5} {f['rule_id']}{chain_note}"
-            )
-
-        print()
-        if blocked_count:
-            status_icon  = f"{RED}✗{RESET}"
-            status_label = f"{RED}FAIL{RESET}" if strict else f"{YELLOW}WARN{RESET}"
-        else:
-            status_icon  = f"{GREEN}✓{RESET}"
-            status_label = f"{GREEN}PASS{RESET}"
-
-        print(
-            f"  {status_icon} {status_label}  "
-            f"{total} events  ·  "
-            f"{RED if blocked_count else GRAY}{blocked_count} blocked{RESET}  ·  "
-            f"{YELLOW if warned_count else GRAY}{warned_count} warned{RESET}"
-        )
-        if strict and blocked_count:
-            print(f"\n  {RED}Strict mode: non-zero exit — {blocked_count} blocked event(s).{RESET}")
+                sc = f"{RED}missing  {RESET}"
+            print(f"  {c.get('id',''):<8} {sc} {c.get('name','')}")
         print()
 
-    if strict and blocked_count:
+        # CI checks
+        failed = False
+        if strict and blocked_24h > 0:
+            print(f"  {RED}✗ Strict mode: {blocked_24h} blocked event(s) in last 24h.{RESET}")
+            failed = True
+        if min_grade and _grade_below(grade, min_grade):
+            print(f"  {RED}✗ Grade {grade} is below minimum {min_grade.upper()}.{RESET}")
+            failed = True
+        if not failed:
+            print(f"  {GREEN}✓ PASS{RESET}")
+        print()
+
+    # ── exit codes ────────────────────────────────────────────────────────────
+    if (strict and blocked_24h > 0) or (min_grade and _grade_below(grade, min_grade)):
         sys.exit(1)
 
 

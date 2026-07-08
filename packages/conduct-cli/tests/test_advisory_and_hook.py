@@ -425,35 +425,42 @@ class TestOWASPMapping:
         assert self._map("") == "A??"
 
 
-_EVIDENCE_BLOCKED = [
-    {"timestamp": "2026-07-06T10:00:00", "ai_tool": "Claude",
-     "tool_call": "Bash", "decision": "blocked",
-     "rule_id": "excessive_agency_shell",
-     "entry_hash": "abc123def456", "policy_hash": "pol789"},
+_MOCK_CONTROLS = [
+    {"id": f"ASI-0{i}", "name": f"Control {i}", "status": "active", "control": "desc"}
+    for i in range(1, 11)
 ]
 
-_EVIDENCE_WARN_ONLY = [
-    {"timestamp": "2026-07-06T10:01:00", "ai_tool": "Claude",
-     "tool_call": "Read", "decision": "warned",
-     "rule_id": "sensitive_data_read"},
-]
+_MOCK_EVIDENCE_PASS = {
+    "grade": "B", "coverage_pct": 60, "score": 70,
+    "blocked_24h": 0, "events_24h": 5,
+    "controls": _MOCK_CONTROLS,
+    "generated_at": "2026-07-07T10:00:00+00:00",
+    "workspace_id": "test-ws-id",
+}
 
-_EVIDENCE_CLEAN = [
-    {"timestamp": "2026-07-06T10:02:00", "ai_tool": "Claude",
-     "tool_call": "Bash", "decision": "allowed", "rule_id": None},
-]
+_MOCK_EVIDENCE_BLOCKED = {**_MOCK_EVIDENCE_PASS, "blocked_24h": 3}
+_MOCK_EVIDENCE_FAIL    = {**_MOCK_EVIDENCE_PASS, "grade": "F", "score": 10, "coverage_pct": 20}
 
 
 class TestVerifyCommand:
-    def _run(self, args_list: list[str], capsys) -> int:
+    def _run(self, args_list: list[str], capsys, monkeypatch, api_response=None) -> int:
         import argparse
+        import conduct_cli.guard as _g
         from conduct_cli.guard import cmd_verify
 
+        monkeypatch.setattr(_g, "_require_guard_config", lambda: {
+            "workspace_id": "test-ws-id", "api_key": "k", "api_url": "https://api.test",
+        })
+        monkeypatch.setattr(_g, "_api_url", lambda cfg: "https://api.test")
+        monkeypatch.setattr(_g, "_req", lambda *a, **kw: api_response or _MOCK_EVIDENCE_PASS)
+
         parser = argparse.ArgumentParser()
-        parser.add_argument("--evidence", default=None)
-        parser.add_argument("--strict", action="store_true")
-        parser.add_argument("--format", default="text")
-        parser.add_argument("--since", default="24h")
+        parser.add_argument("--evidence",  default=None)
+        parser.add_argument("--badge",     action="store_true")
+        parser.add_argument("--min-grade", dest="min_grade", default=None)
+        parser.add_argument("--strict",    action="store_true")
+        parser.add_argument("--format",    default="text")
+        parser.add_argument("--since",     default="24h")
         args = parser.parse_args(args_list)
 
         try:
@@ -462,89 +469,61 @@ class TestVerifyCommand:
         except SystemExit as exc:
             return int(exc.code) if exc.code is not None else 0
 
-    def test_clean_evidence_exits_0(self, tmp_path, capsys):
-        f = tmp_path / "ev.json"
-        f.write_text(__import__("json").dumps(_EVIDENCE_CLEAN))
-        code = self._run(["--evidence", str(f)], capsys)
+    def test_pass_grade_exits_0(self, capsys, monkeypatch):
+        code = self._run([], capsys, monkeypatch)
         assert code == 0
 
-    def test_blocked_without_strict_exits_0(self, tmp_path, capsys):
-        f = tmp_path / "ev.json"
-        f.write_text(__import__("json").dumps(_EVIDENCE_BLOCKED))
-        code = self._run(["--evidence", str(f)], capsys)
+    def test_blocked_without_strict_exits_0(self, capsys, monkeypatch):
+        code = self._run(["--strict"], capsys, monkeypatch, api_response=_MOCK_EVIDENCE_PASS)
         assert code == 0
 
-    def test_blocked_with_strict_exits_1(self, tmp_path, capsys):
-        f = tmp_path / "ev.json"
-        f.write_text(__import__("json").dumps(_EVIDENCE_BLOCKED))
-        code = self._run(["--evidence", str(f), "--strict"], capsys)
+    def test_strict_exits_1_when_blocked(self, capsys, monkeypatch):
+        code = self._run(["--strict"], capsys, monkeypatch, api_response=_MOCK_EVIDENCE_BLOCKED)
         assert code == 1
 
-    def test_warn_only_with_strict_exits_0(self, tmp_path, capsys):
-        f = tmp_path / "ev.json"
-        f.write_text(__import__("json").dumps(_EVIDENCE_WARN_ONLY))
-        code = self._run(["--evidence", str(f), "--strict"], capsys)
+    def test_min_grade_pass(self, capsys, monkeypatch):
+        code = self._run(["--min-grade", "C"], capsys, monkeypatch, api_response=_MOCK_EVIDENCE_PASS)
         assert code == 0
 
-    def test_missing_file_exits_2(self, tmp_path, capsys):
-        code = self._run(["--evidence", str(tmp_path / "missing.json")], capsys)
-        assert code == 2
+    def test_min_grade_fail(self, capsys, monkeypatch):
+        code = self._run(["--min-grade", "A"], capsys, monkeypatch, api_response=_MOCK_EVIDENCE_PASS)
+        assert code == 1
 
-    def test_invalid_json_exits_2(self, tmp_path, capsys):
-        f = tmp_path / "bad.json"
-        f.write_text("not valid {{{")
-        code = self._run(["--evidence", str(f)], capsys)
-        assert code == 2
+    def test_fail_grade_below_min(self, capsys, monkeypatch):
+        code = self._run(["--min-grade", "B"], capsys, monkeypatch, api_response=_MOCK_EVIDENCE_FAIL)
+        assert code == 1
 
-    def test_empty_array_no_error(self, tmp_path, capsys):
-        f = tmp_path / "empty.json"
-        f.write_text("[]")
-        code = self._run(["--evidence", str(f)], capsys)
-        assert code == 0
+    def test_badge_output(self, capsys, monkeypatch):
+        self._run(["--badge"], capsys, monkeypatch)
         out = capsys.readouterr().out
-        assert "nothing to verify" in out.lower() or "no guard events" in out.lower()
+        assert "img.shields.io" in out
+        assert "Grade_B" in out
 
-    def test_json_format_status_fail_when_strict_and_blocked(self, tmp_path, capsys):
+    def test_evidence_writes_file(self, tmp_path, capsys, monkeypatch):
         import json
-        f = tmp_path / "ev.json"
-        f.write_text(json.dumps(_EVIDENCE_BLOCKED))
-        self._run(["--evidence", str(f), "--strict", "--format", "json"], capsys)
+        out_file = tmp_path / "evidence.json"
+        self._run(["--evidence", str(out_file)], capsys, monkeypatch)
+        data = json.loads(out_file.read_text())
+        assert data["grade"] == "B"
+        assert "controls" in data
+
+    def test_json_format_output(self, capsys, monkeypatch):
+        import json
+        self._run(["--format", "json"], capsys, monkeypatch)
         out = capsys.readouterr().out
         data = json.loads(out)
-        assert data["status"] == "fail"
-        assert data["summary"]["blocked"] == 1
+        assert data["grade"] == "B"
 
-    def test_json_format_status_pass_without_strict(self, tmp_path, capsys):
-        import json
-        f = tmp_path / "ev.json"
-        f.write_text(json.dumps(_EVIDENCE_BLOCKED))
-        self._run(["--evidence", str(f), "--format", "json"], capsys)
+    def test_grade_shown_in_text_output(self, capsys, monkeypatch):
+        self._run([], capsys, monkeypatch)
         out = capsys.readouterr().out
-        data = json.loads(out)
-        assert data["status"] == "pass"
+        assert "Grade" in out
+        assert "B" in out
 
-    def test_chain_hash_appears_in_text_output(self, tmp_path, capsys):
-        f = tmp_path / "ev.json"
-        f.write_text(__import__("json").dumps(_EVIDENCE_BLOCKED))
-        self._run(["--evidence", str(f)], capsys)
+    def test_controls_listed_in_text_output(self, capsys, monkeypatch):
+        self._run([], capsys, monkeypatch)
         out = capsys.readouterr().out
-        assert "chain:abc123def456" in out
-
-    def test_owasp_distribution_shown(self, tmp_path, capsys):
-        f = tmp_path / "ev.json"
-        f.write_text(__import__("json").dumps(_EVIDENCE_BLOCKED + _EVIDENCE_WARN_ONLY))
-        self._run(["--evidence", str(f)], capsys)
-        out = capsys.readouterr().out
-        assert "A04" in out
-        assert "A02" in out
-
-    def test_envelope_json_input(self, tmp_path, capsys):
-        """Accept {'events': [...]} envelope as well as raw array."""
-        import json
-        f = tmp_path / "ev.json"
-        f.write_text(json.dumps({"events": _EVIDENCE_CLEAN}))
-        code = self._run(["--evidence", str(f)], capsys)
-        assert code == 0
+        assert "ASI-01" in out
 
 
 # ── invalid stdin ─────────────────────────────────────────────────────────────
