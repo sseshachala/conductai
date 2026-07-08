@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
@@ -76,6 +76,15 @@ interface KpiValue {
   value: number
   avg_7d: number | null
   delta_pct: number | null
+}
+
+interface ChainVerifyOut {
+  valid: boolean
+  events_checked: number
+  broken_at: string | null
+  first_event: string | null
+  last_event: string | null
+  verified_at: string
 }
 
 interface KpisOut {
@@ -268,6 +277,8 @@ export default function GovernancePage() {
   // Live auto-refresh — Phase 1B governance polling
   const [tick, setTick] = useState(0)
   const [lastFetched, setLastFetched] = useState<Date | null>(null)
+  const [chain, setChain] = useState<ChainVerifyOut | null>(null)
+  const [chainLoading, setChainLoading] = useState(false)
 
   // 60s auto-refresh — bumps tick which triggers the data useEffects below
   useEffect(() => {
@@ -360,6 +371,21 @@ export default function GovernancePage() {
     load()
     return () => { cancelled = true }
   }, [workspaceId, getToken, activeFramework, activeControl])
+
+  const verifyChain = useCallback(async () => {
+    if (!workspaceId) return
+    setChainLoading(true)
+    try {
+      const token = await getToken()
+      const headers: Record<string, string> = {}
+      if (token) headers["Authorization"] = `Bearer ${token}`
+      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const res = await fetch(`${base}/guard/verify/chain?workspace_id=${workspaceId}`, { headers })
+      if (res.ok) setChain(await res.json())
+    } finally {
+      setChainLoading(false)
+    }
+  }, [workspaceId, getToken])
 
   const allFwRows: (FrameworkRow | BonusFrameworkRow)[] =
     frameworks ? [...frameworks.installed, ...frameworks.bonus] : []
@@ -942,6 +968,38 @@ export default function GovernancePage() {
               ))}
             </>
           )}
+        </section>
+        {/* Audit log integrity */}
+        <section style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 18, background: "var(--surface-1)", marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)", marginBottom: 4 }}>Audit log integrity</div>
+              {chain ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: chain.valid ? "var(--ok)" : "var(--err)", display: "inline-block", flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: chain.valid ? "var(--ok)" : "var(--err)" }}>
+                    {chain.valid ? "Chain intact" : "Chain broken"}
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--text-3)" }}>
+                    {chain.events_checked.toLocaleString()} events verified
+                    {chain.first_event && chain.last_event && (
+                      <> · {new Date(chain.first_event).toLocaleDateString()} – {new Date(chain.last_event).toLocaleDateString()}</>
+                    )}
+                  </span>
+                  {!chain.valid && chain.broken_at && (
+                    <span style={{ fontSize: 12, color: "var(--err)" }}>First broken link: {new Date(chain.broken_at).toLocaleString()}</span>
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                  SHA-256 chain links every audit event to the previous one. Click to confirm the log has not been altered.
+                </div>
+              )}
+            </div>
+            <button onClick={verifyChain} disabled={chainLoading} className="btn btn-sm" style={{ flexShrink: 0 }}>
+              {chainLoading ? "Verifying…" : chain ? "Re-verify" : "Verify integrity"}
+            </button>
+          </div>
         </section>
       </div>
     </AppShell>
