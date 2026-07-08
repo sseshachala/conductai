@@ -111,7 +111,31 @@ def journal_append(payload_str: str, api_url: str) -> None:
         pass
 
 
-_DAEMON_STALE_SECS = 300  # PID file not touched in 5 min → daemon is stale
+_DAEMON_STALE_SECS = 600       # PID file not touched in 10 min → daemon is stale
+_POLICY_REFRESH_INTERVAL = 30  # daemon refreshes policy.json every 30 s
+
+
+def _refresh_policy_from_api() -> None:
+    """Pull fresh policy from API and write to POLICY_PATH atomically."""
+    try:
+        cfg = load_config()
+        workspace_id = cfg.get("workspace_id")
+        api_key = cfg.get("api_key", "")
+        api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+        if not api_key:
+            return
+        url = f"{api_url}/guard/policies/sync"
+        if workspace_id:
+            url += f"?workspace_id={workspace_id}"
+        req = urllib.request.Request(url, headers={"X-Api-Key": api_key})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = resp.read()
+        POLICY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = POLICY_PATH.with_suffix(".tmp")
+        tmp.write_bytes(data)
+        tmp.rename(POLICY_PATH)
+    except Exception:
+        pass
 
 
 def drain_daemon_status() -> tuple[str, int | None]:
@@ -140,9 +164,16 @@ def ensure_drain_daemon(hook_module_path: Optional[Path] = None) -> None:
     (used in unit tests / debug mode where the daemon is not needed).
     """
     try:
-        status, _ = drain_daemon_status()
+        status, stale_pid = drain_daemon_status()
         if status == "running":
             return
+        # Kill stale process before spawning replacement — prevents double-drain race
+        if status == "stale" and stale_pid is not None:
+            import os as _os
+            try:
+                _os.kill(stale_pid, 15)  # SIGTERM
+            except Exception:
+                pass
         if hook_module_path is None:
             return
         subprocess.Popen(
@@ -164,6 +195,7 @@ def run_drain_daemon() -> None:
     except Exception:
         return
     empty_scans = 0
+    _last_policy_refresh = 0.0
     while empty_scans < 3:
         files = sorted(f for f in JOURNAL_DIR.glob("*.json") if f.name != "drain.pid")
         if not files:
@@ -209,6 +241,11 @@ def run_drain_daemon() -> None:
             JOURNAL_PID_PATH.touch()
         except Exception:
             pass
+        # Refresh policy on a short interval — collapses propagation window to 30 s
+        _now = time.time()
+        if _now - _last_policy_refresh >= _POLICY_REFRESH_INTERVAL:
+            _refresh_policy_from_api()
+            _last_policy_refresh = _now
     try:
         JOURNAL_PID_PATH.unlink(missing_ok=True)
     except Exception:
