@@ -195,18 +195,18 @@ const PACK_CATALOG = [
   },
 ]
 
-export default function MarketplacePage() {
+export default function RegistryPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  if (clerkEnabled) return <MarketplaceWithAuth />
-  return <MarketplaceContent getToken={null} />
+  if (clerkEnabled) return <RegistryWithAuth />
+  return <RegistryContent getToken={null} />
 }
 
-function MarketplaceWithAuth() {
+function RegistryWithAuth() {
   const { getToken } = useAuth()
-  return <MarketplaceContent getToken={getToken} />
+  return <RegistryContent getToken={getToken} />
 }
 
-function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const { activeWorkspace } = useWorkspace()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -558,7 +558,7 @@ function MarketplaceContent({ getToken }: { getToken: (() => Promise<string | nu
         {/* Page header */}
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", marginBottom: 5 }}>
-            Marketplace
+            Registry
           </h1>
         </div>
 

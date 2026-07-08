@@ -105,7 +105,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/governance')) return ['Governance']
   if (pathname.startsWith('/theguard')) return ['Guard', 'Overview']
   if (pathname.startsWith('/settings')) return ['Settings']
-  if (pathname.startsWith('/marketplace')) return ['Marketplace']
+  if (pathname.startsWith('/marketplace')) return ['Registry']
   if (pathname.startsWith('/playbooks')) return ['Automations']
   if (pathname.startsWith('/logs/guard')) return ['Logs', 'Guard']
   if (pathname.startsWith('/logs/runs')) return ['Logs', 'Runs']
@@ -134,7 +134,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
 const PALETTE_COMMANDS = [
   { group: "BUILD", label: "Projects", href: "/projects", icon: "Grid" as const },
   { group: "BUILD", label: "Canvas", href: "/workflows/new", icon: "Flow" as const },
-  { group: "BUILD", label: "Marketplace", href: "/marketplace", icon: "Store" as const },
+  { group: "BUILD", label: "Registry", href: "/marketplace", icon: "Store" as const },
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
   { group: "GOVERN", label: "Governance", href: "/governance", icon: "Shield" as const },
@@ -943,7 +943,7 @@ function AppShellInnerContent({
             />
             <SideNavItem
               href="/marketplace"
-              label="Marketplace"
+              label="Registry"
               icon={<Icons.Store />}
               active={pathname.startsWith("/marketplace")}
               collapsed={collapsed}
