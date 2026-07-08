@@ -297,8 +297,8 @@ function McpModal({
             })()}
           </div>
 
-          {/* Environment */}
-          <div>
+          {/* Environment — hidden for system servers (Conduct AI Guard); only relevant for user-added servers */}
+          {!readOnly && <div>
             <label style={labelStyle}>Environment</label>
             <select
               value={form.environment_id}
@@ -311,7 +311,7 @@ function McpModal({
                 <option key={env.id} value={env.id}>{env.name}</option>
               ))}
             </select>
-          </div>
+          </div>}
 
           {error && (
             <p style={{ fontSize: 12, color: "var(--err)", margin: 0 }}>{error}</p>
