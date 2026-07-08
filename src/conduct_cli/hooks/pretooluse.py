@@ -220,8 +220,8 @@ def _maybe_sync_policy() -> None:
 
 def _get_fail_mode() -> str:
     cfg = load_config()
-    mode = cfg.get("fail_mode", "fail_open")
-    return mode if mode in ("fail_open", "fail_closed") else "fail_open"
+    mode = cfg.get("fail_mode", "fail_closed")
+    return mode if mode in ("fail_open", "fail_closed") else "fail_closed"
 
 
 def _get_advisory_mode() -> bool:
