@@ -757,7 +757,7 @@ function MCPSection() {
 }
 
 function CodeSnippetSection() {
-  const [tab, setTab] = useState<"ts" | "py" | "java" | "csharp">("ts")
+  const [tab, setTab] = useState<"ts" | "py" | "java" | "csharp" | "go">("ts")
 
   const snippets: Record<typeof tab, { label: string; code: string }> = {
     ts: {
@@ -830,6 +830,31 @@ var response = await client.PostAsJsonAsync(
 );
 // Returns: { "result": "ALLOWED" | "BLOCKED" | "WARNED" }`,
     },
+    go: {
+      label: "Go",
+      code: `package main
+
+import (
+  "bytes"
+  "encoding/json"
+  "net/http"
+  "os"
+)
+
+client := &http.Client{}
+body, _ := json.Marshal(map[string]any{
+  "method": "tools/call",
+  "params": map[string]any{
+    "name":      "guard_check",
+    "arguments": map[string]any{"action": "..."},
+  },
+})
+req, _ := http.NewRequest("POST", "https://api.conductai.ai/guard/mcp", bytes.NewReader(body))
+req.Header.Set("Authorization", "Bearer "+os.Getenv("CONDUCT_API_KEY"))
+req.Header.Set("Content-Type", "application/json")
+resp, _ := client.Do(req)
+// Returns: { "result": "ALLOWED" | "BLOCKED" | "WARNED" }`,
+    },
   }
 
   const tabs = [
@@ -837,6 +862,7 @@ var response = await client.PostAsJsonAsync(
     { id: "py" as const, label: "Python" },
     { id: "java" as const, label: "Java" },
     { id: "csharp" as const, label: "C#" },
+    { id: "go" as const, label: "Go" },
   ]
 
   return (
