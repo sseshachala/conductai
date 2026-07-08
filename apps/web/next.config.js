@@ -11,7 +11,6 @@ const nextConfig = {
       },
       { source: "/guard-landing", destination: "/guard", permanent: true },
       { source: "/playbooks",   destination: "/registry", permanent: true },
-      { source: "/marketplace", destination: "/registry", permanent: true },
       { source: "/templates",   destination: "/registry", permanent: true },
       { source: "/theguard/activity", destination: "/logs/guard", permanent: true },
       { source: "/runs", destination: "/logs/runs", permanent: true },
