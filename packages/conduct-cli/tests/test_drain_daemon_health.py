@@ -143,3 +143,64 @@ def test_pid_file_touched_after_flush(tmp_path):
 
     if pid_file.exists():
         assert pid_file.stat().st_mtime >= before
+
+
+# ── Policy refresh ─────────────────────────────────────────────────────────────
+
+def test_refresh_policy_writes_file(tmp_path):
+    """_refresh_policy_from_api writes API response to POLICY_PATH atomically."""
+    import urllib.request as _ur
+    from unittest.mock import MagicMock
+
+    fake_policy = b'{"rules": [{"id": "r1"}]}'
+    policy_path = tmp_path / "policy.json"
+
+    fake_resp = MagicMock()
+    fake_resp.read.return_value = fake_policy
+    fake_resp.__enter__ = lambda s: s
+    fake_resp.__exit__ = MagicMock(return_value=False)
+
+    with patch.object(base, "POLICY_PATH", policy_path), \
+         patch.object(base, "load_config", return_value={
+             "workspace_id": "ws_test",
+             "api_key": "cond_live_test",
+             "api_url": "https://api.conductai.ai",
+         }), \
+         patch("urllib.request.urlopen", return_value=fake_resp):
+        base._refresh_policy_from_api()
+
+    assert policy_path.exists()
+    assert policy_path.read_bytes() == fake_policy
+
+
+def test_refresh_policy_skips_without_api_key(tmp_path):
+    """_refresh_policy_from_api is a no-op when api_key is absent."""
+    policy_path = tmp_path / "policy.json"
+
+    with patch.object(base, "POLICY_PATH", policy_path), \
+         patch.object(base, "load_config", return_value={"workspace_id": "ws_test"}), \
+         patch("urllib.request.urlopen") as mock_open:
+        base._refresh_policy_from_api()
+
+    mock_open.assert_not_called()
+    assert not policy_path.exists()
+
+
+def test_refresh_policy_works_without_workspace_id(tmp_path):
+    """_refresh_policy_from_api omits workspace_id param when not in config (org-level Guard)."""
+    fake_policy = b'{"rules": []}'
+    policy_path = tmp_path / "policy.json"
+
+    fake_resp = MagicMock()
+    fake_resp.read.return_value = fake_policy
+    fake_resp.__enter__ = lambda s: s
+    fake_resp.__exit__ = MagicMock(return_value=False)
+
+    with patch.object(base, "POLICY_PATH", policy_path), \
+         patch.object(base, "load_config", return_value={"api_key": "cond_live_test"}), \
+         patch("urllib.request.urlopen", return_value=fake_resp) as mock_open:
+        base._refresh_policy_from_api()
+
+    called_url = mock_open.call_args[0][0].full_url
+    assert "workspace_id" not in called_url
+    assert policy_path.read_bytes() == fake_policy
