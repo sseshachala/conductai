@@ -992,10 +992,12 @@ function PoliciesContent() {
                       <span className="mono" style={{ fontWeight: 650, fontSize: 12, color: "var(--text-1)", whiteSpace: "nowrap" }}>{p.rule_id}</span>
                       {locked && <LockIcon />}
                       <span style={{ flex: 1, fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.description || p.message || "—"}</span>
-                      <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>{formatLastTriggered(p.last_triggered)}</span>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                        Last hit: <strong style={{ color: p.last_triggered ? "var(--text-2)" : "var(--text-muted)" }}>{formatLastTriggered(p.last_triggered)}</strong>
+                      </span>
                       {hasDetails && (
-                        <button onClick={() => toggleExpand(p.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2, flexShrink: 0 }} title="Details">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform .15s" }}><polyline points="6 9 12 15 18 9" /></svg>
+                        <button onClick={() => toggleExpand(p.id)} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer", color: "var(--text-muted)", padding: "2px 6px", flexShrink: 0, display: "flex", alignItems: "center", gap: 3, fontSize: 11 }} title="Show pattern & message">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform .15s" }}><polyline points="6 9 12 15 18 9" /></svg>
                         </button>
                       )}
                       {!locked && canWrite && p.builtin && (
