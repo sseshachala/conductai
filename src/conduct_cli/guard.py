@@ -1736,10 +1736,34 @@ def cmd_guard_status(args):
     else:
         daemon_line = f"{RED}not running{RESET} — will start on next tool call, journal events queued"
 
+    # Proxy coverage — check active env vars in this shell
+    proxy_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/") + "/proxy"
+    _env           = os.environ
+    anthropic_ok   = proxy_url in _env.get("ANTHROPIC_BASE_URL", "")
+    openai_ok      = proxy_url in _env.get("OPENAI_BASE_URL",    "")
+    perplexity_ok  = proxy_url in _env.get("PERPLEXITY_BASE_URL","")
+    env_file_exists = (Path.home() / ".conduct" / "env").exists()
+
+    def _cov(ok: bool, name: str) -> str:
+        return f"{GREEN}{name}{RESET}" if ok else f"{YELLOW}{name}{RESET}"
+
+    covered   = [n for n, ok in [("Anthropic", anthropic_ok), ("OpenAI", openai_ok), ("Perplexity", perplexity_ok)] if ok]
+    uncovered = [n for n, ok in [("Anthropic", anthropic_ok), ("OpenAI", openai_ok), ("Perplexity", perplexity_ok)] if not ok]
+
+    if covered and not uncovered:
+        proxy_line = f"{GREEN}active{RESET} — {', '.join(covered)} routed through Guard proxy"
+    elif covered:
+        proxy_line = f"{YELLOW}partial{RESET} — {', '.join(covered)} covered · {', '.join(uncovered)} NOT intercepted"
+    elif env_file_exists:
+        proxy_line = f"{YELLOW}inactive{RESET} — ~/.conduct/env exists but not sourced in this shell. Run: {BOLD}. ~/.conduct/env{RESET}"
+    else:
+        proxy_line = f"{RED}not configured{RESET} — run: {BOLD}conduct guard sync{RESET}"
+
     print(f"\n{BOLD}Guard status{RESET} — {user_email}")
     print(f"{rule_count} polic{'y' if rule_count == 1 else 'ies'} active")
     print()
-    print(f"Drain daemon: {daemon_line}")
+    print(f"Proxy coverage: {proxy_line}")
+    print(f"Drain daemon:   {daemon_line}")
     print()
     print(f"Today:")
     print(f"  Sessions: {session_str}")
