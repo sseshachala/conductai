@@ -696,6 +696,7 @@ function PoliciesContent() {
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [policyTab, setPolicyTab] = useState<string>("agent")
   const [showModal, setShowModal] = useState(false)
   const [modalPersona, setModalPersona] = useState<"agent" | "proxy">("agent")
   const [submitting, setSubmitting] = useState(false)
@@ -875,9 +876,22 @@ function PoliciesContent() {
     }
   }
 
-  // Split into proxy vs agent sections; old rules without `persona` default to "agent"
-  const proxyPolicies = policies.filter(p => p.persona === "proxy")
-  const agentPolicies = policies.filter(p => !p.persona || p.persona === "agent")
+  // Build tabs: Agent + Proxy (custom rules) + one per installed pack
+  const installedPackIds = [...new Set(policies.filter(p => p.pack_id).map(p => p.pack_id!))]
+  const policyTabs = [
+    { id: "agent", label: "Agent", count: policies.filter(p => !p.pack_id && (!p.persona || p.persona === "agent")).length },
+    { id: "proxy", label: "Proxy", count: policies.filter(p => !p.pack_id && p.persona === "proxy").length },
+    ...installedPackIds.map(id => ({
+      id,
+      label: PACK_LABELS.find(l => l.id === id)?.name ?? id,
+      count: policies.filter(p => p.pack_id === id).length,
+    })),
+  ]
+  const visiblePolicies = policyTab === "agent"
+    ? policies.filter(p => !p.pack_id && (!p.persona || p.persona === "agent"))
+    : policyTab === "proxy"
+    ? policies.filter(p => !p.pack_id && p.persona === "proxy")
+    : policies.filter(p => p.pack_id === policyTab)
 
   const latestUpdated = policies
     .map(p => p.updated_at)
@@ -1056,31 +1070,46 @@ function PoliciesContent() {
 
               return (
                 <>
-                  {/* Proxy section */}
-                  <div id="section-proxy" style={{ marginBottom: 28 }}>
-                    <SectionHeader
-                      title="Proxy Rules"
-                      description="Governs what leaves your network to the LLM provider"
-                      onAdd={() => { setModalPersona("proxy"); setShowModal(true) }}
-                    />
-                    {proxyPolicies.length === 0
-                      ? <div className="card" style={{ padding: "24px", textAlign: "center" }}><p style={{ fontSize: 12, color: "var(--text-muted)" }}>No proxy rules.</p></div>
-                      : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{proxyPolicies.map(p => renderCard(p))}</div>
-                    }
+                  {/* Tab pills */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+                    {policyTabs.map(tab => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setPolicyTab(tab.id)}
+                        style={{
+                          padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                          border: policyTab === tab.id ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
+                          background: policyTab === tab.id ? "var(--accent-bg, #eff6ff)" : "var(--surface)",
+                          color: policyTab === tab.id ? "var(--accent)" : "var(--text-3)",
+                          transition: "all .12s",
+                        }}
+                      >
+                        {tab.label}
+                        <span style={{ marginLeft: 5, fontSize: 11, opacity: 0.7 }}>{tab.count}</span>
+                      </button>
+                    ))}
+                    <span style={{ flex: 1 }} />
+                    {canWrite && (policyTab === "agent" || policyTab === "proxy") && (
+                      <button
+                        type="button"
+                        onClick={() => { setModalPersona(policyTab as "agent" | "proxy"); setShowModal(true) }}
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 11.5, padding: "3px 10px" }}
+                      >
+                        + Add rule
+                      </button>
+                    )}
                   </div>
 
-                  {/* Agent section */}
-                  <div id="section-agent" style={{ marginBottom: 20 }}>
-                    <SectionHeader
-                      title="Agent Rules"
-                      description="Governs what AI agents do on your machine"
-                      onAdd={() => { setModalPersona("agent"); setShowModal(true) }}
-                    />
-                    {agentPolicies.length === 0
-                      ? <div className="card" style={{ padding: "24px", textAlign: "center" }}><p style={{ fontSize: 12, color: "var(--text-muted)" }}>No agent rules.</p></div>
-                      : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{agentPolicies.map(p => renderCard(p))}</div>
-                    }
-                  </div>
+                  {/* Rule list */}
+                  {visiblePolicies.length === 0
+                    ? <div className="card" style={{ padding: "24px", textAlign: "center" }}>
+                        <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                          {policyTab === "proxy" ? "No proxy rules." : policyTab === "agent" ? "No agent rules." : "No rules in this pack."}
+                        </p>
+                      </div>
+                    : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{visiblePolicies.map(p => renderCard(p))}</div>
+                  }
                 </>
               )
             })()}
