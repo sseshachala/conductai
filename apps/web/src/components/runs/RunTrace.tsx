@@ -640,7 +640,7 @@ function RunTerminalRow({ runFailed, runCompleted }: {
           </p>
           {isGuardBlock && (
             <p style={{ marginTop: 4, fontSize: 12, color: "var(--text-3, #78716c)" }}>
-              See <a href="/guard/activity" style={{ color: color, textDecoration: "underline" }}>Guard activity</a> for the audit event.
+              See <a href="/theguard/activity" style={{ color: color, textDecoration: "underline" }}>Guard activity</a> for the audit event.
             </p>
           )}
           {reasonCode && (

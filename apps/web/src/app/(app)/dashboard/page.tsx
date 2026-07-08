@@ -460,7 +460,7 @@ function GuardSnapshotPanel({
         </span>
         {/* #11: Link instead of bare <a> */}
         <Link
-          href="/guard"
+          href="/theguard"
           className="btn btn-ghost btn-sm"
           style={{ textDecoration: "none" }}
         >
@@ -518,7 +518,7 @@ function GuardSnapshotPanel({
       <div style={{ padding: "13px 16px", borderBottom: "1px solid var(--border)" }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 9 }}>
           <span className="eyebrow" style={{ fontSize: 9.5 }}>Top policy hits · 30d</span>
-          <Link href="/guard/activity" style={{ marginLeft: "auto", fontSize: 11, color: "var(--accent-text)", fontWeight: 600, textDecoration: "none" }}>View all →</Link>
+          <Link href="/theguard/activity" style={{ marginLeft: "auto", fontSize: 11, color: "var(--accent-text)", fontWeight: 600, textDecoration: "none" }}>View all →</Link>
         </div>
         {topPolicyHits.length === 0 ? (
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No policy blocks today</span>
@@ -547,7 +547,7 @@ function GuardSnapshotPanel({
       <div style={{ padding: "13px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 9 }}>
           <span className="eyebrow" style={{ fontSize: 9.5 }}>Developer near limit</span>
-          <Link href="/guard/spend" style={{ marginLeft: "auto", fontSize: 11, color: "var(--accent-text)", fontWeight: 600, textDecoration: "none" }}>View all →</Link>
+          <Link href="/theguard/spend" style={{ marginLeft: "auto", fontSize: 11, color: "var(--accent-text)", fontWeight: 600, textDecoration: "none" }}>View all →</Link>
         </div>
         {developerNearLimit.length === 0 ? (
           <span style={{ fontSize: 12, color: "var(--ok)" }}>All developers within limits</span>
@@ -914,7 +914,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
               <strong>Guard is active</strong> — but no team members have synced the CLI yet.
               Run <code style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4, fontSize: 12 }}>conduct guard sync</code> on each developer machine to start capturing activity.
             </div>
-            <Link href="/guard" style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-text)", textDecoration: "none", flexShrink: 0 }}>
+            <Link href="/theguard" style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-text)", textDecoration: "none", flexShrink: 0 }}>
               Go to Guard →
             </Link>
             <button
@@ -1000,7 +1000,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                 tone="plain"
                 sub="est. Claude tokens"
                 // #11: router.push instead of window.location.assign
-                onClick={() => router.push("/guard/spend")}
+                onClick={() => router.push("/theguard/spend")}
               />
               {/* #6: no onClick → no cursor: pointer (handled in KPI component) */}
               {/* #5: real policy block count or "—" with no-data sub */}

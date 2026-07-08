@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { timeAgo } from "@/lib/runUtils"
 import { DecisionBadge } from "./DecisionBadge"
 
 /**
@@ -207,7 +208,7 @@ export function SignatureTamperRow({ ev, isLast = false }: { ev: AuditEvent; isL
         }}
         title="Click to see signature details"
       >
-        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{formatTs(ev.ts)}</div>
+        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }} title={formatTs(ev.ts)}>{timeAgo(ev.ts)}</div>
         <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {ev.user_email ?? "—"}
         </div>
@@ -304,7 +305,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         cursor: "pointer",
       }}
     >
-      <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }} title={formatTs(ev.ts)}>{formatTs(ev.ts).slice(11)}</div>
+      <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }} title={formatTs(ev.ts)}>{timeAgo(ev.ts)}</div>
       <div style={{ minWidth: 0, overflow: "hidden" }}>
         <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           title={ev.user_email ?? undefined}>
@@ -402,7 +403,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         )}
         <div>
           <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Time</span>
-          <span className="mono" style={{ color: "var(--text-2)" }}>{new Date(ev.ts).toLocaleString()}</span>
+          <span className="mono" style={{ color: "var(--text-2)" }}>{formatTs(ev.ts)}</span>
         </div>
         {ev.policy_hash && (
           <div>

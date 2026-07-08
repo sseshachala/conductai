@@ -777,7 +777,7 @@ export default function SetupPage() {
         setStep(step + 1)
       } else {
         await markSetupComplete()
-        router.push("/guard")
+        router.push("/theguard")
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed — please try again")
@@ -788,7 +788,7 @@ export default function SetupPage() {
 
   async function skip() {
     try { await markSetupComplete() } catch { /* still navigate */ }
-    router.push("/guard")
+    router.push("/theguard")
   }
 
   function back() {

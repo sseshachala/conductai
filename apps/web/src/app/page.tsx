@@ -37,14 +37,15 @@ function Nav() {
       </a>
       <nav className="hidden md:flex items-center gap-6">
         <ProductsDropdown />
-        <a href="/playbooks" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Agent Templates</a>
-        <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
+        <SolutionsDropdown />
         <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
-        <a href="https://pypi.org/project/conduct-cli/" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">PyPI</a>
-        <a href="https://github.com/sseshachala/conduct-cli" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">GitHub</a>
+        <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
       </nav>
       <div className="flex items-center gap-3">
-        {/* <a href="mailto:hello@conductai.ai" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors hidden sm:block">Talk to Us</a> */}
+        <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener"
+          className="rounded-lg border border-stone-300 text-stone-700 px-4 py-2 text-sm font-semibold hover:border-stone-400 transition-colors hidden sm:block">
+          Book Demo
+        </a>
         <CtaLink className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors" />
       </div>
       </div>
@@ -58,23 +59,23 @@ function ProductsDropdown() {
   return (
     <div className="relative group">
       <a href="#" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-        Products
+        Product
         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
       </a>
       <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <a href="/guard-landing" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+          <a href="/guard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span>🛡️</span>
             <div>
               <p className="font-semibold">Conduct Guard</p>
               <p className="text-xs text-stone-400">AI session governance</p>
             </div>
           </a>
-          <a href="/playbooks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+          <a href="/registry" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span>⚡</span>
             <div>
-              <p className="font-semibold">Agent Templates</p>
-              <p className="text-xs text-stone-400">Pre-built AI automations</p>
+              <p className="font-semibold">Registry</p>
+              <p className="text-xs text-stone-400">Compliance &amp; automation packs</p>
             </div>
           </a>
           <a href="/tools/conduct-cli" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
@@ -82,6 +83,32 @@ function ProductsDropdown() {
             <div>
               <p className="font-semibold">Conduct CLI</p>
               <p className="text-xs text-stone-400">Terminal governance + token savings</p>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function SolutionsDropdown() {
+  return (
+    <div className="relative group">
+      <a href="#" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+        Solutions
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
+      </a>
+      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
+        <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
+          <a href="/solutions/engineering-leaders" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div>
+              <p className="font-semibold">Engineering leaders</p>
+            </div>
+          </a>
+          <a href="/solutions/security-compliance" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div>
+              <p className="font-semibold">Security &amp; compliance</p>
             </div>
           </a>
         </div>
@@ -106,10 +133,10 @@ function HeroSection() {
       <BootSequence />
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
-        One operating layer for AI-assisted engineering
+        Runtime AI governance for engineering teams
       </div>
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-        <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Govern. Secure. Automate.</span>
+        Your AI agents are taking real actions. Nobody is watching.
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
         One identity, one policy, one audit trail across every AI tool your team uses.
@@ -326,8 +353,8 @@ function TwoLanesSection() {
                 </li>
               ))}
             </ul>
-            <a href="/marketplace" className="mt-auto rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors text-center">
-              Browse templates →
+            <a href="/registry" className="mt-auto rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors text-center">
+              Browse the Registry →
             </a>
           </div>
 
@@ -544,7 +571,7 @@ function GuardLearnsTeaser() {
           <span className="font-semibold text-stone-900">Guard learns as it runs.</span>{" "}
           Every session makes the next one more accurate for your team.
         </p>
-        <a href="/guard-landing" className="flex-shrink-0 text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors whitespace-nowrap">
+        <a href="/guard" className="flex-shrink-0 text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors whitespace-nowrap">
           See how it works →
         </a>
       </div>
@@ -645,9 +672,9 @@ function PageFooter() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
-              { heading: "Solutions", links: [["Conduct Guard", "/solutions#guard"], ["Secure", "/solutions#secure"], ["Agentic Workflows", "/solutions#workflows"]] as [string, string][] },
+              { heading: "Product", links: [["Guard", "/guard"], ["Registry", "/registry"], ["CLI", "/tools/conduct-cli"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], /* ["Partners", "/partners"], */ ["Blog", "/blog"]] as [string, string][] },
-              { heading: "Resources", links: [["Docs", "/docs"], ["Agent Templates", "/marketplace"], ["Token Guardrails", "/token-guardrails"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
+              { heading: "Resources", links: [["Docs", "/docs"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
               { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
             ].map(col => (
               <div key={col.heading}>
