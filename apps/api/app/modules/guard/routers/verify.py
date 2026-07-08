@@ -1,11 +1,13 @@
 """
 GET /guard/verify/evidence — OWASP Agentic Top 10 coverage + governance grade.
+GET /guard/verify/chain   — Walk the SHA-256 hash chain and confirm integrity.
 
-Reads existing guard_config, policies, signing keys, and recent audit events.
+Reads existing guard_config, policies, signing keys, and audit events.
 No new tables.
 """
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -212,4 +214,59 @@ def get_verify_evidence(
         controls=controls,
         generated_at=now.isoformat(),
         workspace_id=workspace_id,
+    )
+
+
+# ── Chain integrity ───────────────────────────────────────────────────────────
+
+class ChainVerifyOut(BaseModel):
+    valid: bool
+    events_checked: int
+    broken_at: Optional[str] = None   # ISO timestamp of first broken link
+    first_event: Optional[str] = None
+    last_event: Optional[str] = None
+    verified_at: str
+
+
+@router.get("/chain", response_model=ChainVerifyOut)
+def verify_chain(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Walk every audit event in insertion order and recompute the SHA-256 chain.
+    Returns valid=True only when every entry_hash matches its recomputed value."""
+    ws_uuid = uuid.UUID(workspace_id)
+    org_ws  = _org_ws_subquery(db, workspace_id)
+
+    events = (
+        db.query(
+            GuardAuditEvent.ts,
+            GuardAuditEvent.tool_call,
+            GuardAuditEvent.decision,
+            GuardAuditEvent.previous_hash,
+            GuardAuditEvent.entry_hash,
+        )
+        .filter(GuardAuditEvent.workspace_id.in_(org_ws))
+        .order_by(GuardAuditEvent.ts.asc())
+        .all()
+    )
+
+    broken_at = None
+    prev = ""
+    for ev in events:
+        expected = hashlib.sha256(
+            f"{ev.ts.isoformat()}|{ev.tool_call or ''}|{ev.decision}|{prev}".encode()
+        ).hexdigest()
+        if ev.entry_hash and ev.entry_hash != expected:
+            broken_at = ev.ts.isoformat()
+            break
+        prev = ev.entry_hash or prev
+
+    return ChainVerifyOut(
+        valid=broken_at is None,
+        events_checked=len(events),
+        broken_at=broken_at,
+        first_event=events[0].ts.isoformat() if events else None,
+        last_event=events[-1].ts.isoformat() if events else None,
+        verified_at=datetime.now(timezone.utc).isoformat(),
     )
