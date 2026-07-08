@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { CtaLink } from "@/components/marketing/CtaLink"
 
 export default function GuardLandingPage() {
@@ -747,8 +748,126 @@ function MCPSection() {
 }`}</pre>
           <p className="text-xs text-stone-500 mt-3">Works with Claude Desktop, Cursor, Windsurf, VS Code, Codex CLI, and any MCP-compatible agent.</p>
         </div>
+
+        {/* SDK code snippets */}
+        <CodeSnippetSection />
       </div>
     </section>
+  )
+}
+
+function CodeSnippetSection() {
+  const [tab, setTab] = useState<"ts" | "py" | "java" | "csharp">("ts")
+
+  const snippets: Record<typeof tab, { label: string; code: string }> = {
+    ts: {
+      label: "TypeScript",
+      code: `import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic();
+
+const response = await client.beta.messages.create({
+  model: "claude-opus-4-5",
+  max_tokens: 1024,
+  tools: [{
+    type: "mcp",
+    server_url: "https://api.conductai.ai/guard/mcp",
+    server_name: "ConductGuard",
+    authorization_token: process.env.CONDUCT_API_KEY,
+  }],
+  messages: [{ role: "user", content: "..." }],
+});
+// Every tool call is now governed by your Guard policy`,
+    },
+    py: {
+      label: "Python",
+      code: `import anthropic, os
+
+client = anthropic.Anthropic()
+
+response = client.beta.messages.create(
+    model="claude-opus-4-5",
+    max_tokens=1024,
+    tools=[{
+        "type": "mcp",
+        "server_url": "https://api.conductai.ai/guard/mcp",
+        "server_name": "ConductGuard",
+        "authorization_token": os.environ["CONDUCT_API_KEY"],
+    }],
+    messages=[{"role": "user", "content": "..."}],
+)
+# Every tool call is now governed by your Guard policy`,
+    },
+    java: {
+      label: "Java",
+      code: `import java.net.http.*;
+import java.net.URI;
+
+// Connect via HTTP — any MCP-over-SSE client works
+var request = HttpRequest.newBuilder()
+    .uri(URI.create("https://api.conductai.ai/guard/mcp"))
+    .header("Authorization", "Bearer " + System.getenv("CONDUCT_API_KEY"))
+    .header("Content-Type", "application/json")
+    .POST(HttpRequest.BodyPublishers.ofString(payload))
+    .build();
+
+var client = HttpClient.newHttpClient();
+var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+// guard_check, guard_status, guard_activity tools available`,
+    },
+    csharp: {
+      label: "C#",
+      code: `using System.Net.Http.Json;
+
+var client = new HttpClient();
+client.DefaultRequestHeaders.Add(
+    "Authorization", $"Bearer {Environment.GetEnvironmentVariable("CONDUCT_API_KEY")}");
+
+// Call any Guard MCP tool over HTTP
+var response = await client.PostAsJsonAsync(
+    "https://api.conductai.ai/guard/mcp",
+    new { method = "tools/call", params = new { name = "guard_check", arguments = new { action = "..." } } }
+);
+// Returns: { "result": "ALLOWED" | "BLOCKED" | "WARNED" }`,
+    },
+  }
+
+  const tabs = [
+    { id: "ts" as const, label: "TypeScript" },
+    { id: "py" as const, label: "Python" },
+    { id: "java" as const, label: "Java" },
+    { id: "csharp" as const, label: "C#" },
+  ]
+
+  return (
+    <div className="mt-6 rounded-2xl border border-stone-800 bg-stone-900 overflow-hidden">
+      <div className="flex items-center justify-between px-6 pt-5 pb-0">
+        <p className="text-xs font-bold uppercase tracking-widest text-stone-500">Connect from any language</p>
+        <div className="flex gap-1">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                tab === t.id
+                  ? "bg-indigo-600 text-white"
+                  : "text-stone-400 hover:text-stone-200 hover:bg-stone-800"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <pre className="px-6 py-5 text-sm font-mono text-indigo-200 leading-relaxed overflow-x-auto whitespace-pre">
+        {snippets[tab].code}
+      </pre>
+      <div className="px-6 pb-4">
+        <p className="text-xs text-stone-500">
+          Same Guard policy enforced regardless of language. Java and C# use the MCP HTTP/SSE transport directly.
+        </p>
+      </div>
+    </div>
   )
 }
 
