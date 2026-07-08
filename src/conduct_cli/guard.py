@@ -1722,8 +1722,24 @@ def cmd_guard_status(args):
 
     session_str = f"{proxy_sessions} proxy  ·  {hook_sessions} direct"
 
+    # Drain daemon health
+    try:
+        from conduct_cli.hooks.base import drain_daemon_status
+        d_status, d_pid = drain_daemon_status()
+    except Exception:
+        d_status, d_pid = "unknown", None
+
+    if d_status == "running":
+        daemon_line = f"{GREEN}running{RESET} (pid {d_pid})"
+    elif d_status == "stale":
+        daemon_line = f"{YELLOW}stale{RESET} (pid {d_pid}, not flushing — will restart on next tool call)"
+    else:
+        daemon_line = f"{RED}not running{RESET} — will start on next tool call, journal events queued"
+
     print(f"\n{BOLD}Guard status{RESET} — {user_email}")
     print(f"{rule_count} polic{'y' if rule_count == 1 else 'ies'} active")
+    print()
+    print(f"Drain daemon: {daemon_line}")
     print()
     print(f"Today:")
     print(f"  Sessions: {session_str}")
