@@ -441,16 +441,22 @@ async def mcp_sse(
     import asyncio
 
     if not _extract_token(request, token):
-        ws_param = f"?workspace_id={workspace_id}" if workspace_id else ""
+        ua = request.headers.get("User-Agent", "")
+        # Suppress OAuth discovery header for non-Claude clients (e.g. Smithery)
+        # so they fall back to API key auth instead of triggering an OAuth flow.
+        # Claude.ai sends "claude-mcp" in the User-Agent; only it gets the hint.
+        is_claude = "claude" in ua.lower()
+        resp_headers = {}
+        if is_claude:
+            ws_param = f"?workspace_id={workspace_id}" if workspace_id else ""
+            resp_headers["WWW-Authenticate"] = (
+                'Bearer realm="https://api.conductai.ai/guard/mcp",'
+                f' resource_metadata="https://api.conductai.ai/.well-known/oauth-protected-resource/guard/mcp{ws_param}"'
+            )
         return JSONResponse(
             status_code=401,
             content={"error": "missing or invalid token"},
-            headers={
-                "WWW-Authenticate": (
-                    'Bearer realm="https://api.conductai.ai/guard/mcp",'
-                    f' resource_metadata="https://api.conductai.ai/.well-known/oauth-protected-resource/guard/mcp{ws_param}"'
-                )
-            },
+            headers=resp_headers,
         )
 
     async def event_stream():
