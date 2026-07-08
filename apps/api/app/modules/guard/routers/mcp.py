@@ -656,7 +656,7 @@ async def mcp_endpoint(
                     "If the response is BLOCKED, stop immediately and explain the policy rule to the user. "
                     "If WARNING, proceed but surface the warning."
                 )
-                mcp_url = f"https://api.conductai.ai/guard/mcp?workspace_id={workspace_id}"
+                mcp_url = "https://api.conductai.ai/guard/mcp"
                 desktop_config = (
                     '{\n'
                     '  "mcpServers": {\n'
