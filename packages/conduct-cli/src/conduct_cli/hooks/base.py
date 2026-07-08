@@ -111,22 +111,38 @@ def journal_append(payload_str: str, api_url: str) -> None:
         pass
 
 
+_DAEMON_STALE_SECS = 300  # PID file not touched in 5 min → daemon is stale
+
+
+def drain_daemon_status() -> tuple[str, int | None]:
+    """Return (status, pid) where status is 'running'|'stale'|'dead'."""
+    import os as _os
+    if not JOURNAL_PID_PATH.exists():
+        return "dead", None
+    try:
+        pid = int(JOURNAL_PID_PATH.read_text().strip())
+        _os.kill(pid, 0)  # raises if process gone
+        age = time.time() - JOURNAL_PID_PATH.stat().st_mtime
+        if age > _DAEMON_STALE_SECS:
+            return "stale", pid
+        return "running", pid
+    except (ProcessLookupError, PermissionError, ValueError):
+        return "dead", None
+    except Exception:
+        return "dead", None
+
+
 def ensure_drain_daemon(hook_module_path: Optional[Path] = None) -> None:
-    """Start the drain daemon if it is not already running.
+    """Start the drain daemon if it is not already running or is stale.
 
     hook_module_path — path of the calling hook file (used to spawn the daemon
     via `python <path> drain`).  When None the drain subprocess is not started
     (used in unit tests / debug mode where the daemon is not needed).
     """
     try:
-        if JOURNAL_PID_PATH.exists():
-            pid = int(JOURNAL_PID_PATH.read_text().strip())
-            import os as _os
-            try:
-                _os.kill(pid, 0)
-                return  # alive
-            except (ProcessLookupError, PermissionError):
-                pass
+        status, _ = drain_daemon_status()
+        if status == "running":
+            return
         if hook_module_path is None:
             return
         subprocess.Popen(
@@ -188,6 +204,11 @@ def run_drain_daemon() -> None:
             time.sleep(2)
         else:
             empty_scans = 0
+        # Touch PID file so drain_daemon_status() knows we're still alive
+        try:
+            JOURNAL_PID_PATH.touch()
+        except Exception:
+            pass
     try:
         JOURNAL_PID_PATH.unlink(missing_ok=True)
     except Exception:
