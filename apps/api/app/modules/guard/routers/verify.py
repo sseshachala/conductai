@@ -123,7 +123,7 @@ def get_verify_evidence(
         db.query(GuardAuditEvent)
         .filter(
             GuardAuditEvent.workspace_id == ws_uuid,
-            GuardAuditEvent.created_at >= since,
+            GuardAuditEvent.ts >= since,
         )
         .count()
     )
@@ -132,7 +132,7 @@ def get_verify_evidence(
         db.query(GuardAuditEvent)
         .filter(
             GuardAuditEvent.workspace_id == ws_uuid,
-            GuardAuditEvent.created_at >= since,
+            GuardAuditEvent.ts >= since,
             GuardAuditEvent.decision == "blocked",
         )
         .count()
