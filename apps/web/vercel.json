@@ -1,3 +1,4 @@
 {
+  "installCommand": "npm install --prefix=../.. --prefer-offline --no-audit --no-fund",
   "ignoreCommand": "git diff HEAD^ HEAD --name-only | grep -qE '^apps/web/'"
 }
