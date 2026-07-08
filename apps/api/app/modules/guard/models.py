@@ -40,7 +40,7 @@ class GuardConfig(Base):
     slug = Column(Text, nullable=True)
     alert_channel = Column(String(100), nullable=True)
     enforcement_mode = Column(String(20), nullable=False, default="warn")
-    fail_mode = Column(String(20), nullable=False, default="fail_open")  # fail_open | fail_closed (CLI behavior on outage)
+    fail_mode = Column(String(20), nullable=False, default="fail_closed")  # fail_open | fail_closed (CLI behavior on outage)
     notify_on_block = Column(Boolean, nullable=False, default=True)
     notify_on_budget = Column(Boolean, nullable=False, default=True)
     resync_requested_at = Column(DateTime(timezone=True), nullable=True)

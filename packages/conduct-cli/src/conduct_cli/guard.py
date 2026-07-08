@@ -759,7 +759,7 @@ def cmd_guard_install(args):
         # Mirror fail_mode into guard config so the hook can enforce it
         # even when POLICY_PATH is missing or unreadable.
         cfg = _load_guard_config()
-        cfg["fail_mode"] = policy.get("fail_mode", "fail_open")
+        cfg["fail_mode"] = policy.get("fail_mode", "fail_closed")
         cfg["advisory_mode"] = policy.get("advisory_mode", False)
         _save_guard_config(cfg)
         rule_count = len(policy.get("rules", []))
