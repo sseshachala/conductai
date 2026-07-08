@@ -422,7 +422,7 @@ def main() -> None:
         tool_name  = (data.get("tool_name") or "").lower()
         tool_input = data.get("tool_input") or {}
         session_id = data.get("session_id")
-        msg = "[ConductGuard] Policy cache unavailable — fail-closed mode is on. Run `conduct guard sync` or contact your admin."
+        msg = "[ConductGuard] Guard API unreachable and no local policy cache found — tool call blocked (fail-closed). Run `conduct guard sync` to cache your policy, or ask your admin to set fail_open."
         print(msg)
         print(msg, file=sys.stderr)
         post_event(tool_name, tool_input, "blocked", "guard-unavailable", msg, session_id, drain_via=_this_file)
@@ -436,7 +436,7 @@ def main() -> None:
             tool_name  = (data.get("tool_name") or "").lower()
             tool_input = data.get("tool_input") or {}
             session_id = data.get("session_id")
-            msg = "[ConductGuard] Spend budget check unavailable — fail-closed mode is on."
+            msg = "[ConductGuard] Guard API unreachable — tool call blocked (fail-closed). Check your connection or ask your admin to set fail_open in Guard settings."
             print(msg)
             print(msg, file=sys.stderr)
             post_event(tool_name, tool_input, "blocked", "guard-unavailable", msg, session_id, drain_via=_this_file)
