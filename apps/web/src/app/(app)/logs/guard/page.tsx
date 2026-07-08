@@ -99,6 +99,8 @@ function ActivityContent() {
   const [live, setLive] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const offsetRef = useRef(0)
+  const esRef = useRef<EventSource | null>(null)
+  const [streaming, setStreaming] = useState(false)
   const [chainStatus, setChainStatus] = useState<{ valid: boolean; total: number; verified_from: string | null } | null>(null)
   const [advisoryMode, setAdvisoryMode] = useState(false)
 
@@ -223,6 +225,54 @@ function ActivityContent() {
     return () => clearInterval(t)
   }, [load])
 
+  // SSE real-time feed — connects once teamId + token are ready, reconnects on timeout
+  useEffect(() => {
+    if (!teamId) return
+    let es: EventSource | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+    const connect = async () => {
+      const token = await getToken()
+      if (!token) return
+      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const url = `${base}/guard/events/stream?workspace_id=${teamId}&token=${encodeURIComponent(token)}`
+      es = new EventSource(url)
+      esRef.current = es
+      es.onopen = () => setStreaming(true)
+      es.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data)
+          if (msg.kind === "stream_timeout") {
+            es?.close()
+            reconnectTimer = setTimeout(connect, 1000)
+            return
+          }
+          if (Array.isArray(msg.events) && msg.events.length > 0) {
+            setEvents(prev => {
+              const ids = new Set(prev.map(ev => ev.id))
+              const fresh = (msg.events as AuditEvent[]).filter(ev => !ids.has(ev.id))
+              return fresh.length > 0 ? [...fresh.reverse(), ...prev] : prev
+            })
+            setLastUpdated(new Date())
+          }
+        } catch { /* ignore parse errors */ }
+      }
+      es.onerror = () => {
+        setStreaming(false)
+        es?.close()
+        reconnectTimer = setTimeout(connect, 5000)
+      }
+    }
+
+    connect()
+    return () => {
+      es?.close()
+      esRef.current = null
+      setStreaming(false)
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+    }
+  }, [teamId, getToken])
+
   useEffect(() => {
     if (activeView !== "sessions") return
     loadSessions()
@@ -251,7 +301,7 @@ function ActivityContent() {
   }
 
   return (
-    <GuardShell live={live} lastFetched={lastUpdated} advisory={advisoryMode}>
+    <GuardShell live={streaming || live} lastFetched={lastUpdated} advisory={advisoryMode}>
       {/* Viewer-scoped notice */}
       {!permissionsLoading && !permissions.canViewAllActivity && (
         <div
