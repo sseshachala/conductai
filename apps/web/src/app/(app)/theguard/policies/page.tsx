@@ -971,75 +971,43 @@ function PoliciesContent() {
                 const hasDetails = !!(p.match_pattern || p.match_path_pattern || p.message)
                 const locked = !!p.non_overridable
                 return (
-                  <div
-                    key={p.id}
-                    className="card"
-                    style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 0, opacity: p.enabled ? 1 : 0.62, minHeight: 96 }}
-                  >
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                      <ActionAvatar action={p.action} />
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 4 }}>
-                          <span className="mono" style={{ fontWeight: 650, fontSize: 12.5 }}>{p.rule_id}</span>
-                          {locked && <LockIcon />}
-                          <ActionBadge action={p.action} />
-                        </div>
-                        <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                          {p.description || p.message || "—"}
-                        </p>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                        {!locked && canWrite && p.builtin && (
-                          <button
-                            type="button"
-                            onClick={() => { setEditId(editId === p.id ? null : p.id); setEditAction(p.action); setEditMessage(p.message ?? "") }}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: editId === p.id ? "var(--accent)" : "var(--text-muted)", padding: 3 }}
-                            title="Override action"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                            </svg>
-                          </button>
-                        )}
-                        {!p.builtin && !locked && canWrite && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (confirmDeleteId === p.id) {
-                                setConfirmDeleteId(null); setConfirmDeleteValue("")
-                              } else {
-                                setConfirmDeleteId(p.id); setConfirmDeleteValue("")
-                              }
-                            }}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 3 }}
-                            title="Delete rule"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
-                              <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35L12.95 5.5h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
-                            </svg>
-                          </button>
-                        )}
-                        {locked
-                          ? <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                              <span style={{ width: 40, height: 23, borderRadius: 20, background: "var(--border-2)", display: "inline-block", opacity: 0.4, cursor: "not-allowed" }} />
-                              <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Required</span>
-                            </span>
-                          : canWrite
-                            ? <Toggle enabled={p.enabled} onChange={() => handleToggle(p.id)} />
-                            : <span style={{ width: 40, height: 23, borderRadius: 20, background: p.enabled ? "var(--accent)" : "var(--border-2)", display: "inline-block", opacity: 0.5 }} />
-                        }
-                      </div>
+                  <div key={p.id} style={{ opacity: p.enabled ? 1 : 0.55 }}>
+                    {/* Main row */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--border)" }}>
+                      <ActionBadge action={p.action} />
+                      <span className="mono" style={{ fontWeight: 650, fontSize: 12, color: "var(--text-1)", whiteSpace: "nowrap" }}>{p.rule_id}</span>
+                      {locked && <LockIcon />}
+                      <span style={{ flex: 1, fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.description || p.message || "—"}</span>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>{formatLastTriggered(p.last_triggered)}</span>
+                      {hasDetails && (
+                        <button onClick={() => toggleExpand(p.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2, flexShrink: 0 }} title="Details">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform .15s" }}><polyline points="6 9 12 15 18 9" /></svg>
+                        </button>
+                      )}
+                      {!locked && canWrite && p.builtin && (
+                        <button type="button" onClick={() => { setEditId(editId === p.id ? null : p.id); setEditAction(p.action); setEditMessage(p.message ?? "") }} style={{ background: "none", border: "none", cursor: "pointer", color: editId === p.id ? "var(--accent)" : "var(--text-muted)", padding: 2, flexShrink: 0 }} title="Override">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                      )}
+                      {!p.builtin && !locked && canWrite && (
+                        <button type="button" onClick={() => { if (confirmDeleteId === p.id) { setConfirmDeleteId(null); setConfirmDeleteValue("") } else { setConfirmDeleteId(p.id); setConfirmDeleteValue("") } }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2, flexShrink: 0 }} title="Delete">
+                          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35L12.95 5.5h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" /></svg>
+                        </button>
+                      )}
+                      {locked
+                        ? <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>Required</span>
+                        : canWrite
+                          ? <Toggle enabled={p.enabled} onChange={() => handleToggle(p.id)} />
+                          : <span style={{ width: 32, height: 18, borderRadius: 20, background: p.enabled ? "var(--accent)" : "var(--border-2)", display: "inline-block", opacity: 0.5, flexShrink: 0 }} />
+                      }
                     </div>
 
+                    {/* Edit override panel */}
                     {editId === p.id && (
-                      <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ margin: "4px 0 4px 12px", padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8, display: "flex", flexDirection: "column", gap: 8 }}>
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                           <label style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 500, whiteSpace: "nowrap" }}>Action</label>
-                          <select
-                            value={editAction}
-                            onChange={e => setEditAction(e.target.value as PolicyAction)}
-                            style={{ ...fieldStyle, width: "auto", fontSize: 12 }}
-                          >
+                          <select value={editAction} onChange={e => setEditAction(e.target.value as PolicyAction)} style={{ ...fieldStyle, width: "auto", fontSize: 12 }}>
                             <option value="block">Block</option>
                             <option value="warn">Warn</option>
                             <option value="audit">Audit</option>
@@ -1047,12 +1015,7 @@ function PoliciesContent() {
                         </div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                           <label style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 500, whiteSpace: "nowrap" }}>Message</label>
-                          <input
-                            value={editMessage}
-                            onChange={e => setEditMessage(e.target.value)}
-                            placeholder={p.message ?? "Override message (optional)"}
-                            style={{ ...fieldStyle, fontSize: 12 }}
-                          />
+                          <input value={editMessage} onChange={e => setEditMessage(e.target.value)} placeholder={p.message ?? "Override message (optional)"} style={{ ...fieldStyle, fontSize: 12 }} />
                         </div>
                         <div style={{ display: "flex", gap: 6 }}>
                           <button onClick={() => handleEditSave(p.id)} disabled={editSaving} className="btn btn-primary btn-sm">{editSaving ? "Saving…" : "Save override"}</button>
@@ -1061,49 +1024,13 @@ function PoliciesContent() {
                       </div>
                     )}
 
-                    <div style={{ display: "flex", alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                        Last hit: <strong style={{ color: "var(--text-2)" }}>{formatLastTriggered(p.last_triggered)}</strong>
-                      </span>
-                      {hasDetails && (
-                        <button
-                          onClick={() => toggleExpand(p.id)}
-                          style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 11.5, color: "var(--accent)", display: "flex", alignItems: "center", gap: 3, padding: 0 }}
-                        >
-                          {expanded ? "Hide details" : "Show details"}
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform .15s" }}>
-                            <polyline points="6 9 12 15 18 9" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-
+                    {/* Expanded details */}
                     {expanded && hasDetails && (
-                      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
-                        {p.match_tool && (
-                          <div>
-                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Applies to</span>
-                            <div className="mono" style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>{p.match_tool}</div>
-                          </div>
-                        )}
-                        {p.match_pattern && (
-                          <div>
-                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Pattern</span>
-                            <div className="mono" style={{ fontSize: 11.5, color: "var(--err)", marginTop: 2, wordBreak: "break-all", background: "var(--err-bg)", borderRadius: 6, padding: "4px 8px" }}>{p.match_pattern}</div>
-                          </div>
-                        )}
-                        {p.match_path_pattern && (
-                          <div>
-                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Path pattern</span>
-                            <div className="mono" style={{ fontSize: 11.5, color: "var(--warn)", marginTop: 2, wordBreak: "break-all", background: "var(--warn-bg)", borderRadius: 6, padding: "4px 8px" }}>{p.match_path_pattern}</div>
-                          </div>
-                        )}
-                        {p.message && (
-                          <div>
-                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Developer message</span>
-                            <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2, fontStyle: "italic" }}>&ldquo;{p.message}&rdquo;</div>
-                          </div>
-                        )}
+                      <div style={{ margin: "4px 0 4px 12px", padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, display: "flex", flexWrap: "wrap", gap: 12 }}>
+                        {p.match_tool && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Tool </span><span className="mono" style={{ fontSize: 11.5, color: "var(--text-2)" }}>{p.match_tool}</span></div>}
+                        {p.match_pattern && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Pattern </span><span className="mono" style={{ fontSize: 11, color: "var(--err)", background: "var(--err-bg)", borderRadius: 4, padding: "1px 6px" }}>{p.match_pattern}</span></div>}
+                        {p.match_path_pattern && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Path </span><span className="mono" style={{ fontSize: 11, color: "var(--warn)", background: "var(--warn-bg)", borderRadius: 4, padding: "1px 6px" }}>{p.match_path_pattern}</span></div>}
+                        {p.message && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Message </span><span style={{ fontSize: 11.5, color: "var(--text-2)", fontStyle: "italic" }}>&ldquo;{p.message}&rdquo;</span></div>}
                       </div>
                     )}
                   </div>
@@ -1138,7 +1065,7 @@ function PoliciesContent() {
                     />
                     {proxyPolicies.length === 0
                       ? <div className="card" style={{ padding: "24px", textAlign: "center" }}><p style={{ fontSize: 12, color: "var(--text-muted)" }}>No proxy rules.</p></div>
-                      : <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>{proxyPolicies.map(p => renderCard(p))}</div>
+                      : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{proxyPolicies.map(p => renderCard(p))}</div>
                     }
                   </div>
 
@@ -1151,7 +1078,7 @@ function PoliciesContent() {
                     />
                     {agentPolicies.length === 0
                       ? <div className="card" style={{ padding: "24px", textAlign: "center" }}><p style={{ fontSize: 12, color: "var(--text-muted)" }}>No agent rules.</p></div>
-                      : <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>{agentPolicies.map(p => renderCard(p))}</div>
+                      : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{agentPolicies.map(p => renderCard(p))}</div>
                     }
                   </div>
                 </>
