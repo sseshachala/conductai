@@ -535,6 +535,11 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
             rules = compute_policy(db, uuid.UUID(policy_ws_id), "proxy")
         except Exception as e:
             log.warning("guard.proxy.policy_load_failed", err=str(e))
+            from app.modules.guard.models import GuardConfig as _GuardConfig
+            cfg = db.query(_GuardConfig).filter(_GuardConfig.workspace_id == uuid.UUID(policy_ws_id)).first()
+            deny = cfg.deny_on_error if cfg else True
+            if deny:
+                return {"action": "BLOCK", "rule_id": "guard.engine_error", "message": "Policy engine error — request blocked (fail-closed). Check Guard settings to change this behavior."}
             return {"action": "ALLOW", "rule_id": "guard.engine_error", "message": None}
 
         prompt_text = _flatten_prompt(body)
