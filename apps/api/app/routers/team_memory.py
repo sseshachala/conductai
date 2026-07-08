@@ -108,7 +108,7 @@ def _synthesize_mcp_sessions(workspace_id: str) -> None:
 
         rows = db.execute(
             text("""
-                SELECT hook_session_id, user_email, ai_tool, input_summary, ts
+                SELECT hook_session_id, user_email, clerk_user_id, ai_tool, input_summary, ts
                 FROM guard_audit_events
                 WHERE workspace_id = :ws
                   AND ts >= :since
@@ -147,10 +147,11 @@ def _synthesize_mcp_sessions(workspace_id: str) -> None:
 
             if skey not in sessions:
                 sessions[skey] = {
-                    "session_id": skey,
-                    "tool": r.ai_tool,
-                    "user_email": r.user_email or "",
-                    "summaries": [],
+                    "session_id":   skey,
+                    "tool":         r.ai_tool,
+                    "user_email":   r.user_email or "",
+                    "clerk_user_id": r.clerk_user_id or "",
+                    "summaries":    [],
                 }
             sessions[skey]["summaries"].append(r.input_summary)
 
@@ -177,7 +178,7 @@ def _synthesize_mcp_sessions(workspace_id: str) -> None:
             db.add(TeamSessionMemory(
                 id=uuid.uuid4(),
                 workspace_id=ws_uuid,
-                developer_id=None,
+                developer_id=meta["clerk_user_id"] or None,
                 developer_email=meta["user_email"] or None,
                 session_id=skey,
                 tool=meta["tool"],
