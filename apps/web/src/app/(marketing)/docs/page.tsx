@@ -2188,15 +2188,6 @@ export default function DocsPage() {
 
   return (
     <div className="min-h-screen bg-stone-50">
-      <header className="bg-white border-b border-stone-200 px-6 py-4 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto" />
-        </Link>
-        <Link href="/dashboard" className="text-sm text-stone-500 hover:text-stone-900 transition-colors">
-          Open app →
-        </Link>
-      </header>
-
       {/* Tab bar */}
       <div className="bg-white border-b border-stone-200 px-6">
         <div className="max-w-5xl mx-auto flex gap-0">
