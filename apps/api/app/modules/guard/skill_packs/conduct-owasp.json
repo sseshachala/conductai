@@ -1,7 +1,7 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "tier": "paid",
   "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents",
   "rules": [
@@ -203,6 +203,54 @@
       "frameworks": ["OWASP_AGENTIC:A10"],
       "severity": "high",
       "recommendation": "Set explicit token budgets per agent. Never set unlimited or negative spend limits."
+    },
+    {
+      "id": "no_recon_fs",
+      "description": "Block filesystem reconnaissance targeting credential and system files (Promptware Kill Chain — Reconnaissance)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(~/.ssh|/etc/passwd|/etc/shadow|/proc/self|id_rsa|\\.aws/credentials|~/.netrc|/etc/hosts\\.allow)",
+      "action": "block",
+      "message": "Filesystem reconnaissance blocked \u2014 access to credential and system paths is not permitted.",
+      "persona_affinity": ["agent", "proxy"],
+      "frameworks": ["OWASP_AGENTIC:A01", "SOC2:CC6.1"],
+      "severity": "critical",
+      "recommendation": "Scope all file reads to the project directory. Never read system credential or identity files."
+    },
+    {
+      "id": "no_shell_persist",
+      "description": "Block writes to shell RC files, cron, or systemd units (Promptware Kill Chain — Persistence)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(>>.*/\\.bashrc|>>.*/\\.zshrc|>>.*/\\.profile|/etc/cron\\.d|/etc/crontab|systemctl enable|/etc/systemd/system/)",
+      "action": "block",
+      "message": "Shell persistence attempt blocked \u2014 writing to RC files, cron, or systemd units is not permitted.",
+      "persona_affinity": ["agent", "proxy"],
+      "frameworks": ["OWASP_AGENTIC:A04", "SOC2:CC6.1"],
+      "severity": "critical",
+      "recommendation": "Never append to shell init files or register system services programmatically."
+    },
+    {
+      "id": "no_dns_exfil",
+      "description": "Warn on DNS-based exfiltration patterns and encoded outbound data (Promptware Kill Chain — Command & Control)",
+      "match_tool": "bash",
+      "match_pattern": "(nslookup|dig\\s+.*\\$|host\\s+.*\\$|curl.*burpcollaborator|xxd.*\\|.*curl|base64.*\\|.*curl|ping.*-c.*\\$)",
+      "action": "warn",
+      "message": "Possible DNS exfiltration or encoded outbound data detected \u2014 verify this command is intentional.",
+      "persona_affinity": ["agent", "proxy"],
+      "frameworks": ["OWASP_AGENTIC:A06", "SOC2:CC6.7"],
+      "severity": "high",
+      "recommendation": "Never use DNS lookups or encoded pipes to transmit data externally. Use approved outbound channels only."
+    },
+    {
+      "id": "no_agent_pivot",
+      "description": "Warn on cross-agent tool invocation that may indicate lateral movement (Promptware Kill Chain — Lateral Movement)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(use_mcp_tool.*server_name|mcp_call.*tool_name|call_tool.*agent|invoke_agent|agent_executor\\.run)",
+      "action": "warn",
+      "message": "Cross-agent tool invocation detected \u2014 verify this agent pivot is authorised.",
+      "persona_affinity": ["agent", "proxy"],
+      "frameworks": ["OWASP_AGENTIC:A04", "OWASP_AGENTIC:A09"],
+      "severity": "high",
+      "recommendation": "Agent-to-agent calls must be explicitly authorised. Scope each agent's tool access to its designated surface."
     }
   ]
 }
