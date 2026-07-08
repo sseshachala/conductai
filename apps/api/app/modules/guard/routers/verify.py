@@ -238,22 +238,28 @@ def verify_chain(
     ws_uuid = uuid.UUID(workspace_id)
     org_ws  = _org_ws_subquery(db, workspace_id)
 
-    events = (
+    rows = (
         db.query(
             GuardAuditEvent.ts,
             GuardAuditEvent.tool_call,
             GuardAuditEvent.decision,
-            GuardAuditEvent.previous_hash,
             GuardAuditEvent.entry_hash,
         )
         .filter(GuardAuditEvent.workspace_id.in_(org_ws))
         .order_by(GuardAuditEvent.ts.asc())
-        .all()
+        .yield_per(1000)
     )
 
     broken_at = None
     prev = ""
-    for ev in events:
+    count = 0
+    first_event = None
+    last_event = None
+    for ev in rows:
+        count += 1
+        if first_event is None:
+            first_event = ev.ts.isoformat()
+        last_event = ev.ts.isoformat()
         expected = hashlib.sha256(
             f"{ev.ts.isoformat()}|{ev.tool_call or ''}|{ev.decision}|{prev}".encode()
         ).hexdigest()
@@ -264,9 +270,9 @@ def verify_chain(
 
     return ChainVerifyOut(
         valid=broken_at is None,
-        events_checked=len(events),
+        events_checked=count,
         broken_at=broken_at,
-        first_event=events[0].ts.isoformat() if events else None,
-        last_event=events[-1].ts.isoformat() if events else None,
+        first_event=first_event,
+        last_event=last_event,
         verified_at=datetime.now(timezone.utc).isoformat(),
     )
