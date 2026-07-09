@@ -349,16 +349,29 @@ export default function GovernancePage() {
         if (res.ok && !cancelled) setKpis(await res.json())
       } catch { /* non-fatal */ }
 
-      try {
-        const res = await fetch(`${base}/governance/certifications?workspace_id=${workspaceId}`, { headers })
-        if (res.ok && !cancelled) setCertifications(await res.json())
-      } catch { /* non-fatal */ }
-
       if (!cancelled) setLastFetched(new Date())
     }
     load()
     return () => { cancelled = true }
   }, [workspaceId, getToken, activeFramework, eventFilter, narrativePeriod, tick])
+
+  // Certifications — only reload when installed packs change, not every 60s tick.
+  useEffect(() => {
+    if (!workspaceId || installedPacks.length === 0) return
+    let cancelled = false
+    const load = async () => {
+      const token = await getToken()
+      const hdrs: Record<string, string> = {}
+      if (token) hdrs["Authorization"] = `Bearer ${token}`
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ""
+      try {
+        const res = await fetch(`${apiBase}/governance/certifications?workspace_id=${workspaceId}`, { headers: hdrs })
+        if (res.ok && !cancelled) setCertifications(await res.json())
+      } catch { /* non-fatal */ }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [workspaceId, getToken, installedPacks])
 
   // Fetch the rules covering the selected control whenever it changes.
   useEffect(() => {

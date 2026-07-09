@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_permission, get_workspace_id
+from app.core.auth import require_permission, get_workspace_id, get_user_id, get_clerk_user_email
 from app.core.database import get_db
 from app.models.workspace import Workspace
 from app.modules.guard.models import (
@@ -25,7 +25,6 @@ from app.modules.guard.models import (
     SkillPack,
     WorkspaceSkillPack,
 )
-from app.core.auth import get_user_id
 
 
 router = APIRouter(prefix="/governance", tags=["governance"])
@@ -618,7 +617,7 @@ def certify_policy(
     cert = PolicyCertification(
         workspace_id=ws_uuid,
         pack_slug=body.pack_slug,
-        certified_by=user_id,
+        certified_by=get_clerk_user_email(user_id) or user_id,
         policy_version=policy_version,
     )
     db.add(cert)
