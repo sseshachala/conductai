@@ -44,8 +44,11 @@ function HeroSection() {
       <p className="text-base text-stone-600 max-w-2xl mx-auto leading-relaxed mb-3">
         Other AI governance tools want you to import an SDK and wrap every model call. Guard installs in 10 minutes. It intercepts every AI tool your team already uses: Claude Code, Cursor, Copilot, Codex.
       </p>
-      <p className="text-base text-indigo-600 italic max-w-2xl mx-auto leading-relaxed mb-8">
+      <p className="text-base text-indigo-600 italic max-w-2xl mx-auto leading-relaxed mb-3">
         GitHub gives the CISO a setting. ConductGuard gives them enforcement.
+      </p>
+      <p className="text-base text-stone-500 italic max-w-2xl mx-auto leading-relaxed mb-8">
+        The agent inherits the permission. It doesn&apos;t inherit the caution.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />
@@ -180,8 +183,11 @@ function EnforcementLayerSection() {
             <p className="text-stone-400 leading-relaxed mb-6">
               Teams are building operating systems inside Claude — deal desks, security audits, engineering autopilots. The prompts are good. The reviewer is a suggestion.
             </p>
-            <p className="text-stone-300 leading-relaxed mb-8">
+            <p className="text-stone-300 leading-relaxed mb-4">
               ConductGuard is structural enforcement. Policies are evaluated against real rules, not prompt instructions. A block exits with code 2 — Claude stops. The audit trail is in your dashboard, not the chat history.
+            </p>
+            <p className="text-stone-400 leading-relaxed mb-8">
+              Segregation of duties only holds at the moment an agent acts. ConductGuard is the only governance layer that enforces it at runtime — not in a quarterly review, not in a policy doc.
             </p>
             <a href="/guard" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors">
               See how Guard enforces →
@@ -433,10 +439,10 @@ function Phase1Section() {
         <div className="mb-14">
           <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-3">Month 1</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight leading-tight mb-4 max-w-2xl">
-            You didn&apos;t know what AI was doing. Now you do.
+            You can&apos;t govern what you can&apos;t see. Now you can see everything.
           </h2>
           <p className="text-xl text-stone-500 max-w-2xl leading-relaxed">
-            Within 10 minutes of install, you see every AI tool your team is running, what it&apos;s spending, and what it&apos;s doing. No manual registration. No config changes.
+            Within 10 minutes of install, you see every AI agent your team is running, what tools it has access to, and who owns it. Guard is your organization&apos;s memory of its AI — not a spreadsheet, not a quarterly review.
           </p>
         </div>
         <div className="grid sm:grid-cols-2 gap-5">
