@@ -19,12 +19,13 @@ def chain_hash_for_insert(db, ws_uuid, ts: datetime, tool_call, decision: str):
     Acquires a per-workspace row lock to serialise concurrent inserts."""
     last = (
         db.query(GuardAuditEvent.entry_hash)
-        .filter(GuardAuditEvent.workspace_id == ws_uuid)
+        .filter(GuardAuditEvent.workspace_id == ws_uuid,
+                GuardAuditEvent.entry_hash.isnot(None))
         .order_by(GuardAuditEvent.ts.desc())
         .with_for_update(skip_locked=False)
         .first()
     )
-    prev = (last.entry_hash or "") if last else ""
+    prev = last.entry_hash if last else ""
     _tool = tool_call or ""
     entry = hashlib.sha256(f"{ts.isoformat()}|{_tool}|{decision}|{prev}".encode()).hexdigest()
     return prev, entry
