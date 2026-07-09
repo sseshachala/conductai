@@ -718,7 +718,7 @@ export default function GovernancePage() {
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>{slug}</div>
                       <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
                         {cert
-                          ? `Last certified ${daysSince === 0 ? "today" : `${daysSince}d ago`} · ${cert.certified_by}`
+                          ? `Last certified ${daysSince === 0 ? "today" : `${daysSince}d ago`} · ${cert.certified_by.startsWith("user_") ? "unknown user" : cert.certified_by}`
                           : "Never certified"}
                         {overdue && <span style={{ color: "var(--warn, #b45309)", marginLeft: 8 }}>⚠ overdue</span>}
                       </div>
