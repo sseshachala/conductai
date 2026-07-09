@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Policy Engine</title>
+  <desc id="desc">Workspace rules are flattened, cached, and evaluated first-match-wins for proxy and agent personas.</desc>
+  <defs>
+    <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="12" refY="5" orient="auto">
+      <path d="M 0 0 L 14 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+  </style>
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <text x="58" y="66" font-size="42" font-weight="800" fill="#111827">Policy Engine</text>
+  <text x="60" y="105" font-size="23" fill="#64748b">Workspace rules are flattened, cached, and evaluated first-match-wins for proxy and agent personas.</text>
+  <g>
+    <path d="M 350 207.5 C 402.5 207.5, 402.5 397.5, 455 397.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 350 440 C 402.5 440, 402.5 397.5, 455 397.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 350 670 C 402.5 670, 402.5 397.5, 455 397.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 785 397.5 C 830 397.5, 830 397.5, 875 397.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1175 397.5 C 1220 397.5, 1220 345, 1265 345" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1407.5 505 C 1407.5 547.5, 1407.5 547.5, 1407.5 590" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+  </g>
+  <g filter="url(#shadow)">
+    
+  <g id="packs">
+    <rect x="70" y="120" width="280" height="175" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="70" y="120" width="12" height="175" rx="6" fill="#2563eb"/>
+    <text x="96" y="164" font-size="29" font-weight="700" fill="#111827">Skill packs</text>
+    <text x="96" y="202" font-size="23" font-weight="400" fill="#111827">conduct-base always</text>
+<text x="96" y="229.6" font-size="23" font-weight="400" fill="#111827">on</text>
+<text x="96" y="257.2" font-size="23" font-weight="400" fill="#111827">Optional SOC2/HIPAA</text>
+<text x="96" y="284.8" font-size="23" font-weight="400" fill="#111827">packs</text>
+<text x="96" y="312.4" font-size="23" font-weight="400" fill="#111827">Rule templates</text>
+  </g>
+
+  <g id="overrides">
+    <rect x="70" y="350" width="280" height="180" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="70" y="350" width="12" height="180" rx="6" fill="#ea580c"/>
+    <text x="96" y="394" font-size="29" font-weight="700" fill="#111827">Workspace overrides</text>
+    <text x="96" y="432" font-size="23" font-weight="400" fill="#111827">Disable pack rule</text>
+<text x="96" y="459.6" font-size="23" font-weight="400" fill="#111827">Change action</text>
+<text x="96" y="487.2" font-size="23" font-weight="400" fill="#111827">Add custom message</text>
+  </g>
+
+  <g id="custom">
+    <rect x="70" y="585" width="280" height="170" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="70" y="585" width="12" height="170" rx="6" fill="#7c3aed"/>
+    <text x="96" y="629" font-size="29" font-weight="700" fill="#111827">Custom rules</text>
+    <text x="96" y="667" font-size="23" font-weight="400" fill="#111827">Workspace-authored</text>
+<text x="96" y="694.6" font-size="23" font-weight="400" fill="#111827">ID collision takes</text>
+<text x="96" y="722.2" font-size="23" font-weight="400" fill="#111827">precedence</text>
+<text x="96" y="749.8" font-size="23" font-weight="400" fill="#111827">Persona-specific</text>
+  </g>
+
+  <g id="compute">
+    <rect x="455" y="280" width="330" height="235" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="455" y="280" width="12" height="235" rx="6" fill="#0f766e"/>
+    <text x="481" y="324" font-size="29" font-weight="700" fill="#111827">compute_policy()</text>
+    <text x="481" y="362" font-size="23" font-weight="400" fill="#111827">Assemble in source</text>
+<text x="481" y="389.6" font-size="23" font-weight="400" fill="#111827">order</text>
+<text x="481" y="417.2" font-size="23" font-weight="400" fill="#111827">Flatten final rule list</text>
+<text x="481" y="444.8" font-size="23" font-weight="400" fill="#111827">Version hash payload</text>
+<text x="481" y="472.4" font-size="23" font-weight="400" fill="#111827">One surface per persona</text>
+  </g>
+
+  <g id="cache">
+    <rect x="875" y="280" width="300" height="235" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="875" y="280" width="12" height="235" rx="6" fill="#16a34a"/>
+    <text x="901" y="324" font-size="29" font-weight="700" fill="#111827">GuardPolicyCache</text>
+    <text x="901" y="362" font-size="23" font-weight="400" fill="#111827">PK: workspace +</text>
+<text x="901" y="389.6" font-size="23" font-weight="400" fill="#111827">persona</text>
+<text x="901" y="417.2" font-size="23" font-weight="400" fill="#111827">payload: flattened</text>
+<text x="901" y="444.8" font-size="23" font-weight="400" fill="#111827">rules</text>
+<text x="901" y="472.4" font-size="23" font-weight="400" fill="#111827">computed_at</text>
+<text x="901" y="500" font-size="23" font-weight="400" fill="#111827">Invalidated on rule</text>
+<text x="901" y="527.6" font-size="23" font-weight="400" fill="#111827">changes</text>
+  </g>
+
+  <g id="match">
+    <rect x="1265" y="185" width="285" height="320" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1265" y="185" width="12" height="320" rx="6" fill="#dc2626"/>
+    <text x="1291" y="229" font-size="29" font-weight="700" fill="#111827">Request match</text>
+    <text x="1291" y="267" font-size="23" font-weight="400" fill="#111827">provider exact</text>
+<text x="1291" y="294.6" font-size="23" font-weight="400" fill="#111827">model regex</text>
+<text x="1291" y="322.2" font-size="23" font-weight="400" fill="#111827">prompt regex</text>
+<text x="1291" y="349.8" font-size="23" font-weight="400" fill="#111827">All present fields</text>
+<text x="1291" y="377.4" font-size="23" font-weight="400" fill="#111827">must match</text>
+<text x="1291" y="405" font-size="23" font-weight="400" fill="#111827">First match wins</text>
+<text x="1291" y="432.6" font-size="23" font-weight="400" fill="#111827">No match -&gt; ALLOW</text>
+  </g>
+
+  <g id="decision">
+    <rect x="1265" y="590" width="285" height="160" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1265" y="590" width="12" height="160" rx="6" fill="#475569"/>
+    <text x="1291" y="634" font-size="29" font-weight="700" fill="#111827">Decision</text>
+    <text x="1291" y="672" font-size="23" font-weight="400" fill="#111827">BLOCK</text>
+<text x="1291" y="699.6" font-size="23" font-weight="400" fill="#111827">WARN</text>
+<text x="1291" y="727.2" font-size="23" font-weight="400" fill="#111827">ALLOW</text>
+<text x="1291" y="754.8" font-size="23" font-weight="400" fill="#111827">Policy error -&gt;</text>
+<text x="1291" y="782.4" font-size="23" font-weight="400" fill="#111827">BLOCK</text>
+  </g>
+  </g>
+  
+  <g>
+    <rect x="470" y="760" width="1460" height="72" rx="18" fill="#eef2ff" stroke="#c7d2fe"/>
+    <circle cx="508" cy="796" r="12" fill="#475569"/>
+    <text x="538" y="805" font-size="25" font-weight="650" fill="#111827">Personas: proxy enforces pre-call LLM policy; agent is stricter for runtime behavior.</text>
+  </g>
+</svg>

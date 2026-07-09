@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Playbooks</title>
+  <desc id="desc">Reusable YAML workflows install into workspaces, register triggers, and execute as runtime DAGs.</desc>
+  <defs>
+    <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="12" refY="5" orient="auto">
+      <path d="M 0 0 L 14 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+  </style>
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <text x="58" y="66" font-size="42" font-weight="800" fill="#111827">Playbooks</text>
+  <text x="60" y="105" font-size="23" fill="#64748b">Reusable YAML workflows install into workspaces, register triggers, and execute as runtime DAGs.</text>
+  <g>
+    <path d="M 197.5 495 C 197.5 450, 197.5 450, 197.5 405" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 340 277.5 C 385 277.5, 385 345, 430 345" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 730 345 C 775 345, 775 325, 820 325" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1165 325 C 1205 325, 1205 330, 1245 330" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 992.5 535 C 992.5 587.5, 800 587.5, 800 640" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+  </g>
+  <g filter="url(#shadow)">
+    
+  <g id="yaml">
+    <rect x="55" y="150" width="285" height="255" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="55" y="150" width="12" height="255" rx="6" fill="#2563eb"/>
+    <text x="81" y="194" font-size="29" font-weight="700" fill="#111827">Playbook YAML</text>
+    <text x="81" y="232" font-size="23" font-weight="400" fill="#111827">name + version</text>
+<text x="81" y="259.6" font-size="23" font-weight="400" fill="#111827">extends</text>
+<text x="81" y="287.2" font-size="23" font-weight="400" fill="#111827">base-autopilot</text>
+<text x="81" y="314.8" font-size="23" font-weight="400" fill="#111827">inputs</text>
+<text x="81" y="342.4" font-size="23" font-weight="400" fill="#111827">blocks</text>
+<text x="81" y="370" font-size="23" font-weight="400" fill="#111827">on: trigger</text>
+<text x="81" y="397.6" font-size="23" font-weight="400" fill="#111827">cleanup</text>
+  </g>
+
+  <g id="base">
+    <rect x="55" y="495" width="285" height="210" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="55" y="495" width="12" height="210" rx="6" fill="#7c3aed"/>
+    <text x="81" y="539" font-size="29" font-weight="700" fill="#111827">Base file pattern</text>
+    <text x="81" y="577" font-size="23" font-weight="400" fill="#111827">kind: base</text>
+<text x="81" y="604.6" font-size="23" font-weight="400" fill="#111827">snippets</text>
+<text x="81" y="632.2" font-size="23" font-weight="400" fill="#111827">template blocks</text>
+<text x="81" y="659.8" font-size="23" font-weight="400" fill="#111827">$use copy +</text>
+<text x="81" y="687.4" font-size="23" font-weight="400" fill="#111827">override</text>
+  </g>
+
+  <g id="install">
+    <rect x="430" y="240" width="300" height="210" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="430" y="240" width="12" height="210" rx="6" fill="#0f766e"/>
+    <text x="456" y="284" font-size="29" font-weight="700" fill="#111827">Install</text>
+    <text x="456" y="322" font-size="23" font-weight="400" fill="#111827">conduct agent install</text>
+<text x="456" y="349.6" font-size="23" font-weight="400" fill="#111827">Create workflow</text>
+<text x="456" y="377.2" font-size="23" font-weight="400" fill="#111827">Register GitHub</text>
+<text x="456" y="404.8" font-size="23" font-weight="400" fill="#111827">webhook</text>
+<text x="456" y="432.4" font-size="23" font-weight="400" fill="#111827">Repo allowlist +</text>
+<text x="456" y="460" font-size="23" font-weight="400" fill="#111827">label</text>
+  </g>
+
+  <g id="chain">
+    <rect x="820" y="115" width="345" height="420" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="820" y="115" width="12" height="420" rx="6" fill="#ea580c"/>
+    <text x="846" y="159" font-size="29" font-weight="700" fill="#111827">Autopilot chain</text>
+    <text x="846" y="197" font-size="23" font-weight="400" fill="#111827">security-scanner creates</text>
+<text x="846" y="224.6" font-size="23" font-weight="400" fill="#111827">issue</text>
+<text x="846" y="252.2" font-size="23" font-weight="400" fill="#111827">github_issue_labeled</text>
+<text x="846" y="279.8" font-size="23" font-weight="400" fill="#111827">triggers</text>
+<text x="846" y="307.4" font-size="23" font-weight="400" fill="#111827">recall_context</text>
+<text x="846" y="335" font-size="23" font-weight="400" fill="#111827">plan_fix</text>
+<text x="846" y="362.6" font-size="23" font-weight="400" fill="#111827">implement_fix</text>
+<text x="846" y="390.2" font-size="23" font-weight="400" fill="#111827">run_tests</text>
+<text x="846" y="417.79999999999995" font-size="23" font-weight="400" fill="#111827">open_pr</text>
+<text x="846" y="445.4" font-size="23" font-weight="400" fill="#111827">record_outcome</text>
+  </g>
+
+  <g id="rules">
+    <rect x="1245" y="170" width="300" height="320" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1245" y="170" width="12" height="320" rx="6" fill="#dc2626"/>
+    <text x="1271" y="214" font-size="29" font-weight="700" fill="#111827">Design rules</text>
+    <text x="1271" y="252" font-size="23" font-weight="400" fill="#111827">agentic needs runs_on</text>
+<text x="1271" y="279.6" font-size="23" font-weight="400" fill="#111827">single outputs JSON</text>
+<text x="1271" y="307.2" font-size="23" font-weight="400" fill="#111827">only</text>
+<text x="1271" y="334.8" font-size="23" font-weight="400" fill="#111827">read memory before</text>
+<text x="1271" y="362.4" font-size="23" font-weight="400" fill="#111827">work</text>
+<text x="1271" y="390" font-size="23" font-weight="400" fill="#111827">write memory after</text>
+<text x="1271" y="417.6" font-size="23" font-weight="400" fill="#111827">work</text>
+<text x="1271" y="445.2" font-size="23" font-weight="400" fill="#111827">explicit max_turns</text>
+  </g>
+
+  <g id="runtime">
+    <rect x="575" y="640" width="450" height="150" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="575" y="640" width="12" height="150" rx="6" fill="#16a34a"/>
+    <text x="601" y="684" font-size="29" font-weight="700" fill="#111827">Runtime result</text>
+    <text x="601" y="722" font-size="23" font-weight="400" fill="#111827">Compiled graph executes</text>
+<text x="601" y="749.6" font-size="23" font-weight="400" fill="#111827">block-by-block</text>
+<text x="601" y="777.2" font-size="23" font-weight="400" fill="#111827">Cleanup runs even on failure</text>
+  </g>
+  </g>
+  
+  <g>
+    <rect x="70" y="810" width="1460" height="72" rx="18" fill="#eef2ff" stroke="#c7d2fe"/>
+    <circle cx="108" cy="846" r="12" fill="#475569"/>
+    <text x="138" y="855" font-size="25" font-weight="650" fill="#111827">Think of a playbook as a productized DAG: trigger, inputs, executable blocks, and cleanup.</text>
+  </g>
+</svg>

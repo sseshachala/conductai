@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="980" viewBox="0 0 1600 980" role="img" aria-labelledby="title desc">
+  <title id="title">Agent Identity</title>
+  <desc id="desc">Four token families authenticate agents, runs, CLI members, and user API access through one auth path.</desc>
+  <defs>
+    <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="12" refY="5" orient="auto">
+      <path d="M 0 0 L 14 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+  </style>
+  <rect width="1600" height="980" fill="#f8fafc"/>
+  <text x="58" y="66" font-size="42" font-weight="800" fill="#111827">Agent Identity</text>
+  <text x="60" y="105" font-size="23" fill="#64748b">Four token families authenticate agents, runs, CLI members, and user API access through one auth path.</text>
+  <g>
+    <path d="M 295 405 C 342.5 405, 342.5 405, 390 405" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 710 405 C 757.5 405, 757.5 200, 805 200" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 710 405 C 757.5 405, 757.5 400, 805 400" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 710 405 C 757.5 405, 757.5 600, 805 600" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 710 405 C 757.5 405, 757.5 795, 805 795" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 710 405 C 970 405, 970 420, 1230 420" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+  </g>
+  <g filter="url(#shadow)">
+    
+  <g id="request">
+    <rect x="60" y="330" width="235" height="150" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="60" y="330" width="12" height="150" rx="6" fill="#2563eb"/>
+    <text x="86" y="374" font-size="29" font-weight="700" fill="#111827">Incoming request</text>
+    <text x="86" y="412" font-size="23" font-weight="400" fill="#111827">Bearer token</text>
+<text x="86" y="439.6" font-size="23" font-weight="400" fill="#111827">X-Api-Key</text>
+<text x="86" y="467.2" font-size="23" font-weight="400" fill="#111827">or Clerk JWT</text>
+  </g>
+
+  <g id="auth">
+    <rect x="390" y="250" width="320" height="310" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="390" y="250" width="12" height="310" rx="6" fill="#7c3aed"/>
+    <text x="416" y="294" font-size="29" font-weight="700" fill="#111827">Auth resolution order</text>
+    <text x="416" y="332" font-size="23" font-weight="400" fill="#111827">cond_run_*</text>
+<text x="416" y="359.6" font-size="23" font-weight="400" fill="#111827">cond_agt_*</text>
+<text x="416" y="387.2" font-size="23" font-weight="400" fill="#111827">guard-mt-*</text>
+<text x="416" y="414.8" font-size="23" font-weight="400" fill="#111827">server CLI key</text>
+<text x="416" y="442.4" font-size="23" font-weight="400" fill="#111827">cond_live_* hash</text>
+<text x="416" y="470" font-size="23" font-weight="400" fill="#111827">Clerk JWT fallback</text>
+<text x="416" y="497.6" font-size="23" font-weight="400" fill="#111827">No match -&gt; 401</text>
+  </g>
+
+  <g id="run">
+    <rect x="805" y="120" width="300" height="160" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="805" y="120" width="12" height="160" rx="6" fill="#ea580c"/>
+    <text x="831" y="164" font-size="29" font-weight="700" fill="#111827">Run token</text>
+    <text x="831" y="202" font-size="23" font-weight="400" fill="#111827">cond_run_*</text>
+<text x="831" y="229.6" font-size="23" font-weight="400" fill="#111827">Single run</text>
+<text x="831" y="257.2" font-size="23" font-weight="400" fill="#111827">Encrypted then</text>
+<text x="831" y="284.8" font-size="23" font-weight="400" fill="#111827">cleared</text>
+<text x="831" y="312.4" font-size="23" font-weight="400" fill="#111827">Sandbox execution</text>
+  </g>
+
+  <g id="agent">
+    <rect x="805" y="320" width="300" height="160" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="805" y="320" width="12" height="160" rx="6" fill="#0f766e"/>
+    <text x="831" y="364" font-size="29" font-weight="700" fill="#111827">Agent identity</text>
+    <text x="831" y="402" font-size="23" font-weight="400" fill="#111827">cond_agt_*</text>
+<text x="831" y="429.6" font-size="23" font-weight="400" fill="#111827">Permanent</text>
+<text x="831" y="457.2" font-size="23" font-weight="400" fill="#111827">AES-256-GCM</text>
+<text x="831" y="484.8" font-size="23" font-weight="400" fill="#111827">Recurring agents</text>
+  </g>
+
+  <g id="member">
+    <rect x="805" y="520" width="300" height="160" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="805" y="520" width="12" height="160" rx="6" fill="#16a34a"/>
+    <text x="831" y="564" font-size="29" font-weight="700" fill="#111827">Member token</text>
+    <text x="831" y="602" font-size="23" font-weight="400" fill="#111827">guard-mt-*</text>
+<text x="831" y="629.6" font-size="23" font-weight="400" fill="#111827">Session</text>
+<text x="831" y="657.2" font-size="23" font-weight="400" fill="#111827">Plaintext in DB</text>
+<text x="831" y="684.8" font-size="23" font-weight="400" fill="#111827">Guard CLI proxy</text>
+  </g>
+
+  <g id="api">
+    <rect x="805" y="720" width="300" height="150" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="805" y="720" width="12" height="150" rx="6" fill="#dc2626"/>
+    <text x="831" y="764" font-size="29" font-weight="700" fill="#111827">User API key</text>
+    <text x="831" y="802" font-size="23" font-weight="400" fill="#111827">cond_live_*</text>
+<text x="831" y="829.6" font-size="23" font-weight="400" fill="#111827">Configurable TTL</text>
+<text x="831" y="857.2" font-size="23" font-weight="400" fill="#111827">SHA-256 hash only</text>
+<text x="831" y="884.8" font-size="23" font-weight="400" fill="#111827">API access</text>
+  </g>
+
+  <g id="workspace">
+    <rect x="1230" y="330" width="300" height="180" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1230" y="330" width="12" height="180" rx="6" fill="#475569"/>
+    <text x="1256" y="374" font-size="29" font-weight="700" fill="#111827">Workspace context</text>
+    <text x="1256" y="412" font-size="23" font-weight="400" fill="#111827">query param</text>
+<text x="1256" y="439.6" font-size="23" font-weight="400" fill="#111827">X-Workspace-Id</text>
+<text x="1256" y="467.2" font-size="23" font-weight="400" fill="#111827">Clerk org_id</text>
+<text x="1256" y="494.8" font-size="23" font-weight="400" fill="#111827">personal workspace</text>
+<text x="1256" y="522.4" font-size="23" font-weight="400" fill="#111827">dev fallback</text>
+  </g>
+  </g>
+  
+  <g>
+    <rect x="70" y="890" width="1460" height="72" rx="18" fill="#eef2ff" stroke="#c7d2fe"/>
+    <circle cx="108" cy="926" r="12" fill="#dc2626"/>
+    <text x="138" y="935" font-size="25" font-weight="650" fill="#111827">Security split: recoverable tokens are encrypted; user API keys are hash-only.</text>
+  </g>
+</svg>

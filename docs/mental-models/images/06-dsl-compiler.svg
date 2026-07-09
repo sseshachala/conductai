@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">DSL / Compiler</title>
+  <desc id="desc">Publish-time processing turns YAML playbooks into cached graphs and compiled brain prompts.</desc>
+  <defs>
+    <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="12" refY="5" orient="auto">
+      <path d="M 0 0 L 14 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+  </style>
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <text x="58" y="66" font-size="42" font-weight="800" fill="#111827">DSL / Compiler</text>
+  <text x="60" y="105" font-size="23" fill="#64748b">Publish-time processing turns YAML playbooks into cached graphs and compiled brain prompts.</text>
+  <g>
+    <path d="M 315 287.5 C 355 287.5, 355 270, 395 270" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 720 270 C 760 270, 760 272.5, 800 272.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 315 287.5 C 355 287.5, 355 620, 395 620" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 720 620 C 760 620, 760 605, 800 605" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1070 272.5 C 1155 272.5, 1155 420, 1240 420" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1130 605 C 1185 605, 1185 420, 1240 420" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+  </g>
+  <g filter="url(#shadow)">
+    
+  <g id="yaml">
+    <rect x="65" y="205" width="250" height="165" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="65" y="205" width="12" height="165" rx="6" fill="#2563eb"/>
+    <text x="91" y="249" font-size="29" font-weight="700" fill="#111827">YAML source</text>
+    <text x="91" y="287" font-size="23" font-weight="400" fill="#111827">Canonical source</text>
+<text x="91" y="314.6" font-size="23" font-weight="400" fill="#111827">inputs / blocks /</text>
+<text x="91" y="342.2" font-size="23" font-weight="400" fill="#111827">on</text>
+<text x="91" y="369.8" font-size="23" font-weight="400" fill="#111827">extends base</text>
+  </g>
+
+  <g id="loader">
+    <rect x="395" y="140" width="325" height="260" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="395" y="140" width="12" height="260" rx="6" fill="#0f766e"/>
+    <text x="421" y="184" font-size="29" font-weight="700" fill="#111827">Stage 1: Loader</text>
+    <text x="421" y="222" font-size="23" font-weight="400" fill="#111827">Parse + validate schema</text>
+<text x="421" y="249.6" font-size="23" font-weight="400" fill="#111827">Resolve extends</text>
+<text x="421" y="277.2" font-size="23" font-weight="400" fill="#111827">$use copies base blocks</text>
+<text x="421" y="304.8" font-size="23" font-weight="400" fill="#111827">Embed snippets</text>
+<text x="421" y="332.4" font-size="23" font-weight="400" fill="#111827">Build nodes + edges</text>
+  </g>
+
+  <g id="graph">
+    <rect x="800" y="180" width="270" height="185" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="800" y="180" width="12" height="185" rx="6" fill="#16a34a"/>
+    <text x="826" y="224" font-size="29" font-weight="700" fill="#111827">Workflow graph</text>
+    <text x="826" y="262" font-size="23" font-weight="400" fill="#111827">nodes[]</text>
+<text x="826" y="289.6" font-size="23" font-weight="400" fill="#111827">edges[]</text>
+<text x="826" y="317.2" font-size="23" font-weight="400" fill="#111827">sourceHandle</text>
+<text x="826" y="344.8" font-size="23" font-weight="400" fill="#111827">pass/fail</text>
+<text x="826" y="372.4" font-size="23" font-weight="400" fill="#111827">Stored as JSONB</text>
+  </g>
+
+  <g id="compiler">
+    <rect x="395" y="500" width="325" height="240" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="395" y="500" width="12" height="240" rx="6" fill="#7c3aed"/>
+    <text x="421" y="544" font-size="29" font-weight="700" fill="#111827">Stage 2: Compiler</text>
+    <text x="421" y="582" font-size="23" font-weight="400" fill="#111827">Brain blocks only</text>
+<text x="421" y="609.6" font-size="23" font-weight="400" fill="#111827">Extract structured</text>
+<text x="421" y="637.2" font-size="23" font-weight="400" fill="#111827">slots</text>
+<text x="421" y="664.8" font-size="23" font-weight="400" fill="#111827">Assemble Jinja prompt</text>
+<text x="421" y="692.4" font-size="23" font-weight="400" fill="#111827">StrictUndefined</text>
+<text x="421" y="720" font-size="23" font-weight="400" fill="#111827">Publish-time LLM calls</text>
+  </g>
+
+  <g id="artifacts">
+    <rect x="800" y="500" width="330" height="210" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="800" y="500" width="12" height="210" rx="6" fill="#ea580c"/>
+    <text x="826" y="544" font-size="29" font-weight="700" fill="#111827">compiled_artifacts</text>
+    <text x="826" y="582" font-size="23" font-weight="400" fill="#111827">block_id -&gt;</text>
+<text x="826" y="609.6" font-size="23" font-weight="400" fill="#111827">system_prompt</text>
+<text x="826" y="637.2" font-size="23" font-weight="400" fill="#111827">tool_schema</text>
+<text x="826" y="664.8" font-size="23" font-weight="400" fill="#111827">Cached on</text>
+<text x="826" y="692.4" font-size="23" font-weight="400" fill="#111827">WorkflowVersion</text>
+  </g>
+
+  <g id="executor">
+    <rect x="1240" y="315" width="290" height="210" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1240" y="315" width="12" height="210" rx="6" fill="#dc2626"/>
+    <text x="1266" y="359" font-size="29" font-weight="700" fill="#111827">Executor consumes</text>
+    <text x="1266" y="397" font-size="23" font-weight="400" fill="#111827">graph traversal</text>
+<text x="1266" y="424.6" font-size="23" font-weight="400" fill="#111827">compiled prompts</text>
+<text x="1266" y="452.2" font-size="23" font-weight="400" fill="#111827">no runtime prompt</text>
+<text x="1266" y="479.8" font-size="23" font-weight="400" fill="#111827">generation</text>
+  </g>
+  </g>
+  
+  <g>
+    <rect x="70" y="790" width="1460" height="72" rx="18" fill="#eef2ff" stroke="#c7d2fe"/>
+    <circle cx="108" cy="826" r="12" fill="#7c3aed"/>
+    <text x="138" y="835" font-size="25" font-weight="650" fill="#111827">Key distinction: $use is copy + overlay at load time, not runtime inheritance.</text>
+  </g>
+</svg>

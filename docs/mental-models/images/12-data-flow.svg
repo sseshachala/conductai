@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1760" height="1120" viewBox="0 0 1760 1120" role="img" aria-labelledby="title desc">
+  <title id="title">End-to-End Data Flow</title>
+  <desc id="desc">External triggers become queued runs, block execution, guarded LLM calls, durable state, and UI updates.</desc>
+  <defs>
+    <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="12" refY="5" orient="auto">
+      <path d="M 0 0 L 14 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+  </style>
+  <rect width="1760" height="1120" fill="#f8fafc"/>
+  <text x="58" y="66" font-size="42" font-weight="800" fill="#111827">End-to-End Data Flow</text>
+  <text x="60" y="105" font-size="23" fill="#64748b">External triggers become queued runs, block execution, guarded LLM calls, durable state, and UI updates.</text>
+  <g>
+    <path d="M 320 247.5 C 375 247.5, 375 257.5, 430 257.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 790 257.5 C 845 257.5, 845 267.5, 900 267.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 900 267.5 C 847.5 267.5, 847.5 542.5, 795 542.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1095 395 C 1095 412.5, 1095 412.5, 1095 430" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1290 542.5 C 1335 542.5, 1335 535, 1380 535" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1530 410 C 1530 355, 1530 355, 1530 300" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1530 300 C 1530 355, 1530 355, 1530 410" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 652.5 630 C 652.5 695, 395 695, 395 760" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 900 542.5 C 737.5 542.5, 737.5 862.5, 575 862.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 575 862.5 C 737.5 862.5, 737.5 267.5, 900 267.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/><text x="737.5" y="553" text-anchor="middle" font-size="20" font-weight="700" fill="#64748b">next block</text>
+<path d="M 1095 395 C 1095 577.5, 880 577.5, 880 760" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1095 395 C 1095 577.5, 1380 577.5, 1380 760" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1380 760 C 1380 707.5, 1095 707.5, 1095 655" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+  </g>
+  <g filter="url(#shadow)">
+    
+  <g id="external">
+    <rect x="70" y="175" width="250" height="145" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="70" y="175" width="12" height="145" rx="6" fill="#2563eb"/>
+    <text x="96" y="219" font-size="29" font-weight="700" fill="#111827">External event</text>
+    <text x="96" y="257" font-size="23" font-weight="400" fill="#111827">GitHub label</text>
+<text x="96" y="284.6" font-size="23" font-weight="400" fill="#111827">manual trigger</text>
+<text x="96" y="312.2" font-size="23" font-weight="400" fill="#111827">schedule</text>
+  </g>
+
+  <g id="ingestion">
+    <rect x="430" y="140" width="360" height="235" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="430" y="140" width="12" height="235" rx="6" fill="#0f766e"/>
+    <text x="456" y="184" font-size="29" font-weight="700" fill="#111827">Ingestion</text>
+    <text x="456" y="222" font-size="23" font-weight="400" fill="#111827">Verify HMAC</text>
+<text x="456" y="249.6" font-size="23" font-weight="400" fill="#111827">Normalize payload</text>
+<text x="456" y="277.2" font-size="23" font-weight="400" fill="#111827">Match trigger conditions</text>
+<text x="456" y="304.8" font-size="23" font-weight="400" fill="#111827">Create Run pending</text>
+<text x="456" y="332.4" font-size="23" font-weight="400" fill="#111827">Mint cond_run_*</text>
+<text x="456" y="360" font-size="23" font-weight="400" fill="#111827">Redis RPUSH queue</text>
+  </g>
+
+  <g id="executor">
+    <rect x="900" y="140" width="390" height="255" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="900" y="140" width="12" height="255" rx="6" fill="#ea580c"/>
+    <text x="926" y="184" font-size="29" font-weight="700" fill="#111827">Executor</text>
+    <text x="926" y="222" font-size="23" font-weight="400" fill="#111827">Acquire lease</text>
+<text x="926" y="249.6" font-size="23" font-weight="400" fill="#111827">Load graph + artifacts</text>
+<text x="926" y="277.2" font-size="23" font-weight="400" fill="#111827">Decrypt credentials</text>
+<text x="926" y="304.8" font-size="23" font-weight="400" fill="#111827">Restore checkpoint</text>
+<text x="926" y="332.4" font-size="23" font-weight="400" fill="#111827">Topological block loop</text>
+<text x="926" y="360" font-size="23" font-weight="400" fill="#111827">Merge outputs into state</text>
+  </g>
+
+  <g id="tool">
+    <rect x="510" y="455" width="285" height="175" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="510" y="455" width="12" height="175" rx="6" fill="#16a34a"/>
+    <text x="536" y="499" font-size="29" font-weight="700" fill="#111827">Tool block</text>
+    <text x="536" y="537" font-size="23" font-weight="400" fill="#111827">Decrypt creds</text>
+<text x="536" y="564.6" font-size="23" font-weight="400" fill="#111827">Call integration</text>
+<text x="536" y="592.2" font-size="23" font-weight="400" fill="#111827">API</text>
+<text x="536" y="619.8" font-size="23" font-weight="400" fill="#111827">Return structured</text>
+<text x="536" y="647.4" font-size="23" font-weight="400" fill="#111827">output</text>
+  </g>
+
+  <g id="brain">
+    <rect x="900" y="430" width="390" height="225" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="900" y="430" width="12" height="225" rx="6" fill="#7c3aed"/>
+    <text x="926" y="474" font-size="29" font-weight="700" fill="#111827">Brain block</text>
+    <text x="926" y="512" font-size="23" font-weight="400" fill="#111827">Compiled system prompt</text>
+<text x="926" y="539.6" font-size="23" font-weight="400" fill="#111827">Optional E2B/Modal session</text>
+<text x="926" y="567.2" font-size="23" font-weight="400" fill="#111827">Build messages</text>
+<text x="926" y="594.8" font-size="23" font-weight="400" fill="#111827">POST to Guard proxy</text>
+<text x="926" y="622.4" font-size="23" font-weight="400" fill="#111827">Dispatch tool calls</text>
+<text x="926" y="650" font-size="23" font-weight="400" fill="#111827">Accumulate cost + turns</text>
+  </g>
+
+  <g id="guard">
+    <rect x="1380" y="410" width="300" height="250" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1380" y="410" width="12" height="250" rx="6" fill="#dc2626"/>
+    <text x="1406" y="454" font-size="29" font-weight="700" fill="#111827">Guard proxy</text>
+    <text x="1406" y="492" font-size="23" font-weight="400" fill="#111827">Auth token -&gt;</text>
+<text x="1406" y="519.6" font-size="23" font-weight="400" fill="#111827">workspace</text>
+<text x="1406" y="547.2" font-size="23" font-weight="400" fill="#111827">Policy cache match</text>
+<text x="1406" y="574.8" font-size="23" font-weight="400" fill="#111827">Select upstream</text>
+<text x="1406" y="602.4" font-size="23" font-weight="400" fill="#111827">Forward SSE</text>
+<text x="1406" y="630" font-size="23" font-weight="400" fill="#111827">Write audit event</text>
+  </g>
+
+  <g id="llm">
+    <rect x="1390" y="145" width="280" height="155" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1390" y="145" width="12" height="155" rx="6" fill="#475569"/>
+    <text x="1416" y="189" font-size="29" font-weight="700" fill="#111827">Upstream LLM</text>
+    <text x="1416" y="227" font-size="23" font-weight="400" fill="#111827">Anthropic/OpenAI</text>
+<text x="1416" y="254.6" font-size="23" font-weight="400" fill="#111827">or BYO gateway</text>
+<text x="1416" y="282.2" font-size="23" font-weight="400" fill="#111827">Portkey/Helicone</text>
+  </g>
+
+  <g id="state">
+    <rect x="215" y="760" width="360" height="205" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="215" y="760" width="12" height="205" rx="6" fill="#2563eb"/>
+    <text x="241" y="804" font-size="29" font-weight="700" fill="#111827">State + checkpoint</text>
+    <text x="241" y="842" font-size="23" font-weight="400" fill="#111827">JSONB state accumulator</text>
+<text x="241" y="869.6" font-size="23" font-weight="400" fill="#111827">Redis checkpoint</text>
+<text x="241" y="897.2" font-size="23" font-weight="400" fill="#111827">{{block.field}} references</text>
+<text x="241" y="924.8" font-size="23" font-weight="400" fill="#111827">Resume support</text>
+  </g>
+
+  <g id="complete">
+    <rect x="700" y="760" width="360" height="205" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="700" y="760" width="12" height="205" rx="6" fill="#16a34a"/>
+    <text x="726" y="804" font-size="29" font-weight="700" fill="#111827">Completion</text>
+    <text x="726" y="842" font-size="23" font-weight="400" fill="#111827">Run.status succeeded</text>
+<text x="726" y="869.6" font-size="23" font-weight="400" fill="#111827">actual_turns</text>
+<text x="726" y="897.2" font-size="23" font-weight="400" fill="#111827">outcome artifact</text>
+<text x="726" y="924.8" font-size="23" font-weight="400" fill="#111827">cost_usd total</text>
+<text x="726" y="952.4" font-size="23" font-weight="400" fill="#111827">WebSocket event</text>
+  </g>
+
+  <g id="credentials">
+    <rect x="1185" y="760" width="390" height="205" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1185" y="760" width="12" height="205" rx="6" fill="#ea580c"/>
+    <text x="1211" y="804" font-size="29" font-weight="700" fill="#111827">Credential boundary</text>
+    <text x="1211" y="842" font-size="23" font-weight="400" fill="#111827">Encrypted Integration row</text>
+<text x="1211" y="869.6" font-size="23" font-weight="400" fill="#111827">In-memory CredentialStore</text>
+<text x="1211" y="897.2" font-size="23" font-weight="400" fill="#111827">Shell sees real env var</text>
+<text x="1211" y="924.8" font-size="23" font-weight="400" fill="#111827">LLM sees placeholder only</text>
+  </g>
+  </g>
+  
+  <g>
+    <rect x="70" y="1030" width="1460" height="72" rx="18" fill="#eef2ff" stroke="#c7d2fe"/>
+    <circle cx="108" cy="1066" r="12" fill="#475569"/>
+    <text x="138" y="1075" font-size="25" font-weight="650" fill="#111827">Key handoffs: webhook -&gt; queue -&gt; executor -&gt; block -&gt; state -&gt; UI, with Guard around every LLM call.</text>
+  </g>
+</svg>

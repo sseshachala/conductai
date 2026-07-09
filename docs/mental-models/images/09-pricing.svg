@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Pricing</title>
+  <desc id="desc">A frozen rate snapshot converts LLM usage into per-turn, per-block, and per-run cost.</desc>
+  <defs>
+    <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="12" refY="5" orient="auto">
+      <path d="M 0 0 L 14 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+  </style>
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <text x="58" y="66" font-size="42" font-weight="800" fill="#111827">Pricing</text>
+  <text x="60" y="105" font-size="23" fill="#64748b">A frozen rate snapshot converts LLM usage into per-turn, per-block, and per-run cost.</text>
+  <g>
+    <path d="M 390 287.5 C 625 287.5, 625 247.5, 860 247.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 785 245 C 822.5 245, 822.5 247.5, 860 247.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1230 247.5 C 1270 247.5, 1270 250, 1310 250" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1310 250 C 1167.5 250, 1167.5 630, 1025 630" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 390 287.5 C 482.5 287.5, 482.5 630, 575 630" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/><text x="482.5" y="446.75" text-anchor="middle" font-size="20" font-weight="700" fill="#64748b">same rates all run</text>
+  </g>
+  <g filter="url(#shadow)">
+    
+  <g id="snapshot">
+    <rect x="80" y="180" width="310" height="215" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="80" y="180" width="12" height="215" rx="6" fill="#2563eb"/>
+    <text x="106" y="224" font-size="29" font-weight="700" fill="#111827">Run start</text>
+    <text x="106" y="262" font-size="23" font-weight="400" fill="#111827">get_current_pricing()</text>
+<text x="106" y="289.6" font-size="23" font-weight="400" fill="#111827">DB rates or defaults</text>
+<text x="106" y="317.2" font-size="23" font-weight="400" fill="#111827">Apply env overrides</text>
+<text x="106" y="344.8" font-size="23" font-weight="400" fill="#111827">Freeze version_hash</text>
+  </g>
+
+  <g id="usage">
+    <rect x="470" y="130" width="315" height="230" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="470" y="130" width="12" height="230" rx="6" fill="#7c3aed"/>
+    <text x="496" y="174" font-size="29" font-weight="700" fill="#111827">LLM usage</text>
+    <text x="496" y="212" font-size="23" font-weight="400" fill="#111827">input_tokens</text>
+<text x="496" y="239.6" font-size="23" font-weight="400" fill="#111827">output_tokens</text>
+<text x="496" y="267.2" font-size="23" font-weight="400" fill="#111827">cache_read</text>
+<text x="496" y="294.8" font-size="23" font-weight="400" fill="#111827">cache_write</text>
+<text x="496" y="322.4" font-size="23" font-weight="400" fill="#111827">request_fee_usd</text>
+  </g>
+
+  <g id="formula">
+    <rect x="860" y="125" width="370" height="245" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="860" y="125" width="12" height="245" rx="6" fill="#ea580c"/>
+    <text x="886" y="169" font-size="29" font-weight="700" fill="#111827">Cost formula</text>
+    <text x="886" y="207" font-size="23" font-weight="400" fill="#111827">tokens * rate / 1M</text>
+<text x="886" y="234.6" font-size="23" font-weight="400" fill="#111827">sum input + output</text>
+<text x="886" y="262.2" font-size="23" font-weight="400" fill="#111827">add cache read/write</text>
+<text x="886" y="289.8" font-size="23" font-weight="400" fill="#111827">add request fee</text>
+<text x="886" y="317.4" font-size="23" font-weight="400" fill="#111827">fallback unknown models</text>
+  </g>
+
+  <g id="block">
+    <rect x="1310" y="160" width="225" height="180" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1310" y="160" width="12" height="180" rx="6" fill="#0f766e"/>
+    <text x="1336" y="204" font-size="29" font-weight="700" fill="#111827">Block cost</text>
+    <text x="1336" y="242" font-size="23" font-weight="400" fill="#111827">Each brain turn</text>
+<text x="1336" y="269.6" font-size="23" font-weight="400" fill="#111827">Accumulate</text>
+<text x="1336" y="297.2" font-size="23" font-weight="400" fill="#111827">cost_usd</text>
+<text x="1336" y="324.8" font-size="23" font-weight="400" fill="#111827">Track turns</text>
+  </g>
+
+  <g id="run">
+    <rect x="575" y="530" width="450" height="200" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="575" y="530" width="12" height="200" rx="6" fill="#16a34a"/>
+    <text x="601" y="574" font-size="29" font-weight="700" fill="#111827">Run total</text>
+    <text x="601" y="612" font-size="23" font-weight="400" fill="#111827">Executor aggregates block costs</text>
+<text x="601" y="639.6" font-size="23" font-weight="400" fill="#111827">Run trace shows cost_usd</text>
+<text x="601" y="667.2" font-size="23" font-weight="400" fill="#111827">Guard spend dashboard consumes</text>
+<text x="601" y="694.8" font-size="23" font-weight="400" fill="#111827">totals</text>
+<text x="601" y="722.4" font-size="23" font-weight="400" fill="#111827">Frozen snapshot keeps</text>
+<text x="601" y="750" font-size="23" font-weight="400" fill="#111827">reconciliation stable</text>
+  </g>
+  </g>
+  
+  <g>
+    <rect x="80" y="780" width="1460" height="72" rx="18" fill="#eef2ff" stroke="#c7d2fe"/>
+    <circle cx="118" cy="816" r="12" fill="#2563eb"/>
+    <text x="148" y="825" font-size="25" font-weight="650" fill="#111827">Reason for snapshots: rate changes mid-run must not rewrite the meaning of earlier turns.</text>
+  </g>
+</svg>
