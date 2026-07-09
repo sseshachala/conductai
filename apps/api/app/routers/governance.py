@@ -20,9 +20,12 @@ from app.core.database import get_db
 from app.models.workspace import Workspace
 from app.modules.guard.models import (
     GuardAuditEvent,
+    GuardPolicyCache,
+    PolicyCertification,
     SkillPack,
     WorkspaceSkillPack,
 )
+from app.core.auth import get_user_id
 
 
 router = APIRouter(prefix="/governance", tags=["governance"])
@@ -578,3 +581,85 @@ def get_kpis(
         risk_avoided_usd_mtd=blocks_mtd * _INCIDENT_AVG_USD,
         blocks_mtd=blocks_mtd,
     )
+
+
+# ---------------------------------------------------------------------------
+# Policy certification endpoints — issue #911
+# ---------------------------------------------------------------------------
+
+class CertifyIn(BaseModel):
+    pack_slug: str
+
+
+class CertificationOut(BaseModel):
+    id: str
+    pack_slug: str
+    certified_by: str
+    policy_version: str | None
+    certified_at: str
+
+
+@router.post("/certify", response_model=CertificationOut)
+def certify_policy(
+    body: CertifyIn,
+    workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    _: str = Depends(require_permission("guard.policies.edit")),
+    db: Session = Depends(get_db),
+):
+    ws_uuid = uuid.UUID(workspace_id)
+    # Snapshot the current policy version hash (any persona; "default" is the base)
+    cache = db.query(GuardPolicyCache).filter(
+        GuardPolicyCache.workspace_id == ws_uuid,
+        GuardPolicyCache.persona == "default",
+    ).first()
+    policy_version = cache.version_hash if cache else None
+
+    cert = PolicyCertification(
+        workspace_id=ws_uuid,
+        pack_slug=body.pack_slug,
+        certified_by=user_id,
+        policy_version=policy_version,
+    )
+    db.add(cert)
+    db.commit()
+    db.refresh(cert)
+    return CertificationOut(
+        id=str(cert.id),
+        pack_slug=cert.pack_slug,
+        certified_by=cert.certified_by,
+        policy_version=cert.policy_version,
+        certified_at=cert.certified_at.isoformat(),
+    )
+
+
+@router.get("/certifications", response_model=list[CertificationOut])
+def list_certifications(
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.policies.view")),
+    db: Session = Depends(get_db),
+):
+    """Latest certification per pack for this workspace."""
+    ws_uuid = uuid.UUID(workspace_id)
+    # One subquery per pack — latest cert_at
+    from sqlalchemy import func as _func, text as _text
+    rows = db.execute(
+        _text("""
+            SELECT DISTINCT ON (pack_slug)
+                id::text, pack_slug, certified_by, policy_version, certified_at
+            FROM policy_certifications
+            WHERE workspace_id = :ws
+            ORDER BY pack_slug, certified_at DESC
+        """),
+        {"ws": workspace_id},
+    ).fetchall()
+    return [
+        CertificationOut(
+            id=str(r[0]),
+            pack_slug=r[1],
+            certified_by=r[2],
+            policy_version=r[3],
+            certified_at=r[4].isoformat(),
+        )
+        for r in rows
+    ]
