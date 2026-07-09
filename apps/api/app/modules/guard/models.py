@@ -349,6 +349,17 @@ class DiscoveryScan(Base):
     completed_at   = Column(DateTime(timezone=True), nullable=True)
 
 
+class PolicyCertification(Base):
+    __tablename__ = "policy_certifications"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id   = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    pack_slug      = Column(Text, nullable=False)
+    certified_by   = Column(Text, nullable=False)   # clerk_user_id
+    policy_version = Column(Text, nullable=True)    # version_hash snapshot
+    certified_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
 class DiscoveredAgent(Base):
     __tablename__ = "discovered_agents"
 

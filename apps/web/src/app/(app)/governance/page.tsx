@@ -72,6 +72,14 @@ interface RecentEvent {
   input_summary: string | null
 }
 
+interface CertificationOut {
+  id: string
+  pack_slug: string
+  certified_by: string
+  policy_version: string | null
+  certified_at: string
+}
+
 interface KpiValue {
   value: number
   avg_7d: number | null
@@ -279,6 +287,8 @@ export default function GovernancePage() {
   const [lastFetched, setLastFetched] = useState<Date | null>(null)
   const [chain, setChain] = useState<ChainVerifyOut | null>(null)
   const [chainLoading, setChainLoading] = useState(false)
+  const [certifications, setCertifications] = useState<CertificationOut[]>([])
+  const [certifying, setCertifying] = useState<string | null>(null)
 
   // 60s auto-refresh — bumps tick which triggers the data useEffects below
   useEffect(() => {
@@ -339,6 +349,11 @@ export default function GovernancePage() {
         if (res.ok && !cancelled) setKpis(await res.json())
       } catch { /* non-fatal */ }
 
+      try {
+        const res = await fetch(`${base}/governance/certifications?workspace_id=${workspaceId}`, { headers })
+        if (res.ok && !cancelled) setCertifications(await res.json())
+      } catch { /* non-fatal */ }
+
       if (!cancelled) setLastFetched(new Date())
     }
     load()
@@ -387,6 +402,30 @@ export default function GovernancePage() {
     }
   }, [workspaceId, getToken])
 
+  const certMap = Object.fromEntries(certifications.map(c => [c.pack_slug, c]))
+
+  const doCertify = async (packSlug: string) => {
+    if (!workspaceId) return
+    setCertifying(packSlug)
+    try {
+      const token = await getToken()
+      const hdrs: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) hdrs["Authorization"] = `Bearer ${token}`
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const res = await fetch(`${apiBase}/governance/certify?workspace_id=${workspaceId}`, {
+        method: "POST",
+        headers: hdrs,
+        body: JSON.stringify({ pack_slug: packSlug }),
+      })
+      if (res.ok) {
+        const fresh = await fetch(`${apiBase}/governance/certifications?workspace_id=${workspaceId}`, { headers: hdrs })
+        if (fresh.ok) setCertifications(await fresh.json())
+      }
+    } finally {
+      setCertifying(null)
+    }
+  }
+
   const allFwRows: (FrameworkRow | BonusFrameworkRow)[] =
     frameworks ? [...frameworks.installed, ...frameworks.bonus] : []
   const activeFwRow = allFwRows.find(f => f.framework === activeFramework) || null
@@ -401,7 +440,7 @@ export default function GovernancePage() {
               Governance
             </h1>
             <p style={{ fontSize: 13, color: "var(--text-3)", margin: "4px 0 0" }}>
-              One outcome surface for engineering, security, and finance — ROI, behavioral insights, compliance proof.
+              Certify your delegation policies, not just individual events. Who authorized this agent to act. Under what rules. What it did.
             </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-3)", paddingTop: 4 }}>
@@ -631,6 +670,71 @@ export default function GovernancePage() {
         </section>
         )}
 
+        {/* Policy certification panel — issue #911 */}
+        {installedPacks.length > 0 && (
+          <section style={{
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: 18,
+            background: "var(--surface-1)",
+            marginBottom: 20,
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)", marginBottom: 4 }}>
+              Policy certification
+            </div>
+            <p style={{ fontSize: 12, color: "var(--text-3)", margin: "0 0 14px" }}>
+              Quarterly review: certify that each delegation policy was reviewed and approved. Overdue after 90 days.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {installedPacks.map(slug => {
+                const cert = certMap[slug]
+                const certDate = cert ? new Date(cert.certified_at) : null
+                const daysSince = certDate ? Math.floor((Date.now() - certDate.getTime()) / 86_400_000) : null
+                const overdue = daysSince === null || daysSince > 90
+                return (
+                  <div key={slug} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    border: `1px solid ${overdue ? "var(--warn-bd, var(--border))" : "var(--ok-bd, var(--border))"}`,
+                    background: overdue ? "var(--warn-bg, var(--surface-2))" : "var(--ok-bg, var(--surface-2))",
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>{slug}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                        {cert
+                          ? `Last certified ${daysSince === 0 ? "today" : `${daysSince}d ago`} · ${cert.certified_by}`
+                          : "Never certified"}
+                        {overdue && <span style={{ color: "var(--warn, #b45309)", marginLeft: 8 }}>⚠ overdue</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => doCertify(slug)}
+                      disabled={certifying === slug}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        padding: "6px 14px",
+                        borderRadius: 6,
+                        border: "1px solid var(--accent)",
+                        background: "var(--accent)",
+                        color: "#fff",
+                        cursor: certifying === slug ? "wait" : "pointer",
+                        opacity: certifying === slug ? 0.6 : 1,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {certifying === slug ? "Certifying…" : "Certify"}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
         {/* Framework matrix */}
         <section style={{
           border: "1px solid var(--border)",
@@ -671,6 +775,10 @@ export default function GovernancePage() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {frameworks.installed.map(fw => {
                       const isActive = fw.framework === activeFramework
+                      const packCert = fw.packs.map(p => certMap[p]).find(Boolean)
+                      const certLabel = packCert
+                        ? `certified ${Math.floor((Date.now() - new Date(packCert.certified_at).getTime()) / 86_400_000)}d ago`
+                        : null
                       return (
                         <button
                           key={fw.framework}
@@ -684,12 +792,18 @@ export default function GovernancePage() {
                             cursor: "pointer",
                             fontSize: 13,
                             fontWeight: isActive ? 600 : 500,
+                            textAlign: "left",
                           }}
                         >
                           {FRAMEWORK_LABEL[fw.framework] ?? fw.framework}
                           <span style={{ marginLeft: 8, fontSize: 11, color: isActive ? "var(--accent-text)" : "var(--text-3)" }}>
                             {fw.rules_count} {fw.rules_count === 1 ? "rule" : "rules"}
                           </span>
+                          {certLabel && (
+                            <span style={{ display: "block", fontSize: 10, color: "var(--ok, #16a34a)", marginTop: 2 }}>
+                              ✓ {certLabel}
+                            </span>
+                          )}
                         </button>
                       )
                     })}
