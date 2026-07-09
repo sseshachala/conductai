@@ -111,6 +111,12 @@ function SolutionsDropdown() {
               <p className="font-semibold">Security &amp; compliance</p>
             </div>
           </a>
+          <a href="/deployment" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div>
+              <p className="font-semibold">Deployment options</p>
+              <p className="text-xs text-stone-400">SaaS · Cloud · On-premise</p>
+            </div>
+          </a>
         </div>
       </div>
     </div>
@@ -673,6 +679,7 @@ function PageFooter() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
               { heading: "Product", links: [["Guard", "/guard"], ["Registry", "/registry"], ["CLI", "/tools/conduct-cli"]] as [string, string][] },
+              { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Deployment options", "/deployment"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], /* ["Partners", "/partners"], */ ["Blog", "/blog"]] as [string, string][] },
               { heading: "Resources", links: [["Docs", "/docs"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
               { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
