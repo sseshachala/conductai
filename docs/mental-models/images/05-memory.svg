@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Agent Memory</title>
+  <desc id="desc">Agents read nearest lessons before work and write new lessons afterward, scoped by workspace and repo.</desc>
+  <defs>
+    <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="12" refY="5" orient="auto">
+      <path d="M 0 0 L 14 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+  </style>
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <text x="58" y="66" font-size="42" font-weight="800" fill="#111827">Agent Memory</text>
+  <text x="60" y="105" font-size="23" fill="#64748b">Agents read nearest lessons before work and write new lessons afterward, scoped by workspace and repo.</text>
+  <g>
+    <path d="M 310 265 C 350 265, 350 247.5, 390 247.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 705 247.5 C 747.5 247.5, 747.5 267.5, 790 267.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1075 267.5 C 1117.5 267.5, 1117.5 247.5, 1160 247.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 547.5 365 C 547.5 442.5, 800 442.5, 800 520" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1160 247.5 C 1130 247.5, 1130 622.5, 1100 622.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 800 520 C 800 442.5, 547.5 442.5, 547.5 365" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/><text x="673.75" y="430.5" text-anchor="middle" font-size="20" font-weight="700" fill="#64748b">future recall</text>
+  </g>
+  <g filter="url(#shadow)">
+    
+  <g id="trigger">
+    <rect x="70" y="190" width="240" height="150" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="70" y="190" width="12" height="150" rx="6" fill="#2563eb"/>
+    <text x="96" y="234" font-size="29" font-weight="700" fill="#111827">Run starts</text>
+    <text x="96" y="272" font-size="23" font-weight="400" fill="#111827">_trigger repo</text>
+<text x="96" y="299.6" font-size="23" font-weight="400" fill="#111827">workspace_id</text>
+<text x="96" y="327.2" font-size="23" font-weight="400" fill="#111827">state context</text>
+  </g>
+
+  <g id="read">
+    <rect x="390" y="130" width="315" height="235" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="390" y="130" width="12" height="235" rx="6" fill="#0f766e"/>
+    <text x="416" y="174" font-size="29" font-weight="700" fill="#111827">read_memory</text>
+    <text x="416" y="212" font-size="23" font-weight="400" fill="#111827">Resolve key template</text>
+<text x="416" y="239.6" font-size="23" font-weight="400" fill="#111827">Embed query key</text>
+<text x="416" y="267.2" font-size="23" font-weight="400" fill="#111827">Filter</text>
+<text x="416" y="294.8" font-size="23" font-weight="400" fill="#111827">workspace/scope/key</text>
+<text x="416" y="322.4" font-size="23" font-weight="400" fill="#111827">Order by vector</text>
+<text x="416" y="350" font-size="23" font-weight="400" fill="#111827">distance</text>
+<text x="416" y="377.6" font-size="23" font-weight="400" fill="#111827">Fallback: recent rows</text>
+  </g>
+
+  <g id="brain">
+    <rect x="790" y="180" width="285" height="175" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="790" y="180" width="12" height="175" rx="6" fill="#7c3aed"/>
+    <text x="816" y="224" font-size="29" font-weight="700" fill="#111827">Brain block</text>
+    <text x="816" y="262" font-size="23" font-weight="400" fill="#111827">Prior entries</text>
+<text x="816" y="289.6" font-size="23" font-weight="400" fill="#111827">injected</text>
+<text x="816" y="317.2" font-size="23" font-weight="400" fill="#111827">Avoid failed</text>
+<text x="816" y="344.8" font-size="23" font-weight="400" fill="#111827">approach</text>
+<text x="816" y="372.4" font-size="23" font-weight="400" fill="#111827">Reuse known pattern</text>
+  </g>
+
+  <g id="write">
+    <rect x="1160" y="130" width="325" height="235" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1160" y="130" width="12" height="235" rx="6" fill="#ea580c"/>
+    <text x="1186" y="174" font-size="29" font-weight="700" fill="#111827">record_outcome</text>
+    <text x="1186" y="212" font-size="23" font-weight="400" fill="#111827">Resolve summary</text>
+<text x="1186" y="239.6" font-size="23" font-weight="400" fill="#111827">template</text>
+<text x="1186" y="267.2" font-size="23" font-weight="400" fill="#111827">Embed lesson text</text>
+<text x="1186" y="294.8" font-size="23" font-weight="400" fill="#111827">Insert agent_memory row</text>
+<text x="1186" y="322.4" font-size="23" font-weight="400" fill="#111827">Link run_id</text>
+<text x="1186" y="350" font-size="23" font-weight="400" fill="#111827">Used by future runs</text>
+  </g>
+
+  <g id="table">
+    <rect x="500" y="520" width="600" height="205" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="500" y="520" width="12" height="205" rx="6" fill="#16a34a"/>
+    <text x="526" y="564" font-size="29" font-weight="700" fill="#111827">agent_memory</text>
+    <text x="526" y="602" font-size="23" font-weight="400" fill="#111827">workspace_id, scope, key</text>
+<text x="526" y="629.6" font-size="23" font-weight="400" fill="#111827">summary</text>
+<text x="526" y="657.2" font-size="23" font-weight="400" fill="#111827">embedding vector(1536)</text>
+<text x="526" y="684.8" font-size="23" font-weight="400" fill="#111827">run_id, created_at</text>
+  </g>
+  </g>
+  
+  <g>
+    <rect x="70" y="790" width="1460" height="72" rx="18" fill="#eef2ff" stroke="#c7d2fe"/>
+    <circle cx="108" cy="826" r="12" fill="#16a34a"/>
+    <text x="138" y="835" font-size="25" font-weight="650" fill="#111827">Bug fix captured here: reads filter on workspace_id + scope + key, not playbook_slug.</text>
+  </g>
+</svg>

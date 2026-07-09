@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Execution Engine</title>
+  <desc id="desc">A leased worker turns a compiled workflow graph into ordered block execution with durable state.</desc>
+  <defs>
+    <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="12" refY="5" orient="auto">
+      <path d="M 0 0 L 14 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+  </style>
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <text x="58" y="66" font-size="42" font-weight="800" fill="#111827">Execution Engine</text>
+  <text x="60" y="105" font-size="23" fill="#64748b">A leased worker turns a compiled workflow graph into ordered block execution with durable state.</text>
+  <g>
+    <path d="M 310 245 C 340 245, 340 245, 370 245" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 670 245 C 710 245, 710 245, 750 245" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1110 245 C 1150 245, 1150 252.5, 1190 252.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1190 252.5 C 955 252.5, 955 617.5, 720 617.5" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 1355 395 C 1355 455, 1015 455, 1015 515" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/>
+<path d="M 720 617.5 C 735 617.5, 735 245, 750 245" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowhead)"/><text x="735" y="419.25" text-anchor="middle" font-size="20" font-weight="700" fill="#64748b">next block</text>
+  </g>
+  <g filter="url(#shadow)">
+    
+  <g id="entry">
+    <rect x="60" y="170" width="250" height="150" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="60" y="170" width="12" height="150" rx="6" fill="#2563eb"/>
+    <text x="86" y="214" font-size="29" font-weight="700" fill="#111827">execute_run(run_id)</text>
+    <text x="86" y="252" font-size="23" font-weight="400" fill="#111827">Run row</text>
+<text x="86" y="279.6" font-size="23" font-weight="400" fill="#111827">WorkflowVersion</text>
+<text x="86" y="307.2" font-size="23" font-weight="400" fill="#111827">Workspace context</text>
+  </g>
+
+  <g id="prep">
+    <rect x="370" y="130" width="300" height="230" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="370" y="130" width="12" height="230" rx="6" fill="#0f766e"/>
+    <text x="396" y="174" font-size="29" font-weight="700" fill="#111827">Prepare runtime</text>
+    <text x="396" y="212" font-size="23" font-weight="400" fill="#111827">Load graph nodes +</text>
+<text x="396" y="239.6" font-size="23" font-weight="400" fill="#111827">edges</text>
+<text x="396" y="267.2" font-size="23" font-weight="400" fill="#111827">Resolve environment</text>
+<text x="396" y="294.8" font-size="23" font-weight="400" fill="#111827">credentials</text>
+<text x="396" y="322.4" font-size="23" font-weight="400" fill="#111827">Mint cond_run_* token</text>
+<text x="396" y="350" font-size="23" font-weight="400" fill="#111827">Restore Redis</text>
+<text x="396" y="377.6" font-size="23" font-weight="400" fill="#111827">checkpoint</text>
+<text x="396" y="405.2" font-size="23" font-weight="400" fill="#111827">Freeze pricing</text>
+<text x="396" y="432.79999999999995" font-size="23" font-weight="400" fill="#111827">snapshot</text>
+  </g>
+
+  <g id="dag">
+    <rect x="750" y="115" width="360" height="260" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="750" y="115" width="12" height="260" rx="6" fill="#7c3aed"/>
+    <text x="776" y="159" font-size="29" font-weight="700" fill="#111827">_execute_dag()</text>
+    <text x="776" y="197" font-size="23" font-weight="400" fill="#111827">Topological sort</text>
+<text x="776" y="224.6" font-size="23" font-weight="400" fill="#111827">Check cancellation</text>
+<text x="776" y="252.2" font-size="23" font-weight="400" fill="#111827">Skip completed blocks</text>
+<text x="776" y="279.8" font-size="23" font-weight="400" fill="#111827">Compute logic route</text>
+<text x="776" y="307.4" font-size="23" font-weight="400" fill="#111827">skip-set</text>
+<text x="776" y="335" font-size="23" font-weight="400" fill="#111827">Dispatch one block at a</text>
+<text x="776" y="362.6" font-size="23" font-weight="400" fill="#111827">time</text>
+  </g>
+
+  <g id="blocks">
+    <rect x="1190" y="110" width="330" height="285" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="1190" y="110" width="12" height="285" rx="6" fill="#ea580c"/>
+    <text x="1216" y="154" font-size="29" font-weight="700" fill="#111827">Block executors</text>
+    <text x="1216" y="192" font-size="23" font-weight="400" fill="#111827">brain: LLM/tool loop</text>
+<text x="1216" y="219.6" font-size="23" font-weight="400" fill="#111827">tool: integration API</text>
+<text x="1216" y="247.2" font-size="23" font-weight="400" fill="#111827">logic: route pass/fail</text>
+<text x="1216" y="274.8" font-size="23" font-weight="400" fill="#111827">memory: recall/record</text>
+<text x="1216" y="302.4" font-size="23" font-weight="400" fill="#111827">approval: pause</text>
+<text x="1216" y="330" font-size="23" font-weight="400" fill="#111827">guard/output/mcp</text>
+  </g>
+
+  <g id="state">
+    <rect x="355" y="515" width="365" height="205" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="355" y="515" width="12" height="205" rx="6" fill="#16a34a"/>
+    <text x="381" y="559" font-size="29" font-weight="700" fill="#111827">State + events</text>
+    <text x="381" y="597" font-size="23" font-weight="400" fill="#111827">state[block_id] stores</text>
+<text x="381" y="624.6" font-size="23" font-weight="400" fill="#111827">output</text>
+<text x="381" y="652.2" font-size="23" font-weight="400" fill="#111827">RunEvent records</text>
+<text x="381" y="679.8" font-size="23" font-weight="400" fill="#111827">transitions</text>
+<text x="381" y="707.4" font-size="23" font-weight="400" fill="#111827">Redis checkpoint after</text>
+<text x="381" y="735" font-size="23" font-weight="400" fill="#111827">each block</text>
+<text x="381" y="762.6" font-size="23" font-weight="400" fill="#111827">{{block.field}} resolves</text>
+<text x="381" y="790.2" font-size="23" font-weight="400" fill="#111827">downstream</text>
+  </g>
+
+  <g id="failure">
+    <rect x="835" y="515" width="360" height="205" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect x="835" y="515" width="12" height="205" rx="6" fill="#dc2626"/>
+    <text x="861" y="559" font-size="29" font-weight="700" fill="#111827">Failure / resume</text>
+    <text x="861" y="597" font-size="23" font-weight="400" fill="#111827">Block error -&gt; run cleanup</text>
+<text x="861" y="624.6" font-size="23" font-weight="400" fill="#111827">Budget exhausted -&gt; failed</text>
+<text x="861" y="652.2" font-size="23" font-weight="400" fill="#111827">Worker crash -&gt; replay</text>
+<text x="861" y="679.8" font-size="23" font-weight="400" fill="#111827">checkpoint</text>
+<text x="861" y="707.4" font-size="23" font-weight="400" fill="#111827">Stale lease -&gt; retry</text>
+  </g>
+  </g>
+  
+  <g>
+    <rect x="70" y="780" width="1460" height="72" rx="18" fill="#eef2ff" stroke="#c7d2fe"/>
+    <circle cx="108" cy="816" r="12" fill="#475569"/>
+    <text x="138" y="825" font-size="25" font-weight="650" fill="#111827">Core invariant: one run owns a lease, every completed block becomes durable state.</text>
+  </g>
+</svg>
