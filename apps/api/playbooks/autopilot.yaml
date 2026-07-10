@@ -171,8 +171,9 @@ blocks:
     key: "{{_trigger.repo_full_name}}"
     summary: |
       Issue #{{_trigger.issue_number}}: {{_trigger.title}}
-      OUTCOME: skipped — implement_fix returned NEEDS_CLARIFICATION
-      The issue body lacked enough detail for autopilot to determine a fix.
+      OUTCOME: skipped — issue body lacked enough detail to determine a fix
+      Complexity: {{plan_fix.complexity}} | Files planned: {{plan_fix.files}}
+      Lesson: issue needs a file path, traceback, or concrete error before autopilot can act
     next: notify_needs_clarification
 
   notify_needs_clarification:
