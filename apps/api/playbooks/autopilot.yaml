@@ -155,40 +155,61 @@ blocks:
 
       Output ONLY the following JSON on the last line of your response:
         {"branch_name": "autopilot/issue-{{fetch_issue.issue_number}}", "summary": "<brief description of changes>", "lesson": "<one line: what to know for future fixes in this repo — pitfalls, patterns that worked, anything surprising>"}
-    next: run_tests
+      If you cannot determine the fix, output exactly: NEEDS_CLARIFICATION
+    next: check_fix_ready
+
+  check_fix_ready:
+    type: logic
+    label: Fix ready?
+    condition: "{{implement_fix.branch_name}} is defined"
+    next:
+      pass: run_tests
+      fail: record_outcome_needs_clarification
+
+  record_outcome_needs_clarification:
+    $use: base-autopilot.record_outcome
+    key: "{{_trigger.repo_full_name}}"
+    summary: |
+      Issue #{{_trigger.issue_number}}: {{_trigger.title}}
+      OUTCOME: skipped — implement_fix returned NEEDS_CLARIFICATION
+      The issue body lacked enough detail for autopilot to determine a fix.
+    next: notify_needs_clarification
+
+  notify_needs_clarification:
+    type: output
+    label: Notify needs clarification
+    output:
+      via: slack
+      slack:
+        channel: "#engineering"
+
 
   run_tests:
     type: brain
     mode: agentic
     runs_on: e2b
-    max_turns: 25
+    max_turns: 15
     model: >-
       {%- if plan_fix.complexity == 'large' -%}claude-sonnet-4-6
       {%- elif plan_fix.complexity == 'medium' -%}claude-sonnet-4-6
       {%- else -%}claude-haiku-4-5-20251001{%- endif -%}
     label: Run tests & fix
     description: |
-      IMPORTANT: This is a fresh sandbox — there is no pre-existing repo directory.
-      You must clone the branch that was pushed by the previous step.
-
       Repo: {{_trigger.repo_full_name}}
-      Branch to test: {{implement_fix.branch_name}}
+      Branch: {{implement_fix.branch_name}}
+      Test command from plan: {{plan_fix.test_command | default("auto-detect")}}
 
-      CRITICAL: Each run_shell call gets a FRESH container — do ALL of the following
-      in a SINGLE run_shell call (clone → test → fix → push):
-
-      - git clone --branch {{implement_fix.branch_name}} https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
-      - cd /tmp/repo && git config user.email "bot@conductai.ai" && git config user.name "Conduct AI"
-      - Detect test runner (check package.json / requirements.txt / go.mod)
-      - Run tests; if they fail: patch code inline, re-run (up to 3 attempts total)
-      - If any fixes were committed:
-          git add -A && git commit -m "fix: address test failures"
-          git push https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git {{implement_fix.branch_name}}
-      - After up to 3 fix attempts, stop regardless of outcome
-
-      Output as JSON on the final line:
-        {"passed": true/false, "attempts": <number>,
-         "output": "<brief summary of test results>"}
+      Do ALL of the following in ONE run_shell call — do not explore, read files, or investigate:
+      1. git clone --depth 1 --branch {{implement_fix.branch_name}} https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git /tmp/repo
+      2. cd /tmp/repo && git config user.email "bot@conductai.ai" && git config user.name "Conduct AI"
+      3. Run tests (up to 3 attempts):
+         - Python: cd apps/api && pip install -r requirements.txt -q && python -m pytest tests/ -x --tb=short -q 2>&1 | tail -30
+         - Node: npm ci --silent && npm test 2>&1 | tail -30
+         - Go: go test ./... 2>&1 | tail -30
+         If tests fail, apply minimal inline fix and re-run. Max 3 attempts total.
+      4. If fixes were made: git add -A && git commit -m "fix: test failures" && git push https://$GIT_TOKEN@github.com/{{_trigger.repo_full_name}}.git {{implement_fix.branch_name}}
+      5. Output JSON on the final line — nothing else after it:
+         {"passed": true/false, "attempts": <1-3>, "output": "<one line: pass/fail summary>"}
     next: tests_pass
 
   tests_pass:
