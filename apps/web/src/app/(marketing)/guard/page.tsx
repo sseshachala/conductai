@@ -18,6 +18,7 @@ export default function GuardLandingPage() {
       <Phase3Section />
       <MCPSection />
       <EnterpriseGradeSection />
+      <GatewayVsGuardSection />
       <FinalCTASection />
     </>
   )
@@ -972,6 +973,68 @@ function EnterpriseGradeSection() {
 }
 
 /* ─── Final CTA ────────────────────────────────────────────────────────── */
+
+
+function GatewayVsGuardSection() {
+  return (
+    <section className="bg-white border-t border-stone-100 px-6 py-20">
+      <div className="max-w-3xl mx-auto">
+        <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-4">How ConductGuard is different</p>
+        <h2 className="text-3xl font-bold text-stone-900 mb-4 leading-tight">
+          A gateway governs what the model costs.<br />Guard governs what the agent does.
+        </h2>
+        <p className="text-stone-500 mb-10 text-lg">
+          Provider gateways sit between your team and the LLM. They cap spend, enforce SSO, and log model requests. That&apos;s the right layer for cost control.
+        </p>
+        <div className="grid md:grid-cols-2 gap-6 mb-10">
+          <div className="border border-stone-200 rounded-xl p-6">
+            <p className="text-sm font-semibold text-stone-400 uppercase tracking-widest mb-4">Provider gateway</p>
+            <ul className="space-y-3 text-sm text-stone-600">
+              {([
+                ["yes", "Caps LLM spend per user"],
+                ["yes", "SSO sign-in"],
+                ["yes", "Model selection controls"],
+                ["no",  "Sees tool calls (Bash, Write, Read)"],
+                ["no",  "Blocks destructive commands before they run"],
+                ["no",  "Detects credential leaks in tool input"],
+                ["no",  "Works across Claude Code, Cursor, Copilot"],
+                ["no",  "Tamper-evident audit log"],
+              ] as [string, string][]).map(([state, label]) => (
+                <li key={label} className="flex items-start gap-2">
+                  <span className={state === "yes" ? "text-green-500 font-bold mt-0.5" : "text-stone-300 font-bold mt-0.5"}>{state === "yes" ? "✓" : "✗"}</span>
+                  <span className={state === "no" ? "text-stone-400" : ""}>{label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="border border-indigo-200 bg-indigo-50 rounded-xl p-6">
+            <p className="text-sm font-semibold text-indigo-500 uppercase tracking-widest mb-4">ConductGuard</p>
+            <ul className="space-y-3 text-sm text-stone-700">
+              {[
+                "Caps LLM spend per user",
+                "SSO sign-in",
+                "Model selection controls",
+                "Sees tool calls (Bash, Write, Read)",
+                "Blocks destructive commands before they run",
+                "Detects credential leaks in tool input",
+                "Works across Claude Code, Cursor, Copilot",
+                "Tamper-evident audit log",
+              ].map((label) => (
+                <li key={label} className="flex items-start gap-2">
+                  <span className="text-indigo-500 font-bold mt-0.5">✓</span>
+                  <span>{label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <p className="text-stone-400 text-sm">
+          Use a provider gateway for spend control. Use ConductGuard for everything the model touches after it decides what to do.
+        </p>
+      </div>
+    </section>
+  )
+}
 
 function FinalCTASection() {
   return (
