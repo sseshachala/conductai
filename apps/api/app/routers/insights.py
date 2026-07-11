@@ -43,7 +43,7 @@ from app.models.run_online_score import RunOnlineScore
 from app.models.run_trace import RunTrace
 from app.models.watchdog_event import WatchdogEvent
 from app.models.workflow import Workflow, WorkflowVersion
-from app.modules.guard.models import GuardAuditEvent
+from app.modules.guard.models import GuardAuditEvent, GuardSpendBudget
 from app.routers.runs import get_workspace_id_sse, require_workspace_role_sse
 from app.schemas.run import _extract_trigger_summary
 
@@ -182,6 +182,20 @@ class TokenUsage(BaseModel):
     by_agent: list[AgentTokenUsage]
 
 
+class PolicyHit(BaseModel):
+    policy_name: str
+    count: int
+    severity: str | None = None
+
+class DeveloperSpend(BaseModel):
+    name: str
+    spent_usd: float
+    limit_usd: float | None
+
+class GuardSnapshot(BaseModel):
+    top_policy_hits: list[PolicyHit] = []
+    developer_near_limit: list[DeveloperSpend] = []
+
 class DashboardOut(BaseModel):
     outcomes: OutcomeStats
     needs_attention: list[AttentionRun]
@@ -189,6 +203,7 @@ class DashboardOut(BaseModel):
     recent_activity: list[RecentRun]
     token_usage: TokenUsage
     guard_blocks_today: int
+    guard_snapshot: GuardSnapshot
 
 
 @router.get("/dashboard", response_model=DashboardOut)
@@ -392,16 +407,69 @@ def get_dashboard(
         by_agent=by_agent,
     )
 
-    # ── Guard blocks today — count "blocked" audit events since midnight UTC ──
+    # ── Guard blocks today ──
+    ws_uuid = uuid.UUID(workspace_id)
     guard_blocks_today: int = (
         db.query(func.count(GuardAuditEvent.id))
         .filter(
-            GuardAuditEvent.workspace_id == workspace_id,
+            GuardAuditEvent.workspace_id == ws_uuid,
             GuardAuditEvent.decision == "blocked",
             GuardAuditEvent.ts >= today_midnight,
         )
         .scalar()
         or 0
+    )
+
+    # ── Top policy hits (last 30 days, blocked only) ──
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    policy_hit_rows = (
+        db.query(GuardAuditEvent.rule_id, func.count(GuardAuditEvent.id).label("cnt"))
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.decision == "blocked",
+            GuardAuditEvent.rule_id.isnot(None),
+            GuardAuditEvent.ts >= thirty_days_ago,
+        )
+        .group_by(GuardAuditEvent.rule_id)
+        .order_by(func.count(GuardAuditEvent.id).desc())
+        .limit(5)
+        .all()
+    )
+    top_policy_hits = [PolicyHit(policy_name=row.rule_id, count=row.cnt) for row in policy_hit_rows]
+
+    # ── Developers near spend limit (>80% of monthly_limit_usd) ──
+    period_start = today_midnight.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    budgets = (
+        db.query(GuardSpendBudget)
+        .filter(
+            GuardSpendBudget.workspace_id == ws_uuid,
+            GuardSpendBudget.clerk_user_id.isnot(None),
+        )
+        .all()
+    )
+    developer_near_limit: list[DeveloperSpend] = []
+    for b in budgets:
+        spent = float(
+            db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0))
+            .filter(
+                GuardAuditEvent.workspace_id == ws_uuid,
+                GuardAuditEvent.clerk_user_id == b.clerk_user_id,
+                GuardAuditEvent.ts >= period_start,
+            )
+            .scalar()
+            or 0.0
+        )
+        limit = b.monthly_limit_usd
+        if limit and spent / limit >= 0.8:
+            developer_near_limit.append(DeveloperSpend(
+                name=b.clerk_user_id,
+                spent_usd=round(spent, 4),
+                limit_usd=limit,
+            ))
+
+    guard_snapshot = GuardSnapshot(
+        top_policy_hits=top_policy_hits,
+        developer_near_limit=developer_near_limit,
     )
 
     return DashboardOut(
@@ -411,6 +479,7 @@ def get_dashboard(
         recent_activity=recent_activity,
         token_usage=token_usage,
         guard_blocks_today=guard_blocks_today,
+        guard_snapshot=guard_snapshot,
     )
 
 
