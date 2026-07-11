@@ -11,7 +11,7 @@ import { GuardShell } from "@/components/guard/GuardShell"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PolicyAction = "block" | "warn" | "audit" | "approval" | "inject"
+type PolicyAction = "block" | "warn" | "audit" | "approval"
 type MatchTool = "bash" | "edit" | "write" | "read" | "*"
 
 interface Policy {
@@ -74,7 +74,6 @@ function ActionAvatar({ action }: { action: PolicyAction }) {
     warn:     { bg: "var(--warn-bg)", color: "var(--warn)" },
     audit:    { bg: "var(--info-bg)", color: "var(--info)" },
     approval: { bg: "var(--info-bg)", color: "var(--info)" },
-    inject:   { bg: "var(--ok-bg)",   color: "var(--ok)"   },
   }
   const s = styles[action] ?? styles.audit
 
@@ -129,7 +128,6 @@ const ACTION_BADGE_TONE: Record<PolicyAction, string> = {
   warn:     "warn",
   audit:    "info",
   approval: "info",
-  inject:   "ok",
 }
 
 function ActionBadge({ action }: { action: PolicyAction }) {
@@ -467,6 +465,16 @@ function AddRuleModal({
                 <option value="edit">edit</option>
                 <option value="write">write</option>
                 <option value="read">read</option>
+                <option value="web_fetch">web_fetch</option>
+                <option value="web_search">web_search</option>
+                <option value="write_file">write_file</option>
+                <option value="edit_file">edit_file</option>
+                <option value="str_replace_editor">str_replace_editor</option>
+                <option value="http_request">http_request</option>
+                <option value="curl">curl</option>
+                <option value="glob">glob</option>
+                <option value="grep">grep</option>
+                <option value="list_directory">list_directory</option>
               </select>
             </div>
             <div>
@@ -476,11 +484,10 @@ function AddRuleModal({
                 onChange={e => set("action", e.target.value as PolicyAction)}
                 style={fieldStyle}
               >
-                <option value="block">block</option>
-                <option value="warn">warn</option>
-                <option value="audit">audit</option>
-                <option value="approval">approval</option>
-                <option value="inject">inject</option>
+                <option value="block">block — stop the tool call</option>
+                <option value="warn">warn — allow but notify</option>
+                <option value="audit">audit — log silently</option>
+                <option value="approval">approval — block, require manual override</option>
               </select>
             </div>
           </div>
