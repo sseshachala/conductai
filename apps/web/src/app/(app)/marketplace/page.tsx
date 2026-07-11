@@ -187,11 +187,11 @@ const PACK_CATALOG = [
     id: "conduct-base",
     icon: "🚀",
     name: "Startup Baseline",
-    subtitle: "Zero-friction starter, catches hardcoded keys, weak random, and stack trace leaks.",
-    description: "Lightweight starter pack, hardcoded API keys, weak random for security, and stack traces leaking to clients. Zero-friction first install.",
-    tags: ["Starter", "General"],
-    guardRules: 1,
-    securityRules: 3,
+    subtitle: "Auto-installed. Proxy safety, agent guardrails, and surface-aware policies for every AI tool.",
+    description: "Core governance pack — 3 proxy rules (credential leak, prompt injection, PII), 13 agent rules (rm -rf, sudo, .env, secrets in code), and 7 surface rules enforcing per-tool policies across Claude, Codex, ChatGPT, Cursor, and Windsurf.",
+    tags: ["Starter", "General", "Surface-Aware"],
+    guardRules: 8,
+    securityRules: 15,
   },
 ]
 
