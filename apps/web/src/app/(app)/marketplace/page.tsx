@@ -189,9 +189,10 @@ const PACK_CATALOG = [
     name: "Startup Baseline",
     subtitle: "Auto-installed. Proxy safety, agent guardrails, and surface-aware policies for every AI tool.",
     description: "Core governance pack — 3 proxy rules (credential leak, prompt injection, PII), 13 agent rules (rm -rf, sudo, .env, secrets in code), and 7 surface rules enforcing per-tool policies across Claude, Codex, ChatGPT, Cursor, and Windsurf.",
-    tags: ["Starter", "General", "Surface-Aware"],
-    guardRules: 8,
-    securityRules: 15,
+    tags: ["Starter", "General"],
+    proxyRules: 3,
+    agentRules: 13,
+    surfaceRules: 7,
   },
 ]
 
@@ -682,12 +683,22 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
                   </div>
                   {/* Rule count pills */}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>
-                      {pack.guardRules} Guard {pack.guardRules === 1 ? "rule" : "rules"}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>
-                      {pack.securityRules} Security {pack.securityRules === 1 ? "rule" : "rules"}
-                    </span>
+                    {"proxyRules" in pack ? (
+                      <>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>{pack.proxyRules} proxy</span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>{pack.agentRules} agent</span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>{pack.surfaceRules} surface</span>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>
+                          {pack.guardRules} Guard {pack.guardRules === 1 ? "rule" : "rules"}
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>
+                          {pack.securityRules} Security {pack.securityRules === 1 ? "rule" : "rules"}
+                        </span>
+                      </>
+                    )}
                     {pack.tags.map(t => (
                       <span key={t} style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface-3)", padding: "2px 8px", borderRadius: 20 }}>{t}</span>
                     ))}
