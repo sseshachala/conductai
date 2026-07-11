@@ -1,9 +1,9 @@
 {
     "slug": "conduct-base",
     "name": "Conduct Base",
-    "version": "2.0.1",
+    "version": "2.1.0",
     "tier": "free",
-    "description": "Core AI governance rules \u2014 proxy interception and agent safety. 3 proxy rules + 13 agent rules. All based on real AI agent incidents.",
+    "description": "Core AI governance rules — proxy interception, agent safety, and surface-aware enforcement across all AI tools. 3 proxy + 13 agent + 7 surface rules.",
     "rules": [
         {
             "id": "proxy-no-credential-leak",
@@ -12,12 +12,9 @@
             "description": "Block LLM calls containing credentials in the prompt",
             "match_pattern": "(DATABASE_URL|postgres(?:ql)?://|mysql://|DB_PASSWORD|STRIPE_SECRET|sk_live_[0-9a-zA-Z]{20,}|sk-ant-[a-zA-Z0-9\\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|AWS_SECRET_ACCESS_KEY)",
             "action": "block",
-            "message": "Credential detected in prompt \u2014 request blocked before reaching LLM provider.",
+            "message": "Credential detected in prompt — request blocked before reaching LLM provider.",
             "severity": "critical",
-            "frameworks": [
-                "SOC2:CC6.1",
-                "ISO_42001:6.1"
-            ]
+            "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1"]
         },
         {
             "id": "proxy-no-prompt-injection",
@@ -26,12 +23,9 @@
             "description": "Block prompt injection attempts",
             "match_pattern": "(ignore (all |previous |prior |your )instructions|disregard (your |the )system prompt|you are now|jailbreak|act as (an? )?(unrestricted|DAN|evil))",
             "action": "block",
-            "message": "Prompt injection pattern detected \u2014 request blocked.",
+            "message": "Prompt injection pattern detected — request blocked.",
             "severity": "critical",
-            "frameworks": [
-                "OWASP:LLM01",
-                "ISO_42001:6.1"
-            ]
+            "frameworks": ["OWASP:LLM01", "ISO_42001:6.1"]
         },
         {
             "id": "proxy-no-pii-prompt",
@@ -42,10 +36,7 @@
             "action": "warn",
             "message": "PII detected in prompt. Verify this data is permitted to reach the LLM provider.",
             "severity": "high",
-            "frameworks": [
-                "GDPR:Art32",
-                "HIPAA:164.514"
-            ]
+            "frameworks": ["GDPR:Art32", "HIPAA:164.514"]
         },
         {
             "id": "no-rm-rf",
@@ -57,9 +48,7 @@
             "action": "block",
             "message": "Recursive delete blocked. Delete files individually.",
             "severity": "critical",
-            "frameworks": [
-                "SOC2:CC6.1"
-            ]
+            "frameworks": ["SOC2:CC6.1"]
         },
         {
             "id": "no-sudo",
@@ -71,9 +60,7 @@
             "action": "block",
             "message": "sudo blocked. Escalating permissions via an AI agent is not permitted.",
             "severity": "critical",
-            "frameworks": [
-                "SOC2:CC6.1"
-            ]
+            "frameworks": ["SOC2:CC6.1"]
         },
         {
             "id": "no-env-read",
@@ -85,9 +72,7 @@
             "action": "block",
             "message": ".env files contain secrets. Use your secrets manager instead.",
             "severity": "high",
-            "frameworks": [
-                "SOC2:CC6.1"
-            ]
+            "frameworks": ["SOC2:CC6.1"]
         },
         {
             "id": "no-env-commits",
@@ -99,10 +84,7 @@
             "action": "block",
             "message": ".env files must not be committed.",
             "severity": "critical",
-            "frameworks": [
-                "SOC2:CC6.1",
-                "GDPR:Art32"
-            ]
+            "frameworks": ["SOC2:CC6.1", "GDPR:Art32"]
         },
         {
             "id": "no-force-push",
@@ -114,9 +96,7 @@
             "action": "block",
             "message": "Force push blocked. Coordinate with your team before rewriting history.",
             "severity": "high",
-            "frameworks": [
-                "SOC2:CC6.1"
-            ]
+            "frameworks": ["SOC2:CC6.1"]
         },
         {
             "id": "approve-prod-deploy",
@@ -128,9 +108,7 @@
             "action": "warn",
             "message": "Production deploy triggered by AI agent.",
             "severity": "high",
-            "frameworks": [
-                "SOC2:CC8.1"
-            ]
+            "frameworks": ["SOC2:CC8.1"]
         },
         {
             "id": "approve-db-migration-prod",
@@ -142,9 +120,7 @@
             "action": "warn",
             "message": "DB migration triggered by AI agent.",
             "severity": "high",
-            "frameworks": [
-                "SOC2:CC8.1"
-            ]
+            "frameworks": ["SOC2:CC8.1"]
         },
         {
             "id": "no-hardcoded-secrets",
@@ -156,9 +132,7 @@
             "action": "warn",
             "message": "Possible hardcoded secret in generated code. Use environment variables.",
             "severity": "high",
-            "frameworks": [
-                "SOC2:CC6.1"
-            ]
+            "frameworks": ["SOC2:CC6.1"]
         },
         {
             "id": "no-aws-keys",
@@ -170,9 +144,7 @@
             "action": "warn",
             "message": "AWS access key detected in generated code. Use IAM roles.",
             "severity": "critical",
-            "frameworks": [
-                "SOC2:CC6.1"
-            ]
+            "frameworks": ["SOC2:CC6.1"]
         },
         {
             "id": "secret-stripe",
@@ -184,9 +156,7 @@
             "action": "warn",
             "message": "Stripe live key detected in generated code. Use environment variables.",
             "severity": "critical",
-            "frameworks": [
-                "PCI_DSS:3.5"
-            ]
+            "frameworks": ["PCI_DSS:3.5"]
         },
         {
             "id": "cmd-injection",
@@ -198,9 +168,7 @@
             "action": "warn",
             "message": "Shell execution detected in generated code. Verify input is sanitised.",
             "severity": "high",
-            "frameworks": [
-                "OWASP:A03"
-            ]
+            "frameworks": ["OWASP:A03"]
         },
         {
             "id": "sql-injection",
@@ -212,9 +180,7 @@
             "action": "warn",
             "message": "String-formatted SQL in generated code. Use parameterised queries.",
             "severity": "high",
-            "frameworks": [
-                "OWASP:A03"
-            ]
+            "frameworks": ["OWASP:A03"]
         },
         {
             "id": "no-secret-in-commit-msg",
@@ -226,39 +192,93 @@
             "action": "warn",
             "message": "Possible secret in commit message. Remove before pushing.",
             "severity": "high",
-            "frameworks": [
-                "SOC2:CC6.1"
-            ]
+            "frameworks": ["SOC2:CC6.1"]
         },
         {
-            "id": "surface-claude-ai-no-bash",
+            "id": "surface-chat-no-bash",
             "persona": "agent",
             "non_overridable": false,
-            "description": "Block bash execution from Claude.ai \u2014 chat is not a shell",
+            "description": "Block shell execution from chat surfaces — Claude.ai, Claude Desktop, ChatGPT",
             "match_tool": "bash",
-            "match_ai_tool": "claude-ai",
+            "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt",
             "action": "block",
-            "message": "Shell commands are not permitted from Claude.ai. Use Claude Code for terminal access.",
+            "message": "Shell commands are not permitted from chat surfaces. Use Claude Code, Codex CLI, Cursor, or Windsurf for terminal access.",
             "severity": "high",
-            "frameworks": [
-                "SOC2:CC6.1",
-                "ISO_42001:6.1"
-            ]
+            "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1", "NIST_AI_RMF:GOVERN-1.1"]
         },
         {
-            "id": "surface-claude-ai-no-write",
+            "id": "surface-chat-no-write",
             "persona": "agent",
             "non_overridable": false,
-            "description": "Block file writes from Claude.ai \u2014 chat should not modify the filesystem",
-            "match_tool": "write_file",
-            "match_ai_tool": "claude-ai",
+            "description": "Block filesystem writes from chat surfaces",
+            "match_tool": "write_file,edit_file,str_replace_editor",
+            "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt",
             "action": "block",
-            "message": "File writes are not permitted from Claude.ai. Use Claude Code for filesystem access.",
+            "message": "File writes are not permitted from chat surfaces. Use a dev tool for filesystem access.",
             "severity": "high",
-            "frameworks": [
-                "SOC2:CC6.1",
-                "ISO_42001:6.1"
-            ]
+            "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1"]
+        },
+        {
+            "id": "surface-chat-no-network",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Warn on outbound network calls from chat surfaces",
+            "match_tool": "web_fetch,curl,http_request",
+            "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt",
+            "action": "warn",
+            "message": "Outbound network call from a chat surface. Verify this request is intentional.",
+            "severity": "medium",
+            "frameworks": ["SOC2:CC6.1"]
+        },
+        {
+            "id": "surface-codex-desktop-warn-exec",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Warn on shell execution from Codex Desktop — hybrid surface",
+            "match_tool": "bash",
+            "match_ai_tool": "codex-desktop",
+            "action": "warn",
+            "message": "Shell command via Codex Desktop — logged for audit. Destructive commands are blocked by separate rules.",
+            "severity": "medium",
+            "frameworks": ["SOC2:CC6.1"]
+        },
+        {
+            "id": "surface-codex-desktop-no-delete",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Block destructive deletes from Codex Desktop",
+            "match_tool": "bash",
+            "match_ai_tool": "codex-desktop",
+            "match_pattern": "rm\\s+-(rf|fr|r)\\b|rmdir|del\\s+/s",
+            "action": "block",
+            "message": "Destructive delete blocked from Codex Desktop. Use Claude Code or Codex CLI for filesystem operations.",
+            "severity": "high",
+            "frameworks": ["SOC2:CC6.1"]
+        },
+        {
+            "id": "surface-dev-audit-prod-write",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Audit writes to production paths from any dev tool",
+            "match_tool": "write_file,edit_file,str_replace_editor",
+            "match_ai_tool": "claude-code,codex-cli,cursor,windsurf",
+            "match_path_pattern": "(/prod/|/production/|\\.env\\.prod|render\\.yaml|vercel\\.json|Dockerfile)",
+            "action": "audited",
+            "message": "Write to production configuration detected — logged for audit trail.",
+            "severity": "medium",
+            "frameworks": ["SOC2:CC7.2", "ISO_42001:9.1"]
+        },
+        {
+            "id": "surface-unknown-block-exec",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Block shell execution from unrecognized surfaces",
+            "match_tool": "bash",
+            "match_ai_tool": "unknown",
+            "action": "block",
+            "message": "Shell execution blocked — surface not recognized by ConductGuard. Run `conduct guard sync` to register this tool.",
+            "severity": "high",
+            "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1"]
         }
     ]
 }
