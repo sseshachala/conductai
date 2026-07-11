@@ -8,7 +8,6 @@ import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
-import { POLICY_TEMPLATES } from "@/lib/guardPolicyTemplates"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -215,10 +214,22 @@ function formatUpdatedAt(iso: string | undefined): string {
 
 // ─── Add rule modal ───────────────────────────────────────────────────────────
 
+const AI_SURFACES = [
+  { value: "claude-code",    label: "Claude Code" },
+  { value: "claude-ai",     label: "Claude.ai" },
+  { value: "claude-desktop", label: "Claude Desktop" },
+  { value: "codex-cli",     label: "Codex CLI" },
+  { value: "codex-desktop", label: "Codex Desktop" },
+  { value: "openai-chatgpt", label: "ChatGPT" },
+  { value: "cursor",        label: "Cursor" },
+  { value: "windsurf",      label: "Windsurf" },
+]
+
 interface AddRuleFormData {
   rule_id: string
   description: string
   match_tool: MatchTool
+  match_ai_tool: string
   match_pattern: string
   match_path_pattern: string
   action: PolicyAction
@@ -230,6 +241,7 @@ const EMPTY_FORM: AddRuleFormData = {
   rule_id: "",
   description: "",
   match_tool: "*",
+  match_ai_tool: "",
   match_pattern: "",
   match_path_pattern: "",
   action: "block",
@@ -287,70 +299,7 @@ function AddRuleModal({
   const { getToken } = useAuth()
   const [form, setForm] = useState<AddRuleFormData>({ ...EMPTY_FORM, persona: initialPersona ?? "agent" })
   const [errors, setErrors] = useState<Partial<Record<keyof AddRuleFormData, string>>>({})
-  const [aiPrompt, setAiPrompt] = useState("")
-  const [aiGenerating, setAiGenerating] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
-  const [aiEnvId, setAiEnvId] = useState<string>("")
-
-  useEffect(() => {
-    async function loadEnvs() {
-      try {
-        const token = getToken ? await getToken() : null
-        const headers: Record<string, string> = {}
-        if (token) headers["Authorization"] = `Bearer ${token}`
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const res = await fetch(`${apiUrl}/environments`, { headers })
-        if (!res.ok) return
-        const data: Array<{ id: string; name: string }> = await res.json()
-        setEnvironments(data)
-        const def = data.find(e => e.name === "Default") ?? data[0]
-        if (def) setAiEnvId(def.id)
-      } catch {
-        // non-fatal — picker just shows empty
-      }
-    }
-    loadEnvs()
-  }, [getToken])
-
-  async function handleGenerate() {
-    const text = aiPrompt.trim()
-    if (!text) return
-    setAiGenerating(true)
-    setAiError(null)
-    try {
-      const token = getToken ? await getToken() : null
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await fetch(`${apiUrl}/guard/policies/generate`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ prompt: text, environment_id: aiEnvId || undefined }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        throw new Error(body?.detail ?? `HTTP ${res.status}`)
-      }
-      const data = await res.json()
-      setForm(prev => ({
-        ...prev,
-        rule_id: data.rule_id ?? "",
-        description: data.description ?? "",
-        match_tool: (data.match_tool as MatchTool) ?? "*",
-        match_pattern: data.match_pattern ?? "",
-        match_path_pattern: data.match_path_pattern ?? "",
-        action: (data.action as PolicyAction) ?? "block",
-        message: data.message ?? "",
-      }))
-      setErrors({})
-    } catch (e) {
-      setAiError(e instanceof Error ? e.message : "Couldn't generate a rule — try being more specific.")
-    } finally {
-      setAiGenerating(false)
-    }
-  }
 
   function set<K extends keyof AddRuleFormData>(key: K, value: AddRuleFormData[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -439,76 +388,6 @@ function AddRuleModal({
 
         {/* Modal form */}
         <form onSubmit={handleSubmit} style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
-
-          {/* AI generate */}
-          <div style={{ background: "var(--surface-2)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <label style={labelStyle}>Generate with AI</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>Environment</span>
-              <select
-                value={aiEnvId}
-                onChange={e => setAiEnvId(e.target.value)}
-                disabled={aiGenerating || environments.length === 0}
-                style={{ ...fieldStyle, flex: 1, maxWidth: 220 }}
-              >
-                {environments.length === 0 && <option value="">No environments</option>}
-                {environments.map(env => (
-                  <option key={env.id} value={env.id}>{env.name}</option>
-                ))}
-              </select>
-              <span style={{ fontSize: 11, color: "var(--text-3)" }}>Uses this environment's Anthropic key</span>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 2 }}>
-              {POLICY_TEMPLATES.map(t => (
-                <button
-                  key={t.label}
-                  type="button"
-                  disabled={aiGenerating}
-                  onClick={() => setAiPrompt(t.prompt)}
-                  style={{
-                    fontSize: 11.5,
-                    padding: "4px 10px",
-                    borderRadius: 9999,
-                    border: "1px solid var(--border)",
-                    background: aiPrompt === t.prompt ? "var(--accent-weak)" : "var(--surface)",
-                    color: "var(--text-3)",
-                    cursor: aiGenerating ? "not-allowed" : "pointer",
-                    opacity: aiGenerating ? 0.4 : 1,
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                type="text"
-                value={aiPrompt}
-                onChange={e => setAiPrompt(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleGenerate() } }}
-                placeholder="Block any prompt asking for AWS credentials…"
-                style={{ ...fieldStyle, flex: 1 }}
-                disabled={aiGenerating}
-              />
-              <button
-                type="button"
-                onClick={handleGenerate}
-                disabled={aiGenerating || !aiPrompt.trim()}
-                className="btn btn-ghost btn-sm"
-                style={{ whiteSpace: "nowrap", opacity: aiGenerating || !aiPrompt.trim() ? 0.5 : 1 }}
-              >
-                {aiGenerating ? "Generating…" : "Generate"}
-              </button>
-            </div>
-            {aiError && <p style={{ margin: 0, fontSize: 11.5, color: "var(--err)" }}>{aiError}</p>}
-          </div>
-
-          {/* Divider */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            <span style={{ fontSize: 11.5, color: "var(--text-muted)", whiteSpace: "nowrap" }}>or fill manually</span>
-            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-          </div>
 
           {/* Persona */}
           <div>
@@ -603,6 +482,33 @@ function AddRuleModal({
                 <option value="approval">approval</option>
                 <option value="inject">inject</option>
               </select>
+            </div>
+          </div>
+
+          {/* AI surface */}
+          <div>
+            <label style={labelStyle}>AI surface <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>(optional — leave blank for all)</span></label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              {AI_SURFACES.map(s => {
+                const selected = form.match_ai_tool.split(",").map(v => v.trim()).filter(Boolean).includes(s.value)
+                return (
+                  <button
+                    key={s.value}
+                    type="button"
+                    onClick={() => {
+                      const cur = form.match_ai_tool.split(",").map(v => v.trim()).filter(Boolean)
+                      set("match_ai_tool", (selected ? cur.filter(v => v !== s.value) : [...cur, s.value]).join(","))
+                    }}
+                    style={{
+                      fontSize: 11.5, padding: "3px 10px", borderRadius: 9999, cursor: "pointer",
+                      border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
+                      background: selected ? "var(--accent-weak)" : "var(--surface)",
+                      color: selected ? "var(--accent-text)" : "var(--text-3)",
+                      fontWeight: selected ? 600 : 400,
+                    }}
+                  >{s.label}</button>
+                )
+              })}
             </div>
           </div>
 
@@ -844,6 +750,7 @@ function PoliciesContent() {
         builtin: false,
         persona: formData.persona,
       }
+      if (formData.match_ai_tool.trim()) rule.match_ai_tool = formData.match_ai_tool.trim()
       if (formData.match_path_pattern.trim()) rule.match_path_pattern = formData.match_path_pattern.trim()
 
       // Lint before saving
