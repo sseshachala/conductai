@@ -90,9 +90,9 @@ export default function RunsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId])
 
-  // Poll every 4s only while there are active runs
+  // Poll every 4s only while there are active runs and user hasn't paginated
   useEffect(() => {
-    if (loading) return
+    if (loading || offset > 0) return
     const hasActive = runs.some(r => isActive(r.status))
     if (!hasActive) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
@@ -102,7 +102,7 @@ export default function RunsPage() {
       pollRef.current = setInterval(() => fetchRuns(0, false), 4000)
     }
     return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
-  }, [runs, loading, fetchRuns])
+  }, [runs, loading, offset, fetchRuns])
 
   async function loadMore() {
     const next = offset + PAGE_SIZE
