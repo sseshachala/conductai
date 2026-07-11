@@ -12,6 +12,7 @@ Exposes three tools:
   guard_sync    — pull latest policy from the ConductGuard API
 """
 from __future__ import annotations
+from conduct_cli.tool_groups import expand_match_tool
 import argparse
 import json
 import re
@@ -268,7 +269,7 @@ def _match_policy(tool_name: str, tool_input: dict) -> dict | None:
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
-            if tool_name.lower() not in [t.strip() for t in match_tool.split(",")]:
+            if tool_name.lower() not in expand_match_tool(match_tool):
                 continue
         match_ai = rule.get("match_ai_tool")
         if match_ai:

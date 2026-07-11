@@ -9,6 +9,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from conduct_cli.tool_groups import expand_match_tool
+
 RESET  = "\033[0m"
 BOLD   = "\033[1m"
 GREEN  = "\033[32m"
@@ -132,7 +134,7 @@ def _check_policy(tool_name, tool_input, tokens_before=0):
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
-            if tool_name not in [t.strip() for t in match_tool.split(",")]:
+            if tool_name not in expand_match_tool(match_tool):
                 continue
         # New: structural match against the actual binary being invoked.
         # Single string or list of strings; case-insensitive equality.
