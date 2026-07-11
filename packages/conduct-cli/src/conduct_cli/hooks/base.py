@@ -74,24 +74,38 @@ def detect_repo() -> Optional[str]:
 
 
 def detect_ai_tool() -> str:
-    """Return a string identifying the active AI coding tool."""
+    """Return a string identifying the active AI coding tool / surface."""
     import os
+    # ── Anthropic ─────────────────────────────────────────────────────────────
     if os.environ.get("CLAUDE_CODE_ENTRYPOINT") or os.environ.get("CLAUDECODE"):
         return "claude-code"
-    if os.environ.get("CODEX_SESSION_ID") or os.environ.get("CODEX_CLI_VERSION"):
-        return "codex"
+    if os.environ.get("CLAUDE_DESKTOP_ENTRYPOINT") or os.environ.get("CLAUDE_DESKTOP"):
+        return "claude-desktop"
+    # ── OpenAI / Codex ────────────────────────────────────────────────────────
+    if os.environ.get("CODEX_CLI_VERSION") or os.environ.get("CODEX_SESSION_ID"):
+        return "codex-cli"
+    if os.environ.get("CODEX_DESKTOP") or os.environ.get("OPENAI_CODEX_DESKTOP"):
+        return "codex-desktop"
+    if os.environ.get("OPENAI_CHATGPT_MCP") or os.environ.get("CHATGPT_SESSION_ID"):
+        return "openai-chatgpt"
+    # ── TERM_PROGRAM ──────────────────────────────────────────────────────────
     term = os.environ.get("TERM_PROGRAM", "").lower()
     if term == "cursor":
         return "cursor"
     if term == "windsurf":
         return "windsurf"
+    # ── PATH heuristics ───────────────────────────────────────────────────────
     path = os.environ.get("PATH", "")
-    if "Codex.app" in path or "codex" in path.lower():
-        return "codex"
+    if "Codex.app" in path:
+        return "codex-desktop"
+    if "codex" in path.lower():
+        return "codex-cli"
     if "cursor" in path.lower():
         return "cursor"
     if "windsurf" in path.lower():
         return "windsurf"
+    if "claude" in path.lower():
+        return "claude-desktop"
     return "claude-code"
 
 
