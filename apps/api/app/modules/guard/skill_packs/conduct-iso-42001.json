@@ -1,0 +1,129 @@
+{
+  "slug": "conduct-iso-42001",
+  "name": "Conduct ISO 42001",
+  "version": "1.0.0",
+  "tier": "paid",
+  "description": "ISO/IEC 42001:2023 AI Management System enforcement rules — operational controls, data governance, responsible AI use, and continual improvement",
+  "rules": [
+    {
+      "id": "iso42001-data-quality",
+      "description": "Warn on use of unlabeled or unvalidated data in AI training or embedding (ISO 42001 Clause 8.4)",
+      "match_tool": "edit,write",
+      "match_pattern": "(unlabeled|unvalidated|unverified|raw|uncleaned).*(dataset|training.?data|corpus|embedding)|dataset.*quality.*=.*(unknown|none|null|false)",
+      "action": "warn",
+      "message": "Unlabeled or unvalidated data in AI pipeline — ISO 42001 Clause 8.4 requires data quality controls for AI training and inference data.",
+      "persona_affinity": ["agent"],
+      "frameworks": ["ISO_42001:8.4", "NIST_AI_RMF:MAP-1.5", "EU_AI_ACT:Art10"],
+      "severity": "high",
+      "recommendation": "Validate, label, and document data provenance before use in AI systems. Maintain a data quality register per ISO 42001 Clause 8.4."
+    },
+    {
+      "id": "iso42001-responsible-use",
+      "description": "Block use of AI model for purposes inconsistent with its declared intended use (ISO 42001 Clause 8.6)",
+      "match_tool": "edit,write",
+      "match_pattern": "(repurpose|off.?label|override.?purpose|change.?intended.?use).*(model|ai|agent|assistant)|use.*model.*(outside|beyond).*(scope|intended|approved|documented)",
+      "action": "block",
+      "message": "AI system used outside declared intended purpose — ISO 42001 Clause 8.6 requires responsible AI use within documented scope.",
+      "persona_affinity": ["agent", "proxy"],
+      "frameworks": ["ISO_42001:8.6", "EU_AI_ACT:Art9", "NIST_AI_RMF:MAP-5.1"],
+      "severity": "high",
+      "recommendation": "Document the intended use of each AI system. Deploy only within that scope. Any new use case requires a separate impact assessment."
+    },
+    {
+      "id": "iso42001-human-oversight",
+      "description": "Block autonomous high-impact AI actions without a human review gate (ISO 42001 Clause 8.1)",
+      "match_tool": "edit,write",
+      "match_pattern": "(no.?human.?review|skip.?approval|auto.?execute|autonomous.?action).*(delete|deploy|send.?email|publish|post|transfer|payment|access.?grant|permission)",
+      "action": "block",
+      "message": "Autonomous high-impact action without human oversight — ISO 42001 Clause 8.1 requires operational controls including human review for consequential AI actions.",
+      "persona_affinity": ["agent", "proxy"],
+      "frameworks": ["ISO_42001:8.1", "EU_AI_ACT:Art14", "NIST_AI_RMF:GOVERN-6.1"],
+      "severity": "critical",
+      "recommendation": "Implement a human-in-the-loop approval gate for irreversible or high-impact AI actions. No autonomous execution of consequential actions without sign-off."
+    },
+    {
+      "id": "iso42001-impact-assessment",
+      "description": "Warn when new AI system or model deployed without documented impact assessment (ISO 42001 Clause 8.5)",
+      "match_tool": "bash",
+      "match_pattern": "(docker.?run|kubectl.?apply|helm.?install|deploy|push.?to.?prod).*(model|agent|llm|ai.?service|embedding.?service)(?!.*(impact|assessment|reviewed|approved))",
+      "action": "warn",
+      "message": "AI system deployed without impact assessment evidence — ISO 42001 Clause 8.5 requires AI system impact assessment before deployment.",
+      "persona_affinity": ["agent"],
+      "frameworks": ["ISO_42001:8.5", "EU_AI_ACT:Art9", "NIST_AI_RMF:MAP-5.1"],
+      "severity": "high",
+      "recommendation": "Complete an AI system impact assessment (AISA) before deploying any new AI system or model. Document potential harms, affected stakeholders, and mitigations."
+    },
+    {
+      "id": "iso42001-access-control",
+      "description": "Block AI agents accessing resources or paths outside their designated scope (ISO 42001 Clause 8.1)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(~/.ssh|/etc/passwd|/etc/shadow|/var/log/auth|/proc/self|/root/|/home/(?!\\$USER)|\\.\\./)(\\.\\./)+",
+      "action": "block",
+      "message": "AI agent accessing resource outside designated scope — ISO 42001 Clause 8.1 requires access controls scoped to the AI system's intended operational boundary.",
+      "persona_affinity": ["agent"],
+      "frameworks": ["ISO_42001:8.1", "OWASP_AGENTIC:A04", "SOC2:CC6.1"],
+      "severity": "critical",
+      "recommendation": "Restrict AI agent file and system access to the project directory and explicitly approved paths. Implement path validation before all file operations."
+    },
+    {
+      "id": "iso42001-supplier-ai-control",
+      "description": "Warn on new third-party AI supplier integration without documented controls (ISO 42001 Clause 8.1 — supplier relationships)",
+      "match_tool": "edit,write",
+      "match_pattern": "import (replicate|together|groq|cohere|mistral|fireworks|anyscale|deepinfra)|from (replicate|together_ai|groq) import|REPLICATE_API|TOGETHER_API|GROQ_API",
+      "action": "warn",
+      "message": "New third-party AI supplier detected — ISO 42001 Clause 8.1 requires supplier controls including DPA and security review before production use.",
+      "persona_affinity": ["agent"],
+      "frameworks": ["ISO_42001:8.1", "NIST_AI_RMF:MANAGE-4.1", "EU_AI_ACT:Art53"],
+      "severity": "medium",
+      "recommendation": "Add this AI supplier to your vendor register. Ensure data processing agreement, security assessment, and liability controls are documented before production deployment."
+    },
+    {
+      "id": "iso42001-data-minimisation",
+      "description": "Warn on collecting or logging more AI interaction data than necessary (ISO 42001 Clause 8.4)",
+      "match_tool": "edit,write",
+      "match_pattern": "(log_all|collect_all|store_everything|log_full_conversation|save_all_prompts|retain_all_inputs)|(log|store|save|persist).*(all.?(user|message|prompt|response|conversation|session))",
+      "action": "warn",
+      "message": "Broad AI data collection detected — ISO 42001 Clause 8.4 requires data minimisation: collect only what is necessary for the stated AI purpose.",
+      "persona_affinity": ["agent"],
+      "frameworks": ["ISO_42001:8.4", "GDPR:Art5.1c", "NIST_AI_RMF:MANAGE-2.4"],
+      "severity": "medium",
+      "recommendation": "Define what AI interaction data is necessary for the system's purpose. Collect and retain only that data. Apply field-level filtering before storage."
+    },
+    {
+      "id": "iso42001-bias-testing",
+      "description": "Warn when AI model deployed to production without bias or fairness testing evidence (ISO 42001 Clause 8.2)",
+      "match_tool": "bash",
+      "match_pattern": "(push.?to.?prod|deploy.*prod|release.*v[0-9]).*(model|checkpoint|weights|llm)(?!.*(bias|fairness|eval|test|benchmark|audit))",
+      "action": "warn",
+      "message": "AI model deployed without bias testing evidence — ISO 42001 Clause 8.2 requires risk assessment including fairness evaluation before production deployment.",
+      "persona_affinity": ["agent"],
+      "frameworks": ["ISO_42001:8.2", "NIST_AI_RMF:MEASURE-2.3", "EU_AI_ACT:Art10"],
+      "severity": "medium",
+      "recommendation": "Run bias and fairness evaluations before each model deployment. Document results and include them in the deployment approval record."
+    },
+    {
+      "id": "iso42001-monitoring-required",
+      "description": "Block disabling performance monitoring or observability on AI systems (ISO 42001 Clause 9.1)",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(MONITORING_ENABLED|OBSERVABILITY_ENABLED|AI_METRICS_ENABLED|TRACING_ENABLED)\\s*=\\s*(false|0|off|null)|prometheus.*disabled|metrics.*=.*false",
+      "action": "block",
+      "message": "AI system monitoring disabled — ISO 42001 Clause 9.1 requires ongoing monitoring, measurement, analysis, and evaluation of AI systems.",
+      "persona_affinity": ["agent"],
+      "frameworks": ["ISO_42001:9.1", "NIST_AI_RMF:MEASURE-2.5", "SOC2:CC7.2"],
+      "severity": "critical",
+      "recommendation": "Maintain active monitoring on all AI systems. ISO 42001 Clause 9.1 requires continuous performance evaluation. Adjust thresholds, never disable monitoring."
+    },
+    {
+      "id": "iso42001-incident-capture",
+      "description": "Warn when AI system errors are silently discarded without incident logging (ISO 42001 Clause 10.2)",
+      "match_tool": "edit,write",
+      "match_pattern": "except (Exception|BaseException|Error):\\s*(pass|\\.\\.\\.)|(catch|rescue)\\s*\\(?(Exception|Error|\\*)?\\)?\\s*\\{?\\s*(//.*)?\\}?\\s*$",
+      "action": "warn",
+      "message": "AI system error silently discarded — ISO 42001 Clause 10.2 requires nonconformities and incidents to be captured and acted on for continual improvement.",
+      "persona_affinity": ["agent"],
+      "frameworks": ["ISO_42001:10.2", "NIST_AI_RMF:MANAGE-1.3", "SOC2:CC7.3"],
+      "severity": "medium",
+      "recommendation": "Log all AI system errors with full context. Feed them into your incident management process. Silent failures prevent the continual improvement ISO 42001 requires."
+    }
+  ]
+}
