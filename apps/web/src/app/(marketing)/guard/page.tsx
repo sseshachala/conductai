@@ -43,7 +43,7 @@ function HeroSection() {
         Most governance stops at day one. Guard gets smarter every session. It learns your codebase, your team&apos;s patterns, and your risk profile over time.
       </p>
       <p className="text-base text-stone-600 max-w-2xl mx-auto leading-relaxed mb-3">
-        Other AI governance tools want you to import an SDK and wrap every model call. Guard installs in 10 minutes. It intercepts every AI tool your team already uses: Claude Code, Cursor, Copilot, Codex.
+        Other AI governance tools want you to import an SDK and wrap every model call. Guard installs in 10 minutes. One policy enforces across every AI tool your team already uses — Claude Code, Claude.ai, Claude Desktop, Codex CLI, Codex Desktop, ChatGPT, Cursor, Copilot, and Windsurf.
       </p>
       <p className="text-base text-indigo-600 italic max-w-2xl mx-auto leading-relaxed mb-3">
         GitHub gives the CISO a setting. ConductGuard gives them enforcement.
@@ -111,10 +111,15 @@ function ProofStripSection() {
 /* ─── Tools — Works everywhere ────────────────────────────────────────── */
 
 const TOOLS = [
-  { name: "Claude Code", icon: "⬡", install: "conduct guard sync" },
-  { name: "VS Code + Copilot", icon: "⬡", install: "code --add-mcp '{...}'" },
-  { name: "Cursor", icon: "⬡", install: "conduct guard sync --cursor" },
-  { name: "Windsurf", icon: "⬡", install: "conduct guard sync --windsurf" },
+  { name: "Claude Code",      icon: "⬡", install: "conduct guard sync" },
+  { name: "Claude.ai",        icon: "⬡", install: "MCP server" },
+  { name: "Claude Desktop",   icon: "⬡", install: "MCP server" },
+  { name: "Codex CLI",        icon: "⬡", install: "conduct guard sync" },
+  { name: "Codex Desktop",    icon: "⬡", install: "MCP server" },
+  { name: "ChatGPT",          icon: "⬡", install: "MCP server" },
+  { name: "Cursor",           icon: "⬡", install: "conduct guard sync --cursor" },
+  { name: "VS Code + Copilot",icon: "⬡", install: "code --add-mcp '{...}'" },
+  { name: "Windsurf",         icon: "⬡", install: "conduct guard sync --windsurf" },
 ]
 
 function ToolsSection() {
@@ -130,13 +135,18 @@ function ToolsSection() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-        {[
-          { name: "Claude Code", badge: "hook + MCP" },
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+        {([
+          { name: "Claude Code",       badge: "hook + MCP" },
+          { name: "Claude.ai",         badge: "MCP" },
+          { name: "Claude Desktop",    badge: "MCP" },
+          { name: "Codex CLI",         badge: "hook" },
+          { name: "Codex Desktop",     badge: "MCP" },
+          { name: "ChatGPT",           badge: "MCP" },
+          { name: "Cursor",            badge: "MCP" },
           { name: "VS Code + Copilot", badge: "MCP" },
-          { name: "Cursor", badge: "MCP" },
-          { name: "Windsurf", badge: "MCP" },
-        ].map((tool) => (
+          { name: "Windsurf",          badge: "MCP" },
+        ] as {name:string,badge:string}[]).map((tool) => (
           <div key={tool.name} className="border border-stone-200 rounded-xl p-4 text-center bg-white shadow-sm">
             <p className="font-semibold text-stone-800 text-sm mb-1">{tool.name}</p>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">
@@ -997,7 +1007,7 @@ function GatewayVsGuardSection() {
                 ["no",  "Sees tool calls (Bash, Write, Read)"],
                 ["no",  "Blocks destructive commands before they run"],
                 ["no",  "Detects credential leaks in tool input"],
-                ["no",  "Works across Claude Code, Cursor, Copilot"],
+                ["no",  "One policy across Claude, Codex, ChatGPT, Cursor, Copilot"],
                 ["no",  "Tamper-evident audit log"],
               ] as [string, string][]).map(([state, label]) => (
                 <li key={label} className="flex items-start gap-2">
@@ -1017,7 +1027,7 @@ function GatewayVsGuardSection() {
                 "Sees tool calls (Bash, Write, Read)",
                 "Blocks destructive commands before they run",
                 "Detects credential leaks in tool input",
-                "Works across Claude Code, Cursor, Copilot",
+                "One policy across Claude, Codex, ChatGPT, Cursor, Copilot",
                 "Tamper-evident audit log",
               ].map((label) => (
                 <li key={label} className="flex items-start gap-2">

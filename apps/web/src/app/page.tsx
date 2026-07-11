@@ -145,7 +145,7 @@ function HeroSection() {
         Your AI agents are taking real actions. Nobody is watching.
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
-        One identity, one policy, one audit trail across every AI tool your team uses.
+        One policy. Every AI tool your team uses — Claude Code, Claude.ai, Claude Desktop, Codex, ChatGPT, Cursor, Copilot, Windsurf.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
         {chips.map(chip => (
@@ -295,7 +295,7 @@ function ProblemSection() {
           AI agents ship code. Nobody sees what they actually did.
         </h2>
         <p className="text-stone-400 leading-relaxed mb-12 max-w-2xl">
-          Your team is already using Copilot, Claude, Cursor, and Codex. But when something breaks, there&apos;s no trail, no policy, no audit log, no budget control.
+          Your team is already using Claude, Codex, ChatGPT, Cursor, Copilot, and Windsurf. But when something breaks, there&apos;s no trail, no policy, no audit log, no budget control.
         </p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {problems.map(p => (
@@ -448,7 +448,7 @@ function GovernanceNarrativeSection() {
               Every AI session, explained in plain English.
             </h2>
             <p className="text-stone-500 leading-relaxed mb-8">
-              Guard watches every tool call across every AI session: Claude, Codex, Cursor, Copilot. At the end of each day, it surfaces one sentence that tells your team what happened, what was blocked, and what it cost.
+              Guard watches every tool call across every AI session: Claude Code, Claude.ai, Claude Desktop, Codex CLI, Codex Desktop, ChatGPT, Cursor, Copilot, Windsurf. At the end of each day, it surfaces one sentence that tells your team what happened, what was blocked, and what it cost.
             </p>
             <div className="flex flex-wrap gap-2 mb-6">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-100 text-xs font-semibold text-red-600">🚫 6 deploys intercepted</span>
@@ -548,7 +548,7 @@ const personas = [
     title: "Your AI usage policy exists in a doc. It has never once stopped an agent.",
     desc: "Conduct enforces policy at the layer where agents actually run. Not in a review meeting, not in a Notion page. At the moment the tool call happens.",
     outcomes: [
-      "One policy layer across Claude Code, Cursor, Copilot, and more",
+      "One policy layer across Claude, Codex, ChatGPT, Cursor, Copilot, Windsurf — every surface your team uses",
       "No infrastructure changes. Works with your existing stack",
       "Role-based policies for different teams and access levels",
       "Spend budgets per developer, per tool, per project",
