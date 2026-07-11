@@ -325,11 +325,15 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
         input_text = json.dumps(tool_input)
     path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
 
+    current_ai_tool = detect_ai_tool()
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
             if tool_name not in [t.strip() for t in match_tool.split(",")]:
                 continue
+        match_ai = rule.get("match_ai_tool")
+        if match_ai and match_ai.lower() not in current_ai_tool.lower():
+            continue
         pattern = rule.get("match_pattern")
         if pattern:
             try:

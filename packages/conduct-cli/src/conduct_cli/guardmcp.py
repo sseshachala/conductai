@@ -259,9 +259,11 @@ def _match_policy(tool_name: str, tool_input: dict) -> dict | None:
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
-            allowed = [t.strip() for t in match_tool.split(",")]
-            if tool_name.lower() not in allowed:
+            if tool_name.lower() not in [t.strip() for t in match_tool.split(",")]:
                 continue
+        match_ai = rule.get("match_ai_tool")
+        if match_ai and "claude.ai" not in match_ai.lower():
+            continue  # this rule targets a different surface (e.g. claude-code only)
 
         pattern = rule.get("match_pattern")
         if pattern:
