@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id, get_user_id, require_workspace_role, require_permission
 from app.core.database import get_db
 from app.models.workspace import Workspace
-from app.modules.guard.models import GuardConfig, GuardMemberConfig, WorkspaceSkillPack
+from app.modules.guard.models import GuardConfig, GuardMemberConfig, GuardSpendBudget, WorkspaceSkillPack
 
 router = APIRouter(prefix="/guard/config", tags=["guard-config"])
 
@@ -47,6 +47,7 @@ class ConfigOut(BaseModel):
     automation_warnings: list[str] = []
     deny_on_error: bool = True
     advisory_mode: bool = False
+    spend_limit_usd: float | None = None
 
     class Config:
         from_attributes = True
@@ -202,7 +203,15 @@ def get_config(
 ):
     """Return Guard config for the workspace, creating it if it does not yet exist."""
     config = _get_or_create_config(db, workspace_id)
-    return _config_to_out(config)
+    out = _config_to_out(config)
+    ws_uuid = uuid.UUID(workspace_id)
+    workspace_budget = (
+        db.query(GuardSpendBudget)
+        .filter(GuardSpendBudget.workspace_id == ws_uuid, GuardSpendBudget.clerk_user_id.is_(None))
+        .first()
+    )
+    out.spend_limit_usd = workspace_budget.monthly_limit_usd if workspace_budget else None
+    return out
 
 
 @router.patch("", response_model=ConfigOut)
