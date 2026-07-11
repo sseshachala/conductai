@@ -76,7 +76,10 @@ import json
 import sys
 from pathlib import Path
 
-data = json.load(sys.stdin)
+_raw = sys.stdin.read()
+if not _raw.strip():
+    sys.exit(0)
+data = json.loads(_raw)
 
 # Claude Code stop event schema: {"session_id": "...", "stop_hook_active": bool, "usage": {...}}
 usage = data.get("usage", {})
@@ -165,7 +168,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-data = json.load(sys.stdin)
+_raw = sys.stdin.read()
+if not _raw.strip():
+    sys.exit(0)
+data = json.loads(_raw)
 file_path = data.get("tool_input", {}).get("file_path", "")
 if not file_path:
     sys.exit(0)
@@ -216,7 +222,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-data = json.load(sys.stdin)
+_raw = sys.stdin.read()
+if not _raw.strip():
+    sys.exit(0)
+data = json.loads(_raw)
 pattern = data.get("tool_input", {}).get("pattern", "")
 if not pattern:
     sys.exit(0)
@@ -257,7 +266,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-data = json.load(sys.stdin)
+_raw = sys.stdin.read()
+if not _raw.strip():
+    sys.exit(0)
+data = json.loads(_raw)
 message = data.get("message", "")
 
 if not message or len(message.strip()) < 10:
@@ -294,7 +306,10 @@ mcp__agent-booster__search_context instead of Grep/Bash for searches."""
 import json
 import sys
 
-data = json.load(sys.stdin)
+_raw = sys.stdin.read()
+if not _raw.strip():
+    sys.exit(0)
+data = json.loads(_raw)
 prompt = data.get("tool_input", {}).get("prompt", "")
 
 if not prompt:
