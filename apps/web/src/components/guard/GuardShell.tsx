@@ -17,7 +17,7 @@ export const GUARD_TABS: TabDef[] = [
   { href: "/theguard/policies",        label: "Policies"        },
   { href: "/theguard/activity",        label: "Flight Recorder" },
   { href: "/theguard/discovery",       label: "Discovery"       },
-  { href: "/governance",               label: "Compliance",      roles: ["admin", "security"] },
+  { href: "/theguard/compliance",       label: "Compliance",      roles: ["admin", "security"] },
   { href: "/theguard/session-reports", label: "Session Reports", roles: ["admin"] },
   { href: "/theguard/team-memory",     label: "Team Memory",     roles: ["admin"] },
   { href: "/theguard/settings",        label: "Settings",        roles: ["admin"] },
