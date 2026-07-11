@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+// ponytail: AI generation removed — API key not configured on this deployment
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
-import { POLICY_TEMPLATES } from "@/lib/guardPolicyTemplates"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -387,19 +387,17 @@ export default function NewPolicyPage() {
   const { teamId } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
   useEffect(() => {
     if (!permissionsLoading && !permissions.canEditPolicies) {
       router.replace("/guard/policies")
     }
   }, [permissionsLoading, permissions.canEditPolicies, router])
 
-  const [prompt, setPrompt] = useState("")
-  const [generating, setGenerating] = useState(false)
-  const [generateError, setGenerateError] = useState<string | null>(null)
-
-  const [generatedPolicy, setGeneratedPolicy] = useState<GeneratedPolicy | null>(null)
+  const [policy, setPolicy] = useState<GeneratedPolicy>({
+    rule_id: "", description: "", persona: initialPersona,
+    match_tool: "*", match_ai_tool: "", match_pattern: "",
+    match_path_pattern: "", action: "block", message: "",
+  })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -414,77 +412,28 @@ export default function NewPolicyPage() {
     return h
   }, [getToken])
 
-  async function handleGenerate() {
-    const text = prompt.trim()
-    if (!text) return
-
-    setGenerating(true)
-    setGenerateError(null)
-    setGeneratedPolicy(null)
-    setSaveError(null)
-
-    try {
-      const headers = await authHeaders()
-      if (teamId) headers["X-Workspace-Id"] = teamId
-      const res = await fetch(`${apiUrl}/guard/policies/generate`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ prompt: text, workspace_id: teamId }),
-      })
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "")
-        throw new Error(detail || `HTTP ${res.status}`)
-      }
-      const data = await res.json()
-      setGeneratedPolicy({
-        rule_id: data.rule_id ?? "",
-        description: data.description ?? "",
-        match_tool: (data.match_tool as MatchTool) ?? "*",
-        match_ai_tool: data.match_ai_tool ?? "",
-        match_pattern: data.match_pattern ?? "",
-        match_path_pattern: data.match_path_pattern ?? "",
-        action: (data.action as PolicyAction) ?? "block",
-        message: data.message ?? "",
-        persona: initialPersona,
-      })
-    } catch (e) {
-      setGenerateError(e instanceof Error ? e.message : "Failed to generate rule. Please try again.")
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleGenerate()
-    }
-  }
-
   async function handleSave() {
-    if (!generatedPolicy) return
-
     setSaving(true)
     setSaveError(null)
 
     try {
       const headers = await authHeaders()
       const body: Record<string, unknown> = {
-        rule_id: generatedPolicy.rule_id.trim(),
-        description: generatedPolicy.description.trim(),
-        match_tool: generatedPolicy.match_tool,
-        match_pattern: generatedPolicy.match_pattern.trim(),
-        action: generatedPolicy.action,
-        message: generatedPolicy.message.trim(),
+        rule_id: policy.rule_id.trim(),
+        description: policy.description.trim(),
+        match_tool: policy.match_tool,
+        match_pattern: policy.match_pattern.trim(),
+        action: policy.action,
+        message: policy.message.trim(),
         enabled: true,
         builtin: false,
-        persona: generatedPolicy.persona,
+        persona: policy.persona,
       }
-      if (generatedPolicy.match_ai_tool.trim()) {
-        body.match_ai_tool = generatedPolicy.match_ai_tool.trim()
+      if (policy.match_ai_tool.trim()) {
+        body.match_ai_tool = policy.match_ai_tool.trim()
       }
-      if (generatedPolicy.match_path_pattern.trim()) {
-        body.match_path_pattern = generatedPolicy.match_path_pattern.trim()
+      if (policy.match_path_pattern.trim()) {
+        body.match_path_pattern = policy.match_path_pattern.trim()
       }
       if (teamId) body.workspace_id = teamId
 
@@ -529,11 +478,7 @@ export default function NewPolicyPage() {
         <div>
           <button
             type="button"
-            onClick={() => {
-              const hasContent = prompt.trim() || generatedPolicy?.rule_id || generatedPolicy?.match_pattern
-              if (hasContent && !confirm("Discard this policy? Your changes will be lost.")) return
-              router.push("/guard/policies")
-            }}
+            onClick={() => router.push("/guard/policies")}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -556,193 +501,20 @@ export default function NewPolicyPage() {
 
         {/* Page heading */}
         <div>
-          <h2 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Create a rule with AI</h2>
+          <h2 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Create a rule</h2>
           <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 4 }}>
-            Describe what you want to control in plain English — the AI will suggest the rule fields for you to review and save.
+            Fill in the fields below and save.
           </p>
         </div>
 
-        {/* Template chips */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <p style={{ fontSize: 12, fontWeight: 500, color: "var(--text-3)" }}>Start from a template</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {POLICY_TEMPLATES.map((t) => (
-              <button
-                key={t.label}
-                type="button"
-                disabled={generating}
-                onClick={() => {
-                  setPrompt(t.prompt)
-                  setGeneratedPolicy(null)
-                  setSaveError(null)
-                  setGenerateError(null)
-                  // auto-generate after setting the prompt
-                  setTimeout(() => {
-                    setPrompt(t.prompt)
-                    // call generate via the prompt value directly
-                    void (async () => {
-                      setGenerating(true)
-                      setGenerateError(null)
-                      setGeneratedPolicy(null)
-                      setSaveError(null)
-                      try {
-                        const headers = await authHeaders()
-                        if (teamId) headers["X-Workspace-Id"] = teamId
-                        const res = await fetch(`${apiUrl}/guard/policies/generate`, {
-                          method: "POST",
-                          headers,
-                          body: JSON.stringify({ prompt: t.prompt, workspace_id: teamId }),
-                        })
-                        if (!res.ok) {
-                          const detail = await res.text().catch(() => "")
-                          throw new Error(detail || `HTTP ${res.status}`)
-                        }
-                        const data = await res.json()
-                        setGeneratedPolicy({
-                          rule_id: data.rule_id ?? "",
-                          description: data.description ?? "",
-                          persona: initialPersona,
-                          match_tool: (data.match_tool as MatchTool) ?? "*",
-                          match_ai_tool: data.match_ai_tool ?? "",
-                          match_pattern: data.match_pattern ?? "",
-                          match_path_pattern: data.match_path_pattern ?? "",
-                          action: (data.action as PolicyAction) ?? "block",
-                          message: data.message ?? "",
-                        })
-                      } catch (e) {
-                        setGenerateError(e instanceof Error ? e.message : "Failed to generate rule. Please try again.")
-                      } finally {
-                        setGenerating(false)
-                      }
-                    })()
-                  }, 0)
-                }}
-                style={{
-                  fontSize: 12,
-                  padding: "6px 12px",
-                  borderRadius: 9999,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  color: "var(--text-3)",
-                  cursor: generating ? "not-allowed" : "pointer",
-                  opacity: generating ? 0.4 : 1,
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Prompt input card */}
-        <div className="card" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <label
-            htmlFor="policy-prompt"
-            style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--text-3)" }}
-          >
-            Describe your policy
-          </label>
-          <textarea
-            id="policy-prompt"
-            ref={textareaRef}
-            rows={3}
-            value={prompt}
-            onChange={e => setPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={generating}
-            placeholder="e.g. block anyone from running rm -rf, or require approval before prod deploys"
-            style={{
-              width: "100%",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: "10px 12px",
-              fontSize: 13,
-              color: "var(--text)",
-              background: "var(--surface)",
-              resize: "none",
-              outline: "none",
-              opacity: generating ? 0.5 : 1,
-              cursor: generating ? "not-allowed" : "auto",
-              boxSizing: "border-box",
-            }}
-          />
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Press Enter to generate, or Shift+Enter for a new line.</p>
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={generating || !prompt.trim()}
-              className="btn btn-primary btn-sm"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                opacity: generating || !prompt.trim() ? 0.5 : 1,
-                cursor: generating || !prompt.trim() ? "not-allowed" : undefined,
-              }}
-            >
-              {generating ? (
-                <>
-                  <svg style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Generating…
-                </>
-              ) : "Generate"}
-            </button>
-          </div>
-        </div>
-
-        {/* Generating pulse skeleton */}
-        {generating && (
-          <div className="card" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12, animation: "pulse 1.5s ease-in-out infinite" }}>
-            <div style={{ height: 12, width: 192, borderRadius: 4, background: "var(--surface-3)" }} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
-              <div style={{ height: 32, borderRadius: 4, background: "var(--surface-2)" }} />
-              <div style={{ height: 32, borderRadius: 4, background: "var(--surface-2)" }} />
-              <div style={{ height: 32, borderRadius: 4, background: "var(--surface-2)" }} />
-              <div style={{ height: 32, borderRadius: 4, background: "var(--surface-2)" }} />
-              <div style={{ gridColumn: "1 / -1", height: 32, borderRadius: 4, background: "var(--surface-2)" }} />
-            </div>
-          </div>
-        )}
-
-        {/* Generate error */}
-        {generateError && !generating && (
-          <div style={{
-            borderRadius: 8,
-            border: "1px solid var(--err-bd)",
-            background: "var(--err-bg)",
-            padding: "12px 16px",
-            fontSize: 13,
-            color: "var(--err)",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 8,
-          }}>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" style={{ width: 16, height: 16, marginTop: 1, flexShrink: 0 }}>
-              <path fillRule="evenodd" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1ZM7.25 4.75a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0v-3.5Zm.75 7a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clipRule="evenodd" />
-            </svg>
-            <span>{generateError}</span>
-          </div>
-        )}
-
-        {/* Review card */}
-        {generatedPolicy && !generating && (
-          <ReviewCard
-            policy={generatedPolicy}
-            onChange={setGeneratedPolicy}
-            onSave={handleSave}
-            onDiscard={() => {
-              const hasContent = prompt.trim() || generatedPolicy?.rule_id || generatedPolicy?.match_pattern
-              if (hasContent && !confirm("Discard this policy? Your changes will be lost.")) return
-              router.push("/guard/policies")
-            }}
-            saving={saving}
-            saveError={saveError}
-          />
-        )}
+        <ReviewCard
+          policy={policy}
+          onChange={setPolicy}
+          onSave={handleSave}
+          onDiscard={() => router.push("/guard/policies")}
+          saving={saving}
+          saveError={saveError}
+        />
       </div>
     </AppShell>
   )
