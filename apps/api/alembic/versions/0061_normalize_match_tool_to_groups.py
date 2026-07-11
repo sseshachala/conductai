@@ -5,6 +5,7 @@ Revises: 0060
 Create Date: 2026-07-11
 """
 from alembic import op
+from sqlalchemy import text
 
 revision = "0061"
 down_revision = "0060"
@@ -29,7 +30,7 @@ _RAW_TO_GROUP = {
 def upgrade():
     conn = op.get_bind()
     rows = conn.execute(
-        "SELECT id, match_tool FROM guard_policies WHERE match_tool IS NOT NULL AND match_tool != '*'"
+        text("SELECT id, match_tool FROM guard_policies WHERE match_tool IS NOT NULL AND match_tool != '*'")
     ).fetchall()
     for row_id, match_tool in rows:
         tokens = [t.strip().lower() for t in match_tool.split(",") if t.strip()]
@@ -41,8 +42,8 @@ def upgrade():
         new_val = ",".join(groups)
         if new_val != match_tool:
             conn.execute(
-                "UPDATE guard_policies SET match_tool = %s WHERE id = %s",
-                (new_val, row_id),
+                text("UPDATE guard_policies SET match_tool = :val WHERE id = :id"),
+                {"val": new_val, "id": row_id},
             )
 
 
