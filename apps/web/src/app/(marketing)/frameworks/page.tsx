@@ -1,5 +1,12 @@
 import { CtaLink } from "@/components/marketing/CtaLink"
 
+const MANDATORY_STYLE = {
+  mandatory:  { label: "Mandatory",             color: "#b91c1c", bg: "#fef2f2" },
+  voluntary:  { label: "Voluntary",             color: "#6b7280", bg: "#f3f4f6" },
+  defacto:    { label: "Voluntary (de facto)",  color: "#92400e", bg: "#fffbeb" },
+  cardbrand:  { label: "Mandatory (card brands)",color: "#7c3aed", bg: "#f5f3ff" },
+}
+
 const FRAMEWORKS = [
   {
     slug: "conduct-eu-ai-act",
@@ -8,6 +15,9 @@ const FRAMEWORKS = [
     tag: "Regulation",
     tagColor: "#4f46e5",
     tagBg: "#eef2ff",
+    type: "Regulation",
+    mandatory: "mandatory" as const,
+    buyer: "Any EU-market AI system",
     headline: "Enforce Article 5 prohibitions and transparency requirements — automatically.",
     description:
       "The EU AI Act bans social scoring, emotion recognition in workplaces, mass surveillance, and subliminal manipulation. ConductGuard enforces these prohibitions at the point of code — before the agent runs.",
@@ -32,6 +42,9 @@ const FRAMEWORKS = [
     tag: "Risk Framework",
     tagColor: "#0369a1",
     tagBg: "#e0f2fe",
+    type: "Risk framework",
+    mandatory: "defacto" as const,
+    buyer: "Federal agencies",
     headline: "Map AI agent risk across GOVERN, MAP, MEASURE, and MANAGE.",
     description:
       "The NIST AI Risk Management Framework structures AI risk across four functions. ConductGuard ships one rule per key control — blocking policy bypass, flagging high-risk deployments, and alerting on disabled monitoring.",
@@ -56,6 +69,9 @@ const FRAMEWORKS = [
     tag: "Standard",
     tagColor: "#0f766e",
     tagBg: "#f0fdfa",
+    type: "AI management system",
+    mandatory: "voluntary" as const,
+    buyer: "Boards, compliance teams",
     headline: "Operational controls, bias testing, and incident capture — built in.",
     description:
       "ISO 42001 is the international management system standard for AI. ConductGuard operationalises Clauses 8–10: access control, bias testing, data quality, impact assessment, responsible use, and incident capture.",
@@ -80,6 +96,9 @@ const FRAMEWORKS = [
     tag: "Government",
     tagColor: "#92400e",
     tagBg: "#fef3c7",
+    type: "Federal regulation",
+    mandatory: "mandatory" as const,
+    buyer: "Govt agencies + contractors handling tax data",
     headline: "Protect Federal Tax Information from AI exposure — enforced at the code layer.",
     description:
       "IRS Publication 1075 governs Federal Tax Information (FTI) under IRC Section 6103. Any agency or contractor handling IRS-shared tax data must safeguard it from disclosure, improper use, and inadequate storage. ConductGuard blocks EINs, AGI values, and W-2/1099 data from entering AI prompts, training datasets, or external endpoints.",
@@ -102,6 +121,9 @@ const FRAMEWORKS = [
     tag: "Security",
     tagColor: "#b91c1c",
     tagBg: "#fef2f2",
+    type: "Security standard",
+    mandatory: "voluntary" as const,
+    buyer: "Security teams, enterprise customers",
     headline: "The 10 most critical LLM security risks — enforced at the hook layer.",
     description:
       "OWASP's LLM Top 10 covers prompt injection, insecure output handling, training data poisoning, and supply chain vulnerabilities. ConductGuard maps rules to each identifier so your security team speaks the same language as your auditor.",
@@ -126,6 +148,9 @@ const FRAMEWORKS = [
     tag: "Audit",
     tagColor: "#7c3aed",
     tagBg: "#f5f3ff",
+    type: "Security audit",
+    mandatory: "voluntary" as const,
+    buyer: "Enterprise customers",
     headline: "Audit-ready AI agent controls mapped to Trust Service Criteria.",
     description:
       "SOC 2 auditors look for evidence of control. ConductGuard produces that evidence automatically — blocking hardcoded secrets, warning on PII in logs, and flagging debug mode in production.",
@@ -144,6 +169,9 @@ const FRAMEWORKS = [
     tag: "Healthcare",
     tagColor: "#0369a1",
     tagBg: "#e0f2fe",
+    type: "Federal regulation",
+    mandatory: "mandatory" as const,
+    buyer: "Healthcare + business associates",
     headline: "Block PHI in source and flag unencrypted health data before it ships.",
     description:
       "HIPAA §164.312 requires technical safeguards for electronic PHI. ConductGuard blocks patient IDs, SSNs, and DOBs from entering source files and flags unencrypted transmission patterns.",
@@ -161,6 +189,9 @@ const FRAMEWORKS = [
     tag: "Finance",
     tagColor: "#92400e",
     tagBg: "#fffbeb",
+    type: "Industry standard",
+    mandatory: "cardbrand" as const,
+    buyer: "Any entity processing payments",
     headline: "Block PANs and CVVs in source. Flag weak TLS before it reaches production.",
     description:
       "PCI DSS Requirements 3 and 4 prohibit storing card data in source and mandate strong encryption in transit. ConductGuard enforces both at the code layer — no post-commit remediation needed.",
@@ -221,10 +252,22 @@ function FrameworkGrid() {
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 px-8 py-6 border-b border-stone-100">
             <div className="text-4xl">{fw.icon}</div>
             <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <h2 className="text-xl font-black text-stone-900">{fw.name}</h2>
                 <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full" style={{ color: fw.tagColor, background: fw.tagBg }}>{fw.tag}</span>
                 <span className="text-xs text-stone-400">{fw.ruleCount} rules</span>
+              </div>
+              <div className="flex flex-wrap gap-3 mb-2 text-xs text-stone-500">
+                <span><span className="font-medium text-stone-700">Type:</span> {fw.type}</span>
+                <span className="text-stone-300">·</span>
+                <span>
+                  <span className="font-medium text-stone-700">Mandatory: </span>
+                  <span className="font-semibold px-1.5 py-0.5 rounded" style={{ color: MANDATORY_STYLE[fw.mandatory].color, background: MANDATORY_STYLE[fw.mandatory].bg }}>
+                    {MANDATORY_STYLE[fw.mandatory].label}
+                  </span>
+                </span>
+                <span className="text-stone-300">·</span>
+                <span><span className="font-medium text-stone-700">Buyer:</span> {fw.buyer}</span>
               </div>
               <p className="text-stone-500 text-sm leading-relaxed">{fw.description}</p>
             </div>
