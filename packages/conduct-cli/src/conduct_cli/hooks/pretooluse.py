@@ -332,8 +332,10 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
             if tool_name not in [t.strip() for t in match_tool.split(",")]:
                 continue
         match_ai = rule.get("match_ai_tool")
-        if match_ai and match_ai.lower() not in current_ai_tool.lower():
-            continue
+        if match_ai:
+            surfaces = [s.strip().lower() for s in match_ai.split(",")]
+            if not any(s in current_ai_tool.lower() for s in surfaces):
+                continue
         pattern = rule.get("match_pattern")
         if pattern:
             try:
