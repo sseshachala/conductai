@@ -62,7 +62,7 @@ LEGACY_PACK_MAP = {
 
 # ── Main (raw SQL — avoids ORM relationship resolution issues) ────────────────
 
-def run(dry_run: bool) -> None:
+def run(dry_run: bool, force: bool = False) -> None:
     with engine.connect() as conn:
         with conn.begin():
             # 1. Seed skill_packs
@@ -73,14 +73,16 @@ def run(dry_run: bool) -> None:
                 exists = conn.execute(_text(
                     "SELECT 1 FROM skill_packs WHERE slug=:s AND version=:v"
                 ), {"s": slug, "v": version}).fetchone()
-                if exists:
+                if exists and not force:
                     print(f"  skill_pack {slug} {version} already exists — skipping")
                     continue
                 if not dry_run:
                     conn.execute(_text("""
                         INSERT INTO skill_packs (slug, version, name, description, tier, rules, published_at, created_at)
                         VALUES (:slug, :version, :name, :desc, :tier, CAST(:rules AS jsonb), :now, :now)
-                        ON CONFLICT (slug, version) DO NOTHING
+                        ON CONFLICT (slug, version) DO UPDATE
+                          SET name=EXCLUDED.name, description=EXCLUDED.description,
+                              tier=EXCLUDED.tier, rules=EXCLUDED.rules
                     """), {
                         "slug": slug, "version": version,
                         "name": pack["name"], "desc": pack.get("description", ""),
@@ -112,5 +114,6 @@ def run(dry_run: bool) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing pack versions")
     args = parser.parse_args()
-    run(dry_run=args.dry_run)
+    run(dry_run=args.dry_run, force=args.force)
