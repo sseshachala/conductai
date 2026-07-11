@@ -437,28 +437,30 @@ def get_dashboard(
     )
     top_policy_hits = [PolicyHit(policy_name=row.rule_id, count=row.cnt) for row in policy_hit_rows]
 
-    # ── Developers near spend limit (>80% of monthly_limit_usd) ──
+    # ── Developers near spend limit (>80% of monthly_limit_usd) — single JOIN query ──
     period_start = today_midnight.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    spend_by_user: dict[str, float] = {
+        row.clerk_user_id: float(row.spent)
+        for row in db.query(
+            GuardAuditEvent.clerk_user_id,
+            func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("spent"),
+        )
+        .filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.clerk_user_id.isnot(None),
+            GuardAuditEvent.ts >= period_start,
+        )
+        .group_by(GuardAuditEvent.clerk_user_id)
+        .all()
+    }
     budgets = (
         db.query(GuardSpendBudget)
-        .filter(
-            GuardSpendBudget.workspace_id == ws_uuid,
-            GuardSpendBudget.clerk_user_id.isnot(None),
-        )
+        .filter(GuardSpendBudget.workspace_id == ws_uuid, GuardSpendBudget.clerk_user_id.isnot(None))
         .all()
     )
     developer_near_limit: list[DeveloperSpend] = []
     for b in budgets:
-        spent = float(
-            db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0))
-            .filter(
-                GuardAuditEvent.workspace_id == ws_uuid,
-                GuardAuditEvent.clerk_user_id == b.clerk_user_id,
-                GuardAuditEvent.ts >= period_start,
-            )
-            .scalar()
-            or 0.0
-        )
+        spent = spend_by_user.get(b.clerk_user_id, 0.0)
         limit = b.monthly_limit_usd
         if limit and spent / limit >= 0.8:
             developer_near_limit.append(DeveloperSpend(

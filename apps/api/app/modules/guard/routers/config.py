@@ -203,15 +203,14 @@ def get_config(
 ):
     """Return Guard config for the workspace, creating it if it does not yet exist."""
     config = _get_or_create_config(db, workspace_id)
-    out = _config_to_out(config)
     ws_uuid = uuid.UUID(workspace_id)
     workspace_budget = (
         db.query(GuardSpendBudget)
         .filter(GuardSpendBudget.workspace_id == ws_uuid, GuardSpendBudget.clerk_user_id.is_(None))
         .first()
     )
-    out.spend_limit_usd = workspace_budget.monthly_limit_usd if workspace_budget else None
-    return out
+    out = _config_to_out(config)
+    return out.model_copy(update={"spend_limit_usd": workspace_budget.monthly_limit_usd if workspace_budget else None})
 
 
 @router.patch("", response_model=ConfigOut)
