@@ -43,7 +43,7 @@ def upgrade():
         new_val = ",".join(groups)
         if new_val != match_tool:
             conn.execute(
-                text("UPDATE workspace_custom_rules SET body = jsonb_set(body, '{match_tool}', to_jsonb(:val::text)) WHERE workspace_id = :wsid AND rule_id = :rid"),
+                text("UPDATE workspace_custom_rules SET body = jsonb_set(body, '{match_tool}', to_jsonb(CAST(:val AS text))) WHERE workspace_id = :wsid AND rule_id = :rid"),
                 {"val": new_val, "wsid": workspace_id, "rid": rule_id},
             )
 
