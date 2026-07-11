@@ -16,11 +16,23 @@ import { POLICY_TEMPLATES } from "@/lib/guardPolicyTemplates"
 type PolicyAction = "block" | "warn" | "audit" | "approval" | "inject"
 type MatchTool = "bash" | "edit" | "write" | "read" | "*"
 
+const AI_SURFACES = [
+  { value: "claude-code",      label: "Claude Code" },
+  { value: "claude-ai",        label: "Claude.ai" },
+  { value: "claude-desktop",   label: "Claude Desktop" },
+  { value: "codex-cli",        label: "Codex CLI" },
+  { value: "codex-desktop",    label: "Codex Desktop" },
+  { value: "openai-chatgpt",   label: "ChatGPT" },
+  { value: "cursor",           label: "Cursor" },
+  { value: "windsurf",         label: "Windsurf" },
+]
+
 interface GeneratedPolicy {
   rule_id: string
   description: string
   persona: "agent" | "proxy"
   match_tool: MatchTool
+  match_ai_tool: string   // comma-separated surface values, or "" = any
   match_pattern: string
   match_path_pattern: string
   action: PolicyAction
@@ -227,6 +239,41 @@ function ReviewCard({
           </select>
         </div>
 
+        {/* match_ai_tool — surface filter */}
+        <div style={{ gridColumn: "1 / -1" }}>
+          <FieldLabel hint="Leave blank to apply to all surfaces">AI surface (optional)</FieldLabel>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+            {AI_SURFACES.map(s => {
+              const selected = policy.match_ai_tool.split(",").map(v => v.trim()).filter(Boolean).includes(s.value)
+              return (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => {
+                    const current = policy.match_ai_tool.split(",").map(v => v.trim()).filter(Boolean)
+                    const next = selected ? current.filter(v => v !== s.value) : [...current, s.value]
+                    set("match_ai_tool", next.join(","))
+                  }}
+                  style={{
+                    padding: "4px 12px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: "1px solid",
+                    borderColor: selected ? "var(--accent)" : "var(--border)",
+                    background: selected ? "var(--accent-weak)" : "var(--surface)",
+                    color: selected ? "var(--accent-text)" : "var(--text-muted)",
+                    fontWeight: selected ? 600 : 400,
+                  }}
+                >
+                  {s.label}
+                </button>
+              )
+            })}
+          </div>
+          {policy.match_ai_tool && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
+              match_ai_tool: &quot;{policy.match_ai_tool}&quot;
+            </div>
+          )}
+        </div>
+
         {/* action */}
         <div>
           <FieldLabel>Action</FieldLabel>
@@ -392,6 +439,7 @@ export default function NewPolicyPage() {
         rule_id: data.rule_id ?? "",
         description: data.description ?? "",
         match_tool: (data.match_tool as MatchTool) ?? "*",
+        match_ai_tool: data.match_ai_tool ?? "",
         match_pattern: data.match_pattern ?? "",
         match_path_pattern: data.match_path_pattern ?? "",
         action: (data.action as PolicyAction) ?? "block",
@@ -430,6 +478,9 @@ export default function NewPolicyPage() {
         enabled: true,
         builtin: false,
         persona: generatedPolicy.persona,
+      }
+      if (generatedPolicy.match_ai_tool.trim()) {
+        body.match_ai_tool = generatedPolicy.match_ai_tool.trim()
       }
       if (generatedPolicy.match_path_pattern.trim()) {
         body.match_path_pattern = generatedPolicy.match_path_pattern.trim()
@@ -550,6 +601,7 @@ export default function NewPolicyPage() {
                           description: data.description ?? "",
                           persona: initialPersona,
                           match_tool: (data.match_tool as MatchTool) ?? "*",
+                          match_ai_tool: data.match_ai_tool ?? "",
                           match_pattern: data.match_pattern ?? "",
                           match_path_pattern: data.match_path_pattern ?? "",
                           action: (data.action as PolicyAction) ?? "block",
