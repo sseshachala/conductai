@@ -1063,6 +1063,10 @@ function FinalCTASection() {
           </a>
         </div>
         <p className="text-indigo-300 text-xs mt-5">Free tier · No infrastructure changes · Works in minutes</p>
+        <p className="text-indigo-300/70 text-xs mt-2">
+          Need on-premise or cloud deployment?{" "}
+          <a href="/deployment" className="underline hover:text-white transition-colors">See deployment options →</a>
+        </p>
       </div>
     </section>
   )
