@@ -754,7 +754,9 @@ function EmptyChecklist() {
 function DashboardContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const { activeWorkspace } = useWorkspace()
   const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Per-section loading: dashLoading gates KPIs/activity/agents; guardLoading gates Guard snapshot + nudges
+  const [dashLoading, setDashLoading] = useState(true)
+  const [guardLoading, setGuardLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [guardSynced, setGuardSynced] = useState<boolean | null>(null)
   const [mySynced, setMySynced] = useState<boolean | null>(null)
@@ -769,7 +771,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
   const [dismissedGuardNudge, setDismissedGuardNudge] = useState(false)
   const router = useRouter()
 
-  async function loadData() {
+  async function buildHeaders(): Promise<{ headers: Record<string, string>; workspaceId: string | null }> {
     const headers: Record<string, string> = {}
     if (getToken) {
       const token = await getToken()
@@ -777,6 +779,11 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
     }
     const workspaceId = activeWorkspace?.id ?? null
     if (workspaceId) headers["X-Workspace-Id"] = workspaceId
+    return { headers, workspaceId }
+  }
+
+  async function loadDash() {
+    const { headers } = await buildHeaders()
     try {
       setError(null)
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/dashboard`, { headers })
@@ -789,43 +796,55 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Network error")
     } finally {
-      setLoading(false)
-    }
-
-    // Load security + guard coverage in parallel (non-blocking)
-    if (workspaceId) {
-      try {
-        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const wsHeaders = { ...headers, "X-Workspace-Id": workspaceId }
-        const [toolsRes, meRes, guardConfigRes] = await Promise.all([
-          fetch(`${base}/guard/developer-tools`, { headers: wsHeaders }),
-          fetch(`${base}/guard/developer-tools/me`, { headers: wsHeaders }),
-          // #4: fetch Guard config for spend cap
-          fetch(`${base}/guard/config?workspace_id=${workspaceId}`, { headers: wsHeaders }),
-        ])
-        if (toolsRes.ok) {
-          const tools = await toolsRes.json()
-          setGuardSynced(Array.isArray(tools) && tools.length > 0)
-        }
-        if (meRes.ok) {
-          const me = await meRes.json()
-          setMySynced(me.synced === true)
-        }
-        // #4: read spend_limit_usd from Guard config
-        if (guardConfigRes.ok) {
-          const guardConfig = await guardConfigRes.json()
-          setSpendCapUsd(guardConfig?.spend_limit_usd ?? null)
-        }
-      } catch {}
+      setDashLoading(false)
     }
   }
 
-  useEffect(() => {
-    loadData()
+  async function loadGuard() {
+    const { headers, workspaceId } = await buildHeaders()
+    if (!workspaceId) { setGuardLoading(false); return }
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const wsHeaders = { ...headers, "X-Workspace-Id": workspaceId }
+      const [toolsRes, meRes, guardConfigRes] = await Promise.all([
+        fetch(`${base}/guard/developer-tools`, { headers: wsHeaders }),
+        fetch(`${base}/guard/developer-tools/me`, { headers: wsHeaders }),
+        // #4: fetch Guard config for spend cap
+        fetch(`${base}/guard/config?workspace_id=${workspaceId}`, { headers: wsHeaders }),
+      ])
+      if (toolsRes.ok) {
+        const tools = await toolsRes.json()
+        setGuardSynced(Array.isArray(tools) && tools.length > 0)
+      }
+      if (meRes.ok) {
+        const me = await meRes.json()
+        setMySynced(me.synced === true)
+      }
+      // #4: read spend_limit_usd from Guard config
+      if (guardConfigRes.ok) {
+        const guardConfig = await guardConfigRes.json()
+        setSpendCapUsd(guardConfig?.spend_limit_usd ?? null)
+      }
+    } catch {
+      // non-fatal — keep last known state
+    } finally {
+      setGuardLoading(false)
+    }
+  }
 
-    // #16: re-fetch every 30 seconds; clear on unmount
+  // Fire both fetches in parallel — sections render as soon as their data arrives
+  function loadAll() {
+    loadDash()
+    loadGuard()
+  }
+
+  useEffect(() => {
+    loadAll()
+
+    // #16: re-fetch every 30 seconds; pause when tab is hidden
     const interval = setInterval(() => {
-      loadData()
+      if (document.visibilityState === "hidden") return
+      loadAll()
     }, 30_000)
     return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -863,6 +882,12 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
               <span style={{ fontSize: 11.5, color: "var(--ok)", fontWeight: 600 }}>{activeRunCount} active</span>
               {lastUpdated && <span style={{ fontSize: 11, color: "var(--text-3)" }}>· {lastUpdated}</span>}
             </div>
+            <button
+              className="btn btn-ghost"
+              onClick={() => loadAll()}
+            >
+              Refresh
+            </button>
             <Link href="/workflows/new" className="btn btn-primary">
               <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} style={{ display: "inline", verticalAlign: "middle", marginRight: 5 }}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
@@ -872,8 +897,8 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
           </div>
         </div>
 
-        {/* #14: Personal sync nudge with dismiss button, no emoji, role="status" */}
-        {!dismissedPersonalNudge && mySynced === false && guardSynced === true && (
+        {/* #14: Personal sync nudge — shown once guardLoading resolves */}
+        {!guardLoading && !dismissedPersonalNudge && mySynced === false && guardSynced === true && (
           <div
             role="status"
             style={{
@@ -900,8 +925,8 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
           </div>
         )}
 
-        {/* #14: Guard sync nudge with dismiss button, no emoji, role="status" */}
-        {!dismissedGuardNudge && guardSynced === false && (
+        {/* #14: Guard sync nudge — shown once guardLoading resolves */}
+        {!guardLoading && !dismissedGuardNudge && guardSynced === false && (
           <div
             role="status"
             style={{
@@ -927,30 +952,8 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
           </div>
         )}
 
-        {loading ? (
-          // #12: skeleton matches real 2-column layout + Guard column
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            {/* KPI skeleton */}
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="card" style={{ flex: 1, minWidth: 160, height: 80, opacity: 0.4 }} />
-              ))}
-            </div>
-            {/* 2-column skeleton */}
-            <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 22 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                <div className="card" style={{ height: 200, opacity: 0.4 }} />
-                <div className="card" style={{ height: 160, opacity: 0.4 }} />
-                <div className="card" style={{ height: 220, opacity: 0.4 }} />
-              </div>
-              <div>
-                {/* Guard snapshot skeleton */}
-                <div className="card" style={{ height: 320, opacity: 0.4 }} />
-              </div>
-            </div>
-          </div>
-        ) : error ? (
-          // #13: proper error card with retry button and role="alert"
+        {error && !data ? (
+          // #13: error card with retry — only shown when no prior data exists
           <div className="card" role="alert" style={{ padding: "24px 28px", maxWidth: 480 }}>
             <div style={{ fontWeight: 600, fontSize: 14, color: "var(--err)", marginBottom: 8 }}>
               Could not load dashboard
@@ -958,13 +961,32 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>{error}</p>
             <button
               className="btn btn-primary"
-              onClick={() => {
-                setLoading(true)
-                loadData()
-              }}
+              onClick={() => loadDash()}
             >
               Retry
             </button>
+          </div>
+        ) : dashLoading && !data ? (
+          // Initial skeleton — only shown before any data has arrived
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <style>{`@keyframes dash-pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 0.2 } }`}</style>
+            {/* KPI skeleton */}
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="card" style={{ flex: 1, minWidth: 160, height: 80, animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+              ))}
+            </div>
+            {/* 2-column skeleton */}
+            <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 22 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                <div className="card" style={{ height: 200, animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+                <div className="card" style={{ height: 160, animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+                <div className="card" style={{ height: 220, animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+              </div>
+              <div>
+                <div className="card" style={{ height: 320, animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+              </div>
+            </div>
           </div>
         ) : !data ? (
           <div className="card" role="alert" style={{ padding: "24px 28px", maxWidth: 480 }}>
@@ -1017,7 +1039,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
               <div style={{ marginBottom: 26 }}>
                 <SectionLabel action="View all →" href="/workflows">Agent Health</SectionLabel>
                 <div className="card" style={{ overflow: "hidden", padding: 0 }}>
-                  {/* Table header */}
+                  {/* Table header: 4-col grid — Agent | Status | Success rate | Grade */}
                   <div
                     style={{
                       display: "grid",
@@ -1032,9 +1054,24 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                       <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
                     ))}
                   </div>
-                  {data.agent_health.slice(0, 5).map(agent => (
-                    <AgentHealthRow key={agent.workflow_id} agent={agent} />
-                  ))}
+                  {/* Pulse rows visible during polling refresh — data stays mounted */}
+                  {dashLoading ? (
+                    <>
+                      <style>{`@keyframes dash-pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 0.2 } }`}</style>
+                      {[1, 2, 3].map(i => (
+                        <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 0.9fr", gap: 12, padding: "13px 16px", borderBottom: "1px solid var(--border)" }}>
+                          <div style={{ height: 14, borderRadius: 4, background: "var(--surface-3)", animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+                          <div style={{ height: 14, borderRadius: 4, background: "var(--surface-3)", animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+                          <div style={{ height: 14, borderRadius: 4, background: "var(--surface-3)", animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+                          <div style={{ height: 14, borderRadius: 4, background: "var(--surface-3)", animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    data.agent_health.slice(0, 5).map(agent => (
+                      <AgentHealthRow key={agent.workflow_id} agent={agent} />
+                    ))
+                  )}
                 </div>
               </div>
             )}
@@ -1136,7 +1173,19 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                 {/* Recent activity */}
                 <div>
                   <SectionLabel action="View all →" href="/runs">Recent activity</SectionLabel>
-                  {data.recent_activity.length === 0 ? (
+                  {dashLoading ? (
+                    <div className="card" style={{ overflow: "hidden", padding: 0 }}>
+                      {[1, 2, 3].map(i => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+                          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div style={{ height: 13, width: "55%", borderRadius: 4, background: "var(--surface-3)", animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+                            <div style={{ height: 11, width: "35%", borderRadius: 4, background: "var(--surface-3)", animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+                          </div>
+                          <div style={{ height: 19, width: 70, borderRadius: 10, background: "var(--surface-3)", animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : data.recent_activity.length === 0 ? (
                     <div
                       className="card"
                       style={{ padding: "20px 18px", fontSize: 13, color: "var(--text-muted)" }}
@@ -1215,14 +1264,18 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
               {/* RIGHT column */}
               <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
 
-                {/* Guard snapshot */}
+                {/* Guard snapshot — independent loading state */}
                 <div>
                   <SectionLabel>Guard</SectionLabel>
-                  <GuardSnapshotPanel
-                    tokenUsage={data.token_usage.total_tokens > 0 ? data.token_usage : null}
-                    spendCapUsd={spendCapUsd}
-                    guardSnapshot={data.guard_snapshot}
-                  />
+                  {guardLoading ? (
+                    <div className="card" style={{ height: 200, animation: "dash-pulse 1.5s ease-in-out infinite" }} />
+                  ) : (
+                    <GuardSnapshotPanel
+                      tokenUsage={data.token_usage.total_tokens > 0 ? data.token_usage : null}
+                      spendCapUsd={spendCapUsd}
+                      guardSnapshot={data.guard_snapshot}
+                    />
+                  )}
                 </div>
 
               </div>
