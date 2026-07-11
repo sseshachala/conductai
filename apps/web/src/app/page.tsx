@@ -86,6 +86,14 @@ function ProductsDropdown() {
               <p className="text-xs text-stone-400">Terminal governance + token savings</p>
             </div>
           </a>
+          <div className="border-t border-stone-100 my-1" />
+          <a href="/frameworks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>📐</span>
+            <div>
+              <p className="font-semibold">Compliance frameworks</p>
+              <p className="text-xs text-stone-400">EU AI Act · NIST · ISO 42001 · OWASP</p>
+            </div>
+          </a>
         </div>
       </div>
     </div>
@@ -706,7 +714,7 @@ function PageFooter() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
-              { heading: "Product", links: [["Guard", "/guard"], ["Registry", "/registry"], ["CLI", "/tools/conduct-cli"]] as [string, string][] },
+              { heading: "Product", links: [["Guard", "/guard"], ["Registry", "/registry"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
               { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Deployment options", "/deployment"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], /* ["Partners", "/partners"], */ ["Blog", "/blog"]] as [string, string][] },
               { heading: "Resources", links: [["Docs", "/docs"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
