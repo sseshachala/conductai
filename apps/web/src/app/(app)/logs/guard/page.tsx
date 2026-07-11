@@ -232,8 +232,8 @@ function ActivityContent() {
     let es: EventSource | null = null
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-    const connect = async () => {
-      const token = await getToken()
+    const connect = async (forceRefresh = false) => {
+      const token = await getToken({ skipCache: forceRefresh } as Parameters<typeof getToken>[0])
       if (!token) return
       const base = process.env.NEXT_PUBLIC_API_URL ?? ""
       const url = `${base}/guard/events/stream?workspace_id=${teamId}&token=${encodeURIComponent(token)}`
@@ -244,7 +244,8 @@ function ActivityContent() {
           const msg = JSON.parse(e.data)
           if (msg.kind === "stream_timeout") {
             es?.close()
-            reconnectTimer = setTimeout(connect, 1000)
+            // planned reconnect — refresh token in case it aged during the 5min stream
+            reconnectTimer = setTimeout(() => connect(true), 1000)
             return
           }
           if (Array.isArray(msg.events) && msg.events.length > 0) {
@@ -260,7 +261,8 @@ function ActivityContent() {
       }
       es.onerror = () => {
         es?.close()
-        reconnectTimer = setTimeout(connect, 5000)
+        // force-refresh token on error — stale token is the most common cause of 403 on reconnect
+        reconnectTimer = setTimeout(() => connect(true), 5000)
       }
     }
 
