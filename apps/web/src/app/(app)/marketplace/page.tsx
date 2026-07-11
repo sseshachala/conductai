@@ -184,6 +184,15 @@ const PACK_CATALOG = [
     securityRules: 3,
   },
   {
+    id: "conduct-irs-1075",
+    icon: "🏛️",
+    name: "IRS Publication 1075",
+    subtitle: "8 rules protecting Federal Tax Information (FTI) for agencies and contractors under IRC Section 6103.",
+    description: "Blocks EINs and tax return data (AGI, W-2, 1099) in AI prompts, prevents FTI from reaching external endpoints or training datasets, enforces encryption and log redaction, and warns on third-party AI processors.",
+    tags: ["Government", "Tax", "FTI"],
+    guardRules: 8,
+  },
+  {
     id: "conduct-eu-ai-act",
     icon: "🇪🇺",
     name: "EU AI Act",
