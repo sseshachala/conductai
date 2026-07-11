@@ -74,7 +74,8 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   const { activeWorkspace } = useWorkspace()
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Per-section: wfLoading gates the workflow grid/list only
+  const [wfLoading, setWfLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)  // #5
   const [isAdmin, setIsAdmin] = useState(!clerkEnabled)
   const [q, setQ] = useState("")
@@ -113,6 +114,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   useEffect(() => {
     const p = activeWorkspace ? { id: activeWorkspace.id, name: activeWorkspace.name } : null
     setProject(p)
+    // Fire both fetches in parallel — role resolves independently, does not block grid
     loadWorkflows(p?.id ?? null)
     if (clerkEnabled && p?.id && currentUserId) loadRole(p.id)
   }, [currentUserId, activeWorkspace])
@@ -193,6 +195,8 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   async function loadWorkflows(pid: string | null) {
     // #10: guard against missing user id when auth is enabled
     if (clerkEnabled && !currentUserId) return
+    // Skip poll when tab is hidden — Page Visibility API guard
+    if (document.visibilityState === "hidden") return
     setError(null)
     try {
       const headers = await authHeaders()
@@ -210,7 +214,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
       // #5: surface network errors
       setError(err instanceof Error ? err.message : "Failed to load workflows")
     } finally {
-      setLoading(false)
+      setWfLoading(false)
     }
   }
 
@@ -379,18 +383,18 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
           })}
         </div>
 
-        {loading ? (
-          // #21: animated skeleton matching current view layout
+        {wfLoading && workflows.length === 0 ? (
+          // Initial skeleton — only shown before any workflows have loaded
           <div style={{ display: view === "grid" ? "grid" : "flex", gridTemplateColumns: view === "grid" ? "repeat(auto-fill, minmax(300px, 1fr))" : undefined, flexDirection: view === "list" ? "column" : undefined, gap: 8 }}>
             {[1, 2, 3].map(i => (
               <div
                 key={i}
-                style={{ height: view === "grid" ? 120 : 60, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface)", opacity: 0.5, animation: "pulse 1.5s ease-in-out infinite" }}
+                style={{ height: view === "grid" ? 120 : 60, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface)", animation: "wf-pulse 1.5s ease-in-out infinite" }}
               />
             ))}
-            <style>{`@keyframes pulse { 0%,100% { opacity: 0.5 } 50% { opacity: 0.25 } }`}</style>
+            <style>{`@keyframes wf-pulse { 0%,100% { opacity: 0.5 } 50% { opacity: 0.25 } }`}</style>
           </div>
-        ) : !loading && workflows.length === 0 ? (
+        ) : !wfLoading && workflows.length === 0 ? (
           <div style={{ padding: "60px 20px", textAlign: "center" }}>
             {/* #14: "agent" → "workflow" in empty state */}
             <p style={{ fontWeight: 650, fontSize: 16, color: "var(--text)", marginBottom: 8 }}>No agents yet</p>
