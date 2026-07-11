@@ -116,7 +116,7 @@ def _bash_command_words(cmd: str) -> list[str]:
     return words
 
 
-def _check_policy(tool_name, tool_input, tokens_before=0):
+def _check_policy(tool_name, tool_input, tokens_before=0, ai_tool=""):
     """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
     policy = _load_policy()
     if not policy.get("rules"):
@@ -135,6 +135,11 @@ def _check_policy(tool_name, tool_input, tokens_before=0):
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
             if tool_name not in expand_match_tool(match_tool):
+                continue
+        match_ai = rule.get("match_ai_tool")
+        if match_ai:
+            surfaces = [s.strip().lower() for s in match_ai.split(",")]
+            if not any(s in ai_tool.lower() for s in surfaces):
                 continue
         # New: structural match against the actual binary being invoked.
         # Single string or list of strings; case-insensitive equality.
