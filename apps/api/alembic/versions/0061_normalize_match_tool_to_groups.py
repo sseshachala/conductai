@@ -2,8 +2,14 @@
 
 Revision ID: 0061
 Revises: 0060
+Create Date: 2026-07-11
 """
 from alembic import op
+
+revision = "0061"
+down_revision = "0060"
+branch_labels = None
+depends_on = None
 
 # Raw tool name → semantic group
 _RAW_TO_GROUP = {
