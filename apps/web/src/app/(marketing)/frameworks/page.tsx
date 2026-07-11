@@ -74,6 +74,28 @@ const FRAMEWORKS = [
     ruleCount: 10,
   },
   {
+    slug: "conduct-irs-1075",
+    icon: "🏛️",
+    name: "IRS Publication 1075",
+    tag: "Government",
+    tagColor: "#92400e",
+    tagBg: "#fef3c7",
+    headline: "Protect Federal Tax Information from AI exposure — enforced at the code layer.",
+    description:
+      "IRS Publication 1075 governs Federal Tax Information (FTI) under IRC Section 6103. Any agency or contractor handling IRS-shared tax data must safeguard it from disclosure, improper use, and inadequate storage. ConductGuard blocks EINs, AGI values, and W-2/1099 data from entering AI prompts, training datasets, or external endpoints.",
+    articles: [
+      { ref: "Sec 4 / IRC 6103", label: "EIN in AI prompt — blocked" },
+      { ref: "Sec 4 / IRC 6103", label: "Tax return data in model context — blocked" },
+      { ref: "Sec 4",            label: "FTI to external AI endpoint — blocked" },
+      { ref: "Sec 4",            label: "FTI in training datasets — blocked" },
+      { ref: "Sec 9",            label: "FTI in unencrypted files — blocked" },
+      { ref: "Sec 4 / Sec 10",  label: "FTI unredacted in logs — blocked" },
+      { ref: "Sec 4",           label: "Third-party AI FTI processor — warned" },
+      { ref: "IRC 6103 / Sec 4", label: "FTI beyond authorised purpose — blocked" },
+    ],
+    ruleCount: 8,
+  },
+  {
     slug: "conduct-owasp",
     icon: "🔐",
     name: "OWASP Top 10 for LLMs",
