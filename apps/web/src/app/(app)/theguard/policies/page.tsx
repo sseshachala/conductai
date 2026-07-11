@@ -889,6 +889,7 @@ function PoliciesContent() {
       const created: Policy = await res.json()
       setPolicies(ps => [...ps, created])
       setShowModal(false)
+      setPolicyTab("custom")
     } catch (e) {
       throw e
     } finally {
@@ -896,21 +897,25 @@ function PoliciesContent() {
     }
   }
 
-  // Build tabs: Agent + Proxy (custom rules) + one per installed pack
+  // Build tabs: Agent + Proxy + Custom (user-created) + one per installed pack
   const installedPackIds = [...new Set(policies.filter(p => p.pack_id).map(p => p.pack_id!))]
+  const customRules = policies.filter(p => !p.builtin)
   const policyTabs = [
-    { id: "agent", label: "Agent", count: policies.filter(p => !p.persona || p.persona === "agent").length },
-    { id: "proxy", label: "Proxy", count: policies.filter(p => p.persona === "proxy").length },
+    { id: "agent",  label: "Agent",  count: policies.filter(p => p.builtin && (!p.persona || p.persona === "agent")).length },
+    { id: "proxy",  label: "Proxy",  count: policies.filter(p => p.builtin && p.persona === "proxy").length },
+    { id: "custom", label: "Custom", count: customRules.length },
     ...installedPackIds.map(id => ({
       id,
       label: PACK_LABELS.find(l => l.id === id)?.name ?? id,
       count: policies.filter(p => p.pack_id === id).length,
     })),
-  ]
+  ].filter(t => t.count > 0 || t.id === "agent" || t.id === "custom")
   const visiblePolicies = policyTab === "agent"
-    ? policies.filter(p => !p.persona || p.persona === "agent")
+    ? policies.filter(p => p.builtin && (!p.persona || p.persona === "agent"))
     : policyTab === "proxy"
-    ? policies.filter(p => p.persona === "proxy")
+    ? policies.filter(p => p.builtin && p.persona === "proxy")
+    : policyTab === "custom"
+    ? customRules
     : policies.filter(p => p.pack_id === policyTab)
 
   const latestUpdated = policies
@@ -1111,10 +1116,13 @@ function PoliciesContent() {
                       </button>
                     ))}
                     <span style={{ flex: 1 }} />
-                    {canWrite && (policyTab === "agent" || policyTab === "proxy") && (
+                    {canWrite && (policyTab === "agent" || policyTab === "proxy" || policyTab === "custom") && (
                       <button
                         type="button"
-                        onClick={() => { setModalPersona(policyTab as "agent" | "proxy"); setShowModal(true) }}
+                        onClick={() => {
+                          setModalPersona(policyTab === "custom" ? "agent" : policyTab as "agent" | "proxy")
+                          setShowModal(true)
+                        }}
                         className="btn btn-ghost btn-sm"
                         style={{ fontSize: 11.5, padding: "3px 10px" }}
                       >
