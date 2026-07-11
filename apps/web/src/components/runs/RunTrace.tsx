@@ -745,31 +745,44 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
     if (done) return
     let es: EventSource | null = null
     let cancelled = false
+    let attempt = 0
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
 
-    buildHeaders(getToken, activeWorkspace?.id).then(headers => {
+    function connect() {
       if (cancelled) return
-      const wsId = activeWorkspace?.id ?? null
-      const token = headers["Authorization"]?.replace("Bearer ", "") ?? ""
-      const params = new URLSearchParams()
-      if (token) params.set("token", token)
-      if (wsId) params.set("workspace_id", wsId)
-      const qs = params.toString() ? `?${params.toString()}` : ""
-      es = new EventSource(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/stream${qs}`)
-      es.onopen = () => { setSseError(false); onSseConnected?.() }
-      es.onmessage = (e) => {
-        if (e.data === "[DONE]") { setDone(true); es?.close(); onSseEnded?.(); refreshMeta(); return }
-        const event: RunEvent = JSON.parse(e.data)
-        setEvents(prev => prev.find(p => p.id === event.id) ? prev : [...prev, event])
-        if (event.kind === "run_completed") setStatus("succeeded")
-        if (event.kind === "run_failed") setStatus("failed")
-        if (event.kind === "run_paused" || event.kind === "approval_requested") {
-          setStatus("paused"); setApprovalPending(true); setApprovalBlockId(event.block_id)
+      buildHeaders(getToken, activeWorkspace?.id).then(headers => {
+        if (cancelled) return
+        const wsId = activeWorkspace?.id ?? null
+        const token = headers["Authorization"]?.replace("Bearer ", "") ?? ""
+        const params = new URLSearchParams()
+        if (token) params.set("token", token)
+        if (wsId) params.set("workspace_id", wsId)
+        const qs = params.toString() ? `?${params.toString()}` : ""
+        es = new EventSource(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/stream${qs}`)
+        es.onopen = () => { setSseError(false); attempt = 0; onSseConnected?.() }
+        es.onmessage = (e) => {
+          if (e.data === "[DONE]") { setDone(true); es?.close(); onSseEnded?.(); refreshMeta(); return }
+          const event: RunEvent = JSON.parse(e.data)
+          setEvents(prev => prev.find(p => p.id === event.id) ? prev : [...prev, event])
+          if (event.kind === "run_completed") setStatus("succeeded")
+          if (event.kind === "run_failed") setStatus("failed")
+          if (event.kind === "run_paused" || event.kind === "approval_requested") {
+            setStatus("paused"); setApprovalPending(true); setApprovalBlockId(event.block_id)
+          }
         }
-      }
-      es.onerror = () => { es?.close(); setSseError(true); setDone(true); onSseEnded?.(); refreshMeta() }
-    })
+        es.onerror = () => {
+          es?.close()
+          if (cancelled) return
+          setSseError(true)
+          const delay = Math.min(1000 * 2 ** attempt, 30_000)
+          attempt++
+          retryTimer = setTimeout(connect, delay)
+        }
+      })
+    }
 
-    return () => { cancelled = true; es?.close() }
+    connect()
+    return () => { cancelled = true; es?.close(); if (retryTimer) clearTimeout(retryTimer) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId, runId, done])
 
@@ -892,7 +905,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       {sseError && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 8, background: "var(--err-bg, #fef2f2)", border: "1px solid var(--err-bd, #fecaca)", padding: "8px 12px", fontSize: 12, color: "var(--err, #dc2626)", fontWeight: 500 }}>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--err, #dc2626)", flexShrink: 0 }} />
-          Stream disconnected — refresh to resume live updates.
+          Stream disconnected — reconnecting…
         </div>
       )}
 
