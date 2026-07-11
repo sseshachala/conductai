@@ -12,7 +12,7 @@ import { GuardShell } from "@/components/guard/GuardShell"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type PolicyAction = "block" | "warn" | "audit" | "approval"
-type MatchTool = "bash" | "edit" | "write" | "read" | "*"
+type MatchTool = "shell" | "filesystem-write" | "filesystem-read" | "network" | "*"
 
 interface Policy {
   id: string
@@ -461,20 +461,10 @@ function AddRuleModal({
                 style={fieldStyle}
               >
                 <option value="*">* (any)</option>
-                <option value="bash">bash</option>
-                <option value="edit">edit</option>
-                <option value="write">write</option>
-                <option value="read">read</option>
-                <option value="web_fetch">web_fetch</option>
-                <option value="web_search">web_search</option>
-                <option value="write_file">write_file</option>
-                <option value="edit_file">edit_file</option>
-                <option value="str_replace_editor">str_replace_editor</option>
-                <option value="http_request">http_request</option>
-                <option value="curl">curl</option>
-                <option value="glob">glob</option>
-                <option value="grep">grep</option>
-                <option value="list_directory">list_directory</option>
+                <option value="shell">shell — bash, run_command, execute</option>
+                <option value="filesystem-write">filesystem-write — write, edit, str_replace_editor</option>
+                <option value="filesystem-read">filesystem-read — read, glob, grep, list_directory</option>
+                <option value="network">network — web_fetch, http_request, curl</option>
               </select>
             </div>
             <div>

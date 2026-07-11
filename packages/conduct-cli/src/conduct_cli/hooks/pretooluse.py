@@ -10,6 +10,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+from conduct_cli.tool_groups import expand_match_tool
 from conduct_cli.hooks.base import (
     BUDGET_CACHE_PATH,
     BUDGET_CACHE_TTL,
@@ -329,7 +330,7 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
-            if tool_name not in [t.strip() for t in match_tool.split(",")]:
+            if tool_name not in expand_match_tool(match_tool):
                 continue
         match_ai = rule.get("match_ai_tool")
         if match_ai:

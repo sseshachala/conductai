@@ -97,22 +97,26 @@ class TestMatchTool:
         assert action == "warn"
 
     def test_exact_tool_match(self, policy_path):
-        policy_path([_rule(match_tool="bash", action="warn")])
+        # semantic group "shell" matches raw tool "bash"
+        policy_path([_rule(match_tool="shell", action="warn")])
         _, action, _, _ = _check_policy("bash", {})
         assert action == "warn"
 
     def test_exact_tool_no_match(self, policy_path):
-        policy_path([_rule(match_tool="edit", action="block")])
+        # "filesystem-write" does not match "bash"
+        policy_path([_rule(match_tool="filesystem-write", action="block")])
         _, action, _, _ = _check_policy("bash", {})
         assert action == "allow"
 
     def test_comma_separated_includes_tool(self, policy_path):
-        policy_path([_rule(match_tool="bash,edit,write", action="warn")])
+        # "shell,filesystem-write" matches "edit" (filesystem-write group)
+        policy_path([_rule(match_tool="shell,filesystem-write", action="warn")])
         _, action, _, _ = _check_policy("edit", {})
         assert action == "warn"
 
     def test_comma_separated_excludes_tool(self, policy_path):
-        policy_path([_rule(match_tool="bash,edit,write", action="warn")])
+        # "shell,filesystem-write" does not match "read" (filesystem-read group)
+        policy_path([_rule(match_tool="shell,filesystem-write", action="warn")])
         _, action, _, _ = _check_policy("read", {})
         assert action == "allow"
 
