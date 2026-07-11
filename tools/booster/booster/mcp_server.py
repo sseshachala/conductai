@@ -13,8 +13,10 @@ from booster.indexer import SymbolIndexer
 from booster.retriever import smart_read as _smart_read
 from booster.stats import StatsTracker
 
-_ROOT = Path.cwd() if Path.cwd() != Path("/") else Path.home()
-_BOOSTER_HOME = Path.home() / ".booster"
+_cwd = Path.cwd()
+_home = Path(_os.environ.get("HOME", "/"))
+_ROOT = _cwd if _cwd != Path("/") else (_home if _home != Path("/") else _cwd)
+_BOOSTER_HOME = _home / ".booster" if _home != Path("/") else _cwd / ".booster"
 _SECRET = _os.environ.get("BOOSTER_SECRET", "")
 
 
@@ -39,10 +41,13 @@ _indexer: SymbolIndexer | None = None
 _tracker: StatsTracker | None = None
 
 
-def _get_indexer() -> SymbolIndexer:
+def _get_indexer() -> SymbolIndexer | None:
     global _indexer
     if _indexer is None:
-        _indexer = SymbolIndexer(_ROOT)
+        try:
+            _indexer = SymbolIndexer(_ROOT)
+        except (OSError, Exception):
+            return None
     return _indexer
 
 
@@ -292,8 +297,11 @@ def _route_model(indexer: SymbolIndexer, task: str, files: list[str]) -> dict:
 
 async def serve() -> None:
     booster_dir = _BOOSTER_HOME
-    booster_dir.mkdir(exist_ok=True)
-    (booster_dir / "provider").write_text(_provider())
+    try:
+        booster_dir.mkdir(exist_ok=True)
+        (booster_dir / "provider").write_text(_provider())
+    except OSError:
+        pass  # ponytail: read-only sandbox (e.g. E2B) — skip state writes
 
     secret_file = _BOOSTER_HOME / ".secret"
     if secret_file.exists():
