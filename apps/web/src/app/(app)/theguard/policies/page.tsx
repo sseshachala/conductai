@@ -519,8 +519,8 @@ function AddRuleModal({
         <label style={labelStyle}>Enforces on</label>
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           {([
-            { value: "agent", label: "AI tool actions", hint: "bash, file writes, web requests" },
-            { value: "proxy", label: "LLM prompts",     hint: "what gets sent to the model" },
+            { value: "agent", label: "Agent", hint: "bash, file writes, web requests" },
+            { value: "proxy", label: "Proxy", hint: "what gets sent to the model" },
           ] as const).map(p => (
             <button
               key={p.value}
