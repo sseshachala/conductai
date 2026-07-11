@@ -41,16 +41,22 @@ _VERBOSITY_SAVINGS_RATE = {
 
 class StatsTracker:
     def __init__(self, root: Path) -> None:
-        db_dir = root / ".booster"
-        db_dir.mkdir(exist_ok=True)
-        self._conn = sqlite3.connect(str(db_dir / "stats.db"), check_same_thread=False)
-        for stmt in _DDL.strip().split(";"):
-            stmt = stmt.strip()
-            if stmt:
-                self._conn.execute(stmt)
-        self._conn.commit()
+        self._conn: sqlite3.Connection | None = None
+        try:
+            db_dir = root / ".booster"
+            db_dir.mkdir(exist_ok=True)
+            self._conn = sqlite3.connect(str(db_dir / "stats.db"), check_same_thread=False)
+            for stmt in _DDL.strip().split(";"):
+                stmt = stmt.strip()
+                if stmt:
+                    self._conn.execute(stmt)
+            self._conn.commit()
+        except (OSError, sqlite3.OperationalError):
+            pass  # ponytail: read-only sandbox — stats silently disabled
 
     def record(self, file: str, full_text: str, slice_text: str, task: str) -> None:
+        if self._conn is None:
+            return
         self._conn.execute(
             "INSERT INTO reads (ts, file, full_tokens, slice_tokens, task) VALUES (?, ?, ?, ?, ?)",
             (
@@ -64,6 +70,8 @@ class StatsTracker:
         self._conn.commit()
 
     def summary(self) -> dict:
+        if self._conn is None:
+            return {"active_days": 0, "total_reads": 0, "full_tokens": 0, "slice_tokens": 0, "saved_tokens": 0, "savings_pct": 0.0, "top_files": []}
         cur = self._conn.cursor()
 
         cur.execute("SELECT COUNT(DISTINCT ts) FROM reads")
@@ -101,7 +109,7 @@ class StatsTracker:
         }
 
     def record_crush(self, tool: str, original_bytes: int, crushed_bytes: int) -> None:
-        if crushed_bytes >= original_bytes:
+        if self._conn is None or crushed_bytes >= original_bytes:
             return
         self._conn.execute(
             "INSERT INTO crusher (ts, tool, original_bytes, crushed_bytes) VALUES (?, ?, ?, ?)",
@@ -110,6 +118,8 @@ class StatsTracker:
         self._conn.commit()
 
     def crusher_summary(self) -> dict:
+        if self._conn is None:
+            return {"count": 0, "saved_bytes": 0, "savings_pct": 0.0}
         cur = self._conn.cursor()
         cur.execute("SELECT COUNT(*), SUM(original_bytes), SUM(crushed_bytes) FROM crusher")
         row = cur.fetchone()
@@ -127,6 +137,8 @@ class StatsTracker:
         output_tokens_actual: int | None,
         output_tokens_estimated: int | None,
     ) -> None:
+        if self._conn is None:
+            return
         is_estimated = 1 if output_tokens_actual is None else 0
         self._conn.execute(
             """INSERT INTO output_sessions
@@ -144,6 +156,8 @@ class StatsTracker:
         self._conn.commit()
 
     def output_summary(self) -> dict:
+        if self._conn is None:
+            return {"sessions_count": 0, "total_actual": 0, "total_real_saved": 0, "total_estimated": 0, "savings_pct_by_mode": {}}
         cur = self._conn.cursor()
 
         cur.execute("SELECT COUNT(*) FROM output_sessions")
