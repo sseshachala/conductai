@@ -126,6 +126,42 @@ class TestMatchTool:
         assert action == "warn"
 
 
+# ── match_ai_tool (surface filtering) ────────────────────────────────────────
+
+def _surface_rule(**kw):
+    return _rule(match_tool="shell", match_pattern=r".*", **kw)
+
+class TestMatchAiTool:
+    def test_surface_match_blocks(self, policy_path):
+        policy_path([_surface_rule(match_ai_tool="claude-ai", action="block")])
+        _, action, _, _ = _check_policy("bash", {"command": "ls"}, ai_tool="claude-ai")
+        assert action == "block"
+
+    def test_surface_no_match_allows(self, policy_path):
+        # rule targets claude-ai, tool is claude-code — should not fire
+        policy_path([_surface_rule(match_ai_tool="claude-ai", action="block")])
+        _, action, _, _ = _check_policy("bash", {"command": "ls"}, ai_tool="claude-code")
+        assert action == "allow"
+
+    def test_surface_multi_targets(self, policy_path):
+        # comma-separated: matches any listed surface
+        policy_path([_surface_rule(match_ai_tool="claude-ai,openai-chatgpt", action="warn")])
+        _, action, _, _ = _check_policy("bash", {"command": "ls"}, ai_tool="openai-chatgpt")
+        assert action == "warn"
+
+    def test_no_match_ai_tool_field_always_fires(self, policy_path):
+        # rule with no match_ai_tool applies to all surfaces
+        policy_path([_surface_rule(action="warn")])
+        _, action, _, _ = _check_policy("bash", {"command": "ls"}, ai_tool="cursor")
+        assert action == "warn"
+
+    def test_unknown_surface_skipped(self, policy_path):
+        # empty ai_tool string doesn't match a specific surface rule
+        policy_path([_surface_rule(match_ai_tool="claude-ai", action="block")])
+        _, action, _, _ = _check_policy("bash", {"command": "ls"}, ai_tool="")
+        assert action == "allow"
+
+
 # ── match_pattern ─────────────────────────────────────────────────────────────
 
 class TestMatchPattern:
