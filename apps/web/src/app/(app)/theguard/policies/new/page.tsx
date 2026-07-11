@@ -13,7 +13,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 // Types
 // ---------------------------------------------------------------------------
 
-type PolicyAction = "block" | "warn" | "audit" | "approval" | "inject"
+type PolicyAction = "block" | "warn" | "audit" | "approval"
 type MatchTool = "bash" | "edit" | "write" | "read" | "*"
 
 const AI_SURFACES = [
@@ -236,6 +236,16 @@ function ReviewCard({
             <option value="edit">edit</option>
             <option value="write">write</option>
             <option value="read">read</option>
+            <option value="web_fetch">web_fetch</option>
+            <option value="web_search">web_search</option>
+            <option value="write_file">write_file</option>
+            <option value="edit_file">edit_file</option>
+            <option value="str_replace_editor">str_replace_editor</option>
+            <option value="http_request">http_request</option>
+            <option value="curl">curl</option>
+            <option value="glob">glob</option>
+            <option value="grep">grep</option>
+            <option value="list_directory">list_directory</option>
           </select>
         </div>
 
@@ -282,11 +292,10 @@ function ReviewCard({
             onChange={e => set("action", e.target.value as PolicyAction)}
             style={inputStyle}
           >
-            <option value="block">block</option>
-            <option value="warn">warn</option>
-            <option value="audit">audit</option>
-            <option value="approval">approval</option>
-            <option value="inject">inject</option>
+            <option value="block">block — stop the tool call</option>
+            <option value="warn">warn — allow but notify</option>
+            <option value="audit">audit — log silently</option>
+            <option value="approval">approval — block, require manual override</option>
           </select>
         </div>
 
