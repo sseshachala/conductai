@@ -670,9 +670,13 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
                           <button onClick={() => installPack(pack.id)} disabled={!!packInstalling} className="btn btn-primary btn-sm" style={{ opacity: packInstalling && !busy ? 0.5 : 1 }}>
                             {busy ? "…" : "Reinstall"}
                           </button>
-                          <button onClick={() => uninstallPack(pack.id)} disabled={!!busy} className="btn btn-ghost btn-sm" style={{ color: "var(--err)" }}>
-                            {busy ? "…" : "Uninstall"}
-                          </button>
+                          {pack.id === "conduct-base" ? (
+                            <span title="Required — cannot be uninstalled" style={{ fontSize: 11, color: "var(--text-3)", display: "flex", alignItems: "center", gap: 3 }}>🔒 Required</span>
+                          ) : (
+                            <button onClick={() => uninstallPack(pack.id)} disabled={!!busy} className="btn btn-ghost btn-sm" style={{ color: "var(--err)" }}>
+                              {busy ? "…" : "Uninstall"}
+                            </button>
+                          )}
                         </>
                       ) : (
                         <button onClick={() => installPack(pack.id)} disabled={!!packInstalling} className="btn btn-primary btn-sm" style={{ opacity: packInstalling && !busy ? 0.5 : 1 }}>

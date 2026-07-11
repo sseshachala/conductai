@@ -186,6 +186,8 @@ def uninstall_pack(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("guard.policies.edit")),
 ):
+    if pack_id == "conduct-base":
+        raise HTTPException(status_code=400, detail="conduct-base is required and cannot be uninstalled")
     slug = pack_id
     ws_uuid = uuid.UUID(workspace_id)
     org_ws = _org_ws_subquery(db, workspace_id)
