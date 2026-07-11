@@ -29,10 +29,11 @@ _RAW_TO_GROUP = {
 
 def upgrade():
     conn = op.get_bind()
+    # match_tool lives inside the body JSONB in workspace_custom_rules (guard_policies dropped in 0024)
     rows = conn.execute(
-        text("SELECT id, match_tool FROM guard_policies WHERE match_tool IS NOT NULL AND match_tool != '*'")
+        text("SELECT workspace_id, rule_id, body->>'match_tool' AS match_tool FROM workspace_custom_rules WHERE body->>'match_tool' IS NOT NULL AND body->>'match_tool' != '*'")
     ).fetchall()
-    for row_id, match_tool in rows:
+    for workspace_id, rule_id, match_tool in rows:
         tokens = [t.strip().lower() for t in match_tool.split(",") if t.strip()]
         groups: list[str] = []
         for token in tokens:
@@ -42,8 +43,8 @@ def upgrade():
         new_val = ",".join(groups)
         if new_val != match_tool:
             conn.execute(
-                text("UPDATE guard_policies SET match_tool = :val WHERE id = :id"),
-                {"val": new_val, "id": row_id},
+                text("UPDATE workspace_custom_rules SET body = jsonb_set(body, '{match_tool}', to_jsonb(:val::text)) WHERE workspace_id = :wsid AND rule_id = :rid"),
+                {"val": new_val, "wsid": workspace_id, "rid": rule_id},
             )
 
 
