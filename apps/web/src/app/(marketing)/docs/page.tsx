@@ -93,6 +93,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
   "getting-started": [
     { href: "#overview",     label: "Overview" },
     { href: "#environments", label: "Environments" },
+    { href: "#deployment",   label: "Deployment options" },
     { href: "#cli-install",  label: "CLI. Installation" },
     { href: "#cli-auth",     label: "CLI. Authentication" },
     { href: "#cli-commands", label: "CLI. Commands" },
@@ -264,6 +265,24 @@ function TabGettingStarted() {
           <li>Click the environment and connect your integrations (GitHub, Slack, etc.).</li>
           <li>Open an agent on the canvas, go to <strong>Settings</strong>, and assign the environment.</li>
         </ol>
+      </section>
+
+      <section id="deployment">
+        <SectionHeading id="deployment">Deployment options</SectionHeading>
+        <p className="text-stone-500 text-sm mb-4">ConductGuard runs in three modes. Same policy engine, same CLI, same audit trail — wherever your data must stay.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          {[
+            { name: "SaaS", icon: "☁️", desc: "Managed by Conduct. Up in minutes, no infra required. Default for most teams." },
+            { name: "BYOC", icon: "🏢", desc: "Runs inside your AWS, GCP, or Azure account. Data stays in your cloud boundary." },
+            { name: "On-premise", icon: "🔒", desc: "Air-gapped deployment. Nothing leaves your network. Available on Enterprise." },
+          ].map(t => (
+            <div key={t.name} className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
+              <p className="font-semibold text-stone-800 text-sm">{t.icon} {t.name}</p>
+              <p className="text-stone-500 text-xs mt-1">{t.desc}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-sm text-stone-500">See the full comparison at <a href="/deployment" className="text-indigo-600 hover:underline">conductai.ai/deployment</a>, or <a href="https://cal.com/sudhi-seshachala-pks7pd" className="text-indigo-600 hover:underline" target="_blank" rel="noopener">book a call</a> for BYOC or on-premise setup.</p>
       </section>
 
       <section id="cli-install">

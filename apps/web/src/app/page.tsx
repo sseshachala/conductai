@@ -19,6 +19,7 @@ export default function HomePage() {
         <GuardLearnsTeaser />
         <PersonasSection />
         <DemoVideoSection />
+        <DeploymentStripSection />
         <FinalCTASection />
       </main>
       <PageFooter />
@@ -638,6 +639,33 @@ function DemoVideoSection() {
             allowFullScreen
           />
         </div>
+      </div>
+    </section>
+  )
+}
+
+function DeploymentStripSection() {
+  const tiers = [
+    { icon: "☁️", name: "SaaS", desc: "Up in minutes. No infra." },
+    { icon: "🏢", name: "Cloud (BYOC)", desc: "Your AWS / GCP / Azure account." },
+    { icon: "🔒", name: "On-premise", desc: "Air-gapped. Your data never leaves." },
+  ]
+  return (
+    <section className="py-16 px-6 bg-stone-50 border-y border-stone-100">
+      <div className="max-w-4xl mx-auto text-center">
+        <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-6">Flexible deployment</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          {tiers.map(t => (
+            <div key={t.name} className="bg-white rounded-2xl border border-stone-200 px-6 py-5 text-left">
+              <div className="text-2xl mb-2">{t.icon}</div>
+              <p className="font-bold text-stone-900 text-sm">{t.name}</p>
+              <p className="text-stone-500 text-xs mt-1">{t.desc}</p>
+            </div>
+          ))}
+        </div>
+        <a href="/deployment" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
+          Compare deployment options →
+        </a>
       </div>
     </section>
   )
