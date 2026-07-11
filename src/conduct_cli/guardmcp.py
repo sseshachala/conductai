@@ -183,14 +183,23 @@ def _maybe_sync() -> None:
 def _detect_surface(client_info: dict) -> str:
     """Map MCP clientInfo.name → ai_tool label sent to Guard API."""
     name = (client_info.get("name") or "").lower()
-    if "desktop" in name:
-        return "claude_desktop"
+    # ── Anthropic ─────────────────────────────────────────────────────────────
+    if "code" in name and "claude" in name:
+        return "claude-code"
+    if "desktop" in name and "claude" in name:
+        return "claude-desktop"
     if "work" in name or "teams" in name or "enterprise" in name:
-        return "claude_work"
+        return "claude-desktop"   # Claude for Work / Teams
     if "claude" in name:
-        return "claude_chat"
+        return "claude-ai"        # claude.ai web
+    # ── OpenAI ────────────────────────────────────────────────────────────────
+    if "chatgpt" in name or "openai" in name:
+        return "openai-chatgpt"
+    if "codex" in name and "desktop" in name:
+        return "codex-desktop"
     if "codex" in name:
-        return "codex"
+        return "codex-cli"
+    # ── Other IDEs ────────────────────────────────────────────────────────────
     if "cursor" in name:
         return "cursor"
     if "windsurf" in name:
@@ -262,8 +271,10 @@ def _match_policy(tool_name: str, tool_input: dict) -> dict | None:
             if tool_name.lower() not in [t.strip() for t in match_tool.split(",")]:
                 continue
         match_ai = rule.get("match_ai_tool")
-        if match_ai and "claude.ai" not in match_ai.lower():
-            continue  # this rule targets a different surface (e.g. claude-code only)
+        if match_ai:
+            surfaces = [s.strip().lower() for s in match_ai.split(",")]
+            if not any(s in ai_tool.lower() for s in surfaces):
+                continue  # rule targets a different surface
 
         pattern = rule.get("match_pattern")
         if pattern:
