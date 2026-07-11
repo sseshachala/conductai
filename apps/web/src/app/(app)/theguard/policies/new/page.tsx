@@ -425,6 +425,7 @@ export default function NewPolicyPage() {
 
     try {
       const headers = await authHeaders()
+      if (teamId) headers["X-Workspace-Id"] = teamId
       const res = await fetch(`${apiUrl}/guard/policies/generate`, {
         method: "POST",
         headers,
@@ -586,6 +587,7 @@ export default function NewPolicyPage() {
                       setSaveError(null)
                       try {
                         const headers = await authHeaders()
+                        if (teamId) headers["X-Workspace-Id"] = teamId
                         const res = await fetch(`${apiUrl}/guard/policies/generate`, {
                           method: "POST",
                           headers,
