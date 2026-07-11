@@ -102,6 +102,7 @@ interface DashboardData {
   agent_health: AgentHealth[]
   recent_activity: RecentRun[]
   token_usage: TokenUsage
+  guard_blocks_today: number
   guard_snapshot?: GuardSnapshot
 }
 
@@ -859,8 +860,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
     ? `$${data.token_usage.estimated_cost_usd.toFixed(2)}`
     : "—"
 
-  // #5: policy blocks today from guard_snapshot
-  const policyBlocksToday = data?.guard_snapshot?.policy_blocks_today
+  const policyBlocksToday = data?.guard_blocks_today
 
   return (
     <AppShell>
