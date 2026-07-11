@@ -136,9 +136,10 @@ export default function ObservabilityPage() {
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null)
   const [dora, setDora] = useState<DoraMetrics | null>(null)
   const [scorecards, setScorecards] = useState<Map<string, PlaybookScorecard>>(new Map())
-  const [loading, setLoading] = useState(true)
+  const [agentsLoading, setAgentsLoading] = useState(true)
   const [live, setLive] = useState(false)
   const esRef = useRef<EventSource | null>(null)
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [filterSearch, setFilterSearch] = useState("")
   const [filterHealth, setFilterHealth] = useState("all")
   const PAGE_SIZE = 10
@@ -156,6 +157,8 @@ export default function ObservabilityPage() {
       setVisibleCount(PAGE_SIZE)
     } catch {
       setAgentError(true)
+    } finally {
+      setAgentsLoading(false)
     }
   }, [getToken, activeWorkspace])
 
@@ -194,7 +197,7 @@ export default function ObservabilityPage() {
     } catch { }
   }, [getToken, activeWorkspace])
 
-  const connectSSE = useCallback(async () => {
+  const connectSSE = useCallback(async (attempt = 0) => {
     const token = await getToken()
     const workspaceId = activeWorkspace?.id ?? ""
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -204,19 +207,21 @@ export default function ObservabilityPage() {
     const url = `${base}/observability/stream?${params.toString()}`
 
     if (esRef.current) esRef.current.close()
+    if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
     const es = new EventSource(url)
     esRef.current = es
 
     es.onopen = () => setLive(true)
-    es.onerror = () => { setLive(false) }
+    es.onerror = () => {
+      setLive(false)
+      const delay = Math.min(1000 * 2 ** attempt, 30_000)
+      reconnectTimer.current = setTimeout(() => connectSSE(attempt + 1), delay)
+    }
     es.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data)
         if (data.kind === "stream_timeout") return
-        if (data.health) {
-          setSummary(data as ObservabilitySummary)
-          setLoading(false)
-        }
+        if (data.health) setSummary(data as ObservabilitySummary)
       } catch {
         // malformed frame — ignore
       }
@@ -224,30 +229,27 @@ export default function ObservabilityPage() {
   }, [getToken, activeWorkspace])
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        await Promise.all([connectSSE(), loadAgents(), loadAnalytics(), loadDora(), loadScorecards()])
-      } finally {
-        setLoading(false)
-      }
-    }
-    init()
+    connectSSE()
+    loadAgents()
+    loadAnalytics()
+    loadDora()
+    loadScorecards()
     const agentInterval     = setInterval(loadAgents,    30_000)
     const analyticsInterval = setInterval(() => { loadAnalytics(); loadDora(); loadScorecards() }, 60_000)
     return () => {
       clearInterval(agentInterval)
       clearInterval(analyticsInterval)
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
       esRef.current?.close()
     }
   }, [connectSSE, loadAgents, loadAnalytics, loadDora, loadScorecards])
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    try {
-      await Promise.all([connectSSE(), loadAgents(), loadAnalytics(), loadDora(), loadScorecards()])
-    } finally {
-      setLoading(false)
-    }
+  const refresh = useCallback(() => {
+    connectSSE()
+    loadAgents()
+    loadAnalytics()
+    loadDora()
+    loadScorecards()
   }, [connectSSE, loadAgents, loadAnalytics, loadDora, loadScorecards])
 
   const selectStyle: React.CSSProperties = {
@@ -302,8 +304,7 @@ export default function ObservabilityPage() {
                 </span>
               ) : summary !== null && (
                 <span className="sbadge warn" style={{ marginTop: 3, display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  stream disconnected
-                  <button onClick={connectSSE} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--warn)", fontWeight: 700, padding: 0, fontSize: 11 }}>Reconnect</button>
+                  reconnecting…
                 </span>
               )}
             </div>
@@ -425,8 +426,19 @@ export default function ObservabilityPage() {
               <div key={i} className="eyebrow" style={{ fontSize: 10, textAlign: i >= 2 && i <= 4 ? "right" : "left" }}>{h}</div>
             ))}
           </div>
-          {loading ? (
-            <div style={{ padding: "20px", color: "var(--text-muted)", fontSize: 13 }}>Loading…</div>
+          {agentsLoading ? (
+            <div>
+              {[...Array(4)].map((_, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 0.7fr 0.9fr 1.1fr 1fr", gap: 14, padding: "14px 20px", borderBottom: "1px solid var(--border)", alignItems: "center" }}>
+                  <div style={{ height: 14, borderRadius: 4, background: "var(--surface-3)", animation: "pulse 1.4s ease-in-out infinite", width: "70%" }} />
+                  <div style={{ height: 20, borderRadius: 10, background: "var(--surface-3)", animation: "pulse 1.4s ease-in-out infinite", width: 64 }} />
+                  <div style={{ height: 14, borderRadius: 4, background: "var(--surface-3)", animation: "pulse 1.4s ease-in-out infinite", marginLeft: "auto", width: 24 }} />
+                  <div style={{ height: 14, borderRadius: 4, background: "var(--surface-3)", animation: "pulse 1.4s ease-in-out infinite", marginLeft: "auto", width: 24 }} />
+                  <div style={{ height: 14, borderRadius: 4, background: "var(--surface-3)", animation: "pulse 1.4s ease-in-out infinite", marginLeft: "auto", width: 36 }} />
+                  <div style={{ height: 14, borderRadius: 4, background: "var(--surface-3)", animation: "pulse 1.4s ease-in-out infinite", width: 56 }} />
+                </div>
+              ))}
+            </div>
           ) : agentError ? (
             <div style={{ padding: "32px 20px", textAlign: "center", fontSize: 13, color: "var(--err)" }}>
               Failed to load agent data.{" "}
