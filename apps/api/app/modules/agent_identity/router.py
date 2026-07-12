@@ -39,6 +39,7 @@ def mint_agent_identity(db: Session, workspace_id: str, name: str) -> tuple[Agen
     Used by guard join flow to auto-mint on invite accept.
     """
     plaintext, prefix = _generate_token()
+    now = datetime.now(timezone.utc)
     row = AgentIdentity(
         id=str(uuid.uuid4()),
         workspace_id=workspace_id,
@@ -47,8 +48,9 @@ def mint_agent_identity(db: Session, workspace_id: str, name: str) -> tuple[Agen
         token_prefix=prefix,
         token_encrypted=encrypt({"token": plaintext}),
         environment_id=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=now,
         last_used_at=None,
+        expires_at=now + __import__("datetime").timedelta(hours=8),
     )
     db.add(row)
     return row, plaintext

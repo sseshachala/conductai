@@ -15,3 +15,4 @@ class AgentIdentity(Base):
     environment_id  = Column(String(36),              nullable=True)
     created_at      = Column(DateTime(timezone=True), nullable=False)
     last_used_at    = Column(DateTime(timezone=True), nullable=True)
+    expires_at      = Column(DateTime(timezone=True), nullable=True)

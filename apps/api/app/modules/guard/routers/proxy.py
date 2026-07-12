@@ -275,6 +275,9 @@ async def _proxy(
             for _cand in db.query(_AgentIdentity).filter(_AgentIdentity.workspace_id == _hdr_ws).all():
                 try:
                     if _decrypt(_cand.token_encrypted).get("token") == _internal_key:
+                        from datetime import datetime, timezone as _tz
+                        if _cand.expires_at and _cand.expires_at < datetime.now(_tz.utc):
+                            return _fail_closed(401, "Agent Identity token expired — run `conduct guard sync` to refresh")
                         _is_internal = True
                         _agent_identity_id = _cand.id
                         break
