@@ -1134,3 +1134,95 @@ async def clerk_webhook(request: Request, db: Session = Depends(get_db)):
     db.commit()
     log.info("clerk_webhook.workspace_created", user_id=user_id, workspace_id=str(workspace_id))
     return {"ok": True, "workspace_id": str(workspace_id)}
+
+
+# ── Clerk webhook — organization.created ──────────────────────────────────────
+
+@router.post("/clerk/org")
+async def clerk_org_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Handles Clerk org lifecycle + membership events:
+      organization.created          → link workspace to Clerk org
+      organizationMembership.created → add member to all org workspaces
+    """
+    body = await request.body()
+
+    if not _verify_clerk_signature(body, dict(request.headers)):
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    payload    = json.loads(body)
+    event_type = payload.get("type")
+    data       = payload.get("data", {})
+
+    # ── organization.created ──────────────────────────────────────────────────
+    if event_type == "organization.created":
+        clerk_org_id = data.get("id")
+        created_by   = data.get("created_by")  # Clerk user_id of the org creator
+
+        if not clerk_org_id or not created_by:
+            return {"ok": True, "skipped": "missing org_id or created_by"}
+
+        # Find the workspace owned by the org creator
+        row = db.execute(
+            _text("SELECT id FROM workspaces WHERE owner_id = :uid LIMIT 1"),
+            {"uid": created_by},
+        ).fetchone()
+
+        if not row:
+            log.warning("clerk_org_webhook.no_workspace_for_creator", created_by=created_by)
+            return {"ok": True, "skipped": "no workspace found for org creator"}
+
+        db.execute(
+            _text("UPDATE workspaces SET clerk_org_id = :org WHERE id = :ws"),
+            {"org": clerk_org_id, "ws": str(row.id)},
+        )
+        db.commit()
+        log.info("clerk_org_webhook.org_linked", clerk_org_id=clerk_org_id, workspace_id=str(row.id))
+        return {"ok": True, "linked": str(row.id)}
+
+    # ── organizationMembership.created ────────────────────────────────────────
+    if event_type == "organizationMembership.created":
+        clerk_org_id = data.get("organization", {}).get("id")
+        new_user_id  = data.get("public_user_data", {}).get("user_id")
+        clerk_role   = data.get("role", "org:member")
+
+        if not clerk_org_id or not new_user_id:
+            return {"ok": True, "skipped": "missing org_id or user_id"}
+
+        # Map Clerk role → platform role
+        role = "admin" if clerk_role == "org:admin" else "developer"
+
+        # Find all workspaces for this org
+        workspaces = db.execute(
+            _text("SELECT id FROM workspaces WHERE clerk_org_id = :org"),
+            {"org": clerk_org_id},
+        ).fetchall()
+
+        if not workspaces:
+            log.warning("clerk_org_webhook.no_workspaces_for_org", clerk_org_id=clerk_org_id)
+            return {"ok": True, "skipped": "no workspaces linked to this org"}
+
+        now   = _dt.now(_tz.utc)
+        token = _secrets.token_urlsafe(24)
+
+        for ws_row in workspaces:
+            ws_id = str(ws_row.id)
+            db.execute(_text("""
+                INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
+                VALUES (:ws, :uid, :role, :now)
+                ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+            """), {"ws": ws_id, "uid": new_user_id, "role": role, "now": now})
+
+            db.execute(_text("""
+                INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
+                VALUES (:ws, :uid, :token, true, :now)
+                ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+            """), {"ws": ws_id, "uid": new_user_id, "token": token, "now": now})
+
+        db.commit()
+        log.info("clerk_org_webhook.member_added",
+                 clerk_org_id=clerk_org_id, user_id=new_user_id,
+                 workspaces=[str(r.id) for r in workspaces])
+        return {"ok": True, "added_to": len(workspaces)}
+
+    return {"ok": True, "skipped": event_type}
