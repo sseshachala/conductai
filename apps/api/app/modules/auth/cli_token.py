@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 
 from typing import Optional
 
-import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -18,7 +17,6 @@ from app.core.database import get_db
 from app.modules.agent_identity.adapters import TOKEN_PREFIX
 from app.modules.agent_identity.models import AgentIdentity
 
-log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _REFRESH_PREFIX = "cond_ref_"
@@ -68,7 +66,6 @@ def _upsert_identity(
         identity.refresh_token_hash = refresh_hash
         identity.refresh_token_expires_at = now + _REFRESH_TOKEN_TTL
         identity.last_used_at = now
-        log.info("cli_token.upsert", mode="update", identity_id=identity.id, prefix=agent_prefix)
     else:
         identity = AgentIdentity(
             id=str(uuid.uuid4()),
@@ -87,7 +84,7 @@ def _upsert_identity(
         db.add(identity)
         db.flush()
         # Link to guard_member_config if it exists
-        result = db.execute(
+        db.execute(
             text("""
                 UPDATE guard_member_config
                 SET agent_identity_id = :aid
@@ -95,16 +92,8 @@ def _upsert_identity(
             """),
             {"aid": identity.id, "ws": workspace_id, "uid": clerk_user_id},
         )
-        log.info("cli_token.upsert", mode="create", identity_id=identity.id, prefix=agent_prefix,
-                 gmc_rows_updated=result.rowcount)
 
-    try:
-        db.commit()
-        log.info("cli_token.commit_ok", prefix=agent_prefix, workspace_id=workspace_id)
-    except Exception as _e:
-        log.error("cli_token.commit_failed", error=str(_e), prefix=agent_prefix)
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Token commit failed: {_e}")
+    db.commit()
     return identity, agent_raw, refresh_raw
 
 
