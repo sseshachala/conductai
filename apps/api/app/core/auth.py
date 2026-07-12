@@ -507,6 +507,23 @@ def get_guard_hook_auth(
 
     token = credentials.credentials
 
+    # cond_agt_* agent token
+    if token.startswith("cond_agt_"):
+        from app.modules.agent_identity.models import AgentIdentity
+        from datetime import datetime, timezone
+        from app.core.crypto import decrypt
+        for ai in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == token[:13]).all():
+            try:
+                if decrypt(ai.token_encrypted).get("token") == token:
+                    if ai.expires_at and ai.expires_at < datetime.now(timezone.utc):
+                        raise HTTPException(status_code=401, detail="Agent token expired — run `conduct login`")
+                    return str(ai.workspace_id)
+            except HTTPException:
+                raise
+            except Exception:
+                continue
+        raise HTTPException(status_code=401, detail="Invalid agent token")
+
     # Try Clerk JWT first
     claims = _verify_clerk_token(token)
     if claims:
