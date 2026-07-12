@@ -43,6 +43,65 @@ def _audit(db, *, workspace_id: str, actor_id: str, actor_email: str | None,
     ))
 
 
+def _send_clerk_invite(db, workspace_id: str, email: str, conduct_role: str, invite_id: str) -> None:
+    """Send a Clerk org invitation and store clerk_invitation_id back on workspace_invites."""
+    import httpx as _httpx
+    if not settings.clerk_secret_key:
+        return  # local dev without Clerk — skip silently
+
+    # Ensure workspace has a clerk_org_id; create one if missing
+    ws = db.execute(
+        text("SELECT clerk_org_id, owner_id, name FROM workspaces WHERE id = :id"),
+        {"id": workspace_id},
+    ).fetchone()
+    if not ws:
+        return
+    org_id = ws.clerk_org_id
+    if not org_id:
+        try:
+            r = _httpx.post(
+                "https://api.clerk.com/v1/organizations",
+                headers={"Authorization": f"Bearer {settings.clerk_secret_key}", "Content-Type": "application/json"},
+                json={"name": ws.name or f"workspace-{workspace_id[:8]}", "created_by": ws.owner_id},
+                timeout=10,
+            )
+            r.raise_for_status()
+            org_id = r.json()["id"]
+            db.execute(
+                text("UPDATE workspaces SET clerk_org_id = :oid WHERE id = :id"),
+                {"oid": org_id, "id": workspace_id},
+            )
+            db.commit()
+        except Exception as e:
+            log.warning("clerk.org_create_failed", workspace_id=workspace_id, error=str(e))
+            return
+
+    # Map Conduct role → Clerk role
+    clerk_role = "org:admin" if conduct_role == "admin" else "org:member"
+
+    try:
+        r = _httpx.post(
+            f"https://api.clerk.com/v1/organizations/{org_id}/invitations",
+            headers={"Authorization": f"Bearer {settings.clerk_secret_key}", "Content-Type": "application/json"},
+            json={"email_address": email, "role": clerk_role},
+            timeout=10,
+        )
+        if r.status_code == 422:
+            # Already a member or invite exists — not a fatal error
+            log.info("clerk.invite_skipped", email=email, detail=r.text)
+            return
+        r.raise_for_status()
+        clerk_inv_id = r.json().get("id")
+        if clerk_inv_id:
+            db.execute(
+                text("UPDATE workspace_invites SET clerk_invitation_id = :cid WHERE id = :id"),
+                {"cid": clerk_inv_id, "id": invite_id},
+            )
+            db.commit()
+    except Exception as e:
+        log.warning("clerk.invite_failed", email=email, error=str(e))
+
+
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
@@ -613,6 +672,9 @@ def add_member(
                resource_id=email, meta={"role": body.role, "invite_id": str(invite_id)})
         db.commit()
 
+        # Send Clerk org invitation — fire-and-forget on top of our DB record
+        _send_clerk_invite(db, workspace_id, email, body.role, invite_id=str(invite_id))
+
         # Resolve workspace name for the notification
         ws_row = db.execute(text("SELECT name FROM workspaces WHERE id = :id"), {"id": workspace_id}).fetchone()
         workspace_name = ws_row.name if ws_row else "your workspace"
@@ -721,7 +783,7 @@ def cancel_invite(
     result = db.execute(text("""
         DELETE FROM workspace_invites
         WHERE id = :id AND workspace_id = :ws AND accepted_at IS NULL
-        RETURNING id, invited_email, role
+        RETURNING id, invited_email, role, clerk_invitation_id
     """), {"id": invite_id, "ws": workspace_id})
     row = result.fetchone()
     if not row:
@@ -731,6 +793,25 @@ def cancel_invite(
            action="invite.cancelled", resource_type="invite",
            resource_id=invite_id, meta={"invited_email": row.invited_email, "role": row.role})
     db.commit()
+
+    # Revoke Clerk invitation if we have one — best-effort, after our DB commit
+    if row.clerk_invitation_id and settings.clerk_secret_key:
+        ws_org = db.execute(
+            text("SELECT clerk_org_id FROM workspaces WHERE id = :id"),
+            {"id": workspace_id},
+        ).fetchone()
+        if ws_org and ws_org.clerk_org_id:
+            import httpx as _httpx
+            try:
+                _httpx.post(
+                    f"https://api.clerk.com/v1/organizations/{ws_org.clerk_org_id}"
+                    f"/invitations/{row.clerk_invitation_id}/revoke",
+                    headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
+                    timeout=5,
+                )
+            except Exception as e:
+                log.warning("clerk.invite_revoke_failed",
+                            clerk_invitation_id=row.clerk_invitation_id, error=str(e))
 
 
 @router.patch("/{project_id}/members/{clerk_user_id}")
@@ -793,6 +874,24 @@ def remove_member(
            action="member.removed", resource_type="member",
            resource_id=clerk_user_id, meta={"role": removed.role})
     db.commit()
+
+    # Remove from Clerk org — best-effort, after our DB commit
+    if settings.clerk_secret_key:
+        ws = db.execute(
+            text("SELECT clerk_org_id FROM workspaces WHERE id = :id"),
+            {"id": workspace_id},
+        ).fetchone()
+        if ws and ws.clerk_org_id:
+            import httpx as _httpx
+            try:
+                _httpx.delete(
+                    f"https://api.clerk.com/v1/organizations/{ws.clerk_org_id}"
+                    f"/memberships/{clerk_user_id}",
+                    headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
+                    timeout=5,
+                )
+            except Exception as e:
+                log.warning("clerk.member_remove_failed", user_id=clerk_user_id, error=str(e))
 
 
 # ---------------------------------------------------------------------------
