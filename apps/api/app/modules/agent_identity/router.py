@@ -32,6 +32,28 @@ def _generate_token() -> tuple[str, str]:
     return raw, raw[:_DISPLAY_PREFIX_LEN]
 
 
+def mint_agent_identity(db: Session, workspace_id: str, name: str) -> tuple[AgentIdentity, str]:
+    """Internal helper — mint an Agent Identity for a user without auth checks.
+
+    Returns (AgentIdentity row, plaintext token). Caller must commit if needed.
+    Used by guard join flow to auto-mint on invite accept.
+    """
+    plaintext, prefix = _generate_token()
+    row = AgentIdentity(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace_id,
+        name=name,
+        provider="conduct",
+        token_prefix=prefix,
+        token_encrypted=encrypt({"token": plaintext}),
+        environment_id=None,
+        created_at=datetime.now(timezone.utc),
+        last_used_at=None,
+    )
+    db.add(row)
+    return row, plaintext
+
+
 def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, plaintext: str) -> None:
     """Merge CONDUCT_AGENT_TOKEN into the env_vars credential blob for the environment."""
     existing = db.query(Integration).filter(

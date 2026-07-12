@@ -71,6 +71,7 @@ class InstallStatusOut(BaseModel):
     workspace_id: str | None = None
     invite_code: str | None = None
     member_token: str | None = None
+    agent_token: str | None = None
     user_email: str | None = None
     clerk_user_id: str | None = None
 
@@ -178,11 +179,23 @@ def get_install_status(
     except Exception:
         db.rollback()  # non-fatal
 
-    # Fetch member_token for the calling user so CLI can use it
+    # Fetch member_token + agent_identity_id for the calling user so CLI can use it
     token_row = db.execute(
-        text("SELECT member_token FROM guard_member_config WHERE workspace_id = :ws AND clerk_user_id = :uid LIMIT 1"),
+        text("SELECT member_token, agent_identity_id FROM guard_member_config WHERE workspace_id = :ws AND clerk_user_id = :uid LIMIT 1"),
         {"ws": workspace_id, "uid": user_id},
     ).fetchone()
+
+    # Resolve agent_token from agent_identities if FK is set
+    agent_token: str | None = None
+    if token_row and token_row.agent_identity_id:
+        from app.modules.agent_identity.models import AgentIdentity
+        from app.core.crypto import decrypt as _decrypt
+        ai_row = db.query(AgentIdentity).filter(AgentIdentity.id == token_row.agent_identity_id).first()
+        if ai_row and ai_row.token_encrypted:
+            try:
+                agent_token = _decrypt(ai_row.token_encrypted).get("token")
+            except Exception:
+                pass
 
     from app.core.auth import get_clerk_user_email as _get_email
     user_email = _get_email(user_id)
@@ -191,6 +204,7 @@ def get_install_status(
         workspace_id=workspace_id,
         invite_code=config.invite_code,
         member_token=token_row.member_token if token_row else None,
+        agent_token=agent_token,
         user_email=user_email,
         clerk_user_id=user_id,
     )
@@ -466,6 +480,7 @@ class JoinIn(BaseModel):
 class JoinOut(BaseModel):
     workspace_id: str
     member_token: str
+    agent_token: str | None = None
     policy: dict
 
 
@@ -497,18 +512,24 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
 
     if existing:
         member_token = existing.member_token
+        agent_token: str | None = None
     else:
+        from app.modules.agent_identity.router import mint_agent_identity
         member_token = secrets.token_hex(32)
+        identity_row, agent_token = mint_agent_identity(
+            db, workspace_id, name=f"{body.email} (auto)"
+        )
         db.execute(
             text("""
-                INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
-                VALUES (:ws, :email, :token, true, :now)
+                INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, agent_identity_id, active, joined_at)
+                VALUES (:ws, :email, :token, :agent_id, true, :now)
                 ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
             """),
             {
                 "ws": workspace_id,
                 "email": body.email,
                 "token": member_token,
+                "agent_id": identity_row.id,
                 "now": datetime.now(timezone.utc),
             },
         )
@@ -533,7 +554,7 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
     ]
     policy = {"workspace_id": workspace_id, "version": "1", "rules": rules}
 
-    return JoinOut(workspace_id=workspace_id, member_token=member_token, policy=policy)
+    return JoinOut(workspace_id=workspace_id, member_token=member_token, agent_token=agent_token, policy=policy)
 
 
 class InviteRegenOut(BaseModel):
