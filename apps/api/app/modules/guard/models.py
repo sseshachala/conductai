@@ -374,5 +374,6 @@ class DiscoveredAgent(Base):
     evidence      = Column(JSONB, nullable=True)
     risk_score    = Column(Integer, nullable=True)      # 0-100
     under_guard   = Column(Boolean, nullable=False, default=False)
+    proxy_routed  = Column(Boolean, nullable=False, default=False)
     first_seen_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     last_seen_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

@@ -44,6 +44,7 @@ class AgentIn(BaseModel):
     evidence: Optional[dict] = None
     risk_score: Optional[int] = None
     under_guard: bool = False
+    proxy_routed: bool = False
 
 
 class ScanIn(BaseModel):
@@ -59,6 +60,7 @@ class AgentOut(BaseModel):
     location: Optional[str]
     risk_score: Optional[int]
     under_guard: bool
+    proxy_routed: bool
     first_seen_at: datetime
     last_seen_at: datetime
 
@@ -127,6 +129,7 @@ def ingest_scan(
         if existing:
             existing.scan_id    = scan.id
             existing.under_guard = a.under_guard
+            existing.proxy_routed = a.proxy_routed
             existing.risk_score = a.risk_score
             existing.location   = a.location
             existing.last_seen_at = now
@@ -141,6 +144,7 @@ def ingest_scan(
                 evidence=a.evidence,
                 risk_score=a.risk_score,
                 under_guard=a.under_guard,
+                proxy_routed=a.proxy_routed,
             ))
 
     db.commit()
@@ -185,7 +189,7 @@ def list_agents(
     return [AgentOut(
         id=str(r.id), name=r.name, framework=r.framework, source=r.source,
         location=r.location, risk_score=r.risk_score, under_guard=r.under_guard,
-        first_seen_at=r.first_seen_at, last_seen_at=r.last_seen_at,
+        proxy_routed=r.proxy_routed, first_seen_at=r.first_seen_at, last_seen_at=r.last_seen_at,
     ) for r in rows]
 
 
