@@ -25,7 +25,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-GUARD_DIR   = Path.home() / ".conductguard"
+GUARD_DIR   = Path.home() / ".conduct"
 POLICY_PATH = GUARD_DIR / "policy.json"
 CONFIG_PATH = GUARD_DIR / "config.json"
 
@@ -416,8 +416,8 @@ def _err(msg_id, code: int, message: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="conductguard-mcp")
-    parser.add_argument("--workspace", default=None, help="Guard workspace ID (falls back to ~/.conductguard/config.json)")
-    parser.add_argument("--token",     default=None, help="Member token (falls back to ~/.conductguard/config.json)")
+    parser.add_argument("--workspace", default=None, help="Guard workspace ID (falls back to ~/.conduct/config.json)")
+    parser.add_argument("--token",     default=None, help="Member token (falls back to ~/.conduct/config.json)")
     parser.add_argument("--api-url",   default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
 

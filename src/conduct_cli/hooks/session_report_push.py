@@ -19,7 +19,7 @@ from pathlib import Path
 
 def _load_config() -> dict:
     for p in [
-        Path.home() / ".conductguard" / "config.json",
+        Path.home() / ".conduct" / "config.json",
         Path.home() / ".conduct" / "config.json",
     ]:
         if p.exists():
