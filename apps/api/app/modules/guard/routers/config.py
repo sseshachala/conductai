@@ -196,14 +196,20 @@ def get_install_status(
                 agent_token = _decrypt(ai_row.token_encrypted).get("token")
             except Exception:
                 pass
-    elif token_row and not token_row.agent_identity_id:
+    else:
         from app.modules.agent_identity.router import mint_agent_identity
         try:
             identity_row, agent_token = mint_agent_identity(db, workspace_id, f"{user_id} (auto)")
-            db.execute(
-                text("UPDATE guard_member_config SET agent_identity_id = :aid WHERE workspace_id = :ws AND clerk_user_id = :uid"),
-                {"aid": identity_row.id, "ws": workspace_id, "uid": user_id},
-            )
+            if token_row:
+                db.execute(
+                    text("UPDATE guard_member_config SET agent_identity_id = :aid WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+                    {"aid": identity_row.id, "ws": workspace_id, "uid": user_id},
+                )
+            else:
+                db.execute(
+                    text("INSERT INTO guard_member_config (workspace_id, clerk_user_id, agent_identity_id, active, joined_at) VALUES (:ws, :uid, :aid, true, now()) ON CONFLICT DO NOTHING"),
+                    {"ws": workspace_id, "uid": user_id, "aid": identity_row.id},
+                )
             db.commit()
         except Exception:
             agent_token = None
