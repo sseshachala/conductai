@@ -16,7 +16,7 @@ from typing import Literal, Optional
 
 # ── Canonical paths ───────────────────────────────────────────────────────────
 
-GUARD_DIR          = Path.home() / ".conductguard"
+GUARD_DIR          = Path.home() / ".conduct"
 CONFIG_PATH        = GUARD_DIR / "config.json"
 POLICY_PATH        = GUARD_DIR / "policy.json"
 BUDGET_CACHE_PATH  = GUARD_DIR / "budget_cache.json"
@@ -43,7 +43,7 @@ class HookResult:
 # ── Config loading ────────────────────────────────────────────────────────────
 
 def load_config() -> dict:
-    """Load Guard config from ~/.conductguard/config.json."""
+    """Load Guard config from ~/.conduct/config.json."""
     try:
         if CONFIG_PATH.exists():
             return json.loads(CONFIG_PATH.read_text())
@@ -53,7 +53,7 @@ def load_config() -> dict:
 
 
 def active_policy_path() -> Path:
-    """Return policy path: ~/.conductguard/policy.json."""
+    """Return policy path: ~/.conduct/policy.json."""
     return POLICY_PATH
 
 
