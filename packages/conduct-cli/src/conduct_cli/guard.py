@@ -1182,7 +1182,7 @@ def _proactive_token_refresh() -> None:
         cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=8)).isoformat()
         _save_guard_config(cfg)
     except Exception:
-        pass  # best-effort; sync will 401 and user will see the error
+        print(f"  {YELLOW}⚠ Token refresh failed — run `conduct login` if sync fails{RESET}")
 
 
 def cmd_guard_sync(args):
