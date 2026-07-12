@@ -336,9 +336,10 @@ def get_workspace_id(
     # agent_token (cond_agt_*) — look up in agent_identities
     if credentials.credentials.startswith("cond_agt_"):
         ai, _ = _resolve_agent_token(credentials.credentials, db)
-        if explicit_ws:
-            return explicit_ws
-        return str(ai.workspace_id)
+        token_ws = str(ai.workspace_id)
+        if explicit_ws and explicit_ws != token_ws:
+            raise HTTPException(status_code=403, detail="Agent token does not belong to the requested workspace")
+        return explicit_ws or token_ws
 
     claims = _verify_clerk_token(credentials.credentials)
     if not claims:
