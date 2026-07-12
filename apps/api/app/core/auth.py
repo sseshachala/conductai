@@ -479,28 +479,11 @@ def get_guard_org_id(
 
 def get_guard_hook_auth(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
-    x_api_key: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
 ) -> str:
-    """Auth for hook/CLI endpoints that accept a Clerk JWT, member token, or cond_live_ API key.
-
-    Returns workspace_id (from API key), org_id (from Clerk), or workspace_id (from member token).
-    """
+    """Auth for hook/CLI endpoints. Accepts cond_agt_* agent token or Clerk JWT."""
     if not _clerk_enabled():
         return "dev-org"
-
-    # cond_live_ API key — same path as get_workspace_id
-    if x_api_key and x_api_key.startswith("cond_live_"):
-        import hashlib
-        from app.models.conduct_api_key import ConductApiKey
-        from datetime import datetime, timezone
-        key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
-        row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
-        if not row:
-            raise HTTPException(status_code=401, detail="Invalid API key")
-        if row.expires_at and row.expires_at < datetime.now(timezone.utc):
-            raise HTTPException(status_code=401, detail="API key expired")
-        return str(row.workspace_id)
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -524,21 +507,12 @@ def get_guard_hook_auth(
                 continue
         raise HTTPException(status_code=401, detail="Invalid agent token")
 
-    # Try Clerk JWT first
+    # Clerk JWT
     claims = _verify_clerk_token(token)
     if claims:
         org_id = claims.get("org_id") or claims.get("sub")
         if org_id:
             return org_id
-
-    # Fall back to member token lookup
-    from sqlalchemy import text as _text
-    row = db.execute(
-        _text("SELECT workspace_id FROM guard_member_config WHERE member_token = :t LIMIT 1"),
-        {"t": token},
-    ).fetchone()
-    if row:
-        return str(row.workspace_id)
 
     raise HTTPException(status_code=401, detail="Invalid or expired token")
 
