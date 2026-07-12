@@ -339,14 +339,6 @@ def _report_tool_coverage() -> None:
         token   = cfg.get("token", "")
         email   = cfg.get("email", "")
 
-        # also check guard config for email/token
-        guard_cfg_path = Path.home() / ".conductguard" / "config.json"
-        if guard_cfg_path.exists():
-            gcfg = json.loads(guard_cfg_path.read_text())
-            if not email:
-                email = gcfg.get("user_email", "")
-            if not token:
-                token = gcfg.get("member_token", "")
 
         if not server or not email:
             return
@@ -1327,15 +1319,6 @@ def cmd_switch(args):
     cfg["workspace"] = new_id
     _atomic_write(CONFIG_PATH, cfg)
 
-    # Update ~/.conductguard/config.json atomically if it exists
-    guard_cfg_path = Path.home() / ".conductguard" / "config.json"
-    if guard_cfg_path.exists():
-        try:
-            guard_cfg = json.loads(guard_cfg_path.read_text())
-            guard_cfg["workspace_id"] = new_id
-            _atomic_write(guard_cfg_path, guard_cfg)
-        except Exception:
-            pass
 
     # Re-sync Guard policies for the new workspace
     try:
@@ -1382,26 +1365,21 @@ def cmd_whoami(args):
     print(f"{BOLD}Server:{RESET}     {server}")
     print(f"{BOLD}API key:{RESET}    {api_key_display}")
 
-    # Guard section
-    guard_cfg_path = Path.home() / ".conductguard" / "config.json"
-    policy_path    = Path.home() / ".conductguard" / "policy.json"
-    hook_path      = Path.home() / ".conductguard" / "hook.py"
-
-    if guard_cfg_path.exists():
-        try:
-            gcfg = json.loads(guard_cfg_path.read_text())
-            user_email = gcfg.get("user_email", "")
-            rule_count = 0
-            if policy_path.exists():
-                try:
-                    rule_count = len(json.loads(policy_path.read_text()).get("rules", []))
-                except Exception:
-                    pass
-            hook_status = "hook installed" if hook_path.exists() else "hook missing"
-            email_part  = f"  |  member: {user_email}" if user_email else ""
-            print(f"{BOLD}Guard:{RESET}      {GREEN}✓ {hook_status}{RESET}  |  policy: {rule_count} rules{email_part}")
-        except Exception:
-            print(f"{BOLD}Guard:{RESET}      {YELLOW}config unreadable{RESET}")
+    # Guard section — config from ~/.conduct/config.json, policy/hook at ~/.conductguard/
+    policy_path = Path.home() / ".conductguard" / "policy.json"
+    hook_path   = Path.home() / ".conductguard" / "hook.py"
+    guard_email = cfg.get("user_email", "")
+    agent_token = cfg.get("agent_token", "")
+    if agent_token or hook_path.exists():
+        rule_count  = 0
+        if policy_path.exists():
+            try:
+                rule_count = len(json.loads(policy_path.read_text()).get("rules", []))
+            except Exception:
+                pass
+        hook_status = "hook installed" if hook_path.exists() else "hook missing"
+        email_part  = f"  |  member: {guard_email}" if guard_email else ""
+        print(f"{BOLD}Guard:{RESET}      {GREEN}✓ {hook_status}{RESET}  |  policy: {rule_count} rules{email_part}")
     else:
         print(f"{BOLD}Guard:{RESET}      not configured")
 
@@ -1558,8 +1536,7 @@ def _load_codex_sessions(active_cwds: set[str]) -> list[dict]:
     if not _CODEX_SESSIONS.exists():
         return []
 
-    guard_cfg = Path.home() / ".conductguard" / "config.json"
-    guard_on  = guard_cfg.exists()
+    guard_on  = (Path.home() / ".conduct" / "config.json").exists()
 
     rows = []
     # Walk the last 2 days of session dirs
@@ -1616,8 +1593,7 @@ def _load_sessions() -> list[dict]:
     if not _CLAUDE_SESSIONS.exists():
         return []
 
-    guard_cfg = Path.home() / ".conductguard" / "config.json"
-    guard_on  = guard_cfg.exists()
+    guard_on  = (Path.home() / ".conduct" / "config.json").exists()
 
     rows = []
     seen_sessions: set[str] = set()
@@ -1764,14 +1740,6 @@ def _render_tui(rows: list[dict]) -> None:
     """Full-screen TUI with live refresh. Uses rich.live if available, else ANSI loop."""
 
     cfg       = _load_config()
-    guard_cfg = {}
-    _gp = Path.home() / ".conductguard" / "config.json"
-    if _gp.exists():
-        try:
-            guard_cfg = json.loads(_gp.read_text())
-        except Exception:
-            pass
-
     def _build_rich_display(rows):
         from rich.table import Table
         from rich.panel import Panel
@@ -2849,7 +2817,7 @@ def cmd_memory(args):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-_GUARD_CONFIG = Path.home() / ".conductguard" / "config.json"
+_GUARD_CONFIG = Path.home() / ".conduct" / "config.json"
 _GUARD_SKIP   = Path.home() / ".conductguard" / ".setup_skip"
 
 GREEN  = "\033[32m"
