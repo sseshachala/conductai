@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
@@ -74,6 +75,11 @@ function SettingsContent() {
   const { activeWorkspace } = useWorkspace()
   const { teamId } = useGuardTeam()
   const { permissions, role: resolvedRole } = useGuardRole(teamId, activeWorkspace?.id ?? null)
+  const router = useRouter()
+
+  useEffect(() => {
+    if (resolvedRole !== null && !permissions.canEditSettings) router.replace("/theguard")
+  }, [resolvedRole, permissions.canEditSettings, router])
 
   const [prefs, setPrefs] = useState<TeamPrefs>({
     alert_channel: null,
