@@ -114,19 +114,21 @@ def _resolve(args, key: str, config_key=None):
 
 def _require_auth(args):
     """Return (server, workspace_id, api_key, token) — exit if not configured."""
-    server     = _resolve(args, "server")
-    workspace  = _resolve(args, "workspace")
+    cfg        = _load_config()
+    server     = _resolve(args, "server") or cfg.get("api_url", "")
+    workspace  = _resolve(args, "workspace") or cfg.get("workspace_id") or cfg.get("workspace")
     api_key    = _resolve(args, "api_key", "api_key")
-    token      = _resolve(args, "token")
+    # agent_token (new) takes precedence over legacy token
+    token      = _resolve(args, "token") or cfg.get("agent_token")
 
     if not server:
-        print(f"{RED}No server set. Run: conduct login --server <url> --api-key <key>{RESET}")
+        print(f"{RED}No server set. Run: conduct login{RESET}")
         sys.exit(1)
     if not workspace:
-        print(f"{RED}No workspace set. Run: conduct login --workspace <id>{RESET}")
+        print(f"{RED}No workspace set. Run: conduct login{RESET}")
         sys.exit(1)
     if not api_key and not token:
-        print(f"{RED}No credentials. Run: conduct login --api-key <key>{RESET}")
+        print(f"{RED}Not authenticated. Run: conduct login{RESET}")
         sys.exit(1)
 
     return server.rstrip("/"), workspace, api_key, token
@@ -418,84 +420,124 @@ def cmd_mcp_install(args):
         pass
 
 
+_DEFAULT_API_URL = "https://api.conductai.ai"
+_DEFAULT_WEB_URL = "https://app.conductai.ai"
+
+
+def _find_free_port() -> int:
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _web_login_flow(api_url: str, web_url: str) -> dict:
+    """Open browser → localhost callback → return {agent_token, refresh_token, workspace_id}."""
+    import http.server
+    import secrets
+    import threading
+    import webbrowser
+
+    state = secrets.token_urlsafe(16)
+    port  = _find_free_port()
+    result: dict = {}
+    event = threading.Event()
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            parsed = urllib.parse.urlparse(self.path)
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+
+            if parsed.path != "/callback":
+                self.send_response(404)
+                self.end_headers()
+                return
+
+            # Respond immediately so browser shows success
+            body = b"<html><body><h2>Login successful. You can close this tab.</h2></body></html>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+            if params.get("state") == state:
+                result.update(params)
+            event.set()
+
+        def log_message(self, *_):
+            pass  # silence server logs
+
+    server = http.server.HTTPServer(("127.0.0.1", port), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    auth_url = f"{web_url}/cli-auth?port={port}&state={state}&api={urllib.parse.quote(api_url, safe='')}"
+    print(f"\n{BOLD}Opening browser for authentication…{RESET}")
+    print(f"{GRAY}If the browser didn't open, visit:{RESET}")
+    print(f"  {CYAN}{auth_url}{RESET}\n")
+    webbrowser.open(auth_url)
+
+    if not event.wait(timeout=300):
+        server.shutdown()
+        print(f"{RED}Login timed out (5 min). Try again.{RESET}")
+        sys.exit(1)
+
+    server.shutdown()
+
+    if not result.get("agent_token") or not result.get("workspace_id"):
+        print(f"{RED}Login failed — missing token in callback. Try again.{RESET}")
+        sys.exit(1)
+
+    return result
+
+
+def _token_login_flow(agent_token: str, api_url: str) -> dict:
+    """Manual --token flow: validate token against API and return workspace info."""
+    hdrs = {"Authorization": f"Bearer {agent_token}", "Content-Type": "application/json"}
+    try:
+        me = api.req("GET", f"{api_url}/me", hdrs)
+        return {"agent_token": agent_token, "workspace_id": me.get("workspace_id", "")}
+    except SystemExit:
+        print(f"{RED}Token rejected by server. Check your token and try again.{RESET}")
+        sys.exit(1)
+
+
 def cmd_login(args):
-    server    = args.server
-    api_key   = args.api_key
-    workspace = args.workspace
-    token     = args.token
+    api_url = (getattr(args, "server", None) or _load_config().get("api_url", _DEFAULT_API_URL)).rstrip("/")
+    web_url = _DEFAULT_WEB_URL
 
-    if not server and not api_key and not workspace:
-        cfg = _load_config()
-        if cfg:
-            print(f"{BOLD}Current config ({CONFIG_PATH}):{RESET}")
-            print(f"  server:    {cfg.get('server', '—')}")
-            print(f"  workspace: {cfg.get('workspace', '—')}")
-            print(f"  api_key:   {'set' if cfg.get('api_key') else '—'}")
-        else:
-            print("No config found. Run: conduct login --server <url> --api-key <key> --workspace <id>")
-        return
-
-    cfg = _load_config()
-    if server:    cfg["server"]    = server.rstrip("/")
-    if api_key:   cfg["api_key"]   = api_key
-    if workspace: cfg["workspace"] = workspace; cfg["workspace_id"] = workspace
-    if token:     cfg["token"]     = token
-
-    s   = cfg["server"]
-    ak  = cfg.get("api_key")
-    tok = cfg.get("token")
-
-    # Fetch identity from API key — always refresh email/user_id
-    if ak and ak.startswith("cond_live_"):
-        try:
-            hdrs = {"X-Api-Key": ak, "Content-Type": "application/json"}
-            me = api.req("GET", f"{s}/me", hdrs)
-            cfg["workspace"] = me["workspace_id"]; cfg["workspace_id"] = me["workspace_id"]
-            if me.get("user_id"):
-                cfg["user_id"] = me["user_id"]
-            if me.get("email"):
-                cfg["email"] = me["email"]
-            if not cfg.get("workspace"):
-                print(f"{GREEN}✓ Workspace discovered:{RESET} {cfg['workspace']}")
-        except SystemExit:
-            if not cfg.get("workspace"):
-                print(f"{YELLOW}⚠ Could not auto-discover workspace. Pass --workspace <id> manually.{RESET}")
-
-    ws  = cfg.get("workspace", "")
-    if ws and (ak or tok):
-        hdrs = api.headers(ws, tok, "application/json", ak)
-        try:
-            api.req("GET", f"{s}/workflows", hdrs)
-            print(f"{GREEN}✓ Connected to {s}{RESET}")
-        except SystemExit:
-            print(f"{RED}Could not connect — check your server URL, workspace ID, and API key.{RESET}")
+    # --token escape hatch: paste agent_token directly (no browser)
+    manual_token = getattr(args, "token", None)
+    if manual_token:
+        if not manual_token.startswith("cond_agt_"):
+            print(f"{RED}Invalid token format. Expected cond_agt_... token from the dashboard.{RESET}")
             sys.exit(1)
+        result = _token_login_flow(manual_token, api_url)
+    else:
+        result = _web_login_flow(api_url, web_url)
 
-    _save_config(cfg)
-    print(f"{GREEN}✓ Config saved to {CONFIG_PATH}{RESET}")
+    # Write config
+    cfg = _load_config()
+    cfg["api_url"]       = api_url
+    cfg["agent_token"]   = result["agent_token"]
+    cfg["workspace"]     = result["workspace_id"]
+    cfg["workspace_id"]  = result["workspace_id"]
+    if result.get("refresh_token"):
+        cfg["refresh_token"] = result["refresh_token"]
+    # Clear legacy api_key — agent_token is the credential now
+    cfg.pop("api_key", None)
+    _atomic_write(CONFIG_PATH, cfg)
 
-    # Auto-install Guard if available for this workspace
-    if ak and ak.startswith("cond_live_"):
-        try:
-            from conduct_cli.guard import cmd_guard_install
-            import types
-            fake_args = types.SimpleNamespace(api_key=ak, server=s)
-            cmd_guard_install(fake_args)
-        except SystemExit:
-            pass  # Guard not found — skip silently
-        except Exception:
-            pass  # Never block login on Guard errors
+    print(f"{GREEN}✓ Logged in{RESET} — workspace {GRAY}{result['workspace_id']}{RESET}")
 
-    # Auto-register MCP servers in Claude Code / Codex
+    # Auto-sync: register hooks + pull policy
     try:
+        import conduct_cli.guard as _g
         import types
-        cmd_mcp_install(types.SimpleNamespace())
-    except Exception:
-        pass  # Never block login on MCP registration errors
-
-    # Report tool coverage to Guard
-    try:
-        _report_tool_coverage()
+        _g.cmd_guard_sync(types.SimpleNamespace())
+    except SystemExit:
+        pass
     except Exception:
         pass
 
@@ -2436,9 +2478,40 @@ def cmd_run(args):
 
 # ── conduct sync / test-guard / test-security ────────────────────────────────
 
+def _refresh_agent_token() -> bool:
+    """Silently rotate agent_token using refresh_token. Returns True if refreshed."""
+    cfg = _load_config()
+    refresh_token = cfg.get("refresh_token", "")
+    if not refresh_token:
+        return False
+    api_url = cfg.get("api_url", _DEFAULT_API_URL).rstrip("/")
+    try:
+        import json as _json
+        req = urllib.request.Request(
+            f"{api_url}/auth/refresh",
+            data=_json.dumps({"refresh_token": refresh_token}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = _json.loads(resp.read())
+        cfg["agent_token"]   = data["agent_token"]
+        cfg["refresh_token"] = data["refresh_token"]
+        cfg["workspace"]     = data["workspace_id"]
+        cfg["workspace_id"]  = data["workspace_id"]
+        _atomic_write(CONFIG_PATH, cfg)
+        return True
+    except Exception:
+        return False
+
+
 def cmd_sync(args):
     """Sync Guard policies (and Security Loop policies if installed)."""
     import conduct_cli.guard as _g
+    # Silent token refresh if agent_token is expired
+    cfg = _load_config()
+    if cfg.get("refresh_token") and not cfg.get("agent_token", "").startswith("cond_agt_"):
+        _refresh_agent_token()
     print(f"\n{BOLD}▶ conduct sync{RESET}\n")
     _g.cmd_guard_sync(args)
     print(f"\n{GREEN}Sync complete.{RESET}\n")
@@ -2936,11 +3009,9 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     # conduct login
-    login_p = sub.add_parser("login", help="Save connection config (~/.conduct/config.json)")
-    login_p.add_argument("--server",    help="API base URL e.g. https://api.conductai.ai")
-    login_p.add_argument("--api-key",   dest="api_key", help="CLI API key (set CLI_API_KEY on server)")
-    login_p.add_argument("--workspace", help="Workspace ID (auto-discovered from API key if omitted)")
-    login_p.add_argument("--token",     help=argparse.SUPPRESS)
+    login_p = sub.add_parser("login", help="Authenticate with Conduct (opens browser)")
+    login_p.add_argument("--server", help="API base URL (default: https://api.conductai.ai)")
+    login_p.add_argument("--token",  help="Paste an agent token directly instead of opening a browser")
 
     # conduct agents
     agents_p = sub.add_parser("agents", help="List all agents")

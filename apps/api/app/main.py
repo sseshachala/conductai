@@ -46,6 +46,7 @@ from app.routers.team_memory import router as team_memory_router
 from app.routers.meta import router as meta_router
 from app.routers.share import router as share_router
 from app.modules.agent_identity.router import router as agent_identity_router
+from app.modules.auth.cli_token import router as cli_auth_router
 
 setup_logging()
 log = structlog.get_logger(__name__)
@@ -151,6 +152,7 @@ app.include_router(team_memory_router)
 app.include_router(meta_router)
 app.include_router(share_router)
 app.include_router(agent_identity_router)
+app.include_router(cli_auth_router)
 
 
 @app.on_event("startup")
