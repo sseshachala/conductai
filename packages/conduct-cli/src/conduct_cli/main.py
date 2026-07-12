@@ -434,7 +434,7 @@ def cmd_login(args):
     cfg = _load_config()
     if server:    cfg["server"]    = server.rstrip("/")
     if api_key:   cfg["api_key"]   = api_key
-    if workspace: cfg["workspace"] = workspace
+    if workspace: cfg["workspace"] = workspace; cfg["workspace_id"] = workspace
     if token:     cfg["token"]     = token
 
     s   = cfg["server"]
@@ -446,7 +446,7 @@ def cmd_login(args):
         try:
             hdrs = {"X-Api-Key": ak, "Content-Type": "application/json"}
             me = api.req("GET", f"{s}/me", hdrs)
-            cfg["workspace"] = me["workspace_id"]
+            cfg["workspace"] = me["workspace_id"]; cfg["workspace_id"] = me["workspace_id"]
             if me.get("user_id"):
                 cfg["user_id"] = me["user_id"]
             if me.get("email"):
@@ -1316,7 +1316,7 @@ def cmd_switch(args):
     new_name = chosen["name"]
 
     # Update ~/.conduct/config.json atomically
-    cfg["workspace"] = new_id
+    cfg["workspace"] = new_id; cfg["workspace_id"] = new_id
     _atomic_write(CONFIG_PATH, cfg)
 
 
