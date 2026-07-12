@@ -94,12 +94,18 @@ def detect_ai_tool() -> str:
         return "cursor"
     if term == "windsurf":
         return "windsurf"
-    # ── Parent process check (most reliable — handles Codex.app in PATH) ──────
+    # ── Ancestor process check — Claude Code spawns via zsh, so check grandparent
     try:
         import psutil as _psutil
-        _parent = _psutil.Process(os.getppid()).name().lower()
-        if "claude" in _parent:
-            return "claude-code"
+        _proc = _psutil.Process(os.getppid())
+        for _ in range(3):  # check up to 3 levels
+            _cmd = " ".join(_proc.cmdline()).lower()
+            _name = _proc.name().lower()
+            if ".claude/shell-snapshots" in _cmd or ("claude" in _cmd and "claude" in _name):
+                return "claude-code"
+            _proc = _proc.parent()
+            if _proc is None:
+                break
     except Exception:
         pass
     # ── PATH heuristics ───────────────────────────────────────────────────────
