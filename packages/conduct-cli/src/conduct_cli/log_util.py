@@ -33,10 +33,10 @@ _COLORS = {
 _RESET = "\033[0m"
 
 _API_BASE = os.environ.get("CONDUCT_API_URL", "https://api.conductai.ai").rstrip("/")
-_CONFIG   = Path.home() / ".conductguard" / "config.json"
+_CONFIG   = Path.home() / ".conduct" / "config.json"
 _LOG_FILE = Path(
     os.environ.get("CONDUCT_LOG_FILE")
-    or str(Path.home() / ".conductguard" / "logs" / "events.jsonl")
+    or str(Path.home() / ".conduct" / "logs" / "events.jsonl")
 )
 _POST_TIMEOUT_S = 2.0
 
@@ -86,7 +86,7 @@ def _write_local(event_type: str, message: str, tb: str | None, ctx: dict) -> No
 
 @lru_cache(maxsize=1)
 def _read_creds() -> tuple[str | None, str | None]:
-    """(member_token, workspace_id) from ~/.conductguard/config.json, or (None, None)."""
+    """(member_token, workspace_id) from ~/.conduct/config.json, or (None, None)."""
     try:
         cfg = json.loads(_CONFIG.read_text())
         return cfg.get("member_token"), cfg.get("workspace_id")
