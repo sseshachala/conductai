@@ -20,8 +20,9 @@ GRAY   = "\033[90m"
 CYAN   = "\033[36m"
 YELLOW = "\033[33m"
 
-GUARD_DIR    = Path.home() / ".conductguard"
-CONFIG_PATH  = GUARD_DIR / "config.json"
+CONDUCT_HOME = Path.home() / ".conduct"
+GUARD_DIR    = Path.home() / ".conductguard"   # legacy — kept for policy.json + hooks
+CONFIG_PATH  = CONDUCT_HOME / "config.json"    # unified config — shared with main.py
 POLICY_PATH  = GUARD_DIR / "policy.json"
 
 
@@ -333,7 +334,7 @@ def _load_guard_config(workspace_id: str | None = None) -> dict:
 
 
 def _save_guard_config(data: dict, workspace_id: str | None = None):
-    GUARD_DIR.mkdir(parents=True, exist_ok=True)
+    CONDUCT_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(data, indent=2))
     CONFIG_PATH.chmod(0o600)
 
@@ -737,17 +738,19 @@ def cmd_guard_install(args):
         return
 
     member_token   = result.get("member_token") or ""
+    agent_token    = result.get("agent_token") or ""
     user_email     = result.get("user_email") or ""
     clerk_user_id  = result.get("clerk_user_id") or ""
 
     # Persona selection — prompt once, skip if already chosen
     _ensure_persona(workspace_id, api_key, server)
 
-    # Persist guard config — include api_key so CLI commands can authenticate
+    # Persist unified config — single ~/.conduct/config.json
     import time as _time
     _save_guard_config({
         "workspace_id":          workspace_id,
         "member_token":          member_token,
+        "agent_token":           agent_token,
         "user_email":            user_email,
         "clerk_user_id":         clerk_user_id,
         "api_key":               api_key,
@@ -1171,11 +1174,15 @@ def cmd_guard_sync(args):
             api_key=api_key,
         )
         fresh_token = installed.get("member_token") or ""
+        fresh_agent_token = installed.get("agent_token") or ""
         if fresh_token:
             cfg["member_token"] = fresh_token
+        if fresh_agent_token:
+            cfg["agent_token"] = fresh_agent_token
+        if fresh_token or fresh_agent_token:
             _save_guard_config(cfg)
         else:
-            print(f"  {YELLOW}Warning: server returned no member token — proxy env may be stale{RESET}")
+            print(f"  {YELLOW}Warning: server returned no token — proxy env may be stale{RESET}")
     except Exception as e:
         fresh_token = ""
         print(f"  {YELLOW}Warning: could not refresh member token ({e}) — using cached value{RESET}")
