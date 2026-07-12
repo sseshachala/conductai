@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useSearchParams } from "next/navigation"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -15,6 +15,7 @@ export default function CliAuthPage() {
   const params = useSearchParams()
   const [state, setState] = useState<State>("loading")
   const [error, setError] = useState("")
+  const exchanged = useRef(false)
 
   useEffect(() => {
     if (!isLoaded) return
@@ -27,6 +28,10 @@ export default function CliAuthPage() {
 
     // Wait until workspace is resolved
     if (!activeWorkspace) return
+
+    // Prevent double-fire (React Strict Mode / getToken ref change)
+    if (exchanged.current) return
+    exchanged.current = true
 
     const port        = params.get("port")
     const qstate      = params.get("state")
