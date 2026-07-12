@@ -276,6 +276,22 @@ def list_projects(
 
     # Auto-register new users — create a default workspace + membership
     if not rows:
+        # Don't auto-create if the user was just added via invite resolution
+        rows = db.execute(text("""
+            SELECT DISTINCT w.id, w.name, w.owner_id, w.is_approved, w.created_at,
+                   COUNT(wf.id) AS workflow_count
+            FROM workspaces w
+            LEFT JOIN workflows wf ON wf.workspace_id = w.id
+            WHERE w.id IN (
+                SELECT workspace_id FROM workspace_users WHERE clerk_user_id = :uid
+                UNION
+                SELECT id FROM workspaces WHERE owner_id = :uid
+            )
+            GROUP BY w.id
+            ORDER BY w.created_at DESC
+        """), {"uid": user_id}).fetchall()
+
+    if not rows:
         project_id = uuid.uuid4()
         invite_code = uuid.uuid4().hex[:16]
         now = datetime.now(timezone.utc)
