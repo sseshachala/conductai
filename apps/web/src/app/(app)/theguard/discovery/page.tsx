@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useGuardRole } from "@/hooks/useGuardRole"
 
 interface DiscoveredAgent {
   id: string
@@ -161,6 +162,8 @@ function GuardBadge({ under, lastSeen }: { under: boolean; lastSeen: string }) {
 export default function DiscoveryPage() {
   const { getToken } = useAuth()
   const { activeWorkspace } = useWorkspace()
+  const { permissions, loading: roleLoading } = useGuardRole()
+  const canRegister = !roleLoading && permissions.canEditPolicies
   const workspaceId = activeWorkspace?.id ?? null
   const [summary, setSummary] = useState<Summary | null>(null)
   const [agents, setAgents]   = useState<DiscoveredAgent[]>([])
@@ -288,7 +291,7 @@ export default function DiscoveryPage() {
                         <span className="text-xs text-stone-400 italic">Run <code className="bg-stone-100 px-1 rounded">conduct guard sync</code></span>
                       )
                       return (
-                        <button onClick={() => setModalAgent(a)} className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+                        <button onClick={() => setModalAgent(a)} disabled={!canRegister} className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                           Bring under Guard
                         </button>
                       )

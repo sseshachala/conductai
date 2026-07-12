@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useGuardRole } from "@/hooks/useGuardRole"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
@@ -40,6 +42,11 @@ function ComplianceContent() {
   const { getToken } = useAuth()
   const { activeWorkspace } = useWorkspace()
   const wsId = activeWorkspace?.id ?? null
+  const router = useRouter()
+  const { permissions, loading: roleLoading } = useGuardRole()
+  useEffect(() => {
+    if (!roleLoading && !permissions.canEditPolicies) router.replace("/theguard")
+  }, [roleLoading, permissions.canEditPolicies, router])
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
   const [evidence, setEvidence] = useState<Evidence | null>(null)
