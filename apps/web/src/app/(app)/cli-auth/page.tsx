@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useSearchParams } from "next/navigation"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 
 const DEFAULT_API = process.env.NEXT_PUBLIC_API_URL ?? "https://api.conductai.ai"
 
@@ -10,6 +11,7 @@ type State = "loading" | "success" | "error"
 
 export default function CliAuthPage() {
   const { getToken, isLoaded, isSignedIn } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   const params = useSearchParams()
   const [state, setState] = useState<State>("loading")
   const [error, setError] = useState("")
@@ -18,14 +20,16 @@ export default function CliAuthPage() {
     if (!isLoaded) return
 
     if (!isSignedIn) {
-      // Redirect to sign-in, come back after
       const here = window.location.href
       window.location.href = `/sign-in?redirect_url=${encodeURIComponent(here)}`
       return
     }
 
-    const port     = params.get("port")
-    const qstate   = params.get("state")
+    // Wait until workspace is resolved
+    if (!activeWorkspace) return
+
+    const port        = params.get("port")
+    const qstate      = params.get("state")
     const apiOverride = params.get("api")
 
     if (!port || !qstate) {
@@ -34,14 +38,15 @@ export default function CliAuthPage() {
       return
     }
 
-    const apiUrl = (apiOverride ?? DEFAULT_API).replace(/\/$/, "")
+    const apiUrl      = (apiOverride ?? DEFAULT_API).replace(/\/$/, "")
+    const workspaceId = activeWorkspace.id
 
     async function exchange() {
       try {
         const clerkToken = await getToken()
         if (!clerkToken) throw new Error("No Clerk session token")
 
-        const res = await fetch(`${apiUrl}/auth/cli-token`, {
+        const res = await fetch(`${apiUrl}/auth/cli-token?workspace_id=${workspaceId}`, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${clerkToken}`,
@@ -72,7 +77,7 @@ export default function CliAuthPage() {
     }
 
     exchange()
-  }, [isLoaded, isSignedIn, getToken, params])
+  }, [isLoaded, isSignedIn, getToken, params, activeWorkspace])
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: "16px", fontFamily: "sans-serif" }}>
