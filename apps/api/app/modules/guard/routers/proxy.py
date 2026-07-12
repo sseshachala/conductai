@@ -63,7 +63,8 @@ VENDOR_DEFAULTS = {
     "perplexity": "https://api.perplexity.ai",
 }
 
-MEMBER_TOKEN_PREFIX = "guard-mt-"
+MEMBER_TOKEN_PREFIX = "guard-mt-"   # legacy — kept for transition
+AGENT_TOKEN_PREFIX  = "cond_agt_"  # new unified Agent ID token
 
 
 def _workspace_proxy_url(db: Session, workspace_id: str) -> str:
@@ -407,19 +408,53 @@ async def _proxy(
 # ─── Helpers ───────────────────────────────────────────────────────────────
 
 def _extract_member_token(raw: str, *, bearer: bool) -> str | None:
+    """Extract guard-mt- or cond_agt_ token from header value."""
     if not raw:
         return None
     if bearer:
         if not raw.lower().startswith("bearer "):
             return None
         raw = raw[7:].strip()
-    if not raw.startswith(MEMBER_TOKEN_PREFIX):
-        return None
-    return raw
+    if raw.startswith(MEMBER_TOKEN_PREFIX) or raw.startswith(AGENT_TOKEN_PREFIX):
+        return raw
+    return None
 
 
 def _resolve_member(db: Session, token: str) -> tuple[str, str] | None:
-    """member_token → (workspace_id, clerk_user_id). Strips the guard-mt- prefix."""
+    """Resolve token → (workspace_id, clerk_user_id).
+
+    Accepts both legacy guard-mt-* and new cond_agt_* Agent ID tokens.
+    """
+    if token.startswith(AGENT_TOKEN_PREFIX):
+        # New path — look up via agent_identities + guard_member_config FK
+        from app.core.crypto import decrypt as _decrypt
+        from app.modules.agent_identity.models import AgentIdentity
+        rows = db.query(AgentIdentity).filter(
+            AgentIdentity.token_prefix == token[:len(AGENT_TOKEN_PREFIX) + 4]
+        ).all()
+        for ai_row in rows:
+            try:
+                plain = _decrypt(ai_row.token_encrypted).get("token", "")
+                if plain == token:
+                    # Resolve workspace + user via guard_member_config FK
+                    member = db.execute(
+                        text("""
+                            SELECT workspace_id::text, clerk_user_id
+                            FROM guard_member_config
+                            WHERE agent_identity_id = :aid AND active = true
+                            LIMIT 1
+                        """),
+                        {"aid": ai_row.id},
+                    ).fetchone()
+                    if member:
+                        return (member[0], member[1])
+                    # Fallback: use workspace_id from agent_identities directly
+                    return (str(ai_row.workspace_id), "agent")
+            except Exception:
+                continue
+        return None
+
+    # Legacy path — guard-mt-* member token
     bare = token[len(MEMBER_TOKEN_PREFIX):] if token.startswith(MEMBER_TOKEN_PREFIX) else token
     row = db.execute(
         text("""

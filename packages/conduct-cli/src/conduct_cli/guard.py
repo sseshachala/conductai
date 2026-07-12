@@ -380,7 +380,7 @@ _MCP_TARGETS = [
 ]
 
 
-def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
+def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
     """Write conductguard + agent-booster MCP entries into every AI tool config found.
 
     Credentials are NOT stored in the MCP config — the server reads them from
@@ -420,13 +420,13 @@ def _register_mcp(workspace_id: str, member_token: str, api_url: str) -> None:
 
     # Claude Desktop doesn't source shell env — patch apiBaseUrl directly in config
     # so all LLM calls route through the Guard proxy (PII blocking, spend limits, audit).
-    _patch_claude_desktop_proxy(api_url, member_token)
+    _patch_claude_desktop_proxy(api_url, agent_token)
 
     # Cursor global rules — write Guard policies as user rules so they apply across all projects.
     _patch_cursor_global_rules()
 
 
-def _patch_claude_desktop_proxy(api_url: str, member_token: str) -> None:
+def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
     """Patch Claude Desktop config to route LLM calls through the Guard proxy.
 
     Claude Desktop reads apiBaseUrl from its config JSON — it does not source
@@ -737,7 +737,6 @@ def cmd_guard_install(args):
         print(f"  {GRAY}Guard not installed for this workspace — skipping{RESET}")
         return
 
-    member_token   = result.get("member_token") or ""
     agent_token    = result.get("agent_token") or ""
     user_email     = result.get("user_email") or ""
     clerk_user_id  = result.get("clerk_user_id") or ""
@@ -749,7 +748,6 @@ def cmd_guard_install(args):
     import time as _time
     _save_guard_config({
         "workspace_id":          workspace_id,
-        "member_token":          member_token,
         "agent_token":           agent_token,
         "user_email":            user_email,
         "clerk_user_id":         clerk_user_id,
@@ -787,7 +785,7 @@ def cmd_guard_install(args):
     _install_codex_hook(hook_path)
 
     # Register MCP in all found AI tools — Cursor/Windsurf (advisory)
-    _register_mcp(workspace_id, member_token or "", server)
+    _register_mcp(workspace_id, agent_token or "", server)
 
     # Install session persistence hooks (PreCompact + SessionStart)
     try:
@@ -867,7 +865,7 @@ def cmd_guard_join(args):
     result = _req("POST", f"{base_url}/guard/join", body=payload)
 
     workspace_id = result["workspace_id"]
-    member_token = result.get("member_token", "")
+    agent_token_install = result.get("agent_token", "")
     policy       = result.get("policy", {"workspace_id": workspace_id, "version": "1", "rules": []})
 
     # Download and persist policy
@@ -883,8 +881,8 @@ def cmd_guard_join(args):
         "api_url":        base_url,
         "last_synced_at": _time.time(),
     }
-    if member_token:
-        cfg["member_token"] = member_token
+    if agent_token_install:
+        cfg["agent_token"] = agent_token_install
     _save_guard_config(cfg)
 
     # Write hook script
@@ -1002,7 +1000,7 @@ def _report_tools_to_server() -> None:
         cfg = _load_guard_config()
         base_url = _api_url(cfg)
         email = cfg.get("user_email", "")
-        token = cfg.get("member_token", "")
+        token = cfg.get("agent_token", "")
         api_key = cfg.get("api_key", "")
 
         if not email:
@@ -1173,19 +1171,14 @@ def cmd_guard_sync(args):
             f"{base_url}/guard/config/installed?workspace_id={workspace_id}",
             api_key=api_key,
         )
-        fresh_token = installed.get("member_token") or ""
         fresh_agent_token = installed.get("agent_token") or ""
-        if fresh_token:
-            cfg["member_token"] = fresh_token
         if fresh_agent_token:
             cfg["agent_token"] = fresh_agent_token
-        if fresh_token or fresh_agent_token:
             _save_guard_config(cfg)
         else:
             print(f"  {YELLOW}Warning: server returned no token — proxy env may be stale{RESET}")
     except Exception as e:
-        fresh_token = ""
-        print(f"  {YELLOW}Warning: could not refresh member token ({e}) — using cached value{RESET}")
+        print(f"  {YELLOW}Warning: could not refresh token ({e}) — using cached value{RESET}")
 
     # Write LLM proxy env vars so any AI tool (Claude Code, Cursor, Codex, …)
     # routes through Conduct Guard. Customer-overridable via --proxy-url or
@@ -1195,7 +1188,7 @@ def cmd_guard_sync(args):
         try:
             import urllib.request as _ur, urllib.error as _ue
             _headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
-            _token = cfg.get("member_token", "")
+            _token = cfg.get("agent_token", "")
             if _token:
                 _headers["Authorization"] = f"Bearer {_token}"
             _r = _ur.Request(f"{base_url}/guard/proxy-config", headers=_headers)
@@ -1203,9 +1196,9 @@ def cmd_guard_sync(args):
                 proxy_url = json.loads(_resp.read()).get("conduct_proxy_url") or DEFAULT_PROXY_URL
         except Exception:
             proxy_url = DEFAULT_PROXY_URL
-    member_token = cfg.get("member_token", "")
-    rc_path, newly_sourced = _write_proxy_env(member_token, proxy_url)
-    if member_token:
+    agent_token = cfg.get("agent_token", "")
+    rc_path, newly_sourced = _write_proxy_env(agent_token, proxy_url)
+    if agent_token:
         print(f"  {GREEN}Proxy env written:{RESET} ~/.conduct/env → {proxy_url}")
         if newly_sourced:
             print(f"  {CYAN}Run `source {rc_path}` (or open a new shell) to activate.{RESET}")
@@ -1234,7 +1227,7 @@ def cmd_guard_sync(args):
     _install_claude_hook(hook_path)
     _install_codex_hook(hook_path)
     cfg2 = _load_guard_config()
-    _register_mcp(workspace_id, cfg2.get("member_token", ""), base_url)
+    _register_mcp(workspace_id, cfg2.get("agent_token", ""), base_url)
     try:
         _install_session_hooks()
     except Exception:
@@ -1268,13 +1261,13 @@ def cmd_guard_sync(args):
     print(f"\n{BOLD}Policy refreshed ({rule_count} rule(s)).{RESET}")
 
     # Print Claude.ai remote MCP URL — requires one-time browser paste
-    member_token = cfg.get("member_token", "")
-    if workspace_id and member_token:
+    agent_token = cfg.get("agent_token", "")
+    if workspace_id and agent_token:
         mcp_url = "https://api.conductai.ai/guard/mcp"
         print(f"\n{BOLD}Claude.ai{RESET} (one-time browser setup):")
         print(f"  Settings → MCP Servers → Add custom server")
         print(f"  URL:    {CYAN}{mcp_url}{RESET}")
-        print(f"  Auth:   {CYAN}Bearer {member_token}{RESET}\n")
+        print(f"  Auth:   {CYAN}Bearer {agent_token}{RESET}\n")
 
 
 CONDUCT_DIR        = Path.home() / ".conduct"
@@ -1363,13 +1356,13 @@ def _post_local_findings(cfg: dict, base_url: str, findings: list[dict]) -> None
                 "findings":   findings,
             },
             api_key=cfg.get("api_key", ""),
-            token=cfg.get("member_token", ""),
+            token=cfg.get("agent_token", ""),
         )
     except Exception as e:
         print(f"  {YELLOW}Audit upload skipped: {e}{RESET}")
 
 
-def _write_proxy_env(member_token: str, proxy_url: str) -> tuple[Path, bool]:
+def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
     """Write ~/.conduct/env with the 3 provider env-var pairs and ensure the
     user's shell rc sources it.
 
@@ -1378,12 +1371,12 @@ def _write_proxy_env(member_token: str, proxy_url: str) -> tuple[Path, bool]:
     User-managed customizations go in ~/.conduct/env-override which is sourced
     after the managed file.
     """
-    if not member_token:
-        print(f"  {YELLOW}Proxy env skipped — no member token in config{RESET}")
+    if not agent_token:
+        print(f"  {YELLOW}Proxy env skipped — no agent token in config{RESET}")
         return Path(), False
 
     CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
-    token = f"guard-mt-{member_token}"
+    token = agent_token  # cond_agt_* used directly as the API key value
     proxy = proxy_url.rstrip("/")
 
     PROXY_ENV_FILE.write_text("\n".join([
@@ -1628,10 +1621,10 @@ def _report_savings(cfg: dict, base_url: str, api_key: str) -> None:
     }
 
     try:
-        member_token = cfg.get("member_token", "")
+        agent_token_evt = cfg.get("agent_token", "")
         headers = {"Content-Type": "application/json"}
-        if member_token:
-            headers["Authorization"] = f"Bearer {member_token}"
+        if agent_token_evt:
+            headers["Authorization"] = f"Bearer {agent_token_evt}"
         elif api_key:
             headers["X-Api-Key"] = api_key
         data = json.dumps(payload).encode()
@@ -2144,7 +2137,7 @@ def _watch_loop():
         try:
             c       = _cfg()
             api_url = _api_url(c)
-            token   = c.get("member_token", "")
+            token   = c.get("agent_token", "")
             api_key = c.get("api_key", "")
             agents = []
             for name, config_path, mcp_key in _discover_config_agents():
@@ -2320,7 +2313,7 @@ def cmd_guard_discover(args):
 
     cfg      = _load_guard_config()
     api_url  = _api_url(cfg)
-    token    = cfg.get("member_token", "")
+    token    = cfg.get("agent_token", "")
     api_key  = cfg.get("api_key", "")
     hdrs     = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
