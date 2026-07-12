@@ -185,17 +185,20 @@ def get_install_status(
         {"ws": workspace_id, "uid": user_id},
     ).fetchone()
 
-    # Resolve agent_token — decrypt existing FK, or lazy-mint if missing/decrypt fails
+    # Resolve agent_token — decrypt existing FK, re-mint if missing/expired/decrypt fails
     agent_token: str | None = None
     if token_row and token_row.agent_identity_id:
         from app.modules.agent_identity.models import AgentIdentity
         from app.core.crypto import decrypt as _decrypt
+        from datetime import datetime, timezone as _tz
         ai_row = db.query(AgentIdentity).filter(AgentIdentity.id == token_row.agent_identity_id).first()
         if ai_row and ai_row.token_encrypted:
-            try:
-                agent_token = _decrypt(ai_row.token_encrypted).get("token")
-            except Exception:
-                pass
+            expired = ai_row.expires_at and ai_row.expires_at < datetime.now(_tz.utc)
+            if not expired:
+                try:
+                    agent_token = _decrypt(ai_row.token_encrypted).get("token")
+                except Exception:
+                    pass
 
     if not agent_token:
         from app.modules.agent_identity.router import mint_agent_identity
