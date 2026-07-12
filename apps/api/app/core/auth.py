@@ -495,7 +495,10 @@ def get_guard_hook_auth(
         from app.modules.agent_identity.models import AgentIdentity
         from datetime import datetime, timezone
         from app.core.crypto import decrypt
-        for ai in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == token[:13]).all():
+        prefix = token[:13]
+        candidates = db.query(AgentIdentity).filter(AgentIdentity.token_prefix == prefix).all()
+        log.info("guard_hook_auth.cond_agt_lookup", prefix=prefix, candidates=len(candidates))
+        for ai in candidates:
             try:
                 if decrypt(ai.token_encrypted).get("token") == token:
                     if ai.expires_at and ai.expires_at < datetime.now(timezone.utc):
@@ -503,7 +506,8 @@ def get_guard_hook_auth(
                     return str(ai.workspace_id)
             except HTTPException:
                 raise
-            except Exception:
+            except Exception as _e:
+                log.warning("guard_hook_auth.decrypt_failed", ai_id=ai.id, error=str(_e))
                 continue
         raise HTTPException(status_code=401, detail="Invalid agent token")
 
