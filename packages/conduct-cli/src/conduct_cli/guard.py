@@ -343,10 +343,10 @@ def _require_guard_config() -> dict:
     cfg = _load_guard_config()
     ws = cfg.get("workspace_id") or cfg.get("workspace")
     if not cfg or not ws:
-        print(f"{RED}Guard not connected. Run: conduct login --api-key <key>{RESET}", file=sys.stderr)
+        print(f"{RED}Guard not connected. Run: conduct login{RESET}", file=sys.stderr)
         sys.exit(0)
-    if not cfg.get("api_key"):
-        print(f"{RED}Guard config is missing API key. Re-run: conduct login --api-key <key>{RESET}", file=sys.stderr)
+    if not cfg.get("agent_token") and not cfg.get("api_key"):
+        print(f"{RED}Guard config is missing credentials. Run: conduct login{RESET}", file=sys.stderr)
         sys.exit(0)
     return cfg
 
@@ -1157,7 +1157,10 @@ def cmd_guard_sync(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
     api_key      = cfg.get("api_key", "")
+    agent_token  = cfg.get("agent_token", "")
     base_url     = _api_url(cfg)
+    # Use agent_token as Bearer when api_key is absent
+    _token       = agent_token if not api_key else None
 
     # Persona selection — prompt once, skip if already chosen
 
@@ -1170,6 +1173,7 @@ def cmd_guard_sync(args):
             "GET",
             f"{base_url}/guard/policies/sync?workspace_id={workspace_id}",
             api_key=api_key,
+            token=_token,
         )
     except Exception as e:
         print(f"Guard sync skipped: {e}", file=sys.stderr)
@@ -1221,6 +1225,7 @@ def cmd_guard_sync(args):
             "GET",
             f"{base_url}/guard/config/installed?workspace_id={workspace_id}",
             api_key=api_key,
+            token=_token,
         )
         fresh_agent_token = installed.get("agent_token") or ""
         if fresh_agent_token:
