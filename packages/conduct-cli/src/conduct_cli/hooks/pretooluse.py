@@ -110,7 +110,7 @@ def _post_signature_invalid_event(expected_sig, computed_sig, policy_version, ho
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
         return
-    workspace_id = cfg.get("workspace_id")
+    workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
     if not workspace_id:
         return
     import platform as _platform
@@ -155,7 +155,7 @@ def _maybe_sync_policy() -> None:
     """Sync policy from daemon (instant) or remote API (once per minute). Never raises."""
     try:
         cfg = load_config()
-        workspace_id = cfg.get("workspace_id")
+        workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
         api_key      = cfg.get("api_key", "")
         api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
         if not workspace_id:
@@ -249,11 +249,11 @@ def _fetch_budget_status():
         cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except Exception:
         return False, None
-    workspace_id  = cfg.get("workspace_id")
+    workspace_id  = cfg.get("workspace_id") or cfg.get("workspace")
     clerk_user_id = cfg.get("clerk_user_id") or ""
     api_url       = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     if not workspace_id:
-        return False, None
+        return False, "unconfigured"
     url = f"{api_url}/guard/spend/budget-check?workspace_id={workspace_id}"
     if clerk_user_id:
         url += f"&clerk_user_id={clerk_user_id}"
