@@ -3126,6 +3126,9 @@ def main():
     switch_p.add_argument("workspace", nargs="?", metavar="name_or_id",
                           help="Workspace name or UUID prefix to switch to (omit to list)")
 
+    # conduct token show
+    sub.add_parser("token", help="Show your agent token (masked by default)")
+
     # conduct whoami
     sub.add_parser("whoami", help="Show current workspace, server, API key, and Guard/Booster status")
 
@@ -3229,6 +3232,16 @@ def main():
         cmd_run(args)
     elif args.command == "switch":
         cmd_switch(args)
+    elif args.command == "token":
+        cfg = _load_config()
+        token = cfg.get("agent_token", "")
+        if not token:
+            print(f"{RED}No agent token found. Run: conduct login{RESET}")
+            sys.exit(1)
+        print(f"\n{BOLD}Agent token{RESET} (paste as Bearer value in MCP server auth):\n")
+        print(f"  {CYAN}Bearer {token}{RESET}\n")
+        print(f"{GRAY}Token expires: {cfg.get('token_expires_at', 'unknown')}{RESET}")
+        print(f"{GRAY}Workspace:     {cfg.get('workspace_id', '')}{RESET}\n")
     elif args.command == "whoami":
         cmd_whoami(args)
     elif args.command == "sessions":
