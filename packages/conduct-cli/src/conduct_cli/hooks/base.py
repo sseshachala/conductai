@@ -94,8 +94,11 @@ def detect_ai_tool() -> str:
         return "cursor"
     if term == "windsurf":
         return "windsurf"
-    # ── PATH heuristics ───────────────────────────────────────────────────────
+    # ── PATH heuristics — claude-code first so Codex.app in PATH doesn't win ──
     path = os.environ.get("PATH", "")
+    exe = os.environ.get("_", "")  # current executable path
+    if ".claude" in path or "claude-code" in path.lower() or "claude-code" in exe.lower():
+        return "claude-code"
     if "Codex.app" in path:
         return "codex-desktop"
     if "codex" in path.lower():
