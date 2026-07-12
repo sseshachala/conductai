@@ -341,7 +341,7 @@ def _save_guard_config(data: dict, workspace_id: str | None = None):
 
 def _require_guard_config() -> dict:
     cfg = _load_guard_config()
-    ws = cfg.get("workspace_id")
+    ws = cfg.get("workspace_id") or cfg.get("workspace")
     if not cfg or not ws:
         print(f"{RED}Guard not connected. Run: conduct login --api-key <key>{RESET}", file=sys.stderr)
         sys.exit(0)
@@ -1156,7 +1156,7 @@ def _check_and_upgrade_packages() -> None:
 
 def cmd_guard_sync(args):
     cfg          = _require_guard_config()
-    workspace_id = cfg.get("workspace_id")
+    workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
     api_key      = cfg.get("api_key", "")
     base_url     = _api_url(cfg)
 
