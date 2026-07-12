@@ -742,7 +742,6 @@ def cmd_guard_install(args):
     clerk_user_id  = result.get("clerk_user_id") or ""
 
     # Persona selection — prompt once, skip if already chosen
-    _ensure_persona(workspace_id, api_key, server)
 
     # Persist unified config — single ~/.conduct/config.json
     import time as _time
@@ -1161,7 +1160,6 @@ def cmd_guard_sync(args):
     base_url     = _api_url(cfg)
 
     # Persona selection — prompt once, skip if already chosen
-    _ensure_persona(workspace_id, api_key, base_url)
 
     dry_run = getattr(args, "dry_run", False)
     print(f"{'[dry-run] ' if dry_run else ''}Syncing policy…")
