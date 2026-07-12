@@ -97,6 +97,10 @@ def _load_config() -> dict:
 def _save_config(data: dict):
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(data, indent=2))
+    try:
+        import os as _os; _os.chmod(CONFIG_PATH, 0o600)
+    except Exception:
+        pass
 
 
 def _resolve(args, key: str, config_key=None):
@@ -1248,6 +1252,10 @@ def _atomic_write(path: Path, data: dict) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2))
     os.replace(tmp, path)
+    try:
+        os.chmod(path, 0o600)
+    except Exception:
+        pass
 
 
 def cmd_switch(args):
