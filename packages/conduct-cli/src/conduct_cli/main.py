@@ -1365,9 +1365,9 @@ def cmd_whoami(args):
     print(f"{BOLD}Server:{RESET}     {server}")
     print(f"{BOLD}API key:{RESET}    {api_key_display}")
 
-    # Guard section — config from ~/.conduct/config.json, policy/hook at ~/.conductguard/
-    policy_path = Path.home() / ".conductguard" / "policy.json"
-    hook_path   = Path.home() / ".conductguard" / "hook.py"
+    # Guard section — all under ~/.conduct/
+    policy_path = Path.home() / ".conduct" / "policy.json"
+    hook_path   = Path.home() / ".conduct" / "hook.py"
     guard_email = cfg.get("user_email", "")
     agent_token = cfg.get("agent_token", "")
     if agent_token or hook_path.exists():
@@ -2818,7 +2818,7 @@ def cmd_memory(args):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 _GUARD_CONFIG = Path.home() / ".conduct" / "config.json"
-_GUARD_SKIP   = Path.home() / ".conductguard" / ".setup_skip"
+_GUARD_SKIP   = Path.home() / ".conduct" / ".setup_skip"
 
 GREEN  = "\033[32m"
 YELLOW = "\033[33m"

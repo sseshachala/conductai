@@ -21,7 +21,7 @@ CYAN   = "\033[36m"
 YELLOW = "\033[33m"
 
 CONDUCT_HOME = Path.home() / ".conduct"
-GUARD_DIR    = Path.home() / ".conductguard"   # legacy — kept for policy.json + hooks
+GUARD_DIR    = CONDUCT_HOME
 CONFIG_PATH  = CONDUCT_HOME / "config.json"    # unified config — shared with main.py
 POLICY_PATH  = GUARD_DIR / "policy.json"
 
@@ -384,7 +384,7 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
     """Write conductguard + agent-booster MCP entries into every AI tool config found.
 
     Credentials are NOT stored in the MCP config — the server reads them from
-    ~/.conductguard/config.json at startup, which is written by guard sync.
+    ~/.conduct/config.json at startup, which is written by guard sync.
     """
     import shutil
     servers: dict[str, dict] = {
@@ -825,7 +825,7 @@ def cmd_guard_install(args):
 
 
 def _write_signing_key(hex_key: str) -> None:
-    """Write a hex-encoded signing key to ~/.conductguard/signing.key.
+    """Write a hex-encoded signing key to ~/.conduct/signing.key.
 
     Validates that the path resolves within GUARD_DIR (no traversal) and
     that the value is a valid 64-char hex string (32 bytes).
@@ -2008,7 +2008,7 @@ def register_guard_parser(sub):
         default=None,
         metavar="HEX",
         help="Hex-encoded 32-byte signing key from POST /workspaces/{id}/signing-key. "
-             "Written to ~/.conductguard/signing.key.",
+             "Written to ~/.conduct/signing.key.",
     )
 
     # conduct guard booster-status
@@ -2041,7 +2041,7 @@ def register_guard_parser(sub):
     # conduct guard lint [--file PATH]
     lint_p = guard_sub.add_parser("lint", help="Validate local policy — show errors and warnings")
     lint_p.add_argument("--file", default=None, metavar="FILE",
-                        help="Path to policy YAML/JSON (default: ~/.conductguard/policy.json)")
+                        help="Path to policy YAML/JSON (default: ~/.conduct/policy.json)")
 
     return guard_p, guard_sub
 
@@ -2177,8 +2177,8 @@ def _scan_processes() -> list[dict]:
     return found
 
 
-_WATCH_PID  = Path.home() / ".conductguard" / "watch.pid"
-_WATCH_LOG  = Path.home() / ".conductguard" / "watch.log"
+_WATCH_PID  = Path.home() / ".conduct" / "watch.pid"
+_WATCH_LOG  = Path.home() / ".conduct" / "watch.log"
 _WATCH_INTERVAL = 15 * 60  # seconds
 
 
