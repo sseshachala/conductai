@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 CONDUCT_CONFIG_PATH = Path.home() / ".conduct" / "config.json"
-GUARD_DIR           = Path.home() / ".conductguard"
+GUARD_DIR           = Path.home() / ".conduct"
 GUARD_POLICY_PATH   = GUARD_DIR / "policy.json"
 GUARD_CONFIG_PATH   = GUARD_DIR / "config.json"
 
