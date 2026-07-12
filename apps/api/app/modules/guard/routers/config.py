@@ -201,6 +201,7 @@ def get_install_status(
         from app.modules.agent_identity.router import mint_agent_identity
         try:
             identity_row, agent_token = mint_agent_identity(db, workspace_id, f"{user_id} (auto)")
+            db.flush()  # persist agent_identity row before FK reference
             if token_row:
                 db.execute(
                     text("UPDATE guard_member_config SET agent_identity_id = :aid WHERE workspace_id = :ws AND clerk_user_id = :uid"),
