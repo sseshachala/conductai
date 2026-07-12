@@ -787,6 +787,10 @@ def cmd_guard_install(args):
     # Register MCP in all found AI tools — Cursor/Windsurf (advisory)
     _register_mcp(workspace_id, agent_token or "", server)
 
+    _cd = next((t for t in _detect_ai_tools() if t["name"] == "claude-desktop" and not t.get("proxy_routed")), None)
+    if _cd:
+        _patch_claude_desktop_proxy(server, agent_token or "")
+
     # Install session persistence hooks (PreCompact + SessionStart)
     try:
         _install_session_hooks()
@@ -900,18 +904,19 @@ def cmd_guard_join(args):
     )
 
 
-def _report_tools_to_server() -> None:
-    """Detect AI coding tools on this machine and POST coverage to Guard API. Silent on failure."""
-    home = Path.home()
+def _is_anthropic_proxied() -> bool:
+    url = os.environ.get("ANTHROPIC_BASE_URL", "")
+    return "conductai.ai" in url or "conduct" in url.lower()
 
-    def _check_json_key(path: Path, *keys) -> bool:
-        try:
-            d = json.loads(path.read_text()) if path.exists() else {}
-            for k in keys:
-                d = d.get(k, {}) if isinstance(d, dict) else {}
-            return bool(d) and isinstance(d, dict) and len(d) > 0
-        except Exception:
-            return False
+
+def _is_openai_proxied() -> bool:
+    url = os.environ.get("OPENAI_BASE_URL", "")
+    return "conductai.ai" in url or "conduct" in url.lower()
+
+
+def _detect_ai_tools() -> list[dict]:
+    """Return list of detected AI coding tools with mcp_registered, hook_registered, proxy_routed."""
+    home = Path.home()
 
     def _check_json_mcp(path: Path) -> bool:
         try:
@@ -935,6 +940,20 @@ def _report_tools_to_server() -> None:
         except Exception:
             return False
 
+    def _claude_desktop_proxied() -> bool:
+        candidates = [
+            home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json",
+            home / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json",
+        ]
+        for p in candidates:
+            if p.exists():
+                try:
+                    url = json.loads(p.read_text()).get("apiBaseUrl", "")
+                    return "conductai.ai" in url or "conduct" in url.lower()
+                except Exception:
+                    pass
+        return False
+
     tools = []
 
     claude_dir = home / ".claude"
@@ -944,16 +963,27 @@ def _report_tools_to_server() -> None:
             "name": "claude-code",
             "mcp_registered": _check_json_mcp(settings),
             "hook_registered": _check_json_hook(settings),
+            "proxy_routed": _is_anthropic_proxied(),
         })
 
     codex_dir = home / ".codex"
     if codex_dir.exists():
         config = codex_dir / "config.toml"
-        tools.append({
-            "name": "codex",
-            "mcp_registered": _check_toml_str(config, "conduct-mcp"),
-            "hook_registered": _check_toml_str(config, "conductguard"),
-        })
+        is_desktop = _check_toml_str(config, "[desktop]")
+        if is_desktop:
+            tools.append({
+                "name": "codex-desktop",
+                "mcp_registered": _check_toml_str(config, "conduct-mcp"),
+                "hook_registered": _check_toml_str(config, "conductguard"),
+                "proxy_routed": False,
+            })
+        else:
+            tools.append({
+                "name": "codex",
+                "mcp_registered": _check_toml_str(config, "conduct-mcp"),
+                "hook_registered": _check_toml_str(config, "conductguard"),
+                "proxy_routed": _is_openai_proxied(),
+            })
 
     cursor_dir = home / ".cursor"
     if cursor_dir.exists():
@@ -961,6 +991,7 @@ def _report_tools_to_server() -> None:
             "name": "cursor",
             "mcp_registered": _check_json_mcp(cursor_dir / "mcp.json"),
             "hook_registered": False,
+            "proxy_routed": _is_anthropic_proxied(),
         })
 
     windsurf_dir = home / ".codeium" / "windsurf"
@@ -969,6 +1000,19 @@ def _report_tools_to_server() -> None:
             "name": "windsurf",
             "mcp_registered": _check_json_mcp(windsurf_dir / "mcp_config.json"),
             "hook_registered": False,
+            "proxy_routed": _is_anthropic_proxied(),
+        })
+
+    claude_desktop_candidates = [
+        home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json",
+        home / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json",
+    ]
+    if any(p.exists() for p in claude_desktop_candidates):
+        tools.append({
+            "name": "claude-desktop",
+            "mcp_registered": False,
+            "hook_registered": False,
+            "proxy_routed": _claude_desktop_proxied(),
         })
 
     vscode_ext_dir = home / ".vscode" / "extensions"
@@ -991,7 +1035,15 @@ def _report_tools_to_server() -> None:
             "name": "vscode",
             "mcp_registered": mcp_reg,
             "hook_registered": False,
+            "proxy_routed": False,
         })
+
+    return tools
+
+
+def _report_tools_to_server() -> None:
+    """Detect AI coding tools on this machine and POST coverage to Guard API. Silent on failure."""
+    tools = _detect_ai_tools()
 
     if not tools:
         return
@@ -1202,6 +1254,21 @@ def cmd_guard_sync(args):
         print(f"  {GREEN}Proxy env written:{RESET} ~/.conduct/env → {proxy_url}")
         if newly_sourced:
             print(f"  {CYAN}Run `source {rc_path}` (or open a new shell) to activate.{RESET}")
+
+    _tools = _detect_ai_tools()
+    if _tools:
+        print(f"\n  {'Tool':<20} {'Proxy Routed':<16} {'MCP':<8} {'Hooks'}")
+        print(f"  {'─'*20} {'─'*16} {'─'*8} {'─'*8}")
+        for t in _tools:
+            routed = "✓ Routed" if t.get("proxy_routed") else ("— Partial" if t["name"] == "codex-desktop" else "✗ Not routed")
+            mcp  = "✓" if t.get("mcp_registered") else "✗"
+            hook = "✓" if t.get("hook_registered") else "—"
+            print(f"  {t['name']:<20} {routed:<16} {mcp:<8} {hook}")
+        print()
+
+    _cd = next((t for t in _tools if t["name"] == "claude-desktop" and not t.get("proxy_routed")), None)
+    if _cd:
+        _patch_claude_desktop_proxy(cfg.get("api_url", "https://api.conductai.ai"), agent_token)
 
     # Local key audit — scan known config files for real provider keys that
     # may have been pasted before the dev onboarded onto Conduct. Findings
@@ -2364,7 +2431,16 @@ def cmd_guard_discover(args):
 
     # POST to API
     try:
-        payload = {"triggered_by": "cli", "agents": all_agents}
+        agents_payload = list(all_agents)
+        for t in _detect_ai_tools():
+            agents_payload.append({
+                "name": t["name"],
+                "framework": t["name"],
+                "source": "ai-tool",
+                "under_guard": t.get("mcp_registered", False),
+                "proxy_routed": t.get("proxy_routed", False),
+            })
+        payload = {"triggered_by": "cli", "agents": agents_payload}
         _req("POST", f"{api_url}/guard/discover/scan", body=payload, token=token, api_key=api_key)
     except SystemExit:
         pass  # 401/network errors — local output still useful
