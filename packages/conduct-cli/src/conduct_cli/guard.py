@@ -789,6 +789,7 @@ def cmd_guard_install(args):
 
     _cd = next((t for t in _detect_ai_tools() if t["name"] == "claude-desktop" and not t.get("proxy_routed")), None)
     if _cd:
+        print(f"  {CYAN}Claude Desktop detected — patching apiBaseUrl to route through Guard proxy{RESET}")
         _patch_claude_desktop_proxy(server, agent_token or "")
 
     # Install session persistence hooks (PreCompact + SessionStart)
@@ -1268,6 +1269,7 @@ def cmd_guard_sync(args):
 
     _cd = next((t for t in _tools if t["name"] == "claude-desktop" and not t.get("proxy_routed")), None)
     if _cd:
+        print(f"  {CYAN}Claude Desktop detected — patching apiBaseUrl to route through Guard proxy{RESET}")
         _patch_claude_desktop_proxy(cfg.get("api_url", "https://api.conductai.ai"), agent_token)
 
     # Local key audit — scan known config files for real provider keys that
