@@ -1,0 +1,38 @@
+services:
+  dev1:
+    build: .
+    container_name: conduct-dev1
+    hostname: alice-macbook
+    volumes:
+      - dev1-conduct:/root/.conduct
+    environment:
+      - CONDUCT_API_URL=https://api.conductai.ai
+    stdin_open: true
+    tty: true
+
+  dev2:
+    build: .
+    container_name: conduct-dev2
+    hostname: bob-laptop
+    volumes:
+      - dev2-conduct:/root/.conduct
+    environment:
+      - CONDUCT_API_URL=https://api.conductai.ai
+    stdin_open: true
+    tty: true
+
+  dev3:
+    build: .
+    container_name: conduct-dev3
+    hostname: carol-workstation
+    volumes:
+      - dev3-conduct:/root/.conduct
+    environment:
+      - CONDUCT_API_URL=https://api.conductai.ai
+    stdin_open: true
+    tty: true
+
+volumes:
+  dev1-conduct:
+  dev2-conduct:
+  dev3-conduct:
