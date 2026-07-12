@@ -18,8 +18,8 @@ export const GUARD_TABS: TabDef[] = [
   { href: "/theguard/activity",        label: "Flight Recorder" },
   { href: "/theguard/discovery",       label: "Discovery"       },
   { href: "/theguard/compliance",       label: "Compliance",      roles: ["admin", "security"] },
-  { href: "/theguard/session-reports", label: "Session Reports", roles: ["admin"] },
-  { href: "/theguard/team-memory",     label: "Team Memory",     roles: ["admin"] },
+  { href: "/theguard/session-reports", label: "Session Reports" },
+  { href: "/theguard/team-memory",     label: "Team Memory"     },
   { href: "/theguard/settings",        label: "Settings",        roles: ["admin"] },
 ]
 
@@ -65,10 +65,7 @@ export function GuardShell({
   const [, setTick] = useState(0)
   const { role, loading: roleLoading } = useGuardRole()
 
-  // Show all tabs during load to avoid nav flash for admins
-  const visibleTabs = roleLoading
-    ? GUARD_TABS
-    : GUARD_TABS.filter(t => !t.roles || (role && t.roles.includes(role)))
+  const visibleTabs = GUARD_TABS.filter(t => !t.roles || (role && t.roles.includes(role)))
 
   // Re-render every 10 s so the relative timestamp stays fresh
   useEffect(() => {

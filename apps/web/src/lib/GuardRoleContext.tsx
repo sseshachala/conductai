@@ -56,9 +56,9 @@ interface GuardRoleState {
 }
 
 const GuardRoleContext = createContext<GuardRoleState>({
-  role: "admin",
-  permissions: ADMIN_PERMISSIONS,
-  loading: false,
+  role: null,
+  permissions: VIEWER_PERMISSIONS,
+  loading: true,
 })
 
 // Only mount this inside ClerkProvider (i.e. AppShellInnerWithAuth)
