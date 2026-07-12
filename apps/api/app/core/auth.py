@@ -190,6 +190,33 @@ def get_clerk_user_info(user_id: str) -> dict:
         return {"email": None, "name": None}
 
 
+def _resolve_agent_token(token: str, db: Session):
+    """Validate a cond_agt_* token and return (AgentIdentity, clerk_user_id).
+    Raises HTTPException on invalid/expired token or missing GMC link.
+    Shared by get_workspace_id, get_user_id, get_guard_hook_auth to avoid double-decrypt.
+    """
+    from app.modules.agent_identity.models import AgentIdentity
+    from app.core.crypto import decrypt
+    from sqlalchemy import text as _t
+    from datetime import datetime, timezone as _tz
+    for ai in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == token[:13]).all():
+        try:
+            if decrypt(ai.token_encrypted).get("token") == token:
+                if ai.expires_at and ai.expires_at < datetime.now(_tz.utc):
+                    raise HTTPException(status_code=401, detail="Agent token expired — run `conduct login`")
+                row = db.execute(
+                    _t("SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid LIMIT 1"),
+                    {"aid": ai.id},
+                ).fetchone()
+                clerk_user_id = row.clerk_user_id if row else None
+                return ai, clerk_user_id
+        except HTTPException:
+            raise
+        except Exception:
+            continue
+    raise HTTPException(status_code=401, detail="Invalid agent token")
+
+
 def get_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
     x_api_key: Annotated[str | None, Header()] = None,
@@ -221,27 +248,10 @@ def get_user_id(
 
     # cond_agt_* — look up clerk_user_id via guard_member_config FK
     if credentials.credentials.startswith("cond_agt_"):
-        from app.modules.agent_identity.models import AgentIdentity
-        from app.core.crypto import decrypt
-        from sqlalchemy import text as _text
-        from datetime import datetime, timezone as _tz
-        prefix = credentials.credentials[:13]
-        for ai in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == prefix).all():
-            try:
-                if decrypt(ai.token_encrypted).get("token") == credentials.credentials:
-                    if ai.expires_at and ai.expires_at < datetime.now(_tz.utc):
-                        raise HTTPException(status_code=401, detail="Agent token expired — run `conduct login`")
-                    # Resolve the Clerk user_id that owns this identity
-                    row = db.execute(
-                        _text("SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid LIMIT 1"),
-                        {"aid": ai.id},
-                    ).fetchone()
-                    return row.clerk_user_id if row else f"agent:{ai.id}"
-            except HTTPException:
-                raise
-            except Exception:
-                continue
-        raise HTTPException(status_code=401, detail="Invalid agent token")
+        _, clerk_user_id = _resolve_agent_token(credentials.credentials, db)
+        if not clerk_user_id:
+            raise HTTPException(status_code=401, detail="Agent token not linked to a user — re-run `conduct login`")
+        return clerk_user_id
 
     claims = _verify_clerk_token(credentials.credentials)
     if not claims:
@@ -325,24 +335,10 @@ def get_workspace_id(
 
     # agent_token (cond_agt_*) — look up in agent_identities
     if credentials.credentials.startswith("cond_agt_"):
-        from app.modules.agent_identity.models import AgentIdentity
-        from datetime import datetime, timezone as _tz2
-        from app.core.crypto import decrypt
-        matched = None
-        for ai in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == credentials.credentials[:13]).all():
-            try:
-                if decrypt(ai.token_encrypted).get("token") == credentials.credentials:
-                    matched = ai
-                    break
-            except Exception:
-                continue
-        if not matched:
-            raise HTTPException(status_code=401, detail="Invalid agent token")
-        if matched.expires_at and matched.expires_at < datetime.now(_tz2.utc):
-            raise HTTPException(status_code=401, detail="Agent token expired — run `conduct login`")
+        ai, _ = _resolve_agent_token(credentials.credentials, db)
         if explicit_ws:
             return explicit_ws
-        return str(matched.workspace_id)
+        return str(ai.workspace_id)
 
     claims = _verify_clerk_token(credentials.credentials)
     if not claims:
@@ -516,20 +512,8 @@ def get_guard_hook_auth(
 
     # cond_agt_* agent token
     if token.startswith("cond_agt_"):
-        from app.modules.agent_identity.models import AgentIdentity
-        from datetime import datetime, timezone
-        from app.core.crypto import decrypt
-        for ai in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == token[:13]).all():
-            try:
-                if decrypt(ai.token_encrypted).get("token") == token:
-                    if ai.expires_at and ai.expires_at < datetime.now(timezone.utc):
-                        raise HTTPException(status_code=401, detail="Agent token expired — run `conduct login`")
-                    return str(ai.workspace_id)
-            except HTTPException:
-                raise
-            except Exception:
-                continue
-        raise HTTPException(status_code=401, detail="Invalid agent token")
+        ai, _ = _resolve_agent_token(token, db)
+        return str(ai.workspace_id)
 
     # Clerk JWT
     claims = _verify_clerk_token(token)
