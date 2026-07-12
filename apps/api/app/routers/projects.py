@@ -682,7 +682,7 @@ def add_member(
         # Guard is org-level — check if any workspace in the org has Guard installed
         guard_row = db.execute(
             text("""
-                SELECT gc.id FROM guard_config gc
+                SELECT gc.workspace_id FROM guard_config gc
                 JOIN workspaces w ON w.id = gc.workspace_id
                 WHERE w.org_id = (SELECT org_id FROM workspaces WHERE id::text = :ws)
                    OR gc.workspace_id::text = :ws
