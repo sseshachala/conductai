@@ -100,6 +100,7 @@ class PolicyPatch(BaseModel):
 class PolicySyncRule(BaseModel):
     rule_id: str
     match_tool: Optional[str] = None
+    match_ai_tool: Optional[str] = None
     match_pattern: Optional[str] = None
     match_path_pattern: Optional[str] = None
     action: str
@@ -393,6 +394,7 @@ def sync_policies(
             PolicySyncRule(
                 rule_id=r["id"],
                 match_tool=r.get("match_tool"),
+                match_ai_tool=r.get("match_ai_tool"),
                 match_pattern=r.get("match_pattern"),
                 match_path_pattern=r.get("match_path_pattern"),
                 action=r["action"],
