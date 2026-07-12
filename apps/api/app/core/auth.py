@@ -219,6 +219,30 @@ def get_user_id(
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
 
+    # cond_agt_* — look up clerk_user_id via guard_member_config FK
+    if credentials.credentials.startswith("cond_agt_"):
+        from app.modules.agent_identity.models import AgentIdentity
+        from app.core.crypto import decrypt
+        from sqlalchemy import text as _text
+        from datetime import datetime, timezone as _tz
+        prefix = credentials.credentials[:13]
+        for ai in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == prefix).all():
+            try:
+                if decrypt(ai.token_encrypted).get("token") == credentials.credentials:
+                    if ai.expires_at and ai.expires_at < datetime.now(_tz.utc):
+                        raise HTTPException(status_code=401, detail="Agent token expired — run `conduct login`")
+                    # Resolve the Clerk user_id that owns this identity
+                    row = db.execute(
+                        _text("SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid LIMIT 1"),
+                        {"aid": ai.id},
+                    ).fetchone()
+                    return row.clerk_user_id if row else f"agent:{ai.id}"
+            except HTTPException:
+                raise
+            except Exception:
+                continue
+        raise HTTPException(status_code=401, detail="Invalid agent token")
+
     claims = _verify_clerk_token(credentials.credentials)
     if not claims:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
