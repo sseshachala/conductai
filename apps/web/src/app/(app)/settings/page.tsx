@@ -7,16 +7,14 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
 import PreferencesPanel from "@/components/settings/PreferencesPanel"
-import ApiKeysManager from "@/components/settings/ApiKeysManager"
 import ProxySettings from "@/components/settings/ProxySettings"
 
-type Tab = "credentials" | "members" | "preferences" | "api-keys" | "proxy"
+type Tab = "credentials" | "members" | "preferences" | "proxy"
 
 const TAB_LABELS: Record<Tab, string> = {
   credentials: "Environments",
   preferences: "Appearance",
   members: "Members & roles",
-  "api-keys": "API Keys",
   proxy: "Proxy",
 }
 
@@ -167,7 +165,7 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
 // ── Main settings page ────────────────────────────────────────────────────────
 
 function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolean; workspaceId: string; getToken: (() => Promise<string | null>) | null }) {
-  const tabs = (["credentials", "preferences", "api-keys", "proxy", ...(isAdmin ? ["members"] : [])] as Tab[])
+  const tabs = (["credentials", "preferences", "proxy", ...(isAdmin ? ["members"] : [])] as Tab[])
   const [activeTab, setActiveTab] = useState<Tab>("credentials")
   const [showTip, setShowTip] = useState(false)
 
@@ -253,9 +251,6 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
             <MembersManager />
           </div>
         )}
-        <div role="tabpanel" id="tabpanel-api-keys" aria-labelledby="tab-api-keys" hidden={activeTab !== "api-keys"}>
-          <ApiKeysManager />
-        </div>
         <div role="tabpanel" id="tabpanel-proxy" aria-labelledby="tab-proxy" hidden={activeTab !== "proxy"}>
           <ProxySettings workspaceId={workspaceId} getToken={getToken} />
         </div>

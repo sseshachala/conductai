@@ -1157,7 +1157,6 @@ def cmd_guard_sync(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
     agent_token  = cfg.get("agent_token", "")
-    api_key      = cfg.get("api_key", "")  # legacy fallback only
     base_url     = _api_url(cfg)
     _token       = agent_token or None
 
@@ -1240,7 +1239,7 @@ def cmd_guard_sync(args):
     if not proxy_url:
         try:
             import urllib.request as _ur, urllib.error as _ue
-            _headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
+            _headers = {"Content-Type": "application/json"}
             _token = cfg.get("agent_token", "")
             if _token:
                 _headers["Authorization"] = f"Bearer {_token}"
@@ -1424,7 +1423,6 @@ def _post_local_findings(cfg: dict, base_url: str, findings: list[dict]) -> None
                 "user_email": cfg.get("user_email", ""),
                 "findings":   findings,
             },
-            api_key=cfg.get("api_key", ""),
             token=cfg.get("agent_token", ""),
         )
     except Exception as e:
