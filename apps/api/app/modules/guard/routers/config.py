@@ -185,7 +185,7 @@ def get_install_status(
         {"ws": workspace_id, "uid": user_id},
     ).fetchone()
 
-    # Resolve agent_token — lazy-mint if FK not set yet (existing members)
+    # Resolve agent_token — decrypt existing FK, or lazy-mint if missing/decrypt fails
     agent_token: str | None = None
     if token_row and token_row.agent_identity_id:
         from app.modules.agent_identity.models import AgentIdentity
@@ -196,7 +196,8 @@ def get_install_status(
                 agent_token = _decrypt(ai_row.token_encrypted).get("token")
             except Exception:
                 pass
-    else:
+
+    if not agent_token:
         from app.modules.agent_identity.router import mint_agent_identity
         try:
             identity_row, agent_token = mint_agent_identity(db, workspace_id, f"{user_id} (auto)")
