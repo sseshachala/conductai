@@ -435,19 +435,10 @@ def main() -> None:
         post_event(tool_name, tool_input, "blocked", "guard-unavailable", msg, session_id, drain_via=_this_file)
         sys.exit(2)
 
-    # Hard budget cap (cached 5 min)
+    # Hard budget cap (cached 5 min) — only block if server explicitly says so
     hard_blocked, reason = _load_budget_cache()
     if hard_blocked is None:
         hard_blocked, reason = _fetch_budget_status()
-        if not hard_blocked and reason is None and _get_fail_mode() == "fail_closed":
-            tool_name  = (data.get("tool_name") or "").lower()
-            tool_input = data.get("tool_input") or {}
-            session_id = data.get("session_id")
-            msg = "[ConductGuard] Guard API unreachable — tool call blocked (fail-closed). Check your connection or ask your admin to set fail_open in Guard settings."
-            print(msg)
-            print(msg, file=sys.stderr)
-            post_event(tool_name, tool_input, "blocked", "guard-unavailable", msg, session_id, drain_via=_this_file)
-            sys.exit(2)
     if hard_blocked:
         msg = f"[ConductGuard] {reason or 'Budget hard cap reached. Contact your manager.'}"
         print(msg)
