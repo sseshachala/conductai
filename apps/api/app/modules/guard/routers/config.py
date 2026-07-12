@@ -211,7 +211,8 @@ def get_install_status(
                     {"ws": workspace_id, "uid": user_id, "aid": identity_row.id},
                 )
             db.commit()
-        except Exception:
+        except Exception as _e:
+            log.error("agent_identity.lazy_mint_failed", error=str(_e), workspace_id=workspace_id, user_id=user_id)
             agent_token = None
 
     from app.core.auth import get_clerk_user_email as _get_email
