@@ -1107,10 +1107,10 @@ async def clerk_webhook(request: Request, db: Session = Depends(get_db)):
     if event_type == "organizationMembership.created":
         clerk_org_id = data.get("organization", {}).get("id")
         new_user_id  = data.get("public_user_data", {}).get("user_id")
+        member_email = data.get("public_user_data", {}).get("identifier", "")
         clerk_role   = data.get("role", "org:member")
         if not clerk_org_id or not new_user_id:
             return {"ok": True, "skipped": "missing org_id or user_id"}
-        role = "admin" if clerk_role == "org:admin" else "developer"
         workspaces = db.execute(
             _text("SELECT id FROM workspaces WHERE clerk_org_id = :org"),
             {"org": clerk_org_id},
@@ -1122,11 +1122,26 @@ async def clerk_webhook(request: Request, db: Session = Depends(get_db)):
         token = _secrets.token_urlsafe(24)
         for ws_row in workspaces:
             ws_id = str(ws_row.id)
+            # Try to get the intended role from workspace_invites
+            invite_role_row = db.execute(
+                _text("""
+                    SELECT role FROM workspace_invites
+                    WHERE workspace_id = :ws AND invited_email = :email
+                    AND status = 'pending'
+                    ORDER BY created_at DESC LIMIT 1
+                """),
+                {"ws": ws_id, "email": member_email},
+            ).fetchone()
+            conduct_role = (
+                invite_role_row.role
+                if invite_role_row and invite_role_row.role
+                else ("admin" if clerk_role == "org:admin" else "developer")
+            )
             db.execute(_text("""
                 INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
                 VALUES (:ws, :uid, :role, :now)
                 ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
-            """), {"ws": ws_id, "uid": new_user_id, "role": role, "now": now})
+            """), {"ws": ws_id, "uid": new_user_id, "role": conduct_role, "now": now})
             db.execute(_text("""
                 INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
                 VALUES (:ws, :uid, :token, true, :now)
