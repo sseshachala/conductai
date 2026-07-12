@@ -185,7 +185,7 @@ def get_install_status(
         {"ws": workspace_id, "uid": user_id},
     ).fetchone()
 
-    # Resolve agent_token from agent_identities if FK is set
+    # Resolve agent_token — lazy-mint if FK not set yet (existing members)
     agent_token: str | None = None
     if token_row and token_row.agent_identity_id:
         from app.modules.agent_identity.models import AgentIdentity
@@ -196,6 +196,17 @@ def get_install_status(
                 agent_token = _decrypt(ai_row.token_encrypted).get("token")
             except Exception:
                 pass
+    elif token_row and not token_row.agent_identity_id:
+        from app.modules.agent_identity.router import mint_agent_identity
+        try:
+            identity_row, agent_token = mint_agent_identity(db, workspace_id, f"{user_id} (auto)")
+            db.execute(
+                text("UPDATE guard_member_config SET agent_identity_id = :aid WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+                {"aid": identity_row.id, "ws": workspace_id, "uid": user_id},
+            )
+            db.commit()
+        except Exception:
+            agent_token = None
 
     from app.core.auth import get_clerk_user_email as _get_email
     user_email = _get_email(user_id)
