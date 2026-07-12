@@ -1156,11 +1156,10 @@ def _check_and_upgrade_packages() -> None:
 def cmd_guard_sync(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
-    api_key      = cfg.get("api_key", "")
     agent_token  = cfg.get("agent_token", "")
+    api_key      = cfg.get("api_key", "")  # legacy fallback only
     base_url     = _api_url(cfg)
-    # Use agent_token as Bearer when api_key is absent
-    _token       = agent_token if not api_key else None
+    _token       = agent_token or None
 
     # Persona selection — prompt once, skip if already chosen
 
@@ -1172,7 +1171,6 @@ def cmd_guard_sync(args):
         policy = _req(
             "GET",
             f"{base_url}/guard/policies/sync?workspace_id={workspace_id}",
-            api_key=api_key,
             token=_token,
         )
     except Exception as e:
@@ -1224,7 +1222,6 @@ def cmd_guard_sync(args):
         installed = _req(
             "GET",
             f"{base_url}/guard/config/installed?workspace_id={workspace_id}",
-            api_key=api_key,
             token=_token,
         )
         fresh_agent_token = installed.get("agent_token") or ""
@@ -1310,7 +1307,7 @@ def cmd_guard_sync(args):
     _ensure_booster(Path.cwd())
 
     # Capture savings from RTK and Agent Booster
-    _report_savings(cfg, base_url, api_key)
+    _report_savings(cfg, base_url)
 
     # Report AI tool coverage
     try:
@@ -1632,7 +1629,7 @@ def _ensure_booster(root: Path) -> None:
             pass
 
 
-def _report_savings(cfg: dict, base_url: str, api_key: str) -> None:
+def _report_savings(cfg: dict, base_url: str, api_key: str = "") -> None:
     import subprocess
 
     rtk_data = {}
