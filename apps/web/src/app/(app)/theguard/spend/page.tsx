@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
@@ -548,6 +549,10 @@ function SpendContent() {
   const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: roleLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
+  const router = useRouter()
+  useEffect(() => {
+    if (!roleLoading && !permissions.canViewAllActivity) router.replace("/theguard")
+  }, [roleLoading, permissions.canViewAllActivity, router])
   const { savings, loading: savingsLoading } = useGuardSavings(teamId)
   const now = new Date()
   const [month, setMonth] = useState(
