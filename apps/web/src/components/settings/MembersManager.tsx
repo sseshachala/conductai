@@ -396,8 +396,10 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                   <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
                     <div className="avatar" style={{ background: avatarColor }}>{initials}</div>
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{m.name || m.email || m.clerk_user_id}</div>
-                      {m.email && <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{m.email}</div>}
+                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{m.name || m.email || "Unknown user"}</div>
+                      {m.email
+                      ? <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{m.email}</div>
+                      : !m.name && <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{m.clerk_user_id.slice(0, 16)}…</div>}
                     </div>
                   </div>
                   <div>
@@ -452,25 +454,25 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
                 {isAdmin && m.clerk_user_id !== currentClerkId && confirmMemberId === m.clerk_user_id && (
                   <div style={{ padding: "10px 20px 12px", borderBottom: "1px solid var(--border)", background: "var(--err-bg)", display: "flex", flexDirection: "column", gap: 8 }}>
                     <p style={{ fontSize: 11.5, color: "var(--err)", margin: 0 }}>
-                      Type <strong>{m.email || m.name || m.clerk_user_id}</strong> to confirm member removal.
+                      Type <strong>{m.email || m.name || m.clerk_user_id.slice(-8)}</strong> to confirm member removal.
                     </p>
                     <div style={{ display: "flex", gap: 6 }}>
                       <input
                         value={confirmMemberValue}
                         onChange={e => setConfirmMemberValue(e.target.value)}
                         onKeyDown={e => {
-                          const expected = m.email || m.name || m.clerk_user_id
+                          const expected = m.email || m.name || m.clerk_user_id.slice(-8)
                           if (e.key === "Enter" && confirmMemberValue === expected) handleRemove(m.clerk_user_id)
                           if (e.key === "Escape") { setConfirmMemberId(null); setConfirmMemberValue("") }
                         }}
-                        placeholder={m.email || m.name || m.clerk_user_id}
+                        placeholder={m.email || m.name || m.clerk_user_id.slice(-8)}
                         style={{ flex: 1, fontSize: 12, border: "1px solid var(--err-bd, #fecaca)", borderRadius: 8, padding: "6px 10px", outline: "none", background: "var(--surface)", color: "var(--text)" }}
                       />
                       <button
                         onClick={() => handleRemove(m.clerk_user_id)}
-                        disabled={removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id)}
+                        disabled={removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id.slice(-8))}
                         className="btn btn-sm"
-                        style={{ fontSize: 12, background: "var(--err)", color: "#fff", border: "none", opacity: removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id) ? 0.5 : 1 }}
+                        style={{ fontSize: 12, background: "var(--err)", color: "#fff", border: "none", opacity: removing === m.clerk_user_id || confirmMemberValue !== (m.email || m.name || m.clerk_user_id.slice(-8)) ? 0.5 : 1 }}
                       >
                         {removing === m.clerk_user_id ? "…" : "Confirm"}
                       </button>
