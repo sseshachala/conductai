@@ -94,11 +94,16 @@ def detect_ai_tool() -> str:
         return "cursor"
     if term == "windsurf":
         return "windsurf"
-    # ── PATH heuristics — claude-code first so Codex.app in PATH doesn't win ──
+    # ── Parent process check (most reliable — handles Codex.app in PATH) ──────
+    try:
+        import psutil as _psutil
+        _parent = _psutil.Process(os.getppid()).name().lower()
+        if "claude" in _parent:
+            return "claude-code"
+    except Exception:
+        pass
+    # ── PATH heuristics ───────────────────────────────────────────────────────
     path = os.environ.get("PATH", "")
-    exe = os.environ.get("_", "")  # current executable path
-    if ".claude" in path or "claude-code" in path.lower() or "claude-code" in exe.lower():
-        return "claude-code"
     if "Codex.app" in path:
         return "codex-desktop"
     if "codex" in path.lower():
