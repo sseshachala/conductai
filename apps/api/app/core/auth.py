@@ -299,6 +299,27 @@ def get_workspace_id(
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
 
+    # agent_token (cond_agt_*) — look up in agent_identities
+    if credentials.credentials.startswith("cond_agt_"):
+        from app.modules.agent_identity.models import AgentIdentity
+        from datetime import datetime, timezone as _tz2
+        from app.core.crypto import decrypt
+        matched = None
+        for ai in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == credentials.credentials[:13]).all():
+            try:
+                if decrypt(ai.token_encrypted).get("token") == credentials.credentials:
+                    matched = ai
+                    break
+            except Exception:
+                continue
+        if not matched:
+            raise HTTPException(status_code=401, detail="Invalid agent token")
+        if matched.expires_at and matched.expires_at < datetime.now(_tz2.utc):
+            raise HTTPException(status_code=401, detail="Agent token expired — run `conduct login`")
+        if explicit_ws:
+            return explicit_ws
+        return str(matched.workspace_id)
+
     claims = _verify_clerk_token(credentials.credentials)
     if not claims:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
