@@ -518,11 +518,13 @@ def cmd_login(args):
         result = _web_login_flow(api_url, web_url)
 
     # Write config
+    import datetime as _dt
     cfg = _load_config()
-    cfg["api_url"]       = api_url
-    cfg["agent_token"]   = result["agent_token"]
-    cfg["workspace"]     = result["workspace_id"]
-    cfg["workspace_id"]  = result["workspace_id"]
+    cfg["api_url"]          = api_url
+    cfg["agent_token"]      = result["agent_token"]
+    cfg["workspace"]        = result["workspace_id"]
+    cfg["workspace_id"]     = result["workspace_id"]
+    cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=8)).isoformat()
     if result.get("refresh_token"):
         cfg["refresh_token"] = result["refresh_token"]
     # Clear legacy api_key — agent_token is the credential now
@@ -2495,10 +2497,12 @@ def _refresh_agent_token() -> bool:
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = _json.loads(resp.read())
-        cfg["agent_token"]   = data["agent_token"]
-        cfg["refresh_token"] = data["refresh_token"]
-        cfg["workspace"]     = data["workspace_id"]
-        cfg["workspace_id"]  = data["workspace_id"]
+        import datetime as _dt
+        cfg["agent_token"]      = data["agent_token"]
+        cfg["refresh_token"]    = data["refresh_token"]
+        cfg["workspace"]        = data["workspace_id"]
+        cfg["workspace_id"]     = data["workspace_id"]
+        cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=8)).isoformat()
         _atomic_write(CONFIG_PATH, cfg)
         return True
     except Exception:
@@ -2508,10 +2512,16 @@ def _refresh_agent_token() -> bool:
 def cmd_sync(args):
     """Sync Guard policies (and Security Loop policies if installed)."""
     import conduct_cli.guard as _g
-    # Silent token refresh if agent_token is expired
+    # Proactive refresh if token expires within 5 min
     cfg = _load_config()
-    if cfg.get("refresh_token") and not cfg.get("agent_token", "").startswith("cond_agt_"):
-        _refresh_agent_token()
+    if cfg.get("refresh_token"):
+        import datetime as _dt
+        exp = cfg.get("token_expires_at", "")
+        try:
+            if not exp or _dt.datetime.fromisoformat(exp) < _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(minutes=5):
+                _refresh_agent_token()
+        except ValueError:
+            pass
     print(f"\n{BOLD}▶ conduct sync{RESET}\n")
     _g.cmd_guard_sync(args)
     print(f"\n{GREEN}Sync complete.{RESET}\n")

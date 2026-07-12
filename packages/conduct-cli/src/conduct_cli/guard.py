@@ -1153,7 +1153,40 @@ def _check_and_upgrade_packages() -> None:
         print(f"  {YELLOW}Auto-update failed:{RESET} {e} — run: pip install --upgrade {' '.join(p for p,_,_ in stale)}")
 
 
+def _proactive_token_refresh() -> None:
+    """Refresh agent_token if it expires within 5 min. No-op if no refresh_token."""
+    cfg = _load_guard_config()
+    if not cfg.get("refresh_token"):
+        return
+    import datetime as _dt, json as _json
+    exp = cfg.get("token_expires_at", "")
+    try:
+        if exp and _dt.datetime.fromisoformat(exp) >= _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(minutes=5):
+            return  # still valid
+    except ValueError:
+        pass
+    api_url = _api_url(cfg)
+    try:
+        req = urllib.request.Request(
+            f"{api_url}/auth/refresh",
+            data=_json.dumps({"refresh_token": cfg["refresh_token"]}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = _json.loads(resp.read())
+        cfg["agent_token"]      = data["agent_token"]
+        cfg["refresh_token"]    = data["refresh_token"]
+        cfg["workspace_id"]     = data["workspace_id"]
+        cfg["workspace"]        = data["workspace_id"]
+        cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=8)).isoformat()
+        _save_guard_config(cfg)
+    except Exception:
+        pass  # best-effort; sync will 401 and user will see the error
+
+
 def cmd_guard_sync(args):
+    _proactive_token_refresh()
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
     agent_token  = cfg.get("agent_token", "")
