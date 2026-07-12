@@ -15,6 +15,7 @@ interface DiscoveredAgent {
   risk_score: number | null
   under_guard: boolean
   last_seen_at: string
+  proxy_routed: boolean
 }
 
 interface Summary {
@@ -37,17 +38,19 @@ interface Scan {
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://api.conductai.ai"
 
 const FRAMEWORK_LABELS: Record<string, string> = {
-  "claude-code": "Claude Code",
-  "codex":       "Codex",
-  "cursor":      "Cursor",
-  "windsurf":    "Windsurf",
-  "vscode":      "VS Code / Copilot",
-  "langchain":   "LangChain",
-  "crewai":      "CrewAI",
-  "autogen":     "AutoGen",
-  "openai-agents": "OpenAI Agents",
-  "llama-index": "LlamaIndex",
-  "copilot":     "GitHub Copilot",
+  "claude-code":    "Claude Code",
+  "claude-desktop": "Claude Desktop",
+  "codex":          "Codex",
+  "codex-desktop":  "Codex Desktop",
+  "cursor":         "Cursor",
+  "windsurf":       "Windsurf",
+  "vscode":         "VS Code / Copilot",
+  "langchain":      "LangChain",
+  "crewai":         "CrewAI",
+  "autogen":        "AutoGen",
+  "openai-agents":  "OpenAI Agents",
+  "llama-index":    "LlamaIndex",
+  "copilot":        "GitHub Copilot",
 }
 
 function RiskBadge({ score }: { score: number | null }) {
@@ -57,7 +60,7 @@ function RiskBadge({ score }: { score: number | null }) {
   return <span className={`text-xs px-2 py-0.5 rounded font-medium ${color}`}>{label}</span>
 }
 
-const CONFIG_SOURCES = new Set(["claude-code", "cursor", "codex", "windsurf", "vscode", "copilot"])
+const CONFIG_SOURCES = new Set(["claude-code", "claude-desktop", "cursor", "codex", "codex-desktop", "windsurf", "vscode", "copilot"])
 
 function remediationFor(a: DiscoveredAgent): { type: "sync" | "proxy" | "env" } {
   if (a.source === "config" || CONFIG_SOURCES.has(a.framework ?? "")) return { type: "sync" }
@@ -139,6 +142,14 @@ function relativeTime(iso: string): string {
 
 function isStale(lastSeen: string): boolean {
   return Date.now() - new Date(lastSeen).getTime() > 24 * 60 * 60 * 1000
+}
+
+function RoutingBadge({ routed, framework }: { routed: boolean; framework: string | null }) {
+  if (framework === "codex-desktop")
+    return <span className="text-xs px-2 py-0.5 rounded font-medium bg-yellow-100 text-yellow-700">Partial</span>
+  if (routed)
+    return <span className="text-xs px-2 py-0.5 rounded font-medium bg-green-100 text-green-700">Proxied</span>
+  return <span className="text-xs px-2 py-0.5 rounded font-medium bg-red-100 text-red-700">Not Proxied</span>
 }
 
 function GuardBadge({ under, lastSeen }: { under: boolean; lastSeen: string }) {
@@ -263,7 +274,10 @@ export default function DiscoveryPage() {
                   <div className="text-sm text-stone-500 capitalize">{a.source ?? "—"}</div>
                   <div className="text-xs font-mono text-stone-400 truncate">{a.location ?? "—"}</div>
                   <div><RiskBadge score={a.risk_score} /></div>
-                  <div><GuardBadge under={a.under_guard} lastSeen={a.last_seen_at} /></div>
+                  <div className="flex flex-col gap-1">
+                    <GuardBadge under={a.under_guard} lastSeen={a.last_seen_at} />
+                    {a.source === "ai-tool" && <RoutingBadge routed={a.proxy_routed} framework={a.framework} />}
+                  </div>
                   <div className="text-xs text-stone-400" title={new Date(a.last_seen_at).toLocaleString()}>
                     {relativeTime(a.last_seen_at)}
                   </div>
