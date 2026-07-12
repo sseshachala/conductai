@@ -291,7 +291,13 @@ def list_projects(
             ORDER BY w.created_at DESC
         """), {"uid": user_id}).fetchall()
 
-    if not rows:
+    # Never auto-create a workspace for an invited user — they belong to an existing one
+    email_for_invite_check = get_clerk_user_email(user_id)
+    has_pending_or_accepted_invite = email_for_invite_check and db.execute(text("""
+        SELECT 1 FROM workspace_invites WHERE invited_email = :email LIMIT 1
+    """), {"email": email_for_invite_check}).fetchone()
+
+    if not rows and not has_pending_or_accepted_invite:
         project_id = uuid.uuid4()
         invite_code = uuid.uuid4().hex[:16]
         now = datetime.now(timezone.utc)
