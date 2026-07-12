@@ -1361,15 +1361,14 @@ def cmd_guard_sync(args):
 
     print(f"\n{BOLD}Policy refreshed ({rule_count} rule(s)).{RESET}")
 
-    # Print Claude.ai remote MCP URL — requires one-time browser paste
+    # Print remote MCP URL for any MCP-compatible client
     agent_token = cfg.get("agent_token", "")
     if workspace_id and agent_token:
         mcp_url = "https://api.conductai.ai/guard/mcp"
-        print(f"\n{BOLD}Claude.ai{RESET} (one-time browser setup):")
-        print(f"  Settings → MCP Servers → Add custom server")
-        masked = agent_token[:13] + "•" * 20 + "  (run `conduct token show` to reveal)"
+        masked = agent_token[:13] + "•" * 20
+        print(f"\n{BOLD}MCP server{RESET} (Claude.ai, Cursor, Windsurf, any MCP client):")
         print(f"  URL:    {CYAN}{mcp_url}{RESET}")
-        print(f"  Auth:   {CYAN}Bearer {masked}{RESET}\n")
+        print(f"  Auth:   {CYAN}Bearer {masked}{RESET}  {GRAY}(run `conduct token` to reveal){RESET}\n")
 
 
 CONDUCT_DIR        = Path.home() / ".conduct"
