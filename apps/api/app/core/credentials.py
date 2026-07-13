@@ -235,4 +235,32 @@ def resolve_token(token: str, db) -> dict | None:
             "token_name": identity.get("token_name"),
         }
 
+    if token.startswith("cond_run_"):
+        import hashlib as _h
+        from sqlalchemy import text as _sql
+        token_hash = _h.sha256(token.encode()).hexdigest()
+        row = db.execute(
+            _sql("""
+                SELECT art.run_id, art.workspace_id, art.agent_identity_id,
+                       art.created_at, art.first_used_at, art.invalidated_at,
+                       ai.name as identity_name
+                FROM agent_run_tokens art
+                LEFT JOIN agent_identities ai ON ai.id = art.agent_identity_id::uuid
+                WHERE art.token_hash = :hash
+            """),
+            {"hash": token_hash},
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "type": "run",
+            "run_id": row.run_id,
+            "workspace_id": str(row.workspace_id),
+            "agent_identity_id": row.agent_identity_id,
+            "identity_name": row.identity_name,
+            "created_at": row.created_at,
+            "first_used_at": row.first_used_at,
+            "invalidated": row.invalidated_at is not None,
+        }
+
     return None
