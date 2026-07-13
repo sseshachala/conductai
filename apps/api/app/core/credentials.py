@@ -78,11 +78,12 @@ def mint_cred_token(
     from sqlalchemy import text as _sql
     token = "cond_cred_" + secrets.token_hex(24)
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+    max_uses = max(len(allowed_handles) * 3, 3)  # 3× handles — covers retries + parallel blocks
     db.execute(
         _sql("""
             INSERT INTO cred_retrieval_tokens
-                (token, run_id, workspace_id, environment_id, allowed_handles, expires_at)
-            VALUES (:token, :run_id, :ws, :env_id, :handles, :exp)
+                (token, run_id, workspace_id, environment_id, allowed_handles, expires_at, max_uses)
+            VALUES (:token, :run_id, :ws, :env_id, :handles, :exp, :max_uses)
         """),
         {
             "token": token,
@@ -91,6 +92,7 @@ def mint_cred_token(
             "env_id": environment_id,
             "handles": allowed_handles,
             "exp": expires_at,
+            "max_uses": max_uses,
         },
     )
     db.commit()
@@ -103,21 +105,25 @@ def retrieve_credential(db, cred_token: str, handle: str) -> dict | None:
     Returns None if token is invalid, expired, or handle not in allowlist.
     """
     from sqlalchemy import text as _sql
+    # Atomic increment + fetch — prevents race between concurrent block fetches
     row = db.execute(
         _sql("""
-            SELECT workspace_id, environment_id, allowed_handles, expires_at
-            FROM cred_retrieval_tokens
+            UPDATE cred_retrieval_tokens
+            SET used_count = used_count + 1
             WHERE token = :token
+              AND expires_at > now()
+              AND used_count < max_uses
+            RETURNING workspace_id, environment_id, allowed_handles, expires_at, used_count, max_uses
         """),
         {"token": cred_token},
     ).fetchone()
 
     if not row:
-        return None
-    if datetime.now(timezone.utc) > row.expires_at.astimezone(timezone.utc):
-        return None
+        return None  # not found, expired, or rate limit exceeded
     if handle not in (row.allowed_handles or []):
+        db.rollback()
         return None
+    db.commit()
 
     return get_credential(db, row.workspace_id, handle, row.environment_id)
 
@@ -182,3 +188,51 @@ def get_all_credentials(db, workspace_id: str, environment_id=None) -> Credentia
     result = CredentialStore(raw)
     del raw
     return result
+
+def resolve_token(token: str, db) -> dict | None:
+    """
+    Single dispatcher for all cond_* token types — routes by prefix.
+
+    cond_cred_*  → cred_retrieval_tokens  (run-scoped credential access)
+    cond_agt_*   → agent_identities       (session identity token)
+    cond_api_*   → agent_identities       (long-lived OAuth token)
+
+    Returns a dict with token metadata, or None if invalid/expired.
+    """
+    if token.startswith("cond_cred_"):
+        from sqlalchemy import text as _sql
+        row = db.execute(
+            _sql("""
+                SELECT token, run_id, workspace_id, environment_id,
+                       allowed_handles, expires_at, used_count, max_uses
+                FROM cred_retrieval_tokens WHERE token = :token
+            """),
+            {"token": token},
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "type": "cred",
+            "run_id": row.run_id,
+            "workspace_id": row.workspace_id,
+            "environment_id": row.environment_id,
+            "allowed_handles": row.allowed_handles,
+            "expires_at": row.expires_at,
+            "used_count": row.used_count,
+            "max_uses": row.max_uses,
+        }
+
+    if token.startswith(("cond_agt_", "cond_api_")):
+        from app.modules.guard.routers.mcp import resolve_agent_token
+        identity = resolve_agent_token(token, db)
+        if not identity:
+            return None
+        return {
+            "type": "agent",
+            "developer_id": identity.get("developer_id"),
+            "developer_email": identity.get("developer_email"),
+            "workspace_id": identity.get("workspace_id"),
+            "token_name": identity.get("token_name"),
+        }
+
+    return None
