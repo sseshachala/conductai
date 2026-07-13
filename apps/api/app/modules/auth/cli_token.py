@@ -83,14 +83,15 @@ def _upsert_identity(
         )
         db.add(identity)
         db.flush()
-        # Link to guard_member_config if it exists
+        # Upsert GMC row so _resolve_agent_token can find clerk_user_id on first sync
+        import secrets as _sec
         db.execute(
             text("""
-                UPDATE guard_member_config
-                SET agent_identity_id = :aid
-                WHERE workspace_id = :ws AND clerk_user_id = :uid
+                INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, agent_identity_id, active, joined_at)
+                VALUES (:ws, :uid, :mt, :aid, true, now())
+                ON CONFLICT (workspace_id, clerk_user_id) DO UPDATE SET agent_identity_id = EXCLUDED.agent_identity_id
             """),
-            {"aid": identity.id, "ws": workspace_id, "uid": clerk_user_id},
+            {"ws": workspace_id, "uid": clerk_user_id, "mt": _sec.token_hex(32), "aid": identity.id},
         )
 
     db.commit()
