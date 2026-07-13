@@ -898,13 +898,18 @@ async def oauth_protected_resource(workspace_id: str | None = Query(None)):
 
 @router.post("/oauth/member-token")
 async def oauth_member_token(request: Request):
-    """Exchange a Clerk JWT for a cond_agt_* token (called by the Next.js complete handler).
+    """Exchange a Clerk JWT for a long-lived cond_api_* token (Claude.ai OAuth flow).
 
-    Validates the Clerk token, then mints an agent_identity token via the same
-    path as `conduct login` — bare hex member_token is retired.
+    Mints or rotates a cond_api_* identity token with created_by_clerk_user_id
+    so every MCP call is attributed to the correct user email via GMC join.
     """
+    import secrets as _secrets
     from app.core.auth import _verify_clerk_token
-    from app.modules.auth.cli_token import _upsert_identity
+    from app.core.crypto import encrypt as _encrypt
+    from app.modules.agent_identity.models import AgentIdentity
+
+    _API_PFX = "cond_api_"
+    _API_PFX_LEN = len(_API_PFX) + 4
 
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -936,11 +941,54 @@ async def oauth_member_token(request: Request):
             workspace_id = str(row.workspace_id)
 
         try:
-            uuid.UUID(workspace_id)
+            ws_uuid = uuid.UUID(workspace_id)
         except ValueError:
             return JSONResponse(status_code=422, content={"error": "invalid workspace_id"})
 
-        _, agent_raw, _ = _upsert_identity(db, workspace_id, clerk_user_id)
-        return JSONResponse({"member_token": agent_raw})
+        plaintext = _API_PFX + _secrets.token_urlsafe(32)
+        prefix = plaintext[:_API_PFX_LEN]
+        now = datetime.now(timezone.utc)
+
+        # Reuse existing OAuth identity for this user if present, rotate token
+        existing = db.execute(
+            _sql("""
+                SELECT ai.id FROM agent_identities ai
+                JOIN guard_member_config gmc ON gmc.agent_identity_id = ai.id
+                WHERE gmc.workspace_id = :ws AND gmc.clerk_user_id = :uid
+                  AND ai.token_type = 'api'
+                LIMIT 1
+            """),
+            {"ws": str(ws_uuid), "uid": clerk_user_id},
+        ).fetchone()
+
+        if existing:
+            identity = db.query(AgentIdentity).filter(AgentIdentity.id == existing.id).first()
+            identity.token_prefix = prefix
+            identity.token_encrypted = _encrypt({"token": plaintext})
+            identity.last_used_at = now
+        else:
+            identity = AgentIdentity(
+                id=str(uuid.uuid4()),
+                workspace_id=ws_uuid,
+                name=f"Claude.ai ({email})",
+                provider="conduct",
+                token_prefix=prefix,
+                token_encrypted=_encrypt({"token": plaintext}),
+                token_type="api",
+                token_name=f"claude-ai-oauth",
+                created_by_clerk_user_id=clerk_user_id,
+                created_at=now,
+                last_used_at=now,
+                expires_at=None,  # long-lived — no expiry
+            )
+            db.add(identity)
+            db.flush()
+            db.execute(
+                _sql("UPDATE guard_member_config SET agent_identity_id = :aid WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+                {"aid": identity.id, "ws": str(ws_uuid), "uid": clerk_user_id},
+            )
+
+        db.commit()
+        return JSONResponse({"member_token": plaintext})
     finally:
         db.close()
