@@ -46,7 +46,7 @@ def _load_config() -> dict:
 def _post(url: str, token: str, payload: dict) -> tuple[int, dict]:
     data = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=data, headers={
-        "Authorization": f"Bearer {token}",
+        "x-api-key": token,           # Anthropic proxy reads member token from x-api-key
         "Content-Type": "application/json",
         "anthropic-version": "2023-06-01",
         "x-conduct-test": "1",

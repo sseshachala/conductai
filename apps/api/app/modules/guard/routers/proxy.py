@@ -452,8 +452,10 @@ def _resolve_member(db: Session, token: str) -> tuple[str, str] | None:
                     ).fetchone()
                     if member:
                         return (member[0], member[1])
-                    # Fallback: use workspace_id from agent_identities directly
-                    # For api tokens, encode the name for audit attribution
+                    # For API tokens: attribute to the clerk user who created it
+                    creator = getattr(ai_row, 'created_by_clerk_user_id', None)
+                    if creator:
+                        return (str(ai_row.workspace_id), creator)
                     ai_name = getattr(ai_row, 'token_name', None) or getattr(ai_row, 'name', 'api-token')
                     return (str(ai_row.workspace_id), f"api:{ai_name}")
             except Exception:
