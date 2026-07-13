@@ -182,25 +182,15 @@ def notify_guard_block(
 
 def _send_guard_slack(db: Session, config: GuardConfig, text_msg: str) -> None:
     """Fire-and-forget Slack notification. Silently skips if not configured."""
-    from app.core.crypto import decrypt
-    from app.models.integration import Integration
+    from app.core.credentials import get_credential
 
     if not config.alert_channel:
         return
 
-    row = (
-        db.query(Integration)
-        .filter(
-            Integration.workspace_id == config.workspace_id,
-            Integration.handle == "slack",
-        )
-        .first()
-    )
-    if not row or not row.encrypted_credentials:
-        return
-
     try:
-        creds = decrypt(row.encrypted_credentials)
+        creds = get_credential(db, str(config.workspace_id), "slack")
+        if not creds:
+            return
         token = creds.get("token") or creds.get("bot_token", "")
         if not token:
             return

@@ -451,35 +451,26 @@ def _upstream_api_key(db: Session, workspace_id: str, environment_id: str | None
     """Return LLM_UPSTREAM_API_KEY from proxy_config for the workflow's environment."""
     if not environment_id:
         return None
-    row = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id,
-        Integration.handle == "proxy_config",
-        Integration.environment_id == environment_id,
-    ).first()
-    if row:
-        try:
-            return (decrypt(row.encrypted_credentials) or {}).get("LLM_UPSTREAM_API_KEY") or None
-        except Exception:
-            pass
+    from app.core.credentials import get_credential
+    try:
+        creds = get_credential(db, workspace_id, "proxy_config", environment_id)
+        return creds.get("LLM_UPSTREAM_API_KEY") or None
+    except Exception:
+        pass
     return None
 
 
 def _upstream_url(db: Session, workspace_id: str, provider: str, environment_id: str | None = None) -> str:
     """Return BYO upstream URL from proxy_config for the workflow's environment, else vendor default."""
     if environment_id:
-        row = db.query(Integration).filter(
-            Integration.workspace_id == workspace_id,
-            Integration.handle == "proxy_config",
-            Integration.environment_id == environment_id,
-        ).first()
-        if row:
-            try:
-                creds = decrypt(row.encrypted_credentials) or {}
-                override = creds.get("LLM_UPSTREAM")
-                if override:
-                    return override.rstrip("/")
-            except Exception:
-                pass
+        from app.core.credentials import get_credential
+        try:
+            creds = get_credential(db, workspace_id, "proxy_config", environment_id)
+            override = creds.get("LLM_UPSTREAM")
+            if override:
+                return override.rstrip("/")
+        except Exception:
+            pass
     return VENDOR_DEFAULTS[provider]
 
 
@@ -907,18 +898,13 @@ def get_proxy_config(
 ):
     upstream = ""
     has_upstream_key = False
-    row = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id,
-        Integration.handle == "proxy_config",
-        Integration.environment_id.is_(None),
-    ).first()
-    if row:
-        try:
-            creds = decrypt(row.encrypted_credentials) or {}
-            upstream = creds.get("LLM_UPSTREAM", "")
-            has_upstream_key = bool(creds.get("LLM_UPSTREAM_API_KEY"))
-        except Exception:
-            pass
+    from app.core.credentials import get_credential
+    try:
+        _pc_creds = get_credential(db, workspace_id, "proxy_config")
+        upstream = _pc_creds.get("LLM_UPSTREAM", "")
+        has_upstream_key = bool(_pc_creds.get("LLM_UPSTREAM_API_KEY"))
+    except Exception:
+        pass
     return {
         "conduct_proxy_url": _workspace_proxy_url(db, workspace_id),
         "llm_upstream": upstream,

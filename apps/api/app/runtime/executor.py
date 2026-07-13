@@ -28,6 +28,7 @@ from app.runtime.llm_client import AnthropicClient, OpenAIClient, PerplexityClie
 from app.runtime.model_router import resolve as _router_resolve
 from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 from app.core.crypto import decrypt
+from app.core.credentials import CredentialStore, get_all_credentials
 from app.core.database import SessionLocal
 from app.models.environment import Environment  # noqa: F401 — used for FK relationship loading
 from app.models.integration import Integration
@@ -49,52 +50,7 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class CredentialStore:
-    """
-    A dict-like wrapper around decrypted workspace credentials.
-
-    Purpose: prevent secrets from leaking into logs, exception tracebacks,
-    or Sentry breadcrumbs via accidental repr()/str() calls on the credentials
-    object (e.g. log.error("ctx=%r", credentials)).
-
-    Access via store["handle"] or store.get("handle") — values are returned
-    normally.  repr() and str() return a placeholder with handle names only.
-    """
-
-    def __init__(self, data: dict[str, Any]) -> None:
-        self._data = data
-
-    # Dict-like interface used by block executors
-    def __getitem__(self, key: str) -> Any:
-        return self._data[key]
-
-    def __contains__(self, key: object) -> bool:
-        return key in self._data
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return self._data.get(key, default)
-
-    def keys(self):
-        return self._data.keys()
-
-    def items(self):
-        return self._data.items()
-
-    def values(self):
-        return self._data.values()
-
-    def __iter__(self):
-        return iter(self._data)
-
-    def __len__(self) -> int:
-        return len(self._data)
-
-    # Safety: never expose values in repr/str
-    def __repr__(self) -> str:
-        return f"CredentialStore(handles={list(self._data.keys())})"
-
-    def __str__(self) -> str:
-        return self.__repr__()
+# CredentialStore lives in app.core.credentials — imported above
 
 
 _REDACT_PATTERNS = [
@@ -1695,60 +1651,11 @@ def execute_run(run_id: str):
         # Load credentials and egress allowlist from the workflow's environment
         allowed_hosts: list[str] | None = None
         from app.models.environment import Environment as _Env
-        if env_id:
-            env_row = db.query(_Env).filter(_Env.id == env_id).first()
-            if env_row:
-                allowed_hosts = env_row.allowed_hosts or None
-            cred_rows = db.query(Integration).filter(
-                Integration.workspace_id == workspace_id_str,
-                Integration.environment_id == env_id,
-            ).all()
-        else:
-            # No environment assigned — load from Default so tool blocks have credentials
-            default_env = db.query(_Env).filter(
-                _Env.workspace_id == workspace_id_str,
-                _Env.name == "Default",
-            ).first()
-            if default_env:
-                allowed_hosts = default_env.allowed_hosts or None
-                cred_rows = db.query(Integration).filter(
-                    Integration.workspace_id == workspace_id_str,
-                    Integration.environment_id == default_env.id,
-                ).all()
-            else:
-                cred_rows = []
-
-        _raw_creds: dict[str, Any] = {}
-        for row in cred_rows:
-            if not row.encrypted_credentials:
-                continue
-            decrypted = decrypt(row.encrypted_credentials)
-            if row.handle in _raw_creds and isinstance(_raw_creds[row.handle], dict) and isinstance(decrypted, dict):
-                # ponytail: merge same-handle dicts (env_vars + agent_identity both use handle="env_vars")
-                _raw_creds[row.handle] = {**_raw_creds[row.handle], **decrypted}
-            else:
-                _raw_creds[row.handle] = decrypted
-
-        # Fallback: merge in any missing handles from the Default environment
-        # so integrations connected globally are always available
-        if env_id:
-            default_env = db.query(_Env).filter(
-                _Env.workspace_id == workspace_id_str,
-                _Env.name == "Default",
-            ).first()
-            if default_env and str(default_env.id) != str(env_id):
-                fallback_rows = db.query(Integration).filter(
-                    Integration.workspace_id == workspace_id_str,
-                    Integration.environment_id == default_env.id,
-                ).all()
-                for row in fallback_rows:
-                    if row.handle not in _raw_creds and row.encrypted_credentials:
-                        _raw_creds[row.handle] = decrypt(row.encrypted_credentials)
-
-        # Wrap in CredentialStore so accidental repr()/str() calls (e.g. in log lines
-        # or Sentry breadcrumbs) never expose plaintext secret values.
-        credentials = CredentialStore(_raw_creds)
-        del _raw_creds  # drop the plain dict reference immediately
+        _env_row = db.query(_Env).filter(_Env.id == env_id).first() if env_id else \
+                   db.query(_Env).filter(_Env.workspace_id == workspace_id_str, _Env.name == "Default").first()
+        if _env_row:
+            allowed_hosts = _env_row.allowed_hosts or None
+        credentials = get_all_credentials(db, workspace_id_str, environment_id=env_id)
 
         # Stamp agent_role_id on the run if CONDUCT_AGENT_TOKEN is in credentials.
         _env_vars_creds = credentials.get("env_vars") or {}

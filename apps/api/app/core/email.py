@@ -160,15 +160,10 @@ def _platform_credential() -> EmailCredential | None:
 
 def _workspace_credential(workspace_id: str, db) -> EmailCredential | None:
     try:
-        from app.models.integration import Integration
-        from app.core.crypto import decrypt
-        row = db.query(Integration).filter(
-            Integration.workspace_id == workspace_id,
-            Integration.service == "email",
-        ).first()
-        if not row or not row.encrypted_credentials:
+        from app.core.credentials import get_credential
+        creds = get_credential(db, workspace_id, "email")
+        if not creds:
             return None
-        creds = decrypt(row.encrypted_credentials)
         resend = creds.get("resend_api_key", "").strip()
         sendgrid = creds.get("sendgrid_api_key", "").strip()
         if not resend and not sendgrid:
