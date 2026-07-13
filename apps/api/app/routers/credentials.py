@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission, audit
-from app.core.credentials import get_credential
+from app.core.credentials import get_credential, retrieve_credential
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration

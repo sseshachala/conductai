@@ -68,8 +68,7 @@ def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, pla
     ).first()
 
     if existing:
-        from app.core.credentials import get_credential
-        current = get_credential(db, workspace_id, "env_vars", environment_id) or {}
+        current = decrypt(existing.encrypted_credentials) if existing.encrypted_credentials else {}
         current["CONDUCT_AGENT_TOKEN"] = plaintext
         existing.encrypted_credentials = encrypt(current)
     else:
