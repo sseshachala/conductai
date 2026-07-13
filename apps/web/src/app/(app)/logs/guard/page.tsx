@@ -4,6 +4,9 @@ import Link from "next/link"
 
 const displayEmail = (v: string | null | undefined): string => {
   if (!v) return "—"
+  // Strip synthetic prefixes from legacy rows
+  if (v.startsWith("agt:")) v = v.slice(4).split("@")[0]
+  if (v.startsWith("api:")) v = v.slice(4).split("@")[0]
   if (v.startsWith("user_")) return "unknown user"
   return v
 }
