@@ -245,15 +245,25 @@ def _execute_brain(
     provider, model_id, routing_reason = _router_resolve(playbook_slug, routing_pref, explicit_model, explicit_provider)
     log.debug("brain.model_selected", block_id=block["id"], provider=provider, model=model_id, reason=routing_reason)
 
+    # Fetch credentials from broker for session creation (SSH key, sandbox API keys).
+    # This is the only in-function credential fetch; LLM keys are fetched separately below.
+    from app.core.credentials import fetch_credential as _fetch_cred
+    _cred_token_b = state.get("__cred_token__", "")
+    _cred_api_url_b = state.get("__cred_api_url__", "")
+    _cred_handles_b = state.get("__cred_handles__", [])
+    _session_creds: dict = {}
+    for _h in _cred_handles_b:
+        _session_creds[_h] = _fetch_cred(_cred_token_b, _h, _cred_api_url_b)
+
     # Resolve remote host (SSH) or runs_on provider (E2B / Modal / local).
-    remote_host = _resolve_remote_host(block, state, credentials or {})
+    remote_host = _resolve_remote_host(block, state, _session_creds)
     runs_on: dict | None = block.get("data", {}).get("runs_on") or None
 
     if injected_session is not None:
         session = injected_session
     else:
         from app.runtime.sandbox_session import create_session as _create_session
-        session = _create_session(remote_host, credentials, runs_on=runs_on)
+        session = _create_session(remote_host, _session_creds, runs_on=runs_on)
     _session_closed = False
 
     def _close_session():
@@ -282,6 +292,7 @@ def _execute_brain(
 
     # Credential placeholder pattern: model and DB see placeholder tokens, never raw secrets.
     # Real values live only in _cred_real and are swapped into subprocess env at dispatch time.
+    # Credentials are fetched from the broker (already done above via _session_creds).
     cred_env: dict[str, str] = {}   # placeholder values — safe to log / send to LLM
     _cred_real: dict[str, str] = {}  # placeholder → real value — never leaves this function
     cred_names: list[str] = []
@@ -298,7 +309,7 @@ def _execute_brain(
         ("modal", "token_secret"): "MODAL_TOKEN_SECRET",
         ("email", "resend_api_key"): "RESEND_API_KEY",
     }
-    for handle, creds in (credentials or {}).items():
+    for handle, creds in _session_creds.items():
         if isinstance(creds, dict):
             for field, val in creds.items():
                 if val and isinstance(val, str):
@@ -360,25 +371,29 @@ def _execute_brain(
         "Do NOT switch between approaches mid-task."
     )
 
-    # BYO key: workspace credential (handle or flat env_var) → platform default
-    _env_vars = (credentials or {}).get("env_vars") or {}
+    # BYO key: fetch per-provider credentials from broker → platform default fallback
     def _clean(v: str | None) -> str | None:
         return v.strip() if isinstance(v, str) else v
 
+    _env_vars = _session_creds.get("env_vars") or {}
+    _anthropic_creds = _session_creds.get("anthropic") or {}
+    _openai_creds = _session_creds.get("openai") or {}
+    _perplexity_creds = _session_creds.get("perplexity") or {}
+
     _anthropic_key = _clean(
-        (credentials or {}).get("anthropic", {}).get("api_key")
+        _anthropic_creds.get("api_key")
         or _env_vars.get("anthropic_api_key")
         or _env_vars.get("ANTHROPIC_API_KEY")
         or settings.anthropic_api_key
     )
     _openai_key = _clean(
-        (credentials or {}).get("openai", {}).get("api_key")
+        _openai_creds.get("api_key")
         or _env_vars.get("openai_api_key")
         or _env_vars.get("OPENAI_API_KEY")
         or settings.openai_api_key
     )
     _perplexity_key = _clean(
-        (credentials or {}).get("perplexity", {}).get("api_key")
+        _perplexity_creds.get("api_key")
         or _env_vars.get("perplexity_api_key")
         or _env_vars.get("PERPLEXITY_API_KEY")
     )

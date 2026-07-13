@@ -16,7 +16,7 @@ log = structlog.get_logger(__name__)
 def _execute_output(
     block: dict,
     state: dict,
-    credentials: dict,
+    credentials: dict | None = None,  # kept for backward compat — ignored, broker is source of truth
     workflow_name: str = "Agent",
     trace_url: str = "",
     run_id: str = "",
@@ -29,6 +29,11 @@ def _execute_output(
         _load_template,
         _resolve_refs,
     )
+    from app.core.credentials import fetch_credential
+
+    _cred_token = state.get("__cred_token__", "")
+    _cred_api_url = state.get("__cred_api_url__", "")
+    _cred_handles = state.get("__cred_handles__", [])
 
     dry_run = state.get("__dry_run", False)
     data = block["data"]
@@ -45,7 +50,7 @@ def _execute_output(
     send_email = integration in ("email", "both")
 
     if send_slack:
-        slack_creds = credentials.get("slack", {})
+        slack_creds = fetch_credential(_cred_token, "slack", _cred_api_url) if "slack" in _cred_handles else {}
         channel = _resolve_refs(config.get("channel", "#general"), state)
         if not slack_creds:
             results["slack"] = {"sent": False, "reason": "No Slack credentials configured"}
@@ -69,7 +74,10 @@ def _execute_output(
                 results["slack"] = {"sent": False, "error": str(e)}
 
     if send_email:
-        email_creds = dict(credentials.get("email", credentials.get("resend", {})))
+        email_creds = fetch_credential(_cred_token, "email", _cred_api_url) if "email" in _cred_handles else {}
+        if not email_creds:
+            email_creds = fetch_credential(_cred_token, "resend", _cred_api_url) if "resend" in _cred_handles else {}
+        email_creds = dict(email_creds)
         if not email_creds.get("resend_api_key") and settings.resend_api_key:
             email_creds["resend_api_key"] = settings.resend_api_key
         to = _resolve_refs(config.get("to", ""), state)

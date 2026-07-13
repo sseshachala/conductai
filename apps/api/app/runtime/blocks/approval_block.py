@@ -11,7 +11,7 @@ import structlog
 log = structlog.get_logger(__name__)
 
 
-def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) -> dict:
+def _execute_approval(block: dict, state: dict, credentials: dict | None = None, run_id: str = "") -> dict:
     """
     Pause the run and send a Slack DM with Approve/Reject buttons.
     Raises ApprovalRequired so the executor can pause the run.
@@ -22,6 +22,11 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
     from app.runtime.integrations import slack
     from app.core.config import settings
     from app.runtime.executor import ApprovalRequired, _resolve_refs
+    from app.core.credentials import fetch_credential
+
+    _cred_token = state.get("__cred_token__", "")
+    _cred_api_url = state.get("__cred_api_url__", "")
+    _cred_handles = state.get("__cred_handles__", [])
 
     block_id = block["id"]
     approval_key = f"__approval_{block_id}"
@@ -48,7 +53,7 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
 
     # ── Slack ──────────────────────────────────────────────────────────────────
     if via in ("slack", "both"):
-        slack_creds = credentials.get("slack", {})
+        slack_creds = fetch_credential(_cred_token, "slack", _cred_api_url) if "slack" in _cred_handles else {}
         if slack_creds:
             try:
                 slack.execute(
@@ -75,7 +80,9 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
                 f"Approve: {approve_url}\n"
                 f"Reject:  {reject_url}\n"
             )
-            email_creds = credentials.get("email", credentials.get("resend", {}))
+            email_creds = fetch_credential(_cred_token, "email", _cred_api_url) if "email" in _cred_handles else {}
+            if not email_creds:
+                email_creds = fetch_credential(_cred_token, "resend", _cred_api_url) if "resend" in _cred_handles else {}
             email_int.execute(
                 "send",
                 {
