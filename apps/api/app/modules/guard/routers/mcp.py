@@ -933,7 +933,12 @@ async def oauth_member_token(request: Request):
     try:
         if not workspace_id:
             row = db.execute(
-                _sql("SELECT workspace_id FROM guard_member_config WHERE clerk_user_id = :uid AND active = true ORDER BY joined_at DESC LIMIT 1"),
+                _sql("""
+                    SELECT gmc.workspace_id FROM guard_member_config gmc
+                    JOIN guard_config gc ON gc.workspace_id = gmc.workspace_id
+                    WHERE gmc.clerk_user_id = :uid AND gmc.active = true
+                    ORDER BY gmc.joined_at DESC LIMIT 1
+                """),
                 {"uid": clerk_user_id},
             ).fetchone()
             if not row:
