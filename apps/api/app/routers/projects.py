@@ -499,7 +499,6 @@ def delete_project(
         # Permanently erase all remaining data — analytics, audit trail, API keys, environments
         db.execute(text("DELETE FROM run_analytics_events WHERE workspace_id = :pid"), {"pid": project_id})
         db.execute(text("DELETE FROM audit_log WHERE workspace_id = :pid"), {"pid": project_id})
-        db.execute(text("DELETE FROM conduct_api_keys WHERE workspace_id = :pid"), {"pid": project_id})
         db.execute(text("DELETE FROM environments WHERE workspace_id = :pid"), {"pid": project_id})
 
     db.execute(text("DELETE FROM workspaces WHERE id = :pid"), {"pid": project_id})

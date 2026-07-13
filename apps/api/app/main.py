@@ -32,7 +32,6 @@ from app.routers.organizations import router as organizations_router
 from app.routers.workspaces import router as workspaces_router
 from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router, notifications_router
 from app.routers.runs import workspace_runs_router
-from app.routers.api_keys import router as api_keys_router, me_router
 from app.routers.rbac import router as rbac_router, me_router as me_rbac_router
 from app.routers.mcp import router as mcp_router
 from app.routers.mcp_servers import router as mcp_servers_router
@@ -105,8 +104,6 @@ app.include_router(workspace_projects_router)
 app.include_router(audit_log_router)
 app.include_router(workspace_preferences_router)
 app.include_router(notifications_router)
-app.include_router(api_keys_router)
-app.include_router(me_router)
 app.include_router(projects.router)
 app.include_router(playbooks.router)
 app.include_router(playbooks_catalog_router)
