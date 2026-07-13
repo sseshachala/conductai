@@ -73,7 +73,7 @@ def mint_cred_token(
     """
     Mint a short-lived retrieval token scoped to a run + handle allowlist.
     Both proxy-mode subprocesses and sandbox containers use the same token
-    to call POST /creds/retrieve — no divergent credential injection paths.
+    to call POST /credentials/creds/retrieve — no divergent credential injection paths.
     """
     from sqlalchemy import text as _sql
     token = "cond_cred_" + secrets.token_hex(24)
@@ -114,7 +114,7 @@ def retrieve_credential(db, cred_token: str, handle: str) -> dict | None:
 
     if not row:
         return None
-    if datetime.now(timezone.utc) > row.expires_at.replace(tzinfo=timezone.utc):
+    if datetime.now(timezone.utc) > row.expires_at.astimezone(timezone.utc):
         return None
     if handle not in (row.allowed_handles or []):
         return None
