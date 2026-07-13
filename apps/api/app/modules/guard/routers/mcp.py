@@ -898,13 +898,13 @@ async def oauth_protected_resource(workspace_id: str | None = Query(None)):
 
 @router.post("/oauth/member-token")
 async def oauth_member_token(request: Request):
-    """Exchange a Clerk JWT for a guard member_token (called by the Next.js complete handler).
+    """Exchange a Clerk JWT for a cond_agt_* token (called by the Next.js complete handler).
 
-    Validates the Clerk token, then upserts the user into guard_member_config
-    and returns their member_token. Creates one on first call.
+    Validates the Clerk token, then mints an agent_identity token via the same
+    path as `conduct login` — bare hex member_token is retired.
     """
-    import secrets as _secrets
     from app.core.auth import _verify_clerk_token
+    from app.modules.auth.cli_token import _upsert_identity
 
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -926,8 +926,6 @@ async def oauth_member_token(request: Request):
 
     db = SessionLocal()
     try:
-        # If no workspace_id provided (Claude.ai doesn't send resource param),
-        # look up the user's most recently joined workspace.
         if not workspace_id:
             row = db.execute(
                 _sql("SELECT workspace_id FROM guard_member_config WHERE clerk_user_id = :uid AND active = true ORDER BY joined_at DESC LIMIT 1"),
@@ -938,29 +936,11 @@ async def oauth_member_token(request: Request):
             workspace_id = str(row.workspace_id)
 
         try:
-            ws_uuid = uuid.UUID(workspace_id)
+            uuid.UUID(workspace_id)
         except ValueError:
             return JSONResponse(status_code=422, content={"error": "invalid workspace_id"})
 
-        existing = db.execute(
-            _sql("SELECT member_token FROM guard_member_config WHERE workspace_id = :ws AND clerk_user_id = :uid AND active = true LIMIT 1"),
-            {"ws": str(ws_uuid), "uid": clerk_user_id},
-        ).fetchone()
-
-        if existing:
-            member_token = existing.member_token
-        else:
-            member_token = _secrets.token_hex(32)
-            db.execute(
-                _sql("""
-                    INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
-                    VALUES (:ws, :uid, :token, true, :now)
-                    ON CONFLICT (workspace_id, clerk_user_id) DO UPDATE SET active = true
-                """),
-                {"ws": str(ws_uuid), "uid": clerk_user_id, "token": member_token, "now": datetime.now(timezone.utc)},
-            )
-            db.commit()
-
-        return JSONResponse({"member_token": member_token})
+        _, agent_raw, _ = _upsert_identity(db, workspace_id, clerk_user_id)
+        return JSONResponse({"member_token": agent_raw})
     finally:
         db.close()
