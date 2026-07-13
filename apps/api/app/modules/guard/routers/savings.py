@@ -81,8 +81,8 @@ def record_savings(
 ):
     """Developer pushes RTK + Agent Booster token savings snapshot.
 
-    Accepts a member token, Clerk JWT, or cond_live_ API key (same trust
-    model as POST /guard/events). A new row is inserted on every call —
+    Accepts a member token or Clerk JWT (same trust model as POST /guard/events).
+    A new row is inserted on every call —
     history is preserved, no upsert.
     """
     now = _now()

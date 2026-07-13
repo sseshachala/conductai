@@ -234,19 +234,6 @@ def get_user_id(
     if x_api_key and settings.cli_api_key and x_api_key == settings.cli_api_key:
         return f"api-key:{settings.cli_workspace_id}"
 
-    # Per-user cond_live_ key — return the stored user_id
-    if x_api_key and x_api_key.startswith("cond_live_"):
-        import hashlib
-        from datetime import datetime, timezone
-        from app.models.conduct_api_key import ConductApiKey
-        key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
-        row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
-        if not row:
-            raise HTTPException(status_code=401, detail="Invalid API key")
-        if row.expires_at and row.expires_at < datetime.now(timezone.utc):
-            raise HTTPException(status_code=401, detail="API key expired")
-        return row.user_id
-
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
 
@@ -316,25 +303,6 @@ def get_workspace_id(
         if not settings.cli_workspace_id:
             raise HTTPException(status_code=500, detail="CLI_WORKSPACE_ID is not configured on the server")
         return settings.cli_workspace_id
-
-    # Per-user CONDUCT_API_KEY (cond_live_...) — verified against DB hash
-    if x_api_key and x_api_key.startswith("cond_live_"):
-        import hashlib
-        from app.models.conduct_api_key import ConductApiKey
-        from datetime import datetime, timezone
-        key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
-        row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
-        if not row:
-            raise HTTPException(status_code=401, detail="Invalid API key")
-        if row.expires_at and row.expires_at < datetime.now(timezone.utc):
-            raise HTTPException(status_code=401, detail="API key expired")
-        # Update last_used_at async-style (best effort, don't block)
-        try:
-            row.last_used_at = datetime.now(timezone.utc)
-            db.commit()
-        except Exception:
-            db.rollback()
-        return str(row.workspace_id)
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
@@ -471,27 +439,13 @@ def audit(
 
 def get_guard_org_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
-    x_api_key: Annotated[str | None, Header()] = None,
-    db: Session = Depends(get_db),
 ) -> str:
     """Extract org/user ID for Guard endpoints.
 
-    Accepts (in order):
-    1. cond_live_ API key via X-Api-Key header — returns the key's workspace_id
-    2. Clerk Bearer JWT — returns org_id or sub claim
+    Accepts: Clerk Bearer JWT — returns org_id or sub claim.
     """
     if not _clerk_enabled():
         return "dev-org"
-
-    # API key path — same key used for workspace + playbook endpoints
-    if x_api_key and x_api_key.startswith("cond_live_"):
-        import hashlib
-        from app.models.conduct_api_key import ConductApiKey
-        key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
-        row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
-        if not row:
-            raise HTTPException(status_code=401, detail="Invalid API key")
-        return str(row.workspace_id)
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -682,3 +636,68 @@ def require_permission(permission: str):
         return user_role
 
     return _check
+
+
+# ─── Shared agent token resolver ──────────────────────────────────────────────
+
+_AGENT_PREFIX  = "cond_agt_"
+_API_PREFIX    = "cond_api_"
+_MEMBER_PREFIX = "guard-mt-"
+_PREFIX_LOOKUP_LEN = len(_AGENT_PREFIX) + 4  # same length for all conduct token types
+
+
+def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
+    """Resolve any Conduct agent token → (workspace_id, clerk_user_id) or None.
+
+    Accepts: cond_agt_*, cond_api_*, guard-mt-* (legacy member tokens).
+    Used by proxy, MCP, WebSocket, and any other auth surface.
+    """
+    from sqlalchemy import text as _text
+
+    if token.startswith((_AGENT_PREFIX, _API_PREFIX)):
+        from app.core.crypto import decrypt as _decrypt
+        from app.modules.agent_identity.models import AgentIdentity
+
+        prefix = token[:_PREFIX_LOOKUP_LEN]
+        for ai_row in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == prefix).all():
+            try:
+                if _decrypt(ai_row.token_encrypted).get("token") != token:
+                    continue
+            except Exception:
+                continue
+
+            # Try guard_member_config link first (session tokens always have this)
+            member = db.execute(
+                _text("""
+                    SELECT workspace_id::text, clerk_user_id
+                    FROM guard_member_config
+                    WHERE agent_identity_id = :aid AND active = true
+                    LIMIT 1
+                """),
+                {"aid": ai_row.id},
+            ).fetchone()
+            if member:
+                return (member[0], member[1])
+
+            # API tokens: fall back to creator or synthetic label
+            creator = getattr(ai_row, "created_by_clerk_user_id", None)
+            if creator:
+                return (str(ai_row.workspace_id), creator)
+
+            label = getattr(ai_row, "token_name", None) or getattr(ai_row, "name", "api-token")
+            return (str(ai_row.workspace_id), f"api:{label}")
+
+        return None
+
+    # Legacy guard-mt-* member token
+    bare = token[len(_MEMBER_PREFIX):] if token.startswith(_MEMBER_PREFIX) else token
+    row = db.execute(
+        _text("""
+            SELECT workspace_id::text, clerk_user_id
+            FROM guard_member_config
+            WHERE member_token = :tok AND active = true
+            LIMIT 1
+        """),
+        {"tok": bare},
+    ).fetchone()
+    return (row[0], row[1]) if row else None

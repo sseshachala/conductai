@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as _sql
 
 from app.core.database import SessionLocal
-from app.core.auth import get_clerk_user_email
+from app.core.auth import get_clerk_user_email, resolve_agent_token
 from app.core.pii import redact_secrets
 from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardMemberConfig, chain_hash_for_insert, get_policy_hash
@@ -543,78 +543,23 @@ async def mcp_endpoint(
 
     db = SessionLocal()
     try:
-        # Validate token — member_token (conduct login), cond_live_ API key, or cond_api_* long-lived machine token
-        import hashlib as _hashlib
-        if resolved_token.startswith("cond_live_"):
-            key_hash = _hashlib.sha256(resolved_token.encode()).hexdigest()
-            api_key_row = db.execute(
-                _sql("SELECT workspace_id, user_id FROM conduct_api_keys WHERE key_hash = :h AND (expires_at IS NULL OR expires_at > now()) LIMIT 1"),
-                {"h": key_hash},
-            ).fetchone()
-            if not api_key_row:
-                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid API key"))
-            if workspace_id and str(api_key_row.workspace_id) != str(uuid.UUID(workspace_id)):
-                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid API key"))
-            ws_uuid = api_key_row.workspace_id
-            clerk_user_id = api_key_row.user_id or "api_key"
-            user_email = get_clerk_user_email(clerk_user_id) if clerk_user_id != "api_key" else f"apikey@{str(ws_uuid)[:8]}"
-        elif resolved_token.startswith(("cond_api_", "cond_agt_")):
-            # Long-lived machine token — look up via agent_identities, no GMC link required
-            from app.modules.agent_identity.models import AgentIdentity as _AI
-            from app.core.crypto import decrypt as _decrypt
-            from datetime import datetime as _dt, timezone as _tz
-            _ai = None
-            for _candidate in db.query(_AI).filter(_AI.token_prefix == resolved_token[:13]).all():
-                try:
-                    if _decrypt(_candidate.token_encrypted).get("token") == resolved_token:
-                        _ai = _candidate
-                        break
-                except Exception:
-                    continue
-            if not _ai:
-                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid API token"))
-            if _ai.expires_at and _ai.expires_at < _dt.now(_tz.utc):
-                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "API token expired"))
-            if workspace_id and str(_ai.workspace_id) != str(uuid.UUID(workspace_id)):
-                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "API token does not belong to this workspace"))
-            ws_uuid = _ai.workspace_id
-            if resolved_token.startswith("cond_agt_"):
-                gmc = db.execute(_sql(
-                    "SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid AND workspace_id = :ws LIMIT 1"
-                ), {"aid": _ai.id, "ws": ws_uuid}).fetchone()
-                clerk_user_id = gmc[0] if gmc else _ai.name
-                user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
-            else:
-                clerk_user_id = f"api:{_ai.token_name or 'api-token'}"
-                user_email = f"api-token@{str(ws_uuid)[:8]}"
-            # Update last_used_at (best effort)
+        ident = resolve_agent_token(resolved_token, db)
+        if not ident:
+            return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid token"))
+        _ws_id_str, clerk_user_id = ident
+
+        # Validate workspace matches URL param if provided
+        if workspace_id:
             try:
-                _ai.last_used_at = _dt.now(_tz.utc)
-                db.commit()
-            except Exception:
-                db.rollback()
+                ws_uuid = uuid.UUID(workspace_id)
+            except ValueError:
+                return JSONResponse(status_code=422, content=_err(msg_id, -32600, "invalid workspace_id"))
+            if str(ws_uuid) != _ws_id_str:
+                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "token does not belong to this workspace"))
         else:
-            # member_token — look up workspace from token when workspace_id not in URL
-            if workspace_id:
-                try:
-                    ws_uuid = uuid.UUID(workspace_id)
-                except ValueError:
-                    return JSONResponse(status_code=422, content=_err(msg_id, -32600, "invalid workspace_id"))
-                member_row = db.execute(
-                    _sql("SELECT clerk_user_id FROM guard_member_config WHERE workspace_id = :w AND member_token = :t AND active = true LIMIT 1"),
-                    {"w": str(ws_uuid), "t": resolved_token},
-                ).fetchone()
-            else:
-                member_row = db.execute(
-                    _sql("SELECT clerk_user_id, workspace_id FROM guard_member_config WHERE member_token = :t AND active = true LIMIT 1"),
-                    {"t": resolved_token},
-                ).fetchone()
-                if member_row:
-                    ws_uuid = member_row.workspace_id
-            if not member_row:
-                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid token"))
-            clerk_user_id = member_row.clerk_user_id
-            user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
+            ws_uuid = uuid.UUID(_ws_id_str)
+
+        user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
 
         config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if not config:

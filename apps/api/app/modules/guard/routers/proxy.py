@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 
 import re
 
-from app.core.auth import get_workspace_id, require_permission
+from app.core.auth import get_workspace_id, require_permission, resolve_agent_token
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.database import SessionLocal, get_db
@@ -95,12 +95,12 @@ async def ingest_local_audit(request: Request, body: _LocalAuditIn):
     raw = request.headers.get("x-api-key") or request.headers.get("authorization", "")
     if raw.lower().startswith("bearer "):
         raw = raw[7:].strip()
-    if not raw.startswith(MEMBER_TOKEN_PREFIX):
+    if not raw:
         return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
 
     db = SessionLocal()
     try:
-        ident = _resolve_member(db, raw)
+        ident = resolve_agent_token(raw, db)
         if not ident:
             return _fail_closed(401, "Conduct member token not recognized — run `conduct guard sync` to refresh")
         workspace_id, clerk_user_id = ident
@@ -297,7 +297,7 @@ async def _proxy(
                     _id_row.last_used_at = datetime.now(_tz.utc)
                     db.commit()
         else:
-            ident = _resolve_member(db, token)
+            ident = resolve_agent_token(token, db)
             if not ident:
                 return _fail_closed(401, "Conduct member token not recognized — run `conduct guard sync` to refresh")
             workspace_id, clerk_user_id = ident
@@ -406,57 +406,6 @@ def _extract_member_token(raw: str, *, bearer: bool) -> str | None:
         return raw
     return None
 
-
-def _resolve_member(db: Session, token: str) -> tuple[str, str] | None:
-    """Resolve token → (workspace_id, clerk_user_id).
-
-    Accepts legacy guard-mt-*, cond_agt_* Agent ID tokens, and cond_api_* long-lived machine tokens.
-    """
-    if token.startswith(AGENT_TOKEN_PREFIX) or token.startswith(API_TOKEN_PREFIX):
-        # New path — look up via agent_identities + guard_member_config FK
-        from app.core.crypto import decrypt as _decrypt
-        from app.modules.agent_identity.models import AgentIdentity
-        rows = db.query(AgentIdentity).filter(
-            AgentIdentity.token_prefix == token[:len(AGENT_TOKEN_PREFIX) + 4]
-        ).all()
-        for ai_row in rows:
-            try:
-                plain = _decrypt(ai_row.token_encrypted).get("token", "")
-                if plain == token:
-                    # Resolve workspace + user via guard_member_config FK
-                    member = db.execute(
-                        text("""
-                            SELECT workspace_id::text, clerk_user_id
-                            FROM guard_member_config
-                            WHERE agent_identity_id = :aid AND active = true
-                            LIMIT 1
-                        """),
-                        {"aid": ai_row.id},
-                    ).fetchone()
-                    if member:
-                        return (member[0], member[1])
-                    # For API tokens: attribute to the clerk user who created it
-                    creator = getattr(ai_row, 'created_by_clerk_user_id', None)
-                    if creator:
-                        return (str(ai_row.workspace_id), creator)
-                    ai_name = getattr(ai_row, 'token_name', None) or getattr(ai_row, 'name', 'api-token')
-                    return (str(ai_row.workspace_id), f"api:{ai_name}")
-            except Exception:
-                continue
-        return None
-
-    # Legacy path — guard-mt-* member token
-    bare = token[len(MEMBER_TOKEN_PREFIX):] if token.startswith(MEMBER_TOKEN_PREFIX) else token
-    row = db.execute(
-        text("""
-            SELECT workspace_id::text, clerk_user_id
-            FROM guard_member_config
-            WHERE member_token = :tok AND active = true
-            LIMIT 1
-        """),
-        {"tok": bare},
-    ).fetchone()
-    return (row[0], row[1]) if row else None
 
 
 def _vault_key(db: Session, workspace_id: str, provider: str, environment_id: str | None = None) -> str | None:

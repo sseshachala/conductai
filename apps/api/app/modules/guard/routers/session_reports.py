@@ -3,7 +3,6 @@ POST /guard/session-reports  — CLI pushes a developer session report (member t
 GET  /guard/session-reports  — admin/security lists all reports for a workspace
 GET  /guard/session-reports/{id}/html — styled HTML report (API key or Clerk JWT via ?token=)
 """
-import hashlib
 import uuid
 from datetime import datetime, timezone, date as _date
 from typing import Optional
@@ -17,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import _verify_clerk_token, get_guard_hook_auth, require_permission
 from app.core.database import get_db
-from app.models.conduct_api_key import ConductApiKey
 from app.modules.guard.models import SessionReport
 
 log = structlog.get_logger(__name__)
@@ -134,9 +132,9 @@ def create_session_report(
 ):
     """Push a new session report from the CLI.
 
-    Auth accepts a member token, Clerk JWT, or cond_live_ API key —
-    the same trust model as POST /guard/events. The workspace_id is
-    derived from the token, not the request body.
+    Auth accepts a member token or Clerk JWT — the same trust model as
+    POST /guard/events. The workspace_id is derived from the token,
+    not the request body.
     """
     try:
         ws_uuid = uuid.UUID(auth_workspace_id)
@@ -479,9 +477,9 @@ async def get_session_report_html(
 ) -> HTMLResponse:
     """Return a styled HTML view of a session report.
 
-    Auth: accepts ?token= or X-Api-Key header with either a cond_live_ API key
-    or a Clerk JWT. Workspace isolation is enforced — the report must belong to
-    the authenticated workspace.
+    Auth: accepts ?token= or X-Api-Key header with a Clerk JWT.
+    Workspace isolation is enforced — the report must belong to the
+    authenticated workspace.
     """
     api_key_val = token or x_api_key
     if not api_key_val:
@@ -490,22 +488,14 @@ async def get_session_report_html(
     # Resolve workspace_id from the credential
     ws_id: str | None = None
 
-    if api_key_val.startswith("cond_live_"):
-        # cond_live_ API key path
-        key_hash = hashlib.sha256(api_key_val.encode()).hexdigest()
-        key_row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
-        if not key_row:
-            return _HTML_401_INVALID
-        ws_id = str(key_row.workspace_id)
-    else:
-        # Clerk JWT path — verify token, then require workspace_id query param
-        claims = _verify_clerk_token(api_key_val)
-        if not claims:
-            return _HTML_401_INVALID
-        # Clerk org_id is not a UUID — workspace_id must be passed explicitly
-        if not workspace_id:
-            return HTMLResponse("<html><body><h1>400</h1><p>Pass ?workspace_id= alongside ?token= for Clerk auth.</p></body></html>", status_code=400)
-        ws_id = workspace_id
+    # Clerk JWT path — verify token, then require workspace_id query param
+    claims = _verify_clerk_token(api_key_val)
+    if not claims:
+        return _HTML_401_INVALID
+    # Clerk org_id is not a UUID — workspace_id must be passed explicitly
+    if not workspace_id:
+        return HTMLResponse("<html><body><h1>400</h1><p>Pass ?workspace_id= alongside ?token= for Clerk auth.</p></body></html>", status_code=400)
+    ws_id = workspace_id
 
     # Fetch the report, enforcing workspace isolation
     try:
