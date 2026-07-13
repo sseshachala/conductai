@@ -191,8 +191,9 @@ def get_clerk_user_info(user_id: str) -> dict:
 
 
 def _resolve_agent_token(token: str, db: Session):
-    """Validate a cond_agt_* token and return (AgentIdentity, clerk_user_id).
+    """Validate a cond_agt_* or cond_api_* token and return (AgentIdentity, clerk_user_id).
     Raises HTTPException on invalid/expired token or missing GMC link.
+    For api tokens (token_type='api') there is no GMC link by design — returns (ai, None).
     Shared by get_workspace_id, get_user_id, get_guard_hook_auth to avoid double-decrypt.
     """
     from app.modules.agent_identity.models import AgentIdentity
@@ -204,6 +205,9 @@ def _resolve_agent_token(token: str, db: Session):
             if decrypt(ai.token_encrypted).get("token") == token:
                 if ai.expires_at and ai.expires_at < datetime.now(_tz.utc):
                     raise HTTPException(status_code=401, detail="Agent token expired — run `conduct login`")
+                # api tokens have no guard_member_config row by design
+                if getattr(ai, 'token_type', 'cli') == 'api':
+                    return ai, None
                 row = db.execute(
                     _t("SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid LIMIT 1"),
                     {"aid": ai.id},
@@ -246,10 +250,12 @@ def get_user_id(
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
 
-    # cond_agt_* — look up clerk_user_id via guard_member_config FK
-    if credentials.credentials.startswith("cond_agt_"):
-        _, clerk_user_id = _resolve_agent_token(credentials.credentials, db)
+    # cond_agt_* / cond_api_* — look up clerk_user_id via guard_member_config FK
+    if credentials.credentials.startswith(("cond_agt_", "cond_api_")):
+        ai, clerk_user_id = _resolve_agent_token(credentials.credentials, db)
         if not clerk_user_id:
+            if getattr(ai, 'token_type', 'cli') == 'api':
+                return None  # machine identity — no user session
             raise HTTPException(status_code=401, detail="Agent token not linked to a user — re-run `conduct login`")
         return clerk_user_id
 
@@ -333,8 +339,8 @@ def get_workspace_id(
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
 
-    # agent_token (cond_agt_*) — look up in agent_identities
-    if credentials.credentials.startswith("cond_agt_"):
+    # agent_token (cond_agt_* / cond_api_*) — look up in agent_identities
+    if credentials.credentials.startswith(("cond_agt_", "cond_api_")):
         ai, _ = _resolve_agent_token(credentials.credentials, db)
         token_ws = str(ai.workspace_id)
         if explicit_ws and explicit_ws != token_ws:
@@ -511,8 +517,8 @@ def get_guard_hook_auth(
 
     token = credentials.credentials
 
-    # cond_agt_* agent token
-    if token.startswith("cond_agt_"):
+    # cond_agt_* / cond_api_* agent token
+    if token.startswith(("cond_agt_", "cond_api_")):
         ai, _ = _resolve_agent_token(token, db)
         return str(ai.workspace_id)
 

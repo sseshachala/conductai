@@ -65,6 +65,7 @@ VENDOR_DEFAULTS = {
 
 MEMBER_TOKEN_PREFIX = "guard-mt-"   # legacy — kept for transition
 AGENT_TOKEN_PREFIX  = "cond_agt_"  # new unified Agent ID token
+API_TOKEN_PREFIX    = "cond_api_"  # long-lived machine token — no GMC link
 
 
 def _workspace_proxy_url(db: Session, workspace_id: str) -> str:
@@ -418,7 +419,7 @@ def _extract_member_token(raw: str, *, bearer: bool) -> str | None:
         if not raw.lower().startswith("bearer "):
             return None
         raw = raw[7:].strip()
-    if raw.startswith(MEMBER_TOKEN_PREFIX) or raw.startswith(AGENT_TOKEN_PREFIX):
+    if raw.startswith(MEMBER_TOKEN_PREFIX) or raw.startswith(AGENT_TOKEN_PREFIX) or raw.startswith(API_TOKEN_PREFIX):
         return raw
     return None
 
@@ -426,9 +427,9 @@ def _extract_member_token(raw: str, *, bearer: bool) -> str | None:
 def _resolve_member(db: Session, token: str) -> tuple[str, str] | None:
     """Resolve token → (workspace_id, clerk_user_id).
 
-    Accepts both legacy guard-mt-* and new cond_agt_* Agent ID tokens.
+    Accepts legacy guard-mt-*, cond_agt_* Agent ID tokens, and cond_api_* long-lived machine tokens.
     """
-    if token.startswith(AGENT_TOKEN_PREFIX):
+    if token.startswith(AGENT_TOKEN_PREFIX) or token.startswith(API_TOKEN_PREFIX):
         # New path — look up via agent_identities + guard_member_config FK
         from app.core.crypto import decrypt as _decrypt
         from app.modules.agent_identity.models import AgentIdentity
@@ -452,7 +453,9 @@ def _resolve_member(db: Session, token: str) -> tuple[str, str] | None:
                     if member:
                         return (member[0], member[1])
                     # Fallback: use workspace_id from agent_identities directly
-                    return (str(ai_row.workspace_id), "agent")
+                    # For api tokens, encode the name for audit attribution
+                    ai_name = getattr(ai_row, 'token_name', None) or getattr(ai_row, 'name', 'api-token')
+                    return (str(ai_row.workspace_id), f"api:{ai_name}")
             except Exception:
                 continue
         return None

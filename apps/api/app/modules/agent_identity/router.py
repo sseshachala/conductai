@@ -17,6 +17,9 @@ from app.modules.agent_identity.schemas import (
     AgentIdentityCreate,
     AgentIdentityCreated,
     AgentIdentityOut,
+    ApiTokenCreate,
+    ApiTokenCreated,
+    ApiTokenOut,
 )
 
 router = APIRouter(
@@ -293,3 +296,112 @@ def list_workspace_run_tokens(
             "invalidated_at": r.invalidated_at.isoformat() if r.invalidated_at else None,
         })
     return result
+
+
+# ─── Long-lived API tokens (cond_api_*) ─────────────────────────────────────
+
+API_TOKEN_PREFIX = "cond_api_"
+_API_TOKEN_PREFIX_LEN = len(API_TOKEN_PREFIX) + 4
+
+
+@router.post("/api-tokens", response_model=None)
+def create_api_token(
+    workspace_id: str,
+    body: "ApiTokenCreate",
+    _ws: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+):
+    """Create a long-lived machine token (cond_api_*). Returned once — store it securely."""
+    import secrets
+    plaintext = API_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    prefix = plaintext[:_API_TOKEN_PREFIX_LEN]
+    now = datetime.now(timezone.utc)
+    expires_at = None
+    if body.expires_in_days is not None:
+        from datetime import timedelta
+        expires_at = now + timedelta(days=body.expires_in_days)
+
+    row = AgentIdentity(
+        id=str(uuid.uuid4()),
+        workspace_id=workspace_id,
+        name=body.name,
+        provider="conduct",
+        token_prefix=prefix,
+        token_encrypted=encrypt({"token": plaintext}),
+        token_type="api",
+        token_name=body.name,
+        environment_id=None,
+        created_at=now,
+        last_used_at=None,
+        expires_at=expires_at,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    return ApiTokenCreated(
+        id=row.id,
+        token_name=row.token_name,
+        token_prefix=row.token_prefix,
+        token_type=row.token_type,
+        expires_at=row.expires_at,
+        last_used_at=row.last_used_at,
+        created_at=row.created_at,
+        token=plaintext,
+    )
+
+
+@router.get("/api-tokens", response_model=None)
+def list_api_tokens(
+    workspace_id: str,
+    _ws: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+):
+    """List all long-lived API tokens for the workspace. Token values are never returned."""
+    rows = (
+        db.query(AgentIdentity)
+        .filter(
+            AgentIdentity.workspace_id == workspace_id,
+            AgentIdentity.token_type == "api",
+        )
+        .order_by(AgentIdentity.created_at.desc())
+        .all()
+    )
+    return [
+        ApiTokenOut(
+            id=row.id,
+            token_name=row.token_name,
+            token_prefix=row.token_prefix,
+            token_type=row.token_type,
+            expires_at=row.expires_at,
+            last_used_at=row.last_used_at,
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
+
+
+@router.delete("/api-tokens/{token_id}", status_code=204)
+def delete_api_token(
+    workspace_id: str,
+    token_id: str,
+    _ws: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+):
+    """Delete a long-lived API token. Immediately revokes access."""
+    row = (
+        db.query(AgentIdentity)
+        .filter(
+            AgentIdentity.id == token_id,
+            AgentIdentity.workspace_id == workspace_id,
+            AgentIdentity.token_type == "api",
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="API token not found")
+    db.delete(row)
+    db.commit()
