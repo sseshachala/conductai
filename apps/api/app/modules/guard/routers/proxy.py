@@ -42,7 +42,6 @@ from app.core.auth import get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.database import SessionLocal, get_db
-from app.models.conduct_api_key import ConductApiKey
 from app.models.integration import Integration
 from app.models.workspace import Workspace
 from app.core.workspace_context import set_workspace_rls
@@ -237,11 +236,7 @@ async def _proxy(
     _needs_agent_validation = bool(_internal_key and not _is_internal and _internal_key.startswith("cond_agt_"))
     _agent_identity_id: str | None = None
 
-    # cond_live_ workspace API key — read from raw before member-token filter strips it
-    _raw_key = raw[7:].strip() if bearer and raw.lower().startswith("bearer ") else raw
-    _ws_api_key = _raw_key if _raw_key.startswith("cond_live_") else None
-
-    if not token and not _is_internal and not _needs_agent_validation and not _needs_run_token_validation and not _ws_api_key:
+    if not token and not _is_internal and not _needs_agent_validation and not _needs_run_token_validation:
         return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
 
     # 2. Resolve workspace + user
@@ -301,18 +296,6 @@ async def _proxy(
                 if _id_row:
                     _id_row.last_used_at = datetime.now(_tz.utc)
                     db.commit()
-        elif _ws_api_key:
-            import hashlib
-            from app.models.conduct_api_key import ConductApiKey
-            key_hash = hashlib.sha256(_ws_api_key.encode()).hexdigest()
-            row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
-            if not row:
-                return _fail_closed(401, "Invalid workspace API key")
-            workspace_id = str(row.workspace_id)
-            clerk_user_id = row.user_id or "api_key"
-            set_workspace_rls(db, workspace_id)
-            from app.core.auth import get_clerk_user_email
-            _ws_key_email = get_clerk_user_email(clerk_user_id) if clerk_user_id != "api_key" else None
         else:
             ident = _resolve_member(db, token)
             if not ident:
@@ -330,7 +313,7 @@ async def _proxy(
         ai_tool = request.headers.get("x-conduct-ai-tool") or _infer_ai_tool(request)
 
         # 4a. Resolve user email for audit rows
-        _user_email: str | None = locals().get("_ws_key_email") or None
+        _user_email: str | None = None
         if not _user_email:
             try:
                 from app.models.user import User as _User
