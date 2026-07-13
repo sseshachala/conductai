@@ -84,10 +84,13 @@ export function GuardRoleClerkProvider({ children }: { children: ReactNode }) {
         if (!token) { if (!cancelled) setLoading(false); return }
         const params = new URLSearchParams({ workspace_id: workspaceId! })
         if (email) params.set("email", email)
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 8000)
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/me/permissions?${params}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }
         )
+        clearTimeout(timeout)
         if (res.ok) {
           const data: { role: string; permissions: string[] } = await res.json()
           if (!cancelled) {
