@@ -122,6 +122,20 @@ def retrieve_credential(db, cred_token: str, handle: str) -> dict | None:
     return get_credential(db, row.workspace_id, handle, row.environment_id)
 
 
+def fetch_credential(cred_token: str, handle: str, api_url: str) -> dict:
+    """HTTP call to broker. Used by blocks running inside a run context."""
+    import httpx
+    resp = httpx.post(
+        f"{api_url}/credentials/creds/retrieve",
+        json={"handle": handle},
+        headers={"X-Cred-Token": cred_token},
+        timeout=5.0,
+    )
+    if resp.status_code == 200:
+        return resp.json()
+    return {}
+
+
 def get_all_credentials(db, workspace_id: str, environment_id=None) -> CredentialStore:
     """
     Fetch and decrypt all integrations for a workspace.

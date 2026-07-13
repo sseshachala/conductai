@@ -313,6 +313,14 @@ def _execute_brain(
         + "\nDO NOT check if these vars exist. DO NOT try to read them from files. They are already in the shell environment."
     ) if cred_names else ""
 
+    # Inject broker token into subprocess env only — NOT into cred_env (LLM prompt context)
+    _cred_token = state.get("__cred_token__")
+    _cred_api_url = state.get("__cred_api_url__")
+    if _cred_token:
+        _cred_real["CONDUCT_CRED_TOKEN"] = _cred_token
+    if _cred_api_url:
+        _cred_real["CONDUCT_API_URL"] = _cred_api_url
+
     user_message = f"Workflow context so far:\n{context}{cred_section}\n\nExecute your task."
 
 

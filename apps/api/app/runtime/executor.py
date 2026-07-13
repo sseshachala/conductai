@@ -1657,6 +1657,23 @@ def execute_run(run_id: str):
             allowed_hosts = _env_row.allowed_hosts or None
         credentials = get_all_credentials(db, workspace_id_str, environment_id=env_id)
 
+        # Mint run-scoped credential token — blocks fetch plaintext via broker, not from this dict
+        from app.core.credentials import mint_cred_token as _mint_cred_token
+        _cred_handles = list(credentials.keys())
+        if _cred_handles:
+            try:
+                _cred_token = _mint_cred_token(
+                    db, str(run.id), workspace_id_str,
+                    allowed_handles=_cred_handles,
+                    environment_id=str(env_id) if env_id else None,
+                    ttl_seconds=7200,
+                )
+                state["__cred_token__"] = _cred_token
+                state["__cred_api_url__"] = settings.api_url
+            except Exception:
+                log.warning("run.cred_token_mint_failed", run_id=run_id)
+                # fail-open: credentials still available in-process via CredentialStore
+
         # Stamp agent_role_id on the run if CONDUCT_AGENT_TOKEN is in credentials.
         _env_vars_creds = credentials.get("env_vars") or {}
         if isinstance(_env_vars_creds, dict) and _env_vars_creds.get("CONDUCT_AGENT_TOKEN"):
