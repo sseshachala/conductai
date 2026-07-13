@@ -563,7 +563,13 @@ async def mcp_endpoint(
 
         config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if not config:
-            return JSONResponse(status_code=404, content=_err(msg_id, -32600, "workspace not found"))
+            # Return 401 + WWW-Authenticate so Claude.ai re-triggers OAuth and gets
+            # a fresh token bound to a workspace that actually has Guard configured.
+            return JSONResponse(
+                status_code=401,
+                content=_err(msg_id, -32600, "workspace not configured for Guard — re-authenticate"),
+                headers={"WWW-Authenticate": 'Bearer realm="https://api.conductai.ai/guard/mcp", resource_metadata="https://api.conductai.ai/.well-known/oauth-protected-resource/guard/mcp"'},
+            )
 
         if method == "initialize":
             client_info = params.get("clientInfo") or {}
