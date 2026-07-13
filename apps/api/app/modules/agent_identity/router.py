@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_permission
+from app.core.auth import get_workspace_id, get_user_id, require_permission
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration
@@ -309,6 +309,7 @@ def create_api_token(
     workspace_id: str,
     body: "ApiTokenCreate",
     _ws: str = Depends(get_workspace_id),
+    creator_id: str = Depends(get_user_id),
     _: str = Depends(require_permission("platform.workspace.edit")),
     db: Session = Depends(get_db),
 ):
@@ -331,6 +332,7 @@ def create_api_token(
         token_encrypted=encrypt({"token": plaintext}),
         token_type="api",
         token_name=body.name,
+        created_by_clerk_user_id=creator_id,
         environment_id=None,
         created_at=now,
         last_used_at=None,
