@@ -986,18 +986,16 @@ async def oauth_member_token(request: Request):
                 token_prefix=prefix,
                 token_encrypted=_encrypt({"token": plaintext}),
                 token_type="api",
-                token_name=f"claude-ai-oauth",
+                token_name="claude-ai-oauth",
                 created_by_clerk_user_id=clerk_user_id,
                 created_at=now,
                 last_used_at=now,
                 expires_at=None,  # long-lived — no expiry
             )
             db.add(identity)
-            db.flush()
-            db.execute(
-                _sql("UPDATE guard_member_config SET agent_identity_id = :aid WHERE workspace_id = :ws AND clerk_user_id = :uid"),
-                {"aid": identity.id, "ws": str(ws_uuid), "uid": clerk_user_id},
-            )
+            # ponytail: no UPDATE guard_member_config here — GMC.agent_identity_id
+            # must stay pointing at the CLI cond_agt_* token. OAuth tokens resolve
+            # via created_by_clerk_user_id fallback in resolve_agent_token instead.
 
         db.commit()
         return JSONResponse({"member_token": plaintext})
