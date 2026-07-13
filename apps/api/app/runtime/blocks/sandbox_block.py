@@ -70,6 +70,18 @@ def _execute_sandbox(
     # Validate credential presence before spinning up — fail fast with clear message
     _check_credentials(provider, credentials, block_id, config=config)
 
+    # Inject broker token into sandbox env so containers can call the credential broker directly
+    if state.get("__cred_token__"):
+        _sb_env = credentials.get("env_vars") or {}
+        if isinstance(_sb_env, dict):
+            _sb_env["CONDUCT_CRED_TOKEN"] = state["__cred_token__"]
+            _sb_env["CONDUCT_API_URL"] = state.get("__cred_api_url__", "")
+            # Write back — supports both plain dict and CredentialStore
+            if hasattr(credentials, "_data"):
+                credentials._data["env_vars"] = _sb_env
+            elif isinstance(credentials, dict):
+                credentials["env_vars"] = _sb_env
+
     runs_on = None
     if provider == "ssh":
         runs_on = {
