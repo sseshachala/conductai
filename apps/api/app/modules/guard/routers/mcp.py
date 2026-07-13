@@ -558,7 +558,7 @@ async def mcp_endpoint(
             ws_uuid = api_key_row.workspace_id
             clerk_user_id = api_key_row.user_id or "api_key"
             user_email = get_clerk_user_email(clerk_user_id) if clerk_user_id != "api_key" else f"apikey@{str(ws_uuid)[:8]}"
-        elif resolved_token.startswith("cond_api_"):
+        elif resolved_token.startswith(("cond_api_", "cond_agt_")):
             # Long-lived machine token — look up via agent_identities, no GMC link required
             from app.modules.agent_identity.models import AgentIdentity as _AI
             from app.core.crypto import decrypt as _decrypt
@@ -578,8 +578,12 @@ async def mcp_endpoint(
             if workspace_id and str(_ai.workspace_id) != str(uuid.UUID(workspace_id)):
                 return JSONResponse(status_code=401, content=_err(msg_id, -32600, "API token does not belong to this workspace"))
             ws_uuid = _ai.workspace_id
-            clerk_user_id = f"api:{_ai.token_name or 'api-token'}"
-            user_email = f"api-token@{str(ws_uuid)[:8]}"
+            if resolved_token.startswith("cond_agt_"):
+                clerk_user_id = f"agt:{_ai.name}"
+                user_email = f"agt:{_ai.name}@{str(ws_uuid)[:8]}"
+            else:
+                clerk_user_id = f"api:{_ai.token_name or 'api-token'}"
+                user_email = f"api-token@{str(ws_uuid)[:8]}"
             # Update last_used_at (best effort)
             try:
                 _ai.last_used_at = _dt.now(_tz.utc)
