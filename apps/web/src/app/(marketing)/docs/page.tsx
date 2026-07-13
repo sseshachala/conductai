@@ -116,6 +116,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#guard-hook",        label: "Hook & tool coverage" },
     { href: "#guard-sync",        label: "Sync & re-sync" },
     { href: "#guard-mcp",         label: "conductguard-mcp" },
+    { href: "#guard-tokens",      label: "Agent tokens" },
     { href: "#guard-spend",       label: "Spend controls" },
     { href: "#guard-savings",     label: "Maximize savings" },
     { href: "#guard-roles",       label: "Roles & permissions" },
@@ -1122,7 +1123,7 @@ conduct guard status`}</Pre>
         <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-6">
           {[
             { tool: "guard_status", desc: "Returns workspace ID, policy count, policy version, and developer email. Useful for confirming Guard is active.", args: "None" },
-            { tool: "guard_check",  desc: "Evaluates a tool call against active policies. Returns ALLOWED, BLOCKED, or WARNING with the matching rule.", args: "tool_name (str), tool_input (object, optional)" },
+            { tool: "guard_check",  desc: "Evaluates a tool call against active policies. Returns ALLOWED, BLOCKED, or WARNING with the matching rule.", args: "tool_name (str), tool_input (object), pack (str, optional), prompt (str, optional)" },
             { tool: "guard_sync",   desc: "Pulls the latest policies from the server and writes them to ~/.conductguard/policy.json.", args: "None" },
           ].map(({ tool, desc, args }) => (
             <div key={tool} className="px-4 py-3">
@@ -1135,6 +1136,63 @@ conduct guard status`}</Pre>
           ))}
         </div>
         <p className="text-stone-500 text-sm">JSON-RPC 2.0 over stdio. Protocol version <Code>2024-11-05</Code>.</p>
+
+        <SubHeading>guard_check parameters</SubHeading>
+        <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-4">
+          {[
+            ["tool_name", "required", "Name of the tool being called (e.g. bash, Write, WebFetch)."],
+            ["tool_input", "required", "Input arguments as an object. Serialised and matched against active rules."],
+            ["pack",       "optional", "Scope evaluation to a specific compliance pack (e.g. conduct-owasp, conduct-soc2). Omit to use workspace default policy."],
+            ["prompt",     "optional", "User prompt context. Prepended to the audit log entry — helps trace which instruction triggered the action."],
+          ].map(([param, req, desc]) => (
+            <div key={param} className="flex gap-4 px-4 py-3 items-start">
+              <code className="font-mono text-xs font-semibold text-stone-800 bg-stone-100 px-1.5 py-0.5 rounded w-24 shrink-0">{param}</code>
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${req === "required" ? "bg-rose-50 text-rose-600" : "bg-stone-100 text-stone-500"}`}>{req}</span>
+              <span className="text-xs text-stone-500 leading-relaxed">{desc}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="guard-tokens">
+        <SectionHeading id="guard-tokens">Agent tokens</SectionHeading>
+        <p className="text-stone-500 text-sm mb-5 leading-relaxed">
+          Guard issues two token types. Both work with the proxy and MCP endpoint and write to the same audit trail.
+        </p>
+        <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-5">
+          {[
+            ["cond_agt_*", "Session token",  "8 hours",    "conduct login",        "Interactive tools — Claude Code, Cursor, Windsurf, Codex CLI."],
+            ["cond_api_*", "API token",      "Long-lived", "Agent Identity page",  "CI/CD, server agents, integrations. Revocable from the dashboard."],
+          ].map(([prefix, label, ttl, source, use]) => (
+            <div key={prefix} className="px-4 py-4">
+              <div className="flex items-center gap-2 mb-2">
+                <code className="font-mono text-xs font-semibold text-stone-800 bg-stone-100 px-1.5 py-0.5 rounded">{prefix}</code>
+                <span className="text-[10px] font-semibold text-stone-500 bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded">{label}</span>
+                <span className="text-[10px] text-stone-400">expires: {ttl}</span>
+              </div>
+              <p className="text-xs text-stone-500 leading-relaxed"><span className="text-stone-700 font-medium">Issued by:</span> {source} &nbsp;·&nbsp; <span className="text-stone-700 font-medium">Use for:</span> {use}</p>
+            </div>
+          ))}
+        </div>
+
+        <SubHeading>RFC 8693 token exchange</SubHeading>
+        <Pre>{`POST /token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+&subject_token=<clerk_jwt>
+&subject_token_type=urn:ietf:params:oauth:token-type:jwt
+&resource=<workspace_id>
+
+# Response
+{
+  "access_token": "cond_agt_...",
+  "token_type": "Bearer",
+  "expires_in": 28800,
+  "refresh_token": "cond_ref_...",
+  "workspace_id": "<uuid>"
+}`}</Pre>
+        <p className="text-stone-500 text-xs mt-3">conduct login calls this endpoint automatically after browser auth. Use it directly from any RFC 8693-compatible OAuth client.</p>
       </section>
 
       <section id="guard-spend">

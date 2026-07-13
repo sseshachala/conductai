@@ -938,6 +938,38 @@ function GuardInsightsCallout() {
 
 const WHATS_NEW_ITEMS = [
   {
+    icon: "🔑",
+    title: "RFC 8693 token exchange",
+    tag: "v0.7.28",
+    desc: "conduct login now follows RFC 8693 — the same token exchange standard as Okta and Entra. The browser relays your Clerk session to the CLI, which exchanges it at POST /token for a cond_agt_* token. No custom auth flow to explain to your security team.",
+    color: "text-indigo-600",
+    bg: "bg-indigo-50 border-indigo-200",
+  },
+  {
+    icon: "🪙",
+    title: "Long-lived API tokens",
+    tag: "v0.7.28",
+    desc: "Create cond_api_* tokens from the Agent Identity page for CI/CD pipelines, server agents, and integrations. Same proxy enforcement and audit trail as session tokens, no expiry unless you revoke them.",
+    color: "text-violet-600",
+    bg: "bg-violet-50 border-violet-200",
+  },
+  {
+    icon: "👁",
+    title: "conduct token",
+    tag: "v0.7.27",
+    desc: "Reveals your current agent token. Tokens are masked in all sync output by default — run conduct token when you need the raw value for debugging or manual API calls.",
+    color: "text-emerald-600",
+    bg: "bg-emerald-50 border-emerald-200",
+  },
+  {
+    icon: "⚡",
+    title: "Proactive token refresh",
+    tag: "v0.7.24",
+    desc: "conduct guard sync checks token expiry and refreshes automatically 5 minutes before the 8-hour window closes. No interrupted sessions, no manual re-login during long coding runs.",
+    color: "text-amber-600",
+    bg: "bg-amber-50 border-amber-200",
+  },
+  {
     icon: "📡",
     title: "MCP Registry listing",
     tag: "v0.6.4 / v0.6.10",
@@ -1082,7 +1114,7 @@ function WhatsNewSection() {
         <div className="flex items-center justify-center gap-3 mb-3">
           <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">What&apos;s new</p>
           <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-widest">
-            v0.2.16 – v0.6.4
+            v0.2.16 – v0.7.28
           </span>
         </div>
         <h2 className="text-3xl font-bold text-stone-900 text-center mb-4">
