@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission, audit
+from app.core.credentials import get_credential
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration
@@ -338,19 +339,13 @@ def reveal_credential(
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """Return decrypted credential fields — admin only. Every access is audit-logged."""
-    q = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id,
-        Integration.handle == handle,
-    )
-    if environment_id:
-        q = q.filter(Integration.environment_id == environment_id)
-    row = q.first()
-    if not row or not row.encrypted_credentials:
+    creds = get_credential(db, workspace_id, handle, environment_id)
+    if not creds:
         raise HTTPException(status_code=404, detail="Credential not found")
     audit(db, workspace_id, "credential.revealed",
           resource_type="credential", resource_id=handle,
-          metadata={"service": row.service, "handle": handle, "environment_id": environment_id})
-    return decrypt(row.encrypted_credentials)
+          metadata={"handle": handle, "environment_id": environment_id})
+    return creds
 
 
 # ---------------------------------------------------------------------------

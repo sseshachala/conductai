@@ -30,25 +30,15 @@ def _get_slack_config(db, workspace_id: str) -> tuple[str, str] | None:
     Return (token, channel) for the workspace's Slack integration, or None
     if either the integration or the watchdog_channel preference is missing.
     """
-    from app.core.crypto import decrypt
-    from app.models.integration import Integration
+    from app.core.credentials import get_credential
     from app.models.workspace import Workspace
 
-    row = (
-        db.query(Integration)
-        .filter(
-            Integration.workspace_id == workspace_id,
-            Integration.service == "slack",
-            Integration.encrypted_credentials.isnot(None),
-        )
-        .first()
-    )
-    if not row:
+    try:
+        creds = get_credential(db, workspace_id, "slack")
+    except Exception:
         return None
 
-    try:
-        creds = decrypt(row.encrypted_credentials)
-    except Exception:
+    if not creds:
         return None
 
     token = creds.get("token") or creds.get("bot_token") or ""

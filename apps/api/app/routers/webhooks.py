@@ -83,24 +83,13 @@ def _get_run_workspace_id(run: "Run", db: Session) -> str | None:
 
 def _get_slack_signing_secret(run: "Run", db: Session) -> str:
     """Look up the Slack signing secret from the run's workspace credential."""
-    from app.models.integration import Integration
-    from app.core.crypto import decrypt
+    from app.core.credentials import get_credential
 
     workspace_id = _get_run_workspace_id(run, db)
     if not workspace_id:
         return settings.slack_signing_secret or ""
 
-    row = (
-        db.query(Integration)
-        .filter(
-            Integration.workspace_id == workspace_id,
-            Integration.handle == "slack",
-        )
-        .first()
-    )
-    if not row or not row.encrypted_credentials:
-        return settings.slack_signing_secret or ""
-    creds = decrypt(row.encrypted_credentials)
+    creds = get_credential(db, workspace_id, "slack")
     return creds.get("signing_secret") or settings.slack_signing_secret or ""
 
 
@@ -224,17 +213,12 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     if msg_channel and msg_ts:
         try:
             from app.runtime.integrations.slack import update_approval_message
-            from app.models.integration import Integration
-            from app.core.crypto import decrypt
+            from app.core.credentials import get_credential
             workspace_id = _get_run_workspace_id(run, db)
             if workspace_id:
-                slack_row = db.query(Integration).filter(
-                    Integration.workspace_id == workspace_id,
-                    Integration.handle == "slack",
-                ).first()
-                if slack_row and slack_row.encrypted_credentials:
-                    creds = decrypt(slack_row.encrypted_credentials)
-                    slack_token = creds.get("token") or creds.get("bot_token", "")
+                slack_creds = get_credential(db, workspace_id, "slack")
+                if slack_creds:
+                    slack_token = slack_creds.get("token") or slack_creds.get("bot_token", "")
                     update_approval_message(slack_token, msg_channel, msg_ts, decision, approver)
         except Exception as e:
             log.warning("slack.update_message_failed", error=str(e))

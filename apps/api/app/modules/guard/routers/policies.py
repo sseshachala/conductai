@@ -282,17 +282,9 @@ def _get_anthropic_key(db: Session, workspace_id: Optional[str]) -> str:
         ws_uuid = uuid.UUID(workspace_id)
     except ValueError:
         return ""
-    from app.core.crypto import decrypt
-    from app.models.integration import Integration
-    row = (
-        db.query(Integration)
-        .filter(Integration.workspace_id == ws_uuid, Integration.handle == "anthropic")
-        .first()
-    )
-    if not row or not row.encrypted_credentials:
-        return ""
+    from app.core.credentials import get_credential
     try:
-        creds = decrypt(row.encrypted_credentials)
+        creds = get_credential(db, str(ws_uuid), "anthropic")
         return creds.get("api_key") or ""
     except Exception:
         return ""

@@ -24,10 +24,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.crypto import decrypt
 from app.dsl.loader import load_workflow_yaml, yaml_to_graph
 from app.dsl.schema import WorkflowValidationError
-from app.models.integration import Integration
 from app.models.workflow import Workflow, WorkflowVersion
 from app.runtime.integrations import github
 
@@ -52,13 +50,10 @@ def _split_repo(source_repo: str) -> tuple[str, str]:
 
 
 def _github_token(db: Session, workspace_id) -> str:
-    row = db.query(Integration).filter(
-        Integration.workspace_id == workspace_id,
-        Integration.handle == "github",
-    ).first()
-    if not row or not row.encrypted_credentials:
+    from app.core.credentials import get_credential
+    creds = get_credential(db, workspace_id, "github")
+    if not creds:
         raise SyncError("No GitHub credentials configured for this workspace")
-    creds = decrypt(row.encrypted_credentials)
     token = creds.get("token") or creds.get("api_key")
     if not token:
         raise SyncError("GitHub credentials missing 'token'")

@@ -55,18 +55,14 @@ def discover_mcp_tools(
         transport = row.transport or body.transport
         token = _decrypt(row.encrypted_auth).get("token") if row.encrypted_auth else None
     elif body.credential_key is not None:
-        from app.models.integration import Integration
+        from app.core.credentials import get_credential as _get_credential
 
-        integration = db.query(Integration).filter(
-            Integration.workspace_id == workspace_id,
-            Integration.handle == body.credential_key,
-        ).first()
-        if not integration or not integration.encrypted_credentials:
+        creds = _get_credential(db, workspace_id, body.credential_key)
+        if not creds:
             raise HTTPException(
                 status_code=404,
                 detail=f"MCP credential '{body.credential_key}' not found",
             )
-        creds = _decrypt(integration.encrypted_credentials)
         server_url = creds.get("server_url") or creds.get("url")
         token = creds.get("token") or creds.get("api_key")
         transport = body.transport

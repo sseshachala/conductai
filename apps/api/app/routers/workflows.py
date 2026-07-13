@@ -871,29 +871,15 @@ def _resolve_preflight_key(workspace_id: str | None, db: Session | None) -> str 
     from app.core.config import settings
     if workspace_id and db:
         try:
-            from app.models.integration import Integration
-            from app.models.environment import Environment as _Env
-            from app.core.crypto import decrypt
-            default_env = db.query(_Env).filter(
-                _Env.workspace_id == workspace_id,
-                _Env.name == "Default",
-            ).first()
-            env_ids = [str(default_env.id)] if default_env else []
-            for eid in env_ids:
-                rows = db.query(Integration).filter(
-                    Integration.workspace_id == workspace_id,
-                    Integration.environment_id == eid,
-                    Integration.handle.in_(["anthropic", "env_vars"]),
-                ).all()
-                for row in rows:
-                    if not row.encrypted_credentials:
-                        continue
-                    creds = decrypt(row.encrypted_credentials) or {}
-                    key = creds.get("api_key") if row.handle == "anthropic" else (
-                        creds.get("ANTHROPIC_API_KEY") or creds.get("anthropic_api_key")
-                    )
-                    if key:
-                        return key
+            from app.core.credentials import get_all_credentials
+            store = get_all_credentials(db, workspace_id)
+            key = (
+                (store.get("anthropic") or {}).get("api_key")
+                or (store.get("env_vars") or {}).get("ANTHROPIC_API_KEY")
+                or (store.get("env_vars") or {}).get("anthropic_api_key")
+            )
+            if key:
+                return key
         except Exception:
             pass
     return settings.anthropic_api_key

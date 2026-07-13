@@ -402,32 +402,16 @@ def _resolve_anthropic_key(workspace_id: str, db: Session) -> str | None:
     """
     import os
     try:
-        from app.models.integration import Integration
-        from app.models.environment import Environment as _Env
-        from app.core.crypto import decrypt
+        from app.core.credentials import get_all_credentials
 
-        default_env = db.query(_Env).filter(
-            _Env.workspace_id == workspace_id,
-            _Env.name == "Default",
-        ).first()
-
-        cred_rows = db.query(Integration).filter(
-            Integration.workspace_id == workspace_id,
-            Integration.environment_id == default_env.id,
-        ).all() if default_env else []
-
-        for row in cred_rows:
-            if not row.encrypted_credentials:
-                continue
-            creds = decrypt(row.encrypted_credentials)
-            if row.handle == "anthropic":
-                key = creds.get("api_key")
-                if key:
-                    return key
-            if row.handle == "env_vars":
-                key = creds.get("ANTHROPIC_API_KEY") or creds.get("anthropic_api_key")
-                if key:
-                    return key
+        store = get_all_credentials(db, workspace_id)
+        key = store.get("anthropic", {}).get("api_key")
+        if key:
+            return key
+        env_vars = store.get("env_vars", {})
+        key = env_vars.get("ANTHROPIC_API_KEY") or env_vars.get("anthropic_api_key")
+        if key:
+            return key
     except Exception as exc:
         log.warning("eval.live_key_lookup_failed", error=str(exc))
 

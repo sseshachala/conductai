@@ -53,42 +53,13 @@ def _extract_credentials(raw_yaml: str) -> list[str]:
 
 
 def _resolve_anthropic_key(workspace_id: str, environment_id: str | None, db: Session) -> str | None:
-    """Resolve ANTHROPIC_API_KEY from the credential vault.
-
-    ANTHROPIC_API_KEY is saved under handle='anthropic', field='api_key'.
-    Also checks handle='env_vars' for any key stored with lowercase name.
-    Falls back to Default environment.
-    """
-    from app.models.environment import Environment as _Env
-
-    env_ids: list[str] = []
-    if environment_id:
-        env_ids.append(environment_id)
-    default_env = db.query(_Env).filter(
-        _Env.workspace_id == workspace_id,
-        _Env.name == "Default",
-    ).first()
-    if default_env and str(default_env.id) not in env_ids:
-        env_ids.append(str(default_env.id))
-
-    for eid in env_ids:
-        rows = db.query(Integration).filter(
-            Integration.workspace_id == workspace_id,
-            Integration.environment_id == eid,
-            Integration.handle.in_(["anthropic", "env_vars"]),
-        ).all()
-        for row in rows:
-            if not row.encrypted_credentials:
-                continue
-            creds = decrypt(row.encrypted_credentials) or {}
-            if row.handle == "anthropic":
-                key = creds.get("api_key")
-            else:
-                key = creds.get("ANTHROPIC_API_KEY") or creds.get("anthropic_api_key")
-            if key:
-                return key
-
-    return None
+    from app.core.credentials import get_all_credentials
+    store = get_all_credentials(db, workspace_id, environment_id=environment_id)
+    return (
+        (store.get("anthropic") or {}).get("api_key")
+        or (store.get("env_vars") or {}).get("ANTHROPIC_API_KEY")
+        or (store.get("env_vars") or {}).get("anthropic_api_key")
+    )
 
 
 @router.post("/generate", response_model=GenerateResponse)
