@@ -1271,7 +1271,7 @@ def cmd_guard_sync(args):
         if installed.get("clerk_user_id"):
             cfg["clerk_user_id"] = installed["clerk_user_id"]
         _save_guard_config(cfg)
-        if not fresh_agent_token:
+        if not fresh_agent_token and not cfg.get("agent_token"):
             print(f"  {YELLOW}Warning: server returned no token — proxy env may be stale{RESET}")
     except Exception as e:
         print(f"  {YELLOW}Warning: could not refresh token ({e}) — using cached value{RESET}")
