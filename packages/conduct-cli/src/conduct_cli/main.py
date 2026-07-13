@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -426,6 +427,36 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
 
 
+def _exchange_clerk_token(api_url: str, clerk_token: str, workspace_id: str) -> dict:
+    """POST /token (RFC 8693) to exchange a Clerk JWT for cond_agt_* + cond_ref_*."""
+    _GRANT = "urn:ietf:params:oauth:grant-type:token-exchange"
+    _TYPE  = "urn:ietf:params:oauth:token-type:jwt"
+    body = urllib.parse.urlencode({
+        "grant_type":         _GRANT,
+        "subject_token":      clerk_token,
+        "subject_token_type": _TYPE,
+        "resource":           workspace_id,
+    }).encode()
+    req = urllib.request.Request(
+        f"{api_url}/token",
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+        return {
+            "agent_token":   data["access_token"],
+            "refresh_token": data.get("refresh_token", ""),
+            "workspace_id":  data.get("workspace_id", workspace_id),
+        }
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode(errors="replace")
+        print(f"{RED}Token exchange failed ({e.code}): {body_text[:120]}{RESET}")
+        sys.exit(1)
+
+
 def _web_login_flow(api_url: str, web_url: str) -> dict:
     """Open browser → localhost callback → return {agent_token, refresh_token, workspace_id}."""
     import http.server
@@ -480,8 +511,16 @@ def _web_login_flow(api_url: str, web_url: str) -> dict:
 
     server.shutdown()
 
-    if not result.get("agent_token") or not result.get("workspace_id"):
-        print(f"{RED}Login failed — missing token in callback. Try again.{RESET}")
+    if not result.get("workspace_id"):
+        print(f"{RED}Login failed — missing workspace in callback. Try again.{RESET}")
+        sys.exit(1)
+
+    # RFC 8693: web page relays Clerk JWT; CLI exchanges it at POST /token
+    if result.get("clerk_token") and not result.get("agent_token"):
+        result = _exchange_clerk_token(api_url, result["clerk_token"], result["workspace_id"])
+
+    if not result.get("agent_token"):
+        print(f"{RED}Login failed — token exchange failed. Try again.{RESET}")
         sys.exit(1)
 
     return result

@@ -5,8 +5,6 @@ import { useAuth } from "@clerk/nextjs"
 import { useSearchParams } from "next/navigation"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
-const DEFAULT_API = process.env.NEXT_PUBLIC_API_URL ?? "https://api.conductai.ai"
-
 type State = "loading" | "success" | "error"
 
 export default function CliAuthPage() {
@@ -35,7 +33,6 @@ export default function CliAuthPage() {
 
     const port        = params.get("port")
     const qstate      = params.get("state")
-    const apiOverride = params.get("api")
 
     if (!port || !qstate) {
       setState("error")
@@ -43,7 +40,6 @@ export default function CliAuthPage() {
       return
     }
 
-    const apiUrl      = (apiOverride ?? DEFAULT_API).replace(/\/$/, "")
     const workspaceId = activeWorkspace.id
 
     async function exchange() {
@@ -51,28 +47,13 @@ export default function CliAuthPage() {
         const clerkToken = await getToken()
         if (!clerkToken) throw new Error("No Clerk session token")
 
-        const res = await fetch(`${apiUrl}/auth/cli-token?workspace_id=${workspaceId}`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${clerkToken}`,
-            "Content-Type": "application/json",
-          },
-        })
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}))
-          throw new Error(body.detail ?? `Server error ${res.status}`)
-        }
-
-        const data = await res.json()
+        // RFC 8693: relay Clerk JWT to CLI; CLI calls POST /token to exchange it
         const callbackParams = new URLSearchParams({
-          agent_token:   data.agent_token,
-          refresh_token: data.refresh_token,
-          workspace_id:  data.workspace_id,
-          state:         qstate!,
+          clerk_token:  clerkToken,
+          workspace_id: workspaceId,
+          state:        qstate!,
         })
 
-        // Redirect to CLI's localhost callback server
         window.location.href = `http://127.0.0.1:${port}/callback?${callbackParams}`
         setState("success")
       } catch (e: unknown) {
