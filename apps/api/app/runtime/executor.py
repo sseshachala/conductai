@@ -1763,6 +1763,13 @@ def execute_run(run_id: str):
                     if _rt and not _rt.invalidated_at:
                         _rt.invalidated_at = _dt.now(_rtz.utc)
                         _inv_db.commit()
+                    _cred_tok = state.get("__cred_token__")
+                    if _cred_tok:
+                        from sqlalchemy import text as _csql
+                        _inv_db.execute(_csql(
+                            "UPDATE cred_retrieval_tokens SET expires_at = now() WHERE token = :t"
+                        ), {"t": _cred_tok})
+                        _inv_db.commit()
                 finally:
                     _inv_db.close()
             except Exception:
