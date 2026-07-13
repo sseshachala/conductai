@@ -2,10 +2,9 @@
 
 export function formatDate(ts: string): string {
   try {
-    return new Date(ts).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
+    return new Date(ts).toLocaleString(undefined, {
+      day: "numeric", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
     })
   } catch {
     return ts
