@@ -16,6 +16,16 @@ interface RunToken {
   invalidated_at: string | null
 }
 
+interface ApiToken {
+  id: string
+  token_name: string | null
+  token_prefix: string | null
+  token_type: string
+  expires_at: string | null
+  last_used_at: string | null
+  created_at: string | null
+}
+
 export default function AgentIdentityPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <WithAuth />
@@ -38,6 +48,18 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  const [apiTokens, setApiTokens] = useState<ApiToken[]>([])
+  const [apiLoading, setApiLoading] = useState(true)
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [newTokenName, setNewTokenName] = useState("")
+  const [newTokenExpiry, setNewTokenExpiry] = useState<string>("never")
+  const [creating, setCreating] = useState(false)
+  const [createdToken, setCreatedToken] = useState<string | null>(null)
+  const [createdCopied, setCreatedCopied] = useState(false)
+  const [revokeId, setRevokeId] = useState<string | null>(null)
+  const [revoking, setRevoking] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+
   const headers = useCallback(async (): Promise<Record<string, string>> => {
     const h: Record<string, string> = { "Content-Type": "application/json" }
     if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
@@ -49,17 +71,25 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
     if (!workspaceId || !apiUrl) return
     try {
       const h = await headers()
-      const [tokensRes, installedRes] = await Promise.all([
+      const [tokensRes, installedRes, apiTokensRes, roleRes] = await Promise.all([
         fetch(`${apiUrl}/workspaces/${workspaceId}/agent-run-tokens`, { headers: h }),
         fetch(`${apiUrl}/guard/config/installed?workspace_id=${workspaceId}`, { headers: h }),
+        fetch(`${apiUrl}/workspaces/${workspaceId}/api-tokens`, { headers: h }),
+        fetch(`${apiUrl}/projects/${workspaceId}/my-role`, { headers: h }),
       ])
       if (tokensRes.ok) setTokens(await tokensRes.json())
       if (installedRes.ok) {
         const data = await installedRes.json()
         if (data.agent_token) setCliToken(data.agent_token)
       }
+      if (apiTokensRes.ok) setApiTokens(await apiTokensRes.json())
+      if (roleRes.ok) {
+        const data = await roleRes.json()
+        setIsAdmin(data.role === "admin")
+      }
     } catch {}
     setLoading(false)
+    setApiLoading(false)
   }, [workspaceId, apiUrl, headers])
 
   useEffect(() => { load() }, [load])
@@ -81,6 +111,35 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
+  }
+
+  async function handleCreateToken() {
+    if (!newTokenName.trim()) return
+    setCreating(true)
+    const h = await headers()
+    const body: Record<string, unknown> = { name: newTokenName.trim() }
+    if (newTokenExpiry !== "never") body.expires_in_days = parseInt(newTokenExpiry)
+    const res = await fetch(`${apiUrl}/workspaces/${workspaceId}/api-tokens`, {
+      method: "POST", headers: h, body: JSON.stringify(body)
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setCreatedToken(data.token)
+      setNewTokenName("")
+      setNewTokenExpiry("never")
+      setShowCreateForm(false)
+      load()
+    }
+    setCreating(false)
+  }
+
+  async function handleRevoke(id: string) {
+    setRevoking(id)
+    const h = await headers()
+    await fetch(`${apiUrl}/workspaces/${workspaceId}/api-tokens/${id}`, { method: "DELETE", headers: h })
+    setApiTokens(prev => prev.filter(t => t.id !== id))
+    setRevokeId(null)
+    setRevoking(null)
   }
 
   return (
@@ -132,6 +191,133 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
               No CLI token found. Run <code>conduct login</code> to authenticate.
             </span>
           )}
+        </div>
+
+        {/* API Tokens */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>API Tokens</div>
+            {isAdmin && !showCreateForm && (
+              <button onClick={() => setShowCreateForm(true)} className="btn btn-sm btn-primary">+ Create token</button>
+            )}
+          </div>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
+            Long-lived tokens for external apps and agents calling Guard via MCP. Admin-managed.
+          </p>
+
+          {/* One-time reveal after creation */}
+          {createdToken && (
+            <div className="card" style={{ padding: "12px 16px", marginBottom: 12, background: "var(--ok-bg)", border: "1px solid var(--ok-bd)" }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "var(--ok)", margin: "0 0 8px" }}>Token created — copy it now. It won&apos;t be shown again.</p>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <code style={{ fontFamily: "monospace", fontSize: 12, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 10px", flex: 1 }}>
+                  {createdToken}
+                </code>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(createdToken); setCreatedCopied(true); setTimeout(() => setCreatedCopied(false), 2000) }}
+                  style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: createdCopied ? "var(--ok)" : "var(--text-muted)", cursor: "pointer" }}
+                >{createdCopied ? "Copied!" : "Copy"}</button>
+                <button onClick={() => setCreatedToken(null)} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text-muted)", cursor: "pointer" }}>Dismiss</button>
+              </div>
+            </div>
+          )}
+
+          {/* Create form */}
+          {showCreateForm && (
+            <div className="card" style={{ padding: "12px 16px", marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Token name</label>
+                  <input
+                    type="text" value={newTokenName} onChange={e => setNewTokenName(e.target.value)}
+                    placeholder="e.g. fraud-detection-agent"
+                    style={{ width: "100%", height: 32, border: "1px solid var(--border)", borderRadius: 6, padding: "0 10px", fontSize: 12, background: "var(--surface)", color: "var(--text)" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Expires</label>
+                  <select value={newTokenExpiry} onChange={e => setNewTokenExpiry(e.target.value)}
+                    style={{ height: 32, border: "1px solid var(--border)", borderRadius: 6, padding: "0 8px", fontSize: 12, background: "var(--surface)", color: "var(--text)" }}>
+                    <option value="never">Never</option>
+                    <option value="30">30 days</option>
+                    <option value="90">90 days</option>
+                    <option value="365">1 year</option>
+                  </select>
+                </div>
+                <button onClick={handleCreateToken} disabled={!newTokenName.trim() || creating} className="btn btn-sm btn-primary">
+                  {creating ? "Creating\u2026" : "Create"}
+                </button>
+                <button onClick={() => setShowCreateForm(false)} className="btn btn-sm btn-ghost">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Token list */}
+          <div className="card" style={{ overflow: "hidden" }}>
+            {apiLoading ? (
+              <div style={{ padding: "24px 20px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>Loading\u2026</div>
+            ) : apiTokens.length === 0 ? (
+              <div style={{ padding: "24px 20px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+                No API tokens yet.{isAdmin ? " Create one to let external apps call Guard." : " Ask an admin to create one."}
+              </div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                    <th style={{ textAlign: "left", padding: "9px 16px", fontWeight: 500, color: "var(--text-muted)", fontSize: 11.5 }}>Name</th>
+                    <th style={{ textAlign: "left", padding: "9px 16px", fontWeight: 500, color: "var(--text-muted)", fontSize: 11.5 }}>Prefix</th>
+                    <th style={{ textAlign: "left", padding: "9px 16px", fontWeight: 500, color: "var(--text-muted)", fontSize: 11.5 }}>Expires</th>
+                    <th style={{ textAlign: "left", padding: "9px 16px", fontWeight: 500, color: "var(--text-muted)", fontSize: 11.5 }}>Last used</th>
+                    <th style={{ textAlign: "left", padding: "9px 16px", fontWeight: 500, color: "var(--text-muted)", fontSize: 11.5 }}>Status</th>
+                    {isAdmin && <th style={{ padding: "9px 16px" }} />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {apiTokens.map(t => {
+                    const expired = t.expires_at ? new Date(t.expires_at) < new Date() : false
+                    return (
+                      <tr key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
+                        <td style={{ padding: "8px 16px", fontWeight: 500 }}>{t.token_name ?? "\u2014"}</td>
+                        <td style={{ padding: "8px 16px" }}>
+                          <code style={{ fontSize: 11.5, color: "var(--text-3)", background: "var(--bg)", padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)" }}>
+                            {t.token_prefix ? `${t.token_prefix}...` : "\u2014"}
+                          </code>
+                        </td>
+                        <td style={{ padding: "8px 16px", color: expired ? "var(--err)" : "var(--text-muted)" }}>
+                          {t.expires_at ? fmt(t.expires_at) : "Never"}
+                        </td>
+                        <td style={{ padding: "8px 16px", color: "var(--text-muted)" }}>{fmt(t.last_used_at)}</td>
+                        <td style={{ padding: "8px 16px" }}>
+                          {expired
+                            ? <span style={{ color: "var(--err)", fontSize: 11.5 }}>Expired</span>
+                            : <span style={{ color: "var(--ok)", fontWeight: 600, fontSize: 11.5 }}>Active</span>
+                          }
+                        </td>
+                        {isAdmin && (
+                          <td style={{ padding: "8px 16px", textAlign: "right" }}>
+                            {revokeId === t.id ? (
+                              <span style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                                <button onClick={() => handleRevoke(t.id)} disabled={revoking === t.id}
+                                  style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, border: "1px solid var(--err)", background: "var(--err)", color: "#fff", cursor: "pointer" }}>
+                                  {revoking === t.id ? "\u2026" : "Confirm"}
+                                </button>
+                                <button onClick={() => setRevokeId(null)} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text-muted)", cursor: "pointer" }}>Cancel</button>
+                              </span>
+                            ) : (
+                              <button onClick={() => setRevokeId(t.id)}
+                                style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--err)", cursor: "pointer" }}>
+                                Revoke
+                              </button>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
 
         {/* Run Tokens */}
