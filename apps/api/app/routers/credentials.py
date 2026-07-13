@@ -7,7 +7,7 @@ GET    /integrations/github/repos                    — list repos via stored t
 GET    /integrations/github/repos/{owner}/{repo}/branches — list branches via stored token
 """
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -879,3 +879,29 @@ def test_credential(
         return {"ok": False, "error": f"Connection to {svc} timed out"}
     except httpx.RequestError as exc:
         return {"ok": False, "error": f"Could not reach {svc}: {exc}"}
+
+
+# ── Credential broker ─────────────────────────────────────────────────────────
+
+class _RetrieveRequest(BaseModel):
+    handle: str
+
+
+@router.post("/creds/retrieve")
+def retrieve_cred(
+    body: _RetrieveRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Broker endpoint for run subprocesses and sandboxes.
+    Accepts a short-lived cond_cred_* token (not a user JWT) and returns
+    the decrypted credential for the requested handle if it's in the allowlist.
+    """
+    cred_token = request.headers.get("X-Cred-Token", "")
+    if not cred_token or not cred_token.startswith("cond_cred_"):
+        raise HTTPException(status_code=401, detail="missing or invalid cred token")
+    result = retrieve_credential(db, cred_token, body.handle)
+    if result is None:
+        raise HTTPException(status_code=403, detail="token invalid, expired, or handle not permitted")
+    return result
