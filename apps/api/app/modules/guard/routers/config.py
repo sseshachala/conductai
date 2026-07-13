@@ -149,7 +149,10 @@ def get_install_status(
     if not config:
         return InstallStatusOut(installed=False)
 
-    # Idempotent member provisioning — never blocks the response
+    # Idempotent member provisioning — only for human Clerk sessions (not machine tokens)
+    if not user_id:
+        return InstallStatusOut(installed=True, workspace_id=workspace_id)
+
     try:
         from sqlalchemy import text
         existing = db.execute(
