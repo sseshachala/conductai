@@ -68,6 +68,8 @@ _TOOLS = [
                 "tool_input": {"type": "object", "description": "Relevant parameters — e.g. {\"command\": \"rm -rf /\"} or {\"file_path\": \"/etc/passwd\"}"},
                 "conduct_run_id":   {"type": "string", "description": "Conduct run ID if called from within a workflow run — pass the value from your run context."},
                 "conduct_workflow": {"type": "string", "description": "Conduct workflow slug if called from within a workflow run."},
+                "pack": {"type": "string", "description": "Optional. Scope this check to a specific compliance pack (e.g. 'conduct-eu-ai-act', 'conduct-hipaa'). conduct-base is always enforced on top. Returns ERROR if the pack is not installed for this workspace."},
+                "prompt": {"type": "string", "description": "Optional. The prompt or action description being checked. Stored in the audit trail for traceability — useful for agentic apps passing context about why an action is being taken."},
             },
             "required": ["tool_name"],
         },
@@ -341,6 +343,44 @@ def _get_rules(db: Session, ws_uuid: uuid.UUID) -> list[dict]:
     ]
 
 
+_PERSONAS = ["agent", "proxy"]
+
+def _get_rules_for_pack(db: Session, ws_uuid: uuid.UUID, pack_slug: str) -> list[dict] | str:
+    """Rules from conduct-base + pack_slug only. Returns error string if pack not installed."""
+    if pack_slug == "conduct-base":
+        return 'ERROR — "conduct-base" is always enforced and cannot be selected directly. Use a compliance pack (e.g. "conduct-eu-ai-act").'
+    row = db.execute(_sql("SELECT 1 FROM workspace_skill_packs WHERE workspace_id=:ws AND pack_slug=:p"),
+                     {"ws": ws_uuid, "p": pack_slug}).fetchone()
+    if not row:
+        installed = [r[0] for r in db.execute(_sql(
+            "SELECT pack_slug FROM workspace_skill_packs WHERE workspace_id=:ws AND pack_slug != 'conduct-base'"
+        ), {"ws": ws_uuid}).fetchall()]
+        available = ", ".join(sorted(installed)) or "none"
+        return f'ERROR — pack "{pack_slug}" is not installed for this workspace. Installed packs: {available}.'
+    rules: dict[str, dict] = {}
+    for slug in ("conduct-base", pack_slug):
+        sp = db.execute(_sql(
+            "SELECT rules FROM skill_packs WHERE slug=:slug ORDER BY published_at DESC LIMIT 1"
+        ), {"slug": slug}).fetchone()
+        if not sp:
+            continue
+        for rule in (sp[0] or []):
+            persona = rule.get("persona")
+            if persona and persona != "agent":
+                continue
+            if not persona and "agent" not in rule.get("persona_affinity", _PERSONAS):
+                continue
+            rules[rule["id"]] = {
+                "rule_id":            rule.get("id") or rule.get("rule_id"),
+                "match_tool":         rule.get("match_tool"),
+                "match_pattern":      rule.get("match_pattern"),
+                "match_path_pattern": rule.get("match_path_pattern"),
+                "action":             rule.get("action"),
+                "message":            rule.get("message"),
+            }
+    return list(rules.values())
+
+
 def _record_event(
     db: Session,
     ws_uuid: uuid.UUID,
@@ -354,10 +394,15 @@ def _record_event(
     *,
     conductai_run_id: str | None = None,
     conductai_workflow: str | None = None,
+    prompt: str | None = None,
 ) -> None:
     ts = datetime.now(timezone.utc)
     prev_hash, entry_hash = chain_hash_for_insert(db, ws_uuid, ts, tool_name, decision)
     policy_hash = get_policy_hash(db, ws_uuid)
+
+    raw_summary = redact_secrets(json.dumps(tool_input)[:500])[0][:200]
+    if prompt:
+        raw_summary = f"[prompt: {prompt[:100]}] {raw_summary}"
 
     event = GuardAuditEvent(
         workspace_id=ws_uuid,
@@ -365,7 +410,7 @@ def _record_event(
         user_email=user_email,
         ai_tool=ai_tool,
         tool_call=tool_name,
-        input_summary=redact_secrets(json.dumps(tool_input)[:500])[0][:200],
+        input_summary=raw_summary,
         decision=decision,
         rule_id=rule_id,
         hook_session_id=session_id,
@@ -632,13 +677,21 @@ async def mcp_endpoint(
                 inner_input = arguments.get("tool_input") or {}
                 _run_id   = arguments.get("conduct_run_id") or None
                 _workflow = arguments.get("conduct_workflow") or None
+                _pack     = arguments.get("pack") or None
+                _prompt   = arguments.get("prompt") or None
                 try:
-                    rules = _get_rules(db, ws_uuid)
+                    if _pack:
+                        rules_or_err = _get_rules_for_pack(db, ws_uuid, _pack)
+                        if isinstance(rules_or_err, str):
+                            return JSONResponse(_text(msg_id, rules_or_err))
+                        rules = rules_or_err
+                    else:
+                        rules = _get_rules(db, ws_uuid)
                 except Exception as _eval_err:
                     _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
                     if _cfg and not _cfg.deny_on_error:
                         return JSONResponse(_text(msg_id, f"ALLOWED — policy eval error (fail-open): {_eval_err}"))
-                    _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "policy_eval_error", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
+                    _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "policy_eval_error", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                     return JSONResponse(_text(msg_id, f"BLOCKED — policy evaluation failed. Request denied by fail-closed default."))
 
                 _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
@@ -647,7 +700,7 @@ async def mcp_endpoint(
                 rule  = _match_policy(inner_tool, inner_input, rules)
 
                 if rule is None:
-                    _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
+                    _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                     return JSONResponse(_text(msg_id, f"ALLOWED — no policy rule matches '{inner_tool}'."))
 
                 action  = rule.get("action", "audit")
@@ -655,11 +708,11 @@ async def mcp_endpoint(
                 message = rule.get("message") or f"Policy violation ({rule_id})"
 
                 if _advisory:
-                    _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
+                    _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                     return JSONResponse(_text(msg_id, f"ALLOWED (advisory) — {message}  [rule: {rule_id}]"))
 
                 if action == "block":
-                    _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
+                    _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                     return JSONResponse(_text(msg_id, f"BLOCKED — {message}  [rule: {rule_id}]"))
                 if action in ("warn", "approval"):
                     already_warned = db.query(GuardAuditEvent).filter(
@@ -670,10 +723,10 @@ async def mcp_endpoint(
                     ).first()
                     if already_warned:
                         return JSONResponse(_text(msg_id, f"ALLOWED — warning already issued this session [rule: {rule_id}]"))
-                    _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
+                    _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                     return JSONResponse(_text(msg_id, f"WARNING — {message}  [rule: {rule_id}]"))
 
-                _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
+                _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                 return JSONResponse(_text(msg_id, f"AUDITED — {message}  [rule: {rule_id}]"))
 
             elif tool_name == "guard_sync":
