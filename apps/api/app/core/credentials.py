@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.core.crypto import decrypt
@@ -58,6 +60,66 @@ def get_credential(db, workspace_id: str, handle: str, environment_id=None) -> d
     if not row or not row.encrypted_credentials:
         return {}
     return decrypt(row.encrypted_credentials) or {}
+
+
+def mint_cred_token(
+    db,
+    run_id: str,
+    workspace_id: str,
+    allowed_handles: list[str],
+    environment_id: str | None = None,
+    ttl_seconds: int = 3600,
+) -> str:
+    """
+    Mint a short-lived retrieval token scoped to a run + handle allowlist.
+    Both proxy-mode subprocesses and sandbox containers use the same token
+    to call POST /creds/retrieve — no divergent credential injection paths.
+    """
+    from sqlalchemy import text as _sql
+    token = "cond_cred_" + secrets.token_hex(24)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+    db.execute(
+        _sql("""
+            INSERT INTO cred_retrieval_tokens
+                (token, run_id, workspace_id, environment_id, allowed_handles, expires_at)
+            VALUES (:token, :run_id, :ws, :env_id, :handles, :exp)
+        """),
+        {
+            "token": token,
+            "run_id": run_id,
+            "ws": workspace_id,
+            "env_id": environment_id,
+            "handles": allowed_handles,
+            "exp": expires_at,
+        },
+    )
+    db.commit()
+    return token
+
+
+def retrieve_credential(db, cred_token: str, handle: str) -> dict | None:
+    """
+    Validate a retrieval token and return decrypted credential for the requested handle.
+    Returns None if token is invalid, expired, or handle not in allowlist.
+    """
+    from sqlalchemy import text as _sql
+    row = db.execute(
+        _sql("""
+            SELECT workspace_id, environment_id, allowed_handles, expires_at
+            FROM cred_retrieval_tokens
+            WHERE token = :token
+        """),
+        {"token": cred_token},
+    ).fetchone()
+
+    if not row:
+        return None
+    if datetime.now(timezone.utc) > row.expires_at.replace(tzinfo=timezone.utc):
+        return None
+    if handle not in (row.allowed_handles or []):
+        return None
+
+    return get_credential(db, row.workspace_id, handle, row.environment_id)
 
 
 def get_all_credentials(db, workspace_id: str, environment_id=None) -> CredentialStore:
