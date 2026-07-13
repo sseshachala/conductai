@@ -43,8 +43,7 @@ function SetupGate({ children }: { children: React.ReactNode }) {
           if (pathname !== "/setup") router.replace("/setup")
         } else {
           sessionStorage.setItem(SETUP_VERIFIED_KEY, "1")
-          if (typeof window !== "undefined") localStorage.setItem("conduct_setup_seen", "1")
-          if (pathname === "/setup") router.replace("/theguard")
+if (pathname === "/setup") router.replace("/theguard")
         }
       } catch { /* fail open */ }
     })()
