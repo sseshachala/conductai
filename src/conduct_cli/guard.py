@@ -767,7 +767,7 @@ def cmd_guard_install(args):
         policy = _req(
             "GET",
             f"{server}/guard/policies/sync?workspace_id={workspace_id}",
-            api_key=api_key,
+            token=agent_token,
         )
         _save_policy(policy)
         # Mirror fail_mode into guard config so the hook can enforce it
