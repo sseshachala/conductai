@@ -498,7 +498,7 @@ async def mcp_endpoint(
 
     db = SessionLocal()
     try:
-        # Validate token — member_token (conduct login) or cond_live_ API key (Settings → API Keys)
+        # Validate token — member_token (conduct login), cond_live_ API key, or cond_api_* long-lived machine token
         import hashlib as _hashlib
         if resolved_token.startswith("cond_live_"):
             key_hash = _hashlib.sha256(resolved_token.encode()).hexdigest()
@@ -513,6 +513,34 @@ async def mcp_endpoint(
             ws_uuid = api_key_row.workspace_id
             clerk_user_id = api_key_row.user_id or "api_key"
             user_email = get_clerk_user_email(clerk_user_id) if clerk_user_id != "api_key" else f"apikey@{str(ws_uuid)[:8]}"
+        elif resolved_token.startswith("cond_api_"):
+            # Long-lived machine token — look up via agent_identities, no GMC link required
+            from app.modules.agent_identity.models import AgentIdentity as _AI
+            from app.core.crypto import decrypt as _decrypt
+            from datetime import datetime as _dt, timezone as _tz
+            _ai = None
+            for _candidate in db.query(_AI).filter(_AI.token_prefix == resolved_token[:13]).all():
+                try:
+                    if _decrypt(_candidate.token_encrypted).get("token") == resolved_token:
+                        _ai = _candidate
+                        break
+                except Exception:
+                    continue
+            if not _ai:
+                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "invalid API token"))
+            if _ai.expires_at and _ai.expires_at < _dt.now(_tz.utc):
+                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "API token expired"))
+            if workspace_id and str(_ai.workspace_id) != str(uuid.UUID(workspace_id)):
+                return JSONResponse(status_code=401, content=_err(msg_id, -32600, "API token does not belong to this workspace"))
+            ws_uuid = _ai.workspace_id
+            clerk_user_id = f"api:{_ai.token_name or 'api-token'}"
+            user_email = f"api-token@{str(ws_uuid)[:8]}"
+            # Update last_used_at (best effort)
+            try:
+                _ai.last_used_at = _dt.now(_tz.utc)
+                db.commit()
+            except Exception:
+                db.rollback()
         else:
             # member_token — look up workspace from token when workspace_id not in URL
             if workspace_id:
