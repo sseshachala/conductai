@@ -73,17 +73,6 @@ def get_workspace_id_sse(
             raise HTTPException(status_code=500, detail="CLI_WORKSPACE_ID is not configured on the server")
         return settings.cli_workspace_id
 
-    # Per-user cond_live_... API key
-    if api_key_hdr and api_key_hdr.startswith("cond_live_"):
-        import hashlib
-        from app.models.conduct_api_key import ConductApiKey
-        key_hash = hashlib.sha256(api_key_hdr.encode()).hexdigest()
-        row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
-        if row and (row.expires_at is None or row.expires_at > datetime.now(timezone.utc)):
-            row.last_used_at = datetime.now(timezone.utc)
-            db.commit()
-            return str(row.workspace_id)
-
     raw_token = None
     if auth_header.startswith("Bearer "):
         raw_token = auth_header.removeprefix("Bearer ")

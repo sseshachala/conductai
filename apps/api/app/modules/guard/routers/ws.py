@@ -11,7 +11,6 @@ without polling.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import uuid
@@ -19,6 +18,7 @@ import uuid
 import redis as _redis_sync
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
+from app.core.auth import resolve_agent_token
 from app.core.config import settings
 from app.core.database import SessionLocal
 
@@ -42,19 +42,7 @@ def _token_valid(token: str) -> bool:
         return False
     db = SessionLocal()
     try:
-        if token.startswith("cond_live_"):
-            from datetime import datetime, timezone
-            from app.models.conduct_api_key import ConductApiKey
-            key_hash = hashlib.sha256(token.encode()).hexdigest()
-            row = db.query(ConductApiKey).filter(ConductApiKey.key_hash == key_hash).first()
-            if row and (not row.expires_at or row.expires_at > datetime.now(timezone.utc)):
-                return True
-        from sqlalchemy import text as _text
-        row = db.execute(
-            _text("SELECT 1 FROM guard_member_config WHERE member_token = :t LIMIT 1"),
-            {"t": token},
-        ).fetchone()
-        return row is not None
+        return resolve_agent_token(token, db) is not None
     except Exception:
         return False
     finally:
