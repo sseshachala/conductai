@@ -9,12 +9,12 @@ import hmac
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated, Literal
+from typing import Annotated
 
 import structlog
 log = structlog.get_logger(__name__)
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session

@@ -63,7 +63,7 @@ export function GuardShell({
 }: GuardShellProps) {
   const pathname = usePathname()
   const [, setTick] = useState(0)
-  const { role, loading: roleLoading } = useGuardRole()
+  const { role } = useGuardRole()
 
   const visibleTabs = GUARD_TABS.filter(t => !t.roles || (role && t.roles.includes(role)))
 
