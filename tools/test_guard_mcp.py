@@ -126,6 +126,9 @@ def run(token: str, workspace_id: str):
             if ok:
                 print(f"{GREEN}PASS{RESET} {label}")
                 print(f"     → {text[:120]}")
+                # Warn if guard_status returns synthetic email (migration 0069 not yet applied)
+                if "rules_active" in text and "api-token@" in text:
+                    print(f"     {YELLOW}NOTE{RESET}: email attribution is synthetic — migration 0069 pending deploy")
                 passed += 1
             else:
                 print(f"{RED}FAIL{RESET} {label}")
