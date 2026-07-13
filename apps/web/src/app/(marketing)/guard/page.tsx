@@ -17,6 +17,7 @@ export default function GuardLandingPage() {
       <Phase2Section />
       <Phase3Section />
       <MCPSection />
+      <AgentIdentitySection />
       <EnterpriseGradeSection />
       <GatewayVsGuardSection />
       <FinalCTASection />
@@ -912,6 +913,84 @@ resp, _ := client.Do(req)
         </p>
       </div>
     </div>
+  )
+}
+
+/* ─── Agent Identity ───────────────────────────────────────────────────── */
+
+function AgentIdentitySection() {
+  const tokenTypes = [
+    {
+      prefix: "cond_agt_*",
+      label: "Session token",
+      ttl: "8 hours",
+      source: "conduct login",
+      use: "Claude Code, Cursor, Windsurf, Codex CLI — any interactive tool.",
+      color: "border-indigo-200 bg-indigo-50",
+      badge: "bg-indigo-100 text-indigo-700",
+    },
+    {
+      prefix: "cond_api_*",
+      label: "API token",
+      ttl: "Long-lived",
+      source: "Agent Identity page",
+      use: "CI/CD pipelines, server agents, integrations — any non-interactive context.",
+      color: "border-violet-200 bg-violet-50",
+      badge: "bg-violet-100 text-violet-700",
+    },
+  ]
+  return (
+    <section className="px-6 py-24 bg-white">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-14">
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-3">Agent Identity</p>
+          <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight leading-tight mb-5">
+            Every agent gets an identity.<br />Every call is attributed.
+          </h2>
+          <p className="text-stone-500 text-lg leading-relaxed max-w-2xl mx-auto">
+            Guard issues scoped tokens to every agent. Short-lived for interactive tools, long-lived for CI and integrations. Both enforce the same proxy rules and write to the same audit trail.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6 mb-10">
+          {tokenTypes.map(t => (
+            <div key={t.prefix} className={`rounded-2xl border ${t.color} p-8`}>
+              <div className="flex items-center justify-between mb-4">
+                <code className="text-sm font-mono font-bold text-stone-900">{t.prefix}</code>
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${t.badge}`}>{t.label}</span>
+              </div>
+              <div className="space-y-3 text-sm">
+                <div className="flex gap-3">
+                  <span className="text-stone-400 w-16 shrink-0">Expires</span>
+                  <span className="text-stone-700 font-medium">{t.ttl}</span>
+                </div>
+                <div className="flex gap-3">
+                  <span className="text-stone-400 w-16 shrink-0">Issued by</span>
+                  <code className="text-stone-700 text-xs bg-white/60 px-1.5 py-0.5 rounded">{t.source}</code>
+                </div>
+                <div className="flex gap-3">
+                  <span className="text-stone-400 w-16 shrink-0">Use for</span>
+                  <span className="text-stone-600 leading-relaxed">{t.use}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-4">
+          {[
+            ["RFC 8693 compliant", "Token exchange follows the same standard as Okta and Entra. Your security team already knows the protocol."],
+            ["Auto-refresh", "Session tokens refresh 5 minutes before expiry. No manual re-login during long coding sessions."],
+            ["Workspace-scoped", "Tokens are enforced to a single workspace. Cross-workspace reuse is rejected at the proxy."],
+          ].map(([title, desc]) => (
+            <div key={title} className="rounded-xl border border-stone-200 bg-stone-50 px-5 py-5">
+              <p className="text-sm font-bold text-stone-900 mb-2">{title}</p>
+              <p className="text-xs text-stone-500 leading-relaxed">{desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   )
 }
 
