@@ -579,8 +579,11 @@ async def mcp_endpoint(
                 return JSONResponse(status_code=401, content=_err(msg_id, -32600, "API token does not belong to this workspace"))
             ws_uuid = _ai.workspace_id
             if resolved_token.startswith("cond_agt_"):
-                clerk_user_id = f"agt:{_ai.name}"
-                user_email = f"agt:{_ai.name}@{str(ws_uuid)[:8]}"
+                gmc = db.execute(_sql(
+                    "SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid AND workspace_id = :ws LIMIT 1"
+                ), {"aid": _ai.id, "ws": ws_uuid}).fetchone()
+                clerk_user_id = gmc[0] if gmc else _ai.name
+                user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
             else:
                 clerk_user_id = f"api:{_ai.token_name or 'api-token'}"
                 user_email = f"api-token@{str(ws_uuid)[:8]}"
