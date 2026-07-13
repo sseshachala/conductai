@@ -18,7 +18,7 @@ def _execute_memory(
     run_id: str,
     workspace_id: str,
     playbook_slug: str,
-    credentials: dict | None = None,
+    credentials: dict | None = None,  # kept for backward compat — ignored, broker is source of truth
 ) -> dict:
     """
     Read or write agent memory with vector similarity search.
@@ -28,7 +28,7 @@ def _execute_memory(
     write: embeds the resolved summary and inserts a new row.
     """
     try:
-        return _execute_memory_inner(block, state, db, run_id, workspace_id, playbook_slug, credentials)
+        return _execute_memory_inner(block, state, db, run_id, workspace_id, playbook_slug)
     except Exception as e:
         log.warning("memory.block_failed", error=str(e), run_id=run_id)
         try:
@@ -48,28 +48,34 @@ def _execute_memory_inner(
     run_id: str,
     workspace_id: str,
     playbook_slug: str,
-    credentials: dict | None = None,
 ) -> dict:
     from app.models.agent_memory import AgentMemory
     from app.runtime.embedding_client import create_embedding_client
     from app.runtime.executor import _resolve_refs
+    from app.core.credentials import fetch_credential
 
     data = block["data"]
     config = data.get("config", {})
     action = config.get("action", "read")
     scope = config.get("scope", "repo")
     key = _resolve_refs(config.get("key", ""), state)
-    creds = credentials or {}
-    # Flat env vars are stored under the "env_vars" handle with lowercased keys
-    env_vars = creds.get("env_vars") or {}
+
+    _cred_token = state.get("__cred_token__", "")
+    _cred_api_url = state.get("__cred_api_url__", "")
+    _cred_handles = state.get("__cred_handles__", [])
+
+    openai_creds = fetch_credential(_cred_token, "openai", _cred_api_url) if "openai" in _cred_handles else {}
+    voyage_creds = fetch_credential(_cred_token, "voyage", _cred_api_url) if "voyage" in _cred_handles else {}
+    env_vars = fetch_credential(_cred_token, "env_vars", _cred_api_url) if "env_vars" in _cred_handles else {}
+
     client = create_embedding_client(
         openai_api_key=(
-            creds.get("openai", {}).get("api_key")
+            openai_creds.get("api_key")
             or env_vars.get("openai_api_key")
             or env_vars.get("OPENAI_API_KEY")
         ),
         voyage_api_key=(
-            creds.get("voyage", {}).get("api_key")
+            voyage_creds.get("api_key")
             or env_vars.get("voyage_api_key")
             or env_vars.get("VOYAGE_API_KEY")
         ),

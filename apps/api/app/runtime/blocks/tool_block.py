@@ -14,7 +14,7 @@ log = structlog.get_logger(__name__)
 def _execute_tool(
     block: dict,
     state: dict,
-    credentials: dict,
+    credentials: dict | None = None,  # kept for backward compat — ignored, broker is source of truth
     allowed_hosts: list[str] | None = None,
     db=None,
     workspace_id: str = "",
@@ -26,6 +26,7 @@ def _execute_tool(
         _INTEGRATION_HOSTS,
         _resolve_refs,
     )
+    from app.core.credentials import fetch_credential
 
     dry_run = state.get("__dry_run", False)
     data = block["data"]
@@ -41,46 +42,26 @@ def _execute_tool(
     if integration == "conduct":
         return conduct.execute(action, params, creds={}, db=db, workspace_id=workspace_id)
 
+    _cred_token = state.get("__cred_token__", "")
+    _cred_api_url = state.get("__cred_api_url__", "")
+    _cred_handles = state.get("__cred_handles__", [])
+
     _HANDLE_ALIASES_GLOBAL: dict[str, list[str]] = {"github": ["git"]}
 
-    if dry_run:
-        creds = credentials.get(integration, {})
-        if not creds:
-            for alias in _HANDLE_ALIASES_GLOBAL.get(integration, []):
-                creds = credentials.get(alias) or {}
-                if creds:
-                    break
-        if not creds:
-            env_vars = credentials.get("env_vars") or {}
-            _FLAT_FALLBACKS_DRY: dict[str, list[str]] = {
-                "github": ["GITHUB_TOKEN", "GIT_TOKEN"],
-                "slack": ["SLACK_BOT_TOKEN"],
-                "linear": ["LINEAR_API_KEY"],
-                "digitalocean": ["DIGITALOCEAN_TOKEN", "DO_TOKEN"],
-                "vercel": ["VERCEL_TOKEN"],
-                "railway": ["RAILWAY_TOKEN"],
-            }
-            has_flat = any(env_vars.get(k) for k in _FLAT_FALLBACKS_DRY.get(integration, []))
-            if not has_flat:
-                return {"dry_run": True, "warning": f"No credentials for {integration} — would fail in a real run", "action": action}
-        return _dry_run_mock(integration, action, params)
-
-    creds = credentials.get(integration, {})
-    if not creds:
-        # Env-var UI stores GITHUB_TOKEN under handle "git", SLACK_BOT_TOKEN under "slack", etc.
-        # Try the canonical handle aliases before falling back to the legacy "env_vars" blob.
-        _HANDLE_ALIASES: dict[str, list[str]] = {
-            "github": ["git"],
-        }
-        for alias in _HANDLE_ALIASES.get(integration, []):
-            aliased = credentials.get(alias) or {}
-            if aliased:
-                creds = aliased
-                break
-
-    if not creds:
-        # Legacy fallback: keys stored raw under "env_vars" handle.
-        env_vars = credentials.get("env_vars") or {}
+    def _fetch_integration_creds(handle: str) -> dict:
+        """Fetch creds for handle, trying aliases and env_vars fallback via broker."""
+        # Primary handle
+        if handle in _cred_handles:
+            c = fetch_credential(_cred_token, handle, _cred_api_url)
+            if c:
+                return c
+        # Alias handles (e.g. "git" for "github")
+        for alias in _HANDLE_ALIASES_GLOBAL.get(handle, []):
+            if alias in _cred_handles:
+                c = fetch_credential(_cred_token, alias, _cred_api_url)
+                if c:
+                    return c
+        # env_vars flat-key fallback
         _FLAT_FALLBACKS: dict[str, list[str]] = {
             "github":       ["GITHUB_TOKEN", "GIT_TOKEN"],
             "slack":        ["SLACK_BOT_TOKEN"],
@@ -89,11 +70,21 @@ def _execute_tool(
             "vercel":       ["VERCEL_TOKEN"],
             "railway":      ["RAILWAY_TOKEN"],
         }
-        for key in _FLAT_FALLBACKS.get(integration, []):
-            val = env_vars.get(key)
-            if val:
-                creds = {"token": val, "api_key": val}
-                break
+        if "env_vars" in _cred_handles:
+            env_vars = fetch_credential(_cred_token, "env_vars", _cred_api_url)
+            for key in _FLAT_FALLBACKS.get(handle, []):
+                val = env_vars.get(key)
+                if val:
+                    return {"token": val, "api_key": val}
+        return {}
+
+    if dry_run:
+        creds = _fetch_integration_creds(integration)
+        if not creds:
+            return {"dry_run": True, "warning": f"No credentials for {integration} — would fail in a real run", "action": action}
+        return _dry_run_mock(integration, action, params)
+
+    creds = _fetch_integration_creds(integration)
 
     if not creds:
         return {"skipped": True, "reason": f"No credentials for {integration}"}

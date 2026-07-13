@@ -1157,12 +1157,18 @@ def _dispatch_single_block(
                 if _complexity in ("medium", "large"):
                     try:
                         from app.runtime.blocks.sandbox_block import _detect_provider
+                        from app.core.credentials import fetch_credential as _fetch_cred_auto
+                        # Fetch sandbox-relevant creds from broker for provider detection
+                        _auto_cred_token = state.get("__cred_token__", "")
+                        _auto_cred_url = state.get("__cred_api_url__", "")
+                        _auto_handles = state.get("__cred_handles__", [])
+                        _auto_sb_creds: dict = {h: _fetch_cred_auto(_auto_cred_token, h, _auto_cred_url) for h in _auto_handles}
                         # Honour explicit UI selection first, fall back to credential detection
                         _preferred = (block.get("data", {}).get("runs_on") or {}).get("provider") or ""
-                        _provider = _preferred if _preferred in ("modal", "e2b") else _detect_provider(credentials)
+                        _provider = _preferred if _preferred in ("modal", "e2b") else _detect_provider(_auto_sb_creds)
                         if _provider:
                             from app.runtime.sandbox_session import create_session as _cs
-                            _auto_session = _cs(None, credentials, runs_on={"provider": _provider})
+                            _auto_session = _cs(None, _auto_sb_creds, runs_on={"provider": _provider})
                             sandbox_sessions[_auto_key] = _auto_session
                             _injected_session = _auto_session
                             _emit(db, run_id, block_id, "sandbox_routing", {
@@ -1660,6 +1666,8 @@ def execute_run(run_id: str):
         # Mint run-scoped credential token — blocks fetch plaintext via broker, not from this dict
         from app.core.credentials import mint_cred_token as _mint_cred_token
         _cred_handles = list(credentials.keys())
+        # Always seed __cred_handles__ so blocks can guard-check before calling the broker
+        state["__cred_handles__"] = _cred_handles
         if _cred_handles:
             try:
                 _cred_token = _mint_cred_token(
@@ -1672,7 +1680,7 @@ def execute_run(run_id: str):
                 state["__cred_api_url__"] = settings.api_url
             except Exception:
                 log.warning("run.cred_token_mint_failed", run_id=run_id)
-                # fail-open: credentials still available in-process via CredentialStore
+                # fail-open: token missing, blocks will get {} from fetch_credential (no-op)
 
         # Stamp agent_role_id on the run if CONDUCT_AGENT_TOKEN is in credentials.
         _env_vars_creds = credentials.get("env_vars") or {}
@@ -1714,7 +1722,7 @@ def execute_run(run_id: str):
             version=version,
             initial_state=state,
             db=db,
-            credentials=credentials,
+            credentials=None,  # blocks fetch via broker using state["__cred_token__"]
             allowed_hosts=allowed_hosts,
             workspace_id_str=str(workspace_id_str),
             env_id=env_id,

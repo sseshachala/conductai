@@ -44,8 +44,8 @@ def _detect_provider(credentials: dict) -> str | None:
 def _execute_sandbox(
     block: dict,
     state: dict,
-    credentials: dict,
-    sandbox_sessions: dict,
+    credentials: dict | None = None,  # kept for backward compat — ignored, broker is source of truth
+    sandbox_sessions: dict | None = None,
 ) -> dict:
     """
     Provision the sandbox and run any setup commands.
@@ -56,6 +56,27 @@ def _execute_sandbox(
     Returns a state dict with sandbox metadata (provider, sandbox_id).
     """
     from app.runtime.sandbox_session import create_session
+    from app.core.credentials import fetch_credential
+
+    if sandbox_sessions is None:
+        sandbox_sessions = {}
+
+    _cred_token = state.get("__cred_token__", "")
+    _cred_api_url = state.get("__cred_api_url__", "")
+    _cred_handles = state.get("__cred_handles__", [])
+
+    # Build a local credentials dict from the broker for provider detection and session creation.
+    # Only fetch handles that are relevant to sandbox providers.
+    _sb_creds: dict = {}
+    for handle in _cred_handles:
+        _sb_creds[handle] = fetch_credential(_cred_token, handle, _cred_api_url)
+
+    # Inject broker token into sandbox env so containers can call the credential broker directly.
+    if state.get("__cred_token__"):
+        _ev = dict(_sb_creds.get("env_vars") or {})
+        _ev["CONDUCT_CRED_TOKEN"] = state["__cred_token__"]
+        _ev["CONDUCT_API_URL"] = state.get("__cred_api_url__", "")
+        _sb_creds["env_vars"] = _ev
 
     block_id = block["id"]
     data = block.get("data", {})
@@ -63,24 +84,12 @@ def _execute_sandbox(
 
     provider = config.get("provider")
     if not provider or provider == "auto":
-        provider = _detect_provider(credentials)
+        provider = _detect_provider(_sb_creds)
     if not provider:
         return {"skipped": True, "reason": "No sandbox credentials found — add E2B_API_KEY or MODAL_TOKEN_ID + MODAL_TOKEN_SECRET under Settings → Environments."}
 
     # Validate credential presence before spinning up — fail fast with clear message
-    _check_credentials(provider, credentials, block_id, config=config)
-
-    # Inject broker token into sandbox env so containers can call the credential broker directly
-    if state.get("__cred_token__"):
-        _sb_env = credentials.get("env_vars") or {}
-        if isinstance(_sb_env, dict):
-            _sb_env["CONDUCT_CRED_TOKEN"] = state["__cred_token__"]
-            _sb_env["CONDUCT_API_URL"] = state.get("__cred_api_url__", "")
-            # Write back — supports both plain dict and CredentialStore
-            if hasattr(credentials, "_data"):
-                credentials._data["env_vars"] = _sb_env
-            elif isinstance(credentials, dict):
-                credentials["env_vars"] = _sb_env
+    _check_credentials(provider, _sb_creds, block_id, config=config)
 
     runs_on = None
     if provider == "ssh":
@@ -94,7 +103,7 @@ def _execute_sandbox(
     log.info("sandbox_block.provisioning", block_id=block_id, provider=provider)
     session = create_session(
         remote_host=runs_on,
-        credentials=credentials,
+        credentials=_sb_creds,
         runs_on={"provider": provider},
     )
 
