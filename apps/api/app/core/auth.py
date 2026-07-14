@@ -588,6 +588,18 @@ def require_permission(permission: str):
             ).fetchone()
             if owner:
                 return "admin"
+            # GMC fallback: cond_agt_* tokens prove authenticated workspace membership
+            gmc = db.execute(
+                _text("""
+                    SELECT 1 FROM guard_member_config gmc
+                    JOIN agent_identities ai ON ai.id = gmc.agent_identity_id
+                    WHERE gmc.workspace_id = :ws AND gmc.clerk_user_id = :uid
+                    LIMIT 1
+                """),
+                {"ws": workspace_id, "uid": user_id},
+            ).fetchone()
+            if gmc:
+                return "admin"
             raise HTTPException(status_code=403, detail="Not a member of this workspace")
 
         user_role = row.role
