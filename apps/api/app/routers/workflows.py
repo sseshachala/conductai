@@ -3,7 +3,7 @@ import pathlib
 import structlog
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Body, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
@@ -1084,8 +1084,10 @@ def preflight_workflow(
 @router.post("/{workflow_id}/validate")
 def validate_workflow(
     workflow_id: UUID,
+    request: Request,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
     _: str = Depends(require_permission("platform.workflows.view")),
 ):
     """
@@ -1244,6 +1246,45 @@ def validate_workflow(
             if via == "webhook" and not config.get("webhook_url"):
                 errors.append({"block_id": block_id, "label": label,
                                 "message": "Webhook URL is required"})
+
+    # ── Runtime chain checks ────────────────────────────────────────────────
+    # These catch auth/config failures that only surface mid-run without this check.
+    from sqlalchemy import text as _sql
+    from app.core.config import settings as _settings
+
+    # 1. Workspace membership — must be in workspace_users
+    if user_id:
+        membership = db.execute(
+            _sql("SELECT 1 FROM workspace_users WHERE workspace_id::text = :ws AND clerk_user_id = :uid LIMIT 1"),
+            {"ws": workspace_id, "uid": user_id},
+        ).fetchone()
+        if not membership:
+            errors.append({"block_id": "__runtime__", "label": "Auth",
+                           "message": "Your account is not a member of this workspace — run `conduct login` to re-authenticate"})
+
+    # 2. Token type — cond_agt_* must be token_type='cli', not 'api'
+    raw_auth = request.headers.get("authorization", "")
+    if raw_auth.lower().startswith("bearer "):
+        raw_tok = raw_auth[7:].strip()
+        if raw_tok.startswith("cond_agt_"):
+            from app.modules.agent_identity.models import AgentIdentity as _AI
+            _prefix = raw_tok[:len("cond_agt_") + 4]
+            _ai = db.query(_AI).filter(_AI.token_prefix == _prefix).first()
+            if _ai and getattr(_ai, "token_type", "cli") != "cli":
+                errors.append({"block_id": "__runtime__", "label": "Auth",
+                               "message": "Agent token type is not 'cli' — run `conduct login` to re-mint"})
+
+    # 3. Credential broker URL — must be a reachable public URL in production
+    if _settings.environment != "development" and (
+        not _settings.api_base_url or "localhost" in _settings.api_base_url
+    ):
+        errors.append({"block_id": "__runtime__", "label": "Config",
+                       "message": "API_BASE_URL is not set to a public URL — credential broker will fail at runtime"})
+
+    # 4. Guard proxy configured
+    if not _settings.conduct_proxy_url:
+        errors.append({"block_id": "__runtime__", "label": "Guard Proxy",
+                       "message": "conduct_proxy_url is not configured — brain blocks cannot route through Guard"})
 
     return {"valid": len(errors) == 0, "errors": errors}
 
