@@ -78,7 +78,7 @@ def mint_cred_token(
     from sqlalchemy import text as _sql
     token = "cond_cred_" + secrets.token_hex(24)
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
-    max_uses = max(len(allowed_handles) * 3, 3)  # 3× handles — covers retries + parallel blocks
+    max_uses = max(len(allowed_handles) * 50, 50)  # 50× handles — covers all blocks in a run
     db.execute(
         _sql("""
             INSERT INTO cred_retrieval_tokens
