@@ -1,11 +1,12 @@
 """
 DAG runner — topological execution loop and block dispatch.
 
-Imports tool helpers from tool_engine. Imports emit/trace helpers from executor.
+Dependency order: runtime → tool_engine → dag_runner → executor
 """
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import defaultdict, deque
 from typing import Any
@@ -14,9 +15,101 @@ import structlog
 
 from app.core.config import settings
 from app.core.credentials import CredentialStore  # re-exported for backward compat
-from app.runtime.tool_engine import _resolve_refs  # noqa: F401 — re-exported
+from app.runtime.runtime import _emit, _now, _agent_config, _resolve_refs
 
 log = structlog.get_logger(__name__)
+
+
+# ── flow-control exceptions ───────────────────────────────────────────────────
+
+class ApprovalRequired(Exception):
+    """Raised by the approval block to pause the run."""
+    def __init__(self, block_id: str, message: str = ""):
+        self.block_id = block_id
+        self.message = message
+        super().__init__(message)
+
+
+class ClarificationRequired(Exception):
+    """Raised by a Brain block when the task context is too ambiguous to proceed."""
+    def __init__(self, block_id: str, question: str):
+        self.block_id = block_id
+        self.question = question
+        super().__init__(question)
+
+
+def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, Any]:
+    """Normalize runtime failures into a structured, user-actionable summary."""
+    msg = str(exc)
+
+    code = "EXECUTION_ERROR"
+    category = "runtime"
+    stop_reason = "exception"
+    next_action = "Inspect the failed block output and rerun after fixing the underlying error."
+
+    if isinstance(exc, ClarificationRequired):
+        code = "CLARIFICATION_REQUIRED"
+        category = "input_contract"
+        stop_reason = "awaiting_clarification"
+        next_action = "Answer the clarification question via POST /runs/{run_id}/clarify to resume the run."
+    elif isinstance(exc, PermissionError):
+        code = "EGRESS_POLICY_BLOCKED"
+        category = "governance"
+        stop_reason = "policy_block"
+        next_action = "Update allowed_hosts for this environment or remove the blocked outbound call."
+    elif "[ConductGuard] Blocked by policy" in msg:
+        # Guard policy fired — this is a governance decision, not a crash.
+        # Surface it as such so the UI shows a clean "blocked" state and
+        # the user knows where to go to fix it.
+        code = "GUARD_POLICY_BLOCKED"
+        category = "governance"
+        stop_reason = "policy_block"
+        # Pull the rule_id out of the message for a more actionable hint
+        m = re.search(r"policy '([^']+)'", msg)
+        rule_id = m.group(1) if m else None
+        next_action = (
+            (f"Guard rule '{rule_id}' blocked this step. " if rule_id else "Guard blocked this step. ") +
+            "Disable Guard for this workflow in Settings → ConductGuard, "
+            "or change the rule action at /guard/policies."
+        )
+    elif isinstance(exc, RuntimeError) and "Turn budget exhausted" in msg:
+        code = "RETRY_BUDGET_EXHAUSTED"
+        category = "reliability"
+        stop_reason = "max_turns_reached"
+        next_action = "Tighten the task scope or increase the run turn budget for this workflow."
+    elif isinstance(exc, RuntimeError) and "Cost budget exhausted" in msg:
+        code = "COST_BUDGET_EXHAUSTED"
+        category = "reliability"
+        stop_reason = "max_cost_reached"
+        next_action = "Reduce task scope or raise the cost cap for this workflow run."
+    elif isinstance(exc, ValueError) and msg.startswith("NEEDS_CLARIFICATION:"):
+        code = "INSUFFICIENT_INPUT_CONTEXT"
+        category = "input_contract"
+        stop_reason = "missing_context"
+        next_action = "Provide clearer trigger context or required inputs before starting the run."
+    elif "Approval rejected" in msg:
+        code = "APPROVAL_REJECTED"
+        category = "approval"
+        stop_reason = "human_rejected"
+        next_action = "Review rejection feedback, update the plan, and rerun for approval."
+    elif msg == "Connection error." or "APIConnectionError" in type(exc).__name__:
+        # Unwrap the real cause (httpx error) for a more useful message.
+        cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+        cause_msg = str(cause) if cause else ""
+        code = "LLM_CONNECTION_ERROR"
+        category = "connectivity"
+        stop_reason = "exception"
+        msg = f"LLM connection failed — {cause_msg}" if cause_msg else "LLM connection failed (check proxy URL and agent token)"
+        next_action = "Check that the Conduct proxy URL is reachable and CONDUCT_AGENT_TOKEN is set in this environment."
+
+    return {
+        "code": code,
+        "category": category,
+        "stop_reason": stop_reason,
+        "message": msg,
+        "block_id": block_id,
+        "next_action": next_action,
+    }
 
 _STATE_CHECKPOINT_TTL = 86400  # 24 hours — same as LLM cache
 
@@ -140,8 +233,6 @@ def _with_retry(execute_fn, retry_cfg: dict, *args, **kwargs):
                  "tool_error" | "timeout" | "llm_parse_error"
                  (default ["tool_error", "timeout"])
     """
-    from app.runtime.executor import ApprovalRequired, ClarificationRequired
-
     max_attempts = int(retry_cfg.get("max", 1)) if isinstance(retry_cfg, dict) else int(getattr(retry_cfg, "max", 1))
     backoff = retry_cfg.get("backoff", "fixed") if isinstance(retry_cfg, dict) else getattr(retry_cfg, "backoff", "fixed")
     _on_raw = retry_cfg.get("on", ["tool_error", "timeout"]) if isinstance(retry_cfg, dict) else getattr(retry_cfg, "on", ["tool_error", "timeout"])
@@ -245,8 +336,45 @@ def _execute_approval(block: dict, state: dict, credentials: dict, run_id: str) 
 from app.runtime.blocks.guard_block import _execute_guard as _guard_impl
 
 
-def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None, playbook_slug: str | None = None, workflow_id: str | None = None, user_email: str | None = None, workflow_name: str | None = None) -> dict:
-    return _guard_impl(block, state, workspace_id, db, run_id=run_id, playbook_slug=playbook_slug, workflow_id=workflow_id, user_email=user_email, workflow_name=workflow_name)
+def _auto_guard_check(
+    state: dict, db, run_id, block_id: str, block_type: str,
+    workspace_id_str: str, version, user_email: str | None,
+) -> None:
+    """Fire guard check before brain/tool/output blocks using run-start cached policy."""
+    if not state.get("__guard_enabled"):
+        return
+    cache = state.get("__guard_policy_cache__")
+    if not cache:
+        return
+    try:
+        slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
+        wf_name = getattr(getattr(version, "workflow", None), "name", None) or slug
+        _guard_block = {
+            "id": f"__guard_{block_id}",
+            "config": {"enforcement_mode": cache["enforcement_mode"]},
+        }
+        result = _guard_impl(
+            _guard_block, state, workspace_id_str, db,
+            run_id=run_id,
+            playbook_slug=slug,
+            workflow_id=str(version.workflow.id),
+            user_email=user_email,
+            workflow_name=wf_name,
+            _policy_cache=cache,
+        )
+        state[f"__guard_{block_id}"] = result
+        _emit(db, run_id, f"__guard_{block_id}", "guard_check", {
+            "block_type":       block_type,
+            "status":           result.get("status"),
+            "rules_checked":    result.get("rules_checked", 0),
+            "violations":       result.get("violations", 0),
+            "enforcement_mode": result.get("enforcement_mode"),
+            "warnings":         result.get("warnings", []),
+        })
+    except RuntimeError:
+        raise  # block → propagate to halt the run
+    except Exception as _ge:
+        log.warning("guard.auto_check_failed", block_id=block_id, block_type=block_type, error=str(_ge))
 
 
 def _execute_memory(block: dict, state: dict, db, run_id: str, workspace_id: str, playbook_slug: str, credentials: dict | None = None) -> dict:
@@ -314,10 +442,13 @@ def _dispatch_single_block(
     so that logic block executions inside for_each iterations still update the
     route map of the parent loop (though for_each over logic blocks is unusual).
     """
-    from app.runtime.executor import _emit, _agent_config, ApprovalRequired, ClarificationRequired
     from app.core.config import settings as _settings
 
     block_type = block["data"].get("type", "tool")
+
+    # Resolve slug and workflow name once — used by brain, guard, and memory dispatch.
+    slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
+    _wf_name = getattr(getattr(version, "workflow", None), "name", None) or slug
 
     if block_type == "trigger":
         result: dict = {"triggered": True}
@@ -332,38 +463,8 @@ def _dispatch_single_block(
         result = _execute_sandbox(block, state, credentials, sandbox_sessions)
 
     elif block_type == "brain":
-        if block.get("data", {}).get("isAgentic", False):
-            if state.get("__guard_enabled", True):
-                try:
-                    import uuid as _uuid
-                    from app.modules.guard.models import GuardConfig as _GuardConfig
-                    _ws_str = str(workspace_id_str)
-                    _gc = (
-                        db.query(_GuardConfig)
-                        .filter(_GuardConfig.workspace_id == _uuid.UUID(_ws_str))
-                        .first()
-                    ) if _ws_str else None
-                    if _gc:
-                        _guard_block = {
-                            "id": f"__guard_{block_id}",
-                            "config": {"enforcement_mode": _gc.enforcement_mode},
-                        }
-                        _guard_result = _execute_guard(_guard_block, state, _ws_str, db, run_id=run_id, playbook_slug=slug, workflow_id=str(version.workflow.id), user_email=user_email, workflow_name=_wf_name)
-                        state[f"__guard_{block_id}"] = _guard_result
-                        _emit(db, run_id, f"__guard_{block_id}", "guard_check", {
-                            "status": _guard_result.get("status"),
-                            "rules_checked": _guard_result.get("rules_checked", 0),
-                            "violations": _guard_result.get("violations", 0),
-                            "enforcement_mode": _guard_result.get("enforcement_mode"),
-                            "warnings": _guard_result.get("warnings", []),
-                        })
-                except RuntimeError:
-                    raise
-                except Exception as _ge:
-                    log.warning("guard.auto_hook_failed", block_id=block_id, error=str(_ge))
+        _auto_guard_check(state, db, run_id, block_id, "brain", workspace_id_str, version, user_email)
 
-        slug = getattr(getattr(version, "workflow", None), "playbook_slug", None)
-        _wf_name = getattr(getattr(version, "workflow", None), "name", None) or slug
         _block_label = block["data"].get("label") or block_id
         _runs_in = block.get("data", {}).get("runs_in")
         _injected_session = sandbox_sessions.get(_runs_in) if _runs_in else None
@@ -445,9 +546,11 @@ def _dispatch_single_block(
                                 environment_id=str(env_id) if env_id else None)
 
     elif block_type == "tool":
+        _auto_guard_check(state, db, run_id, block_id, "tool", workspace_id_str, version, user_email)
         result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id_str)
 
     elif block_type == "output":
+        _auto_guard_check(state, db, run_id, block_id, "output", workspace_id_str, version, user_email)
         wf_name = version.workflow.name if version.workflow else "Agent"
         trace_url = (
             f"{_settings.app_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}"
@@ -472,15 +575,9 @@ def _dispatch_single_block(
         )
 
     elif block_type == "guard":
-        result = _execute_guard(block, state, str(workspace_id_str), db, run_id=run_id, playbook_slug=slug, workflow_id=str(version.workflow.id), user_email=user_email, workflow_name=_wf_name)
-        _emit(db, run_id, block_id, "guard_check", {
-            "status":           result.get("status"),
-            "rules_checked":    result.get("rules_checked", 0),
-            "violations":       result.get("violations", 0),
-            "enforcement_mode": result.get("enforcement_mode"),
-            "warnings":         result.get("warnings", []),
-            "team_name":        result.get("team_name"),
-        })
+        # Guard is applied automatically before every brain/tool/output block.
+        # An explicit guard block in YAML is a no-op — it's already covered.
+        result = {"status": "skipped", "reason": "guard_applied_automatically"}
 
     elif block_type == "mcp":
         result = _execute_mcp(block, state, credentials)
@@ -542,10 +639,7 @@ def _execute_dag(
         Final accumulated state after all blocks have been executed (or
         execution has stopped due to failure/approval pause).
     """
-    from app.runtime.executor import (
-        _emit, _now, _classify_failure, _detect_outcome, _agent_config,
-        ApprovalRequired, ClarificationRequired,
-    )
+    from app.runtime.executor import _detect_outcome
 
     if credentials is None:
         credentials = {}

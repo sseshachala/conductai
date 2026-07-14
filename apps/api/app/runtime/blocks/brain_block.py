@@ -200,7 +200,8 @@ def _execute_brain(
     environment_id: str | None = None,
 ) -> dict:
     # Import helpers from executor to avoid circular imports at module load time.
-    from app.runtime.executor import _emit, _write_trace, ClarificationRequired
+    from app.runtime.runtime import _emit, _write_trace
+    from app.runtime.dag_runner import ClarificationRequired
     from app.runtime.tool_engine import _resolve_remote_host, _resolve_refs, _summarise_tool_call
 
     if state.get("__dry_run"):
@@ -242,9 +243,8 @@ def _execute_brain(
     # Fetch credentials from broker for session creation (SSH key, sandbox API keys).
     # This is the only in-function credential fetch; LLM keys are fetched separately below.
     from app.core.credentials import fetch_credential as _fetch_cred
-    _cred_token_b = state.get("__cred_token__", "")
-    _cred_api_url_b = state.get("__cred_api_url__", "")
-    _cred_handles_b = state.get("__cred_handles__", [])
+    from app.runtime.run_contract import cred_from_state
+    _cred_token_b, _cred_api_url_b, _cred_handles_b = cred_from_state(state)
     _session_creds: dict = {}
     for _h in _cred_handles_b:
         _session_creds[_h] = _fetch_cred(_cred_token_b, _h, _cred_api_url_b)

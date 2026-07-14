@@ -42,9 +42,8 @@ def _execute_tool(
     if integration == "conduct":
         return conduct.execute(action, params, creds={}, db=db, workspace_id=workspace_id)
 
-    _cred_token = state.get("__cred_token__", "")
-    _cred_api_url = state.get("__cred_api_url__", "")
-    _cred_handles = state.get("__cred_handles__", [])
+    from app.runtime.run_contract import cred_from_state
+    _cred_token, _cred_api_url, _cred_handles = cred_from_state(state)
 
     _HANDLE_ALIASES_GLOBAL: dict[str, list[str]] = {"github": ["git"]}
 

@@ -61,9 +61,8 @@ def _execute_sandbox(
     if sandbox_sessions is None:
         sandbox_sessions = {}
 
-    _cred_token = state.get("__cred_token__", "")
-    _cred_api_url = state.get("__cred_api_url__", "")
-    _cred_handles = state.get("__cred_handles__", [])
+    from app.runtime.run_contract import cred_from_state
+    _cred_token, _cred_api_url, _cred_handles = cred_from_state(state)
 
     # Build a local credentials dict from the broker for provider detection and session creation.
     # Only fetch handles that are relevant to sandbox providers.
