@@ -78,7 +78,7 @@ def _execute_guard(
         match_tool = (policy.get("match_tool") or "*").lower()
         if match_tool != "*":
             allowed = {t.strip() for t in match_tool.split(",")}
-            if "workflow" not in allowed:
+            if "workflow" not in allowed and "agent" not in allowed:
                 continue
 
         if policy.get("match_pattern"):
