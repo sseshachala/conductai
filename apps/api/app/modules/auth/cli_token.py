@@ -66,6 +66,7 @@ def _upsert_identity(
         identity.refresh_token_hash = refresh_hash
         identity.refresh_token_expires_at = now + _REFRESH_TOKEN_TTL
         identity.last_used_at = now
+        identity.token_type = "cli"  # enforce — identity may have been created as 'api'
     else:
         identity = AgentIdentity(
             id=str(uuid.uuid4()),
