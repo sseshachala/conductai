@@ -1,7 +1,7 @@
 {
     "slug": "conduct-base",
     "name": "Conduct Base",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "tier": "free",
     "description": "Core AI governance rules \u2014 proxy interception, agent safety, and surface-aware enforcement across all AI tools. 3 proxy + 13 agent + 7 surface rules.",
     "rules": [
@@ -46,6 +46,18 @@
                 "GDPR:Art32",
                 "HIPAA:164.514"
             ]
+        },
+        {
+            "id": "no-path-traversal",
+            "persona": "agent",
+            "non_overridable": true,
+            "description": "Block reads/writes to system and app-core paths",
+            "match_tool": "filesystem-read,filesystem-write,workflow",
+            "match_path_pattern": "(/etc/|/proc/|/sys/|/root/|\\.\\./|/app/app/core/)",
+            "action": "block",
+            "message": "Path traversal blocked. Access to system paths is not permitted.",
+            "severity": "critical",
+            "frameworks": ["SOC2:CC6.1", "OWASP:A01"]
         },
         {
             "id": "no-rm-rf",

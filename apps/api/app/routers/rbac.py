@@ -47,13 +47,19 @@ class PermissionSet(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/roles", response_model=list[RoleOut])
-def list_roles(db: Session = Depends(get_db)) -> list[Role]:
+def list_roles(
+    _user_id: Annotated[str, Depends(get_user_id)],
+    db: Session = Depends(get_db),
+) -> list[Role]:
     """Return all system roles (workspace_id IS NULL) with their permissions."""
     return db.query(Role).filter(Role.workspace_id.is_(None)).order_by(Role.name).all()
 
 
 @router.get("/permissions", response_model=list[PermissionOut])
-def list_permissions(db: Session = Depends(get_db)) -> list[Permission]:
+def list_permissions(
+    _user_id: Annotated[str, Depends(get_user_id)],
+    db: Session = Depends(get_db),
+) -> list[Permission]:
     """Return every permission in the system."""
     return db.query(Permission).order_by(Permission.name).all()
 

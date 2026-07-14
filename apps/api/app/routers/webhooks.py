@@ -995,6 +995,11 @@ async def github_webhook(
     Pass ?workspace_id=<uuid> in the webhook URL to scope triggers to a single
     workspace (required in multi-tenant deployments).
     """
+    # 1.1 — Cross-tenant protection: require workspace_id to prevent an attacker
+    # whose repo name matches any customer's trigger from firing runs across tenants.
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="workspace_id query parameter is required")
+
     body = await request.body()
 
     sig = request.headers.get("X-Hub-Signature-256", "")
@@ -1042,6 +1047,12 @@ def _verify_clerk_signature(request_body: bytes, headers: dict) -> bool:
     svix_id        = headers.get("svix-id", "")
     svix_timestamp = headers.get("svix-timestamp", "")
     svix_signature = headers.get("svix-signature", "")
+    # 1.4 — Replay protection: reject webhooks older than 5 minutes
+    try:
+        if abs(time.time() - int(svix_timestamp)) > 300:
+            return False
+    except (ValueError, TypeError):
+        return False
     signed = f"{svix_id}.{svix_timestamp}.{request_body.decode()}"
     expected = _base64.b64encode(
         hmac.new(raw_secret, signed.encode(), hashlib.sha256).digest()

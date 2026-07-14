@@ -115,9 +115,20 @@ if settings.environment == "production":
             "Set ALLOWED_ORIGINS to a comma-separated list of allowed origins "
             "(e.g. 'https://conductai.ai,https://app.conductai.ai')."
         )
-    import logging as _logging
-    _prod_log = _logging.getLogger(__name__)
     if not settings.clerk_frontend_api:
-        _prod_log.warning("SECURITY: CLERK_FRONTEND_API not set — JWT issuer not verified")
+        raise RuntimeError(
+            "CLERK_FRONTEND_API must be set in production — JWT issuer verification is disabled without it."
+        )
     if not settings.clerk_audience:
-        _prod_log.warning("SECURITY: CLERK_AUDIENCE not set — JWT audience not verified")
+        raise RuntimeError(
+            "CLERK_AUDIENCE must be set in production — JWT audience verification is disabled without it."
+        )
+
+# 1.2 — Enforce JWT verification in staging too (not just production)
+if settings.environment not in ("local", "development"):
+    import logging as _logging
+    _env_log = _logging.getLogger(__name__)
+    if not settings.clerk_frontend_api:
+        _env_log.warning("SECURITY: CLERK_FRONTEND_API not set — JWT issuer not verified")
+    if not settings.clerk_audience:
+        _env_log.warning("SECURITY: CLERK_AUDIENCE not set — JWT audience not verified")
