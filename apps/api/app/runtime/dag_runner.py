@@ -125,8 +125,8 @@ def _checkpoint_state(run_id: str | None, state: dict) -> None:
         import json as _json
         r = _redis.from_url(settings.redis_url, decode_responses=True)
         r.setex(f"run_state:{run_id}", _STATE_CHECKPOINT_TTL, _json.dumps(state, default=str))
-    except Exception:
-        pass
+    except Exception as _e:
+        log.warning("dag.checkpoint_failed", run_id=run_id, error=str(_e))
 
 
 def _load_checkpoint(run_id: str | None) -> dict | None:

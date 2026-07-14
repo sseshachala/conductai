@@ -85,7 +85,24 @@ _FORBIDDEN_SHELL_PATTERNS = [
 
 # ── brain tool implementations ────────────────────────────────────────────────
 
+_PATH_TRAVERSAL_BLOCKLIST = re.compile(
+    r"(/etc/|/proc/|/sys/|/root/|/app/app/core/|\.\./)",
+    re.IGNORECASE,
+)
+
+
+def _check_path(path: str) -> str | None:
+    """Return error string if path is unsafe, None if ok."""
+    resolved = os.path.realpath(os.path.abspath(path))
+    if _PATH_TRAVERSAL_BLOCKLIST.search(resolved):
+        return f"Refused: path '{resolved}' is outside the permitted sandbox"
+    return None
+
+
 def _tool_read_file(path: str) -> str:
+    err = _check_path(path)
+    if err:
+        return err
     try:
         with open(path) as f:
             content = f.read()
@@ -97,6 +114,9 @@ def _tool_read_file(path: str) -> str:
 
 
 def _tool_write_file(path: str, content: str) -> str:
+    err = _check_path(path)
+    if err:
+        return err
     try:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w") as f:
