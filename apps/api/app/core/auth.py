@@ -225,8 +225,8 @@ def get_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
     x_api_key: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
-) -> str:
-    """Returns the Clerk user_id (sub claim), or 'dev' in local dev mode."""
+) -> str | None:
+    """Returns the Clerk user_id (sub claim), 'dev' in local dev mode, or None for machine API tokens."""
     if not _clerk_enabled():
         return DEV_USER_ID
 

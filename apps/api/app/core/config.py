@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379"
     anthropic_api_key: str = ""
     encryption_key: str = "dev-only-32-byte-key-change-this!"
-    debug: bool = True
+    debug: bool = False
     # Base URL for callbacks (approval webhooks, etc.)
     api_base_url: str = "http://localhost:8000"
     # Frontend URL — used for trace links in Slack/email notifications
