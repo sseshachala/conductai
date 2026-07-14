@@ -331,20 +331,34 @@ def execute_run(run_id: str):
                 _gc = db.query(_GuardCfg).filter(_GuardCfg.workspace_id == _ws_uuid).first()
                 if _gc:
                     _policy_ws = _uuid.UUID(_canonical_ws(str(_ws_uuid)))
-                    _policies = _compute_policy(db, _policy_ws, (_gc.runtime_persona or "conservative"))
-                    state["__guard_policy_cache__"] = {
-                        "policies":         _policies,
-                        "enforcement_mode": _gc.enforcement_mode,
-                        "advisory":         bool(getattr(_gc, "advisory_mode", False)),
-                        "deny_on_error":    bool(getattr(_gc, "deny_on_error", True)),
-                        "workspace_id":     str(_ws_uuid),
-                    }
+                    _deny = bool(getattr(_gc, "deny_on_error", True))
+                    try:
+                        _policies = _compute_policy(db, _policy_ws, (_gc.runtime_persona or "conservative"))
+                    except Exception as _pe:
+                        log.error("guard.policy_load_failed", error=str(_pe))
+                        if _deny:
+                            raise RuntimeError(
+                                f"Guard policy load failed (fail-closed): {_pe}. "
+                                "Disable Guard or set deny_on_error=false to run without it."
+                            ) from _pe
+                        # fail-open: explicit opt-in via deny_on_error=false
+                        state["__guard_enabled"] = False
+                    else:
+                        state["__guard_policy_cache__"] = {
+                            "policies":         _policies,
+                            "enforcement_mode": _gc.enforcement_mode,
+                            "advisory":         bool(getattr(_gc, "advisory_mode", False)),
+                            "deny_on_error":    _deny,
+                            "workspace_id":     str(_ws_uuid),
+                        }
                 else:
                     # Guard not installed for this workspace — disable silently
                     state["__guard_enabled"] = False
+            except RuntimeError:
+                raise
             except Exception as _ge:
-                log.warning("guard.policy_load_failed", error=str(_ge))
-                state["__guard_enabled"] = False
+                log.error("guard.policy_load_failed", error=str(_ge))
+                raise RuntimeError(f"Guard policy load failed (fail-closed): {_ge}") from _ge
 
         final_state = _execute_dag(
             run=run,
