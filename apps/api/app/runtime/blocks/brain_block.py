@@ -432,7 +432,11 @@ def _execute_brain(
     # Authenticate with the Conduct proxy.
     # Prefer ephemeral run token (minted per-run), fall back to long-lived agent identity token.
     if _conduct_proxy_url and workspace_id:
-        _agent_token = _env_vars.get("CONDUCT_RUN_TOKEN") or _env_vars.get("CONDUCT_AGENT_TOKEN", "")
+        _agent_token = (
+            _env_vars.get("CONDUCT_RUN_TOKEN")
+            or state.get("__conduct_run_token__", "")
+            or _env_vars.get("CONDUCT_AGENT_TOKEN", "")
+        )
         if _agent_token:
             _extra_headers["x-conductai-internal"] = _agent_token
         _extra_headers["x-conductai-workspace-id"] = str(workspace_id)
