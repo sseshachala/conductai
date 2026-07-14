@@ -94,6 +94,20 @@ def _upsert_identity(
             {"ws": workspace_id, "uid": clerk_user_id, "mt": _sec.token_hex(32), "aid": identity.id},
         )
 
+    # Ensure workspace_users has this user so require_permission passes.
+    # DO NOTHING preserves existing role; owner gets admin, everyone else developer.
+    db.execute(
+        text("""
+            INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
+            SELECT :ws, :uid,
+                   CASE WHEN w.owner_id = :uid THEN 'admin' ELSE 'developer' END,
+                   now()
+            FROM workspaces w WHERE w.id = :ws
+            ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+        """),
+        {"ws": workspace_id, "uid": clerk_user_id},
+    )
+
     db.commit()
     return identity, agent_raw, refresh_raw
 
