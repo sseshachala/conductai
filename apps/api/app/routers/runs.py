@@ -82,6 +82,17 @@ def get_workspace_id_sse(
     if not raw_token:
         raise HTTPException(status_code=401, detail="Authorization required")
 
+    # cond_agt_* / cond_api_* agent tokens
+    if raw_token.startswith(("cond_agt_", "cond_api_")):
+        from app.core.auth import _resolve_agent_token
+        from app.core.database import get_db as _get_db
+        _db = next(_get_db())
+        try:
+            ai, _ = _resolve_agent_token(raw_token, _db)
+            return x_ws or str(ai.workspace_id)
+        finally:
+            _db.close()
+
     claims = _verify_clerk_token(raw_token)
     if not claims:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -93,7 +104,7 @@ def get_workspace_id_sse(
 
 
 def _get_user_id_from_request(request: Request) -> str:
-    """Extract Clerk user_id from Authorization header or ?token= query param for SSE endpoints."""
+    """Extract user_id from Authorization header or ?token= query param for SSE endpoints."""
     if not _clerk_enabled():
         return DEV_USER_ID
     auth_header = request.headers.get("Authorization", "")
@@ -104,6 +115,18 @@ def _get_user_id_from_request(request: Request) -> str:
         raw_token = request.query_params.get("token")
     if not raw_token:
         raise HTTPException(status_code=401, detail="Authorization required")
+
+    # cond_agt_* agent tokens
+    if raw_token.startswith(("cond_agt_", "cond_api_")):
+        from app.core.auth import _resolve_agent_token
+        from app.core.database import get_db as _get_db
+        _db = next(_get_db())
+        try:
+            _, clerk_user_id = _resolve_agent_token(raw_token, _db)
+            return clerk_user_id or DEV_USER_ID
+        finally:
+            _db.close()
+
     claims = _verify_clerk_token(raw_token)
     if not claims:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
