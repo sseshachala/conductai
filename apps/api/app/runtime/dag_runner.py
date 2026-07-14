@@ -113,6 +113,15 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
 
 _STATE_CHECKPOINT_TTL = 86400  # 24 hours — same as LLM cache
 
+# Module-level connection pool — reused across all checkpoint calls
+import redis as _redis_mod
+import json as _json_mod
+_redis_pool = _redis_mod.ConnectionPool.from_url(settings.redis_url, decode_responses=True)
+
+
+def _redis_client() -> "_redis_mod.Redis":
+    return _redis_mod.Redis(connection_pool=_redis_pool)
+
 
 # ── state checkpointing ───────────────────────────────────────────────────────
 
@@ -121,10 +130,7 @@ def _checkpoint_state(run_id: str | None, state: dict) -> None:
     if not run_id:
         return
     try:
-        import redis as _redis
-        import json as _json
-        r = _redis.from_url(settings.redis_url, decode_responses=True)
-        r.setex(f"run_state:{run_id}", _STATE_CHECKPOINT_TTL, _json.dumps(state, default=str))
+        _redis_client().setex(f"run_state:{run_id}", _STATE_CHECKPOINT_TTL, _json_mod.dumps(state, default=str))
     except Exception as _e:
         log.warning("dag.checkpoint_failed", run_id=run_id, error=str(_e))
 
@@ -134,11 +140,8 @@ def _load_checkpoint(run_id: str | None) -> dict | None:
     if not run_id:
         return None
     try:
-        import redis as _redis
-        import json as _json
-        r = _redis.from_url(settings.redis_url, decode_responses=True)
-        raw = r.get(f"run_state:{run_id}")
-        return _json.loads(raw) if raw else None
+        raw = _redis_client().get(f"run_state:{run_id}")
+        return _json_mod.loads(raw) if raw else None
     except Exception:
         return None
 
