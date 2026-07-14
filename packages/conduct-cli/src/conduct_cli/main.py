@@ -160,6 +160,11 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
         elif kind == "brain_tool_call":
             summary = payload.get("summary", payload.get("tool", ""))
             print(f"      · {summary}{RESET}")
+        elif kind == "guard_check":
+            for w in payload.get("warnings", []):
+                print(f"{YELLOW}    ⚠ [guard] {w.get('rule_id', '')}: {w.get('message', '')}{RESET}")
+            for a in payload.get("audited", []):
+                print(f"{BLUE}    ● [guard] {a.get('rule_id', '')}: {a.get('message', '')}{RESET}")
         elif kind == "run_completed":
             print(f"{BOLD}{GREEN}    ✓ done{RESET}")
         elif kind == "run_failed":

@@ -100,7 +100,8 @@ def _execute_guard(
     # ── Handle violations ─────────────────────────────────────────────────────
     block_id              = block.get("id", "guard")
     now                   = datetime.now(timezone.utc)
-    warnings: list[dict]  = []
+    warnings: list[dict] = []
+    audited:  list[dict] = []
     estimated_input_tokens = max(1, len(context_json) // 4)
 
     def _record_event(policy: dict, decision: str) -> None:
@@ -159,6 +160,7 @@ def _execute_guard(
 
         else:
             _record_event(v, "audited")
+            audited.append({"rule_id": v_rule_id, "message": message})
 
     if warnings or violations:
         db.commit()
@@ -170,4 +172,5 @@ def _execute_guard(
         "rules_checked":    len(policies),
         "violations":       len(violations),
         "warnings":         warnings,
+        "audited":          audited,
     }
