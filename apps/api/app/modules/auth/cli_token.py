@@ -171,6 +171,25 @@ def refresh_cli_token(
     identity.refresh_token_hash = refresh_hash
     identity.refresh_token_expires_at = now + _REFRESH_TOKEN_TTL
     identity.last_used_at = now
+
+    # Ensure workspace_users row exists (may be missing if Clerk webhook never fired)
+    gmc = db.execute(
+        text("SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid LIMIT 1"),
+        {"aid": str(identity.id)},
+    ).fetchone()
+    if gmc and gmc.clerk_user_id:
+        db.execute(
+            text("""
+                INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
+                SELECT :ws, :uid,
+                       CASE WHEN w.owner_id = :uid THEN 'admin' ELSE 'developer' END,
+                       now()
+                FROM workspaces w WHERE w.id = :ws
+                ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
+            """),
+            {"ws": str(identity.workspace_id), "uid": gmc.clerk_user_id},
+        )
+
     db.commit()
 
     return CliTokenResponse(
