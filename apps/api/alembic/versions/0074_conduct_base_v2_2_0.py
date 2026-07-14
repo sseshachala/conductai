@@ -38,22 +38,26 @@ _RULES = [
 ]
 
 import json as _json
-_RULES_SQL = _json.dumps(_RULES).replace("'", "''")
+import sqlalchemy as sa
+
+_RULES_JSON = _json.dumps(_RULES)
 
 
 def upgrade():
-    op.execute(f"""
-        INSERT INTO skill_packs (slug, version, name, tier, description, rules)
-        VALUES (
-            'conduct-base', '2.2.0', 'Conduct Base', 'free',
-            'Core AI governance rules',
-            '{_RULES_SQL}'::jsonb
-        )
-        ON CONFLICT (slug, version) DO UPDATE SET rules = EXCLUDED.rules;
-    """)
-    op.execute("DELETE FROM guard_policy_cache;")
+    conn = op.get_bind()
+    conn.execute(
+        sa.text("""
+            INSERT INTO skill_packs (slug, version, name, tier, description, rules)
+            VALUES ('conduct-base', '2.2.0', 'Conduct Base', 'free',
+                    'Core AI governance rules', CAST(:rules AS jsonb))
+            ON CONFLICT (slug, version) DO UPDATE SET rules = EXCLUDED.rules
+        """),
+        {"rules": _RULES_JSON},
+    )
+    conn.execute(sa.text("DELETE FROM guard_policy_cache"))
 
 
 def downgrade():
-    op.execute("DELETE FROM skill_packs WHERE slug = 'conduct-base' AND version = '2.2.0';")
-    op.execute("DELETE FROM guard_policy_cache;")
+    conn = op.get_bind()
+    conn.execute(sa.text("DELETE FROM skill_packs WHERE slug = 'conduct-base' AND version = '2.2.0'"))
+    conn.execute(sa.text("DELETE FROM guard_policy_cache"))
