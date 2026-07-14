@@ -599,7 +599,7 @@ def require_permission(permission: str):
             ).fetchone()
             if gmc:
                 return "admin"
-            raise HTTPException(status_code=403, detail=f"[perm/ws] uid={user_id} not in workspace_users, owner, or GMC for ws={workspace_id}")
+            raise HTTPException(status_code=403, detail="Not a member of this workspace")
 
         user_role = row.role
 
