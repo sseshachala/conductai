@@ -438,9 +438,9 @@ from app.runtime.tool_engine import (  # noqa: F401, E402
     _tool_search_code,
 )
 
+from app.runtime.blocks.guard_block import _execute_guard  # noqa: F401
 from app.runtime.dag_runner import (  # noqa: F401, E402
     _execute_dag,
-    _execute_guard,
     _execute_memory_inner,
     _resolve_as_list,
     CredentialStore as _CredentialStore,  # already imported above from core.credentials
