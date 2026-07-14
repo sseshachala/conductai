@@ -6,7 +6,6 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 interface WorkflowDetail {
   id: string
   name: string
-  default_mode: string
   default_max_turns: number | null
   agent_identity_required: boolean
 }
@@ -192,16 +191,6 @@ async function saveGuard(enabled = guardEnabled) {
               </p>
             </div>
 
-            {/* Mode */}
-            <div className="card" style={{ padding: "16px 20px" }}>
-              <p className="eyebrow" style={{ marginBottom: 4 }}>Execution mode</p>
-              <p style={{ color: "var(--text)", fontWeight: 500, textTransform: "capitalize" }}>
-                {workflow?.default_mode ?? "dag"}
-              </p>
-              <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                dag = sequential blocks · agentic = AI decides order
-              </p>
-            </div>
 
             {/* Guard — workflow-level on/off + persona override */}
             <div className="card" style={{ padding: "16px 20px" }}>
