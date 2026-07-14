@@ -156,7 +156,7 @@ def _maybe_sync_policy() -> None:
     try:
         cfg = load_config()
         workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
-        api_key      = cfg.get("api_key", "")
+        api_key      = cfg.get("agent_token") or cfg.get("api_key", "")
         api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
         if not workspace_id:
             return
