@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     # Guard proxy — public URL of this server's /proxy endpoint
     conduct_proxy_url: str = "https://api.conductai.ai/proxy"
 
+    # GLens — Qwen3 inference on Modal (platform-level, powers GLens + NLP policy authoring)
+    glens_modal_endpoint_url: str = ""   # e.g. https://org--model-name.modal.run/v1
+    glens_modal_model_name: str = "qwen3-235b-a3b"
+    glens_modal_api_secret: str = ""     # Modal endpoint auth secret
+
     # reCAPTCHA v3 — used to verify anonymous playbook submissions
     recaptcha_secret_key: str = ""
     recaptcha_min_score: float = 0.5
