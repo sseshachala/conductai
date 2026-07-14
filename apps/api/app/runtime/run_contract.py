@@ -47,8 +47,7 @@ class RunContext:
         state["__conduct_run_token__"] = self.conduct_run_token
         state["__max_turns"] = self.max_turns
         state["__max_cost_usd"] = self.max_cost_usd
-        if self.user_email:
-            state["__user_email"] = self.user_email
+        state["__user_email"] = self.user_email
 
 
 def enrich_run_state_contract(
