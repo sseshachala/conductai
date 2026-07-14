@@ -7,15 +7,10 @@ interface WorkflowDetail {
   id: string
   name: string
   default_mode: string
-  environment_id: string | null
   default_max_turns: number | null
   agent_identity_required: boolean
 }
 
-interface Environment {
-  id: string
-  name: string
-}
 
 interface Props {
   workflowId: string
@@ -26,7 +21,6 @@ interface Props {
 export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }: Props) {
   const { activeWorkspace } = useWorkspace()
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null)
-  const [environments, setEnvironments] = useState<Environment[]>([])
   const [loading, setLoading] = useState(true)
   const [turnsInput, setTurnsInput] = useState("")
   const [guardEnabled, setGuardEnabled] = useState(true)
@@ -54,9 +48,8 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
     async function load() {
       try {
         const h = await headers()
-        const [wfRes, envRes] = await Promise.all([
+        const [wfRes] = await Promise.all([
           fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers: h }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers: h }),
         ])
         if (wfRes.ok) {
           const wf = await wfRes.json()
@@ -74,7 +67,6 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
             }
           } catch { /* non-fatal — fall back to 'conservative' */ }
         }
-        if (envRes.ok) setEnvironments(await envRes.json())
       } finally {
         setLoading(false)
       }
@@ -83,21 +75,7 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId])
 
-  async function saveEnvironment(envId: string) {
-    const h = await headers()
-    h["Content-Type"] = "application/json"
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/set-environment`, {
-      method: "POST", headers: h, body: JSON.stringify({ environment_id: envId })
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      setError(body.detail ?? `Failed to save environment (${res.status})`)
-      return
-    }
-    setWorkflow(prev => prev ? { ...prev, environment_id: envId } : prev)
-  }
-
-  async function saveGuard(enabled = guardEnabled) {
+async function saveGuard(enabled = guardEnabled) {
     setGuardSaving(true)
     try {
       const token = getToken ? await getToken() : null
@@ -223,35 +201,6 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
               <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
                 dag = sequential blocks · agentic = AI decides order
               </p>
-            </div>
-
-            {/* Environment */}
-            <div className="card" style={{ padding: "16px 20px" }}>
-              <p className="eyebrow" style={{ marginBottom: 8 }}>Environment</p>
-              {environments.length === 0 ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                  No environments configured. Add one in workspace Settings.
-                </p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {environments.map(env => (
-                    <label
-                      key={env.id}
-                      style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
-                    >
-                      <input
-                        type="radio"
-                        name="environment"
-                        value={env.id}
-                        checked={workflow?.environment_id === env.id}
-                        onChange={() => saveEnvironment(env.id)}
-                        style={{ accentColor: "var(--text)" }}
-                      />
-                      <span style={{ fontSize: 13, color: "var(--text)" }}>{env.name}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Guard — workflow-level on/off + persona override */}
