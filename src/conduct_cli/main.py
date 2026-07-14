@@ -2509,6 +2509,23 @@ def cmd_run(args):
     except Exception:
         pass  # validate endpoint is best-effort; backend will re-check on /trigger
 
+    # Full preflight validation — credentials, auth chain, proxy, block config.
+    # Blocks on errors so bad runs never start.
+    try:
+        vr = api.req("POST", f"{server}/workflows/{workflow_id}/validate", json_h, {})
+        v_errors = (vr or {}).get("errors") or []
+        if v_errors:
+            print(f"{RED}✗ Cannot start run — preflight validation failed:{RESET}\n")
+            for e in v_errors:
+                lbl = e.get("label") or e.get("block_id") or "?"
+                print(f"  {YELLOW}⚠  [{lbl}]{RESET} {e.get('message', '')}")
+            print()
+            sys.exit(2)
+    except SystemExit:
+        raise
+    except Exception:
+        pass  # best-effort — don't block run if validate endpoint itself errors
+
     # Fix 3: /trigger returns run_id, not id.
     if getattr(args, "max_turns", None):
         body["__max_turns"] = args.max_turns
