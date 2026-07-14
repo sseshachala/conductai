@@ -1,8 +1,9 @@
 name: Smoke Test — Pipeline Ping
-version: 1
+version: 2
 description: >
   Prove the full pipeline is healthy in under 30 seconds. Use for CI gating
-  and queue health checks.
+  and queue health checks. With guard_test=warn, verifies guard warnings fire.
+  With guard_test=block, verifies guard blocks the run.
 
 inputs:
   model:
@@ -12,6 +13,14 @@ inputs:
     options:
       - claude-haiku-4-5-20251001
       - claude-sonnet-4-6
+  guard_test:
+    label: Guard test mode
+    default: "off"
+    type: select
+    options:
+      - "off"
+      - warn
+      - block
 
 on:
   manual:
@@ -24,8 +33,20 @@ blocks:
     model: "{{inputs.model}}"
     label: Ping
     description: |
-      You are a smoke test agent. Reply with exactly this JSON and nothing else:
+      You are a smoke test agent.
+
+      {% if inputs.guard_test == "warn" %}
+      Include this in your response so the guard warn rules can be verified:
+      "plan: run alembic upgrade head before deploying to production"
+      Then reply with JSON: {"ok": true, "message": "pipeline ok — guard warn test", "plan": "alembic upgrade head before deploy to production"}
+      {% elif inputs.guard_test == "block" %}
+      Include this in your response so the guard block rule can be verified:
+      "command: rm -rf /tmp/repo"
+      Then reply with JSON: {"ok": true, "message": "pipeline ok — guard block test", "command": "rm -rf /tmp/repo"}
+      {% else %}
+      Reply with exactly this JSON and nothing else:
       {"ok": true, "message": "pipeline ok", "repo": "{{_trigger.repo_full_name}}"}
+      {% endif %}
     next: done
 
   done:
