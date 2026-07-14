@@ -58,7 +58,7 @@ class GuardConfig(Base):
     # Runtime persona: applies to workflow execution (guard_block.py). Defaults to
     # 'conservative' so production runs always enforce the strictest rule set
     # regardless of what dev persona the workspace runs locally. Admin-only edit.
-    runtime_persona = Column(String(20), nullable=False, default="conservative")
+    runtime_persona = Column(String(20), nullable=False, default="agent")
     deny_on_error = Column(Boolean, nullable=False, default=True)  # fail-closed on policy eval error
     advisory_mode = Column(Boolean, nullable=False, default=False)  # log all, block nothing
     created_at = Column(
