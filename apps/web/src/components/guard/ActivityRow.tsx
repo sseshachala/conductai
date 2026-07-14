@@ -167,9 +167,13 @@ const MCP_SERVER_LABELS: Record<string, string> = {
 
 export function formatToolCall(call: string | null | undefined): string {
   if (!call) return "—"
-  const m = call.match(/^mcp__([^_].+?)__(.+)$/)
-  if (!m) return call
-  const [, server, tool] = m
+  // Workflow auto-guard: __guard_<block_id> → block name
+  const guardM = call.match(/^__guard_(.+)$/)
+  if (guardM) return guardM[1]
+  // MCP tool: mcp__server__tool → Server · tool
+  const mcpM = call.match(/^mcp__([^_].+?)__(.+)$/)
+  if (!mcpM) return call
+  const [, server, tool] = mcpM
   const label = MCP_SERVER_LABELS[server] ?? "MCP"
   return `${label} · ${tool}`
 }
@@ -190,7 +194,7 @@ export function SignatureTamperRow({ ev, isLast = false }: { ev: AuditEvent; isL
     if (!hostname) hostname = payload.hostname ?? ""
   } catch { /* non-fatal */ }
 
-  const cols = "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr 0.9fr"
+  const cols = "0.8fr 1.4fr 1fr 1.2fr 1.8fr 0.9fr 0.8fr 0.9fr"
 
   return (
     <>
@@ -280,8 +284,8 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
   }
 
   const cols = compact
-    ? "0.8fr 1.4fr 0.7fr 1.8fr 0.9fr 0.8fr"
-    : "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr 0.9fr"
+    ? "0.8fr 1.4fr 1.2fr 1.8fr 0.9fr 0.8fr"
+    : "0.8fr 1.4fr 1fr 1.2fr 1.8fr 0.9fr 0.8fr 0.9fr"
 
   const bg = ev.decision === "blocked"
     ? "var(--err-bg)"
@@ -452,8 +456,8 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
 /** Column header strip — same widths/labels as the rows, with optional compact mode. */
 export function ActivityHeader({ compact = false }: { compact?: boolean }) {
   const cols = compact
-    ? "0.8fr 1.4fr 0.7fr 1.8fr 0.9fr 0.8fr"
-    : "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr 0.9fr"
+    ? "0.8fr 1.4fr 1.2fr 1.8fr 0.9fr 0.8fr"
+    : "0.8fr 1.4fr 1fr 1.2fr 1.8fr 0.9fr 0.8fr 0.9fr"
   return (
     <div style={{
       display: "grid",
@@ -471,7 +475,7 @@ export function ActivityHeader({ compact = false }: { compact?: boolean }) {
       <div>Time</div>
       <div>Developer</div>
       {!compact && <div>Tool</div>}
-      <div>Call</div>
+      <div>Action</div>
       <div>Input</div>
       <div>Decision</div>
       <div>Rule</div>
