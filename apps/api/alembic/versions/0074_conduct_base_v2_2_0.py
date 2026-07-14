@@ -4,8 +4,6 @@ Revision ID: 0074
 Revises: 0073
 Create Date: 2026-07-14
 """
-import json
-import pathlib
 from alembic import op
 
 revision = "0074"
@@ -13,22 +11,46 @@ down_revision = "0073"
 branch_labels = None
 depends_on = None
 
-_PACK_PATH = pathlib.Path(__file__).parents[3] / "app/modules/guard/skill_packs/conduct-base.json"
+_RULES = [
+    {"id": "proxy-no-credential-leak", "persona": "proxy", "non_overridable": True, "description": "Block LLM calls containing credentials in the prompt", "match_pattern": "(DATABASE_URL|postgres(?:ql)?://|mysql://|DB_PASSWORD|STRIPE_SECRET|sk_live_[0-9a-zA-Z]{20,}|sk-ant-[a-zA-Z0-9\\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|AWS_SECRET_ACCESS_KEY)", "action": "block", "message": "Credential detected in prompt \u2014 request blocked before reaching LLM provider.", "severity": "critical", "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1"]},
+    {"id": "proxy-no-prompt-injection", "persona": "proxy", "non_overridable": True, "description": "Block prompt injection attempts", "match_pattern": "(ignore (all |previous |prior |your )instructions|disregard (your |the )system prompt|you are now|jailbreak|act as (an? )?(unrestricted|DAN|evil))", "action": "block", "message": "Prompt injection pattern detected \u2014 request blocked.", "severity": "critical", "frameworks": ["OWASP:LLM01", "ISO_42001:6.1"]},
+    {"id": "proxy-no-pii-prompt", "persona": "proxy", "non_overridable": False, "description": "Warn when LLM prompt contains PII", "match_pattern": "(\\b\\d{3}-\\d{2}-\\d{4}\\b|\\b4[0-9]{12}(?:[0-9]{3})?\\b|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})", "action": "warn", "message": "PII detected in prompt. Verify this data is permitted to reach the LLM provider.", "severity": "high", "frameworks": ["GDPR:Art32", "HIPAA:164.514"]},
+    {"id": "no-rm-rf", "persona": "agent", "non_overridable": True, "description": "Block recursive deletes", "match_tool": "shell,workflow", "match_pattern": "rm\\s+-rf", "action": "block", "message": "Recursive delete blocked. Delete files individually.", "severity": "critical", "frameworks": ["SOC2:CC6.1"]},
+    {"id": "no-sudo", "persona": "agent", "non_overridable": True, "description": "Block sudo commands", "match_tool": "shell,workflow", "match_pattern": "\\bsudo\\b", "action": "block", "message": "sudo blocked. Escalating permissions via an AI agent is not permitted.", "severity": "critical", "frameworks": ["SOC2:CC6.1"]},
+    {"id": "no-env-read", "persona": "agent", "non_overridable": False, "description": "Block reading .env files", "match_tool": "*", "match_pattern": "\\.env(\\b|$)", "action": "block", "message": ".env files contain secrets. Use your secrets manager instead.", "severity": "high", "frameworks": ["SOC2:CC6.1"]},
+    {"id": "no-env-commits", "persona": "agent", "non_overridable": False, "description": "Block committing .env files", "match_tool": "shell,workflow", "match_pattern": "git add\\b.*(\\s|/)\\.env(\\.[a-zA-Z]+)?(\\s|$)", "action": "block", "message": ".env files must not be committed.", "severity": "critical", "frameworks": ["SOC2:CC6.1", "GDPR:Art32"]},
+    {"id": "no-force-push", "persona": "agent", "non_overridable": False, "description": "Block force pushes", "match_tool": "shell,workflow", "match_pattern": "git\\s+push\\s+(--force|-f)\\b", "action": "block", "message": "Force push blocked. Coordinate with your team before rewriting history.", "severity": "high", "frameworks": ["SOC2:CC6.1"]},
+    {"id": "approve-prod-deploy", "persona": "agent", "non_overridable": False, "description": "Warn on production deploys", "match_tool": "shell,workflow", "match_pattern": "deploy.*(prod|production)|vercel.*--prod|railway.*prod", "action": "warn", "message": "Production deploy triggered by AI agent.", "severity": "high", "frameworks": ["SOC2:CC8.1"]},
+    {"id": "approve-db-migration-prod", "persona": "agent", "non_overridable": False, "description": "Warn on production DB migrations", "match_tool": "shell,workflow", "match_pattern": "alembic upgrade|prisma migrate deploy", "action": "warn", "message": "DB migration triggered by AI agent.", "severity": "high", "frameworks": ["SOC2:CC8.1"]},
+    {"id": "no-hardcoded-secrets", "persona": "agent", "non_overridable": False, "description": "Warn when AI writes hardcoded secrets into code", "match_tool": "filesystem-write,workflow", "match_pattern": "(API_KEY|SECRET|PASSWORD|TOKEN)\\s*=\\s*['\"][A-Za-z0-9+/]{16,}", "action": "warn", "message": "Possible hardcoded secret in generated code. Use environment variables.", "severity": "high", "frameworks": ["SOC2:CC6.1"]},
+    {"id": "no-aws-keys", "persona": "agent", "non_overridable": False, "description": "Warn when AI writes AWS access keys into code", "match_tool": "filesystem-write,workflow", "match_pattern": "AKIA[0-9A-Z]{16}", "action": "warn", "message": "AWS access key detected in generated code. Use IAM roles.", "severity": "critical", "frameworks": ["SOC2:CC6.1"]},
+    {"id": "secret-stripe", "persona": "agent", "non_overridable": False, "description": "Warn when AI writes Stripe live keys into code", "match_tool": "filesystem-write,workflow", "match_pattern": "sk_live_[0-9a-zA-Z]{24,}", "action": "warn", "message": "Stripe live key detected in generated code. Use environment variables.", "severity": "critical", "frameworks": ["PCI_DSS:3.5"]},
+    {"id": "cmd-injection", "persona": "agent", "non_overridable": False, "description": "Warn when AI writes shell execution with user input", "match_tool": "filesystem-write,workflow", "match_pattern": "(subprocess\\.(call|run|Popen|check_output)|os\\.(system|popen)|exec\\(|eval\\()", "action": "warn", "message": "Shell execution detected in generated code. Verify input is sanitised.", "severity": "high", "frameworks": ["OWASP:A03"]},
+    {"id": "sql-injection", "persona": "agent", "non_overridable": False, "description": "Warn when AI writes string-formatted SQL", "match_tool": "filesystem-write,workflow", "match_pattern": "(f['\"].*SELECT|f['\"].*INSERT|f['\"].*UPDATE|f['\"].*DELETE)", "action": "warn", "message": "String-formatted SQL in generated code. Use parameterised queries.", "severity": "high", "frameworks": ["OWASP:A03"]},
+    {"id": "no-secret-in-commit-msg", "persona": "agent", "non_overridable": False, "description": "Warn on secrets in git commit messages", "match_tool": "shell,workflow", "match_pattern": "git\\s+commit\\s+.*-m.*([A-Za-z0-9+/]{32,}|sk-[a-zA-Z0-9]{32,}|ghp_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16})", "action": "warn", "message": "Possible secret in commit message. Remove before pushing.", "severity": "high", "frameworks": ["SOC2:CC6.1"]},
+    {"id": "surface-chat-no-bash", "persona": "agent", "non_overridable": False, "description": "Block shell execution from chat surfaces", "match_tool": "shell", "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt", "action": "block", "message": "Shell commands are not permitted from chat surfaces. Use Claude Code, Codex CLI, Cursor, or Windsurf for terminal access.", "severity": "high", "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1", "NIST_AI_RMF:GOVERN-1.1"]},
+    {"id": "surface-chat-no-write", "persona": "agent", "non_overridable": False, "description": "Block filesystem writes from chat surfaces", "match_tool": "filesystem-write", "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt", "action": "block", "message": "File writes are not permitted from chat surfaces. Use a dev tool for filesystem access.", "severity": "high", "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1"]},
+    {"id": "surface-chat-no-network", "persona": "agent", "non_overridable": False, "description": "Warn on outbound network calls from chat surfaces", "match_tool": "network", "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt", "action": "warn", "message": "Outbound network call from a chat surface. Verify this request is intentional.", "severity": "medium", "frameworks": ["SOC2:CC6.1"]},
+    {"id": "surface-codex-desktop-warn-exec", "persona": "agent", "non_overridable": False, "description": "Warn on shell execution from Codex Desktop", "match_tool": "shell", "match_ai_tool": "codex-desktop", "action": "warn", "message": "Shell command via Codex Desktop \u2014 logged for audit. Destructive commands are blocked by separate rules.", "severity": "medium", "frameworks": ["SOC2:CC6.1"]},
+    {"id": "surface-codex-desktop-no-delete", "persona": "agent", "non_overridable": False, "description": "Block destructive deletes from Codex Desktop", "match_tool": "shell", "match_ai_tool": "codex-desktop", "match_pattern": "rm\\s+-(rf|fr|r)\\b|rmdir|del\\s+/s", "action": "block", "message": "Destructive delete blocked from Codex Desktop.", "severity": "high", "frameworks": ["SOC2:CC6.1"]},
+    {"id": "surface-dev-audit-prod-write", "persona": "agent", "non_overridable": False, "description": "Audit writes to production paths from any dev tool", "match_tool": "filesystem-write", "match_ai_tool": "claude-code,codex-cli,cursor,windsurf", "match_path_pattern": "(/prod/|/production/|\\.env\\.prod|render\\.yaml|vercel\\.json|Dockerfile)", "action": "audited", "message": "Write to production configuration detected \u2014 logged for audit trail.", "severity": "medium", "frameworks": ["SOC2:CC7.2", "ISO_42001:9.1"]},
+    {"id": "surface-unknown-block-exec", "persona": "agent", "non_overridable": False, "description": "Block shell execution from unrecognized surfaces", "match_tool": "shell", "match_ai_tool": "unknown", "action": "block", "message": "Shell execution blocked \u2014 surface not recognized by ConductGuard. Run `conduct guard sync` to register this tool.", "severity": "high", "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1"]},
+]
+
+import json as _json
+_RULES_SQL = _json.dumps(_RULES).replace("'", "''")
 
 
 def upgrade():
-    data = json.loads(_PACK_PATH.read_text())
-    rules_json = json.dumps(data["rules"])
     op.execute(f"""
         INSERT INTO skill_packs (slug, version, name, tier, description, rules)
         VALUES (
             'conduct-base', '2.2.0', 'Conduct Base', 'free',
-            'Core AI governance rules — proxy interception, agent safety, and surface-aware enforcement across all AI tools. 3 proxy + 13 agent + 7 surface rules.',
-            '{rules_json.replace("'", "''")}'::jsonb
+            'Core AI governance rules',
+            '{_RULES_SQL}'::jsonb
         )
         ON CONFLICT (slug, version) DO UPDATE SET rules = EXCLUDED.rules;
     """)
-    # Invalidate cached policy for all workspaces so next run picks up new rules
     op.execute("DELETE FROM guard_policy_cache;")
 
 
