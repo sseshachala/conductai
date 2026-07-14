@@ -370,6 +370,7 @@ def _auto_guard_check(
             "violations":       result.get("violations", 0),
             "enforcement_mode": result.get("enforcement_mode"),
             "warnings":         result.get("warnings", []),
+            "audited":          result.get("audited", []),
         })
     except RuntimeError:
         raise  # block → propagate to halt the run
