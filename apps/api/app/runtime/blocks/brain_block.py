@@ -200,14 +200,8 @@ def _execute_brain(
     environment_id: str | None = None,
 ) -> dict:
     # Import helpers from executor to avoid circular imports at module load time.
-    from app.runtime.executor import (
-        _emit,
-        _resolve_remote_host,
-        _resolve_refs,
-        _summarise_tool_call,
-        _write_trace,
-        ClarificationRequired,
-    )
+    from app.runtime.executor import _emit, _write_trace, ClarificationRequired
+    from app.runtime.tool_engine import _resolve_remote_host, _resolve_refs, _summarise_tool_call
 
     if state.get("__dry_run"):
         return {

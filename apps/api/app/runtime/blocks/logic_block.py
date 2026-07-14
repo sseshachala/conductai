@@ -45,7 +45,7 @@ def _execute_logic(block: dict, state: dict) -> dict:
     2. exit_code == 0 from last shell output
     3. Keywords 'pass', 'success', 'true', '0' in last output
     """
-    from app.runtime.executor import _resolve_refs
+    from app.runtime.tool_engine import _resolve_refs
 
     config = block["data"].get("config", {})
     raw_condition = config.get("condition", "")

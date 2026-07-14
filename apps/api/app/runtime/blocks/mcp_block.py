@@ -20,7 +20,7 @@ def _execute_mcp(block: dict, state: dict, cred_store: object) -> dict:
       encrypted_auth are fetched directly from the DB, decrypted at point of use.
     """
     from app.runtime.integrations.mcp_client import call_tool
-    from app.runtime.executor import _resolve_refs
+    from app.runtime.tool_engine import _resolve_refs
 
     data   = block.get("data", {})
     config = data.get("config", {}) or {}

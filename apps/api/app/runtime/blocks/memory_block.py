@@ -51,7 +51,7 @@ def _execute_memory_inner(
 ) -> dict:
     from app.models.agent_memory import AgentMemory
     from app.runtime.embedding_client import create_embedding_client
-    from app.runtime.executor import _resolve_refs
+    from app.runtime.tool_engine import _resolve_refs
     from app.core.credentials import fetch_credential
 
     data = block["data"]

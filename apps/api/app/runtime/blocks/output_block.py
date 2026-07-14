@@ -23,12 +23,8 @@ def _execute_output(
 ) -> dict:
     from app.runtime.integrations import slack, email as email_integration
     from app.core.config import settings
-    from app.runtime.executor import (
-        _build_run_summary,
-        _fill_template,
-        _load_template,
-        _resolve_refs,
-    )
+    from app.runtime.executor import _build_run_summary, _fill_template, _load_template
+    from app.runtime.tool_engine import _resolve_refs
     from app.core.credentials import fetch_credential
 
     _cred_token = state.get("__cred_token__", "")

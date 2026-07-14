@@ -21,7 +21,8 @@ def _execute_approval(block: dict, state: dict, credentials: dict | None = None,
     """
     from app.runtime.integrations import slack
     from app.core.config import settings
-    from app.runtime.executor import ApprovalRequired, _resolve_refs
+    from app.runtime.executor import ApprovalRequired
+    from app.runtime.tool_engine import _resolve_refs
     from app.core.credentials import fetch_credential
 
     _cred_token = state.get("__cred_token__", "")

@@ -20,7 +20,7 @@ def _execute_tool(
     workspace_id: str = "",
 ) -> dict:
     from app.runtime.integrations import github, slack, linear, digitalocean, vercel, railway, conduct
-    from app.runtime.executor import (
+    from app.runtime.tool_engine import (
         _check_egress,
         _dry_run_mock,
         _INTEGRATION_HOSTS,
