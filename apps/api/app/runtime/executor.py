@@ -1665,11 +1665,11 @@ def execute_run(run_id: str):
             allowed_hosts = _env_row.allowed_hosts or None
         credentials = get_all_credentials(db, workspace_id_str, environment_id=env_id)
 
-        # Mint run-scoped credential token — blocks fetch plaintext via broker, not from this dict
+        # Build RunContext — typed contract for this run. Fails fast if required fields missing.
         from app.core.credentials import mint_cred_token as _mint_cred_token
+        from app.runtime.run_contract import RunContext as _RunContext
         _cred_handles = list(credentials.keys())
-        # Always seed __cred_handles__ so blocks can guard-check before calling the broker
-        state["__cred_handles__"] = _cred_handles
+        _cred_token = ""
         if _cred_handles:
             try:
                 _cred_token = _mint_cred_token(
@@ -1678,11 +1678,8 @@ def execute_run(run_id: str):
                     environment_id=str(env_id) if env_id else None,
                     ttl_seconds=7200,
                 )
-                state["__cred_token__"] = _cred_token
-                state["__cred_api_url__"] = settings.api_base_url
             except Exception:
                 log.warning("run.cred_token_mint_failed", run_id=run_id)
-                # fail-open: token missing, blocks will get {} from fetch_credential (no-op)
 
         # Stamp agent_role_id on the run if CONDUCT_AGENT_TOKEN is in credentials.
         _env_vars_creds = credentials.get("env_vars") or {}
@@ -1697,9 +1694,9 @@ def execute_run(run_id: str):
                 db.commit()
 
         # Read pre-minted agent run token (created at trigger time).
-        # Inject into env_vars, clear encrypted plaintext, invalidate in finally.
         from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
         from app.core.crypto import decrypt as _rt_decrypt
+        _conduct_run_token = ""
         _rt = db.query(_AgentRunToken).filter(
             _AgentRunToken.run_id == str(run.id),
             _AgentRunToken.invalidated_at == None,  # noqa: E711
@@ -1709,16 +1706,36 @@ def execute_run(run_id: str):
             try:
                 _plaintext = (_rt_decrypt(_rt.token_encrypted) or {}).get("token") if _rt.token_encrypted else None
                 if _plaintext:
+                    _conduct_run_token = _plaintext
                     _ev = credentials.get("env_vars") or {}
                     if isinstance(_ev, dict):
                         _ev["CONDUCT_RUN_TOKEN"] = _plaintext
                         credentials._data["env_vars"] = _ev
-                    state["__conduct_run_token__"] = _plaintext
-                    # Clear encrypted plaintext after injection
                     _rt.token_encrypted = None
                     db.commit()
             except Exception:
                 pass  # fail-open: run proceeds without short-lived token
+
+        # Construct RunContext — single typed source of truth for all run infrastructure.
+        # apply_to_state() writes every field into state so blocks read them unchanged.
+        _user_email_ctx = state.get("__user_email") or None
+        try:
+            _ctx = _RunContext(
+                workspace_id=workspace_id_str,
+                run_id=str(run.id),
+                cred_token=_cred_token,
+                cred_api_url=settings.api_base_url,
+                cred_handles=_cred_handles,
+                conduct_run_token=_conduct_run_token,
+                max_turns=int(state.get("__max_turns", 20)),
+                max_cost_usd=float(state.get("__max_cost_usd", settings.default_max_cost_usd)),
+                user_email=_user_email_ctx,
+                env_id=str(env_id) if env_id else None,
+            )
+            _ctx.apply_to_state(state)
+        except ValueError as _ctx_err:
+            log.error("run.context_build_failed", run_id=run_id, error=str(_ctx_err))
+            raise
 
         final_state = _execute_dag(
             run=run,
