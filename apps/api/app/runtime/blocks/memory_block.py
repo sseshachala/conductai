@@ -60,9 +60,8 @@ def _execute_memory_inner(
     scope = config.get("scope", "repo")
     key = _resolve_refs(config.get("key", ""), state)
 
-    _cred_token = state.get("__cred_token__", "")
-    _cred_api_url = state.get("__cred_api_url__", "")
-    _cred_handles = state.get("__cred_handles__", [])
+    from app.runtime.run_contract import cred_from_state
+    _cred_token, _cred_api_url, _cred_handles = cred_from_state(state)
 
     openai_creds = fetch_credential(_cred_token, "openai", _cred_api_url) if "openai" in _cred_handles else {}
     voyage_creds = fetch_credential(_cred_token, "voyage", _cred_api_url) if "voyage" in _cred_handles else {}

@@ -6,6 +6,24 @@ from typing import Any
 
 from app.core.config import settings
 
+# State key constants — single source of truth; blocks import these instead of raw strings
+CRED_TOKEN_KEY      = "__cred_token__"
+CRED_API_URL_KEY    = "__cred_api_url__"
+CRED_HANDLES_KEY    = "__cred_handles__"
+RUN_TOKEN_KEY       = "__conduct_run_token__"
+MAX_TURNS_KEY       = "__max_turns"
+MAX_COST_KEY        = "__max_cost_usd"
+USER_EMAIL_KEY      = "__user_email"
+
+
+def cred_from_state(state: dict) -> tuple[str, str, list]:
+    """Extract (cred_token, cred_api_url, cred_handles) from run state."""
+    return (
+        state.get(CRED_TOKEN_KEY, ""),
+        state.get(CRED_API_URL_KEY, ""),
+        state.get(CRED_HANDLES_KEY, []),
+    )
+
 
 @dataclass
 class RunContext:
@@ -41,13 +59,13 @@ class RunContext:
 
     def apply_to_state(self, state: dict[str, Any]) -> None:
         """Write all context fields into state so existing blocks read them unchanged."""
-        state["__cred_token__"] = self.cred_token
-        state["__cred_api_url__"] = self.cred_api_url
-        state["__cred_handles__"] = self.cred_handles
-        state["__conduct_run_token__"] = self.conduct_run_token
-        state["__max_turns"] = self.max_turns
-        state["__max_cost_usd"] = self.max_cost_usd
-        state["__user_email"] = self.user_email
+        state[CRED_TOKEN_KEY]   = self.cred_token
+        state[CRED_API_URL_KEY] = self.cred_api_url
+        state[CRED_HANDLES_KEY] = self.cred_handles
+        state[RUN_TOKEN_KEY]    = self.conduct_run_token
+        state[MAX_TURNS_KEY]    = self.max_turns
+        state[MAX_COST_KEY]     = self.max_cost_usd
+        state[USER_EMAIL_KEY]   = self.user_email
 
 
 def enrich_run_state_contract(

@@ -1,8 +1,8 @@
 """
 Guard block executor.
 
-Applies ConductGuard policy checks at a point in the workflow.
-Extracted from app.runtime.executor.
+Applies ConductGuard policy checks before brain, tool, and output blocks.
+Policy is loaded once at run start (executor.py) and passed as _policy_cache.
 """
 from __future__ import annotations
 
@@ -12,69 +12,51 @@ import uuid as _uuid
 from datetime import datetime, timezone
 
 import structlog
-from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert, get_policy_hash, GuardConfig
-from app.modules.guard.policy_engine import compute_policy, canonical_workspace_id as _canonical_workspace_id
+from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert, get_policy_hash
 
 log = structlog.get_logger(__name__)
 
 
-def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None, playbook_slug: str | None = None, workflow_id: str | None = None, user_email: str | None = None, workflow_name: str | None = None) -> dict:
-    """Apply ConductGuard policy check at this point in the workflow.
-
-    Evaluates all active team policies against the current workflow state.
-    Violations are handled per enforcement_mode:
-      block  — raises RuntimeError, halts the run
-      warn   — records audit event, adds warning to output, run continues
-      audit  — records audit event silently, run continues
-
-    Config keys:
-      enforcement_mode: block | warn | audit  (default: block)
-      context_keys: list of state keys to include in pattern matching
-                    (default: all state keys)
-      rule_ids: list of specific rule IDs to evaluate
-                (default: all enabled rules)
+def _execute_guard(
+    block: dict,
+    state: dict,
+    workspace_id: str,
+    db,
+    run_id=None,
+    playbook_slug: str | None = None,
+    workflow_id: str | None = None,
+    user_email: str | None = None,
+    workflow_name: str | None = None,
+    _policy_cache: dict | None = None,
+) -> dict:
     """
-    config           = block.get("config") or {}
-    enforcement_mode = config.get("enforcement_mode", "block")
-    context_keys     = config.get("context_keys") or []
-    rule_ids_filter  = set(config.get("rule_ids") or [])
+    Evaluate cached Guard policies against current workflow state.
 
-    # ── 1. Verify Guard is installed for this workspace ───────────────────────
+    Called by _auto_guard_check before every brain / tool / output block.
+    _policy_cache is always provided — loaded once at run start by executor.py.
+    If cache is missing (Guard not installed / disabled), returns skipped.
+
+    Violations handled per enforcement_mode:
+      block  — raises RuntimeError, halts the run
+      warn   — audit event written, warning in output, run continues
+      audit  — silent audit event, run continues
+    """
+    if not _policy_cache:
+        return {"status": "skipped", "reason": "guard_not_enabled"}
+
     try:
-        ws_uuid = _uuid.UUID(workspace_id)
-    except ValueError:
-        ws_uuid = None
+        ws_uuid = _uuid.UUID(_policy_cache["workspace_id"])
+    except (ValueError, KeyError):
+        return {"status": "skipped", "reason": "invalid_workspace_id"}
 
-    guard_installed = False
-    if ws_uuid:
-        from sqlalchemy import text as _text
-        guard_installed = db.execute(
-            _text("SELECT 1 FROM guard_config WHERE workspace_id = :ws LIMIT 1"),
-            {"ws": str(ws_uuid)},
-        ).fetchone() is not None
+    policies         = list(_policy_cache.get("policies") or [])
+    enforcement_mode = _policy_cache.get("enforcement_mode", "block")
+    advisory         = bool(_policy_cache.get("advisory", False))
 
-    if not guard_installed:
-        if enforcement_mode == "block":
-            raise RuntimeError(
-                "Guard block: ConductGuard is not installed for this workspace. "
-                "Install Guard in Settings → Modules to use this block."
-            )
-        return {
-            "status": "skipped",
-            "reason": "guard_not_installed",
-            "enforcement_mode": enforcement_mode,
-        }
-
-    # ── 2. Build context string from workflow state ────────────────────────────
-    if context_keys:
-        context_dict = {k: state.get(k) for k in context_keys if k in state}
-    else:
-        # Exclude internal keys starting with __
-        context_dict = {k: v for k, v in state.items() if not k.startswith("__")}
-
+    # ── Build context from workflow state ─────────────────────────────────────
+    context_dict = {k: v for k, v in state.items() if not k.startswith("__")}
     context_json = json.dumps(context_dict, default=str)
 
-    # Extract path-like values for match_path_pattern
     path_values: list[str] = []
 
     def _collect_paths(obj: object) -> None:
@@ -90,55 +72,15 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
     _collect_paths(context_dict)
     path_text = " ".join(path_values)
 
-    # ── 3. Load active policies ───────────────────────────────────────────────
-    # Pull active rules from skill_packs JSONB via compute_policy(). Persona is
-    # the workspace's configured persona (defaults to 'standard').
-    # Workflow runtime always uses runtime_persona (defaults to 'conservative'),
-    # independent of the workspace's dev persona. Closes #776.
-    # Resolve to owner's canonical workspace for org-level policy enforcement (cached).
-    policy_ws_uuid = _uuid.UUID(_canonical_workspace_id(str(ws_uuid))) if ws_uuid else ws_uuid
-
-    cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == policy_ws_uuid).first()
-    persona = (cfg.runtime_persona if cfg else None) or "conservative"
-    advisory = getattr(cfg, "advisory_mode", False) if cfg else False
-    try:
-        policies = compute_policy(db, policy_ws_uuid, persona)
-    except Exception as _eval_err:
-        deny = cfg.deny_on_error if cfg else True
-        if not deny:
-            return {"result": "policy eval error (fail-open)", "violations": [], "warnings": []}
-        now = datetime.now(timezone.utc)
-        try:
-            prev_h, entry_h = chain_hash_for_insert(db, ws_uuid, now, block.get("id", "guard"), "blocked")
-            pol_h = get_policy_hash(db, ws_uuid)
-            db.add(GuardAuditEvent(
-                workspace_id=ws_uuid, ai_tool="workflow",
-                tool_call=block.get("id", "guard"), decision="blocked",
-                rule_id="policy_eval_error", rule_message=str(_eval_err)[:500],
-                ts=now, user_email=user_email,
-                conductai_run_id=str(run_id) if run_id else None,
-                conductai_workflow=workflow_name or playbook_slug,
-                conductai_workflow_id=workflow_id,
-                previous_hash=prev_h, entry_hash=entry_h, policy_hash=pol_h,
-            ))
-            db.flush()
-        except Exception:
-            pass
-        raise RuntimeError(f"Guard: policy evaluation failed (fail-closed). {_eval_err}") from _eval_err
-    if rule_ids_filter:
-        policies = [p for p in policies if (p.get("id") or p.get("rule_id")) in rule_ids_filter]
-
-    # ── 4. Evaluate rules ─────────────────────────────────────────────────────
+    # ── Evaluate rules ────────────────────────────────────────────────────────
     violations = []
     for policy in policies:
-        # match_tool — for workflow context use "workflow" as the synthetic tool
         match_tool = (policy.get("match_tool") or "*").lower()
         if match_tool != "*":
             allowed = {t.strip() for t in match_tool.split(",")}
             if "workflow" not in allowed:
                 continue
 
-        # match_pattern — search context JSON
         if policy.get("match_pattern"):
             try:
                 if not _re.search(policy["match_pattern"], context_json, _re.IGNORECASE):
@@ -146,7 +88,6 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
             except _re.error:
                 continue
 
-        # match_path_pattern — search path-like values
         if policy.get("match_path_pattern"):
             try:
                 if not _re.search(policy["match_path_pattern"], path_text, _re.IGNORECASE):
@@ -156,14 +97,10 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
 
         violations.append(policy)
 
-    # ── 5. Handle violations ──────────────────────────────────────────────────
-    block_id   = block.get("id", "guard")
-    now        = datetime.now(timezone.utc)
-    warnings   = []
-
-    # Rough estimate of what the LLM call would have consumed if Guard hadn't
-    # intercepted. Surfaces "prevented exposure" in the spend rollup so blocked
-    # workflow events don't look free.
+    # ── Handle violations ─────────────────────────────────────────────────────
+    block_id              = block.get("id", "guard")
+    now                   = datetime.now(timezone.utc)
+    warnings: list[dict]  = []
     estimated_input_tokens = max(1, len(context_json) // 4)
 
     def _record_event(policy: dict, decision: str) -> None:
@@ -194,8 +131,8 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
 
     for v in violations:
         v_rule_id = v.get("id") or v.get("rule_id")
-        message = v.get("message") or f"Policy violation: {v_rule_id}"
-        action  = v.get("action")
+        message   = v.get("message") or f"Policy violation: {v_rule_id}"
+        action    = v.get("action")
 
         if advisory:
             _record_event(v, "audited")
@@ -204,11 +141,10 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
 
         if action == "block":
             _record_event(v, "blocked")
-            # Mark state so the runs list can show a "Blocked" badge instead of "Failed"
             try:
                 state["__governance"] = {
-                    "blocked":   True,
-                    "rule_id":   v_rule_id,
+                    "blocked":      True,
+                    "rule_id":      v_rule_id,
                     "rule_message": message,
                     "reason_code":  "GUARD_POLICY_BLOCKED",
                 }
@@ -221,17 +157,17 @@ def _execute_guard(block: dict, state: dict, workspace_id: str, db, run_id=None,
             _record_event(v, "warned")
             warnings.append({"rule_id": v_rule_id, "message": message})
 
-        else:  # audit
+        else:
             _record_event(v, "audited")
 
     if warnings or violations:
         db.commit()
 
     return {
-        "status": "passed",
-        "workspace_id": str(ws_uuid),
+        "status":           "passed",
+        "workspace_id":     str(ws_uuid),
         "enforcement_mode": enforcement_mode,
-        "rules_checked": len(policies),
-        "violations": len(violations),
-        "warnings": warnings,
+        "rules_checked":    len(policies),
+        "violations":       len(violations),
+        "warnings":         warnings,
     }
