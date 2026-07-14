@@ -1679,7 +1679,7 @@ def execute_run(run_id: str):
                     ttl_seconds=7200,
                 )
                 state["__cred_token__"] = _cred_token
-                state["__cred_api_url__"] = settings.api_url
+                state["__cred_api_url__"] = settings.api_base_url
             except Exception:
                 log.warning("run.cred_token_mint_failed", run_id=run_id)
                 # fail-open: token missing, blocks will get {} from fetch_credential (no-op)
