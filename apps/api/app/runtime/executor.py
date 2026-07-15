@@ -186,11 +186,10 @@ def _enqueue_online_eval(run_id: str) -> None:
     try:
         import redis as _redis
         r = _redis.from_url(settings.redis_url, decode_responses=True)
-        qlen = r.llen(_ONLINE_EVAL_QUEUE)
-        if qlen >= _ONLINE_EVAL_QUEUE_MAX:
-            log.warning("online_eval.queue_full", queue_len=qlen, run_id=run_id)
-            return
-        r.rpush(_ONLINE_EVAL_QUEUE, run_id)
+        pipe = r.pipeline()
+        pipe.rpush(_ONLINE_EVAL_QUEUE, run_id)
+        pipe.ltrim(_ONLINE_EVAL_QUEUE, -_ONLINE_EVAL_QUEUE_MAX, -1)
+        pipe.execute()
     except Exception:
         log.warning("online_eval.enqueue_failed", run_id=run_id)
 
@@ -210,9 +209,12 @@ def execute_run(run_id: str):
     db = SessionLocal()
     _run_token_row_id: str | None = None  # declared before try so finally can reference it
     try:
-        run = db.query(Run).filter(Run.id == run_id).first()
+        run = db.query(Run).filter(Run.id == run_id).with_for_update().first()
         if not run:
             log.error("run.not_found", run_id=run_id)
+            return
+        if run.status not in ("pending", "paused", "paused_for_clarification", "paused_for_approval"):
+            log.warning("run.already_claimed", run_id=run_id, status=run.status)
             return
 
         from sqlalchemy.orm import joinedload
