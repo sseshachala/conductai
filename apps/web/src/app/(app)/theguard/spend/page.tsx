@@ -896,7 +896,7 @@ function SpendContent() {
                 <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                   <span className="mono" style={{ fontSize: 12.5, fontWeight: 550, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dev.email}</span>
                   <a
-                    href={`/guard/activity?dev=${encodeURIComponent(dev.email)}`}
+                    href={`/theguard/activity?dev=${encodeURIComponent(dev.email)}`}
                     style={{ fontSize: 11, color: "var(--accent-text)", textDecoration: "none", flexShrink: 0 }}
                     aria-label={`View activity for ${dev.email}`}
                   >
