@@ -34,6 +34,9 @@ _bearer = HTTPBearer(auto_error=False)
 _jwks_cache: dict | None = None
 _jwks_lock = threading.Lock()
 
+# ponytail: shared client — connection pooling, avoids per-call TLS handshake
+_clerk_http = httpx.Client(timeout=5)
+
 
 def _fetch_jwks() -> dict:
     clerk_domain = settings.clerk_frontend_api or ""
@@ -120,10 +123,9 @@ def get_clerk_user_email(user_id: str) -> str | None:
     if not settings.clerk_secret_key or not user_id:
         return None
     try:
-        r = httpx.get(
+        r = _clerk_http.get(
             f"https://api.clerk.com/v1/users/{user_id}",
             headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
-            timeout=5,
         )
         if not r.is_success:
             return None
@@ -139,16 +141,16 @@ def get_clerk_user_email(user_id: str) -> str | None:
         return None
 
 
+@lru_cache(maxsize=512)
 def find_clerk_user_id_by_email(email: str) -> str | None:
     """Return the Clerk user_id for the given email, or None if not found."""
     if not settings.clerk_secret_key or not email:
         return None
     try:
-        r = httpx.get(
+        r = _clerk_http.get(
             "https://api.clerk.com/v1/users",
             params={"email_address": email, "limit": 1},
             headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
-            timeout=5,
         )
         if not r.is_success:
             return None
@@ -159,15 +161,15 @@ def find_clerk_user_id_by_email(email: str) -> str | None:
         return None
 
 
+@lru_cache(maxsize=512)
 def get_clerk_user_info(user_id: str) -> dict:
     """Return {email, name} for a Clerk user. Falls back to empty strings on failure."""
     if not settings.clerk_secret_key or not user_id:
         return {"email": None, "name": None}
     try:
-        r = httpx.get(
+        r = _clerk_http.get(
             f"https://api.clerk.com/v1/users/{user_id}",
             headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
-            timeout=5,
         )
         if not r.is_success:
             return {"email": None, "name": None}
