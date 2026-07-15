@@ -6,7 +6,20 @@ import urllib.error
 
 RED   = "\033[31m"
 RESET = "\033[0m"
-DEV_WORKSPACE = "00000000-0000-0000-0000-000000000001"
+
+_HINTS = {
+    401: "run `conduct login` to re-authenticate",
+    403: "check your permissions or run `conduct login`",
+    404: "not found — check the agent name or run ID",
+    429: "rate limited — wait a moment and try again",
+}
+
+
+def _friendly(code: int, detail: str) -> str:
+    hint = _HINTS.get(code)
+    if hint and hint.lower() not in detail.lower():
+        return f"{detail} — {hint}"
+    return detail
 
 
 def headers(workspace_id: str, token=None, content_type="application/json", api_key=None) -> dict:
@@ -31,10 +44,10 @@ def req(method: str, url: str, hdrs: dict, body=None, timeout: int = 30) -> dict
             detail = json.loads(raw).get("detail", raw)
         except Exception:
             detail = raw
-        print(f"{RED}HTTP {e.code}: {detail} [{url}]{RESET}")
+        print(f"{RED}{_friendly(e.code, detail)}{RESET}")
         sys.exit(1)
     except (socket.timeout, TimeoutError):
-        print(f"{RED}Request timed out: {url}{RESET}")
+        print(f"{RED}Request timed out — check your network connection{RESET}")
         sys.exit(1)
 
 
@@ -50,10 +63,10 @@ def req_text(method: str, url: str, hdrs: dict, body_text: str, timeout: int = 3
             detail = json.loads(raw).get("detail", raw)
         except Exception:
             detail = raw
-        print(f"{RED}HTTP {e.code}: {detail} [{url}]{RESET}")
+        print(f"{RED}{_friendly(e.code, detail)}{RESET}")
         sys.exit(1)
     except (socket.timeout, TimeoutError):
-        print(f"{RED}Request timed out: {url}{RESET}")
+        print(f"{RED}Request timed out — check your network connection{RESET}")
         sys.exit(1)
 
 
