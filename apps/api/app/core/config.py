@@ -87,7 +87,8 @@ class Settings(BaseSettings):
     # Inference — Qwen3 on Modal (platform-level, powers GLens + NLP policy authoring)
     conduct_inference_endpoint_url: str = ""   # e.g. https://org--model-name.modal.run/v1
     conduct_inference_model_name: str = "qwen3-235b-a3b"
-    conduct_inference_api_secret: str = ""     # Modal endpoint auth secret
+    conduct_inference_token_id: str = ""      # Modal token ID
+    conduct_inference_token_secret: str = "" # Modal token secret
 
     # reCAPTCHA v3 — used to verify anonymous playbook submissions
     recaptcha_secret_key: str = ""
