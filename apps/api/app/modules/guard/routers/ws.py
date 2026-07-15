@@ -27,11 +27,13 @@ router = APIRouter()
 
 CHANNEL_PREFIX = "guard:policy:invalidated"
 
-# Module-level pool — one connection per Redis op, not one per call
-_pool = _redis_sync.ConnectionPool.from_url(settings.redis_url, decode_responses=True)
+_pool: _redis_sync.ConnectionPool | None = None
 
 
 def _r() -> _redis_sync.Redis:
+    global _pool
+    if _pool is None:
+        _pool = _redis_sync.ConnectionPool.from_url(settings.redis_url, decode_responses=True)
     return _redis_sync.Redis(connection_pool=_pool)
 
 

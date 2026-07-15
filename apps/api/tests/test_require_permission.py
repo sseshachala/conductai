@@ -26,9 +26,6 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
 os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
-# Stub heavy / infrastructure modules before any app import.
-# We use sys.modules[] (not setdefault) for the modules that must stay mocked
-# regardless of load order with other test files.
 _log_mock = MagicMock()
 _log_mock.get_logger = MagicMock(return_value=MagicMock())
 sys.modules["structlog"] = _log_mock
@@ -41,7 +38,6 @@ _cfg_stub.settings = MagicMock(
     sqlalchemy_database_url="sqlite:///:memory:",
     encryption_key="test-key-32-bytes-long-xxxxxxxx!",
     allowed_egress_hosts=[],
-    # Clerk enabled so require_permission executes its real DB path
     clerk_secret_key="sk_test_secret",
     clerk_frontend_api="clerk.example.com",
     environment="test",
@@ -49,15 +45,11 @@ _cfg_stub.settings = MagicMock(
 sys.modules["app.core.config"] = _cfg_stub
 sys.modules["app.core.database"] = MagicMock()
 
-# sqlalchemy is a real package inside the venv — add venv site-packages so the
-# import resolves even when pytest runs from outside the venv.
 _venv_site = APPS_API / ".venv" / "lib"
 for _p in _venv_site.glob("python*/site-packages"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-# Ensure app.core.auth is re-imported from real source (not a MagicMock from
-# another test module that may have cached it).
 sys.modules.pop("app.core.auth", None)
 
 from fastapi import HTTPException  # noqa: E402
@@ -112,6 +104,7 @@ def _make_db_no_member(owner_match: bool = False):
     db.execute.side_effect = [
         _fetchone_result(None),
         _fetchone_result(owner_row),
+        _fetchone_result(None),  # GMC fallback
     ]
     return db
 
