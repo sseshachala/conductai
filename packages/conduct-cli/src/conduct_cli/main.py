@@ -161,10 +161,16 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
             summary = payload.get("summary", payload.get("tool", ""))
             print(f"      · {summary}{RESET}")
         elif kind == "guard_check":
-            for w in payload.get("warnings", []):
-                print(f"{YELLOW}    ⚠ [guard] {w.get('rule_id', '')}: {w.get('message', '')}{RESET}")
-            for a in payload.get("audited", []):
-                print(f"{BLUE}    ● [guard] {a.get('rule_id', '')}: {a.get('message', '')}{RESET}")
+            n = payload.get("rules_checked", 0)
+            block_type = payload.get("block_type", "")
+            if payload.get("warnings"):
+                for w in payload["warnings"]:
+                    print(f"{YELLOW}    ⚠ [guard:{block_type}] {w.get('rule_id', '')}: {w.get('message', '')}{RESET}")
+            elif payload.get("audited"):
+                for a in payload["audited"]:
+                    print(f"{BLUE}    ● [guard:{block_type}] {a.get('rule_id', '')}: {a.get('message', '')}{RESET}")
+            else:
+                print(f"{GREEN}    ✓ [guard:{block_type}] {n} rules checked — passed{RESET}")
         elif kind == "run_completed":
             print(f"{BOLD}{GREEN}    ✓ done{RESET}")
         elif kind == "run_failed":
@@ -458,7 +464,11 @@ def _exchange_clerk_token(api_url: str, clerk_token: str, workspace_id: str) -> 
         }
     except urllib.error.HTTPError as e:
         body_text = e.read().decode(errors="replace")
-        print(f"{RED}Token exchange failed ({e.code}): {body_text[:120]}{RESET}")
+        try:
+            detail = json.loads(body_text).get("detail", body_text)
+        except Exception:
+            detail = body_text[:120]
+        print(f"{RED}Login failed: {detail} — run `conduct login` to try again{RESET}")
         sys.exit(1)
 
 
@@ -3020,7 +3030,8 @@ def cmd_skill(args):
                 msg = json.loads(body).get("detail", body)
             except Exception:
                 msg = body
-            print(f"{RED}Error {e.code}: {msg}{RESET}")
+            from conduct_cli.api import _friendly
+            print(f"{RED}{_friendly(e.code, msg)}{RESET}")
             sys.exit(1)
 
     if skill_command == "list":
