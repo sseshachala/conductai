@@ -18,7 +18,7 @@ def upgrade():
     op.create_table(
         "glens_chat_sessions",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+        sa.Column("workspace_id", UUID(as_uuid=True), sa.ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False),
         sa.Column("title", sa.String(), nullable=False),
         sa.Column("messages", sa.Text(), nullable=False, server_default="[]"),
         sa.Column("render_spec", sa.Text(), nullable=True),
