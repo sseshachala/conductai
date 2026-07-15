@@ -41,6 +41,7 @@ _cfg_stub.settings = MagicMock(
     clerk_secret_key = "REDACTED",
     clerk_frontend_api="clerk.example.com",
     environment="test",
+    log_level="INFO",
 )
 sys.modules["app.core.config"] = _cfg_stub
 sys.modules["app.core.database"] = MagicMock()

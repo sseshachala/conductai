@@ -4,7 +4,7 @@ from app.core.config import settings
 
 
 def setup_logging() -> None:
-    level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    level = getattr(logging, str(settings.log_level).upper(), logging.INFO)
 
     shared_processors = [
         structlog.contextvars.merge_contextvars,

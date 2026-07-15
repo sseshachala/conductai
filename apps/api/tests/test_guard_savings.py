@@ -45,6 +45,7 @@ _cfg_stub.settings = MagicMock(
     sqlalchemy_database_url="sqlite:///:memory:",
     encryption_key="test-key-32-bytes-long-xxxxxxxx!",
     allowed_egress_hosts=[],
+    log_level="INFO",
 )
 sys.modules["app.core.config"] = _cfg_stub
 
