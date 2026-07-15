@@ -6,8 +6,8 @@ import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
-import { GlensDashboard } from "@/components/guard/GlensDashboard"
-import type { GlensDashboardSpec } from "@/components/guard/GlensDashboard"
+import { GlensDashboard } from "@/components/glens/GlensDashboard"
+import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
 
 // ─── Auth fetch hook ───────────────────────────────────────────────────────────
 
