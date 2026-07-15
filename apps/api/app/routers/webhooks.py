@@ -995,16 +995,16 @@ async def github_webhook(
     Pass ?workspace_id=<uuid> in the webhook URL to scope triggers to a single
     workspace (required in multi-tenant deployments).
     """
-    # 1.1 — Cross-tenant protection: require workspace_id to prevent an attacker
-    # whose repo name matches any customer's trigger from firing runs across tenants.
-    if not workspace_id:
-        raise HTTPException(status_code=400, detail="workspace_id query parameter is required")
-
     body = await request.body()
 
     sig = request.headers.get("X-Hub-Signature-256", "")
     if not _verify_github_signature(body, sig):
         raise HTTPException(status_code=401, detail="Invalid GitHub signature")
+
+    # 1.1 — Cross-tenant protection: require workspace_id to prevent an attacker
+    # whose repo name matches any customer's trigger from firing runs across tenants.
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="workspace_id query parameter is required")
 
     event = request.headers.get("X-GitHub-Event", "unknown")
     action = ""

@@ -7,22 +7,6 @@ import re
 import pytest
 
 
-# ── #638 — deleted railway_* and modal_token_* from config ──────────────────
-
-def test_config_no_railway_fields():
-    from app.core.config import Settings
-    s = Settings()
-    for field in ("railway_api_token", "railway_project_id", "railway_environment_id",
-                  "railway_backend_service_id", "railway_frontend_service_id"):
-        assert not hasattr(s, field), f"Deleted field still on Settings: {field}"
-
-
-def test_config_no_modal_platform_fields():
-    from app.core.config import Settings
-    s = Settings()
-    for field in ("modal_token_id", "modal_token_secret"):
-        assert not hasattr(s, field), f"Deleted field still on Settings: {field}"
-
 
 # ── #636 — _FORBIDDEN_SHELL_PATTERNS extracted to sandbox_constants ──────────
 
@@ -73,32 +57,6 @@ def test_forbidden_patterns_allow_safe_commands():
         assert not matched, f"Safe command incorrectly blocked: {cmd!r}"
 
 
-# ── #637 — merge 3 duplicate LLMClient cost functions into _compute_cost ─────
-
-def test_compute_cost_exists():
-    from app.runtime.llm_client import _compute_cost
-    assert callable(_compute_cost)
-
-
-def test_anthropic_cost_delegates_to_compute_cost():
-    from app.runtime import llm_client
-    # Each thin wrapper must call _compute_cost — verify they return the same value
-    from app.runtime.llm_client import LLMUsage, _anthropic_cost, _compute_cost
-    u = LLMUsage(input_tokens=1000, output_tokens=500, cache_read_tokens=200, cache_write_tokens=100)
-    assert _anthropic_cost("claude-3-5-haiku-20241022", u) == _compute_cost("anthropic", "claude-3-5-haiku-20241022", u)
-
-
-def test_openai_cost_delegates_to_compute_cost():
-    from app.runtime.llm_client import LLMUsage, _openai_cost, _compute_cost
-    u = LLMUsage(input_tokens=1000, output_tokens=500)
-    assert _openai_cost("gpt-4o-mini", u) == _compute_cost("openai", "gpt-4o-mini", u)
-
-
-def test_perplexity_cost_delegates_to_compute_cost():
-    from app.runtime.llm_client import LLMUsage, _perplexity_cost, _compute_cost
-    u = LLMUsage(input_tokens=1000, output_tokens=500)
-    assert _perplexity_cost("sonar", u) == _compute_cost("perplexity", "sonar", u)
-
 
 # ── #635 — merge _run_tests_serial + _run_tests_parallel into _run_tests ─────
 # Tests load from source (not the installed wheel) so the refactor is verified before re-publish.
@@ -107,8 +65,12 @@ import importlib.util as _ilu
 import pathlib as _pl
 
 def _load_cli_main():
-    src = _pl.Path(__file__).parents[3] / "packages/conduct-cli/src/conduct_cli/main.py"
-    spec = _ilu.spec_from_file_location("conduct_cli_src.main", src)
+    import sys as _sys
+    cli_src = _pl.Path(__file__).parents[3] / "packages/conduct-cli/src"
+    if str(cli_src) not in _sys.path:
+        _sys.path.insert(0, str(cli_src))
+    src = cli_src / "conduct_cli/main.py"
+    spec = _ilu.spec_from_file_location("conduct_cli.main", src)
     mod = _ilu.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

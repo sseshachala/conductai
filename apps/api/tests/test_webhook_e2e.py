@@ -36,10 +36,7 @@ import app.models.project  # noqa: F401
 import app.models.run  # noqa: F401
 import app.models.workspace  # noqa: F401
 
-from app.routers.webhooks import (
-    _normalize_github_issue_labeled_payload,
-    _trigger_github_workflows,
-)
+# webhook functions imported lazily inside tests to avoid collection-time mock pollution
 
 WEBHOOK_SECRET = "test-webhook-secret-xyz"
 REPO = "my-org/my-repo"
@@ -52,9 +49,11 @@ def _make_version(event_type: str, repo: str, labels: list[str] | None = None) -
     if labels is not None:
         config["labels"] = labels
     node = {"data": {"type": "trigger", "config": config}}
+    workflow = SimpleNamespace(id=str(uuid.uuid4()), workspace_id=None)
     version = SimpleNamespace(
         id=str(uuid.uuid4()),
         graph={"nodes": [node]},
+        workflow=workflow,
     )
     return version
 
@@ -111,6 +110,7 @@ def test_issue_labeled_routes_to_correct_workflow():
     Posting 'autopilot-ready' should queue exactly one run for wf1,
     and zero runs for wf2 (which watches 'deploy-ready').
     """
+    from app.routers.webhooks import _normalize_github_issue_labeled_payload, _trigger_github_workflows
     wf1 = _make_version("github_issue_labeled", REPO, labels=["autopilot-ready"])
     wf2 = _make_version("github_issue_labeled", REPO, labels=["deploy-ready"])
     db = _make_db(wf1, wf2)
@@ -143,6 +143,7 @@ def test_issue_labeled_unknown_label_fires_nobody():
     When the incoming label doesn't match any configured workflow,
     no runs should be queued.
     """
+    from app.routers.webhooks import _normalize_github_issue_labeled_payload, _trigger_github_workflows
     wf1 = _make_version("github_issue_labeled", REPO, labels=["autopilot-ready"])
     db = _make_db(wf1)
 

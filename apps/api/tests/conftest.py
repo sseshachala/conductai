@@ -18,13 +18,6 @@ APPS_API = HERE.parent.parent
 if str(APPS_API) not in sys.path:
     sys.path.insert(0, str(APPS_API))
 
-# These env vars are read by pydantic-settings at first Settings() instantiation.
-# Setting them before any app import keeps unit tests hermetic.
-#
-# We point DATABASE_URL at an in-memory SQLite database so SQLAlchemy loads its
-# sqlite driver (which ships with stdlib) rather than psycopg2 — the unit tests
-# don't actually touch the DB, they just need the engine to construct without
-# blowing up on import.
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test_marshal")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
