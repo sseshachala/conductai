@@ -1,35 +1,12 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { useAuth } from "@clerk/nextjs"
-import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { GlensDashboard } from "@/components/glens/GlensDashboard"
 import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
-
-// ─── Auth fetch hook ───────────────────────────────────────────────────────────
-
-function useAuthFetch() {
-  const { getToken } = useAuth()
-  const { activeWorkspace } = useWorkspace()
-
-  const authFetch = useCallback(
-    async (url: string, options: RequestInit = {}): Promise<Response> => {
-      const token = await getToken()
-      const headers: Record<string, string> = {
-        ...(options.headers as Record<string, string> | undefined),
-      }
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      if (activeWorkspace?.id) headers["X-Workspace-ID"] = activeWorkspace.id
-      return fetch(url, { ...options, headers })
-    },
-    [getToken, activeWorkspace],
-  )
-
-  return { authFetch, workspaceId: activeWorkspace?.id ?? null }
-}
 
 // ─── Session response type ─────────────────────────────────────────────────────
 
