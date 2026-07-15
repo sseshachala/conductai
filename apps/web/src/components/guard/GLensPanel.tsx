@@ -1,9 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { GlensDashboard } from "@/components/guard/GlensDashboard"
+import type { GlensDashboardSpec } from "@/components/guard/GlensDashboard"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,27 +16,8 @@ interface GLensSession {
   created_at: string
 }
 
-interface GLensKpiTile {
-  label: string
-  value: string | number
-}
-
-interface GLensChart {
-  label: string
-}
-
-interface GLensTable {
-  label: string
-  endpoint: string
-  columns: string[]
-}
-
-interface GLensSpec {
-  title: string
-  kpis: GLensKpiTile[]
-  charts: GLensChart[]
-  table?: GLensTable
-}
+// GLensSpec maps to GlensDashboardSpec — alias for clarity inside this panel
+type GLensSpec = GlensDashboardSpec
 
 interface GLensChatResponse {
   session_id: string
@@ -177,51 +160,11 @@ function PanelInput({
   )
 }
 
-function KpiTile({ label, value }: GLensKpiTile) {
-  return (
-    <div
-      style={{
-        flex: "1 1 140px",
-        background: "var(--surface-2)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--r-card)",
-        padding: "14px 16px",
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)" }}>
-        {value}
-      </div>
-    </div>
-  )
-}
-
-function ChartPlaceholder({ label }: { label: string }) {
-  return (
-    <div
-      style={{
-        background: "var(--surface-2)",
-        border: "1px dashed var(--border-2)",
-        borderRadius: "var(--r-card)",
-        padding: "24px 16px",
-        textAlign: "center",
-        color: "var(--text-muted)",
-        fontSize: 12,
-      }}
-    >
-      <div style={{ fontSize: 28, marginBottom: 6 }}>📊</div>
-      <div style={{ fontWeight: 600, color: "var(--text-3)", marginBottom: 2 }}>{label}</div>
-      <div>chart</div>
-    </div>
-  )
-}
-
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export function GLensPanel() {
   const pathname = usePathname()
+  const router = useRouter()
   const { authFetch, workspaceId } = useAuthFetch()
 
   const [open, setOpen] = useState(false)
@@ -410,12 +353,11 @@ export function GLensPanel() {
     }
   }
 
-  function handleExport() {
-    // Export placeholder — Day 4
-  }
-
   function handlePin() {
-    // Pin placeholder — Day 4
+    if (panelState.kind === "dashboard") {
+      router.push(`/theguard/glens/${panelState.sessionId}`)
+      setOpen(false)
+    }
   }
 
   if (!isGuardPage) return null
@@ -548,11 +490,13 @@ export function GLensPanel() {
           )}
 
           {!loading && panelState.kind === "dashboard" && (
-            <DashboardState
+            <GlensDashboard
               spec={panelState.spec}
+              sessionId={panelState.sessionId}
               tableRows={panelState.tableRows}
+              compact={true}
+              authFetch={authFetch}
               onPin={handlePin}
-              onExport={handleExport}
             />
           )}
 
@@ -729,113 +673,6 @@ function ClarifyingState({ messages }: { messages: ConvMessage[] }) {
         </div>
       ))}
       <div ref={bottomRef} />
-    </div>
-  )
-}
-
-function DashboardState({
-  spec,
-  tableRows,
-  onPin,
-  onExport,
-}: {
-  spec: GLensSpec
-  tableRows: Record<string, unknown>[]
-  onPin: () => void
-  onExport: () => void
-}) {
-  return (
-    <div>
-      {/* Title + actions */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", flex: 1, margin: 0 }}>
-          {spec.title}
-        </h2>
-        <button
-          onClick={onPin}
-          title="Pin to dashboard"
-          style={{ fontSize: 14, background: "none", border: "1px solid var(--border)", borderRadius: "var(--r-btn)", padding: "4px 8px", cursor: "pointer", color: "var(--text-2)" }}
-        >
-          ↗
-        </button>
-        <button
-          onClick={onExport}
-          title="Export"
-          style={{ fontSize: 14, background: "none", border: "1px solid var(--border)", borderRadius: "var(--r-btn)", padding: "4px 8px", cursor: "pointer", color: "var(--text-2)" }}
-        >
-          ⬇
-        </button>
-      </div>
-
-      {/* KPI tiles */}
-      {spec.kpis.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
-          {spec.kpis.map((kpi) => (
-            <KpiTile key={kpi.label} label={kpi.label} value={kpi.value} />
-          ))}
-        </div>
-      )}
-
-      {/* Charts */}
-      {spec.charts.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-          {spec.charts.map((chart) => (
-            <ChartPlaceholder key={chart.label} label={chart.label} />
-          ))}
-        </div>
-      )}
-
-      {/* Table */}
-      {spec.table && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>
-            {spec.table.label}
-          </div>
-          {tableRows.length > 0 ? (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {spec.table.columns.map(col => (
-                      <th
-                        key={col}
-                        style={{
-                          textAlign: "left",
-                          padding: "6px 10px",
-                          borderBottom: "1px solid var(--border)",
-                          color: "var(--text-muted)",
-                          fontWeight: 600,
-                          textTransform: "uppercase",
-                          fontSize: 10,
-                          letterSpacing: ".04em",
-                        }}
-                      >
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableRows.map((row, ri) => (
-                    <tr key={ri} style={{ borderBottom: "1px solid var(--border)" }}>
-                      {spec.table!.columns.map(col => (
-                        <td
-                          key={col}
-                          style={{ padding: "8px 10px", color: "var(--text-2)", verticalAlign: "top" }}
-                        >
-                          {String(row[col] ?? "—")}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "12px 0" }}>No data available.</div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
