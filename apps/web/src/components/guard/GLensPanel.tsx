@@ -129,6 +129,13 @@ function PanelInput({
     }
   }
 
+  function handleSend() {
+    if (value.trim()) {
+      onSubmit(value.trim())
+      setValue("")
+    }
+  }
+
   return (
     <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
       <input
@@ -150,7 +157,7 @@ function PanelInput({
         }}
       />
       <button
-        onClick={() => { if (value.trim()) { onSubmit(value.trim()); setValue("") } }}
+        onClick={handleSend}
         disabled={disabled || !value.trim()}
         style={{
           fontSize: 13,
@@ -224,7 +231,18 @@ export function GLensPanel() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Abort controller ref — cancels in-flight fetches on unmount or superseding request
+  const abortRef = useRef<AbortController | null>(null)
+
   const isGuardPage = pathname?.startsWith("/theguard")
+
+  // ─── Abort in-flight requests on unmount ──────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [])
 
   // ─── Cmd+K / Escape listener ──────────────────────────────────────────────
 
@@ -247,16 +265,14 @@ export function GLensPanel() {
 
   // ─── When panel opens, load session history ───────────────────────────────
 
-  useEffect(() => {
-    if (!open || !workspaceId) return
-    loadSessions()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, workspaceId])
+  const loadSessions = useCallback(async () => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
 
-  async function loadSessions() {
     try {
       const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await authFetch(`${base}/glens/sessions?workspace_id=${workspaceId}`)
+      const res = await authFetch(`${base}/glens/sessions`, { signal: controller.signal })
       if (!res.ok) {
         setPanelState({ kind: "empty" })
         return
@@ -267,17 +283,27 @@ export function GLensPanel() {
       } else {
         setPanelState({ kind: "empty" })
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return
       setPanelState({ kind: "empty" })
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => {
+    if (!open || !workspaceId) return
+    loadSessions()
+  }, [open, workspaceId, loadSessions])
 
   async function restoreSession(id: string) {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setLoading(true)
     setError(null)
     try {
       const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await authFetch(`${base}/glens/sessions/${id}?workspace_id=${workspaceId}`)
+      const res = await authFetch(`${base}/glens/sessions/${id}`, { signal: controller.signal })
       if (!res.ok) {
         setError("Could not restore session.")
         setLoading(false)
@@ -285,8 +311,9 @@ export function GLensPanel() {
       }
       const data: GLensChatResponse = await res.json()
       setSessionId(data.session_id)
-      applyResponse(data, [])
-    } catch {
+      await applyResponse(data, [], controller)
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return
       setError("Network error restoring session.")
     } finally {
       setLoading(false)
@@ -301,6 +328,10 @@ export function GLensPanel() {
   }
 
   async function sendMessage(text: string) {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     const newMessages: ConvMessage[] = [...messages, { role: "user", text }]
     setMessages(newMessages)
     setLoading(true)
@@ -313,12 +344,12 @@ export function GLensPanel() {
         page_context: pathname,
       }
       if (sessionId) body.session_id = sessionId
-      if (workspaceId) body.workspace_id = workspaceId
 
       const res = await authFetch(`${base}/glens/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: controller.signal,
       })
 
       if (!res.ok) {
@@ -329,24 +360,29 @@ export function GLensPanel() {
 
       const data: GLensChatResponse = await res.json()
       setSessionId(data.session_id)
-      applyResponse(data, newMessages)
-    } catch {
+      await applyResponse(data, newMessages, controller)
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return
       setError("Network error. Please try again.")
     } finally {
       setLoading(false)
     }
   }
 
-  async function applyResponse(data: GLensChatResponse, priorMessages: ConvMessage[]) {
+  async function applyResponse(
+    data: GLensChatResponse,
+    priorMessages: ConvMessage[],
+    controller: AbortController,
+  ) {
     if (data.ready && data.spec) {
       // Fetch table rows if spec includes a table
       let tableRows: Record<string, unknown>[] = []
-      if (data.spec.table?.endpoint && workspaceId) {
+      if (data.spec.table?.endpoint) {
         try {
           const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-          const sep = data.spec.table.endpoint.includes("?") ? "&" : "?"
           const tableRes = await authFetch(
-            `${base}${data.spec.table.endpoint}${sep}workspace_id=${workspaceId}&limit=5`,
+            `${base}${data.spec.table.endpoint}?limit=5`,
+            { signal: controller.signal },
           )
           if (tableRes.ok) {
             const raw: unknown = await tableRes.json()
@@ -640,19 +676,6 @@ function EmptyState({
   suggestions: string[]
   onSend: (text: string) => void
 }) {
-  const [inputValue, setInputValue] = useState("")
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && inputValue.trim()) {
-      onSend(inputValue.trim())
-    }
-  }
-
   return (
     <div>
       <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--text)", marginBottom: 6, marginTop: 8 }}>
@@ -673,42 +696,7 @@ function EmptyState({
           </button>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input
-          ref={inputRef}
-          value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Or type your own question..."
-          style={{
-            flex: 1,
-            fontSize: 13,
-            padding: "9px 12px",
-            borderRadius: "var(--r-btn)",
-            border: "1px solid var(--border-2)",
-            background: "var(--surface-2)",
-            color: "var(--text)",
-            outline: "none",
-          }}
-        />
-        <button
-          onClick={() => { if (inputValue.trim()) onSend(inputValue.trim()) }}
-          disabled={!inputValue.trim()}
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            padding: "9px 14px",
-            borderRadius: "var(--r-btn)",
-            border: "none",
-            background: "var(--accent)",
-            color: "#fff",
-            cursor: inputValue.trim() ? "pointer" : "default",
-            opacity: inputValue.trim() ? 1 : 0.5,
-          }}
-        >
-          Go
-        </button>
-      </div>
+      <PanelInput placeholder="Or type your own question..." onSubmit={onSend} />
     </div>
   )
 }
@@ -724,7 +712,7 @@ function ClarifyingState({ messages }: { messages: ConvMessage[] }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {messages.map((m, i) => (
         <div
-          key={i}
+          key={`${m.role}-${i}`}
           style={{
             alignSelf: m.role === "user" ? "flex-end" : "flex-start",
             maxWidth: "85%",
@@ -782,8 +770,8 @@ function DashboardState({
       {/* KPI tiles */}
       {spec.kpis.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
-          {spec.kpis.map((kpi, i) => (
-            <KpiTile key={i} label={kpi.label} value={kpi.value} />
+          {spec.kpis.map((kpi) => (
+            <KpiTile key={kpi.label} label={kpi.label} value={kpi.value} />
           ))}
         </div>
       )}
@@ -791,8 +779,8 @@ function DashboardState({
       {/* Charts */}
       {spec.charts.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-          {spec.charts.map((chart, i) => (
-            <ChartPlaceholder key={i} label={chart.label} />
+          {spec.charts.map((chart) => (
+            <ChartPlaceholder key={chart.label} label={chart.label} />
           ))}
         </div>
       )}
@@ -871,8 +859,8 @@ function TextAnswerState({ answer, sources }: { answer: string; sources?: string
             Sources
           </div>
           <ul style={{ margin: 0, padding: "0 0 0 16px" }}>
-            {sources.map((src, i) => (
-              <li key={i} style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 4 }}>
+            {sources.map((src) => (
+              <li key={src} style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 4 }}>
                 {src}
               </li>
             ))}
