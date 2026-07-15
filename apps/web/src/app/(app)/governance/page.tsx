@@ -504,7 +504,7 @@ export default function GovernancePage() {
             tone = "warn"
             title = `${blocksMtd.toLocaleString()} risk event${blocksMtd === 1 ? "" : "s"} intercepted this month`
             sub = `~${fmtUsd(riskAvoidedUsd)} risk avoided · ${totalRules} policies live across ${totalFrameworks} framework${totalFrameworks === 1 ? "" : "s"}`
-            action = { label: "View Activity →", href: "/guard/activity?decision=blocked" }
+            action = { label: "View Activity →", href: "/theguard/activity?decision=blocked" }
           }
 
           const colors = {
@@ -947,7 +947,7 @@ export default function GovernancePage() {
                               )}
                             </div>
                             <Link
-                              href={`/guard/activity?rule_id=${encodeURIComponent(r.rule_id)}`}
+                              href={`/theguard/activity?rule_id=${encodeURIComponent(r.rule_id)}`}
                               style={{ fontSize: 11, color: "var(--accent-text)", whiteSpace: "nowrap" }}
                             >
                               {r.events_30d} {r.events_30d === 1 ? "event" : "events"} · 30d →
@@ -1066,7 +1066,7 @@ export default function GovernancePage() {
               </div>
             </div>
             <Link
-              href={eventFilter ? `/guard/activity?decision=${eventFilter}` : "/guard/activity"}
+              href={eventFilter ? `/theguard/activity?decision=${eventFilter}` : "/theguard/activity"}
               style={{ fontSize: 11, color: "var(--accent-text)" }}
             >
               View all →
