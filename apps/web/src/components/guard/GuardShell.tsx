@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import type { GuardRole } from "@/hooks/useGuardRole"
-import { GLensPanel } from "@/components/guard/GLensPanel"
+import { GLensPanel } from "@/components/glens/GLensPanel"
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 
