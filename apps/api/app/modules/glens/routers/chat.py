@@ -1,6 +1,7 @@
 """
-POST /glens/chat   — conversational governance reporting
-GET  /glens/sessions — list persisted chat sessions
+POST /glens/chat            — conversational governance reporting
+GET  /glens/sessions        — list persisted chat sessions
+GET  /glens/sessions/{id}   — restore a session
 """
 import json
 import uuid
@@ -8,42 +9,46 @@ from datetime import datetime, timezone
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, String, Text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id
-from app.core.database import Base, get_db
+from app.core.auth import get_workspace_id, require_permission
+from app.core.database import get_db
 from app.modules.glens.inference import chat as qwen_chat
+from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import build_system_prompt
 
 log = structlog.get_logger(__name__)
-
 router = APIRouter(prefix="/glens", tags=["glens"])
 
 
-# ── Model ─────────────────────────────────────────────────────────────────────
-
-class GlensChatSession(Base):
-    __tablename__ = "glens_chat_sessions"
-
-    id           = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    workspace_id = Column(PG_UUID(as_uuid=True), nullable=False, index=True)
-    title        = Column(String, nullable=False)
-    messages     = Column(Text, nullable=False, default="[]")   # JSON array
-    render_spec  = Column(Text, nullable=True)                  # last emitted spec
-    created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-                          onupdate=lambda: datetime.now(timezone.utc))
+def _parse_workspace_id(workspace_id: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workspace_id")
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
+def _parse_session_id(session_id: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+
+
+def _get_session(db: Session, session_id: str, ws_uuid: uuid.UUID) -> GlensChatSession:
+    session = db.query(GlensChatSession).filter(
+        GlensChatSession.id == _parse_session_id(session_id),
+        GlensChatSession.workspace_id == ws_uuid,
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: str | None = None   # continue existing session
+    session_id: str | None = None
 
 
 class SessionOut(BaseModel):
@@ -53,53 +58,46 @@ class SessionOut(BaseModel):
     has_dashboard: bool
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
-
 @router.post("/chat")
 async def glens_chat(
     req: ChatRequest,
+    _: str = Depends(require_permission("guard.activity.view_own")),
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
-    ws_uuid = uuid.UUID(workspace_id)
+    ws_uuid = _parse_workspace_id(workspace_id)
+    logger = log.bind(workspace_id=workspace_id)
 
-    # Load or create session
     session = None
     if req.session_id:
-        session = db.query(GlensChatSession).filter(
-            GlensChatSession.id == uuid.UUID(req.session_id),
-            GlensChatSession.workspace_id == ws_uuid,
-        ).first()
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
+        session = _get_session(db, req.session_id, ws_uuid)
+        logger = logger.bind(session_id=req.session_id)
 
     if not session:
         session = GlensChatSession(
             workspace_id=ws_uuid,
-            title=req.message[:60],   # auto-title from first message
+            title=req.message[:60],
             messages=json.dumps([{"role": "system", "content": build_system_prompt()}]),
         )
         db.add(session)
         db.flush()
+        logger = logger.bind(session_id=str(session.id))
 
-    # Build message history
     messages = json.loads(session.messages)
     messages.append({"role": "user", "content": req.message})
 
-    # Call Qwen3
     try:
         raw = qwen_chat(messages, session_id=str(session.id))
     except Exception as e:
-        log.error("glens.inference.error", error=str(e))
+        logger.error("glens.chat.inference_failed", error=str(e))
         raise HTTPException(status_code=503, detail="Inference unavailable — model may be cold, retry in 30s")
 
-    # Parse response
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
+        logger.warning("glens.chat.parse_failed", raw=raw[:200])
         parsed = {"ready": False, "question": raw}
 
-    # Persist assistant turn
     messages.append({"role": "assistant", "content": raw})
     session.messages = json.dumps(messages)
 
@@ -110,20 +108,23 @@ async def glens_chat(
     session.updated_at = datetime.now(timezone.utc)
     db.commit()
 
+    logger.info("glens.chat.complete", ready=parsed.get("ready", False))
+
     return {
         "session_id": str(session.id),
         "ready": parsed.get("ready", False),
-        "question": parsed.get("question"),       # clarifying question if not ready
+        "question": parsed.get("question"),
         "spec": parsed if parsed.get("ready") else None,
     }
 
 
 @router.get("/sessions", response_model=list[SessionOut])
 def list_sessions(
+    _: str = Depends(require_permission("guard.activity.view_own")),
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
-    ws_uuid = uuid.UUID(workspace_id)
+    ws_uuid = _parse_workspace_id(workspace_id)
     sessions = (
         db.query(GlensChatSession)
         .filter(GlensChatSession.workspace_id == ws_uuid)
@@ -145,19 +146,14 @@ def list_sessions(
 @router.get("/sessions/{session_id}")
 def get_session(
     session_id: str,
+    _: str = Depends(require_permission("guard.activity.view_own")),
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
-    ws_uuid = uuid.UUID(workspace_id)
-    session = db.query(GlensChatSession).filter(
-        GlensChatSession.id == uuid.UUID(session_id),
-        GlensChatSession.workspace_id == ws_uuid,
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    ws_uuid = _parse_workspace_id(workspace_id)
+    session = _get_session(db, session_id, ws_uuid)
 
     messages = json.loads(session.messages)
-    # Strip system prompt from response
     user_messages = [m for m in messages if m["role"] != "system"]
 
     return {

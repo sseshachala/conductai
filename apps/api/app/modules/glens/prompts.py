@@ -1,4 +1,5 @@
 """GLens system prompt — intent classifier + render spec emitter."""
+import json
 from datetime import date
 
 GUARD_ENDPOINTS = {
@@ -23,8 +24,6 @@ GUARD_ENDPOINTS = {
         "description": "Spend broken down by agent session",
     },
 }
-
-import json
 
 def build_system_prompt() -> str:
     today = date.today().isoformat()
