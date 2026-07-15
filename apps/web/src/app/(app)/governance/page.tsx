@@ -1066,7 +1066,7 @@ export default function GovernancePage() {
               </div>
             </div>
             <Link
-              href={eventFilter ? `/theguard/activity?decision=${eventFilter}` : "/theguard/activity"}
+              href={eventFilter ? `/guard/activity?decision=${eventFilter}` : "/guard/activity"}
               style={{ fontSize: 11, color: "var(--accent-text)" }}
             >
               View all →
