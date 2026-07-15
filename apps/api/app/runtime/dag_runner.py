@@ -781,7 +781,7 @@ def _execute_dag(
 
             try:
                 if retry_cfg:
-                    result = _with_retry(_dispatch, retry_cfg, block, state)
+                    result = _with_retry(_dispatch, retry_cfg, block, dict(state))
                 elif block_type == "output":
                     # Special-case output block: soft-fail so the run can continue
                     wf_name = version.workflow.name if version.workflow else "Agent"
@@ -800,7 +800,7 @@ def _execute_dag(
                         _logic_routes_version = _lrv_ref[0]
                         continue
                 else:
-                    result = _dispatch(block, state)
+                    result = _dispatch(block, dict(state))
 
             except (ApprovalRequired, ClarificationRequired, PermissionError):
                 raise  # flow-control — never swallow
