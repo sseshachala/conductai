@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
-import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { GlensDashboard } from "@/components/glens/GlensDashboard"
 import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
 
@@ -63,28 +62,6 @@ function getSuggestions(pathname: string): string[] {
     "Top violations by agent",
     "Blocks vs warnings trend",
   ]
-}
-
-// ─── Hook: fetch with auth ─────────────────────────────────────────────────
-
-function useAuthFetch() {
-  const { getToken } = useAuth()
-  const { activeWorkspace } = useWorkspace()
-
-  const authFetch = useCallback(
-    async (url: string, options: RequestInit = {}): Promise<Response> => {
-      const token = await getToken()
-      const headers: Record<string, string> = {
-        ...(options.headers as Record<string, string> | undefined),
-      }
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      if (activeWorkspace?.id) headers["X-Workspace-ID"] = activeWorkspace.id
-      return fetch(url, { ...options, headers })
-    },
-    [getToken, activeWorkspace],
-  )
-
-  return { authFetch, workspaceId: activeWorkspace?.id ?? null }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
