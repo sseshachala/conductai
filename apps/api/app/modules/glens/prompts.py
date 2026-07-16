@@ -3,25 +3,37 @@ import json
 from datetime import date
 
 GUARD_ENDPOINTS = {
+    "spend": {
+        "path": "/guard/spend",
+        "params": ["month"],
+        "description": (
+            "Pre-computed spend summary. Returns a SINGLE OBJECT (not array). "
+            "Fields: total_cost_usd, blocked_today, events_today, "
+            "total_tokens_before, total_tokens_after, active_developers, "
+            "by_ai_tool (array of {ai_tool, cost_usd}), "
+            "by_developer (array of {user_email, cost_usd}). "
+            "month param: YYYY-MM, defaults to current month."
+        ),
+    },
     "events": {
         "path": "/guard/events",
         "params": ["from", "to", "decision", "severity", "limit"],
-        "description": "Guard blocks, warnings, allows — decision: BLOCK/WARN/ALLOW",
-    },
-    "events_unified": {
-        "path": "/guard/events/unified",
-        "params": ["from", "to", "limit"],
-        "description": "Unified Guard event view with enriched metadata",
-    },
-    "spend": {
-        "path": "/guard/spend",
-        "params": ["from", "to", "group_by"],
-        "description": "AI spend summary — group_by: model, agent, week, day",
+        "description": (
+            "Raw Guard event rows. Returns ARRAY of event objects. "
+            "Each row: {id, decision (BLOCK/WARN/ALLOW), ai_tool, user_email, "
+            "rule_id, tokens_before, tokens_after}. "
+            "decision filter values: BLOCK, WARN, ALLOW. "
+            "Use for TABLES ONLY — not KPIs or charts."
+        ),
     },
     "spend_sessions": {
         "path": "/guard/spend/sessions",
-        "params": ["from", "to", "limit"],
-        "description": "Spend broken down by agent session",
+        "params": ["limit"],
+        "description": (
+            "Session spend rows. Returns ARRAY. "
+            "Each: {id, user_email, ai_tool, total_cost_usd, started_at}. "
+            "Use for tables only."
+        ),
     },
 }
 
@@ -44,13 +56,16 @@ When ready, respond with ONLY this JSON:
   "title": "Dashboard title",
   "filters": {{"from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "team": "optional or null"}},
   "kpis": [
-    {{"label": "KPI name", "endpoint": "/guard/events", "params": {{"decision": "BLOCK"}}, "highlight": false}}
+    {{"label": "Total Cost", "endpoint": "/guard/spend", "field": "total_cost_usd"}},
+    {{"label": "Blocks Today", "endpoint": "/guard/spend", "field": "blocked_today"}},
+    {{"label": "Total Blocks", "endpoint": "/guard/events", "params": {{"decision": "BLOCK", "limit": 500}}, "field": "count"}}
   ],
   "charts": [
-    {{"type": "bar|line", "title": "Chart title", "endpoint": "/guard/spend", "group_by": "model|week|day"}}
+    {{"type": "bar", "title": "Cost by Tool", "endpoint": "/guard/spend", "field": "by_ai_tool", "x": "ai_tool", "y": "cost_usd"}},
+    {{"type": "bar", "title": "Cost by Developer", "endpoint": "/guard/spend", "field": "by_developer", "x": "user_email", "y": "cost_usd"}}
   ],
   "tables": [
-    {{"title": "Table title", "endpoint": "/guard/events", "params": {{"decision": "BLOCK", "limit": 20}}}}
+    {{"title": "Recent Blocks", "endpoint": "/guard/events", "params": {{"decision": "BLOCK", "limit": 20}}}}
   ]
 }}
 

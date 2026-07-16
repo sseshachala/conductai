@@ -241,9 +241,18 @@ export function GLensPanel() {
         setLoading(false)
         return
       }
-      const data: GLensChatResponse = await res.json()
-      setSessionId(data.session_id)
-      await applyResponse(data, [], controller)
+      const data = await res.json()
+      setSessionId(data.id)
+      const history: ConvMessage[] = (data.messages ?? []).map((m: { role: string; content: string }) => ({
+        role: m.role as "user" | "assistant",
+        text: m.content,
+      }))
+      setMessages(history)
+      if (data.spec) {
+        setPanelState({ kind: "dashboard", sessionId: data.id, spec: data.spec, tableRows: [] })
+      } else {
+        setPanelState({ kind: "clarifying", messages: history })
+      }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
       setError("Network error restoring session.")
