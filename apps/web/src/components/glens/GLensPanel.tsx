@@ -24,11 +24,11 @@ type Message =
 // ─── Suggestion chips ─────────────────────────────────────────────────────────
 
 function getSuggestions(pathname: string): string[] {
-  if (pathname?.includes("spend"))      return ["Show spend by tool", "Cost by developer this month"]
-  if (pathname?.includes("policies"))   return ["Which policies blocked most?", "Show recent warnings"]
-  if (pathname?.includes("compliance")) return ["Show compliance coverage", "Recent audit events"]
-  if (pathname?.includes("discovery"))  return ["Show discovered agents", "Agent activity this month"]
-  return ["Guard overview this month", "Show blocks today", "Spend by AI tool", "Who was blocked?"]
+  if (pathname?.includes("spend"))      return ["Who spent the most this month?", "Cost by AI tool this month"]
+  if (pathname?.includes("policies"))   return ["Which rule blocked most today?", "Show recent warnings"]
+  if (pathname?.includes("compliance")) return ["Recent audit events", "Who was blocked today?"]
+  if (pathname?.includes("discovery"))  return ["Which agents are active?", "Show hook sessions today"]
+  return ["Who was blocked today?", "Cost by AI tool this month", "How many events today?", "Show recent blocks"]
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
