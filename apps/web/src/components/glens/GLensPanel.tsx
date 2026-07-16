@@ -261,6 +261,14 @@ export function GLensPanel() {
     }
   }
 
+  async function deleteSession(id: string) {
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    await authFetch(`${base}/glens/sessions/${id}`, { method: "DELETE" }).catch(() => {})
+    if (panelState.kind === "history") {
+      setPanelState({ kind: "history", sessions: panelState.sessions.filter(s => s.id !== id) })
+    }
+  }
+
   function startNewConversation() {
     setSessionId(null)
     setMessages([])
@@ -476,6 +484,7 @@ export function GLensPanel() {
               sessions={panelState.sessions}
               onNew={startNewConversation}
               onRestore={restoreSession}
+              onDelete={deleteSession}
             />
           )}
 
@@ -550,10 +559,12 @@ function HistoryState({
   sessions,
   onNew,
   onRestore,
+  onDelete,
 }: {
   sessions: GLensSession[]
   onNew: () => void
   onRestore: (id: string) => void
+  onDelete: (id: string) => void
 }) {
   return (
     <div>
@@ -580,31 +591,40 @@ function HistoryState({
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {sessions.map(s => (
-          <button
-            key={s.id}
-            onClick={() => onRestore(s.id)}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              padding: "10px 12px",
-              borderRadius: "var(--r-card)",
-              border: "1px solid var(--border)",
-              background: "var(--surface-2)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <span style={{ flex: 1, fontSize: 13, color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {s.title}
-            </span>
-            {s.has_dashboard && (
-              <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "var(--accent-weak)", color: "var(--accent-text)", flexShrink: 0 }}>
-                dashboard
+          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <button
+              onClick={() => onRestore(s.id)}
+              style={{
+                flex: 1,
+                textAlign: "left",
+                padding: "10px 12px",
+                borderRadius: "var(--r-card)",
+                border: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                minWidth: 0,
+              }}
+            >
+              <span style={{ flex: 1, fontSize: 13, color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {s.title}
               </span>
-            )}
-          </button>
+              {s.has_dashboard && (
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "var(--accent-weak)", color: "var(--accent-text)", flexShrink: 0 }}>
+                  dashboard
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => onDelete(s.id)}
+              title="Delete session"
+              style={{ flexShrink: 0, padding: "6px 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 13, lineHeight: 1 }}
+            >
+              ×
+            </button>
+          </div>
         ))}
       </div>
     </div>
