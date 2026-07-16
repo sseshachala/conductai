@@ -1,5 +1,11 @@
-"""GLens system prompt — model picks components from an allowed menu."""
+"""GLens prompt loader — text lives in prompts/*.txt, metadata dicts live here."""
+import json
 from datetime import date
+from pathlib import Path
+
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
+_SYSTEM_TEMPLATE = (_PROMPTS_DIR / "system.txt").read_text()
+_CONTEXT_TEMPLATE = (_PROMPTS_DIR / "context.txt").read_text()
 
 VALID_KPIS = [
     "events_today",
@@ -41,53 +47,19 @@ TABLE_META = {
 
 
 def build_system_prompt() -> str:
-    today = date.today().isoformat()
-    kpi_list    = ", ".join(VALID_KPIS)
-    chart_list  = ", ".join(VALID_CHARTS)
-    table_list  = ", ".join(VALID_TABLES)
-    return f"""You are GLens, a governance assistant for ConductAI.
-Today's date is {today}.
+    return (
+        _SYSTEM_TEMPLATE
+        .replace("{today}", date.today().isoformat())
+        .replace("{kpi_list}", ", ".join(VALID_KPIS))
+        .replace("{chart_list}", ", ".join(VALID_CHARTS))
+        .replace("{table_list}", ", ".join(VALID_TABLES))
+    )
 
-You help users explore their AI governance data. Respond with JSON only.
 
-AVAILABLE COMPONENTS — pick only what fits the user's question:
-
-KPIs (from spend summary):
-  events_today        — total tool calls logged today
-  blocked_today       — tool calls blocked today
-  total_cost_usd      — total AI spend this month
-  active_developers   — developers active today
-  tokens_saved_today  — tokens saved by Guard today
-  total_tokens_before — total tokens used before Guard (month)
-  total_tokens_after  — total tokens used after Guard (month)
-  hook_sessions       — hook sessions count
-
-Charts (cost breakdowns):
-  by_ai_tool   — bar chart: cost by AI tool
-  by_developer — bar chart: cost by developer
-
-Tables (event lists):
-  blocked_events  — recent blocked tool calls
-  warned_events   — recent warned tool calls
-  allowed_events  — recent allowed tool calls
-  recent_sessions — recent agent sessions with spend
-
-RULES:
-- Pick only components relevant to the question
-- Do not invent component names — use only those listed above
-- month: use YYYY-MM format; default to current month if not specified
-- If the question is about blocks/policy → pick blocked_today, blocked_events
-- If the question is about spend/cost → pick total_cost_usd, by_ai_tool, by_developer
-- If the question is about activity/usage → pick events_today, active_developers, recent_sessions
-- If the question is broad/overview → pick a balanced set across all areas
-
-When ready, respond with ONLY:
-{{"ready": true, "title": "...", "month": "YYYY-MM", "kpis": [{kpi_list!r}...], "charts": [...], "tables": [...]}}
-
-Valid values:
-  kpis:   [{kpi_list}]
-  charts: [{chart_list}]
-  tables: [{table_list}]
-
-If you need clarification:
-{{"ready": false, "question": "One short clarifying question"}}"""
+def build_context_messages(guard_ctx: dict) -> list[dict]:
+    """Inject live Guard snapshot as a user/assistant pair before the user's question."""
+    content = _CONTEXT_TEMPLATE.replace("{guard_ctx}", json.dumps(guard_ctx))
+    return [
+        {"role": "user", "content": content},
+        {"role": "assistant", "content": "Understood, I have the current Guard data."},
+    ]
