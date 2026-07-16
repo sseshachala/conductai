@@ -10,6 +10,7 @@ export default function HomePage() {
       <main className="flex-1">
 
         <HeroSection />
+        <ControlPlaneSection />
         <CeoQuoteSection />
         <TrustBarSection />
         <ProofStripSection />
@@ -148,7 +149,7 @@ function HeroSection() {
       <BootSequence />
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
-        Runtime AI governance for engineering teams
+        Governing AI systems is as important as deploying them
       </div>
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
         Your AI agents are taking real actions. Nobody is watching.
@@ -170,6 +171,35 @@ function HeroSection() {
         </a>
       </div>
       <p className="text-xs text-stone-400 mt-4">Free tier · No infrastructure changes · Works in minutes</p>
+    </section>
+  )
+}
+
+/* ─── Control Plane Diagram ────────────────────────────────────────────── */
+
+function ControlPlaneSection() {
+  return (
+    <section className="py-14 px-6 border-y border-stone-100 bg-stone-50">
+      <div className="max-w-2xl mx-auto text-center">
+        <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-8">Where Conduct sits</p>
+        <div className="flex flex-col items-center gap-1 font-mono text-sm">
+          <div className="bg-white border border-stone-200 rounded-xl px-8 py-3 text-stone-700 font-semibold shadow-sm w-64">
+            AI Agents + Developers
+          </div>
+          <div className="text-stone-300 text-lg">↓</div>
+          <div className="bg-stone-900 text-white rounded-xl px-8 py-3 font-bold shadow-md w-64">
+            ConductGuard
+          </div>
+          <div className="text-xs text-stone-400 mt-1 mb-1">Every tool call · Every LLM request · Every workflow</div>
+          <div className="text-stone-300 text-lg">↓</div>
+          <div className="bg-white border border-stone-200 rounded-xl px-8 py-3 text-stone-700 font-semibold shadow-sm w-64">
+            Foundation Models
+          </div>
+        </div>
+        <p className="text-sm text-stone-500 mt-8 max-w-md mx-auto">
+          Governed before it executes. Not after the fact.
+        </p>
+      </div>
     </section>
   )
 }
