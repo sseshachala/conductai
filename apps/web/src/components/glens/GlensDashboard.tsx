@@ -6,6 +6,12 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts"
 
+function fmt(n: number): string {
+  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M"
+  if (Math.abs(n) >= 1_000)     return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K"
+  return Number.isInteger(n) ? String(n) : n.toFixed(2)
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface SpecKpi {
@@ -110,10 +116,10 @@ function KpiTile({
       .then(data => {
         if (data == null) return
         if (kpi.field === "count" && Array.isArray(data)) {
-          setValue(data.length)
+          setValue(fmt(data.length))
         } else if (!Array.isArray(data) && kpi.field in data) {
           const raw = data[kpi.field]
-          setValue(typeof raw === "number" ? (Number.isInteger(raw) ? raw : raw.toFixed(2)) : String(raw))
+          setValue(typeof raw === "number" ? fmt(raw) : String(raw))
         }
       })
       .catch(() => {})
