@@ -35,7 +35,7 @@ KPI_META = {
 
 CHART_META = {
     "by_ai_tool":   {"title": "Cost by AI Tool",   "field": "by_ai_tool",   "x": "ai_tool",    "y": "cost_usd"},
-    "by_developer": {"title": "Cost by Developer", "field": "by_developer", "x": "user_email", "y": "cost_usd"},
+    "by_developer": {"title": "Cost by Developer", "field": "by_developer", "x": "email", "y": "cost_usd"},
 }
 
 TABLE_META = {
