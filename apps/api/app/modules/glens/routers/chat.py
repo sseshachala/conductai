@@ -175,6 +175,22 @@ def glens_uninstall(
     return {"installed": False}
 
 
+@router.delete("/sessions/{session_id}", status_code=204)
+def delete_session(
+    session_id: str,
+    _: str = Depends(require_permission("guard.activity.view_own")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    ws_uuid = _parse_workspace_id(workspace_id)
+    db.query(GlensChatSession).filter(
+        GlensChatSession.id == _parse_session_id(session_id),
+        GlensChatSession.workspace_id == ws_uuid,
+    ).delete(synchronize_session=False)
+    db.commit()
+    log.info("glens.session_deleted", workspace_id=workspace_id, session_id=session_id)
+
+
 @router.get("/sessions", response_model=list[SessionOut])
 def list_sessions(
     _: str = Depends(require_permission("guard.activity.view_own")),
