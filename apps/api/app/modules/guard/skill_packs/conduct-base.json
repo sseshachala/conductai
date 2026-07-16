@@ -1,9 +1,9 @@
 {
     "slug": "conduct-base",
     "name": "Conduct Base",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "tier": "free",
-    "description": "Core AI governance rules \u2014 proxy interception, agent safety, and surface-aware enforcement across all AI tools. 3 proxy + 13 agent + 7 surface rules.",
+    "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, and workflow governance across all AI tools. 3 proxy + 13 agent + 7 surface + 4 workflow rules.",
     "rules": [
         {
             "id": "proxy-no-credential-leak",
@@ -330,6 +330,65 @@
             "frameworks": [
                 "SOC2:CC7.2",
                 "ISO_42001:9.1"
+            ]
+        },
+        {
+            "id": "workflow-audit-all",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Audit every workflow trigger — no pattern required, fires on all workflow tool calls",
+            "match_tool": "workflow",
+            "action": "audited",
+            "message": "Workflow trigger logged for audit trail.",
+            "severity": "low",
+            "frameworks": [
+                "SOC2:CC7.2",
+                "ISO_42001:9.1"
+            ]
+        },
+        {
+            "id": "workflow-warn-prod",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Warn when a production workflow is triggered by an AI agent",
+            "match_tool": "workflow",
+            "match_pattern": "prod(?:uction)?[_\\-]|[_\\-]prod(?:uction)?|deploy.*prod|release.*prod",
+            "action": "warn",
+            "message": "Production workflow triggered by AI agent. Verify this is intentional.",
+            "severity": "high",
+            "frameworks": [
+                "SOC2:CC8.1",
+                "ISO_42001:6.1"
+            ]
+        },
+        {
+            "id": "workflow-block-destructive",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Block destructive workflows (delete, drop, purge, destroy, wipe) triggered by AI agents",
+            "match_tool": "workflow",
+            "match_pattern": "delete|drop[_\\-]|purge|destroy|wipe[_\\-]|nuke|teardown",
+            "action": "block",
+            "message": "Destructive workflow blocked. Trigger manually after review.",
+            "severity": "critical",
+            "frameworks": [
+                "SOC2:CC6.1",
+                "ISO_42001:6.1"
+            ]
+        },
+        {
+            "id": "workflow-block-secret-in-payload",
+            "persona": "agent",
+            "non_overridable": true,
+            "description": "Block workflow triggers that pass raw credentials in the payload",
+            "match_tool": "workflow",
+            "match_pattern": "(API_KEY|SECRET|PASSWORD|TOKEN)\\s*[=:]\\s*['\"]?[A-Za-z0-9+/]{16,}|AKIA[0-9A-Z]{16}|sk_live_[0-9a-zA-Z]{24,}|ghp_[A-Za-z0-9]{36,}",
+            "action": "block",
+            "message": "Credential detected in workflow payload \u2014 request blocked. Use your secrets manager.",
+            "severity": "critical",
+            "frameworks": [
+                "SOC2:CC6.1",
+                "OWASP:LLM02"
             ]
         },
         {
