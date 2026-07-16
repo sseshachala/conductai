@@ -18,7 +18,7 @@ from app.core.database import get_db
 from app.models.workspace_config import WorkspaceConfig
 from app.modules.glens.inference import chat as qwen_chat
 from app.modules.glens.models import GlensChatSession
-from app.modules.glens.prompts import build_system_prompt
+from app.modules.glens.prompts import build_system_prompt, KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/glens", tags=["glens"])
@@ -110,8 +110,13 @@ async def glens_chat(
 
     spec = None
     if parsed.get("ready"):
-        month = parsed.get("month", "")
-        spec = _build_spec(parsed.get("title", "Guard Overview"), month)
+        spec = _build_spec(
+            title=parsed.get("title", "Guard Overview"),
+            month=parsed.get("month", ""),
+            kpi_picks=parsed.get("kpis", []),
+            chart_picks=parsed.get("charts", []),
+            table_picks=parsed.get("tables", []),
+        )
         session.render_spec = json.dumps(spec)
         session.title = parsed.get("title", session.title)[:60]
 
@@ -128,25 +133,33 @@ async def glens_chat(
     }
 
 
-def _build_spec(title: str, month: str) -> dict:
-    """Build a known-good render spec — never let the model generate field names."""
-    spend_endpoint = f"/guard/spend{f'?month={month}' if month else ''}"
-    return {
-        "title": title,
-        "kpis": [
-            {"label": "Events Today",      "endpoint": spend_endpoint, "field": "events_today"},
-            {"label": "Blocks Today",       "endpoint": spend_endpoint, "field": "blocked_today"},
-            {"label": "Total Cost (month)", "endpoint": spend_endpoint, "field": "total_cost_usd"},
-            {"label": "Active Developers",  "endpoint": spend_endpoint, "field": "active_developers"},
-        ],
-        "charts": [
-            {"type": "bar", "title": "Cost by AI Tool",   "endpoint": spend_endpoint, "field": "by_ai_tool",   "x": "ai_tool",    "y": "cost_usd"},
-            {"type": "bar", "title": "Cost by Developer", "endpoint": spend_endpoint, "field": "by_developer", "x": "user_email", "y": "cost_usd"},
-        ],
-        "tables": [
-            {"title": "Recent Blocks", "endpoint": "/guard/events", "params": {"decision": "blocked", "limit": 20}},
-        ],
-    }
+def _build_spec(title: str, month: str, kpi_picks: list, chart_picks: list, table_picks: list) -> dict:
+    """Assemble spec from model's validated picks — model selects, backend wires."""
+    spend_ep = f"/guard/spend{f'?month={month}' if month else ''}"
+
+    kpis = [
+        {"label": KPI_META[k]["label"], "endpoint": spend_ep, "field": KPI_META[k]["field"]}
+        for k in kpi_picks if k in VALID_KPIS
+    ]
+    charts = [
+        {"type": "bar", "endpoint": spend_ep, **CHART_META[c]}
+        for c in chart_picks if c in VALID_CHARTS
+    ]
+    tables = [
+        TABLE_META[t]
+        for t in table_picks if t in VALID_TABLES
+    ]
+
+    # Fallback: if model picked nothing, give a sensible overview
+    if not kpis:
+        kpis = [
+            {"label": "Events Today",    "endpoint": spend_ep, "field": "events_today"},
+            {"label": "Blocks Today",    "endpoint": spend_ep, "field": "blocked_today"},
+            {"label": "Total Cost",      "endpoint": spend_ep, "field": "total_cost_usd"},
+            {"label": "Active Devs",     "endpoint": spend_ep, "field": "active_developers"},
+        ]
+
+    return {"title": title, "kpis": kpis, "charts": charts, "tables": tables}
 
 
 _GLENS_KEY = "glens_enabled"
