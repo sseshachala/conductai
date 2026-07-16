@@ -10,14 +10,18 @@ import {
 
 export interface SpecKpi {
   label: string
-  value: string | number
+  endpoint: string
+  field: string          // field name on object response, or "count" for array length
+  params?: Record<string, string | number>
 }
 
 export interface SpecChart {
   type: "bar" | "line"
   title: string
   endpoint: string
-  group_by: string
+  field: string          // sub-array key on object response (e.g. "by_ai_tool")
+  x: string              // x-axis field name in each row
+  y: string              // y-axis field name in each row
 }
 
 export interface SpecTable {
@@ -89,32 +93,40 @@ function todayIso(): string {
 
 // ─── KPI tile ─────────────────────────────────────────────────────────────────
 
-function KpiTile({ label, value }: SpecKpi) {
+function KpiTile({
+  kpi,
+  authFetch,
+}: {
+  kpi: SpecKpi
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>
+}) {
+  const [value, setValue] = useState<string | number>("—")
+
+  useEffect(() => {
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const qs = kpi.params
+      ? "?" + new URLSearchParams(Object.fromEntries(Object.entries(kpi.params).map(([k, v]) => [k, String(v)]))).toString()
+      : ""
+    authFetch(`${base}${kpi.endpoint}${qs}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data == null) return
+        if (kpi.field === "count" && Array.isArray(data)) {
+          setValue(data.length)
+        } else if (!Array.isArray(data) && kpi.field in data) {
+          const raw = data[kpi.field]
+          setValue(typeof raw === "number" ? (Number.isInteger(raw) ? raw : raw.toFixed(2)) : String(raw))
+        }
+      })
+      .catch(() => {})
+  }, [kpi, authFetch])
+
   return (
-    <div
-      style={{
-        flex: "1 1 140px",
-        background: "var(--surface-2)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--r-card)",
-        padding: "14px 16px",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          color: "var(--text-muted)",
-          textTransform: "uppercase",
-          letterSpacing: ".04em",
-          marginBottom: 6,
-        }}
-      >
-        {label}
+    <div style={{ flex: "1 1 140px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--r-card)", padding: "14px 16px" }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
+        {kpi.label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)" }}>
-        {value}
-      </div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)" }}>{value}</div>
     </div>
   )
 }
@@ -138,20 +150,28 @@ function ChartBlock({
     async function load() {
       try {
         const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const sep = chart.endpoint.includes("?") ? "&" : "?"
-        const url = `${base}${chart.endpoint}${sep}group_by=${encodeURIComponent(chart.group_by)}`
-        const res = await authFetch(url, { signal: controller.signal })
+        const res = await authFetch(`${base}${chart.endpoint}`, { signal: controller.signal })
         if (!res.ok) {
           if (!cancelled) setFailed(true)
           return
         }
         const raw: unknown = await res.json()
         if (!cancelled) {
+          // Response may be an object with a sub-array (e.g. spend summary)
+          // or a direct array
+          let rows: Record<string, unknown>[]
           if (Array.isArray(raw)) {
-            setPoints(rowsToChartPoints(raw as Record<string, unknown>[]))
+            rows = raw as Record<string, unknown>[]
+          } else if (raw && typeof raw === "object" && chart.field in (raw as object)) {
+            const sub = (raw as Record<string, unknown>)[chart.field]
+            rows = Array.isArray(sub) ? sub as Record<string, unknown>[] : []
           } else {
-            setFailed(true)
+            rows = []
           }
+          setPoints(rows.map(row => ({
+            x: String(row[chart.x] ?? ""),
+            y: Number(row[chart.y] ?? 0),
+          })))
         }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return
@@ -164,7 +184,7 @@ function ChartBlock({
       cancelled = true
       controller.abort()
     }
-  }, [chart.endpoint, chart.group_by, authFetch])
+  }, [chart.endpoint, chart.field, chart.x, chart.y, authFetch])
 
   const containerStyle: React.CSSProperties = {
     background: "var(--surface-2)",
@@ -314,7 +334,7 @@ function buildExportHtml(
       k => `
     <div class="kpi">
       <div class="kpi-label">${escapeHtml(String(k.label))}</div>
-      <div class="kpi-value">${escapeHtml(String(k.value))}</div>
+      <div class="kpi-value">—</div>
     </div>`,
     )
     .join("")
@@ -512,7 +532,7 @@ export function GlensDashboard({
           }}
         >
           {spec.kpis.map(kpi => (
-            <KpiTile key={kpi.label} label={kpi.label} value={kpi.value} />
+            <KpiTile key={kpi.label} kpi={kpi} authFetch={authFetch} />
           ))}
         </div>
       )}
@@ -528,7 +548,7 @@ export function GlensDashboard({
           }}
         >
           {spec.charts.map(chart => (
-            <ChartBlock key={`${chart.endpoint}-${chart.group_by}`} chart={chart} authFetch={authFetch} />
+            <ChartBlock key={`${chart.endpoint}-${chart.field}`} chart={chart} authFetch={authFetch} />
           ))}
         </div>
       )}
