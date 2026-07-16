@@ -15,124 +15,243 @@ interface GLensSession {
   created_at: string
 }
 
-// GLensSpec maps to GlensDashboardSpec — alias for clarity inside this panel
-type GLensSpec = GlensDashboardSpec
+type Message =
+  | { role: "user"; text: string }
+  | { role: "assistant"; kind: "question"; text: string }
+  | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string }
+  | { role: "assistant"; kind: "loading" }
 
-interface GLensChatResponse {
-  session_id: string
-  ready: boolean
-  question?: string
-  answer?: string
-  sources?: string[]
-  spec?: GLensSpec
-}
-
-type PanelState =
-  | { kind: "history"; sessions: GLensSession[] }
-  | { kind: "empty" }
-  | { kind: "clarifying"; messages: ConvMessage[] }
-  | { kind: "dashboard"; sessionId: string; spec: GLensSpec; tableRows: Record<string, unknown>[] }
-  | { kind: "text_answer"; answer: string; sources?: string[] }
-
-interface ConvMessage {
-  role: "user" | "assistant"
-  text: string
-}
-
-// ─── Suggestion chips per page ─────────────────────────────────────────────
+// ─── Suggestion chips ─────────────────────────────────────────────────────────
 
 function getSuggestions(pathname: string): string[] {
-  if (pathname.startsWith("/theguard/spend")) {
-    return [
-      "Spend by model this month",
-      "Top spending agents",
-      "Daily spend trend",
-    ]
-  }
-  if (pathname.startsWith("/theguard/discovery")) {
-    return [
-      "Show unsanctioned agents",
-      "Agent activity summary",
-      "New agents this week",
-    ]
-  }
-  // /theguard and /theguard/activity
-  return [
-    "Show blocks this month",
-    "Top violations by agent",
-    "Blocks vs warnings trend",
-  ]
+  if (pathname?.includes("spend"))      return ["Show spend by tool", "Cost by developer this month"]
+  if (pathname?.includes("policies"))   return ["Which policies blocked most?", "Show recent warnings"]
+  if (pathname?.includes("compliance")) return ["Show compliance coverage", "Recent audit events"]
+  if (pathname?.includes("discovery"))  return ["Show discovered agents", "Agent activity this month"]
+  return ["Guard overview this month", "Show blocks today", "Spend by AI tool", "Who was blocked?"]
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Sub-components ──────────────────────────────────────────────────────────
 
-function PanelInput({
-  placeholder,
+function UserBubble({ text }: { text: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <div style={{
+        maxWidth: "80%",
+        background: "var(--accent)",
+        color: "#fff",
+        borderRadius: "14px 14px 4px 14px",
+        padding: "9px 14px",
+        fontSize: 13,
+        lineHeight: 1.5,
+      }}>
+        {text}
+      </div>
+    </div>
+  )
+}
+
+function AssistantBubble({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 12 }}>
+      <div style={{ maxWidth: "92%", width: "100%" }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function QuestionBubble({ text }: { text: string }) {
+  return (
+    <AssistantBubble>
+      <div style={{
+        background: "var(--surface-2)",
+        border: "1px solid var(--border)",
+        borderRadius: "4px 14px 14px 14px",
+        padding: "9px 14px",
+        fontSize: 13,
+        color: "var(--text)",
+        lineHeight: 1.5,
+      }}>
+        {text}
+      </div>
+    </AssistantBubble>
+  )
+}
+
+function LoadingBubble() {
+  return (
+    <AssistantBubble>
+      <div style={{
+        background: "var(--surface-2)",
+        border: "1px solid var(--border)",
+        borderRadius: "4px 14px 14px 14px",
+        padding: "10px 14px",
+        fontSize: 13,
+        color: "var(--text-muted)",
+      }}>
+        <span style={{ letterSpacing: 2 }}>···</span>
+      </div>
+    </AssistantBubble>
+  )
+}
+
+function DashboardBubble({
+  spec,
+  sessionId,
+  authFetch,
+  onPin,
+}: {
+  spec: GlensDashboardSpec
+  sessionId: string
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>
+  onPin: (sessionId: string) => void
+}) {
+  return (
+    <AssistantBubble>
+      <div style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "4px 14px 14px 14px",
+        padding: "14px",
+        width: "100%",
+      }}>
+        <GlensDashboard
+          spec={spec}
+          sessionId={sessionId}
+          compact
+          authFetch={authFetch}
+          onPin={() => onPin(sessionId)}
+        />
+      </div>
+    </AssistantBubble>
+  )
+}
+
+function ChatInput({
   onSubmit,
   disabled,
+  placeholder,
 }: {
-  placeholder: string
-  onSubmit: (value: string) => void
-  disabled?: boolean
+  onSubmit: (text: string) => void
+  disabled: boolean
+  placeholder?: string
 }) {
   const [value, setValue] = useState("")
-  const inputRef = useRef<HTMLInputElement>(null)
+  const ref = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    if (!disabled) ref.current?.focus()
+  }, [disabled])
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && value.trim()) {
-      onSubmit(value.trim())
-      setValue("")
-    }
-  }
-
-  function handleSend() {
-    if (value.trim()) {
-      onSubmit(value.trim())
-      setValue("")
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      const trimmed = value.trim()
+      if (trimmed && !disabled) {
+        onSubmit(trimmed)
+        setValue("")
+      }
     }
   }
 
   return (
-    <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
-      <input
-        ref={inputRef}
+    <div style={{
+      borderTop: "1px solid var(--border)",
+      padding: "10px 12px",
+      display: "flex",
+      gap: 8,
+      alignItems: "flex-end",
+      background: "var(--surface)",
+    }}>
+      <textarea
+        ref={ref}
         value={value}
         onChange={e => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
+        onKeyDown={handleKey}
         disabled={disabled}
+        placeholder={placeholder ?? "Ask about your governance data…"}
+        rows={1}
         style={{
           flex: 1,
+          resize: "none",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "8px 10px",
           fontSize: 13,
-          padding: "8px 12px",
-          borderRadius: "var(--r-btn)",
-          border: "1px solid var(--border-2)",
           background: "var(--surface-2)",
           color: "var(--text)",
           outline: "none",
+          fontFamily: "inherit",
+          lineHeight: 1.4,
         }}
       />
       <button
-        onClick={handleSend}
+        onClick={() => { const t = value.trim(); if (t && !disabled) { onSubmit(t); setValue("") } }}
         disabled={disabled || !value.trim()}
         style={{
+          padding: "8px 14px",
+          borderRadius: 8,
+          border: "none",
+          background: disabled || !value.trim() ? "var(--surface-3)" : "var(--accent)",
+          color: disabled || !value.trim() ? "var(--text-muted)" : "#fff",
           fontSize: 13,
           fontWeight: 600,
-          padding: "8px 14px",
-          borderRadius: "var(--r-btn)",
-          border: "none",
-          background: "var(--accent)",
-          color: "#fff",
-          cursor: disabled || !value.trim() ? "default" : "pointer",
-          opacity: disabled || !value.trim() ? 0.5 : 1,
+          cursor: disabled || !value.trim() ? "not-allowed" : "pointer",
+          flexShrink: 0,
         }}
       >
-        Send
+        ↵
       </button>
+    </div>
+  )
+}
+
+// ─── History list ─────────────────────────────────────────────────────────────
+
+function HistoryList({
+  sessions,
+  onRestore,
+  onDelete,
+  onNew,
+}: {
+  sessions: GLensSession[]
+  onRestore: (id: string) => void
+  onDelete: (id: string) => void
+  onNew: () => void
+}) {
+  if (sessions.length === 0) return null
+  return (
+    <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>
+        Recent
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        {sessions.map(s => (
+          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <button
+              onClick={() => onRestore(s.id)}
+              style={{
+                flex: 1, textAlign: "left", padding: "7px 10px", borderRadius: 8,
+                border: "1px solid var(--border)", background: "var(--surface-2)",
+                cursor: "pointer", fontSize: 12, color: "var(--text-2)",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              {s.has_dashboard && <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: "var(--accent-weak)", color: "var(--accent-text)", flexShrink: 0 }}>chart</span>}
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+            </button>
+            <button
+              onClick={() => onDelete(s.id)}
+              title="Delete"
+              style={{ flexShrink: 0, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 13 }}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -145,19 +264,18 @@ export function GLensPanel() {
   const { authFetch, workspaceId } = useAuthFetch()
 
   const [open, setOpen] = useState(false)
-  const [panelState, setPanelState] = useState<PanelState>({ kind: "empty" })
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<ConvMessage[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [glensEnabled, setGlensEnabled] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [sessions, setSessions] = useState<GLensSession[]>([])
+  const [loading, setLoading] = useState(false)
+  const [showHistory, setShowHistory] = useState(true)
 
-  // Abort controller ref — cancels in-flight fetches on unmount or superseding request
   const abortRef = useRef<AbortController | null>(null)
-
+  const threadRef = useRef<HTMLDivElement>(null)
   const isGuardPage = pathname?.startsWith("/theguard")
 
-  // ─── Check GLens install status ───────────────────────────────────────────
+  // ─── Install gate ──────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!isGuardPage) return
@@ -168,112 +286,82 @@ export function GLensPanel() {
       .catch(() => setGlensEnabled(false))
   }, [isGuardPage, authFetch])
 
-  // ─── Abort in-flight requests on unmount ──────────────────────────────────
+  // ─── Cleanup on unmount ────────────────────────────────────────────────────
 
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort()
-    }
-  }, [])
+  useEffect(() => () => { abortRef.current?.abort() }, [])
 
-  // ─── Cmd+K / Escape listener ──────────────────────────────────────────────
+  // ─── Cmd+K ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!isGuardPage || !glensEnabled) return
-
-    function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault()
-        setOpen(prev => !prev)
-      }
-      if (e.key === "Escape") {
-        setOpen(false)
-      }
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setOpen(p => !p) }
+      if (e.key === "Escape") setOpen(false)
     }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
   }, [isGuardPage, glensEnabled])
 
-  // ─── When panel opens, load session history ───────────────────────────────
-
-  const loadSessions = useCallback(async () => {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    try {
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await authFetch(`${base}/glens/sessions`, { signal: controller.signal })
-      if (!res.ok) {
-        setPanelState({ kind: "empty" })
-        return
-      }
-      const sessions: GLensSession[] = await res.json()
-      if (sessions.length > 0) {
-        setPanelState({ kind: "history", sessions })
-      } else {
-        setPanelState({ kind: "empty" })
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return
-      setPanelState({ kind: "empty" })
-    }
-  }, [authFetch])
+  // ─── Load history when panel opens ────────────────────────────────────────
 
   useEffect(() => {
     if (!open || !workspaceId) return
-    loadSessions()
-  }, [open, workspaceId, loadSessions])
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    authFetch(`${base}/glens/sessions`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setSessions)
+      .catch(() => {})
+  }, [open, workspaceId, authFetch])
 
-  async function restoreSession(id: string) {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
+  // ─── Scroll thread to bottom on new messages ──────────────────────────────
 
-    setLoading(true)
-    setError(null)
-    try {
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await authFetch(`${base}/glens/sessions/${id}`, { signal: controller.signal })
-      if (!res.ok) {
-        setError("Could not restore session.")
-        setLoading(false)
-        return
-      }
-      const data = await res.json()
-      setSessionId(data.id)
-      const history: ConvMessage[] = (data.messages ?? []).map((m: { role: string; content: string }) => ({
-        role: m.role as "user" | "assistant",
-        text: m.content,
-      }))
-      setMessages(history)
-      if (data.spec) {
-        setPanelState({ kind: "dashboard", sessionId: data.id, spec: data.spec, tableRows: [] })
-      } else {
-        setPanelState({ kind: "clarifying", messages: history })
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return
-      setError("Network error restoring session.")
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    if (threadRef.current) {
+      threadRef.current.scrollTop = threadRef.current.scrollHeight
     }
+  }, [messages])
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
+
+  function startNew() {
+    abortRef.current?.abort()
+    setSessionId(null)
+    setMessages([])
+    setShowHistory(false)
   }
 
   async function deleteSession(id: string) {
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     await authFetch(`${base}/glens/sessions/${id}`, { method: "DELETE" }).catch(() => {})
-    if (panelState.kind === "history") {
-      setPanelState({ kind: "history", sessions: panelState.sessions.filter(s => s.id !== id) })
-    }
+    setSessions(prev => prev.filter(s => s.id !== id))
+    if (sessionId === id) startNew()
   }
 
-  function startNewConversation() {
-    setSessionId(null)
-    setMessages([])
-    setError(null)
-    setPanelState({ kind: "empty" })
+  async function restoreSession(id: string) {
+    setLoading(true)
+    setShowHistory(false)
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    try {
+      const res = await authFetch(`${base}/glens/sessions/${id}`)
+      if (!res.ok) return
+      const data = await res.json()
+      setSessionId(data.id)
+
+      const thread: Message[] = (data.messages ?? []).map((m: { role: string; content: string }) => ({
+        role: m.role as "user" | "assistant",
+        ...(m.role === "user"
+          ? { text: m.content }
+          : { kind: "question", text: m.content }),
+      }))
+
+      if (data.spec) {
+        thread.push({ role: "assistant", kind: "dashboard", spec: data.spec, sessionId: data.id })
+      }
+
+      setMessages(thread)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function sendMessage(text: string) {
@@ -281,17 +369,13 @@ export function GLensPanel() {
     const controller = new AbortController()
     abortRef.current = controller
 
-    const newMessages: ConvMessage[] = [...messages, { role: "user", text }]
-    setMessages(newMessages)
+    setShowHistory(false)
+    setMessages(prev => [...prev, { role: "user", text }, { role: "assistant", kind: "loading" }])
     setLoading(true)
-    setError(null)
 
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const body: Record<string, unknown> = {
-        message: text,
-        page_context: pathname,
-      }
+      const body: Record<string, unknown> = { message: text }
       if (sessionId) body.session_id = sessionId
 
       const res = await authFetch(`${base}/glens/chat`, {
@@ -302,55 +386,53 @@ export function GLensPanel() {
       })
 
       if (!res.ok) {
-        setError(`Request failed (${res.status})`)
-        setLoading(false)
+        setMessages(prev => [
+          ...prev.slice(0, -1),
+          { role: "assistant", kind: "question", text: `Request failed (${res.status}). Try again.` },
+        ])
         return
       }
 
-      const data: GLensChatResponse = await res.json()
+      const data = await res.json()
       setSessionId(data.session_id)
-      await applyResponse(data, newMessages, controller)
+
+      if (data.ready && data.spec) {
+        setMessages(prev => [
+          ...prev.slice(0, -1),
+          { role: "assistant", kind: "dashboard", spec: data.spec, sessionId: data.session_id },
+        ])
+        // Refresh history list
+        setSessions(prev => {
+          const exists = prev.find(s => s.id === data.session_id)
+          if (exists) return prev
+          return [{ id: data.session_id, title: text.slice(0, 60), has_dashboard: true, created_at: new Date().toISOString() }, ...prev]
+        })
+      } else {
+        setMessages(prev => [
+          ...prev.slice(0, -1),
+          { role: "assistant", kind: "question", text: data.question ?? "Could you clarify what you're looking for?" },
+        ])
+      }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
-      setError("Network error. Please try again.")
+      setMessages(prev => [
+        ...prev.slice(0, -1),
+        { role: "assistant", kind: "question", text: "Network error. Please try again." },
+      ])
     } finally {
       setLoading(false)
     }
   }
 
-  async function applyResponse(
-    data: GLensChatResponse,
-    priorMessages: ConvMessage[],
-    controller: AbortController,
-  ) {
-    if (data.ready && data.spec) {
-      // Fetch table rows if spec includes a table
-      setPanelState({ kind: "dashboard", sessionId: data.session_id, spec: data.spec, tableRows: [] })
-    } else if (!data.ready && data.question) {
-      const updated: ConvMessage[] = [...priorMessages, { role: "assistant", text: data.question }]
-      setMessages(updated)
-      setPanelState({ kind: "clarifying", messages: updated })
-    } else if (!data.ready && data.answer) {
-      setPanelState({ kind: "text_answer", answer: data.answer, sources: data.sources })
-    } else {
-      // Fallback: show as clarifying with whatever came back
-      const updated: ConvMessage[] = [...priorMessages, {
-        role: "assistant",
-        text: data.answer ?? data.question ?? "Could not process that request.",
-      }]
-      setMessages(updated)
-      setPanelState({ kind: "clarifying", messages: updated })
-    }
-  }
-
-  function handlePin() {
-    if (panelState.kind === "dashboard") {
-      router.push(`/theguard/glens/${panelState.sessionId}`)
-      setOpen(false)
-    }
+  function pinSession(sid: string) {
+    router.push(`/theguard/glens/${sid}`)
+    setOpen(false)
   }
 
   if (!isGuardPage || !glensEnabled) return null
+
+  const suggestions = getSuggestions(pathname ?? "")
+  const hasThread = messages.length > 0
 
   return (
     <>
@@ -358,353 +440,147 @@ export function GLensPanel() {
       {open && (
         <div
           onClick={() => setOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.25)",
-            zIndex: 1000,
-          }}
+          style={{ position: "fixed", inset: 0, zIndex: 998, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(2px)" }}
         />
       )}
 
-      {/* Slide-in panel */}
-      <div
-        role="dialog"
-        aria-label="GLens analytics panel"
-        aria-modal="true"
-        style={{
+      {/* Panel */}
+      {open && (
+        <div style={{
           position: "fixed",
           top: 0,
           right: 0,
           bottom: 0,
-          width: 420,
+          width: 440,
+          zIndex: 999,
           background: "var(--surface)",
           borderLeft: "1px solid var(--border)",
-          boxShadow: "var(--shadow-lg)",
-          zIndex: 1001,
+          boxShadow: "var(--shadow-xl)",
           display: "flex",
           flexDirection: "column",
-          transform: open ? "translateX(0)" : "translateX(100%)",
-          transition: "transform 0.22s cubic-bezier(.4,0,.2,1)",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
+          overflow: "hidden",
+        }}>
+
+          {/* Header */}
+          <div style={{
             display: "flex",
             alignItems: "center",
-            padding: "14px 16px",
+            justifyContent: "space-between",
+            padding: "14px 16px 12px",
             borderBottom: "1px solid var(--border)",
-            gap: 10,
-          }}
-        >
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--accent)", letterSpacing: "-.01em" }}>
-            GLens
-          </span>
-          <span style={{ fontSize: 11, color: "var(--text-muted)", flex: 1 }}>
-            Guard analytics
-          </span>
-          {panelState.kind !== "empty" && panelState.kind !== "history" && (
-            <button
-              onClick={startNewConversation}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                padding: "4px 10px",
-                borderRadius: "var(--r-btn)",
-                border: "1px solid var(--border-2)",
-                background: "transparent",
-                color: "var(--text-2)",
-                cursor: "pointer",
-              }}
-            >
-              New
-            </button>
-          )}
-          <button
-            onClick={() => setOpen(false)}
-            aria-label="Close GLens panel"
-            style={{
-              fontSize: 16,
-              lineHeight: 1,
-              padding: "4px 8px",
-              borderRadius: "var(--r-btn)",
-              border: "none",
-              background: "transparent",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
-          {error && (
-            <div
-              style={{
-                padding: "10px 14px",
-                marginBottom: 12,
-                background: "var(--err-bg)",
-                border: "1px solid var(--err-bd)",
-                borderRadius: "var(--r-card)",
-                fontSize: 13,
-                color: "var(--err)",
-              }}
-            >
-              {error}
+            flexShrink: 0,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "var(--accent-text)" }}>GLens</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Guard analytics</span>
             </div>
-          )}
-
-          {loading && (
-            <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 0" }}>
-              Thinking...
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={startNew}
+                style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-2)", cursor: "pointer" }}
+              >
+                New
+              </button>
+              <button
+                onClick={() => setOpen(false)}
+                style={{ fontSize: 16, padding: "4px 8px", borderRadius: 6, border: "none", background: "transparent", color: "var(--text-muted)", cursor: "pointer", lineHeight: 1 }}
+              >
+                ×
+              </button>
             </div>
-          )}
+          </div>
 
-          {!loading && panelState.kind === "history" && (
-            <HistoryState
-              sessions={panelState.sessions}
-              onNew={startNewConversation}
+          {/* History (collapsed when thread active) */}
+          {showHistory && sessions.length > 0 && (
+            <HistoryList
+              sessions={sessions}
               onRestore={restoreSession}
               onDelete={deleteSession}
+              onNew={startNew}
             />
           )}
 
-          {!loading && panelState.kind === "empty" && (
-            <EmptyState suggestions={getSuggestions(pathname ?? "")} onSend={sendMessage} />
-          )}
+          {/* Thread */}
+          <div
+            ref={threadRef}
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "16px 14px 8px",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Empty state */}
+            {!hasThread && (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: 12 }}>
+                <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", paddingBottom: 8 }}>
+                  Ask anything about your governance data
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+                  {suggestions.map(s => (
+                    <button
+                      key={s}
+                      onClick={() => sendMessage(s)}
+                      style={{
+                        fontSize: 12, padding: "6px 12px", borderRadius: 20,
+                        border: "1px solid var(--border)", background: "var(--surface-2)",
+                        color: "var(--text-2)", cursor: "pointer",
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-          {!loading && panelState.kind === "clarifying" && (
-            <ClarifyingState messages={panelState.messages} />
-          )}
+            {/* Messages */}
+            {messages.map((msg, i) => {
+              if (msg.role === "user") return <UserBubble key={i} text={msg.text} />
+              if (msg.kind === "loading") return <LoadingBubble key={i} />
+              if (msg.kind === "question") return <QuestionBubble key={i} text={msg.text} />
+              if (msg.kind === "dashboard") return (
+                <DashboardBubble
+                  key={i}
+                  spec={msg.spec}
+                  sessionId={msg.sessionId}
+                  authFetch={authFetch}
+                  onPin={pinSession}
+                />
+              )
+              return null
+            })}
+          </div>
 
-          {!loading && panelState.kind === "dashboard" && (
-            <GlensDashboard
-              spec={panelState.spec}
-              sessionId={panelState.sessionId}
-              compact={true}
-              authFetch={authFetch}
-              onPin={handlePin}
-            />
-          )}
-
-          {!loading && panelState.kind === "text_answer" && (
-            <TextAnswerState answer={panelState.answer} sources={panelState.sources} />
-          )}
-        </div>
-
-        {/* Footer input — shown in clarifying, dashboard, text_answer states */}
-        {(panelState.kind === "clarifying" ||
-          panelState.kind === "dashboard" ||
-          panelState.kind === "text_answer") && (
-          <PanelInput
-            placeholder="Follow-up question..."
+          {/* Input */}
+          <ChatInput
             onSubmit={sendMessage}
             disabled={loading}
+            placeholder={hasThread ? "Follow up…" : "Ask about your governance data…"}
           />
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Cmd+K hint — shown when closed on guard pages and GLens is installed */}
-      {!open && glensEnabled && (
+      {/* Cmd+K hint */}
+      {!open && (
         <button
           onClick={() => setOpen(true)}
           title="Open GLens (Cmd+K)"
           style={{
-            position: "fixed",
-            bottom: 24,
-            right: 24,
-            zIndex: 999,
-            fontSize: 11,
-            fontWeight: 700,
-            padding: "7px 13px",
-            borderRadius: "var(--r-btn)",
-            border: "1px solid var(--border-2)",
-            background: "var(--surface)",
-            color: "var(--text-2)",
-            boxShadow: "var(--shadow-md)",
-            cursor: "pointer",
-            letterSpacing: ".02em",
+            position: "fixed", bottom: 24, right: 24, zIndex: 999,
+            fontSize: 11, fontWeight: 700, padding: "7px 13px",
+            borderRadius: "var(--r-btn)", border: "1px solid var(--border-2)",
+            background: "var(--surface)", color: "var(--text-2)",
+            cursor: "pointer", boxShadow: "var(--shadow)",
+            display: "flex", alignItems: "center", gap: 6,
           }}
         >
-          GLens <kbd style={{ fontSize: 10, marginLeft: 4, opacity: 0.7 }}>⌘K</kbd>
+          <span style={{ color: "var(--accent-text)" }}>✦</span>
+          GLens
+          <kbd style={{ fontSize: 10, opacity: 0.6, fontFamily: "inherit" }}>⌘K</kbd>
         </button>
       )}
     </>
-  )
-}
-
-// ─── State views ──────────────────────────────────────────────────────────────
-
-function HistoryState({
-  sessions,
-  onNew,
-  onRestore,
-  onDelete,
-}: {
-  sessions: GLensSession[]
-  onNew: () => void
-  onRestore: (id: string) => void
-  onDelete: (id: string) => void
-}) {
-  return (
-    <div>
-      <button
-        onClick={onNew}
-        style={{
-          width: "100%",
-          fontSize: 13,
-          fontWeight: 600,
-          padding: "10px 14px",
-          borderRadius: "var(--r-btn)",
-          border: "1px solid var(--accent)",
-          background: "var(--accent-weak)",
-          color: "var(--accent-text)",
-          cursor: "pointer",
-          marginBottom: 16,
-          textAlign: "left",
-        }}
-      >
-        + New conversation
-      </button>
-      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>
-        Recent sessions
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {sessions.map(s => (
-          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <button
-              onClick={() => onRestore(s.id)}
-              style={{
-                flex: 1,
-                textAlign: "left",
-                padding: "10px 12px",
-                borderRadius: "var(--r-card)",
-                border: "1px solid var(--border)",
-                background: "var(--surface-2)",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                minWidth: 0,
-              }}
-            >
-              <span style={{ flex: 1, fontSize: 13, color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {s.title}
-              </span>
-              {s.has_dashboard && (
-                <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "var(--accent-weak)", color: "var(--accent-text)", flexShrink: 0 }}>
-                  dashboard
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => onDelete(s.id)}
-              title="Delete session"
-              style={{ flexShrink: 0, padding: "6px 8px", borderRadius: "var(--r-btn)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 13, lineHeight: 1 }}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function EmptyState({
-  suggestions,
-  onSend,
-}: {
-  suggestions: string[]
-  onSend: (text: string) => void
-}) {
-  return (
-    <div>
-      <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--text)", marginBottom: 6, marginTop: 8 }}>
-        What do you want to see?
-      </h2>
-      <p style={{ fontSize: 13, color: "var(--text-3)", marginBottom: 20 }}>
-        Ask a question or pick a suggestion below.
-      </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
-        {suggestions.map(s => (
-          <button
-            key={s}
-            onClick={() => onSend(s)}
-            className="chip"
-            style={{ textAlign: "left", fontSize: 13, padding: "9px 14px" }}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-      <PanelInput placeholder="Or type your own question..." onSubmit={onSend} />
-    </div>
-  )
-}
-
-function ClarifyingState({ messages }: { messages: ConvMessage[] }) {
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {messages.map((m, i) => (
-        <div
-          key={`${m.role}-${i}`}
-          style={{
-            alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-            maxWidth: "85%",
-            padding: "10px 14px",
-            borderRadius: "var(--r-card)",
-            background: m.role === "user" ? "var(--accent)" : "var(--surface-2)",
-            color: m.role === "user" ? "#fff" : "var(--text)",
-            border: m.role === "user" ? "none" : "1px solid var(--border)",
-            fontSize: 13,
-            lineHeight: 1.5,
-          }}
-        >
-          {m.text}
-        </div>
-      ))}
-      <div ref={bottomRef} />
-    </div>
-  )
-}
-
-function TextAnswerState({ answer, sources }: { answer: string; sources?: string[] }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 14,
-          color: "var(--text)",
-          lineHeight: 1.6,
-          marginBottom: sources && sources.length > 0 ? 16 : 0,
-        }}
-      >
-        {answer}
-      </div>
-      {sources && sources.length > 0 && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
-            Sources
-          </div>
-          <ul style={{ margin: 0, padding: "0 0 0 16px" }}>
-            {sources.map((src) => (
-              <li key={src} style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 4 }}>
-                {src}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
   )
 }
