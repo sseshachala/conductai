@@ -108,8 +108,11 @@ async def glens_chat(
     messages.append({"role": "assistant", "content": raw})
     session.messages = json.dumps(messages)
 
+    spec = None
     if parsed.get("ready"):
-        session.render_spec = raw
+        month = parsed.get("month", "")
+        spec = _build_spec(parsed.get("title", "Guard Overview"), month)
+        session.render_spec = json.dumps(spec)
         session.title = parsed.get("title", session.title)[:60]
 
     session.updated_at = datetime.now(timezone.utc)
@@ -121,7 +124,28 @@ async def glens_chat(
         "session_id": str(session.id),
         "ready": parsed.get("ready", False),
         "question": parsed.get("question"),
-        "spec": parsed if parsed.get("ready") else None,
+        "spec": spec,
+    }
+
+
+def _build_spec(title: str, month: str) -> dict:
+    """Build a known-good render spec — never let the model generate field names."""
+    spend_endpoint = f"/guard/spend{f'?month={month}' if month else ''}"
+    return {
+        "title": title,
+        "kpis": [
+            {"label": "Events Today",      "endpoint": spend_endpoint, "field": "events_today"},
+            {"label": "Blocks Today",       "endpoint": spend_endpoint, "field": "blocked_today"},
+            {"label": "Total Cost (month)", "endpoint": spend_endpoint, "field": "total_cost_usd"},
+            {"label": "Active Developers",  "endpoint": spend_endpoint, "field": "active_developers"},
+        ],
+        "charts": [
+            {"type": "bar", "title": "Cost by AI Tool",   "endpoint": spend_endpoint, "field": "by_ai_tool",   "x": "ai_tool",    "y": "cost_usd"},
+            {"type": "bar", "title": "Cost by Developer", "endpoint": spend_endpoint, "field": "by_developer", "x": "user_email", "y": "cost_usd"},
+        ],
+        "tables": [
+            {"title": "Recent Blocks", "endpoint": "/guard/events", "params": {"decision": "blocked", "limit": 20}},
+        ],
     }
 
 
