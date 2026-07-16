@@ -1818,6 +1818,31 @@ def test_trigger(
 
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
+
+    # Guard policy check — enforced regardless of caller (MCP, CLI, canvas, HTTP)
+    try:
+        import uuid as _uuid
+        from app.modules.guard.policy_engine import compute_policy
+        from app.modules.guard.routers.proxy import _is_proxy_rule
+        _rules = compute_policy(db, _uuid.UUID(workspace_id), "proxy")
+        _input_text = str(workflow_id)
+        for _r in _rules:
+            if _is_proxy_rule(_r):
+                continue  # proxy-only rules don't apply to tool dispatch
+            import re as _re
+            _pat = _r.get("match_pattern")
+            if _pat and not _re.search(_pat, _input_text, _re.IGNORECASE):
+                continue
+            _mt = (_r.get("match_tool") or "*").lower()
+            if _mt not in ("*", "workflow"):
+                continue
+            if (_r.get("action") or "audit").lower() == "block":
+                raise HTTPException(status_code=403, detail=f"[ConductGuard] {_r.get('message') or _r.get('rule_id')}")
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # ponytail: fail-open — Guard engine error must never block a run
+
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
         Workflow.workspace_id == workspace_id,
