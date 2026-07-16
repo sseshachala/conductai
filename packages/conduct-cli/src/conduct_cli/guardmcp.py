@@ -45,6 +45,7 @@ _TOOLS = [
             "number of active rules, and the policy version timestamp."
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
         "name": "guard_check",
@@ -75,6 +76,7 @@ _TOOLS = [
             },
             "required": ["tool_name"],
         },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
         "name": "guard_sync",
@@ -83,6 +85,7 @@ _TOOLS = [
             "Run this after your security team updates policies."
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
+        "annotations": {"idempotentHint": True, "openWorldHint": True},
     },
     {
         "name": "guard_enable",
@@ -93,6 +96,7 @@ _TOOLS = [
             "should paste into their Claude.ai Project settings to make guard_check fire automatically."
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
+        "annotations": {"idempotentHint": True, "openWorldHint": False},
     },
     {
         "name": "guard_activity",
@@ -116,6 +120,7 @@ _TOOLS = [
             },
             "required": ["summary"],
         },
+        "annotations": {"openWorldHint": False},
     },
 ]
 
@@ -468,10 +473,13 @@ def main() -> None:
             _ok(msg_id, {"tools": _TOOLS})
 
         elif method == "tools/call":
-            tool_name  = params.get("name", "")
-            arguments  = params.get("arguments") or {}
-            text       = _dispatch_tool(tool_name, arguments, workspace_id, token, ai_tool)
-            _ok(msg_id, {"content": [{"type": "text", "text": text}]})
+            tool_name = params.get("name", "")
+            arguments = params.get("arguments") or {}
+            try:
+                text = _dispatch_tool(tool_name, arguments, workspace_id, token, ai_tool)
+                _ok(msg_id, {"content": [{"type": "text", "text": text}]})
+            except Exception as exc:
+                _ok(msg_id, {"content": [{"type": "text", "text": str(exc)}], "isError": True})
 
         elif method == "ping":
             _ok(msg_id, {})
