@@ -25,7 +25,6 @@ export default function GLensFullPage() {
   const { authFetch, workspaceId } = useAuthFetch()
 
   const [spec, setSpec] = useState<GlensDashboardSpec | null>(null)
-  const [tableRows, setTableRows] = useState<Record<string, unknown>[]>([])
   const [loadingSpec, setLoadingSpec] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -69,24 +68,6 @@ export default function GLensFullPage() {
         }
 
         setSpec(data.spec)
-
-        // Fetch table rows if spec includes a table
-        if (data.spec.table?.endpoint) {
-          try {
-            const tableRes = await authFetch(
-              `${base}${data.spec.table.endpoint}?limit=50`,
-              { signal: controller.signal },
-            )
-            if (tableRes.ok) {
-              const raw: unknown = await tableRes.json()
-              if (Array.isArray(raw)) {
-                setTableRows(raw as Record<string, unknown>[])
-              }
-            }
-          } catch {
-            // Table data is non-critical; continue without it
-          }
-        }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return
         setError("Network error loading dashboard.")
@@ -186,7 +167,6 @@ export default function GLensFullPage() {
           <GlensDashboard
             spec={spec}
             sessionId={sessionId}
-            tableRows={tableRows}
             compact={false}
             authFetch={authFetch}
           />

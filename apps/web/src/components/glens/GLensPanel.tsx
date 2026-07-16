@@ -325,23 +325,7 @@ export function GLensPanel() {
   ) {
     if (data.ready && data.spec) {
       // Fetch table rows if spec includes a table
-      let tableRows: Record<string, unknown>[] = []
-      if (data.spec.table?.endpoint) {
-        try {
-          const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-          const tableRes = await authFetch(
-            `${base}${data.spec.table.endpoint}?limit=5`,
-            { signal: controller.signal },
-          )
-          if (tableRes.ok) {
-            const raw: unknown = await tableRes.json()
-            if (Array.isArray(raw)) tableRows = raw as Record<string, unknown>[]
-          }
-        } catch {
-          // table data is non-critical; continue without it
-        }
-      }
-      setPanelState({ kind: "dashboard", sessionId: data.session_id, spec: data.spec, tableRows })
+      setPanelState({ kind: "dashboard", sessionId: data.session_id, spec: data.spec, tableRows: [] })
     } else if (!data.ready && data.question) {
       const updated: ConvMessage[] = [...priorMessages, { role: "assistant", text: data.question }]
       setMessages(updated)
@@ -500,7 +484,6 @@ export function GLensPanel() {
             <GlensDashboard
               spec={panelState.spec}
               sessionId={panelState.sessionId}
-              tableRows={panelState.tableRows}
               compact={true}
               authFetch={authFetch}
               onPin={handlePin}
