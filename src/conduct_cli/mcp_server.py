@@ -258,7 +258,15 @@ def _dispatch_tool(
     if name == "conduct_list_playbooks":
         return _handle_list_playbooks(server, workspace_id, token, api_key)
     if name == "conduct_run_workflow":
-        return _handle_run_workflow(arguments, server, workspace_id, token, api_key)
+        try:
+            from conduct_cli.hooks.pretooluse import check_policy
+            _, action, rule_id, message = check_policy("workflow", arguments)
+            if action == "block":
+                return json.dumps({"decision": "BLOCKED", "rule": rule_id, "message": f"[ConductGuard] {message}"})
+            warn_prefix = f"[ConductGuard] WARNING: {message}\n\n" if action == "warn" else ""
+        except Exception:
+            warn_prefix = ""
+        return warn_prefix + _handle_run_workflow(arguments, server, workspace_id, token, api_key)
     if name == "conduct_get_run":
         return _handle_get_run(arguments, server, token, api_key)
     if name == "conduct_guard_status":
