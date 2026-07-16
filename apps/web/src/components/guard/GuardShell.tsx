@@ -5,7 +5,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import type { GuardRole } from "@/hooks/useGuardRole"
-import { GLensPanel } from "@/components/glens/GLensPanel"
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 
@@ -76,7 +75,6 @@ export function GuardShell({
 
   return (
     <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
-      <GLensPanel />
       {/* Page head */}
       <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
