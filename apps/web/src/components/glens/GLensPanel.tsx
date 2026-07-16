@@ -274,6 +274,7 @@ export function GLensPanel() {
   const abortRef = useRef<AbortController | null>(null)
   const threadRef = useRef<HTMLDivElement>(null)
   const isGuardPage = pathname?.startsWith("/theguard")
+  const SESSION_KEY = "glens_active_session"
 
   // ─── Install gate ──────────────────────────────────────────────────────────
 
@@ -302,16 +303,26 @@ export function GLensPanel() {
     return () => window.removeEventListener("keydown", onKey)
   }, [isGuardPage, glensEnabled])
 
-  // ─── Load history when panel opens ────────────────────────────────────────
+  // ─── Load history + restore last session when panel opens ─────────────────
 
   useEffect(() => {
     if (!open || !workspaceId) return
     const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     authFetch(`${base}/glens/sessions`)
       .then(r => r.ok ? r.json() : [])
-      .then(setSessions)
+      .then((list: GLensSession[]) => {
+        setSessions(list)
+        // Auto-restore last active session if no thread yet
+        if (messages.length === 0) {
+          const lastId = sessionStorage.getItem(SESSION_KEY)
+          if (lastId && list.find(s => s.id === lastId)) {
+            restoreSession(lastId)
+          }
+        }
+      })
       .catch(() => {})
-  }, [open, workspaceId, authFetch])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, workspaceId])
 
   // ─── Scroll thread to bottom on new messages ──────────────────────────────
 
@@ -327,7 +338,8 @@ export function GLensPanel() {
     abortRef.current?.abort()
     setSessionId(null)
     setMessages([])
-    setShowHistory(false)
+    setShowHistory(true)
+    sessionStorage.removeItem(SESSION_KEY)
   }
 
   async function deleteSession(id: string) {
@@ -347,12 +359,24 @@ export function GLensPanel() {
       const data = await res.json()
       setSessionId(data.id)
 
-      const thread: Message[] = (data.messages ?? []).map((m: { role: string; content: string }) => ({
-        role: m.role as "user" | "assistant",
-        ...(m.role === "user"
-          ? { text: m.content }
-          : { kind: "question", text: m.content }),
-      }))
+      const thread: Message[] = []
+      for (const m of (data.messages ?? [])) {
+        if (m.role === "user") {
+          thread.push({ role: "user", text: m.content })
+        } else {
+          // Assistant messages are raw JSON — parse and show only the question text
+          try {
+            const parsed = JSON.parse(m.content)
+            if (parsed.ready === false && parsed.question) {
+              thread.push({ role: "assistant", kind: "question", text: parsed.question })
+            }
+            // ready:true messages are skipped — dashboard shown below
+          } catch {
+            // non-JSON fallback (shouldn't happen)
+            thread.push({ role: "assistant", kind: "question", text: m.content })
+          }
+        }
+      }
 
       if (data.spec) {
         thread.push({ role: "assistant", kind: "dashboard", spec: data.spec, sessionId: data.id })
@@ -395,6 +419,7 @@ export function GLensPanel() {
 
       const data = await res.json()
       setSessionId(data.session_id)
+      sessionStorage.setItem(SESSION_KEY, data.session_id)
 
       if (data.ready && data.spec) {
         setMessages(prev => [
