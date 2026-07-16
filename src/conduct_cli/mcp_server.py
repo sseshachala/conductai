@@ -343,8 +343,11 @@ def main() -> None:
         elif method == "tools/call":
             tool_name = params.get("name", "")
             arguments = params.get("arguments") or {}
-            text      = _dispatch_tool(tool_name, arguments, server, workspace_id, token, api_key)
-            _ok(msg_id, {"content": [{"type": "text", "text": text}]})
+            try:
+                text = _dispatch_tool(tool_name, arguments, server, workspace_id, token, api_key)
+                _ok(msg_id, {"content": [{"type": "text", "text": text}]})
+            except Exception as exc:
+                _ok(msg_id, {"content": [{"type": "text", "text": str(exc)}], "isError": True})
 
         elif method == "ping":
             _ok(msg_id, {})
