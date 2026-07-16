@@ -18,7 +18,9 @@ from app.core.database import get_db
 from app.models.workspace_config import WorkspaceConfig
 from app.modules.glens.inference import chat as qwen_chat
 from app.modules.glens.models import GlensChatSession
-from app.modules.glens.prompts import build_system_prompt, KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
+from app.modules.glens.prompts import build_system_prompt, build_context_messages, KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
+from app.modules.guard.models import GuardAuditEvent
+from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/glens", tags=["glens"])
@@ -91,7 +93,10 @@ async def glens_chat(
     # ponytail: cap at system + last 20 turns to prevent unbounded growth
     system = [m for m in messages if m["role"] == "system"]
     non_system = [m for m in messages if m["role"] != "system"]
-    inference_messages = system + non_system[-20:]
+
+    # Inject live Guard snapshot so model can answer factual questions
+    guard_ctx = _fetch_guard_context(db, workspace_id)
+    inference_messages = system + build_context_messages(guard_ctx) + non_system[-20:]
 
     try:
         raw = await asyncio.to_thread(qwen_chat, inference_messages, session_id=str(session.id))
@@ -131,6 +136,42 @@ async def glens_chat(
         "question": parsed.get("question"),
         "spec": spec,
     }
+
+
+def _fetch_guard_context(db: Session, workspace_id: str) -> dict:
+    try:
+        spend = _get_spend_summary_inner(db, workspace_id, None)
+        spend_data = {
+            "events_today": spend.events_today,
+            "blocked_today": spend.blocked_today,
+            "total_cost_usd": round(spend.total_cost_usd, 2),
+            "active_developers": spend.active_developers,
+            "tokens_saved_today": spend.tokens_saved_today,
+            "sessions": spend.sessions,
+            "hook_sessions": spend.hook_sessions,
+            "by_ai_tool": [{"tool": t.ai_tool, "cost_usd": round(t.cost_usd, 2)} for t in spend.by_ai_tool],
+            "by_developer": [{"email": d.email, "cost_usd": round(d.cost_usd, 2)} for d in spend.by_developer],
+        }
+    except Exception:
+        spend_data = {}
+
+    try:
+        org_ws = _org_ws_subquery(db, workspace_id)
+        rows = (
+            db.query(GuardAuditEvent)
+            .filter(GuardAuditEvent.workspace_id.in_(org_ws))
+            .order_by(GuardAuditEvent.ts.desc())
+            .limit(20)
+            .all()
+        )
+        events_data = [
+            {"ts": e.ts.isoformat(), "decision": e.decision, "user_email": e.user_email, "ai_tool": e.ai_tool, "rule_id": e.rule_id}
+            for e in rows
+        ]
+    except Exception:
+        events_data = []
+
+    return {"spend": spend_data, "recent_events": events_data}
 
 
 def _build_spec(title: str, month: str, kpi_picks: list, chart_picks: list, table_picks: list) -> dict:
