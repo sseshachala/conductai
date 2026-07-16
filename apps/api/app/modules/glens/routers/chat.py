@@ -3,6 +3,7 @@ POST /glens/chat            — conversational governance reporting
 GET  /glens/sessions        — list persisted chat sessions
 GET  /glens/sessions/{id}   — restore a session
 """
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
+from app.models.workspace_config import WorkspaceConfig
 from app.modules.glens.inference import chat as qwen_chat
 from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import build_system_prompt
@@ -86,8 +88,13 @@ async def glens_chat(
     messages = json.loads(session.messages)
     messages.append({"role": "user", "content": req.message})
 
+    # ponytail: cap at system + last 20 turns to prevent unbounded growth
+    system = [m for m in messages if m["role"] == "system"]
+    non_system = [m for m in messages if m["role"] != "system"]
+    inference_messages = system + non_system[-20:]
+
     try:
-        raw = qwen_chat(messages, session_id=str(session.id))
+        raw = await asyncio.to_thread(qwen_chat, inference_messages, session_id=str(session.id))
     except Exception as e:
         logger.error("glens.chat.inference_failed", error=str(e))
         raise HTTPException(status_code=503, detail="Inference unavailable — model may be cold, retry in 30s")
@@ -116,6 +123,56 @@ async def glens_chat(
         "question": parsed.get("question"),
         "spec": parsed if parsed.get("ready") else None,
     }
+
+
+_GLENS_KEY = "glens_enabled"
+
+
+def _glens_row(db: Session, ws_uuid: uuid.UUID):
+    return db.query(WorkspaceConfig).filter(
+        WorkspaceConfig.workspace_id == ws_uuid,
+        WorkspaceConfig.key == _GLENS_KEY,
+    ).first()
+
+
+@router.get("/status")
+def glens_status(
+    _: str = Depends(require_permission("guard.activity.view_own")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    ws_uuid = _parse_workspace_id(workspace_id)
+    return {"installed": _glens_row(db, ws_uuid) is not None}
+
+
+@router.post("/install", status_code=201)
+def glens_install(
+    _: str = Depends(require_permission("guard.activity.view_own")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    ws_uuid = _parse_workspace_id(workspace_id)
+    if not _glens_row(db, ws_uuid):
+        db.add(WorkspaceConfig(workspace_id=ws_uuid, key=_GLENS_KEY, value="true"))
+        db.commit()
+    log.info("glens.installed", workspace_id=workspace_id)
+    return {"installed": True}
+
+
+@router.delete("/install")
+def glens_uninstall(
+    _: str = Depends(require_permission("guard.activity.view_own")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    ws_uuid = _parse_workspace_id(workspace_id)
+    db.query(WorkspaceConfig).filter(
+        WorkspaceConfig.workspace_id == ws_uuid,
+        WorkspaceConfig.key == _GLENS_KEY,
+    ).delete(synchronize_session=False)
+    db.commit()
+    log.info("glens.uninstalled", workspace_id=workspace_id)
+    return {"installed": False}
 
 
 @router.get("/sessions", response_model=list[SessionOut])

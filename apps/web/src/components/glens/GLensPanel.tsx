@@ -150,11 +150,23 @@ export function GLensPanel() {
   const [messages, setMessages] = useState<ConvMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [glensEnabled, setGlensEnabled] = useState(false)
 
   // Abort controller ref — cancels in-flight fetches on unmount or superseding request
   const abortRef = useRef<AbortController | null>(null)
 
   const isGuardPage = pathname?.startsWith("/theguard")
+
+  // ─── Check GLens install status ───────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isGuardPage) return
+    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    authFetch(`${base}/glens/status`)
+      .then(r => r.ok ? r.json() : { installed: false })
+      .then(d => setGlensEnabled(d.installed))
+      .catch(() => setGlensEnabled(false))
+  }, [isGuardPage, authFetch])
 
   // ─── Abort in-flight requests on unmount ──────────────────────────────────
 
@@ -167,7 +179,7 @@ export function GLensPanel() {
   // ─── Cmd+K / Escape listener ──────────────────────────────────────────────
 
   useEffect(() => {
-    if (!isGuardPage) return
+    if (!isGuardPage || !glensEnabled) return
 
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -181,7 +193,7 @@ export function GLensPanel() {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isGuardPage])
+  }, [isGuardPage, glensEnabled])
 
   // ─── When panel opens, load session history ───────────────────────────────
 
@@ -337,7 +349,7 @@ export function GLensPanel() {
     }
   }
 
-  if (!isGuardPage) return null
+  if (!isGuardPage || !glensEnabled) return null
 
   return (
     <>
@@ -494,8 +506,8 @@ export function GLensPanel() {
         )}
       </div>
 
-      {/* Cmd+K hint — shown when closed on guard pages */}
-      {!open && (
+      {/* Cmd+K hint — shown when closed on guard pages and GLens is installed */}
+      {!open && glensEnabled && (
         <button
           onClick={() => setOpen(true)}
           title="Open GLens (Cmd+K)"
