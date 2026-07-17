@@ -163,6 +163,10 @@ async def glens_chat(
         "ready": spec is not None,
         "question": answer_text,
         "spec": spec,
+        "page_kind": parsed.get("page_kind"),
+        "page_data": parsed.get("data"),
+        "rows": parsed.get("rows"),
+        "warning": parsed.get("warning"),
     }
 
 

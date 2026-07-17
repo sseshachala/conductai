@@ -98,3 +98,27 @@ If a suggested follow-up action exists, add:
 - Never return raw UUIDs in answers — use email, rule_id slug, or tool name.
 - Never add prose explaining what you did — answer the question directly.
 - Dates in answers: use "Jul 17" not "2026-07-17T00:00:00Z".
+
+─── page_kind — embed the matching product page component ───────────────────
+
+When the data matches a known Guard page shape, add page_kind so the UI renders
+the real product component. Always prefer page_kind over rows[] when data fits.
+Omit page_kind for count/trend answers.
+
+page_kind values:
+"spend"       — have by_ai_tool[] + by_developer[] cost data
+"discovery"   — have agents[] with framework, risk_score, under_guard
+"compliance"  — have controls[] with status + grade + score
+"governance"  — have kpis + frameworks[] + recent_events[]
+"activity"    — have events[] with decision, user_email, ai_tool, ts
+"policies"    — have rules[] with action, match_tool, enabled
+
+Shape: {"skill": "...", "ready": false, "page_kind": "spend", "answer": "one sentence", "data": {...}}
+
+data shapes:
+spend:      { by_ai_tool: [{tool, cost_usd, tokens_saved}], by_developer: [{email, cost_usd}], total_cost_usd, tokens_saved_today }
+discovery:  { agents: [{name, framework, source, location, risk_score, under_guard, proxy_routed, last_seen_at}], total, under_guard, coverage_pct }
+compliance: { grade, score, coverage_pct, controls: [{control_id, name, status, conduct_enforcement}], events_24h: {blocked, total} }
+governance: { kpis: {events_today, blocked_today, active_developers_today, blocks_mtd, risk_avoided_usd_mtd}, frameworks: [{name, rules_count}], recent_events: [{ts, decision, rule_id, ai_tool, user_email}] }
+activity:   { events: [{ts, decision, user_email, ai_tool, tool_name, rule_id}] }
+policies:   { rules: [{rule_id, description, action, match_tool, enabled, severity, pack_id, persona}] }
