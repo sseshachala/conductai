@@ -16,9 +16,10 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
 from app.models.workspace_config import WorkspaceConfig
-from app.modules.glens.inference import chat as qwen_chat
+from app.modules.glens.agent import Agent
+from app.modules.glens.router import route
 from app.modules.glens.models import GlensChatSession
-from app.modules.glens.prompts import build_system_prompt, build_context_messages, KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
+from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
 from app.modules.guard.models import GuardAuditEvent
 from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
 
@@ -81,7 +82,7 @@ async def glens_chat(
         session = GlensChatSession(
             workspace_id=ws_uuid,
             title=req.message[:60],
-            messages=json.dumps([{"role": "system", "content": build_system_prompt()}]),
+            messages=json.dumps([]),
         )
         db.add(session)
         db.flush()
@@ -90,31 +91,24 @@ async def glens_chat(
     messages = json.loads(session.messages)
     messages.append({"role": "user", "content": req.message})
 
-    # ponytail: cap at system + last 20 turns to prevent unbounded growth
-    system = [m for m in messages if m["role"] == "system"]
-    non_system = [m for m in messages if m["role"] != "system"]
-
-    # Inject live Guard snapshot so model can answer factual questions
+    # Route → pick skills → run agent
     guard_ctx = _fetch_guard_context(db, workspace_id)
-    inference_messages = system + build_context_messages(guard_ctx) + non_system[-20:]
-
     try:
-        raw = await asyncio.to_thread(qwen_chat, inference_messages, session_id=str(session.id))
+        skills = await asyncio.to_thread(route, req.message)
+        agent = Agent(skills)
+        parsed = await asyncio.to_thread(agent.run, messages[-20:], guard_ctx)
     except Exception as e:
         logger.error("glens.chat.inference_failed", error=str(e))
         raise HTTPException(status_code=503, detail="Inference unavailable — model may be cold, retry in 30s")
 
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("glens.chat.parse_failed", raw=raw[:200])
-        parsed = {"ready": False, "question": raw}
-
-    messages.append({"role": "assistant", "content": raw})
+    # Persist raw response as assistant turn
+    messages.append({"role": "assistant", "content": json.dumps(parsed)})
     session.messages = json.dumps(messages)
 
     spec = None
-    if parsed.get("ready"):
+    skill = parsed.get("skill", "report")
+
+    if skill == "report" and parsed.get("ready"):
         spec = _build_spec(
             title=parsed.get("title", "Guard Overview"),
             month=parsed.get("month", ""),
@@ -128,12 +122,15 @@ async def glens_chat(
     session.updated_at = datetime.now(timezone.utc)
     db.commit()
 
-    logger.info("glens.chat.complete", ready=parsed.get("ready", False))
+    # Normalize answer field across all skills
+    answer_text = parsed.get("answer") or parsed.get("question")
+    logger.info("glens.chat.complete", skill=skill, ready=bool(spec))
 
     return {
         "session_id": str(session.id),
-        "ready": parsed.get("ready", False),
-        "question": parsed.get("question"),
+        "skill": skill,
+        "ready": spec is not None,
+        "question": answer_text,
         "spec": spec,
     }
 
