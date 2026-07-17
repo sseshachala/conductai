@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from app.core.auth import get_guard_hook_auth, get_workspace_id
 from app.core.database import get_db
 from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, DiscoveryScan
+from app.modules.guard import knowledge as guard_knowledge
 
 router = APIRouter(prefix="/guard/discover", tags=["guard"])
 
@@ -86,6 +87,7 @@ class ScanOut(BaseModel):
 @router.post("/scan", status_code=201)
 def ingest_scan(
     body: ScanIn,
+    bg: BackgroundTasks,
     workspace_id: str = Depends(get_guard_hook_auth),
     db: Session = Depends(get_db),
 ):
@@ -148,6 +150,12 @@ def ingest_scan(
             ))
 
     db.commit()
+    touched = db.query(DiscoveredAgent).filter(
+        DiscoveredAgent.workspace_id == ws_uuid,
+        DiscoveredAgent.last_seen_at == now,
+    ).all()
+    for agent in touched:
+        bg.add_task(guard_knowledge.project_discovered_agent, agent, db)
     return {"scan_id": str(scan.id), "agents_found": len(agents), "guard_coverage": under_guard_count}
 
 
@@ -196,6 +204,7 @@ def list_agents(
 @router.post("/agents/{agent_id}/register", status_code=200)
 def register_agent(
     agent_id: str,
+    bg: BackgroundTasks,
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
@@ -210,6 +219,7 @@ def register_agent(
     row.under_guard = True
     row.last_seen_at = datetime.now(timezone.utc)
     db.commit()
+    bg.add_task(guard_knowledge.project_discovered_agent, row, db)
     return {"id": agent_id, "under_guard": True}
 
 
