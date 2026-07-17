@@ -165,7 +165,9 @@ async def glens_chat(
         "spec": spec,
         "page_kind": parsed.get("page_kind"),
         "page_data": parsed.get("data"),
+        "blocks": parsed.get("blocks"),
         "rows": parsed.get("rows"),
+        "columns": parsed.get("columns"),
         "warning": parsed.get("warning"),
     }
 

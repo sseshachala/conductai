@@ -5,6 +5,8 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { GlensDashboard } from "@/components/glens/GlensDashboard"
 import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
 import { GlensPageBubble } from "@/components/glens/GlensPageBubble"
+import { GenericTableBubble } from "@/components/glens/GenericTableBubble"
+import { BlocksBubble } from "@/components/glens/BlocksBubble"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +30,8 @@ type Message =
   | { role: "assistant"; kind: "loading" }
   | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string }
   | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string }
+  | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string }
+  | { role: "assistant"; kind: "table"; answer: string; columns: unknown[]; rows: unknown[]; warning?: string; skill: string }
 
 const SUGGESTIONS = [
   "Who was blocked today?",
@@ -523,6 +527,23 @@ export function GLensChatPage() {
           warning: data.warning,
           skill: data.skill ?? "report",
         }])
+      } else if (data.blocks) {
+        setMessages(prev => [...prev.slice(0, -1), {
+          role: "assistant", kind: "blocks",
+          answer: data.question ?? "",
+          blocks: data.blocks,
+          warning: data.warning,
+          skill: data.skill ?? "report",
+        }])
+      } else if (data.rows && data.columns) {
+        setMessages(prev => [...prev.slice(0, -1), {
+          role: "assistant", kind: "table",
+          answer: data.question ?? "",
+          columns: data.columns,
+          rows: data.rows,
+          warning: data.warning,
+          skill: data.skill ?? "report",
+        }])
       } else if (data.ready && data.spec) {
         setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: data.spec, sessionId: data.session_id }])
       } else {
@@ -590,6 +611,12 @@ export function GLensChatPage() {
               if (msg.kind === "loading") return <LoadingBubble key={i} />
               if (msg.kind === "answer") return <AnswerBubble key={i} text={msg.text} skill={msg.skill} />
               if (msg.kind === "dashboard") return <DashboardBubble key={i} spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} />
+              if (msg.kind === "blocks") return (
+                <BlocksBubble key={i} answer={msg.answer} blocks={msg.blocks as any} warning={msg.warning} skill={msg.skill} />
+              )
+              if (msg.kind === "table") return (
+                <GenericTableBubble key={i} answer={msg.answer} columns={msg.columns as any} rows={msg.rows as any} warning={msg.warning} skill={msg.skill} />
+              )
               if (msg.kind === "page") return (
                 <GlensPageBubble
                   key={i}
