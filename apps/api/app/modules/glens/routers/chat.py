@@ -18,11 +18,11 @@ from app.core.database import get_db
 from app.models.workspace_config import WorkspaceConfig
 from app.modules.glens.agent import Agent
 from app.modules.glens.coordinator import coordinate
+from app.modules.glens.executor import Executor
 from app.modules.glens.planner import plan
 from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
-from app.modules.guard.models import GuardAuditEvent, WorkspaceCustomRule
-from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
+from app.modules.guard.models import WorkspaceCustomRule
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/glens", tags=["glens"])
@@ -93,21 +93,18 @@ async def glens_chat(
     messages.append({"role": "user", "content": req.message})
 
     # Plan → run Agent per subtask → Coordinate
-    guard_ctx = _fetch_guard_context(db, workspace_id)
+    executor = Executor(db, workspace_id)
     try:
         subtasks = await asyncio.to_thread(plan, req.message)
-        if any(t.get("skill") == "policy" for t in subtasks):
-            guard_ctx["current_policies"] = _fetch_policies(db, workspace_id)
 
         results = []
         for subtask in subtasks:
             skill = subtask.get("skill", "report")
             agent = Agent([skill])
             sub_messages = messages[-20:].copy()
-            # Replace last user message with focused sub-question if multi-task
             if len(subtasks) > 1:
                 sub_messages = sub_messages[:-1] + [{"role": "user", "content": subtask["question"]}]
-            result = await asyncio.to_thread(agent.run, sub_messages, guard_ctx)
+            result = await asyncio.to_thread(agent.run, sub_messages, executor)
             results.append(result)
 
         parsed = coordinate(results)
@@ -168,64 +165,6 @@ async def glens_chat(
         "spec": spec,
     }
 
-
-def _fetch_guard_context(db: Session, workspace_id: str) -> dict:
-    try:
-        spend = _get_spend_summary_inner(db, workspace_id, None)
-        spend_data = {
-            "events_today": spend.events_today,
-            "blocked_today": spend.blocked_today,
-            "total_cost_usd": round(spend.total_cost_usd, 2),
-            "active_developers": spend.active_developers,
-            "tokens_saved_today": spend.tokens_saved_today,
-            "sessions": spend.sessions,
-            "hook_sessions": spend.hook_sessions,
-            "by_ai_tool": [{"tool": t.ai_tool, "cost_usd": round(t.cost_usd, 2)} for t in spend.by_ai_tool],
-            "by_developer": [{"email": d.email, "cost_usd": round(d.cost_usd, 2)} for d in spend.by_developer],
-        }
-    except Exception:
-        spend_data = {}
-
-    try:
-        org_ws = _org_ws_subquery(db, workspace_id)
-        rows = (
-            db.query(GuardAuditEvent)
-            .filter(GuardAuditEvent.workspace_id.in_(org_ws))
-            .order_by(GuardAuditEvent.ts.desc())
-            .limit(20)
-            .all()
-        )
-        events_data = [
-            {"ts": e.ts.isoformat(), "decision": e.decision, "user_email": e.user_email, "ai_tool": e.ai_tool, "rule_id": e.rule_id}
-            for e in rows
-        ]
-    except Exception:
-        events_data = []
-
-    return {"spend": spend_data, "recent_events": events_data}
-
-
-def _fetch_policies(db: Session, workspace_id: str) -> list[dict]:
-    try:
-        ws_uuid = _parse_workspace_id(workspace_id)
-        rows = db.query(WorkspaceCustomRule).filter(
-            WorkspaceCustomRule.workspace_id == ws_uuid
-        ).all()
-        return [
-            {
-                "rule_id": r.rule_id,
-                "enabled": r.enabled,
-                "persona": r.persona,
-                "action": r.body.get("action"),
-                "description": r.body.get("description"),
-                "match_tool": r.body.get("match_tool"),
-                "match_pattern": r.body.get("match_pattern"),
-                "severity": r.body.get("severity", "medium"),
-            }
-            for r in rows
-        ]
-    except Exception:
-        return []
 
 
 def _build_spec(title: str, month: str, kpi_picks: list, chart_picks: list, table_picks: list) -> dict:
