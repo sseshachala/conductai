@@ -25,7 +25,8 @@ from app.modules.guard.routers import proxy as guard_proxy
 from app.modules.guard.routers import ws as guard_ws
 from app.modules.guard.routers import signing_key as guard_signing_key
 from app.modules.guard.routers import sessions as guard_sessions
-from app.modules.guard.routers import discovery as guard_discovery\nfrom app.modules.guard.routers import memory_search as guard_memory_search
+from app.modules.guard.routers import discovery as guard_discovery
+from app.modules.guard.routers import memory_search as guard_memory_search
 from app.modules.guard.routers import verify as guard_verify
 from app.modules.glens.routers import chat as glens_chat
 from app.modules.telemetry import routes as telemetry_routes
