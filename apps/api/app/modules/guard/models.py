@@ -392,7 +392,7 @@ class GuardKnowledgeIndex(Base):
     source_kind   = Column(Text, nullable=False)   # audit_event | rule | discovered_agent
     source_id     = Column(Text, nullable=False)
     canonical_text = Column(Text, nullable=False)
-    metadata      = Column(JSONB, nullable=False, default=dict)
+    meta          = Column("metadata", JSONB, nullable=False, default=dict)
     content_hash  = Column(Text, nullable=False)
     embedding     = Column(Vector(1536), nullable=True)
     updated_at    = Column(
