@@ -161,10 +161,19 @@ async def glens_chat(
     messages = json.loads(session.messages)
     messages.append({"role": "user", "content": req.message})
 
+    # Extract last assistant answer for planner context on follow-ups
+    last_answer: str | None = None
+    prior = [m for m in messages[:-1] if m["role"] == "assistant"]
+    if prior:
+        try:
+            last_answer = json.loads(prior[-1]["content"]).get("answer", "")[:300]
+        except Exception:
+            pass
+
     # Plan → run Agent per subtask → Coordinate
     executor = Executor(db, workspace_id)
     try:
-        subtasks = await asyncio.to_thread(plan, req.message)
+        subtasks = await asyncio.to_thread(plan, req.message, last_answer)
 
         results = []
         for subtask in subtasks:
