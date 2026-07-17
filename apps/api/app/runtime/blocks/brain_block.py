@@ -25,7 +25,7 @@ from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 
 log = structlog.get_logger(__name__)
 
-_LLM_CACHE_TTL = 86400  # 24 hours
+_LLM_CACHE_TTL = 604800  # 7 days — matches state checkpoint TTL
 
 
 def _cache_key(run_id: str, block_id: str, turn: int) -> str:
