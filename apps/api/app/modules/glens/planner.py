@@ -1,9 +1,34 @@
 """GLens Planner — decomposes complex questions into ordered subtasks."""
 import json
+import re
+
+import structlog
 
 from app.modules.glens.inference import chat as qwen_chat
 
-_SKILLS = ["report", "analytics", "extract", "memory", "session", "rules", "guard_config", "spend_config", "discovery", "compliance", "governance"]
+log = structlog.get_logger(__name__)
+
+
+def _extract_json(raw: str) -> str:
+    """Strip markdown fences and extract first JSON object."""
+    raw = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    return m.group(0) if m else raw
+
+
+_SKILLS = [
+    "report",
+    "analytics",
+    "extract",
+    "memory",
+    "session",
+    "rules",
+    "guard_config",
+    "spend_config",
+    "discovery",
+    "compliance",
+    "governance",
+]
 
 _PROMPT = f"""You are a task planner for GLens, a governance analytics assistant.
 
@@ -28,6 +53,8 @@ RULES:
 - Multi-part questions → multiple subtasks, one per distinct intent
 - Preserve the user's original phrasing in each sub-question
 - Order subtasks logically (fetch before export, analyze before summarize)
+- If page context is provided, bias ambiguous questions toward the skill that best matches that Guard page
+- If conversation summary is provided, use it to resolve follow-up questions
 
 Respond with ONLY valid JSON:
 {{"subtasks": [{{"id": "1", "skill": "report", "question": "focused sub-question"}}]}}
@@ -36,24 +63,71 @@ Valid skill names: {", ".join(_SKILLS)}
 """
 
 
-def plan(question: str, last_answer: str | None = None) -> list[dict]:
+_PAGE_CONTEXT_SKILL = {
+    "activity": "governance",
+    "chat": "analytics",
+    "compliance": "compliance",
+    "discovery": "discovery",
+    "governance": "governance",
+    "policies": "rules",
+    "spend": "analytics",
+}
+
+
+def plan(
+    question: str,
+    last_answer: str | None = None,
+    page_context: str | None = None,
+    context_summary: str | None = None,
+) -> list[dict]:
     """
     Returns a list of subtasks: [{id, skill, question}]
-    Falls back to single report subtask on any failure.
+    Falls back to a page-aware single subtask on any failure.
     """
-    user_content = question
+    parts: list[str] = []
+    if page_context:
+        parts.append(f"[Current Guard page: {page_context}]")
+    if context_summary:
+        parts.append(f"[Conversation summary: {context_summary}]")
     if last_answer:
-        user_content = f"[Previous answer: {last_answer}]\n\nUser follow-up: {question}"
+        parts.append(f"[Previous answer: {last_answer}]")
+        parts.append(f"User follow-up: {question}")
+    else:
+        parts.append(question)
+    user_content = "\n\n".join(parts)
 
     messages = [
         {"role": "system", "content": _PROMPT},
         {"role": "user", "content": user_content},
     ]
+    raw = ""
     try:
         raw = qwen_chat(messages)
-        parsed = json.loads(raw)
+        parsed = json.loads(_extract_json(raw))
         subtasks = parsed.get("subtasks", [])
         valid = [t for t in subtasks if t.get("skill") in _SKILLS and t.get("question")]
-        return valid or [{"id": "1", "skill": "report", "question": question}]
-    except Exception:
-        return [{"id": "1", "skill": "report", "question": question}]
+        if valid:
+            return valid
+        log.warning("glens.planner.no_valid_subtasks", raw=raw[:200])
+    except Exception as e:
+        log.warning("glens.planner.parse_failed", error=str(e), raw=raw[:200])
+
+    q = question.lower()
+    skill = _PAGE_CONTEXT_SKILL.get(page_context or "", "analytics")
+    if any(w in q for w in ["cost", "spend", "token", "budget"]):
+        skill = "analytics"
+    elif any(w in q for w in ["block", "warn", "event", "who", "recent", "list"]):
+        skill = "governance"
+    elif any(w in q for w in ["rule", "policy", "create", "disable", "enable"]):
+        skill = "rules"
+    elif any(w in q for w in ["agent", "discover", "coverage"]):
+        skill = "discovery"
+    elif any(w in q for w in ["compliance", "grade", "owasp"]):
+        skill = "compliance"
+    elif any(w in q for w in ["memory", "worked on", "decision history"]):
+        skill = "memory"
+    elif any(w in q for w in ["session report", "autonomy", "developer productivity"]):
+        skill = "session"
+    elif any(w in q for w in ["csv", "export", "download"]):
+        skill = "extract"
+    return [{"id": "1", "skill": skill, "question": question}]

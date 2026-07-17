@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+from typing import Callable
 
 import structlog
 
@@ -43,6 +44,28 @@ def _build_system(skills: list[dict]) -> str:
     return "\n\n---\n\n".join(parts)
 
 
+def _tool_status(name: str) -> str:
+    labels = {
+        "get_spend_summary": "Checking Guard spend and usage…",
+        "get_recent_events": "Looking up recent Guard events…",
+        "get_event_count": "Counting matching Guard events…",
+        "get_sessions": "Loading Guard session data…",
+        "search_memory": "Searching team memory…",
+        "search_sessions": "Searching session reports…",
+        "list_policies": "Loading Guard policies…",
+        "get_policy": "Reading the selected Guard policy…",
+        "get_guard_config": "Checking current Guard settings…",
+        "get_budgets": "Checking Guard budgets…",
+        "get_governance_kpis": "Pulling governance KPIs…",
+        "get_framework_coverage": "Checking compliance framework coverage…",
+        "get_recent_governance_events": "Reviewing recent governance activity…",
+        "get_compliance_status": "Checking governance grade and controls…",
+        "get_discovery_summary": "Inspecting discovered agents…",
+        "search_knowledge": "Searching Guard knowledge…",
+    }
+    return labels.get(name, f"Working with {name.replace('_', ' ')}…")
+
+
 class Agent:
     def __init__(self, skill_names: list[str]):
         # presenter always loads last — owns all rendering conventions
@@ -51,7 +74,12 @@ class Agent:
         self.system = _build_system(self.skills)
         self.tools = [t for s in self.skills for t in s["tools"]]
 
-    def run(self, messages: list[dict], executor: Executor) -> dict:
+    def run(
+        self,
+        messages: list[dict],
+        executor: Executor,
+        on_event: Callable[[dict], None] | None = None,
+    ) -> dict:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         system = f"Today is {today} (UTC).\n\n{self.system}"
         loop_msgs = [{"role": "system", "content": system}] + list(messages[-20:])
@@ -75,6 +103,8 @@ class Agent:
 
             # Execute each tool call and feed results back
             for tc in msg.tool_calls:
+                if on_event:
+                    on_event({"type": "thinking", "thinking": _tool_status(tc.function.name)})
                 result = executor.call(tc.function.name, tc.function.arguments)
                 log.debug("glens.agent.tool_executed", tool=tc.function.name, round=round_num)
                 loop_msgs.append({
