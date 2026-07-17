@@ -1,0 +1,5 @@
+[
+  {"name": "get_spend_summary", "endpoint": "/guard/spend", "params": ["month"]},
+  {"name": "get_events",        "endpoint": "/guard/events", "params": ["decision", "limit", "since", "until", "rule_id"]},
+  {"name": "get_cost_trend",    "endpoint": "/guard/events/cost-trend", "params": ["period"]}
+]

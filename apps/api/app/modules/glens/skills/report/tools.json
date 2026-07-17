@@ -1,0 +1,5 @@
+[
+  {"name": "get_spend_summary", "endpoint": "/guard/spend", "params": ["month"]},
+  {"name": "get_events",        "endpoint": "/guard/events", "params": ["decision", "limit", "since", "until"]},
+  {"name": "get_sessions",      "endpoint": "/guard/spend/sessions", "params": ["limit"]}
+]
