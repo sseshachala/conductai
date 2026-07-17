@@ -231,7 +231,6 @@ async def glens_chat(
     session.updated_at = datetime.now(timezone.utc)
     db.commit()
 
-    # Normalize answer field across all skills
     answer_text = parsed.get("answer") or parsed.get("question")
     logger.info("glens.chat.complete", skill=skill, ready=bool(spec))
 
@@ -239,7 +238,7 @@ async def glens_chat(
         "session_id": str(session.id),
         "skill": skill,
         "ready": spec is not None,
-        "question": answer_text,
+        "answer": answer_text,
         "spec": spec,
         "page_kind": parsed.get("page_kind"),
         "page_data": parsed.get("data"),
