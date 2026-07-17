@@ -33,13 +33,11 @@ type Message =
   | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string }
   | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string }
 
-const SUGGESTIONS = [
+const DEFAULT_SUGGESTIONS = [
   "Who was blocked today?",
   "Cost by AI tool this month",
   "How many events today?",
   "Show recent blocks",
-  "Which rule triggered most?",
-  "Tokens saved this month",
 ]
 
 const SKILL_LABELS: Record<string, string> = {
@@ -472,6 +470,7 @@ export function GLensChatPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
+  const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS)
 
   const threadRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -483,6 +482,15 @@ export function GLensChatPage() {
     authFetch(`${base}/glens/sessions`)
       .then(r => r.ok ? r.json() : [])
       .then(setSessions)
+      .catch(() => {})
+  }, [workspaceId, authFetch, base])
+
+  // Load data-grounded opener chips
+  useEffect(() => {
+    if (!workspaceId) return
+    authFetch(`${base}/glens/opener`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.chips?.length) setSuggestions(d.chips) })
       .catch(() => {})
   }, [workspaceId, authFetch, base])
 
@@ -650,7 +658,7 @@ export function GLensChatPage() {
                 Ask about blocks, spend, sessions, team memory — build any view on demand.
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {SUGGESTIONS.map(s => (
+                {suggestions.map(s => (
                   <button
                     key={s}
                     onClick={() => sendMessage(s)}
