@@ -7,7 +7,10 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "month": {"type": "string", "description": "YYYY-MM filter, omit for all-time totals"}
+          "month": {
+            "type": "string",
+            "description": "YYYY-MM filter, omit for all-time totals"
+          }
         },
         "required": []
       }
@@ -21,11 +24,26 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "limit":    {"type": "integer", "description": "Number of events, default 20, max 100"},
-          "decision": {"type": "string",  "description": "Filter: block, warn, or audit"},
-          "since":    {"type": "string",  "description": "ISO-8601 start timestamp"},
-          "until":    {"type": "string",  "description": "ISO-8601 end timestamp"},
-          "rule_id":  {"type": "string",  "description": "Filter by rule that triggered"}
+          "limit": {
+            "type": "integer",
+            "description": "Number of events, default 20, max 100"
+          },
+          "decision": {
+            "type": "string",
+            "description": "Filter: block, warn, or audit"
+          },
+          "since": {
+            "type": "string",
+            "description": "ISO-8601 start timestamp"
+          },
+          "until": {
+            "type": "string",
+            "description": "ISO-8601 end timestamp"
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "Filter by rule that triggered"
+          }
         },
         "required": []
       }
@@ -39,7 +57,39 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "limit": {"type": "integer", "description": "Number of sessions, default 20, max 100"}
+          "limit": {
+            "type": "integer",
+            "description": "Number of sessions, default 20, max 100"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_event_count",
+      "description": "Exact count of Guard audit events matching filters \u2014 use for 'how many blocks/warns/events' questions over a date range",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "description": "blocked, warned, audited, or allowed \u2014 omit for all"
+          },
+          "since": {
+            "type": "string",
+            "description": "ISO-8601 start e.g. 2026-07-01T00:00:00Z"
+          },
+          "until": {
+            "type": "string",
+            "description": "ISO-8601 end e.g. 2026-07-31T23:59:59Z"
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "Filter by specific rule"
+          }
         },
         "required": []
       }

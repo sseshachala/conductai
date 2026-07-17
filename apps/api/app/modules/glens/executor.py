@@ -86,6 +86,29 @@ class Executor:
             for r in rows
         ]
 
+    def _tool_get_event_count(
+        self,
+        decision: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        rule_id: str | None = None,
+    ):
+        """Exact COUNT of audit events matching filters — use for 'how many X' questions."""
+        from sqlalchemy import func as sa_func
+        org_ws = _org_ws_subquery(self.db, self.workspace_id)
+        q = self.db.query(sa_func.count(GuardAuditEvent.id)).filter(
+            GuardAuditEvent.workspace_id.in_(org_ws)
+        )
+        if decision:
+            q = q.filter(GuardAuditEvent.decision == decision)
+        if rule_id:
+            q = q.filter(GuardAuditEvent.rule_id == rule_id)
+        if since:
+            q = q.filter(GuardAuditEvent.ts >= since)
+        if until:
+            q = q.filter(GuardAuditEvent.ts <= until)
+        return {"count": int(q.scalar() or 0), "decision": decision, "since": since, "until": until}
+
     # ── Memory / session semantic search ─────────────────────────────────────
 
     def _tool_search_memory(self, q: str, limit: int = 5):
