@@ -3,7 +3,7 @@ import json
 
 from app.modules.glens.inference import chat as qwen_chat
 
-_SKILLS = ["report", "analytics", "extract", "memory", "session", "policy"]
+_SKILLS = ["report", "analytics", "extract", "memory", "session", "rules", "guard_config", "spend_config"]
 
 _PROMPT = f"""You are a task planner for GLens, a governance analytics assistant.
 
@@ -14,9 +14,11 @@ SKILLS:
   report    — build a dashboard (KPIs, charts, tables)
   analytics — answer trend, comparison, aggregation questions with numbers
   extract   — export data to CSV or produce a downloadable summary
-  memory    — search team memory for decisions, policy context
-  session   — search session reports for specific agent runs
-  policy    — read, create, or update Guard policies and rules
+  memory       — search team memory for decisions, policy context
+  session      — search session reports for specific agent runs
+  rules        — read, create, or update individual Guard block/warn/audit rules
+  guard_config — configure Guard settings (enforcement mode, fail mode, persona, Slack, advisory)
+  spend_config — configure workspace, developer, and tool-level spend budgets
 
 RULES:
 - Simple questions → one subtask
