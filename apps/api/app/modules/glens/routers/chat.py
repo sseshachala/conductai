@@ -125,7 +125,7 @@ async def glens_chat(
         db.commit()
         return {
             "session_id": str(session.id),
-            "skill": "policy",
+            "skill": "rules",
             "ready": False,
             "confirm_required": True,
             "action": parsed.get("action"),
