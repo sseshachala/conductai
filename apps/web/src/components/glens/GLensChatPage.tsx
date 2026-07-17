@@ -160,6 +160,20 @@ function UserBubble({ text }: { text: string }) {
   )
 }
 
+function renderMd(text: string): React.ReactNode[] {
+  return text.split("\n").map((line, i) => {
+    // bullet: "* foo" or "- foo"
+    const bullet = line.match(/^[*-]\s+(.+)/)
+    const content = bullet ? bullet[1] : line
+    // inline **bold**
+    const parts = content.split(/(\*\*[^*]+\*\*)/).map((p, j) =>
+      p.startsWith("**") ? <strong key={j}>{p.slice(2, -2)}</strong> : p
+    )
+    if (bullet) return <div key={i} style={{ paddingLeft: 12, position: "relative" }}><span style={{ position: "absolute", left: 0 }}>•</span>{parts}</div>
+    return <div key={i} style={{ minHeight: line ? undefined : "0.6em" }}>{parts}</div>
+  })
+}
+
 function AnswerBubble({ text, skill }: { text: string; skill?: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
@@ -178,7 +192,7 @@ function AnswerBubble({ text, skill }: { text: string; skill?: string }) {
           color: "var(--text)",
           lineHeight: 1.6,
         }}>
-          {text}
+          {renderMd(text)}
         </div>
       </div>
     </div>
