@@ -6,6 +6,7 @@ from pathlib import Path
 
 import structlog
 
+from app.core.config import settings
 from app.modules.glens.executor import Executor
 from app.modules.glens.inference import chat_with_tools
 
@@ -15,8 +16,7 @@ _SKILLS_DIR = Path(__file__).parent / "skills"
 MAX_TOOL_ROUNDS = 5
 
 
-@lru_cache(maxsize=16)
-def _load_skill(name: str) -> dict:
+def _load_skill_uncached(name: str) -> dict:
     d = _SKILLS_DIR / name
     if not d.exists():
         raise ValueError(f"GLens skill '{name}' not found at {d}")
@@ -25,6 +25,15 @@ def _load_skill(name: str) -> dict:
         "prompt": (d / "prompt.txt").read_text(),
         "tools": json.loads((d / "tools.json").read_text()),
     }
+
+@lru_cache(maxsize=16)
+def _load_skill_cached(name: str) -> dict:
+    return _load_skill_uncached(name)
+
+def _load_skill(name: str) -> dict:
+    if getattr(settings, "environment", "production") != "production":
+        return _load_skill_uncached(name)
+    return _load_skill_cached(name)
 
 
 def _build_system(skills: list[dict]) -> str:
