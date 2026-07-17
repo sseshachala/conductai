@@ -14,9 +14,10 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import _verify_clerk_token, get_guard_hook_auth, require_permission
+from app.core.auth import _verify_clerk_token, get_guard_hook_auth, get_workspace_id, require_permission
 from app.core.database import get_db
 from app.modules.guard.models import SessionReport
+from app.runtime.embedding_client import create_embedding_client
 
 log = structlog.get_logger(__name__)
 
@@ -168,6 +169,16 @@ def create_session_report(
     report.report_md = body.report_md
     db.commit()
 
+    # Embed report_md in background for GLens semantic search
+    if body.report_md:
+        try:
+            client = create_embedding_client()
+            if client:
+                report.embedding = client.embed(body.report_md[:8000])
+                db.commit()
+        except Exception:
+            pass  # ponytail: embedding failure never blocks the write
+
     log.info(
         "session_report.upserted",
         report_id=str(report.id),
@@ -202,6 +213,49 @@ _HTML_404 = HTMLResponse(
     "</body></html>",
     status_code=404,
 )
+
+
+@router.get("/search")
+def search_session_reports(
+    q: str = Query(..., description="Natural language search query"),
+    limit: int = Query(default=5, ge=1, le=20),
+    _: str = Depends(require_permission("guard.activity.view_own")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    """Semantic search over session reports using pgvector."""
+    from sqlalchemy import text as sa_text
+    client = create_embedding_client()
+    if not client:
+        raise HTTPException(status_code=503, detail="Embedding service not configured")
+
+    embedding = client.embed(q[:2000])
+    rows = db.execute(
+        sa_text(
+            "SELECT id, developer_email, archetype, autonomy_score, sessions, prompts, "
+            "report_md, created_at, "
+            "(embedding <=> CAST(:vec AS vector)) AS distance "
+            "FROM session_reports "
+            "WHERE workspace_id = :workspace_id AND embedding IS NOT NULL "
+            "ORDER BY distance ASC LIMIT :limit"
+        ),
+        {"workspace_id": workspace_id, "vec": str(embedding), "limit": limit},
+    ).fetchall()
+
+    return [
+        {
+            "id": str(r.id),
+            "developer_email": r.developer_email,
+            "archetype": r.archetype,
+            "autonomy_score": r.autonomy_score,
+            "sessions": r.sessions,
+            "prompts": r.prompts,
+            "summary": (r.report_md or "")[:500],
+            "created_at": r.created_at.isoformat(),
+            "score": round(1 - r.distance, 3),
+        }
+        for r in rows
+    ]
 
 
 def _format_report_date(dt: datetime) -> str:

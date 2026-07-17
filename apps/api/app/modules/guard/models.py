@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, JSONB, UUID
+from pgvector.sqlalchemy import Vector
 
 from app.core.database import Base
 
@@ -235,6 +236,7 @@ class SessionReport(Base):
     active_days = Column(Integer, nullable=True)
     tools_json = Column(JSONB, nullable=True)
     report_md = Column(Text, nullable=True)
+    embedding = Column(Vector(1536), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
