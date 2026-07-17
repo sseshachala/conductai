@@ -19,7 +19,6 @@ from app.models.workspace_config import WorkspaceConfig
 from app.modules.glens.agent import Agent
 from app.modules.glens.coordinator import coordinate
 from app.modules.glens.planner import plan
-from app.modules.glens.router import route
 from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
 from app.modules.guard.models import GuardAuditEvent
@@ -93,15 +92,14 @@ async def glens_chat(
     messages = json.loads(session.messages)
     messages.append({"role": "user", "content": req.message})
 
-    # Route → Plan → run Agent per subtask → Coordinate
+    # Plan → run Agent per subtask → Coordinate
     guard_ctx = _fetch_guard_context(db, workspace_id)
     try:
-        skills = await asyncio.to_thread(route, req.message)
         subtasks = await asyncio.to_thread(plan, req.message)
 
         results = []
         for subtask in subtasks:
-            skill = subtask.get("skill", skills[0] if skills else "report")
+            skill = subtask.get("skill", "report")
             agent = Agent([skill])
             sub_messages = messages[-20:].copy()
             # Replace last user message with focused sub-question if multi-task
