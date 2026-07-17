@@ -4,8 +4,17 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
+from app.core.credentials import get_credential
 from app.core.database import get_db
 from app.runtime.embedding_client import create_embedding_client
+
+
+def _embedding_client_for_workspace(db, workspace_id: str):
+    env = get_credential(db, workspace_id, "env_vars")
+    return create_embedding_client(
+        openai_api_key=env.get("OPENAI_API_KEY") or env.get("openai_api_key"),
+        voyage_api_key=env.get("VOYAGE_API_KEY") or env.get("voyage_api_key"),
+    )
 
 router = APIRouter(prefix="/guard/memory", tags=["guard"])
 
@@ -19,7 +28,7 @@ def search_memory(
     db: Session = Depends(get_db),
 ):
     """Semantic search over team session memory using pgvector."""
-    client = create_embedding_client()
+    client = _embedding_client_for_workspace(db, workspace_id)
     if not client:
         raise HTTPException(status_code=503, detail="Embedding service not configured")
 
