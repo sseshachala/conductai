@@ -14,11 +14,18 @@ interface GLensSession {
   created_at: string
 }
 
+interface PolicyMapping {
+  field: string
+  column: string
+  description: string
+}
+
 type Message =
   | { role: "user"; text: string }
   | { role: "assistant"; kind: "answer"; text: string; skill?: string }
   | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string }
   | { role: "assistant"; kind: "loading" }
+  | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string }
 
 const SUGGESTIONS = [
   "Who was blocked today?",
@@ -210,6 +217,99 @@ function DashboardBubble({
   )
 }
 
+function PolicyConfirmBubble({
+  answer,
+  action,
+  draft,
+  mapping,
+  targetRuleId,
+  sessionId,
+  authFetch,
+  onResult,
+}: {
+  answer: string
+  action: string
+  draft: Record<string, unknown>
+  mapping: PolicyMapping[]
+  targetRuleId?: string
+  sessionId: string
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>
+  onResult: (text: string) => void
+}) {
+  const [status, setStatus] = useState<"pending" | "loading" | "done">("pending")
+  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+
+  async function confirm() {
+    setStatus("loading")
+    try {
+      const res = await authFetch(`${base}/glens/policy/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, draft, target_rule_id: targetRuleId }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        onResult(`Failed to apply policy: ${err.detail ?? res.status}`)
+      } else {
+        const data = await res.json()
+        onResult(`Policy "${data.rule_id}" ${data.action} successfully.`)
+      }
+    } catch {
+      onResult("Network error applying policy. Please try again.")
+    }
+    setStatus("done")
+  }
+
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16, width: "100%" }}>
+      <div style={{ maxWidth: "80%", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "4px 14px 14px 14px", padding: "16px 20px" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Policy</div>
+        <div style={{ fontSize: 14, color: "var(--text)", marginBottom: 16, lineHeight: 1.5 }}>{answer}</div>
+
+        {/* Field → Column mapping table */}
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 16 }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border)" }}>
+              <th style={{ textAlign: "left", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 600 }}>Field</th>
+              <th style={{ textAlign: "left", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 600 }}>Value</th>
+              <th style={{ textAlign: "left", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 600 }}>Column</th>
+              <th style={{ textAlign: "left", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 600 }}>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mapping.map(m => (
+              <tr key={m.field} style={{ borderBottom: "1px solid var(--border)" }}>
+                <td style={{ padding: "6px 8px", fontFamily: "monospace", color: "var(--accent-text)" }}>{m.field}</td>
+                <td style={{ padding: "6px 8px", fontFamily: "monospace", color: "var(--text)" }}>{String(draft[m.field] ?? "—")}</td>
+                <td style={{ padding: "6px 8px", fontFamily: "monospace", color: "var(--text-2)", fontSize: 11 }}>{m.column}</td>
+                <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{m.description}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {status === "pending" && (
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={confirm}
+              style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >
+              Confirm
+            </button>
+            <button
+              onClick={() => onResult("Policy creation cancelled.")}
+              style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", fontSize: 13, cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+        {status === "loading" && <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Applying…</div>}
+      </div>
+    </div>
+  )
+}
+
 // ─── Input ────────────────────────────────────────────────────────────────────
 
 function ChatInput({ onSubmit, disabled }: { onSubmit: (t: string) => void; disabled: boolean }) {
@@ -381,7 +481,17 @@ export function GLensChatPage() {
         setSessions(prev => [{ id: data.session_id, title: text.slice(0, 60), has_dashboard: !!data.spec, created_at: new Date().toISOString() }, ...prev])
       }
 
-      if (data.ready && data.spec) {
+      if (data.confirm_required) {
+        setMessages(prev => [...prev.slice(0, -1), {
+          role: "assistant", kind: "policy_confirm",
+          answer: data.answer ?? "Review the policy draft below:",
+          action: data.action,
+          draft: data.draft ?? {},
+          mapping: data.mapping ?? [],
+          targetRuleId: data.target_rule_id,
+          sessionId: data.session_id,
+        }])
+      } else if (data.ready && data.spec) {
         setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: data.spec, sessionId: data.session_id }])
       } else {
         setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: data.question ?? "No answer returned.", skill: data.skill }])
@@ -448,6 +558,23 @@ export function GLensChatPage() {
               if (msg.kind === "loading") return <LoadingBubble key={i} />
               if (msg.kind === "answer") return <AnswerBubble key={i} text={msg.text} skill={msg.skill} />
               if (msg.kind === "dashboard") return <DashboardBubble key={i} spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} />
+              if (msg.kind === "policy_confirm") return (
+                <PolicyConfirmBubble
+                  key={i}
+                  answer={msg.answer}
+                  action={msg.action}
+                  draft={msg.draft}
+                  mapping={msg.mapping}
+                  targetRuleId={msg.targetRuleId}
+                  sessionId={msg.sessionId}
+                  authFetch={authFetch}
+                  onResult={text => setMessages(prev => [
+                    ...prev.slice(0, i),
+                    { role: "assistant", kind: "answer", text, skill: "policy" },
+                    ...prev.slice(i + 1),
+                  ])}
+                />
+              )
               return null
             })}
           </div>

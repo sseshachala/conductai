@@ -1,0 +1,5 @@
+[
+  {"name": "list_policies",   "description": "List all active Guard policies for the workspace"},
+  {"name": "create_policy",   "description": "Draft a new custom policy rule with field mapping"},
+  {"name": "patch_policy",    "description": "Enable, disable, or update an existing policy"}
+]

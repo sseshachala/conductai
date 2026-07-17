@@ -21,7 +21,7 @@ from app.modules.glens.coordinator import coordinate
 from app.modules.glens.planner import plan
 from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
-from app.modules.guard.models import GuardAuditEvent
+from app.modules.guard.models import GuardAuditEvent, WorkspaceCustomRule
 from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
 
 log = structlog.get_logger(__name__)
@@ -96,6 +96,8 @@ async def glens_chat(
     guard_ctx = _fetch_guard_context(db, workspace_id)
     try:
         subtasks = await asyncio.to_thread(plan, req.message)
+        if any(t.get("skill") == "policy" for t in subtasks):
+            guard_ctx["current_policies"] = _fetch_policies(db, workspace_id)
 
         results = []
         for subtask in subtasks:
@@ -119,6 +121,22 @@ async def glens_chat(
 
     spec = None
     skill = parsed.get("skill", "report")
+
+    # Policy write — return draft for frontend confirmation; do not build spec
+    if parsed.get("confirm_required"):
+        session.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        return {
+            "session_id": str(session.id),
+            "skill": "policy",
+            "ready": False,
+            "confirm_required": True,
+            "action": parsed.get("action"),
+            "answer": parsed.get("answer"),
+            "draft": parsed.get("draft"),
+            "mapping": parsed.get("mapping", []),
+            "target_rule_id": parsed.get("target_rule_id"),
+        }
 
     if parsed.get("ready"):
         # Coordinator may return a pre-merged spec, or report skill returns picks
@@ -185,6 +203,29 @@ def _fetch_guard_context(db: Session, workspace_id: str) -> dict:
         events_data = []
 
     return {"spend": spend_data, "recent_events": events_data}
+
+
+def _fetch_policies(db: Session, workspace_id: str) -> list[dict]:
+    try:
+        ws_uuid = _parse_workspace_id(workspace_id)
+        rows = db.query(WorkspaceCustomRule).filter(
+            WorkspaceCustomRule.workspace_id == ws_uuid
+        ).all()
+        return [
+            {
+                "rule_id": r.rule_id,
+                "enabled": r.enabled,
+                "persona": r.persona,
+                "action": r.body.get("action"),
+                "description": r.body.get("description"),
+                "match_tool": r.body.get("match_tool"),
+                "match_pattern": r.body.get("match_pattern"),
+                "severity": r.body.get("severity", "medium"),
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []
 
 
 def _build_spec(title: str, month: str, kpi_picks: list, chart_picks: list, table_picks: list) -> dict:
@@ -305,6 +346,68 @@ def list_sessions(
         )
         for s in sessions
     ]
+
+
+class PolicyApplyRequest(BaseModel):
+    action: str                          # "create" | "patch"
+    draft: dict
+    target_rule_id: str | None = None
+
+
+@router.post("/policy/apply", status_code=201)
+def policy_apply(
+    req: PolicyApplyRequest,
+    _: str = Depends(require_permission("guard.policies.edit")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    ws_uuid = _parse_workspace_id(workspace_id)
+
+    if req.action == "create":
+        rule_id = req.draft.get("rule_id")
+        if not rule_id:
+            raise HTTPException(status_code=400, detail="draft.rule_id is required")
+        existing = db.query(WorkspaceCustomRule).filter(
+            WorkspaceCustomRule.workspace_id == ws_uuid,
+            WorkspaceCustomRule.rule_id == rule_id,
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail=f"Rule '{rule_id}' already exists")
+        body = {k: v for k, v in req.draft.items() if k not in ("rule_id", "persona")}
+        body["id"] = rule_id
+        rule = WorkspaceCustomRule(
+            workspace_id=ws_uuid,
+            rule_id=rule_id,
+            persona=req.draft.get("persona", "agent"),
+            body=body,
+            enabled=True,
+        )
+        db.add(rule)
+        db.commit()
+        log.info("glens.policy.created", workspace_id=workspace_id, rule_id=rule_id)
+        return {"ok": True, "rule_id": rule_id, "action": "created"}
+
+    elif req.action == "patch":
+        rule_id = req.target_rule_id
+        if not rule_id:
+            raise HTTPException(status_code=400, detail="target_rule_id is required for patch")
+        rule = db.query(WorkspaceCustomRule).filter(
+            WorkspaceCustomRule.workspace_id == ws_uuid,
+            WorkspaceCustomRule.rule_id == rule_id,
+        ).first()
+        if not rule:
+            raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
+        if "enabled" in req.draft:
+            rule.enabled = req.draft["enabled"]
+        body_patch = {k: v for k, v in req.draft.items() if k != "enabled"}
+        if body_patch:
+            rule.body = {**rule.body, **body_patch}
+        rule.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        log.info("glens.policy.patched", workspace_id=workspace_id, rule_id=rule_id)
+        return {"ok": True, "rule_id": rule_id, "action": "patched"}
+
+    raise HTTPException(status_code=400, detail=f"Unknown action '{req.action}'")
 
 
 @router.get("/sessions/{session_id}")
