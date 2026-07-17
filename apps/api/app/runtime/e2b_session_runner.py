@@ -39,20 +39,42 @@ STARTUP_RETRIES = 5
 
 from app.runtime.sandbox_constants import _FORBIDDEN_SHELL_PATTERNS, dispatch_tool
 
+_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF  = 2  # seconds, doubles each attempt
+
 
 def _headers(api_key: str) -> dict:
     return {"X-API-Key": api_key, "Content-Type": "application/json"}
 
 
+def _with_retry(fn, attempts: int = _RETRY_ATTEMPTS, backoff: float = _RETRY_BACKOFF):
+    """Retry fn on httpx errors or 5xx responses. Raises on final failure."""
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except (httpx.TransportError, httpx.TimeoutException) as exc:
+            last_exc = exc
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code < 500:
+                raise  # 4xx are not transient — don't retry
+            last_exc = exc
+        if attempt < attempts - 1:
+            time.sleep(backoff * (2 ** attempt))
+    raise last_exc  # type: ignore[misc]
+
+
 def _create_sandbox(client: httpx.Client, api_key: str) -> str:
-    resp = client.post(
-        f"{E2B_API_BASE}/sandboxes",
-        json={"templateID": E2B_TEMPLATE},
-        headers=_headers(api_key),
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()["sandboxID"]
+    def _call():
+        resp = client.post(
+            f"{E2B_API_BASE}/sandboxes",
+            json={"templateID": E2B_TEMPLATE},
+            headers=_headers(api_key),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()["sandboxID"]
+    return _with_retry(_call)
 
 
 def _run_command(
@@ -71,17 +93,17 @@ def _run_command(
     if envs:
         payload["envs"] = envs
 
-    resp = client.post(
-        f"{E2B_API_BASE}/sandboxes/{sandbox_id}/commands",
-        json=payload,
-        headers=_headers(api_key),
-        timeout=CMD_TIMEOUT + 10,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    stdout = data.get("stdout", "")
-    stderr = data.get("stderr", "")
-    return stdout + stderr
+    def _call():
+        resp = client.post(
+            f"{E2B_API_BASE}/sandboxes/{sandbox_id}/commands",
+            json=payload,
+            headers=_headers(api_key),
+            timeout=CMD_TIMEOUT + 10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("stdout", "") + data.get("stderr", "")
+    return _with_retry(_call)
 
 
 def _read_file(client: httpx.Client, api_key: str, sandbox_id: str, path: str) -> str:
