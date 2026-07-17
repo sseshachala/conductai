@@ -24,5 +24,21 @@
         "required": ["rule_id"]
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_knowledge",
+      "description": "Semantic search across Guard knowledge index — finds rules, audit events, and discovered agents by intent or description",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "q": {"type": "string", "description": "Natural language search query"},
+          "kind": {"type": "string", "enum": ["rule", "audit_event", "discovered_agent"], "description": "Filter by source kind (omit to search all)"},
+          "limit": {"type": "integer", "default": 10}
+        },
+        "required": ["q"]
+      }
+    }
   }
 ]
