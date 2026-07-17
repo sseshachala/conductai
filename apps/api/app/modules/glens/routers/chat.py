@@ -17,6 +17,8 @@ from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
 from app.models.workspace_config import WorkspaceConfig
 from app.modules.glens.agent import Agent
+from app.modules.glens.coordinator import coordinate
+from app.modules.glens.planner import plan
 from app.modules.glens.router import route
 from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
@@ -91,12 +93,24 @@ async def glens_chat(
     messages = json.loads(session.messages)
     messages.append({"role": "user", "content": req.message})
 
-    # Route → pick skills → run agent
+    # Route → Plan → run Agent per subtask → Coordinate
     guard_ctx = _fetch_guard_context(db, workspace_id)
     try:
         skills = await asyncio.to_thread(route, req.message)
-        agent = Agent(skills)
-        parsed = await asyncio.to_thread(agent.run, messages[-20:], guard_ctx)
+        subtasks = await asyncio.to_thread(plan, req.message)
+
+        results = []
+        for subtask in subtasks:
+            skill = subtask.get("skill", skills[0] if skills else "report")
+            agent = Agent([skill])
+            sub_messages = messages[-20:].copy()
+            # Replace last user message with focused sub-question if multi-task
+            if len(subtasks) > 1:
+                sub_messages = sub_messages[:-1] + [{"role": "user", "content": subtask["question"]}]
+            result = await asyncio.to_thread(agent.run, sub_messages, guard_ctx)
+            results.append(result)
+
+        parsed = coordinate(results)
     except Exception as e:
         logger.error("glens.chat.inference_failed", error=str(e))
         raise HTTPException(status_code=503, detail="Inference unavailable — model may be cold, retry in 30s")
@@ -108,16 +122,20 @@ async def glens_chat(
     spec = None
     skill = parsed.get("skill", "report")
 
-    if skill == "report" and parsed.get("ready"):
-        spec = _build_spec(
-            title=parsed.get("title", "Guard Overview"),
-            month=parsed.get("month", ""),
-            kpi_picks=parsed.get("kpis", []),
-            chart_picks=parsed.get("charts", []),
-            table_picks=parsed.get("tables", []),
-        )
+    if parsed.get("ready"):
+        # Coordinator may return a pre-merged spec, or report skill returns picks
+        if parsed.get("spec"):
+            spec = parsed["spec"]
+        else:
+            spec = _build_spec(
+                title=parsed.get("title", "Guard Overview"),
+                month=parsed.get("month", ""),
+                kpi_picks=parsed.get("kpis", []),
+                chart_picks=parsed.get("charts", []),
+                table_picks=parsed.get("tables", []),
+            )
         session.render_spec = json.dumps(spec)
-        session.title = parsed.get("title", session.title)[:60]
+        session.title = parsed.get("title", spec.get("title", session.title))[:60]
 
     session.updated_at = datetime.now(timezone.utc)
     db.commit()
