@@ -27,7 +27,7 @@ type Message =
   | { role: "user"; text: string }
   | { role: "assistant"; kind: "answer"; text: string; skill?: string }
   | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string }
-  | { role: "assistant"; kind: "loading" }
+  | { role: "assistant"; kind: "loading"; label?: string }
   | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string }
   | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string }
   | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string }
@@ -245,7 +245,7 @@ function AnswerBubble({ text, skill }: { text: string; skill?: string }) {
   )
 }
 
-function LoadingBubble() {
+function LoadingBubble({ label }: { label?: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
       <div style={{
@@ -255,8 +255,12 @@ function LoadingBubble() {
         padding: "12px 16px",
         fontSize: 14,
         color: "var(--text-muted)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
       }}>
         <span style={{ letterSpacing: 3 }}>···</span>
+        {label && <span style={{ fontSize: 12, opacity: 0.8 }}>{label}</span>}
       </div>
     </div>
   )
@@ -547,6 +551,55 @@ export function GLensChatPage() {
     if (activeId === id) startNew()
   }
 
+  function _applyData(data: Record<string, unknown>, text: string) {
+    if (!activeId && data.session_id) {
+      setActiveId(data.session_id as string)
+      setSessions(prev => [{ id: data.session_id as string, title: text.slice(0, 60), has_dashboard: !!data.spec, created_at: new Date().toISOString() }, ...prev])
+    }
+    if (data.confirm_required) {
+      setMessages(prev => [...prev.slice(0, -1), {
+        role: "assistant", kind: "policy_confirm",
+        answer: (data.answer as string) ?? "Review the draft below:",
+        action: data.action as string,
+        draft: (data.draft as Record<string, unknown>) ?? {},
+        mapping: (data.mapping as PolicyMapping[]) ?? [],
+        targetRuleId: data.target_rule_id as string | undefined,
+        sessionId: data.session_id as string,
+        skill: (data.skill as string) ?? "rules",
+      }])
+    } else if (data.page_kind && data.page_data) {
+      setMessages(prev => [...prev.slice(0, -1), {
+        role: "assistant", kind: "page",
+        answer: (data.answer as string) ?? "",
+        pageKind: data.page_kind as string,
+        pageData: data.page_data as Record<string, unknown>,
+        warning: data.warning as string | undefined,
+        skill: (data.skill as string) ?? "report",
+      }])
+    } else if (data.blocks) {
+      setMessages(prev => [...prev.slice(0, -1), {
+        role: "assistant", kind: "blocks",
+        answer: (data.answer as string) ?? "",
+        blocks: data.blocks as unknown[],
+        warning: data.warning as string | undefined,
+        skill: (data.skill as string) ?? "report",
+      }])
+    } else if (data.rows) {
+      setMessages(prev => [...prev.slice(0, -1), {
+        role: "assistant", kind: "table",
+        answer: (data.answer as string) ?? "",
+        columns: data.columns as unknown[] | undefined,
+        rows: data.rows as unknown[],
+        warning: data.warning as string | undefined,
+        skill: (data.skill as string) ?? "report",
+      }])
+    } else if (data.ready && data.spec) {
+      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: data.spec as GlensDashboardSpec, sessionId: data.session_id as string }])
+    } else {
+      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: (data.answer as string) ?? "No answer returned.", skill: data.skill as string | undefined }])
+    }
+  }
+
   async function sendMessage(text: string) {
     abortRef.current?.abort()
     const controller = new AbortController()
@@ -559,7 +612,7 @@ export function GLensChatPage() {
       const body: Record<string, unknown> = { message: text }
       if (activeId) body.session_id = activeId
 
-      const res = await authFetch(`${base}/glens/chat`, {
+      const res = await authFetch(`${base}/glens/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -571,53 +624,33 @@ export function GLensChatPage() {
         return
       }
 
-      const data = await res.json()
-      if (!activeId) {
-        setActiveId(data.session_id)
-        setSessions(prev => [{ id: data.session_id, title: text.slice(0, 60), has_dashboard: !!data.spec, created_at: new Date().toISOString() }, ...prev])
-      }
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buf = ""
 
-      if (data.confirm_required) {
-        setMessages(prev => [...prev.slice(0, -1), {
-          role: "assistant", kind: "policy_confirm",
-          answer: data.answer ?? "Review the draft below:",
-          action: data.action,
-          draft: data.draft ?? {},
-          mapping: data.mapping ?? [],
-          targetRuleId: data.target_rule_id,
-          sessionId: data.session_id,
-          skill: data.skill ?? "rules",
-        }])
-      } else if (data.page_kind && data.page_data) {
-        setMessages(prev => [...prev.slice(0, -1), {
-          role: "assistant", kind: "page",
-          answer: data.answer ?? "",
-          pageKind: data.page_kind,
-          pageData: data.page_data,
-          warning: data.warning,
-          skill: data.skill ?? "report",
-        }])
-      } else if (data.blocks) {
-        setMessages(prev => [...prev.slice(0, -1), {
-          role: "assistant", kind: "blocks",
-          answer: data.answer ?? "",
-          blocks: data.blocks,
-          warning: data.warning,
-          skill: data.skill ?? "report",
-        }])
-      } else if (data.rows) {
-        setMessages(prev => [...prev.slice(0, -1), {
-          role: "assistant", kind: "table",
-          answer: data.answer ?? "",
-          columns: data.columns,   // may be undefined — GenericTableBubble will infer
-          rows: data.rows,
-          warning: data.warning,
-          skill: data.skill ?? "report",
-        }])
-      } else if (data.ready && data.spec) {
-        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: data.spec, sessionId: data.session_id }])
-      } else {
-        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: data.answer ?? "No answer returned.", skill: data.skill }])
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split("\n")
+        buf = lines.pop()!
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          const evt = JSON.parse(line.slice(6)) as Record<string, unknown>
+          if (evt.type === "thinking") {
+            setMessages(prev => {
+              const last = prev[prev.length - 1]
+              if (last?.role === "assistant" && last.kind === "loading") {
+                return [...prev.slice(0, -1), { ...last, label: evt.label as string }]
+              }
+              return prev
+            })
+          } else if (evt.type === "done") {
+            _applyData(evt, text)
+          } else if (evt.type === "error") {
+            setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: (evt.message as string) ?? "Something went wrong." }])
+          }
+        }
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
@@ -687,7 +720,7 @@ export function GLensChatPage() {
                   }}
                 />
               )
-              if (msg.kind === "loading") return <LoadingBubble key={i} />
+              if (msg.kind === "loading") return <LoadingBubble key={i} label={msg.label} />
               if (msg.kind === "answer") return <AnswerBubble key={i} text={msg.text} skill={msg.skill} />
               if (msg.kind === "dashboard") return <DashboardBubble key={i} spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} />
               if (msg.kind === "blocks") return (

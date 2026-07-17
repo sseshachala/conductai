@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, BaseModel as _Base
 from sqlalchemy.orm import Session
 
@@ -382,6 +383,148 @@ async def glens_chat(
         "followups": parsed.get("followups"),
     }
 
+
+
+@router.post("/chat/stream")
+async def glens_chat_stream(
+    req: ChatRequest,
+    background_tasks: BackgroundTasks,
+    _: str = Depends(require_permission("guard.activity.view_own")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    ws_uuid = _parse_workspace_id(workspace_id)
+    logger = log.bind(workspace_id=workspace_id)
+
+    session = None
+    if req.session_id:
+        session = _get_session(db, req.session_id, ws_uuid)
+    if not session:
+        session = GlensChatSession(workspace_id=ws_uuid, title=req.message[:60], messages=json.dumps([]))
+        db.add(session)
+        db.flush()
+
+    messages = json.loads(session.messages)
+    messages.append({"role": "user", "content": req.message})
+
+    last_answer: str | None = None
+    prior = [m for m in messages[:-1] if m["role"] == "assistant"]
+    if prior:
+        try:
+            last_answer = json.loads(prior[-1]["content"]).get("answer", "")[:300]
+        except Exception:
+            pass
+
+    context_summary = session.context_summary if hasattr(session, "context_summary") else None
+    executor = Executor(db, workspace_id)
+    session_id_str = str(session.id)
+    loop = asyncio.get_running_loop()
+    event_q: asyncio.Queue[dict] = asyncio.Queue()
+
+    def _on_event(evt: dict) -> None:
+        loop.call_soon_threadsafe(event_q.put_nowait, evt)
+
+    async def _run_work() -> None:
+        try:
+            subtasks = await asyncio.to_thread(
+                plan, req.message, last_answer, req.page_context, context_summary
+            )
+            results = []
+            for subtask in subtasks:
+                skill = subtask.get("skill", "report")
+                agent = Agent([skill])
+                sub_msgs = _conversation_messages(messages)
+                if len(subtasks) > 1:
+                    sub_msgs = sub_msgs[:-1] + [{"role": "user", "content": subtask["question"]}]
+                result = await asyncio.to_thread(agent.run, sub_msgs, executor, _on_event)
+                results.append(result)
+            parsed = coordinate(results)
+            await event_q.put({"type": "done", "_parsed": parsed})
+        except Exception as e:
+            logger.error("glens.stream.failed", error=str(e))
+            await event_q.put({"type": "error", "message": "Inference unavailable — model may be cold, retry in 30s"})
+
+    async def generate():
+        task = asyncio.create_task(_run_work())
+        try:
+            while True:
+                evt = await asyncio.wait_for(event_q.get(), timeout=120)
+
+                if evt.get("type") == "thinking":
+                    yield f"data: {json.dumps({'type': 'thinking', 'label': evt.get('label', '')})}\n\n"
+
+                elif evt.get("type") == "error":
+                    yield f"data: {json.dumps({'type': 'error', 'message': evt['message']})}\n\n"
+                    break
+
+                elif evt.get("type") == "done":
+                    parsed = _normalize_payload(evt["_parsed"])
+
+                    messages.append({
+                        "role": "assistant",
+                        "content": json.dumps(parsed),
+                        "rendered": {"page_kind": parsed.get("page_kind"), "blocks": parsed.get("blocks"), "rows": parsed.get("rows")},
+                    })
+                    capped = messages[-50:] if len(messages) > 50 else messages
+                    session.messages = json.dumps(capped)
+
+                    spec = None
+                    if parsed.get("ready"):
+                        spec = parsed.get("spec") or _build_spec(
+                            title=parsed.get("title", "Guard Overview"),
+                            month=parsed.get("month", ""),
+                            kpi_picks=parsed.get("kpis", []),
+                            chart_picks=parsed.get("charts", []),
+                            table_picks=parsed.get("tables", []),
+                        )
+                        session.render_spec = json.dumps(spec)
+                        session.title = parsed.get("title", spec.get("title", session.title))[:60]
+
+                    session.updated_at = datetime.now(timezone.utc)
+                    db.commit()
+                    if _should_refresh_summary(capped):
+                        background_tasks.add_task(_bg_refresh_summary, session_id_str, capped, context_summary)
+
+                    page_kind = parsed.get("page_kind")
+                    page_data = parsed.get("data")
+                    if page_kind and (page_data is None or not isinstance(page_data, dict)):
+                        page_kind = None
+                        page_data = None
+
+                    payload = {
+                        "type": "done",
+                        "session_id": session_id_str,
+                        "skill": parsed.get("skill", "report"),
+                        "ready": spec is not None,
+                        "answer": _build_answer(parsed, spec),
+                        "spec": spec,
+                        "page_kind": page_kind,
+                        "page_data": page_data,
+                        "blocks":   _sanitize_blocks(parsed.get("blocks")),
+                        "rows":     _sanitize_rows(parsed.get("rows")),
+                        "columns":  _sanitize_columns(parsed.get("columns")),
+                        "warning":  parsed.get("warning"),
+                        "followups": parsed.get("followups"),
+                        "confirm_required": parsed.get("confirm_required"),
+                        "action": parsed.get("action"),
+                        "draft": parsed.get("draft"),
+                        "mapping": parsed.get("mapping", []),
+                        "target_rule_id": parsed.get("target_rule_id"),
+                    }
+                    logger.info("glens.stream.complete", skill=payload["skill"])
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    break
+
+        except asyncio.TimeoutError:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Request timed out'})}\n\n"
+        finally:
+            task.cancel()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def _build_spec(title: str, month: str, kpi_picks: list, chart_picks: list, table_picks: list) -> dict:
