@@ -5,6 +5,7 @@ import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts"
+import { DecisionBadge } from "@/components/guard/DecisionBadge"
 
 function fmt(n: number): string {
   if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M"
@@ -453,7 +454,9 @@ function TableBlock({
                 <tr key={ri} style={{ borderBottom: "1px solid var(--border)" }}>
                   {cols.map(col => (
                     <td key={col} style={{ padding: "8px 10px", color: "var(--text-2)", verticalAlign: "top" }}>
-                      {String(row[col] ?? "—")}
+                      {col === "decision"
+                        ? <DecisionBadge decision={String(row[col] ?? "")} />
+                        : String(row[col] ?? "—")}
                     </td>
                   ))}
                 </tr>
