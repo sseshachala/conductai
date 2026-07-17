@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.guard.embedding import embedding_client_for_workspace
 from app.modules.guard.models import (
+    DiscoveredAgent,
     GuardAuditEvent,
     GuardKnowledgeIndex,
     WorkspaceCustomRule,
@@ -136,3 +137,32 @@ def project_rule(rule: WorkspaceCustomRule, db: Session) -> None:
     """Project a WorkspaceCustomRule into the knowledge index."""
     canonical, metadata = _project_rule(rule)
     index_source(str(rule.workspace_id), "rule", rule.rule_id, canonical, metadata, db)
+
+
+def _project_discovered_agent(agent: DiscoveredAgent) -> tuple[str, dict]:
+    parts = [
+        f"Agent: {agent.name or agent.framework}",
+        f"Framework: {agent.framework or 'unknown'}",
+        f"Source: {agent.source or 'unknown'}",
+        f"Location: {agent.location or 'unknown'}",
+        f"Risk score: {agent.risk_score}",
+        f"Under Guard: {agent.under_guard}",
+        f"Proxy routed: {agent.proxy_routed}",
+    ]
+    canonical = " | ".join(parts)
+    metadata = {
+        "name": agent.name,
+        "framework": agent.framework,
+        "source": agent.source,
+        "location": agent.location,
+        "risk_score": agent.risk_score,
+        "under_guard": agent.under_guard,
+        "proxy_routed": agent.proxy_routed,
+    }
+    return canonical, metadata
+
+
+def project_discovered_agent(agent: DiscoveredAgent, db: Session) -> None:
+    """Project a DiscoveredAgent into the knowledge index."""
+    canonical, metadata = _project_discovered_agent(agent)
+    index_source(str(agent.workspace_id), "discovered_agent", str(agent.id), canonical, metadata, db)
