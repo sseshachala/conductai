@@ -25,7 +25,7 @@ type Message =
   | { role: "assistant"; kind: "answer"; text: string; skill?: string }
   | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string }
   | { role: "assistant"; kind: "loading" }
-  | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string }
+  | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string }
 
 const SUGGESTIONS = [
   "Who was blocked today?",
@@ -220,9 +220,23 @@ function DashboardBubble({
   )
 }
 
+const SKILL_APPLY_URL: Record<string, string> = {
+  rules:        "/glens/policy/apply",
+  guard_config: "/glens/guard_config/apply",
+  spend_config: "/glens/spend_config/apply",
+}
+
+function _applyBody(skill: string, action: string, draft: Record<string, unknown>, targetRuleId?: string) {
+  if (skill === "rules") return { action, draft, target_rule_id: targetRuleId }
+  if (skill === "guard_config") return { draft }
+  if (skill === "spend_config") return draft   // SpendConfigApplyRequest fields are top-level
+  return { action, draft }
+}
+
 function PolicyConfirmBubble({
   answer,
   action,
+  skill,
   draft,
   mapping,
   targetRuleId,
@@ -232,6 +246,7 @@ function PolicyConfirmBubble({
 }: {
   answer: string
   action: string
+  skill: string
   draft: Record<string, unknown>
   mapping: PolicyMapping[]
   targetRuleId?: string
@@ -244,21 +259,23 @@ function PolicyConfirmBubble({
 
   async function confirm() {
     setStatus("loading")
+    const url = `${base}${SKILL_APPLY_URL[skill] ?? "/glens/policy/apply"}`
     try {
-      const res = await authFetch(`${base}/glens/policy/apply`, {
+      const res = await authFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, draft, target_rule_id: targetRuleId }),
+        body: JSON.stringify(_applyBody(skill, action, draft, targetRuleId)),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        onResult(`Failed to apply policy: ${err.detail ?? res.status}`)
+        onResult(`Failed to apply: ${err.detail ?? res.status}`)
       } else {
         const data = await res.json()
-        onResult(`Policy "${data.rule_id}" ${data.action} successfully.`)
+        const label = data.rule_id ? `"${data.rule_id}"` : data.scope ?? ""
+        onResult(`${label} ${data.action} successfully.`.trim())
       }
     } catch {
-      onResult("Network error applying policy. Please try again.")
+      onResult("Network error. Please try again.")
     }
     setStatus("done")
   }
@@ -487,12 +504,13 @@ export function GLensChatPage() {
       if (data.confirm_required) {
         setMessages(prev => [...prev.slice(0, -1), {
           role: "assistant", kind: "policy_confirm",
-          answer: data.answer ?? "Review the policy draft below:",
+          answer: data.answer ?? "Review the draft below:",
           action: data.action,
           draft: data.draft ?? {},
           mapping: data.mapping ?? [],
           targetRuleId: data.target_rule_id,
           sessionId: data.session_id,
+          skill: data.skill ?? "rules",
         }])
       } else if (data.ready && data.spec) {
         setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: data.spec, sessionId: data.session_id }])
@@ -566,6 +584,7 @@ export function GLensChatPage() {
                   key={i}
                   answer={msg.answer}
                   action={msg.action}
+                  skill={msg.skill}
                   draft={msg.draft}
                   mapping={msg.mapping}
                   targetRuleId={msg.targetRuleId}
@@ -573,7 +592,7 @@ export function GLensChatPage() {
                   authFetch={authFetch}
                   onResult={text => setMessages(prev => [
                     ...prev.slice(0, i),
-                    { role: "assistant", kind: "answer", text, skill: "rules" },
+                    { role: "assistant", kind: "answer", text, skill: msg.skill },
                     ...prev.slice(i + 1),
                   ])}
                 />
