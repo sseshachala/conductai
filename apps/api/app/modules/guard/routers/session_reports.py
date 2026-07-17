@@ -15,9 +15,18 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import _verify_clerk_token, get_guard_hook_auth, get_workspace_id, require_permission
+from app.core.credentials import get_credential
 from app.core.database import get_db
 from app.modules.guard.models import SessionReport
 from app.runtime.embedding_client import create_embedding_client
+
+
+def _embedding_client_for_workspace(db, workspace_id: str):
+    env = get_credential(db, workspace_id, "env_vars")
+    return create_embedding_client(
+        openai_api_key=env.get("OPENAI_API_KEY") or env.get("openai_api_key"),
+        voyage_api_key=env.get("VOYAGE_API_KEY") or env.get("voyage_api_key"),
+    )
 
 log = structlog.get_logger(__name__)
 
@@ -172,7 +181,7 @@ def create_session_report(
     # Embed report_md in background for GLens semantic search
     if body.report_md:
         try:
-            client = create_embedding_client()
+            client = _embedding_client_for_workspace(db, str(ws_uuid))
             if client:
                 report.embedding = client.embed(body.report_md[:8000])
                 db.commit()
@@ -225,7 +234,7 @@ def search_session_reports(
 ):
     """Semantic search over session reports using pgvector."""
     from sqlalchemy import text as sa_text
-    client = create_embedding_client()
+    client = _embedding_client_for_workspace(db, workspace_id)
     if not client:
         raise HTTPException(status_code=503, detail="Embedding service not configured")
 
