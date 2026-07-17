@@ -97,7 +97,7 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
         "next_action": next_action,
     }
 
-_STATE_CHECKPOINT_TTL = 86400  # 24 hours — same as LLM cache
+_STATE_CHECKPOINT_TTL = 604800  # 7 days — covers multi-day approval pauses
 
 # Module-level connection pool — reused across all checkpoint calls
 import redis as _redis_mod
