@@ -103,7 +103,7 @@ def index_source(
 
     if existing:
         existing.canonical_text = canonical_text
-        existing.metadata = metadata
+        existing.meta = metadata
         existing.content_hash = content_hash
         existing.embedding = embedding
         existing.updated_at = datetime.now(timezone.utc)
@@ -114,7 +114,7 @@ def index_source(
                 source_kind=source_kind,
                 source_id=source_id,
                 canonical_text=canonical_text,
-                metadata=metadata,
+                meta=metadata,
                 content_hash=content_hash,
                 embedding=embedding,
             )
