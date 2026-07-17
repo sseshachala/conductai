@@ -1,0 +1,14 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_budgets",
+      "description": "List all spend budgets for the workspace (workspace-wide and per-developer)",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  }
+]

@@ -22,7 +22,7 @@ from app.modules.glens.executor import Executor
 from app.modules.glens.planner import plan
 from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
-from app.modules.guard.models import WorkspaceCustomRule
+from app.modules.guard.models import GuardConfig, GuardSpendBudget, WorkspaceCustomRule
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/glens", tags=["glens"])
@@ -125,7 +125,7 @@ async def glens_chat(
         db.commit()
         return {
             "session_id": str(session.id),
-            "skill": "rules",
+            "skill": skill,
             "ready": False,
             "confirm_required": True,
             "action": parsed.get("action"),
@@ -359,6 +359,86 @@ def policy_apply(
         return {"ok": True, "rule_id": rule_id, "action": "patched"}
 
     raise HTTPException(status_code=400, detail=f"Unknown action '{req.action}'")
+
+
+class GuardConfigApplyRequest(BaseModel):
+    draft: dict
+
+
+_VALID_ENFORCEMENT = {"active", "warn", "advisory", "off"}
+_VALID_FAIL_MODE = {"fail_open", "fail_closed"}
+
+
+@router.post("/guard_config/apply", status_code=200)
+def guard_config_apply(
+    req: GuardConfigApplyRequest,
+    _: str = Depends(require_permission("guard.settings.edit")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    ws_uuid = _parse_workspace_id(workspace_id)
+    cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Guard not configured for this workspace")
+    if "enforcement_mode" in req.draft:
+        val = req.draft["enforcement_mode"]
+        if val not in _VALID_ENFORCEMENT:
+            raise HTTPException(status_code=400, detail=f"enforcement_mode must be one of: {', '.join(sorted(_VALID_ENFORCEMENT))}")
+        cfg.enforcement_mode = val
+    if "fail_mode" in req.draft:
+        val = req.draft["fail_mode"]
+        if val not in _VALID_FAIL_MODE:
+            raise HTTPException(status_code=400, detail="fail_mode must be 'fail_open' or 'fail_closed'")
+        cfg.fail_mode = val
+    for bool_field in ("advisory_mode", "notify_on_block", "notify_on_budget", "deny_on_error"):
+        if bool_field in req.draft:
+            setattr(cfg, bool_field, bool(req.draft[bool_field]))
+    cfg.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    log.info("glens.guard_config.patched", workspace_id=workspace_id)
+    return {"ok": True, "action": "patched"}
+
+
+class SpendConfigApplyRequest(BaseModel):
+    monthly_limit_usd: float
+    hard_limit_usd: float | None = None
+    alert_threshold_pct: int = 80
+    email: str | None = None            # None = workspace-wide
+
+
+@router.post("/spend_config/apply", status_code=201)
+def spend_config_apply(
+    req: SpendConfigApplyRequest,
+    _: str = Depends(require_permission("guard.spend.budgets.edit")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    ws_uuid = _parse_workspace_id(workspace_id)
+    existing = db.query(GuardSpendBudget).filter(
+        GuardSpendBudget.workspace_id == ws_uuid,
+        GuardSpendBudget.clerk_user_id == (req.email),   # email used as proxy key for GLens
+    ).first()
+    now = datetime.now(timezone.utc)
+    if existing:
+        existing.monthly_limit_usd = req.monthly_limit_usd
+        existing.hard_limit_usd = req.hard_limit_usd
+        existing.alert_threshold_pct = req.alert_threshold_pct
+        existing.updated_at = now
+        db.commit()
+        action = "updated"
+    else:
+        db.add(GuardSpendBudget(
+            workspace_id=ws_uuid,
+            clerk_user_id=req.email,
+            monthly_limit_usd=req.monthly_limit_usd,
+            hard_limit_usd=req.hard_limit_usd,
+            alert_threshold_pct=req.alert_threshold_pct,
+        ))
+        db.commit()
+        action = "created"
+    scope = "workspace" if req.email is None else f"developer:{req.email}"
+    log.info("glens.spend_config.applied", workspace_id=workspace_id, scope=scope, action=action)
+    return {"ok": True, "action": action, "scope": scope}
 
 
 @router.get("/sessions/{session_id}")

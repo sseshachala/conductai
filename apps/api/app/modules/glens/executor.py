@@ -6,7 +6,7 @@ import structlog
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 
-from app.modules.guard.models import GuardAuditEvent, WorkspaceCustomRule
+from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSpendBudget, WorkspaceCustomRule
 from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
 from app.modules.guard.embedding import embedding_client_for_workspace
 
@@ -215,6 +215,42 @@ class Executor:
                 "text": r.canonical_text,
                 "metadata": r.metadata,
                 "score": round(1 - r.distance, 3),
+            }
+            for r in rows
+        ]
+
+    # ── Guard config ──────────────────────────────────────────────────────────
+
+    def _tool_get_guard_config(self):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        cfg = self.db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+        if not cfg:
+            return {"configured": False}
+        return {
+            "enforcement_mode": cfg.enforcement_mode,
+            "fail_mode": getattr(cfg, "fail_mode", "fail_open"),
+            "advisory_mode": cfg.advisory_mode,
+            "notify_on_block": cfg.notify_on_block,
+            "notify_on_budget": cfg.notify_on_budget,
+            "deny_on_error": getattr(cfg, "deny_on_error", False),
+            "persona": cfg.persona,
+        }
+
+    # ── Spend budgets ─────────────────────────────────────────────────────────
+
+    def _tool_get_budgets(self):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        rows = self.db.query(GuardSpendBudget).filter(
+            GuardSpendBudget.workspace_id == ws_uuid
+        ).all()
+        return [
+            {
+                "scope": "workspace" if r.clerk_user_id is None else "developer",
+                "email": None if r.clerk_user_id is None else r.clerk_user_id,
+                "monthly_limit_usd": r.monthly_limit_usd,
+                "hard_limit_usd": r.hard_limit_usd,
+                "alert_threshold_pct": r.alert_threshold_pct,
+                "default_per_developer_usd": r.default_per_developer_usd,
             }
             for r in rows
         ]
