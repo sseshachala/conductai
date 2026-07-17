@@ -50,6 +50,12 @@ class Agent:
         self.skills = [_load_skill(n) for n in all_names]
         self.system = _build_system(self.skills)
         self.tools = [t for s in self.skills for t in s["tools"]]
+        seen: dict[str, bool] = {}
+        for t in self.tools:
+            name = t["function"]["name"]
+            if name in seen:
+                log.warning("glens.agent.tool_name_collision", tool=name)
+            seen[name] = True
 
     def run(self, messages: list[dict], executor: Executor) -> dict:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")

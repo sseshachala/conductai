@@ -34,11 +34,13 @@ def coordinate(results: list[dict]) -> dict:
             merged_spec["charts"].extend(r.get("charts", []))
             merged_spec["tables"].extend(r.get("tables", []))
 
-    if merged_spec and answers:
-        merged_spec["summary"] = " ".join(answers)
-        return {"skill": "report", "ready": True, **merged_spec}
-
     if merged_spec:
+        # Deduplicate kpis by id field to prevent double-counting across subtask results
+        if merged_spec["kpis"] and isinstance(merged_spec["kpis"][0], dict):
+            merged_spec["kpis"] = list({item["id"]: item for item in merged_spec["kpis"] if "id" in item}.values()) or merged_spec["kpis"]
+
+        if answers:
+            merged_spec["summary"] = " ".join(answers)
         return {"skill": "report", "ready": True, **merged_spec}
 
     return {"skill": "analytics", "ready": False, "answer": "\n\n".join(answers)}
