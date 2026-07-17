@@ -570,7 +570,7 @@ export function GLensChatPage() {
                   authFetch={authFetch}
                   onResult={text => setMessages(prev => [
                     ...prev.slice(0, i),
-                    { role: "assistant", kind: "answer", text, skill: "policy" },
+                    { role: "assistant", kind: "answer", text, skill: "rules" },
                     ...prev.slice(i + 1),
                   ])}
                 />
