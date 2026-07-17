@@ -3,7 +3,7 @@ import json
 
 from app.modules.glens.inference import chat as qwen_chat
 
-_SKILLS = ["report", "analytics", "extract", "memory", "session", "rules", "guard_config", "spend_config"]
+_SKILLS = ["report", "analytics", "extract", "memory", "session", "rules", "guard_config", "spend_config", "discovery", "compliance", "governance"]
 
 _PROMPT = f"""You are a task planner for GLens, a governance analytics assistant.
 
@@ -11,14 +11,17 @@ Given a user question, decompose it into one or more subtasks.
 Each subtask has a skill and a focused sub-question.
 
 SKILLS:
-  report    — build a dashboard (KPIs, charts, tables)
-  analytics — answer trend, comparison, aggregation questions with numbers
-  extract   — export data to CSV or produce a downloadable summary
-  memory       — search team memory for decisions, policy context
-  session      — search session reports for specific agent runs
-  rules        — read, create, or update individual Guard block/warn/audit rules
+  report      — build a dashboard (KPIs, charts, tables)
+  analytics   — answer trend, comparison, aggregation questions with numbers
+  extract     — export data to CSV or produce a downloadable summary
+  memory      — search team memory for decisions, policy context
+  session     — search session reports for specific agent runs
+  rules       — read, create, or update individual Guard block/warn/audit rules
   guard_config — configure Guard settings (enforcement mode, fail mode, persona, Slack, advisory)
   spend_config — configure workspace, developer, and tool-level spend budgets
+  discovery   — agents discovered in the workspace: coverage %, risk scores, framework breakdown, which agents are under/not under Guard
+  compliance  — OWASP Agentic Top 10 control status, governance grade (A-F), score, 24h blocked/event counts
+  governance  — governance KPIs (events today, blocks today, active developers, MTD blocks, risk avoided), installed compliance frameworks, recent audit events
 
 RULES:
 - Simple questions → one subtask

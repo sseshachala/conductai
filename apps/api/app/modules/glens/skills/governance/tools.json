@@ -1,0 +1,68 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_governance_kpis",
+      "description": "Get governance KPIs: events today, blocked today, active developers today, blocks month-to-date, and estimated risk avoided in USD (MTD)",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_framework_coverage",
+      "description": "Get installed compliance framework packs (SOC2, OWASP, HIPAA, PCI_DSS, etc.) with rule counts per framework",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_recent_governance_events",
+      "description": "Get the most recent governance audit events with decision, rule_id, ai_tool, and user_email",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Number of events to return, default 15, max 100"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_knowledge",
+      "description": "Semantic search across Guard knowledge — use for intent-based governance questions like 'blocks related to secrets' or 'rules covering bash'",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "Natural language search query"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Optional filter: audit_event | rule | discovered_agent"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Number of results, default 10, max 50"
+          }
+        },
+        "required": ["q"]
+      }
+    }
+  }
+]
