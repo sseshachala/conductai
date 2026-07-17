@@ -879,7 +879,7 @@ function GuardDashboard() {
                   label="Sessions today"
                   value={(stats?.sessions ?? 0) + (stats?.hook_sessions ?? 0)}
                   tone="plain"
-                  sub={`${stats?.sessions ?? 0} proxy · ${stats?.hook_sessions ?? 0} direct`}
+                  sub={`${stats?.sessions ?? 0} gateway · ${stats?.hook_sessions ?? 0} hook`}
                 />
                 <GuardStatCard
                   label="Tokens saved"
