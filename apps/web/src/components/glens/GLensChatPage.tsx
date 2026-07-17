@@ -583,7 +583,7 @@ export function GLensChatPage() {
       } else if (data.page_kind && data.page_data) {
         setMessages(prev => [...prev.slice(0, -1), {
           role: "assistant", kind: "page",
-          answer: data.question ?? "",
+          answer: data.answer ?? "",
           pageKind: data.page_kind,
           pageData: data.page_data,
           warning: data.warning,
@@ -592,7 +592,7 @@ export function GLensChatPage() {
       } else if (data.blocks) {
         setMessages(prev => [...prev.slice(0, -1), {
           role: "assistant", kind: "blocks",
-          answer: data.question ?? "",
+          answer: data.answer ?? "",
           blocks: data.blocks,
           warning: data.warning,
           skill: data.skill ?? "report",
@@ -600,7 +600,7 @@ export function GLensChatPage() {
       } else if (data.rows) {
         setMessages(prev => [...prev.slice(0, -1), {
           role: "assistant", kind: "table",
-          answer: data.question ?? "",
+          answer: data.answer ?? "",
           columns: data.columns,   // may be undefined — GenericTableBubble will infer
           rows: data.rows,
           warning: data.warning,
@@ -609,7 +609,7 @@ export function GLensChatPage() {
       } else if (data.ready && data.spec) {
         setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: data.spec, sessionId: data.session_id }])
       } else {
-        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: data.question ?? "No answer returned.", skill: data.skill }])
+        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: data.answer ?? "No answer returned.", skill: data.skill }])
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
