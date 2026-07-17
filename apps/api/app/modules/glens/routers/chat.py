@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, BaseModel as _Base
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,7 @@ from app.modules.glens.agent import Agent
 from app.modules.glens.coordinator import coordinate
 from app.modules.glens.executor import Executor
 from app.modules.glens.planner import plan
+from app.modules.glens.utils import extract_json
 from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
 from app.modules.guard.models import GuardConfig, GuardSpendBudget, WorkspaceCustomRule
@@ -97,6 +98,92 @@ def _sanitize_rows(raw: list | None) -> list | None:
     return [r for r in raw if isinstance(r, dict)] or None
 
 
+def _should_refresh_summary(messages: list[dict]) -> bool:
+    user_count = sum(1 for m in messages if m.get("role") == "user")
+    return user_count % 5 == 0 and len(messages) > 10
+
+
+def _conversation_messages(messages: list[dict], window: int = 20) -> list[dict]:
+    """Return the last `window` messages for model context, excluding system turns."""
+    return [m for m in messages if m.get("role") != "system"][-window:]
+
+
+def _summarize_messages(messages: list[dict], prior_summary: str | None) -> str:
+    """Produce a short summary of the conversation so far."""
+    from app.modules.glens.inference import chat as qwen_chat
+
+    user_turns = [m["content"] for m in messages if m.get("role") == "user"][-10:]
+    prior = f"Prior summary: {prior_summary}\n\n" if prior_summary else ""
+    prompt = (
+        f"{prior}Summarize the following conversation in 2-3 sentences, focusing on "
+        f"what data the user asked about and any key findings:\n\n"
+        + "\n".join(f"- {t}" for t in user_turns)
+    )
+    try:
+        return qwen_chat([
+            {"role": "system", "content": "You are a concise summarizer. Reply with plain text only."},
+            {"role": "user", "content": prompt},
+        ])
+    except Exception:
+        return prior_summary or ""
+
+
+def _bg_refresh_summary(session_id: str, messages: list[dict], prior_summary: str | None) -> None:
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        sess = db.query(GlensChatSession).filter(GlensChatSession.id == uuid.UUID(session_id)).first()
+        if sess:
+            sess.context_summary = _summarize_messages(messages, prior_summary)
+            sess.updated_at = datetime.now(timezone.utc)
+            db.commit()
+    except Exception as exc:
+        log.warning("glens.summary.bg_failed", session_id=session_id, error=str(exc))
+    finally:
+        db.close()
+
+
+def _normalize_payload(parsed: dict) -> dict:
+    """Ensure consistent shape regardless of which skill produced the result."""
+    # Resolve spec blocks from nested structure if present
+    if "spec" in parsed and isinstance(parsed["spec"], dict):
+        spec = parsed["spec"]
+        if "blocks" in spec and "blocks" not in parsed:
+            parsed["blocks"] = spec["blocks"]
+
+    # Ensure followups is always a list
+    if "followups" not in parsed or not isinstance(parsed.get("followups"), list):
+        parsed["followups"] = _default_followups(parsed.get("skill", ""))
+
+    return parsed
+
+
+def _default_followups(skill: str) -> list[str]:
+    defaults: dict[str, list[str]] = {
+        "analytics": ["Show me this week's trend", "Which developer spent the most?", "Export this as CSV"],
+        "governance": ["Who triggered the most blocks?", "Show me today's events", "Which rules fired most?"],
+        "rules": ["Show all active rules", "Create a new block rule", "Which rules fired this week?"],
+        "discovery": ["Which agents are not under Guard?", "Show coverage by framework", "What's our risk score?"],
+        "compliance": ["What's our governance grade?", "Show OWASP Agentic Top 10 status", "Which controls are failing?"],
+        "memory": ["What decisions were made last week?", "Search for policy context", "Show recent team decisions"],
+        "session": ["Show sessions from yesterday", "Which agents ran the longest?", "Find high-autonomy sessions"],
+        "extract": ["Export blocked events", "Download spend summary", "Export audit log as CSV"],
+    }
+    return defaults.get(skill, ["Show me an overview", "What happened today?", "Export this data"])
+
+
+def _build_answer(parsed: dict, spec: dict | None) -> str:
+    """Extract the best answer string from a parsed payload."""
+    if parsed.get("answer"):
+        return parsed["answer"]
+    if parsed.get("question"):
+        return parsed["question"]
+    if spec:
+        return f"Here is your {parsed.get('title', 'report')}."
+    return "I couldn't generate an answer. Please try rephrasing your question."
+
+
 def _parse_workspace_id(workspace_id: str) -> uuid.UUID:
     try:
         return uuid.UUID(workspace_id)
@@ -124,6 +211,7 @@ def _get_session(db: Session, session_id: str, ws_uuid: uuid.UUID) -> GlensChatS
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
+    page_context: str | None = None
 
 
 class SessionOut(BaseModel):
@@ -136,6 +224,7 @@ class SessionOut(BaseModel):
 @router.post("/chat")
 async def glens_chat(
     req: ChatRequest,
+    background_tasks: BackgroundTasks,
     _: str = Depends(require_permission("guard.activity.view_own")),
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
@@ -170,25 +259,36 @@ async def glens_chat(
         except Exception:
             pass
 
+    context_summary: str | None = session.context_summary if hasattr(session, "context_summary") else None
+
     # Plan → run Agent per subtask → Coordinate
     executor = Executor(db, workspace_id)
+    thinking_states: list[dict] = []
+
+    def _capture_event(event: dict) -> None:
+        thinking_states.append(event)
+
     try:
-        subtasks = await asyncio.to_thread(plan, req.message, last_answer)
+        subtasks = await asyncio.to_thread(
+            plan, req.message, last_answer, req.page_context, context_summary
+        )
 
         results = []
         for subtask in subtasks:
             skill = subtask.get("skill", "report")
             agent = Agent([skill])
-            sub_messages = messages[-20:].copy()
+            sub_messages = _conversation_messages(messages)
             if len(subtasks) > 1:
                 sub_messages = sub_messages[:-1] + [{"role": "user", "content": subtask["question"]}]
-            result = await asyncio.to_thread(agent.run, sub_messages, executor)
+            result = await asyncio.to_thread(agent.run, sub_messages, executor, _capture_event)
             results.append(result)
 
         parsed = coordinate(results)
     except Exception as e:
         logger.error("glens.chat.inference_failed", error=str(e))
         raise HTTPException(status_code=503, detail="Inference unavailable — model may be cold, retry in 30s")
+
+    parsed = _normalize_payload(parsed)
 
     # Persist raw response as assistant turn, including rendered fields for session restore
     messages.append({
@@ -211,6 +311,8 @@ async def glens_chat(
     if parsed.get("confirm_required"):
         session.updated_at = datetime.now(timezone.utc)
         db.commit()
+        if _should_refresh_summary(messages):
+            background_tasks.add_task(_bg_refresh_summary, str(session.id), messages, context_summary)
         return {
             "session_id": str(session.id),
             "skill": skill,
@@ -240,6 +342,8 @@ async def glens_chat(
 
     session.updated_at = datetime.now(timezone.utc)
     db.commit()
+    if _should_refresh_summary(messages):
+        background_tasks.add_task(_bg_refresh_summary, str(session.id), messages, context_summary)
 
     # Extract intent — surface explicitly rather than silently drop
     if parsed.get("format"):
@@ -260,7 +364,7 @@ async def glens_chat(
         page_kind = None
         page_data = None
 
-    answer_text = parsed.get("answer") or parsed.get("question")
+    answer_text = _build_answer(parsed, spec)
     logger.info("glens.chat.complete", skill=skill, ready=bool(spec))
 
     return {
@@ -275,6 +379,7 @@ async def glens_chat(
         "rows":     _sanitize_rows(parsed.get("rows")),
         "columns":  _sanitize_columns(parsed.get("columns")),
         "warning": parsed.get("warning"),
+        "followups": parsed.get("followups"),
     }
 
 

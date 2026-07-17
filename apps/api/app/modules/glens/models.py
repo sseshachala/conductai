@@ -15,6 +15,7 @@ class GlensChatSession(Base):
     title        = Column(String, nullable=False)
     messages     = Column(Text, nullable=False, default="[]")
     render_spec  = Column(Text, nullable=True)
+    context_summary = Column(Text, nullable=True)
     created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                           onupdate=lambda: datetime.now(timezone.utc))
