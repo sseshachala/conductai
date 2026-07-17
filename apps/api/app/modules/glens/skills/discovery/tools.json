@@ -1,0 +1,39 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_discovery_summary",
+      "description": "Get full agent discovery summary: total agents, under_guard count, coverage %, risk breakdown, framework distribution, and per-agent details",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_knowledge",
+      "description": "Semantic search across Guard knowledge — use for intent-based discovery queries like 'agents doing file operations' or 'high-risk LangChain agents'",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "Natural language search query"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Optional filter: audit_event | rule | discovered_agent"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Number of results, default 10, max 50"
+          }
+        },
+        "required": ["q"]
+      }
+    }
+  }
+]
