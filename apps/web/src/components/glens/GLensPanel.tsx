@@ -19,7 +19,7 @@ type Message =
   | { role: "user"; text: string }
   | { role: "assistant"; kind: "question"; text: string }
   | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string }
-  | { role: "assistant"; kind: "loading" }
+  | { role: "assistant"; kind: "loading"; label?: string }
 
 // ─── Suggestion chips ─────────────────────────────────────────────────────────
 
@@ -79,7 +79,7 @@ function QuestionBubble({ text }: { text: string }) {
   )
 }
 
-function LoadingBubble() {
+function LoadingBubble({ label }: { label?: string }) {
   return (
     <AssistantBubble>
       <div style={{
@@ -89,8 +89,12 @@ function LoadingBubble() {
         padding: "10px 14px",
         fontSize: 13,
         color: "var(--text-muted)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
       }}>
         <span style={{ letterSpacing: 2 }}>···</span>
+        {label && <span style={{ fontSize: 12, opacity: 0.8 }}>{label}</span>}
       </div>
     </AssistantBubble>
   )
@@ -402,7 +406,7 @@ export function GLensPanel() {
       const body: Record<string, unknown> = { message: text }
       if (sessionId) body.session_id = sessionId
 
-      const res = await authFetch(`${base}/glens/chat`, {
+      const res = await authFetch(`${base}/glens/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -410,40 +414,54 @@ export function GLensPanel() {
       })
 
       if (!res.ok) {
-        setMessages(prev => [
-          ...prev.slice(0, -1),
-          { role: "assistant", kind: "question", text: `Request failed (${res.status}). Try again.` },
-        ])
+        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "question", text: `Request failed (${res.status}). Try again.` }])
         return
       }
 
-      const data = await res.json()
-      setSessionId(data.session_id)
-      sessionStorage.setItem(SESSION_KEY, data.session_id)
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buf = ""
 
-      if (data.ready && data.spec) {
-        setMessages(prev => [
-          ...prev.slice(0, -1),
-          { role: "assistant", kind: "dashboard", spec: data.spec, sessionId: data.session_id },
-        ])
-        // Refresh history list
-        setSessions(prev => {
-          const exists = prev.find(s => s.id === data.session_id)
-          if (exists) return prev
-          return [{ id: data.session_id, title: text.slice(0, 60), has_dashboard: true, created_at: new Date().toISOString() }, ...prev]
-        })
-      } else {
-        setMessages(prev => [
-          ...prev.slice(0, -1),
-          { role: "assistant", kind: "question", text: data.question ?? "Could you clarify what you're looking for?" },
-        ])
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split("\n")
+        buf = lines.pop()!
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          const evt = JSON.parse(line.slice(6)) as Record<string, unknown>
+          if (evt.type === "thinking") {
+            setMessages(prev => {
+              const last = prev[prev.length - 1]
+              if (last?.role === "assistant" && last.kind === "loading") {
+                return [...prev.slice(0, -1), { ...last, label: evt.label as string }]
+              }
+              return prev
+            })
+          } else if (evt.type === "done") {
+            if (evt.session_id) {
+              setSessionId(evt.session_id as string)
+              sessionStorage.setItem(SESSION_KEY, evt.session_id as string)
+              setSessions(prev => {
+                const exists = prev.find(s => s.id === evt.session_id)
+                if (exists) return prev
+                return [{ id: evt.session_id as string, title: text.slice(0, 60), has_dashboard: !!evt.spec, created_at: new Date().toISOString() }, ...prev]
+              })
+            }
+            if (evt.ready && evt.spec) {
+              setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: evt.spec as GlensDashboardSpec, sessionId: evt.session_id as string }])
+            } else {
+              setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "question", text: (evt.answer as string) ?? "Could you clarify what you're looking for?" }])
+            }
+          } else if (evt.type === "error") {
+            setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "question", text: (evt.message as string) ?? "Something went wrong." }])
+          }
+        }
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
-      setMessages(prev => [
-        ...prev.slice(0, -1),
-        { role: "assistant", kind: "question", text: "Network error. Please try again." },
-      ])
+      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "question", text: "Network error. Please try again." }])
     } finally {
       setLoading(false)
     }
@@ -563,7 +581,7 @@ export function GLensPanel() {
             {/* Messages */}
             {messages.map((msg, i) => {
               if (msg.role === "user") return <UserBubble key={i} text={msg.text} />
-              if (msg.kind === "loading") return <LoadingBubble key={i} />
+              if (msg.kind === "loading") return <LoadingBubble key={i} label={msg.label} />
               if (msg.kind === "question") return <QuestionBubble key={i} text={msg.text} />
               if (msg.kind === "dashboard") return (
                 <DashboardBubble
