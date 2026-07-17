@@ -66,15 +66,11 @@ Percentages → 1 decimal place (e.g. 12.4%)
 
 COUNT question ("how many", "total", "count"):
 {"skill": "...", "ready": false, "answer": "X blocks recorded for July."}
-One sentence. No table. No elaboration.
-
-LIST question ("show me", "which", "who"):
-{"skill": "...", "ready": false, "answer": "..plain text summary..", "rows": [...]}
-Include rows array — UI renders as table.
+One sentence. No table. No elaboration. No markdown — plain string only.
 
 TREND question ("trend", "over time", "this week vs last"):
 {"skill": "...", "ready": false, "answer": "Blocks increased from X to Y between [date] and [date]. Peak was Z on [date]."}
-Describe direction, magnitude, and peak. No table needed.
+Describe direction, magnitude, and peak. No table. No markdown.
 
 DASHBOARD question ("show dashboard", "overview", "build a view"):
 {"skill": "report", "ready": true, "kpis": [...], "charts": [...], "tables": [...], "title": "..."}
@@ -85,6 +81,13 @@ POLICY READ question:
 POLICY WRITE / CONFIG WRITE question:
 {"skill": "rules"|"guard_config"|"spend_config", "ready": false, "confirm_required": true,
  "answer": "...", "draft": {...}, "mapping": [...]}
+
+LIST / FILTER question ("what was blocked", "who was warned", "show me", "which", "who"):
+→ Always return page_kind or rows[], never prose.
+→ "What was blocked today?" → get_recent_governance_events → filter decision=blocked →
+   page_kind: "activity", data.events = only blocked events, answer = "N events blocked today."
+→ "Who was warned?" → same tool → filter decision=warned → page_kind: "activity"
+→ If event list is empty: answer = "No blocked events today." (no rows, no page_kind)
 
 ─── Evidence and warnings ────────────────────────────────────────────────────
 If the data is incomplete or the answer is approximate, add:
@@ -98,6 +101,8 @@ If a suggested follow-up action exists, add:
 - Never return raw UUIDs in answers — use email, rule_id slug, or tool name.
 - Never add prose explaining what you did — answer the question directly.
 - Dates in answers: use "Jul 17" not "2026-07-17T00:00:00Z".
+- answer field must be plain text only — no **bold**, no * bullets, no markdown. The UI renders it verbatim.
+- Never write multi-sentence summaries in answer when you have structured data — use page_kind, blocks[], or rows[] instead.
 
 ─── page_kind — embed the matching product page component ───────────────────
 
