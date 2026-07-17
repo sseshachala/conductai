@@ -14,8 +14,9 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import _verify_clerk_token, get_guard_hook_auth, require_permission
+from app.core.auth import _verify_clerk_token, get_guard_hook_auth, get_workspace_id, require_permission
 from app.core.database import get_db
+from app.modules.guard.embedding import embedding_client_for_workspace as _embedding_client_for_workspace
 from app.modules.guard.models import SessionReport
 
 log = structlog.get_logger(__name__)
@@ -104,6 +105,49 @@ def list_session_reports(
 
 # ── GET /guard/session-reports/{id} ───────────────────────────────────────────
 
+@router.get("/search")
+def search_session_reports(
+    q: str = Query(..., description="Natural language search query"),
+    limit: int = Query(default=5, ge=1, le=20),
+    _: str = Depends(require_permission("guard.activity.view_own")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    """Semantic search over session reports using pgvector."""
+    from sqlalchemy import text as sa_text
+    client = _embedding_client_for_workspace(db, workspace_id)
+    if not client:
+        raise HTTPException(status_code=503, detail="Embedding service not configured")
+
+    embedding = client.embed(q[:2000])
+    rows = db.execute(
+        sa_text(
+            "SELECT id, developer_email, archetype, autonomy_score, sessions, prompts, "
+            "report_md, created_at, "
+            "(embedding <=> CAST(:vec AS vector)) AS distance "
+            "FROM session_reports "
+            "WHERE workspace_id = :workspace_id AND embedding IS NOT NULL "
+            "ORDER BY distance ASC LIMIT :limit"
+        ),
+        {"workspace_id": workspace_id, "vec": str(embedding), "limit": limit},
+    ).fetchall()
+
+    return [
+        {
+            "id": str(r.id),
+            "developer_email": r.developer_email,
+            "archetype": r.archetype,
+            "autonomy_score": r.autonomy_score,
+            "sessions": r.sessions,
+            "prompts": r.prompts,
+            "summary": (r.report_md or "")[:500],
+            "created_at": r.created_at.isoformat(),
+            "score": round(1 - r.distance, 3),
+        }
+        for r in rows
+    ]
+
+
 @router.get("/{report_id}", response_model=SessionReportOut)
 def get_session_report(
     report_id: UUID,
@@ -167,6 +211,16 @@ def create_session_report(
     report.tools_json = body.tools_json
     report.report_md = body.report_md
     db.commit()
+
+    # Embed report_md in background for GLens semantic search
+    if body.report_md:
+        try:
+            client = _embedding_client_for_workspace(db, str(ws_uuid))
+            if client:
+                report.embedding = client.embed(body.report_md[:8000])
+                db.commit()
+        except Exception as e:
+            log.warning("session_report.embed_failed", report_id=str(report.id), error=str(e))
 
     log.info(
         "session_report.upserted",

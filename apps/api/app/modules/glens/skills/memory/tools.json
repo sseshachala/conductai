@@ -1,0 +1,17 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "search_memory",
+      "description": "Semantic search over team session memory using pgvector",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "q":     {"type": "string",  "description": "Natural language search query"},
+          "limit": {"type": "integer", "description": "Number of results, default 5, max 20"}
+        },
+        "required": ["q"]
+      }
+    }
+  }
+]

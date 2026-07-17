@@ -1,0 +1,47 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_spend_summary",
+      "description": "Get spend data for export",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "month": {"type": "string", "description": "YYYY-MM filter"}
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_recent_events",
+      "description": "Get audit events for export",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit":    {"type": "integer", "description": "Number of events, max 100"},
+          "decision": {"type": "string",  "description": "Filter: block, warn, or audit"},
+          "since":    {"type": "string",  "description": "ISO-8601 start"},
+          "until":    {"type": "string",  "description": "ISO-8601 end"}
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_sessions",
+      "description": "Get sessions for export",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {"type": "integer", "description": "Number of sessions, max 100"}
+        },
+        "required": []
+      }
+    }
+  }
+]

@@ -1,0 +1,48 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_spend_summary",
+      "description": "Get spend KPIs: events today, blocks today, total cost, active developers, cost by AI tool, cost by developer",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "month": {"type": "string", "description": "YYYY-MM filter, omit for all-time totals"}
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_recent_events",
+      "description": "Get recent Guard audit events (blocks, warnings, audits)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit":    {"type": "integer", "description": "Number of events, default 20, max 100"},
+          "decision": {"type": "string",  "description": "Filter: block, warn, or audit"},
+          "since":    {"type": "string",  "description": "ISO-8601 start timestamp"},
+          "until":    {"type": "string",  "description": "ISO-8601 end timestamp"},
+          "rule_id":  {"type": "string",  "description": "Filter by rule that triggered"}
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_sessions",
+      "description": "Get recent Guard sessions (developer + AI tool + cost per session)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {"type": "integer", "description": "Number of sessions, default 20, max 100"}
+        },
+        "required": []
+      }
+    }
+  }
+]

@@ -25,7 +25,7 @@ from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 
 log = structlog.get_logger(__name__)
 
-_LLM_CACHE_TTL = 86400  # 24 hours
+_LLM_CACHE_TTL = 604800  # 7 days — matches state checkpoint TTL
 
 
 def _cache_key(run_id: str, block_id: str, turn: int) -> str:
@@ -198,6 +198,8 @@ def _execute_brain(
     block_label: str | None = None,
     workflow_name: str | None = None,
     environment_id: str | None = None,
+    attempt_id: str | None = None,
+    resume_from_turn: int = 0,
 ) -> dict:
     # Import helpers from executor to avoid circular imports at module load time.
     from app.runtime.runtime import _emit, _write_trace
@@ -493,6 +495,24 @@ def _execute_brain(
         ]
 
         while turns < max_turns:
+            # Skip turns that were already completed before a crash.
+            # The LLM cache hit path below reconstructs messages correctly.
+            if turns < resume_from_turn:
+                _cached = _cache_get(run_id, block_id, turns)
+                if _cached is not None:
+                    from app.runtime.llm_client import LLMResponse as _LLMResponse
+                    _skip_resp = _LLMResponse.from_cache_dict(_cached)
+                    messages.extend(llm.make_assistant_turn(_skip_resp))
+                    _skip_tool_calls = [b for b in _skip_resp.content if isinstance(b, LLMToolUseBlock)]
+                    if _skip_tool_calls:
+                        # Reconstruct tool results from cache so message history is valid
+                        _skip_results = [(tc.id, f"[resumed — turn {turns} replayed from cache]") for tc in _skip_tool_calls]
+                        messages.extend(llm.make_tool_results_turn(_skip_results))
+                    turns += 1
+                    continue
+                # No cache for this turn — must re-execute from here
+                log.warning("brain.resume_cache_miss", run_id=run_id, block_id=block_id, turn=turns)
+
             # Trace: user turn
             if db and run_id and block_id:
                 turn_msg = messages[-1] if messages else {}
@@ -688,6 +708,19 @@ def _execute_brain(
 
             # Append tool results (provider-specific format via adapter)
             messages.extend(llm.make_tool_results_turn(raw_tool_results))
+
+            # Turn-level partial checkpoint — next resume starts from turn+1, not turn 0.
+            # Import here (inside the loop body) to avoid circular imports at module load.
+            if db and run_id and block_id:
+                try:
+                    from app.runtime.dag_runner import _checkpoint_state as _ckpt
+                    _ckpt(
+                        run_id, state, db=db,
+                        block_id=block_id, attempt_id=attempt_id,
+                        partial=True, resume_from_turn=turns,
+                    )
+                except Exception as _ck_err:
+                    log.warning("brain.turn_checkpoint_failed", turn=turns, error=str(_ck_err))
 
         cost_usd = round(total_cost_usd, 6)
         files_changed, diff_stat = session.capture_artifacts()

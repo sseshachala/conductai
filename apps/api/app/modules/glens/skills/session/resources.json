@@ -1,0 +1,1 @@
+{"data_sources": ["session_reports"], "backend": "pgvector", "top_k": 5}
