@@ -1,7 +1,19 @@
 """GLens Planner — decomposes complex questions into ordered subtasks."""
 import json
+import re
+
+import structlog
 
 from app.modules.glens.inference import chat as qwen_chat
+
+log = structlog.get_logger(__name__)
+
+
+def _extract_json(raw: str) -> str:
+    """Strip markdown fences and extract first JSON object."""
+    raw = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    return m.group(0) if m else raw
 
 _SKILLS = ["report", "analytics", "extract", "memory", "session", "rules", "guard_config", "spend_config", "discovery", "compliance", "governance"]
 
@@ -51,9 +63,27 @@ def plan(question: str, last_answer: str | None = None) -> list[dict]:
     ]
     try:
         raw = qwen_chat(messages)
-        parsed = json.loads(raw)
+        parsed = json.loads(_extract_json(raw))
         subtasks = parsed.get("subtasks", [])
         valid = [t for t in subtasks if t.get("skill") in _SKILLS and t.get("question")]
-        return valid or [{"id": "1", "skill": "report", "question": question}]
-    except Exception:
-        return [{"id": "1", "skill": "report", "question": question}]
+        if valid:
+            return valid
+        log.warning("glens.planner.no_valid_subtasks", raw=raw[:200])
+    except Exception as e:
+        log.warning("glens.planner.parse_failed", error=str(e), raw=raw[:200] if "raw" in dir() else "")
+
+    # Fallback: guess skill from question keywords
+    q = question.lower()
+    if any(w in q for w in ["cost", "spend", "token", "budget"]):
+        skill = "analytics"
+    elif any(w in q for w in ["block", "warn", "event", "who", "recent", "list"]):
+        skill = "governance"
+    elif any(w in q for w in ["rule", "policy", "create", "disable"]):
+        skill = "rules"
+    elif any(w in q for w in ["agent", "discover", "coverage"]):
+        skill = "discovery"
+    elif any(w in q for w in ["compliance", "grade", "owasp"]):
+        skill = "compliance"
+    else:
+        skill = "analytics"
+    return [{"id": "1", "skill": skill, "question": question}]
