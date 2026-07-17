@@ -158,8 +158,10 @@ def _checkpoint_state(
                 completed_at     = EXCLUDED.completed_at
         """)
 
+        # For partial checkpoints preserve last known output so a mid-block
+        # crash doesn't wipe what the block has produced so far.
         _output_json = _json_mod.dumps(
-            state.get(block_id, {}) if not partial else {},
+            state.get(block_id, {}),
             default=str,
         )
 
@@ -172,12 +174,6 @@ def _checkpoint_state(
             "resume_from_turn": resume_from_turn,
             "completed_at":     _completed_at,
         })
-
-        # Heartbeat update — prevents reaper from killing long agentic blocks
-        db.execute(
-            _sa.text("UPDATE runs SET last_heartbeat_time = now() WHERE id = :run_id"),
-            {"run_id": str(run_id)},
-        )
         db.commit()
 
     except Exception as _e:
@@ -187,6 +183,22 @@ def _checkpoint_state(
         except Exception:
             pass
         return
+
+    # Heartbeat — separate transaction so a lock contention on runs table
+    # never rolls back the already-committed run_block_states upsert.
+    try:
+        import sqlalchemy as _sa
+        db.execute(
+            _sa.text("UPDATE runs SET last_heartbeat_time = now() WHERE id = :run_id"),
+            {"run_id": str(run_id)},
+        )
+        db.commit()
+    except Exception as _he:
+        log.warning("dag.heartbeat_failed", run_id=run_id, error=str(_he))
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
     # Best-effort Redis write — warm cache only, never the source of truth
     try:

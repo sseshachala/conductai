@@ -28,7 +28,9 @@ def upgrade() -> None:
             PRIMARY KEY (run_id, block_id)
         )
     """)
-    op.execute("CREATE INDEX ix_run_block_states_run_id ON run_block_states (run_id)")
+    # Run index outside the transaction block — CONCURRENTLY requires it
+    op.execute("COMMIT")
+    op.execute("CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_run_block_states_run_id ON run_block_states (run_id)")
 
 
 def downgrade() -> None:
