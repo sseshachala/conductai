@@ -423,6 +423,49 @@ def _glens_row(db: Session, ws_uuid: uuid.UUID):
     ).first()
 
 
+@router.get("/opener")
+def glens_opener(
+    _: str = Depends(require_permission("guard.activity.view_own")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    """Return 4 data-grounded suggestion chips for the empty-state screen."""
+    executor = Executor(db, workspace_id)
+    try:
+        kpis = executor._tool_get_governance_kpis()
+    except Exception:
+        kpis = {}
+
+    blocked = kpis.get("blocked_today", 0)
+    events = kpis.get("events_today", 0)
+    blocks_mtd = kpis.get("blocks_mtd", 0)
+    devs = kpis.get("active_developers_today", 0)
+
+    chips: list[str] = []
+
+    if blocked > 0:
+        chips.append(f"Who was blocked today? ({blocked} block{'s' if blocked != 1 else ''})")
+    else:
+        chips.append("Show me today's Guard activity")
+
+    if events > 0:
+        chips.append(f"Break down today's {events} event{'s' if events != 1 else ''} by rule")
+    else:
+        chips.append("Which rules fired most this week?")
+
+    if blocks_mtd > 0:
+        chips.append(f"Show MTD block trend ({blocks_mtd} block{'s' if blocks_mtd != 1 else ''} this month)")
+    else:
+        chips.append("Cost by AI tool this month")
+
+    if devs > 1:
+        chips.append(f"Compare spend across {devs} active developers")
+    else:
+        chips.append("Which rule triggered most this month?")
+
+    return {"chips": chips}
+
+
 @router.get("/status")
 def glens_status(
     _: str = Depends(require_permission("guard.activity.view_own")),
