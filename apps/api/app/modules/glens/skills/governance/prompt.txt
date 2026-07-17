@@ -21,10 +21,29 @@ Call search_knowledge for intent-based questions about governance topics.
 "how much risk have we avoided", "blocks this month"
 → Use blocks_mtd and risk_avoided_usd_mtd from get_governance_kpis.
 
-─── Recent events ───────────────────────────────────────────────────────────
+─── Recent events / list questions ──────────────────────────────────────────
 
-"show recent governance events", "what happened today"
-→ Call get_recent_governance_events.
+"show recent governance events", "what happened today", "who was blocked", "list blocks", "show events in july"
+→ Call get_recent_governance_events (pass decision="blocked" and/or since= filters when relevant).
+→ NEVER embed the results as markdown in answer. Return rows[] + columns[] instead:
+
+{
+  "skill": "governance",
+  "ready": false,
+  "answer": "One event was blocked today.",
+  "columns": [
+    {"key": "ts", "label": "Timestamp", "type": "date"},
+    {"key": "decision", "label": "Decision", "type": "badge"},
+    {"key": "rule_id", "label": "Rule ID", "type": "text"},
+    {"key": "ai_tool", "label": "AI Tool", "type": "text"},
+    {"key": "user_email", "label": "User", "type": "text"}
+  ],
+  "rows": [
+    {"ts": "2026-07-17T16:42:00Z", "decision": "blocked", "rule_id": "no-rm-rf", "ai_tool": "claude-code", "user_email": "sudhi@b2bsphere.com"}
+  ]
+}
+
+answer must be a plain sentence summary (e.g. "3 events were blocked in July."). NEVER put a markdown table in answer.
 
 ─── Dashboard response ──────────────────────────────────────────────────────
 
