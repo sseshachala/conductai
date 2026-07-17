@@ -13,6 +13,7 @@ type TabDef = { href: string; label: string; roles?: GuardRole[] }
 // roles = undefined means visible to all; otherwise restrict to listed roles
 export const GUARD_TABS: TabDef[] = [
   { href: "/theguard",                 label: "Overview"        },
+  { href: "/theguard/chat",            label: "Chat"            },
   { href: "/theguard/spend",           label: "Spend",           roles: ["admin"] },
   { href: "/theguard/policies",        label: "Policies"        },
   { href: "/theguard/activity",        label: "Flight Recorder" },
