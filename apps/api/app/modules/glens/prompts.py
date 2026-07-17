@@ -24,10 +24,10 @@ VALID_TABLES = ["blocked_events", "warned_events", "allowed_events", "recent_ses
 
 KPI_META = {
     "events_today":        {"label": "Events Today",          "field": "events_today"},
-    "blocked_today":       {"label": "Blocks Today",          "field": "blocked_today"},
+    "blocked_today":       {"label": "Blocks Today",          "field": "blocked_today",       "color": "err"},
     "total_cost_usd":      {"label": "Total Cost (month)",    "field": "total_cost_usd"},
     "active_developers":   {"label": "Active Developers",     "field": "active_developers"},
-    "tokens_saved_today":  {"label": "Tokens Saved Today",    "field": "tokens_saved_today"},
+    "tokens_saved_today":  {"label": "Tokens Saved Today",    "field": "tokens_saved_today",  "color": "ok"},
     "total_tokens_before": {"label": "Tokens Before (month)", "field": "total_tokens_before"},
     "total_tokens_after":  {"label": "Tokens After (month)",  "field": "total_tokens_after"},
     "hook_sessions":       {"label": "Hook Sessions",         "field": "hook_sessions"},

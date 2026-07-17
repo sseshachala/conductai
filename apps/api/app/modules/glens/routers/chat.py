@@ -172,7 +172,7 @@ def _build_spec(title: str, month: str, kpi_picks: list, chart_picks: list, tabl
     spend_ep = f"/guard/spend{f'?month={month}' if month else ''}"
 
     kpis = [
-        {"label": KPI_META[k]["label"], "endpoint": spend_ep, "field": KPI_META[k]["field"]}
+        {**KPI_META[k], "endpoint": spend_ep}
         for k in kpi_picks if k in VALID_KPIS
     ]
     charts = [
@@ -187,10 +187,10 @@ def _build_spec(title: str, month: str, kpi_picks: list, chart_picks: list, tabl
     # Fallback: if model picked nothing, give a sensible overview
     if not kpis:
         kpis = [
-            {"label": "Events Today",    "endpoint": spend_ep, "field": "events_today"},
-            {"label": "Blocks Today",    "endpoint": spend_ep, "field": "blocked_today"},
-            {"label": "Total Cost",      "endpoint": spend_ep, "field": "total_cost_usd"},
-            {"label": "Active Devs",     "endpoint": spend_ep, "field": "active_developers"},
+            {"label": "Events Today",  "endpoint": spend_ep, "field": "events_today"},
+            {"label": "Blocks Today",  "endpoint": spend_ep, "field": "blocked_today",      "color": "err"},
+            {"label": "Total Cost",    "endpoint": spend_ep, "field": "total_cost_usd"},
+            {"label": "Active Devs",   "endpoint": spend_ep, "field": "active_developers"},
         ]
 
     return {"title": title, "kpis": kpis, "charts": charts, "tables": tables}

@@ -20,6 +20,7 @@ export interface SpecKpi {
   endpoint: string
   field: string          // field name on object response, or "count" for array length
   params?: Record<string, string | number>
+  color?: string         // "err" | "warn" | "ok" — maps to sbadge CSS class for value color
 }
 
 export interface SpecChart {
@@ -131,7 +132,7 @@ function KpiTile({
       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
         {kpi.label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)" }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: kpi.color ? `var(--${kpi.color})` : "var(--text)" }}>{value}</div>
     </div>
   )
 }
