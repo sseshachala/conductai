@@ -13,10 +13,23 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_guard_hook_auth, get_workspace_id
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, DiscoveryScan
 from app.modules.guard import knowledge as guard_knowledge
+
+
+def _bg_project_agent(agent_id: str) -> None:
+    db = SessionLocal()
+    try:
+        agent = db.query(DiscoveredAgent).filter(DiscoveredAgent.id == uuid.UUID(agent_id)).first()
+        if agent:
+            guard_knowledge.project_discovered_agent(agent, db)
+    except Exception as exc:
+        import structlog
+        structlog.get_logger(__name__).warning("guard.knowledge.bg_agent_failed", agent_id=agent_id, error=str(exc))
+    finally:
+        db.close()
 
 router = APIRouter(prefix="/guard/discover", tags=["guard"])
 
@@ -117,8 +130,8 @@ def ingest_scan(
     db.add(scan)
     db.flush()
 
+    touched_ids: list[str] = []
     for a in agents:
-        # upsert key matches unique constraint: workspace_id + framework + source
         existing = (
             db.query(DiscoveredAgent)
             .filter(
@@ -135,8 +148,9 @@ def ingest_scan(
             existing.risk_score = a.risk_score
             existing.location   = a.location
             existing.last_seen_at = now
+            touched_ids.append(str(existing.id))
         else:
-            db.add(DiscoveredAgent(
+            new_agent = DiscoveredAgent(
                 workspace_id=ws_uuid,
                 scan_id=scan.id,
                 name=a.name,
@@ -147,15 +161,14 @@ def ingest_scan(
                 risk_score=a.risk_score,
                 under_guard=a.under_guard,
                 proxy_routed=a.proxy_routed,
-            ))
+            )
+            db.add(new_agent)
+            db.flush()  # get ID before commit
+            touched_ids.append(str(new_agent.id))
 
     db.commit()
-    touched = db.query(DiscoveredAgent).filter(
-        DiscoveredAgent.workspace_id == ws_uuid,
-        DiscoveredAgent.last_seen_at == now,
-    ).all()
-    for agent in touched:
-        bg.add_task(guard_knowledge.project_discovered_agent, agent, db)
+    for agent_id in touched_ids:
+        bg.add_task(_bg_project_agent, agent_id)
     return {"scan_id": str(scan.id), "agents_found": len(agents), "guard_coverage": under_guard_count}
 
 
@@ -219,7 +232,7 @@ def register_agent(
     row.under_guard = True
     row.last_seen_at = datetime.now(timezone.utc)
     db.commit()
-    bg.add_task(guard_knowledge.project_discovered_agent, row, db)
+    bg.add_task(_bg_project_agent, agent_id)
     return {"id": agent_id, "under_guard": True}
 
 

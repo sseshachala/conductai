@@ -271,8 +271,8 @@ function PolicyConfirmBubble({
         onResult(`Failed to apply: ${err.detail ?? res.status}`)
       } else {
         const data = await res.json()
-        const label = data.rule_id ? `"${data.rule_id}"` : data.scope ?? ""
-        onResult(`${label} ${data.action} successfully.`.trim())
+        const label = data.rule_id ? `Rule "${data.rule_id}"` : data.scope ? `Budget (${data.scope})` : "Guard config"
+        onResult(`${label} ${data.action} successfully.`)
       }
     } catch {
       onResult("Network error. Please try again.")
