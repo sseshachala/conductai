@@ -1,0 +1,1 @@
+{"data_sources": ["team_memory"], "backend": "pgvector", "top_k": 5}

@@ -16,11 +16,13 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
 from app.models.workspace_config import WorkspaceConfig
-from app.modules.glens.inference import chat as qwen_chat
+from app.modules.glens.agent import Agent
+from app.modules.glens.coordinator import coordinate
+from app.modules.glens.executor import Executor
+from app.modules.glens.planner import plan
 from app.modules.glens.models import GlensChatSession
-from app.modules.glens.prompts import build_system_prompt, build_context_messages, KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
-from app.modules.guard.models import GuardAuditEvent
-from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
+from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
+from app.modules.guard.models import WorkspaceCustomRule
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/glens", tags=["glens"])
@@ -81,7 +83,7 @@ async def glens_chat(
         session = GlensChatSession(
             workspace_id=ws_uuid,
             title=req.message[:60],
-            messages=json.dumps([{"role": "system", "content": build_system_prompt()}]),
+            messages=json.dumps([]),
         )
         db.add(session)
         db.flush()
@@ -90,88 +92,79 @@ async def glens_chat(
     messages = json.loads(session.messages)
     messages.append({"role": "user", "content": req.message})
 
-    # ponytail: cap at system + last 20 turns to prevent unbounded growth
-    system = [m for m in messages if m["role"] == "system"]
-    non_system = [m for m in messages if m["role"] != "system"]
-
-    # Inject live Guard snapshot so model can answer factual questions
-    guard_ctx = _fetch_guard_context(db, workspace_id)
-    inference_messages = system + build_context_messages(guard_ctx) + non_system[-20:]
-
+    # Plan → run Agent per subtask → Coordinate
+    executor = Executor(db, workspace_id)
     try:
-        raw = await asyncio.to_thread(qwen_chat, inference_messages, session_id=str(session.id))
+        subtasks = await asyncio.to_thread(plan, req.message)
+
+        results = []
+        for subtask in subtasks:
+            skill = subtask.get("skill", "report")
+            agent = Agent([skill])
+            sub_messages = messages[-20:].copy()
+            if len(subtasks) > 1:
+                sub_messages = sub_messages[:-1] + [{"role": "user", "content": subtask["question"]}]
+            result = await asyncio.to_thread(agent.run, sub_messages, executor)
+            results.append(result)
+
+        parsed = coordinate(results)
     except Exception as e:
         logger.error("glens.chat.inference_failed", error=str(e))
         raise HTTPException(status_code=503, detail="Inference unavailable — model may be cold, retry in 30s")
 
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("glens.chat.parse_failed", raw=raw[:200])
-        parsed = {"ready": False, "question": raw}
-
-    messages.append({"role": "assistant", "content": raw})
+    # Persist raw response as assistant turn
+    messages.append({"role": "assistant", "content": json.dumps(parsed)})
     session.messages = json.dumps(messages)
 
     spec = None
+    skill = parsed.get("skill", "report")
+
+    # Policy write — return draft for frontend confirmation; do not build spec
+    if parsed.get("confirm_required"):
+        session.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        return {
+            "session_id": str(session.id),
+            "skill": "policy",
+            "ready": False,
+            "confirm_required": True,
+            "action": parsed.get("action"),
+            "answer": parsed.get("answer"),
+            "draft": parsed.get("draft"),
+            "mapping": parsed.get("mapping", []),
+            "target_rule_id": parsed.get("target_rule_id"),
+        }
+
     if parsed.get("ready"):
-        spec = _build_spec(
-            title=parsed.get("title", "Guard Overview"),
-            month=parsed.get("month", ""),
-            kpi_picks=parsed.get("kpis", []),
-            chart_picks=parsed.get("charts", []),
-            table_picks=parsed.get("tables", []),
-        )
+        # Coordinator may return a pre-merged spec, or report skill returns picks
+        if parsed.get("spec"):
+            spec = parsed["spec"]
+        else:
+            spec = _build_spec(
+                title=parsed.get("title", "Guard Overview"),
+                month=parsed.get("month", ""),
+                kpi_picks=parsed.get("kpis", []),
+                chart_picks=parsed.get("charts", []),
+                table_picks=parsed.get("tables", []),
+            )
         session.render_spec = json.dumps(spec)
-        session.title = parsed.get("title", session.title)[:60]
+        session.title = parsed.get("title", spec.get("title", session.title))[:60]
 
     session.updated_at = datetime.now(timezone.utc)
     db.commit()
 
-    logger.info("glens.chat.complete", ready=parsed.get("ready", False))
+    # Normalize answer field across all skills
+    answer_text = parsed.get("answer") or parsed.get("question")
+    logger.info("glens.chat.complete", skill=skill, ready=bool(spec))
 
     return {
         "session_id": str(session.id),
-        "ready": parsed.get("ready", False),
-        "question": parsed.get("question"),
+        "skill": skill,
+        "ready": spec is not None,
+        "question": answer_text,
         "spec": spec,
     }
 
-
-def _fetch_guard_context(db: Session, workspace_id: str) -> dict:
-    try:
-        spend = _get_spend_summary_inner(db, workspace_id, None)
-        spend_data = {
-            "events_today": spend.events_today,
-            "blocked_today": spend.blocked_today,
-            "total_cost_usd": round(spend.total_cost_usd, 2),
-            "active_developers": spend.active_developers,
-            "tokens_saved_today": spend.tokens_saved_today,
-            "sessions": spend.sessions,
-            "hook_sessions": spend.hook_sessions,
-            "by_ai_tool": [{"tool": t.ai_tool, "cost_usd": round(t.cost_usd, 2)} for t in spend.by_ai_tool],
-            "by_developer": [{"email": d.email, "cost_usd": round(d.cost_usd, 2)} for d in spend.by_developer],
-        }
-    except Exception:
-        spend_data = {}
-
-    try:
-        org_ws = _org_ws_subquery(db, workspace_id)
-        rows = (
-            db.query(GuardAuditEvent)
-            .filter(GuardAuditEvent.workspace_id.in_(org_ws))
-            .order_by(GuardAuditEvent.ts.desc())
-            .limit(20)
-            .all()
-        )
-        events_data = [
-            {"ts": e.ts.isoformat(), "decision": e.decision, "user_email": e.user_email, "ai_tool": e.ai_tool, "rule_id": e.rule_id}
-            for e in rows
-        ]
-    except Exception:
-        events_data = []
-
-    return {"spend": spend_data, "recent_events": events_data}
 
 
 def _build_spec(title: str, month: str, kpi_picks: list, chart_picks: list, table_picks: list) -> dict:
@@ -292,6 +285,68 @@ def list_sessions(
         )
         for s in sessions
     ]
+
+
+class PolicyApplyRequest(BaseModel):
+    action: str                          # "create" | "patch"
+    draft: dict
+    target_rule_id: str | None = None
+
+
+@router.post("/policy/apply", status_code=201)
+def policy_apply(
+    req: PolicyApplyRequest,
+    _: str = Depends(require_permission("guard.policies.edit")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    ws_uuid = _parse_workspace_id(workspace_id)
+
+    if req.action == "create":
+        rule_id = req.draft.get("rule_id")
+        if not rule_id:
+            raise HTTPException(status_code=400, detail="draft.rule_id is required")
+        existing = db.query(WorkspaceCustomRule).filter(
+            WorkspaceCustomRule.workspace_id == ws_uuid,
+            WorkspaceCustomRule.rule_id == rule_id,
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail=f"Rule '{rule_id}' already exists")
+        body = {k: v for k, v in req.draft.items() if k not in ("rule_id", "persona")}
+        body["id"] = rule_id
+        rule = WorkspaceCustomRule(
+            workspace_id=ws_uuid,
+            rule_id=rule_id,
+            persona=req.draft.get("persona", "agent"),
+            body=body,
+            enabled=True,
+        )
+        db.add(rule)
+        db.commit()
+        log.info("glens.policy.created", workspace_id=workspace_id, rule_id=rule_id)
+        return {"ok": True, "rule_id": rule_id, "action": "created"}
+
+    elif req.action == "patch":
+        rule_id = req.target_rule_id
+        if not rule_id:
+            raise HTTPException(status_code=400, detail="target_rule_id is required for patch")
+        rule = db.query(WorkspaceCustomRule).filter(
+            WorkspaceCustomRule.workspace_id == ws_uuid,
+            WorkspaceCustomRule.rule_id == rule_id,
+        ).first()
+        if not rule:
+            raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
+        if "enabled" in req.draft:
+            rule.enabled = req.draft["enabled"]
+        body_patch = {k: v for k, v in req.draft.items() if k != "enabled"}
+        if body_patch:
+            rule.body = {**rule.body, **body_patch}
+        rule.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        log.info("glens.policy.patched", workspace_id=workspace_id, rule_id=rule_id)
+        return {"ok": True, "rule_id": rule_id, "action": "patched"}
+
+    raise HTTPException(status_code=400, detail=f"Unknown action '{req.action}'")
 
 
 @router.get("/sessions/{session_id}")

@@ -273,7 +273,7 @@ export function GLensPanel() {
 
   const abortRef = useRef<AbortController | null>(null)
   const threadRef = useRef<HTMLDivElement>(null)
-  const isGuardPage = pathname?.startsWith("/theguard")
+  const isGuardPage = pathname?.startsWith("/theguard") && pathname !== "/theguard/chat"
   const SESSION_KEY = "glens_active_session"
 
   // ─── Install gate ──────────────────────────────────────────────────────────

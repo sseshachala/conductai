@@ -8,7 +8,9 @@ from __future__ import annotations
 import json
 import re
 import time
+import uuid
 from collections import defaultdict, deque
+from datetime import timezone
 from typing import Any
 
 import structlog
@@ -97,9 +99,9 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
         "next_action": next_action,
     }
 
-_STATE_CHECKPOINT_TTL = 86400  # 24 hours — same as LLM cache
+_STATE_CHECKPOINT_TTL = 604800  # 7 days — Redis LLM-cache TTL (unchanged)
 
-# Module-level connection pool — reused across all checkpoint calls
+# Module-level Redis connection pool — used as optional read cache only.
 import redis as _redis_mod
 import json as _json_mod
 _redis_pool = _redis_mod.ConnectionPool.from_url(settings.redis_url, decode_responses=True)
@@ -111,25 +113,155 @@ def _redis_client() -> "_redis_mod.Redis":
 
 # ── state checkpointing ───────────────────────────────────────────────────────
 
-def _checkpoint_state(run_id: str | None, state: dict) -> None:
-    """Persist run state to Redis after each block so a crash can resume."""
-    if not run_id:
+def _checkpoint_state(
+    run_id: str | None,
+    state: dict,
+    db=None,
+    block_id: str | None = None,
+    attempt_id: str | None = None,
+    partial: bool = False,
+    resume_from_turn: int = 0,
+) -> None:
+    """Atomic DB upsert for per-block checkpoint.
+
+    Writes to run_block_states via INSERT ... ON CONFLICT DO UPDATE so the
+    operation is a single round-trip with no crash window between completion
+    and persistence.
+
+    Also updates runs.last_heartbeat_time so the reaper does not kill
+    long-running agentic blocks mid-execution.
+
+    Redis write is best-effort: used only as a warm read cache on resume.
+    A Redis failure never raises — the DB row is the source of truth.
+    """
+    if not run_id or not db or not block_id:
         return
+
+    from datetime import datetime as _dt
+    _completed_at = None if partial else _dt.now(timezone.utc).isoformat()
+
     try:
-        _redis_client().setex(f"run_state:{run_id}", _STATE_CHECKPOINT_TTL, _json_mod.dumps(state, default=str))
+        import sqlalchemy as _sa
+
+        # Build the upsert using raw SQL for portability with both sync and
+        # greenlet-threaded SQLAlchemy sessions used in the worker.
+        _upsert_sql = _sa.text("""
+            INSERT INTO run_block_states
+                (run_id, block_id, attempt_id, output, partial, resume_from_turn, completed_at, created_at)
+            VALUES
+                (:run_id, :block_id, :attempt_id, CAST(:output AS jsonb), :partial, :resume_from_turn, CAST(:completed_at AS timestamptz), now())
+            ON CONFLICT (run_id, block_id) DO UPDATE SET
+                attempt_id       = EXCLUDED.attempt_id,
+                output           = EXCLUDED.output,
+                partial          = EXCLUDED.partial,
+                resume_from_turn = EXCLUDED.resume_from_turn,
+                completed_at     = EXCLUDED.completed_at
+        """)
+
+        # For partial checkpoints preserve last known output so a mid-block
+        # crash doesn't wipe what the block has produced so far.
+        _output_json = _json_mod.dumps(
+            state.get(block_id, {}),
+            default=str,
+        )
+
+        db.execute(_upsert_sql, {
+            "run_id":           str(run_id),
+            "block_id":         block_id,
+            "attempt_id":       str(attempt_id or uuid.uuid4()),
+            "output":           _output_json,
+            "partial":          partial,
+            "resume_from_turn": resume_from_turn,
+            "completed_at":     _completed_at,
+        })
+        db.commit()
+
     except Exception as _e:
-        log.warning("dag.checkpoint_failed", run_id=run_id, error=str(_e))
+        log.warning("dag.checkpoint_failed", run_id=run_id, block_id=block_id, error=str(_e))
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return
+
+    # Heartbeat — separate transaction so a lock contention on runs table
+    # never rolls back the already-committed run_block_states upsert.
+    try:
+        import sqlalchemy as _sa
+        db.execute(
+            _sa.text("UPDATE runs SET last_heartbeat_time = now() WHERE id = :run_id"),
+            {"run_id": str(run_id)},
+        )
+        db.commit()
+    except Exception as _he:
+        log.warning("dag.heartbeat_failed", run_id=run_id, error=str(_he))
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    # Best-effort Redis write — warm cache only, never the source of truth
+    try:
+        _redis_client().setex(
+            f"run_state:{run_id}",
+            _STATE_CHECKPOINT_TTL,
+            _json_mod.dumps(state, default=str),
+        )
+    except Exception:
+        pass  # Redis failure is non-fatal
 
 
-def _load_checkpoint(run_id: str | None) -> dict | None:
-    """Load checkpointed state from Redis. Returns None if no checkpoint exists."""
+def _load_checkpoint(run_id: str | None, db=None) -> tuple[dict, list]:
+    """Load per-block checkpoint rows from DB.
+
+    Returns (completed_outputs, block_state_rows) where:
+    - completed_outputs: {block_id: output_dict} for rows with partial=False
+    - block_state_rows: all RunBlockState rows for this run (both partial and complete)
+
+    Falls back to Redis if db is None or query fails (legacy runs keep working).
+    """
     if not run_id:
-        return None
+        return {}, []
+
+    if db is not None:
+        try:
+            import sqlalchemy as _sa
+            rows = db.execute(
+                _sa.text("SELECT block_id, attempt_id, output, partial, resume_from_turn FROM run_block_states WHERE run_id = :run_id"),
+                {"run_id": str(run_id)},
+            ).fetchall()
+
+            completed_outputs: dict = {}
+            row_objects: list = []
+
+            for row in rows:
+                # Wrap raw Row into a simple namespace for attribute access
+                class _Row:
+                    pass
+                r = _Row()
+                r.block_id        = row[0]
+                r.attempt_id      = str(row[1])
+                r.output          = row[2] if isinstance(row[2], dict) else (_json_mod.loads(row[2]) if row[2] else {})
+                r.partial         = row[3]
+                r.resume_from_turn = row[4]
+                row_objects.append(r)
+                if not r.partial:
+                    completed_outputs[r.block_id] = r.output
+
+            return completed_outputs, row_objects
+        except Exception as _e:
+            log.warning("dag.load_checkpoint_failed", run_id=run_id, error=str(_e))
+
+    # Redis fallback — for legacy runs that have no DB rows yet
     try:
         raw = _redis_client().get(f"run_state:{run_id}")
-        return _json_mod.loads(raw) if raw else None
+        if raw:
+            legacy_state = _json_mod.loads(raw)
+            return legacy_state, []
     except Exception:
-        return None
+        pass
+
+    return {}, []
 
 
 # ── graph utilities ───────────────────────────────────────────────────────────
@@ -281,6 +413,8 @@ def _execute_brain(
     block_label: str | None = None,
     workflow_name: str | None = None,
     environment_id: str | None = None,
+    attempt_id: str | None = None,
+    resume_from_turn: int = 0,
 ) -> dict:
     from app.runtime.blocks.brain_block import _execute_brain as _brain_impl
     return _brain_impl(
@@ -294,6 +428,8 @@ def _execute_brain(
         block_label=block_label,
         workflow_name=workflow_name,
         environment_id=environment_id,
+        attempt_id=attempt_id,
+        resume_from_turn=resume_from_turn,
     )
 
 
@@ -419,6 +555,8 @@ def _dispatch_single_block(
     sandbox_sessions: dict | None = None,
     user_email: str | None = None,
     env_id=None,
+    attempt_id: str | None = None,
+    resume_from_turn: int = 0,
 ) -> dict:
     if sandbox_sessions is None:
         sandbox_sessions = {}
@@ -533,7 +671,8 @@ def _dispatch_single_block(
                                 playbook_slug=slug, injected_session=_injected_session,
                                 workspace_id=workspace_id_str, workflow_id=str(version.workflow.id),
                                 user_email=user_email, block_label=_block_label, workflow_name=_wf_name,
-                                environment_id=str(env_id) if env_id else None)
+                                environment_id=str(env_id) if env_id else None,
+                                attempt_id=attempt_id, resume_from_turn=resume_from_turn)
 
     elif block_type == "tool":
         _auto_guard_check(state, db, run_id, block_id, "tool", workspace_id_str, version, user_email)
@@ -659,11 +798,17 @@ def _execute_dag(
 
     state: dict[str, Any] = dict(initial_state)
 
-    # Resume from checkpoint if this run was interrupted mid-flight.
-    _checkpoint = _load_checkpoint(str(run_id))
-    if _checkpoint:
-        state.update(_checkpoint)
-        log.info("run.resumed_from_checkpoint", run_id=run_id, completed_blocks=[k for k in _checkpoint if not k.startswith("__")])
+    # Resume from checkpoint — load per-block state rows from DB.
+    _checkpoint_outputs, _block_state_rows = _load_checkpoint(str(run_id), db)
+    _completed_blocks: set[str] = {r.block_id for r in _block_state_rows if not r.partial}
+    _partial_blocks: dict[str, Any] = {r.block_id: r for r in _block_state_rows if r.partial}
+
+    if _checkpoint_outputs:
+        # Merge completed block outputs back into state so downstream refs resolve.
+        for _bid, _bout in _checkpoint_outputs.items():
+            if _bout:
+                state[_bid] = _bout
+        log.info("run.resumed_from_checkpoint", run_id=run_id, completed_blocks=list(_completed_blocks))
 
     # Seed inputs defaults so {{inputs.x}} refs resolve for auto-triggered runs.
     # Always merge spec defaults first, then let caller-supplied values win.
@@ -702,11 +847,14 @@ def _execute_dag(
         block_id = block["id"]
         block_type = block["data"].get("type", "tool")
 
-        # Skip blocks already completed in a previous run segment (resume support)
-        if block_id in state:
+        # Skip blocks already completed in a previous run segment (resume support).
+        # Source of truth is run_block_states (DB), with state dict as fallback for
+        # legacy runs that only have the Redis/state blob.
+        if block_id in _completed_blocks or (block_id not in _completed_blocks and block_id in state and block_id not in _partial_blocks):
             log.debug("block.skipped_resume", block_id=block_id)
             if block_type == "logic":
-                logic_routes[block_id] = state[block_id].get("route", "pass")
+                _existing = state.get(block_id, {})
+                logic_routes[block_id] = _existing.get("route", "pass") if isinstance(_existing, dict) else "pass"
                 _logic_routes_version += 1
             continue
 
@@ -725,9 +873,26 @@ def _execute_dag(
         except Exception:
             pass
 
+        # Determine attempt_id: reuse from partial checkpoint row if resuming
+        # mid-block, otherwise mint a fresh one. This keeps the attempt_id stable
+        # across crash/resume so external services can use it as an idempotency key.
+        _partial_row = _partial_blocks.get(block_id)
+        _attempt_id: str = _partial_row.attempt_id if _partial_row else str(uuid.uuid4())
+        _resume_from_turn: int = _partial_row.resume_from_turn if _partial_row else 0
+
+        # Write a partial DB checkpoint before dispatch — records attempt_id so that
+        # if we crash here the next resume picks up the same attempt_id instead of
+        # generating a new one (which would cause duplicate Slack/GitHub side effects).
+        _checkpoint_state(
+            run_id, state, db=db,
+            block_id=block_id, attempt_id=_attempt_id,
+            partial=True, resume_from_turn=_resume_from_turn,
+        )
+
         _emit(db, run_id, block_id, "block_started", {
             "type": block_type,
             "label": block["data"].get("label", ""),
+            "attempt_id": _attempt_id,
         })
 
         compiled = version.compiled_artifacts or {}
@@ -751,6 +916,8 @@ def _execute_dag(
                 sandbox_sessions=sandbox_sessions,
                 user_email=_user_email,
                 env_id=env_id,
+                attempt_id=_attempt_id,
+                resume_from_turn=_resume_from_turn,
             )
 
         try:
@@ -820,9 +987,20 @@ def _execute_dag(
             _logic_routes_version = _lrv_ref[0]
             state[block_id] = result
             state["__last_output"] = json.dumps(result, default=str)
-            _checkpoint_state(run_id, state)
+            # Atomic DB upsert — marks block complete, clears partial flag
+            _checkpoint_state(
+                run_id, state, db=db,
+                block_id=block_id, attempt_id=_attempt_id,
+                partial=False, resume_from_turn=0,
+            )
+            # Mark as completed so the in-process resume set stays consistent
+            _completed_blocks.add(block_id)
+            _partial_blocks.pop(block_id, None)
 
-            _emit(db, run_id, block_id, "block_completed", {"output": result})
+            _emit(db, run_id, block_id, "block_completed", {
+                "output": result,
+                "attempt_id": _attempt_id,
+            })
 
         except ClarificationRequired as cr:
             run.status = "paused_for_clarification"
