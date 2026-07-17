@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import uuid as _uuid_mod
 from collections import defaultdict, deque
 from typing import Any
 
@@ -710,6 +711,16 @@ def _execute_dag(
                 _logic_routes_version += 1
             continue
 
+        # Detect mid-block crash: sentinel written but output never stored
+        _exec_key = f"__exec__{block_id}"
+        if _exec_key in state:
+            log.warning(
+                "block.resume_after_crash",
+                block_id=block_id,
+                attempt_id=state[_exec_key].get("attempt_id"),
+                note="block re-executes from turn 1 — external side effects may duplicate",
+            )
+
         # Recompute skip set only when logic_routes has been updated since last check
         if len(logic_routes) != _logic_routes_version or not _cached_skipped and logic_routes:
             _cached_skipped = _find_skipped_blocks(nodes, edges, logic_routes)
@@ -725,9 +736,18 @@ def _execute_dag(
         except Exception:
             pass
 
+        # Write idempotency sentinel before execution — survives a mid-block crash.
+        # attempt_id is stable: on crash+resume it stays the same so external services
+        # (Slack, GitHub) can use it as an idempotency key to suppress duplicates.
+        _exec_key = f"__exec__{block_id}"
+        if _exec_key not in state:
+            state[_exec_key] = {"attempt_id": str(_uuid_mod.uuid4()), "started_at": _now().isoformat()}
+            _checkpoint_state(run_id, state)
+
         _emit(db, run_id, block_id, "block_started", {
             "type": block_type,
             "label": block["data"].get("label", ""),
+            "attempt_id": state[_exec_key]["attempt_id"],
         })
 
         compiled = version.compiled_artifacts or {}
@@ -822,7 +842,10 @@ def _execute_dag(
             state["__last_output"] = json.dumps(result, default=str)
             _checkpoint_state(run_id, state)
 
-            _emit(db, run_id, block_id, "block_completed", {"output": result})
+            _emit(db, run_id, block_id, "block_completed", {
+                "output": result,
+                "attempt_id": state.get(f"__exec__{block_id}", {}).get("attempt_id"),
+            })
 
         except ClarificationRequired as cr:
             run.status = "paused_for_clarification"
