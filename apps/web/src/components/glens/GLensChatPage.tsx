@@ -286,6 +286,7 @@ export function GLensChatPage() {
   const [loading, setLoading] = useState(false)
 
   const threadRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
   // Load session list
@@ -333,9 +334,11 @@ export function GLensChatPage() {
           }
         }
       }
-      if (data.spec && !thread.find(m => m.role === "assistant" && (m as {kind:string}).kind === "dashboard")) {
-        thread.push({ role: "assistant", kind: "dashboard", spec: data.spec, sessionId: id })
-      }
+      try {
+        if (data.spec && !thread.find(m => m.role === "assistant" && (m as {kind:string}).kind === "dashboard")) {
+          thread.push({ role: "assistant", kind: "dashboard", spec: data.spec, sessionId: id })
+        }
+      } catch { /* malformed spec — skip dashboard bubble */ }
       setMessages(thread)
     } finally {
       setLoading(false)
@@ -349,6 +352,10 @@ export function GLensChatPage() {
   }
 
   async function sendMessage(text: string) {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setMessages(prev => [...prev, { role: "user", text }, { role: "assistant", kind: "loading" }])
     setLoading(true)
 
@@ -360,6 +367,7 @@ export function GLensChatPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: controller.signal,
       })
 
       if (!res.ok) {
@@ -378,7 +386,8 @@ export function GLensChatPage() {
       } else {
         setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: data.question ?? "No answer returned.", skill: data.skill }])
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return
       setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: "Network error. Please try again." }])
     } finally {
       setLoading(false)

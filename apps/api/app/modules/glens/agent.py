@@ -12,6 +12,8 @@ _SKILLS_DIR = Path(__file__).parent / "skills"
 @lru_cache(maxsize=16)
 def _load_skill(name: str) -> dict:
     d = _SKILLS_DIR / name
+    if not d.exists():
+        raise ValueError(f"GLens skill '{name}' not found at {d}")
     return {
         "name": name,
         "prompt": (d / "prompt.txt").read_text(),
