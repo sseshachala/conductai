@@ -312,6 +312,12 @@ def policy_apply(
         ).first()
         if existing:
             raise HTTPException(status_code=409, detail=f"Rule '{rule_id}' already exists")
+        if pattern := req.draft.get("match_pattern"):
+            import re
+            try:
+                re.compile(pattern)
+            except re.error as e:
+                raise HTTPException(status_code=400, detail=f"Invalid match_pattern regex: {e}")
         body = {k: v for k, v in req.draft.items() if k not in ("rule_id", "persona")}
         body["id"] = rule_id
         rule = WorkspaceCustomRule(
@@ -336,6 +342,12 @@ def policy_apply(
         ).first()
         if not rule:
             raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
+        if pattern := req.draft.get("match_pattern"):
+            import re
+            try:
+                re.compile(pattern)
+            except re.error as e:
+                raise HTTPException(status_code=400, detail=f"Invalid match_pattern regex: {e}")
         if "enabled" in req.draft:
             rule.enabled = req.draft["enabled"]
         body_patch = {k: v for k, v in req.draft.items() if k != "enabled"}

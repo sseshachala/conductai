@@ -37,11 +37,14 @@ const SUGGESTIONS = [
 ]
 
 const SKILL_LABELS: Record<string, string> = {
-  report:    "Report",
-  analytics: "Analytics",
-  extract:   "Extract",
-  memory:    "Memory",
-  session:   "Session",
+  report:       "Report",
+  analytics:    "Analytics",
+  extract:      "Extract",
+  memory:       "Memory",
+  session:      "Session",
+  rules:        "Rules",
+  guard_config: "Guard Config",
+  spend_config: "Spend Config",
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -297,7 +300,7 @@ function PolicyConfirmBubble({
               Confirm
             </button>
             <button
-              onClick={() => onResult("Policy creation cancelled.")}
+              onClick={() => onResult(`Policy ${action} cancelled.`)}
               style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", fontSize: 13, cursor: "pointer" }}
             >
               Cancel
