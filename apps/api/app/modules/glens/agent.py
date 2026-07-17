@@ -2,11 +2,14 @@
 import json
 from pathlib import Path
 
+from functools import lru_cache
+
 from app.modules.glens.inference import chat as qwen_chat
 
 _SKILLS_DIR = Path(__file__).parent / "skills"
 
 
+@lru_cache(maxsize=16)
 def _load_skill(name: str) -> dict:
     d = _SKILLS_DIR / name
     return {
