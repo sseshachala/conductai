@@ -1,0 +1,4 @@
+[
+  {"name": "search_sessions", "endpoint": "/guard/sessions/search", "params": ["query", "limit"], "backend": "pgvector"},
+  {"name": "get_session",     "endpoint": "/guard/sessions/{id}",   "params": ["id"]}
+]

@@ -1,0 +1,3 @@
+[
+  {"name": "search_memory", "endpoint": "/guard/memory/search", "params": ["query", "limit"], "backend": "pgvector"}
+]
