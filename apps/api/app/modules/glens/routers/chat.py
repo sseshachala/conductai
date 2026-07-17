@@ -446,7 +446,7 @@ def _normalize_payload(parsed: dict, session_id: str, executor: Executor) -> dic
 
 
 def _format_sse(event: str, payload: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+    return f"event: {event}\ndata: {json.dumps(payload, default=str)}\n\n"
 
 
 class ChatRequest(BaseModel):
@@ -527,7 +527,7 @@ async def _execute_chat(
         raise HTTPException(status_code=503, detail="Inference unavailable — model may be cold, retry in 30s")
 
     payload = _normalize_payload(parsed, str(session.id), executor)
-    messages.append({"role": "assistant", "content": json.dumps(payload)})
+    messages.append({"role": "assistant", "content": json.dumps(payload, default=str)})
     session.messages = json.dumps(messages)
     session.title = (payload.get("answer") or req.message or session.title)[:60]
     if payload.get("spec"):
@@ -560,7 +560,7 @@ async def glens_chat_stream(
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
-    queue: asyncio.Queue[tuple[str, dict]] = asyncio.Queue()
+    queue: asyncio.Queue[tuple[str, dict]] = asyncio.Queue()  # unbounded on purpose for short-lived chat streams
     loop = asyncio.get_running_loop()
 
     def emit(event: str, payload: dict) -> None:
@@ -750,10 +750,9 @@ def policy_apply(
         if existing:
             raise HTTPException(status_code=409, detail=f"Rule '{rule_id}' already exists")
         if pattern := req.draft.get("match_pattern"):
-            import re as _re
             try:
-                _re.compile(pattern)
-            except _re.error as e:
+                re.compile(pattern)
+            except re.error as e:
                 raise HTTPException(status_code=400, detail=f"Invalid match_pattern regex: {e}")
         body = {k: v for k, v in req.draft.items() if k not in ("rule_id", "persona")}
         body["id"] = rule_id
@@ -780,10 +779,9 @@ def policy_apply(
         if not rule:
             raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
         if pattern := req.draft.get("match_pattern"):
-            import re as _re
             try:
-                _re.compile(pattern)
-            except _re.error as e:
+                re.compile(pattern)
+            except re.error as e:
                 raise HTTPException(status_code=400, detail=f"Invalid match_pattern regex: {e}")
         if "enabled" in req.draft:
             rule.enabled = req.draft["enabled"]
