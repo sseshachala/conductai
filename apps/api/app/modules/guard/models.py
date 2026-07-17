@@ -379,3 +379,28 @@ class DiscoveredAgent(Base):
     proxy_routed  = Column(Boolean, nullable=False, default=False)
     first_seen_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     last_seen_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class GuardKnowledgeIndex(Base):
+    """Unified semantic index across Guard sources — audit events, rules, discovered agents.
+    Used by GLens for intent-based search ('blocks related to secrets', etc.)."""
+
+    __tablename__ = "guard_knowledge_index"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id  = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    source_kind   = Column(Text, nullable=False)   # audit_event | rule | discovered_agent
+    source_id     = Column(Text, nullable=False)
+    canonical_text = Column(Text, nullable=False)
+    metadata      = Column(JSONB, nullable=False, default=dict)
+    content_hash  = Column(Text, nullable=False)
+    embedding     = Column(Vector(1536), nullable=True)
+    updated_at    = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "source_kind", "source_id", name="uq_guard_knowledge_source"),
+    )

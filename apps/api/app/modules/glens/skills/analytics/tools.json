@@ -77,5 +77,32 @@
         "required": []
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_knowledge",
+      "description": "Semantic search across all Guard data \u2014 audit events, rules, discovered agents. Use for intent-based questions like \"blocks related to secrets\", \"rules covering bash\", \"agents doing file operations\"",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "Natural language search query"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Optional filter: audit_event | rule | discovered_agent"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Number of results, default 10, max 50"
+          }
+        },
+        "required": [
+          "q"
+        ]
+      }
+    }
   }
 ]

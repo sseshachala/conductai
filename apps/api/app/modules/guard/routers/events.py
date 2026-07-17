@@ -341,6 +341,20 @@ def _bg_spend_and_scan(
         db.close()
 
 
+def _bg_project_event(event_id: str, workspace_id: str) -> None:
+    """Background task: project a GuardAuditEvent into the knowledge index."""
+    db = SessionLocal()
+    try:
+        from app.modules.guard.knowledge import project_audit_event
+        event = db.query(GuardAuditEvent).filter(GuardAuditEvent.id == event_id).first()
+        if event:
+            project_audit_event(event, db)
+    except Exception as exc:
+        log.warning("guard.knowledge.bg_project_failed", event_id=event_id, error=str(exc))
+    finally:
+        db.close()
+
+
 @router.post("", response_model=EventOut, status_code=201)
 def ingest_event(
     body: HookEvent,
@@ -501,6 +515,9 @@ def ingest_event(
         blast_radius=body.blast_radius,
         event_id=str(event.id),
     )
+
+    # Knowledge index projection (background — non-fatal, powers GLens search)
+    background.add_task(_bg_project_event, str(event.id), body.workspace_id)
 
     return EventOut(**_event_to_dict(event))
 
