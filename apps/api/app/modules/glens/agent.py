@@ -36,7 +36,9 @@ def _build_system(skills: list[dict]) -> str:
 
 class Agent:
     def __init__(self, skill_names: list[str]):
-        self.skills = [_load_skill(n) for n in skill_names]
+        # presenter always loads last — owns all rendering conventions
+        all_names = [n for n in skill_names if n != "presenter"] + ["presenter"]
+        self.skills = [_load_skill(n) for n in all_names]
         self.system = _build_system(self.skills)
         self.tools = [t for s in self.skills for t in s["tools"]]
 
