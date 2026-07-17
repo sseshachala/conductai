@@ -43,14 +43,17 @@ const SUGGESTIONS = [
 ]
 
 const SKILL_LABELS: Record<string, string> = {
-  report:       "Report",
-  analytics:    "Analytics",
-  extract:      "Extract",
-  memory:       "Memory",
-  session:      "Session",
-  rules:        "Rules",
-  guard_config: "Guard Config",
-  spend_config: "Spend Config",
+  report:       "GLens · Report",
+  analytics:    "GLens · Analytics",
+  extract:      "GLens · Extract",
+  memory:       "GLens · Memory",
+  session:      "GLens · Session",
+  rules:        "GLens · Rules",
+  guard_config: "GLens · Guard Config",
+  spend_config: "GLens · Spend Config",
+  discovery:    "GLens · Discovery",
+  compliance:   "GLens · Compliance",
+  governance:   "GLens · Governance",
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -142,20 +145,65 @@ function Sidebar({
 
 // ─── Message bubbles ──────────────────────────────────────────────────────────
 
-function UserBubble({ text }: { text: string }) {
+function UserBubble({ text, onEdit }: { text: string; onEdit?: (newText: string) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(text)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+
+  function startEdit() { setDraft(text); setEditing(true); setTimeout(() => taRef.current?.focus(), 0) }
+  function cancel() { setEditing(false) }
+  function submit() { if (draft.trim() && draft.trim() !== text) onEdit?.(draft.trim()); setEditing(false) }
+
   return (
-    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-      <div style={{
-        maxWidth: "65%",
-        background: "var(--accent)",
-        color: "#fff",
-        borderRadius: "14px 14px 4px 14px",
-        padding: "10px 16px",
-        fontSize: 14,
-        lineHeight: 1.5,
-      }}>
-        {text}
-      </div>
+    <div
+      style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16, position: "relative" }}
+      onMouseEnter={e => { if (!editing && onEdit) (e.currentTarget.querySelector(".edit-btn") as HTMLElement)?.style.setProperty("opacity", "1") }}
+      onMouseLeave={e => { (e.currentTarget.querySelector(".edit-btn") as HTMLElement)?.style.setProperty("opacity", "0") }}
+    >
+      {onEdit && !editing && (
+        <button
+          className="edit-btn"
+          onClick={startEdit}
+          style={{
+            opacity: 0, transition: "opacity .15s", alignSelf: "center", marginRight: 8,
+            background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)",
+            fontSize: 13, padding: "2px 6px", borderRadius: 4,
+          }}
+          title="Edit question"
+        >✎</button>
+      )}
+      {editing ? (
+        <div style={{ maxWidth: "65%", display: "flex", flexDirection: "column", gap: 6 }}>
+          <textarea
+            ref={taRef}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit() } if (e.key === "Escape") cancel() }}
+            rows={3}
+            style={{
+              width: "100%", fontSize: 14, padding: "10px 14px", borderRadius: 10,
+              border: "1px solid var(--accent)", outline: "none", resize: "none",
+              background: "var(--surface-2)", color: "var(--text)", lineHeight: 1.5,
+            }}
+          />
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button onClick={cancel} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", color: "var(--text-2)" }}>Cancel</button>
+            <button onClick={submit} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "none", background: "var(--accent)", color: "#fff", cursor: "pointer" }}>Send</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          maxWidth: "65%",
+          background: "var(--accent)",
+          color: "#fff",
+          borderRadius: "14px 14px 4px 14px",
+          padding: "10px 16px",
+          fontSize: 14,
+          lineHeight: 1.5,
+        }}>
+          {text}
+        </div>
+      )}
     </div>
   )
 }
@@ -621,7 +669,16 @@ export function GLensChatPage() {
 
           <div style={{ maxWidth: 800, margin: "0 auto" }}>
             {messages.map((msg, i) => {
-              if (msg.role === "user") return <UserBubble key={i} text={msg.text} />
+              if (msg.role === "user") return (
+                <UserBubble
+                  key={i}
+                  text={msg.text}
+                  onEdit={newText => {
+                    setMessages(prev => prev.slice(0, i))
+                    sendMessage(newText)
+                  }}
+                />
+              )
               if (msg.kind === "loading") return <LoadingBubble key={i} />
               if (msg.kind === "answer") return <AnswerBubble key={i} text={msg.text} skill={msg.skill} />
               if (msg.kind === "dashboard") return <DashboardBubble key={i} spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} />
