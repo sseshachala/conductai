@@ -1,19 +1,13 @@
 """GLens Planner — decomposes complex questions into ordered subtasks."""
 import json
-import re
 
 import structlog
 
 from app.modules.glens.inference import chat as qwen_chat
+from app.modules.glens.utils import extract_json
 
 log = structlog.get_logger(__name__)
 
-
-def _extract_json(raw: str) -> str:
-    """Strip markdown fences and extract first JSON object."""
-    raw = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
-    m = re.search(r"\{.*\}", raw, re.DOTALL)
-    return m.group(0) if m else raw
 
 _SKILLS = ["report", "analytics", "extract", "memory", "session", "rules", "guard_config", "spend_config", "discovery", "compliance", "governance"]
 
@@ -47,15 +41,34 @@ Respond with ONLY valid JSON:
 Valid skill names: {", ".join(_SKILLS)}
 """
 
+_PAGE_CONTEXT_SKILL = {
+    "activity": "governance",
+    "chat": "analytics",
+    "compliance": "compliance",
+    "discovery": "discovery",
+    "governance": "governance",
+    "policies": "rules",
+    "spend": "analytics",
+}
 
-def plan(question: str, last_answer: str | None = None) -> list[dict]:
+
+def plan(
+    question: str,
+    last_answer: str | None = None,
+    page_context: str | None = None,
+    context_summary: str | None = None,
+) -> list[dict]:
     """
     Returns a list of subtasks: [{id, skill, question}]
     Falls back to single report subtask on any failure.
     """
     user_content = question
+    if context_summary:
+        user_content = f"[Conversation summary: {context_summary}]\n\n{user_content}"
+    if page_context:
+        user_content = f"[User is on the '{page_context}' page]\n\n{user_content}"
     if last_answer:
-        user_content = f"[Previous answer: {last_answer}]\n\nUser follow-up: {question}"
+        user_content = f"[Previous answer: {last_answer}]\n\nUser follow-up: {user_content}"
 
     messages = [
         {"role": "system", "content": _PROMPT},
@@ -63,7 +76,7 @@ def plan(question: str, last_answer: str | None = None) -> list[dict]:
     ]
     try:
         raw = qwen_chat(messages)
-        parsed = json.loads(_extract_json(raw))
+        parsed = json.loads(extract_json(raw))
         subtasks = parsed.get("subtasks", [])
         valid = [t for t in subtasks if t.get("skill") in _SKILLS and t.get("question")]
         if valid:
@@ -72,18 +85,23 @@ def plan(question: str, last_answer: str | None = None) -> list[dict]:
     except Exception as e:
         log.warning("glens.planner.parse_failed", error=str(e), raw=raw[:200] if "raw" in dir() else "")
 
-    # Fallback: guess skill from question keywords
+    # Fallback: guess skill from page context first, then question keywords
     q = question.lower()
+    skill = _PAGE_CONTEXT_SKILL.get(page_context or "", "analytics")
     if any(w in q for w in ["cost", "spend", "token", "budget"]):
         skill = "analytics"
     elif any(w in q for w in ["block", "warn", "event", "who", "recent", "list"]):
         skill = "governance"
-    elif any(w in q for w in ["rule", "policy", "create", "disable"]):
+    elif any(w in q for w in ["rule", "policy", "create", "disable", "enable"]):
         skill = "rules"
     elif any(w in q for w in ["agent", "discover", "coverage"]):
         skill = "discovery"
     elif any(w in q for w in ["compliance", "grade", "owasp"]):
         skill = "compliance"
-    else:
-        skill = "analytics"
+    elif any(w in q for w in ["memory", "worked on", "decision history"]):
+        skill = "memory"
+    elif any(w in q for w in ["session report", "autonomy", "developer productivity"]):
+        skill = "session"
+    elif any(w in q for w in ["csv", "export", "download"]):
+        skill = "extract"
     return [{"id": "1", "skill": skill, "question": question}]

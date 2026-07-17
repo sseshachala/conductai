@@ -1,5 +1,6 @@
 """GLens Agent — loads skills at runtime, runs multi-turn tool-calling loop."""
 import json
+from collections.abc import Callable
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -36,6 +37,24 @@ def _load_skill(name: str) -> dict:
     return _load_skill_cached(name)
 
 
+_TOOL_STATUS: dict[str, str] = {
+    "get_governance_kpis": "Fetching governance KPIs...",
+    "get_spend_summary": "Loading spend data...",
+    "get_blocked_events": "Retrieving blocked events...",
+    "get_audit_events": "Loading audit log...",
+    "get_agent_coverage": "Checking agent coverage...",
+    "get_compliance_status": "Evaluating compliance controls...",
+    "get_rules": "Loading Guard rules...",
+    "search_memory": "Searching team memory...",
+    "search_sessions": "Searching session reports...",
+    "export_csv": "Preparing export...",
+}
+
+
+def _tool_status(tool_name: str) -> str:
+    return _TOOL_STATUS.get(tool_name, f"Running {tool_name}...")
+
+
 def _build_system(skills: list[dict]) -> str:
     if len(skills) == 1:
         return skills[0]["prompt"]
@@ -57,7 +76,12 @@ class Agent:
                 log.warning("glens.agent.tool_name_collision", tool=name)
             seen[name] = True
 
-    def run(self, messages: list[dict], executor: Executor) -> dict:
+    def run(
+        self,
+        messages: list[dict],
+        executor: Executor,
+        on_event: Callable[[dict], None] | None = None,
+    ) -> dict:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         system = f"Today is {today} (UTC).\n\n{self.system}"
         loop_msgs = [{"role": "system", "content": system}] + list(messages[-20:])
@@ -81,6 +105,8 @@ class Agent:
 
             # Execute each tool call and feed results back
             for tc in msg.tool_calls:
+                if on_event:
+                    on_event({"type": "thinking", "thinking": _tool_status(tc.function.name)})
                 result = executor.call(tc.function.name, tc.function.arguments)
                 log.debug("glens.agent.tool_executed", tool=tc.function.name, round=round_num)
                 loop_msgs.append({
