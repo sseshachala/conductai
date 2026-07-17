@@ -103,6 +103,7 @@ If a suggested follow-up action exists, add:
 - Dates in answers: use "Jul 17" not "2026-07-17T00:00:00Z".
 - answer field must be plain text only — no **bold**, no * bullets, no markdown. The UI renders it verbatim.
 - Never write multi-sentence summaries in answer when you have structured data — use page_kind, blocks[], or rows[] instead.
+- NEVER invent, fabricate, or estimate rows[], data[], or events[]. Every value in rows[] must come directly from a tool call result. If real data is unavailable, return answer text only — no rows.
 
 ─── page_kind — embed the matching product page component ───────────────────
 
