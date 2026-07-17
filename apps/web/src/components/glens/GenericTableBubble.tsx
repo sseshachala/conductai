@@ -11,6 +11,39 @@ export interface Column {
   type: "text" | "number" | "currency" | "date" | "badge" | "percent" | "boolean"
 }
 
+// ─── Column inference ─────────────────────────────────────────────────────────
+
+function toLabel(key: string): string {
+  // snake_case / camelCase → "Title Case"
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function inferColumns(rows: Record<string, unknown>[]): Column[] {
+  if (!rows.length) return []
+  const first = rows[0]
+  return Object.keys(first).map(key => {
+    const val = first[key]
+    // boolean
+    if (typeof val === "boolean") return { key, label: toLabel(key), type: "boolean" as const }
+    // number
+    if (typeof val === "number") {
+      if (/cost|usd|price|amount|spend/i.test(key)) return { key, label: toLabel(key), type: "currency" as const }
+      if (/pct|percent|ratio|score/i.test(key)) return { key, label: toLabel(key), type: "percent" as const }
+      return { key, label: toLabel(key), type: "number" as const }
+    }
+    // string
+    if (typeof val === "string") {
+      if (/^\d{4}-\d{2}-\d{2}T/.test(val)) return { key, label: toLabel(key), type: "date" as const }
+      const BADGE_VALUES = new Set(["blocked", "warned", "audited", "allowed", "approval", "active", "partial", "missing"])
+      if (BADGE_VALUES.has(val.toLowerCase())) return { key, label: toLabel(key), type: "badge" as const }
+    }
+    return { key, label: toLabel(key), type: "text" as const }
+  })
+}
+
 // ─── Cell formatters ──────────────────────────────────────────────────────────
 
 function fmtNumber(n: number): string {
@@ -155,18 +188,20 @@ export function GenericTableBubble({
   skill,
 }: {
   answer: string
-  columns: Column[]
+  columns?: Column[]   // optional — inferred from rows when absent
   rows: Record<string, unknown>[]
   warning?: string
   skill?: string
 }) {
-  const defaultCol = columns[0]
+  const effectiveCols = (columns && columns.length > 0) ? columns : inferColumns(rows)
+
+  const defaultCol = effectiveCols[0]
   const [sortKey, setSortKey] = useState<string>(defaultCol?.key ?? "")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
 
   const activeCol = useMemo(
-    () => columns.find(c => c.key === sortKey),
-    [columns, sortKey],
+    () => effectiveCols.find(c => c.key === sortKey),
+    [effectiveCols, sortKey],
   )
 
   const sorted = useMemo(
@@ -224,7 +259,7 @@ export function GenericTableBubble({
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr>
-                  {columns.map(col => {
+                  {effectiveCols.map(col => {
                     const isActive = sortKey === col.key
                     return (
                       <th
@@ -255,7 +290,7 @@ export function GenericTableBubble({
               <tbody>
                 {sorted.map((row, ri) => (
                   <tr key={ri} style={{ borderBottom: "1px solid var(--border)" }}>
-                    {columns.map(col => (
+                    {effectiveCols.map(col => (
                       <td key={col.key} style={{ padding: "8px 12px", color: "var(--text-2)", verticalAlign: "top" }}>
                         <CellContent col={col} value={row[col.key]} />
                       </td>

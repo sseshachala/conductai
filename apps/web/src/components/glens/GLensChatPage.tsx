@@ -31,7 +31,7 @@ type Message =
   | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string }
   | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string }
   | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string }
-  | { role: "assistant"; kind: "table"; answer: string; columns: unknown[]; rows: unknown[]; warning?: string; skill: string }
+  | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string }
 
 const SUGGESTIONS = [
   "Who was blocked today?",
@@ -535,11 +535,11 @@ export function GLensChatPage() {
           warning: data.warning,
           skill: data.skill ?? "report",
         }])
-      } else if (data.rows && data.columns) {
+      } else if (data.rows) {
         setMessages(prev => [...prev.slice(0, -1), {
           role: "assistant", kind: "table",
           answer: data.question ?? "",
-          columns: data.columns,
+          columns: data.columns,   // may be undefined — GenericTableBubble will infer
           rows: data.rows,
           warning: data.warning,
           skill: data.skill ?? "report",

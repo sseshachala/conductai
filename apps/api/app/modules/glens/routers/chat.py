@@ -7,10 +7,11 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
+from typing import Any, Literal
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, BaseModel as _Base
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
@@ -26,6 +27,74 @@ from app.modules.guard.models import GuardConfig, GuardSpendBudget, WorkspaceCus
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/glens", tags=["glens"])
+
+
+# ---------------------------------------------------------------------------
+# Pydantic models for sanitizing model JSON output
+# ---------------------------------------------------------------------------
+
+class _Column(_Base):
+    key: str
+    label: str
+    type: Literal["text", "number", "currency", "date", "badge", "percent", "boolean"] = "text"
+
+class _StatItem(_Base):
+    label: str
+    value: str
+    sub: str | None = None
+    color: Literal["ok", "err", "warn", "info", "neutral"] | None = None
+
+class _BadgeItem(_Base):
+    label: str
+    value: str
+    badge: Literal["ok", "err", "warn", "info"] | None = None
+
+class _Block(_Base):
+    type: Literal["stat-row", "table", "bar-chart", "badge-list"]
+    # stat-row
+    items: list[_StatItem | _BadgeItem] | None = None
+    # table
+    columns: list[_Column] | None = None
+    rows: list[dict[str, Any]] | None = None
+    # bar-chart
+    title: str | None = None
+    x_key: str | None = None
+    y_key: str | None = None
+    color: str | None = None
+    data: list[dict[str, Any]] | None = None
+
+
+def _sanitize_blocks(raw: list | None) -> list | None:
+    if not raw or not isinstance(raw, list):
+        return None
+    valid = []
+    for b in raw:
+        if not isinstance(b, dict) or "type" not in b:
+            continue
+        try:
+            valid.append(_Block.model_validate(b).model_dump(exclude_none=True))
+        except Exception:
+            continue  # skip malformed blocks silently
+    return valid or None
+
+def _sanitize_columns(raw: list | None) -> list | None:
+    if not raw or not isinstance(raw, list):
+        return None
+    valid = []
+    for c in raw:
+        if not isinstance(c, dict):
+            continue
+        try:
+            valid.append(_Column.model_validate(c).model_dump())
+        except Exception:
+            continue
+    return valid or None
+
+def _sanitize_rows(raw: list | None) -> list | None:
+    if not raw or not isinstance(raw, list):
+        return None
+    # rows are free-form dicts — just ensure each element is a dict
+    return [r for r in raw if isinstance(r, dict)] or None
 
 
 def _parse_workspace_id(workspace_id: str) -> uuid.UUID:
@@ -165,9 +234,9 @@ async def glens_chat(
         "spec": spec,
         "page_kind": parsed.get("page_kind"),
         "page_data": parsed.get("data"),
-        "blocks": parsed.get("blocks"),
-        "rows": parsed.get("rows"),
-        "columns": parsed.get("columns"),
+        "blocks":   _sanitize_blocks(parsed.get("blocks")),
+        "rows":     _sanitize_rows(parsed.get("rows")),
+        "columns":  _sanitize_columns(parsed.get("columns")),
         "warning": parsed.get("warning"),
     }
 
