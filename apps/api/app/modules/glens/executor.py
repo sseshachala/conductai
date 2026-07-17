@@ -182,3 +182,39 @@ class Executor:
         if not row:
             return {"error": f"Policy '{rule_id}' not found"}
         return {"rule_id": row.rule_id, "enabled": row.enabled, "persona": row.persona, **row.body}
+
+    # ── Knowledge index ───────────────────────────────────────────────────────
+
+    def _tool_search_knowledge(self, q: str, kind: str | None = None, limit: int = 10):
+        """Semantic search across all Guard knowledge — audit events, rules, discovered agents."""
+        client = embedding_client_for_workspace(self.db, self.workspace_id)
+        if not client:
+            return {"error": "Embedding service not configured"}
+        embedding = client.embed(q[:2000])
+        kind_filter = "AND gki.source_kind = :kind" if kind else ""
+        rows = self.db.execute(
+            sa_text(
+                f"SELECT gki.source_kind, gki.source_id, gki.canonical_text, gki.metadata, "
+                f"(gki.embedding <=> CAST(:vec AS vector)) AS distance "
+                f"FROM guard_knowledge_index gki "
+                f"WHERE gki.workspace_id = CAST(:workspace_id AS uuid) AND gki.embedding IS NOT NULL "
+                f"{kind_filter} "
+                f"ORDER BY distance ASC LIMIT :limit"
+            ),
+            {
+                "workspace_id": self.workspace_id,
+                "vec": str(embedding),
+                "limit": min(limit, 50),
+                "kind": kind,
+            },
+        ).fetchall()
+        return [
+            {
+                "source_kind": r.source_kind,
+                "source_id": r.source_id,
+                "text": r.canonical_text,
+                "metadata": r.metadata,
+                "score": round(1 - r.distance, 3),
+            }
+            for r in rows
+        ]

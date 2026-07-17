@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -38,6 +38,29 @@ from app.modules.guard.policy_engine import compute_policy, invalidate_policy_ca
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
 _VALID_ACTIONS = {"block", "warn", "audit", "approval", "inject"}
+
+
+def _bg_project_rule(workspace_id: str, rule_id: str) -> None:
+    """Background task: project a WorkspaceCustomRule into the knowledge index."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        from app.modules.guard.knowledge import project_rule
+        from app.modules.guard.models import WorkspaceCustomRule as _WCR
+        import uuid as _uuid
+        ws_uuid = _uuid.UUID(workspace_id)
+        rule = db.get(_WCR, (ws_uuid, rule_id))
+        if rule:
+            project_rule(rule, db)
+    except Exception as exc:
+        import structlog
+        structlog.get_logger().warning(
+            "guard.knowledge.bg_project_rule_failed",
+            rule_id=rule_id,
+            error=str(exc),
+        )
+    finally:
+        db.close()
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _GENERATE_SYSTEM_FILE = _PROMPTS_DIR / "policy_generate_system.txt"
 _GENERATE_SYSTEM = _GENERATE_SYSTEM_FILE.read_text() if _GENERATE_SYSTEM_FILE.exists() else ""
@@ -465,6 +488,7 @@ def list_policies(
 @router.post("", response_model=PolicyOut, status_code=201)
 def create_policy(
     body: PolicyCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
@@ -511,6 +535,7 @@ def create_policy(
     invalidate_policy_cache(db, ws_uuid)
 
     _write_audit(db, ws_uuid, "policy_created", body.rule_id, body.action)
+    background_tasks.add_task(_bg_project_rule, resolved_ws, body.rule_id)
     return _custom_to_out(row)
 
 
@@ -518,6 +543,7 @@ def create_policy(
 def patch_policy(
     rule_id: str,
     body: PolicyPatch,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
@@ -548,6 +574,7 @@ def patch_policy(
         db.refresh(custom)
         invalidate_policy_cache(db, ws_uuid)
         _write_audit(db, ws_uuid, "policy_updated", rule_id, b.get("action", "block"))
+        background_tasks.add_task(_bg_project_rule, workspace_id, rule_id)
         return _custom_to_out(custom)
 
     # Pack rule -> write override

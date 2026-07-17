@@ -28,6 +28,7 @@ from app.modules.guard.routers import sessions as guard_sessions
 from app.modules.guard.routers import discovery as guard_discovery
 from app.modules.guard.routers import memory_search as guard_memory_search
 from app.modules.guard.routers import verify as guard_verify
+from app.modules.guard.routers import knowledge_search as guard_knowledge_search
 from app.modules.glens.routers import chat as glens_chat
 from app.modules.telemetry import routes as telemetry_routes
 from app.routers.organizations import router as organizations_router
@@ -137,6 +138,7 @@ app.include_router(guard_signing_key.router)
 app.include_router(guard_sessions.router)
 app.include_router(guard_discovery.router)
 app.include_router(guard_verify.router)
+app.include_router(guard_knowledge_search.router)
 app.include_router(glens_chat.router)
 app.include_router(telemetry_routes.router)
 app.include_router(rbac_router)
