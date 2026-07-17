@@ -413,10 +413,29 @@ def spend_config_apply(
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
+    from app.modules.guard.models import GuardSession as _GuardSession
     ws_uuid = _parse_workspace_id(workspace_id)
+
+    # Resolve email → clerk_user_id so enforcement can match at hook time
+    clerk_user_id: str | None = None
+    if req.email:
+        session_row = (
+            db.query(_GuardSession)
+            .filter(
+                _GuardSession.workspace_id == ws_uuid,
+                _GuardSession.user_email == req.email,
+                _GuardSession.clerk_user_id.isnot(None),
+            )
+            .order_by(_GuardSession.started_at.desc())
+            .first()
+        )
+        if not session_row:
+            raise HTTPException(status_code=404, detail=f"No Guard sessions found for {req.email} — cannot resolve to Clerk user ID")
+        clerk_user_id = session_row.clerk_user_id
+
     existing = db.query(GuardSpendBudget).filter(
         GuardSpendBudget.workspace_id == ws_uuid,
-        GuardSpendBudget.clerk_user_id == (req.email),   # email used as proxy key for GLens
+        GuardSpendBudget.clerk_user_id == clerk_user_id,
     ).first()
     now = datetime.now(timezone.utc)
     if existing:
@@ -429,7 +448,7 @@ def spend_config_apply(
     else:
         db.add(GuardSpendBudget(
             workspace_id=ws_uuid,
-            clerk_user_id=req.email,
+            clerk_user_id=clerk_user_id,
             monthly_limit_usd=req.monthly_limit_usd,
             hard_limit_usd=req.hard_limit_usd,
             alert_threshold_pct=req.alert_threshold_pct,

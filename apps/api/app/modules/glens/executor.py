@@ -239,14 +239,32 @@ class Executor:
     # ── Spend budgets ─────────────────────────────────────────────────────────
 
     def _tool_get_budgets(self):
+        from app.modules.guard.models import GuardSession
         ws_uuid = uuid.UUID(self.workspace_id)
         rows = self.db.query(GuardSpendBudget).filter(
             GuardSpendBudget.workspace_id == ws_uuid
         ).all()
+
+        # Build clerk_user_id → email map from sessions
+        clerk_ids = [r.clerk_user_id for r in rows if r.clerk_user_id]
+        email_map: dict[str, str] = {}
+        if clerk_ids:
+            sessions = (
+                self.db.query(GuardSession.clerk_user_id, GuardSession.user_email)
+                .filter(
+                    GuardSession.workspace_id == ws_uuid,
+                    GuardSession.clerk_user_id.in_(clerk_ids),
+                    GuardSession.user_email.isnot(None),
+                )
+                .distinct()
+                .all()
+            )
+            email_map = {s.clerk_user_id: s.user_email for s in sessions}
+
         return [
             {
                 "scope": "workspace" if r.clerk_user_id is None else "developer",
-                "email": None if r.clerk_user_id is None else r.clerk_user_id,
+                "email": None if r.clerk_user_id is None else email_map.get(r.clerk_user_id, r.clerk_user_id),
                 "monthly_limit_usd": r.monthly_limit_usd,
                 "hard_limit_usd": r.hard_limit_usd,
                 "alert_threshold_pct": r.alert_threshold_pct,
