@@ -190,8 +190,18 @@ async def glens_chat(
         logger.error("glens.chat.inference_failed", error=str(e))
         raise HTTPException(status_code=503, detail="Inference unavailable — model may be cold, retry in 30s")
 
-    # Persist raw response as assistant turn
-    messages.append({"role": "assistant", "content": json.dumps(parsed)})
+    # Persist raw response as assistant turn, including rendered fields for session restore
+    messages.append({
+        "role": "assistant",
+        "content": json.dumps(parsed),
+        "rendered": {
+            "page_kind": parsed.get("page_kind"),
+            "blocks": parsed.get("blocks"),
+            "rows": parsed.get("rows"),
+        },
+    })
+    if len(messages) > 50:
+        messages = messages[-50:]
     session.messages = json.dumps(messages)
 
     spec = None
@@ -231,6 +241,25 @@ async def glens_chat(
     session.updated_at = datetime.now(timezone.utc)
     db.commit()
 
+    # Extract intent — surface explicitly rather than silently drop
+    if parsed.get("format"):
+        session.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        return {
+            "session_id": str(session.id),
+            "skill": skill,
+            "ready": False,
+            "answer": "Export ready — download link coming soon.",
+            "extract_intent": parsed.get("format"),
+        }
+
+    # page_data passthrough validation — clear bad shape before frontend sees it
+    page_kind = parsed.get("page_kind")
+    page_data = parsed.get("data")
+    if page_kind and (page_data is None or not isinstance(page_data, dict)):
+        page_kind = None
+        page_data = None
+
     answer_text = parsed.get("answer") or parsed.get("question")
     logger.info("glens.chat.complete", skill=skill, ready=bool(spec))
 
@@ -240,8 +269,8 @@ async def glens_chat(
         "ready": spec is not None,
         "answer": answer_text,
         "spec": spec,
-        "page_kind": parsed.get("page_kind"),
-        "page_data": parsed.get("data"),
+        "page_kind": page_kind,
+        "page_data": page_data,
         "blocks":   _sanitize_blocks(parsed.get("blocks")),
         "rows":     _sanitize_rows(parsed.get("rows")),
         "columns":  _sanitize_columns(parsed.get("columns")),
@@ -554,7 +583,14 @@ def get_session(
     session = _get_session(db, session_id, ws_uuid)
 
     messages = json.loads(session.messages)
-    user_messages = [m for m in messages if m["role"] != "system"]
+    user_messages = []
+    for m in messages:
+        if m["role"] == "system":
+            continue
+        entry: dict = {"role": m["role"], "content": m["content"]}
+        if m.get("rendered"):
+            entry["rendered"] = m["rendered"]
+        user_messages.append(entry)
 
     return {
         "id": str(session.id),

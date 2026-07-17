@@ -62,6 +62,8 @@ class Executor:
         until: str | None = None,
         rule_id: str | None = None,
     ):
+        if decision:
+            decision = {"block": "blocked", "warn": "warned", "audit": "audited", "allow": "allowed"}.get(decision, decision)
         org_ws = _org_ws_subquery(self.db, self.workspace_id)
         q = self.db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id.in_(org_ws))
         if decision:
@@ -104,6 +106,8 @@ class Executor:
         rule_id: str | None = None,
     ):
         """Exact COUNT of audit events matching filters — use for 'how many X' questions."""
+        if decision:
+            decision = {"block": "blocked", "warn": "warned", "audit": "audited", "allow": "allowed"}.get(decision, decision)
         from sqlalchemy import func as sa_func
         org_ws = _org_ws_subquery(self.db, self.workspace_id)
         q = self.db.query(sa_func.count(GuardAuditEvent.id)).filter(
@@ -577,6 +581,8 @@ class Executor:
         }
 
     def _tool_get_recent_governance_events(self, limit: int = 15, decision: str | None = None, since: str | None = None):
+        if decision:
+            decision = {"block": "blocked", "warn": "warned", "audit": "audited", "allow": "allowed"}.get(decision, decision)
         org_ws = _org_ws_subquery(self.db, self.workspace_id)
         q = self.db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id.in_(org_ws))
         if decision:
