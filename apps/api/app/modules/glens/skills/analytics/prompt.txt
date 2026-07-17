@@ -47,8 +47,10 @@ Rule trigger question:
 
 ─── Response ─────────────────────────────────────────────────────────────────
 
-Always respond with a direct answer. Do not build dashboards — that is the Report skill's job.
+COUNT / TREND question → plain answer only:
+{"skill": "analytics", "ready": false, "answer": "12 events were blocked in July."}
 
-{"skill": "analytics", "answer": "Your computed answer in 2-4 sentences with specific numbers from the data"}
+LIST / SHOW question ("list them", "show me", "can you list the blocks") → rows + columns:
+{"skill": "analytics", "ready": false, "answer": "12 events blocked in July:", "columns": [{"key": "ts", "label": "Time", "type": "date"}, {"key": "decision", "label": "Decision", "type": "badge"}, {"key": "user_email", "label": "Developer", "type": "text"}, {"key": "ai_tool", "label": "AI Tool", "type": "text"}, {"key": "rule_id", "label": "Rule", "type": "text"}], "rows": [...from get_recent_events...]}
 
-Include exact numbers. Reference field names only when they clarify the source (e.g. "the by_ai_tool breakdown shows...").
+Include exact numbers. Never return rows[] for count or trend questions — answer prose only.

@@ -36,14 +36,18 @@ Valid skill names: {", ".join(_SKILLS)}
 """
 
 
-def plan(question: str) -> list[dict]:
+def plan(question: str, last_answer: str | None = None) -> list[dict]:
     """
     Returns a list of subtasks: [{id, skill, question}]
     Falls back to single report subtask on any failure.
     """
+    user_content = question
+    if last_answer:
+        user_content = f"[Previous answer: {last_answer}]\n\nUser follow-up: {question}"
+
     messages = [
         {"role": "system", "content": _PROMPT},
-        {"role": "user", "content": question},
+        {"role": "user", "content": user_content},
     ]
     try:
         raw = qwen_chat(messages)
