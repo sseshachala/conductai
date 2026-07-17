@@ -1,5 +1,6 @@
 """GLens Agent — loads skills at runtime, runs multi-turn tool-calling loop."""
 import json
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
@@ -40,7 +41,9 @@ class Agent:
         self.tools = [t for s in self.skills for t in s["tools"]]
 
     def run(self, messages: list[dict], executor: Executor) -> dict:
-        loop_msgs = [{"role": "system", "content": self.system}] + list(messages[-20:])
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        system = f"Today is {today} (UTC).\n\n{self.system}"
+        loop_msgs = [{"role": "system", "content": system}] + list(messages[-20:])
 
         for round_num in range(MAX_TOOL_ROUNDS):
             msg = chat_with_tools(loop_msgs, self.tools)
