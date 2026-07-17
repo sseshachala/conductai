@@ -129,6 +129,36 @@ def _summarize_messages(messages: list[dict], prior_summary: str | None) -> str:
         return prior_summary or ""
 
 
+def _bg_save_session(
+    session_id: str,
+    messages: list[dict],
+    spec: dict | None,
+    title: str | None,
+    prior_summary: str | None,
+) -> None:
+    """Persist messages + spec on a fresh DB session to avoid thread-safety issues."""
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        sess = db.query(GlensChatSession).filter(GlensChatSession.id == uuid.UUID(session_id)).first()
+        if sess:
+            sess.messages = json.dumps(messages)
+            if spec:
+                sess.render_spec = json.dumps(spec)
+            if title:
+                sess.title = title[:60]
+            sess.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            if _should_refresh_summary(messages):
+                sess.context_summary = _summarize_messages(messages, prior_summary)
+                sess.updated_at = datetime.now(timezone.utc)
+                db.commit()
+    except Exception as exc:
+        log.warning("glens.stream.save_failed", session_id=session_id, error=str(exc))
+    finally:
+        db.close()
+
+
 def _bg_refresh_summary(session_id: str, messages: list[dict], prior_summary: str | None) -> None:
     from app.core.database import SessionLocal
 
@@ -233,6 +263,8 @@ async def glens_chat_stream(
     ws_uuid = _parse_workspace_id(workspace_id)
     logger = log.bind(workspace_id=workspace_id)
 
+    # Load or create session using the request-scoped db, then commit immediately
+    # so the session row is durable before any streaming/thread work touches the db.
     session = None
     if req.session_id:
         session = _get_session(db, req.session_id, ws_uuid)
@@ -240,6 +272,7 @@ async def glens_chat_stream(
         session = GlensChatSession(workspace_id=ws_uuid, title=req.message[:60], messages=json.dumps([]))
         db.add(session)
         db.flush()
+        db.commit()  # commit now — threads will use same db but session row is safe
 
     messages = json.loads(session.messages)
     messages.append({"role": "user", "content": req.message})
@@ -303,7 +336,6 @@ async def glens_chat_stream(
                         "rendered": {"page_kind": parsed.get("page_kind"), "blocks": parsed.get("blocks"), "rows": parsed.get("rows")},
                     })
                     capped = messages[-50:] if len(messages) > 50 else messages
-                    session.messages = json.dumps(capped)
 
                     spec = None
                     if parsed.get("ready"):
@@ -314,13 +346,9 @@ async def glens_chat_stream(
                             chart_picks=parsed.get("charts", []),
                             table_picks=parsed.get("tables", []),
                         )
-                        session.render_spec = json.dumps(spec)
-                        session.title = parsed.get("title", spec.get("title", session.title))[:60]
 
-                    session.updated_at = datetime.now(timezone.utc)
-                    db.commit()
-                    if _should_refresh_summary(capped):
-                        background_tasks.add_task(_bg_refresh_summary, session_id_str, capped, context_summary)
+                    # Fresh SessionLocal — avoids thread-safety issues with request-scoped db
+                    _bg_save_session(session_id_str, capped, spec, parsed.get("title"), context_summary)
 
                     page_kind = parsed.get("page_kind")
                     page_data = parsed.get("data")
