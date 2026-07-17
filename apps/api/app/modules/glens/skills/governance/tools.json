@@ -34,6 +34,14 @@
           "limit": {
             "type": "integer",
             "description": "Number of events to return, default 15, max 100"
+          },
+          "decision": {
+            "type": "string",
+            "description": "Filter by decision: blocked | warned | audited | allowed"
+          },
+          "since": {
+            "type": "string",
+            "description": "ISO-8601 start timestamp, e.g. 2026-07-17T00:00:00Z for today"
           }
         },
         "required": []

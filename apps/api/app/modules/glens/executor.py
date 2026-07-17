@@ -576,12 +576,15 @@ class Executor:
             "frameworks": frameworks,
         }
 
-    def _tool_get_recent_governance_events(self, limit: int = 15):
+    def _tool_get_recent_governance_events(self, limit: int = 15, decision: str | None = None, since: str | None = None):
         org_ws = _org_ws_subquery(self.db, self.workspace_id)
+        q = self.db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id.in_(org_ws))
+        if decision:
+            q = q.filter(GuardAuditEvent.decision == decision)
+        if since:
+            q = q.filter(GuardAuditEvent.ts >= since)
         rows = (
-            self.db.query(GuardAuditEvent)
-            .filter(GuardAuditEvent.workspace_id.in_(org_ws))
-            .order_by(GuardAuditEvent.ts.desc())
+            q.order_by(GuardAuditEvent.ts.desc())
             .limit(min(limit, 100))
             .all()
         )
