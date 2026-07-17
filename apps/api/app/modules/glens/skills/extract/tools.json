@@ -22,7 +22,7 @@
         "type": "object",
         "properties": {
           "limit":    {"type": "integer", "description": "Number of events, max 100"},
-          "decision": {"type": "string",  "description": "Filter: block, warn, or audit"},
+          "decision": {"type": "string",  "description": "Filter: blocked, warned, audited, or allowed"},
           "since":    {"type": "string",  "description": "ISO-8601 start"},
           "until":    {"type": "string",  "description": "ISO-8601 end"}
         },

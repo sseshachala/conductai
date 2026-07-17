@@ -30,7 +30,7 @@
           },
           "decision": {
             "type": "string",
-            "description": "Filter: block, warn, or audit"
+            "description": "Filter: blocked, warned, audited, or allowed"
           },
           "since": {
             "type": "string",
