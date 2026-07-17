@@ -1,4 +1,17 @@
 [
-  {"name": "search_sessions", "endpoint": "/guard/session-reports/search", "params": ["q", "limit"], "backend": "pgvector"},
-  {"name": "get_session",     "endpoint": "/guard/session-reports/{id}",   "params": ["id"]}
+  {
+    "type": "function",
+    "function": {
+      "name": "search_sessions",
+      "description": "Semantic search over session reports using pgvector",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "q":     {"type": "string",  "description": "Natural language search query"},
+          "limit": {"type": "integer", "description": "Number of results, default 5, max 20"}
+        },
+        "required": ["q"]
+      }
+    }
+  }
 ]

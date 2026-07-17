@@ -27,6 +27,30 @@ def get_client() -> OpenAI:
     )
 
 
+def chat_with_tools(messages: list[dict], tools: list[dict], session_id: str | None = None):
+    """Returns the raw message object (.content and .tool_calls)."""
+    sid = session_id or str(uuid.uuid4())
+    log.debug("glens.inference.tool_request", session_id=sid, turns=len(messages))
+    try:
+        response = get_client().chat.completions.create(
+            model=settings.conduct_inference_model_name,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0.2,
+            max_tokens=2048,
+            extra_headers={"Modal-Session-ID": sid},
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            timeout=120,
+        )
+        msg = response.choices[0].message
+        log.debug("glens.inference.tool_response", session_id=sid, finish_reason=response.choices[0].finish_reason)
+        return msg
+    except Exception as e:
+        log.warning("glens.inference.tool_error", session_id=sid, error=str(e))
+        raise
+
+
 def chat(messages: list[dict], session_id: str | None = None) -> str:
     sid = session_id or str(uuid.uuid4())
     log.debug("glens.inference.request", session_id=sid, turns=len(messages))
