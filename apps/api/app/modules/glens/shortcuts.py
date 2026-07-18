@@ -80,6 +80,14 @@ _SHORTCUTS: list[tuple[str, str]] = [
     (r"governance.{0,10}narrative|explain.{0,10}governance|governance.{0,10}health|"
      r"how.{0,10}doing.{0,10}governance|posture",
      "governance_narrative"),
+    # Team memory — generic browse (no semantic query)
+    (r"team.{0,10}memory|team.{0,10}knowledge|what.{0,10}team.{0,10}know|"
+     r"show.{0,10}memory|recent.{0,10}memory|memory.{0,10}feed",
+     "team_memory_feed"),
+    # Session reports — generic browse
+    (r"session.{0,10}report|show.{0,10}session|recent.{0,10}session.{0,10}report|"
+     r"agent.{0,10}session.{0,10}report",
+     "session_reports_feed"),
 ]
 
 
@@ -351,6 +359,41 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                     {"key": "ai_tool",     "label": "AI Tool",   "type": "text"},
                 ],
                 "rows": summary_rows,
+            }
+
+        if intent == "team_memory_feed":
+            rows = executor._tool_get_team_memory_feed(limit=20)
+            return {
+                "skill": "memory",
+                "ready": False,
+                "answer": f"{len(rows)} team memory record(s)." if rows else "No team memory records yet.",
+                "component": "MemoryResultsTable",
+                "drilldown": {"path": "/guard/memory"},
+                "columns": [
+                    {"key": "summary",         "label": "Summary",   "type": "text"},
+                    {"key": "developer_email", "label": "Developer", "type": "text"},
+                    {"key": "topic_tags",      "label": "Tags",      "type": "text"},
+                    {"key": "repo",            "label": "Repo",      "type": "text"},
+                    {"key": "created_at",      "label": "Date",      "type": "date"},
+                ],
+                "rows": rows,
+            }
+
+        if intent == "session_reports_feed":
+            rows = executor._tool_get_session_reports_feed(limit=20)
+            return {
+                "skill": "session",
+                "ready": False,
+                "answer": f"{len(rows)} session report(s)." if rows else "No session reports yet.",
+                "component": "SessionResultsTable",
+                "drilldown": {"path": "/guard/session-reports"},
+                "columns": [
+                    {"key": "summary",         "label": "Summary",   "type": "text"},
+                    {"key": "developer_email", "label": "Developer", "type": "text"},
+                    {"key": "ai_tool",         "label": "AI Tool",   "type": "text"},
+                    {"key": "created_at",      "label": "Date",      "type": "date"},
+                ],
+                "rows": rows,
             }
 
     except Exception:

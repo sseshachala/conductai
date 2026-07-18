@@ -172,6 +172,41 @@ class Executor:
             for r in rows
         ]
 
+    def _tool_get_team_memory_feed(self, limit: int = 20):
+        """Recent team memory entries — no embedding needed."""
+        rows = self.db.execute(
+            sa_text(
+                "SELECT id, developer_email, light_summary, topic_tags, repo_full_name, created_at "
+                "FROM team_session_memory "
+                "WHERE workspace_id = :workspace_id AND visibility = 'team' "
+                "ORDER BY created_at DESC LIMIT :limit"
+            ),
+            {"workspace_id": self.workspace_id, "limit": min(limit, 50)},
+        ).fetchall()
+        return [
+            {"id": str(r.id), "developer_email": r.developer_email, "summary": r.light_summary,
+             "topic_tags": r.topic_tags or [], "repo": r.repo_full_name,
+             "created_at": r.created_at.isoformat()}
+            for r in rows
+        ]
+
+    def _tool_get_session_reports_feed(self, limit: int = 20):
+        """Recent session reports — no embedding needed."""
+        rows = self.db.execute(
+            sa_text(
+                "SELECT id, developer_email, ai_tool, report_md, created_at "
+                "FROM session_reports "
+                "WHERE workspace_id = :workspace_id "
+                "ORDER BY created_at DESC LIMIT :limit"
+            ),
+            {"workspace_id": self.workspace_id, "limit": min(limit, 50)},
+        ).fetchall()
+        return [
+            {"id": str(r.id), "developer_email": r.developer_email, "ai_tool": r.ai_tool,
+             "summary": (r.report_md or "")[:500], "created_at": r.created_at.isoformat()}
+            for r in rows
+        ]
+
     # ── Policies ──────────────────────────────────────────────────────────────
 
     def _tool_list_policies(self):

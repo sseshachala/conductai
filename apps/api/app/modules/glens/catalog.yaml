@@ -357,6 +357,32 @@ actions:
       - "how are we doing on governance"
       - "governance health"
 
+  # ── Team Memory ──────────────────────────────────────────────────────────
+
+  search_memory:
+    endpoint: internal/team_memory/search
+    component: MemoryResultsTable
+    tier1: false
+    phrases:
+      - "search team memory"
+      - "what did we decide"
+      - "team memory"
+      - "what decisions were made"
+      - "search memory"
+      - "find in memory"
+      - "team knowledge"
+
+  search_sessions:
+    endpoint: internal/session_reports/search
+    component: SessionResultsTable
+    tier1: false
+    phrases:
+      - "search session reports"
+      - "find sessions about"
+      - "session reports"
+      - "which sessions"
+      - "agent sessions"
+
   # ── Correlated (new — needs build) ────────────────────────────────────────
 
   view_correlated_activity:
