@@ -410,10 +410,10 @@ async def glens_chat_stream(
                     await event_q.put({"type": "done", "_parsed": formatted})
                     return
             except Exception as e:
-                log.debug("glens.stream.tier3_miss", error=str(e))
+                log.info("glens.stream.tier3_miss", error=str(e))
 
             # Tier 4: full agent loop — escalation for complex/multi-domain queries
-            log.debug("glens.stream.tier4_escalate", message=req.message[:60])
+            log.info("glens.stream.tier4_escalate", message=req.message[:60])
             _on_event({"type": "thinking", "label": "Analyzing your request..."})
             subtasks = await asyncio.to_thread(
                 plan, req.message, last_answer, req.page_context, context_summary
