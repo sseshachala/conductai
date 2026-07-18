@@ -161,8 +161,8 @@ def _resolve_rule_id(args: dict, executor) -> dict:
             best_id = scored[0][1]
             warning = None if len(scored) == 1 else f"Matched '{best_id}' — verify this is the right rule."
             return {**args, "rule_id": best_id, **({"_warning": warning} if warning else {})}
-        # No match — leave as-is, policy_apply will 404 with a clear message
-        return {**args, "_warning": f"Rule '{candidate}' not found in your policies. Check the rule ID."}
+        # No match — signal clarification so we don't show a confirm with a hallucinated rule_id
+        return {**args, "_no_rule_found": True, "_warning": f"Rule '{candidate}' not found in your policies. Say 'list rules' to see available rule IDs."}
     except Exception:
         return args
 
@@ -457,8 +457,9 @@ async def glens_chat_stream(
                 "get_governance_frameworks":  "get_framework_coverage",
                 "get_governance_narrative":   "get_governance_narrative",
             }
+            _WRITE_TOOLS = {"create_guard_rule", "edit_guard_rule", "delete_guard_rule"}
             action_name = await asyncio.to_thread(_tier2_match, req.message)
-            if action_name:
+            if action_name and action_name not in _WRITE_TOOLS:
                 log.debug("glens.stream.tier2_hit", action=action_name)
                 label = action_name.replace("_", " ").replace("get ", "").replace("view ", "").replace("list ", "")
                 _on_event({"type": "thinking", "label": f"Loading {label}..."})
@@ -475,7 +476,6 @@ async def glens_chat_stream(
                     log.debug("glens.stream.tier2_miss", action=action_name, error=str(e))
 
             # Tier 3: 1 LLM call — dispatch picks tool + args, Python formats result
-            _WRITE_TOOLS = {"create_guard_rule", "edit_guard_rule", "delete_guard_rule"}
             try:
                 _on_event({"type": "thinking", "label": "Analyzing your question..."})
                 tool_name, args = await asyncio.to_thread(dispatch_tool, req.message)
@@ -484,6 +484,14 @@ async def glens_chat_stream(
                     _on_event({"type": "thinking", "label": "Building preview..."})
                     if tool_name in ("edit_guard_rule", "delete_guard_rule"):
                         args = _resolve_rule_id(args, executor)
+                        if args.get("_no_rule_found"):
+                            formatted = {
+                                "skill": "rules", "ready": False, "clarification_required": True,
+                                "answer": args["_warning"],
+                                "followups": ["List my guard rules", "Show active rules", "Which rules fired this week?"],
+                            }
+                            await event_q.put({"type": "done", "_parsed": formatted})
+                            return
                     formatted = format_tool_result(tool_name, args)
                     # create_guard_rule: good desc but no pattern/tool → call generate endpoint
                     if formatted and formatted.get("_needs_generate"):
@@ -602,6 +610,7 @@ async def glens_chat_stream(
                         "columns":  _sanitize_columns(parsed.get("columns")),
                         "warning":  parsed.get("warning"),
                         "followups": parsed.get("followups"),
+                        "clarification_required": parsed.get("clarification_required"),
                         "confirm_required": parsed.get("confirm_required"),
                         "action": parsed.get("action"),
                         "draft": parsed.get("draft"),
