@@ -21,6 +21,8 @@ from app.models.workspace_config import WorkspaceConfig
 from app.modules.glens.agent import Agent
 from app.modules.glens.coordinator import coordinate
 from app.modules.glens.executor import Executor
+from app.modules.glens.formatters import format_tool_result
+from app.modules.glens.inference import dispatch_tool
 from app.modules.glens.planner import plan
 from app.modules.glens.shortcuts import try_shortcut
 from app.modules.glens.utils import extract_json
@@ -30,6 +32,36 @@ from app.modules.guard.models import GuardConfig, GuardSpendBudget, WorkspaceCus
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/glens", tags=["glens"])
+
+
+# ── Tier 2: catalog phrase matching ──────────────────────────────────────────
+
+def _load_catalog() -> dict:
+    import yaml
+    from pathlib import Path
+    path = Path(__file__).parent.parent / "catalog.yaml"
+    try:
+        return yaml.safe_load(path.read_text()).get("actions", {})
+    except Exception:
+        return {}
+
+_CATALOG: dict = {}
+
+def _get_catalog() -> dict:
+    global _CATALOG
+    if not _CATALOG:
+        _CATALOG = _load_catalog()
+    return _CATALOG
+
+def _tier2_match(message: str) -> str | None:
+    """Match message against catalog action phrases. Returns action name or None."""
+    low = message.lower()
+    catalog = _get_catalog()
+    for action_name, action in catalog.items():
+        for phrase in action.get("phrases", []):
+            if phrase.lower() in low:
+                return action_name
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -297,13 +329,43 @@ async def glens_chat_stream(
 
     async def _run_work() -> None:
         try:
-            # Fast path: bypass LLM for deterministic queries (~7s → <200ms)
+            # Tier 1: shortcut — deterministic regex, no LLM (<1ms)
             shortcut = await asyncio.to_thread(try_shortcut, req.message, executor)
             if shortcut:
-                log.debug("glens.stream.shortcut_hit", message=req.message[:60])
+                log.debug("glens.stream.tier1_hit", message=req.message[:60])
                 await event_q.put({"type": "done", "_parsed": shortcut})
                 return
 
+            # Tier 2: catalog phrase match — keyword match against action phrases, no LLM
+            action_name = await asyncio.to_thread(_tier2_match, req.message)
+            if action_name:
+                log.debug("glens.stream.tier2_hit", action=action_name)
+                _on_event({"type": "thinking", "label": f"Looking up {action_name.replace('_', ' ')}..."})
+                raw = await asyncio.to_thread(executor.call, action_name.replace("view_", "get_"), "{}")
+                import json as _json
+                result = _json.loads(raw)
+                formatted = format_tool_result(action_name, result)
+                if formatted:
+                    await event_q.put({"type": "done", "_parsed": formatted})
+                    return
+
+            # Tier 3: 1 LLM call — dispatch picks tool + args, Python formats result
+            try:
+                tool_name, args = await asyncio.to_thread(dispatch_tool, req.message)
+                import json as _json
+                _on_event({"type": "thinking", "label": f"Running {tool_name.replace('_', ' ')}..."})
+                raw = await asyncio.to_thread(executor.call, tool_name, _json.dumps(args))
+                result = _json.loads(raw)
+                formatted = format_tool_result(tool_name, result)
+                if formatted:
+                    log.debug("glens.stream.tier3_hit", tool=tool_name)
+                    await event_q.put({"type": "done", "_parsed": formatted})
+                    return
+            except Exception as e:
+                log.debug("glens.stream.tier3_miss", error=str(e))
+
+            # Tier 4: full agent loop — escalation path for complex/multi-domain queries
+            log.debug("glens.stream.tier4_escalate", message=req.message[:60])
             subtasks = await asyncio.to_thread(
                 plan, req.message, last_answer, req.page_context, context_summary
             )
