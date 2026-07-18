@@ -457,19 +457,19 @@ def glens_opener(
         chips.append("Show me today's Guard activity")
 
     if events > 0:
-        chips.append(f"Break down today's {events} event{'s' if events != 1 else ''} by rule")
+        chips.append(f"Show the most recent events today ({events} total)")
     else:
-        chips.append("Which rules fired most this week?")
+        chips.append("Show recent Guard events")
 
     if blocks_mtd > 0:
-        chips.append(f"Show MTD block trend ({blocks_mtd} block{'s' if blocks_mtd != 1 else ''} this month)")
+        chips.append(f"How many blocks this month? ({blocks_mtd} so far)")
     else:
         chips.append("Cost by AI tool this month")
 
     if devs > 1:
-        chips.append(f"Compare spend across {devs} active developers")
+        chips.append(f"Who are the {devs} active developers today?")
     else:
-        chips.append("Which rule triggered most this month?")
+        chips.append("Which rule triggered most this week?")
 
     return {"chips": chips}
 
