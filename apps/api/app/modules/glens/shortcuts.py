@@ -68,8 +68,9 @@ _SHORTCUTS: list[tuple[str, str]] = [
     (r"discover|which.{0,10}agent|agent.{0,10}running|unprotected.{0,10}agent|"
      r"agent.{0,10}not.{0,10}guard|list.{0,10}agent",
      "discovery_agents"),
-    # Policies / rules
-    (r"polic|rule|which.{0,10}rule|list.{0,10}rule|active.{0,10}rule|guard.{0,10}rule",
+    # Policies / rules — require explicit list/show intent to avoid catching create/edit/delete
+    (r"show.{0,10}(?:polic|rule)|list.{0,10}(?:polic|rule)|which.{0,10}rule|"
+     r"active.{0,10}rule|guard.{0,10}polic|what.{0,10}rule|my.{0,10}rule",
      "list_policies"),
     # Compliance packs / frameworks
     (r"compliance|framework|owasp|soc.?2|hipaa|pci|iso.?42001|gdpr|nist|nis.?2|dora|"
