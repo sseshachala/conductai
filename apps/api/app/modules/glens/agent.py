@@ -96,17 +96,17 @@ class Agent:
                 except json.JSONDecodeError:
                     return {"skill": self.skills[0]["name"], "ready": False, "answer": msg.content}
 
-            # Append assistant turn with tool calls
+            # Append assistant turn with tool calls (content may be None per OpenAI spec)
             loop_msgs.append({
                 "role": "assistant",
-                "content": msg.content,
+                "content": msg.content or "",
                 "tool_calls": [tc.model_dump() for tc in msg.tool_calls],
             })
 
             # Execute each tool call and feed results back
             for tc in msg.tool_calls:
                 if on_event:
-                    on_event({"type": "thinking", "thinking": _tool_status(tc.function.name)})
+                    on_event({"type": "thinking", "label": _tool_status(tc.function.name)})
                 result = executor.call(tc.function.name, tc.function.arguments)
                 log.debug("glens.agent.tool_executed", tool=tc.function.name, round=round_num)
                 loop_msgs.append({
