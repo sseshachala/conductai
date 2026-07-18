@@ -1,10 +1,10 @@
 """Intent shortcuts — bypass LLM inference for deterministic queries.
 
-Pattern match → call executor → return formatted JSON.
-Eliminates 2 LLM round-trips (~7s) for common governance questions.
+Pattern match → call executor service function → return formatted JSON.
+Eliminates LLM round-trips for all 16 catalog actions that map to existing APIs.
 """
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from app.modules.glens.executor import Executor
@@ -30,10 +30,13 @@ def _decision_summary(rows: list[dict], total_label: str = "events") -> str:
     return f"{len(rows)} {total_label} today — {', '.join(parts)}."
 
 
-# Each entry: (regex, intent) — ordered most-specific first
-# Return None to fall through to the full agent pipeline.
+# Each entry: (regex, intent) — ordered most-specific first to avoid false matches.
 _SHORTCUTS: list[tuple[str, str]] = [
-    # MTD / monthly KPI questions — must come before "blocked today" to avoid false match
+    # Workflow blocks — most specific, check before generic block patterns
+    (r"workflow.{0,15}block|block.{0,15}workflow|which.{0,15}workflow|automation.{0,10}block|"
+     r"relate.{0,10}block|block.{0,10}context",
+     "workflow_blocks"),
+    # MTD / monthly KPI — before "blocked today" to avoid false match
     (r"block.{0,15}month|month.{0,15}block|how many block|blocks? mtd|blocks? so far|"
      r"kpi|governance overview|governance summary|risk avoided",
      "governance_kpis"),
@@ -48,6 +51,30 @@ _SHORTCUTS: list[tuple[str, str]] = [
     # Warned today
     (r"who.{0,10}warn|warn.{0,10}today",
      "governance_warned"),
+    # Spend / cost
+    (r"spend|cost|how much.{0,15}spend|ai.{0,10}cost|token.{0,10}cost|spending",
+     "spend_summary"),
+    # Budgets
+    (r"budget|spend.{0,10}limit|spending limit",
+     "budgets"),
+    # Savings
+    (r"saving|token.{0,10}save|rtk|booster.{0,10}save|how much.{0,10}save",
+     "savings_summary"),
+    # Discovery — agents
+    (r"discover|which.{0,10}agent|agent.{0,10}running|unprotected.{0,10}agent|"
+     r"agent.{0,10}not.{0,10}guard|list.{0,10}agent",
+     "discovery_agents"),
+    # Policies / rules
+    (r"polic|rule|which.{0,10}rule|list.{0,10}rule|active.{0,10}rule|guard.{0,10}rule",
+     "list_policies"),
+    # Compliance packs / frameworks
+    (r"compliance|framework|owasp|soc.?2|hipaa|pci|iso.?42001|gdpr|nist|nis.?2|dora|"
+     r"installed.{0,10}pack|which.{0,10}pack",
+     "compliance_packs"),
+    # Governance narrative
+    (r"governance.{0,10}narrative|explain.{0,10}governance|governance.{0,10}health|"
+     r"how.{0,10}doing.{0,10}governance|posture",
+     "governance_narrative"),
 ]
 
 
@@ -111,6 +138,161 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "columns": _ACTIVITY_COLUMNS,
                 "rows": rows,
             }
+        if intent == "spend_summary":
+            data = executor._tool_get_spend_summary()
+            total = data.get("total_cost_usd", 0)
+            devs = data.get("by_developer", [])
+            return {
+                "skill": "analytics",
+                "ready": False,
+                "answer": f"Total AI spend: ${total:,.4f} across {data.get('active_developers', len(devs))} developer(s).",
+                "columns": [
+                    {"key": "email",    "label": "Developer", "type": "text"},
+                    {"key": "cost_usd", "label": "Cost (USD)", "type": "currency"},
+                ],
+                "rows": devs,
+            }
+
+        if intent == "budgets":
+            rows = executor._tool_get_budgets()
+            return {
+                "skill": "analytics",
+                "ready": False,
+                "answer": f"{len(rows)} budget(s) configured.",
+                "columns": [
+                    {"key": "scope",              "label": "Scope",          "type": "text"},
+                    {"key": "email",              "label": "Developer",      "type": "text"},
+                    {"key": "monthly_limit_usd",  "label": "Monthly Limit",  "type": "currency"},
+                    {"key": "hard_limit_usd",     "label": "Hard Limit",     "type": "currency"},
+                    {"key": "alert_threshold_pct","label": "Alert At",       "type": "percent"},
+                ],
+                "rows": rows,
+            }
+
+        if intent == "savings_summary":
+            data = executor._tool_get_savings_summary()
+            tokens = data.get("total_tokens_saved", 0)
+            usd = data.get("total_cost_saved_usd", 0)
+            members = data.get("by_member", [])
+            return {
+                "skill": "analytics",
+                "ready": False,
+                "answer": f"{tokens:,} tokens saved (${usd:,.4f}) across {len(members)} developer(s).",
+                "columns": [
+                    {"key": "email",                "label": "Developer",         "type": "text"},
+                    {"key": "rtk_saved_tokens",     "label": "RTK Saved",         "type": "number"},
+                    {"key": "booster_saved_tokens", "label": "Booster Saved",     "type": "number"},
+                ],
+                "rows": members,
+            }
+
+        if intent == "discovery_agents":
+            data = executor._tool_get_discovery_summary()
+            agents = data.get("agents", [])
+            covered = data.get("under_guard", 0)
+            total = data.get("total", 0)
+            return {
+                "skill": "discovery",
+                "ready": False,
+                "answer": f"{covered} of {total} agent(s) under Guard coverage.",
+                "columns": [
+                    {"key": "name",        "label": "Agent",    "type": "text"},
+                    {"key": "framework",   "label": "Framework","type": "text"},
+                    {"key": "risk_level",  "label": "Risk",     "type": "badge"},
+                    {"key": "under_guard", "label": "Covered",  "type": "boolean"},
+                    {"key": "last_seen_at","label": "Last Seen","type": "date"},
+                ],
+                "rows": agents,
+            }
+
+        if intent == "list_policies":
+            rows = executor._tool_list_policies()
+            if not isinstance(rows, list):
+                rows = []
+            return {
+                "skill": "rules",
+                "ready": False,
+                "answer": f"{len(rows)} Guard rule(s) configured.",
+                "columns": [
+                    {"key": "rule_id",     "label": "Rule ID",     "type": "text"},
+                    {"key": "description", "label": "Description", "type": "text"},
+                    {"key": "decision",    "label": "Action",      "type": "badge"},
+                    {"key": "enabled",     "label": "Enabled",     "type": "boolean"},
+                ],
+                "rows": rows,
+            }
+
+        if intent == "compliance_packs":
+            data = executor._tool_get_framework_coverage()
+            frameworks = data.get("frameworks", [])
+            return {
+                "skill": "compliance",
+                "ready": False,
+                "answer": f"{data.get('installed_count', 0)} compliance framework(s) installed.",
+                "columns": [
+                    {"key": "framework",   "label": "Framework",    "type": "text"},
+                    {"key": "rules_count", "label": "Rules",        "type": "number"},
+                    {"key": "installed_at","label": "Installed",    "type": "date"},
+                ],
+                "rows": frameworks,
+            }
+
+        if intent == "governance_narrative":
+            data = executor._tool_get_governance_narrative()
+            return {
+                "skill": "governance",
+                "ready": False,
+                "answer": data.get("paragraph", "Narrative unavailable."),
+            }
+
+        if intent == "workflow_blocks":
+            rows = executor._tool_get_recent_governance_events(
+                since=today, limit=50,
+                decision="blocked",
+            )
+            # Group by workflow → run → events
+            grouped: dict = defaultdict(lambda: defaultdict(list))
+            ungrouped = []
+            for r in rows:
+                wf = r.get("conductai_workflow_id") or r.get("workflow_id")
+                run = r.get("conductai_run_id") or r.get("run_id")
+                if wf and run:
+                    grouped[wf][run].append(r)
+                else:
+                    ungrouped.append(r)
+            if not grouped and not ungrouped:
+                return {
+                    "skill": "governance",
+                    "ready": False,
+                    "answer": "No workflow-triggered blocks found today.",
+                }
+            summary_rows = []
+            for wf_id, runs in grouped.items():
+                for run_id, events in runs.items():
+                    summary_rows.append({
+                        "workflow_id": wf_id,
+                        "run_id": run_id,
+                        "blocks": len(events),
+                        "rules": ", ".join({e.get("rule_id") or "unknown" for e in events}),
+                        "user_email": events[0].get("user_email", ""),
+                        "ai_tool": events[0].get("ai_tool", ""),
+                    })
+            total = sum(r["blocks"] for r in summary_rows)
+            return {
+                "skill": "governance",
+                "ready": False,
+                "answer": f"{total} block(s) from {len(summary_rows)} workflow run(s) today.",
+                "columns": [
+                    {"key": "workflow_id", "label": "Workflow",  "type": "text"},
+                    {"key": "run_id",      "label": "Run",       "type": "text"},
+                    {"key": "blocks",      "label": "Blocks",    "type": "number"},
+                    {"key": "rules",       "label": "Rules",     "type": "text"},
+                    {"key": "user_email",  "label": "User",      "type": "text"},
+                    {"key": "ai_tool",     "label": "AI Tool",   "type": "text"},
+                ],
+                "rows": summary_rows,
+            }
+
     except Exception:
         return None  # fall through to agent
     return None
