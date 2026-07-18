@@ -267,6 +267,7 @@ actions:
       - "which frameworks are we compliant with"
       - "compliance matrix"
       - "governance frameworks"
+      - "show compliance frameworks"
       - "owasp coverage"
       - "soc2 status"
 
