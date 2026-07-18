@@ -57,3 +57,12 @@ Direct answer (data already answers the question):
 kpis array entries: {"label": "Events today", "value": 42, "field": "events_today"}
 charts array entries: {"type": "bar"|"line"|"stacked", "field": "by_ai_tool"|"by_developer", "title": "..."}
 tables array entries: {"type": "blocked_events"|"warned_events"|"allowed_events"|"recent_sessions", "title": "..."}
+
+─── Empty results guard ──────────────────────────────────────────────────────
+
+If a tool returns an empty list [] or zero counts, respond with a plain answer:
+{"skill": "report", "ready": false, "answer": "No data found for that query."}
+
+NEVER write markdown prose, ### headers, bullet explanations, or "Next Steps" when data is empty.
+NEVER suggest alternative tools or explain your reasoning in the answer field.
+One plain sentence only.
