@@ -112,6 +112,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "governance",
                 "ready": True,
+                "query_understood_as": "Governance KPIs for today",
                 "title": "Governance Overview",
                 "answer": f"{n} events today, {b} blocked. {bm} blocks this month, ${risk:,.2f} risk avoided.",
                 "component": "GovernanceKpiCards",
@@ -131,6 +132,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "governance",
                 "ready": False,
+                "query_understood_as": "Guard activity today",
                 "answer": _decision_summary(rows),
                 "component": "ActivityTable",
                 "drilldown": {"path": "/guard/activity"},
@@ -142,6 +144,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "governance",
                 "ready": False,
+                "query_understood_as": "Blocked events today",
                 "answer": _decision_summary(rows, "blocks"),
                 "component": "ActivityTable",
                 "drilldown": {"path": "/guard/activity", "filters": {"decision": "blocked"}},
@@ -153,6 +156,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "governance",
                 "ready": False,
+                "query_understood_as": "Warned events today",
                 "answer": _decision_summary(rows, "warnings"),
                 "component": "ActivityTable",
                 "drilldown": {"path": "/guard/activity", "filters": {"decision": "warned"}},
@@ -166,6 +170,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "analytics",
                 "ready": False,
+                "query_understood_as": "AI spend summary",
                 "answer": f"Total AI spend: ${total:,.4f} across {data.get('active_developers', len(devs))} developer(s).",
                 "component": "SpendDashboard",
                 "drilldown": {"path": "/guard/spend"},
@@ -181,6 +186,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "analytics",
                 "ready": False,
+                "query_understood_as": "Spend budgets",
                 "answer": f"{len(rows)} budget(s) configured.",
                 "component": "BudgetsTable",
                 "drilldown": {"path": "/guard/spend/budgets"},
@@ -202,6 +208,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "analytics",
                 "ready": False,
+                "query_understood_as": "Token savings summary",
                 "answer": f"{tokens:,} tokens saved (${usd:,.4f}) across {len(members)} developer(s).",
                 "component": "SavingsKpiCards",
                 "drilldown": {"path": "/guard/spend"},
@@ -221,6 +228,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "discovery",
                 "ready": False,
+                "query_understood_as": "Discovered agents",
                 "answer": f"{covered} of {total} agent(s) under Guard coverage.",
                 "component": "AgentsTable",
                 "drilldown": {"path": "/guard/discover"},
@@ -241,6 +249,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "rules",
                 "ready": False,
+                "query_understood_as": "Active Guard rules",
                 "answer": f"{len(rows)} Guard rule(s) configured.",
                 "component": "PoliciesTable",
                 "drilldown": {"path": "/guard/policies"},
@@ -259,6 +268,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "compliance",
                 "ready": False,
+                "query_understood_as": "Compliance frameworks",
                 "answer": f"{data.get('installed_count', 0)} compliance framework(s) installed.",
                 "component": "CompliancePacksTable",
                 "drilldown": {"path": "/guard/compliance"},
@@ -275,6 +285,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "governance",
                 "ready": False,
+                "query_understood_as": "Governance narrative",
                 "answer": data.get("paragraph", "Narrative unavailable."),
                 "component": "GovernanceNarrative",
                 "drilldown": {"path": "/guard"},
@@ -298,6 +309,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "governance",
                 "ready": False,
+                "query_understood_as": "Correlated block sessions today",
                 "answer": f"{total} block(s) across {len(sessions)} session(s) today.",
                 "component": "ActivityTable",
                 "drilldown": {"path": "/guard/activity", "filters": {"decision": "blocked"}},
@@ -330,6 +342,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 return {
                     "skill": "governance",
                     "ready": False,
+                    "query_understood_as": "Workflow-triggered blocks today",
                     "answer": "No workflow-triggered blocks found today.",
                 }
             summary_rows = []
@@ -347,6 +360,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "governance",
                 "ready": False,
+                "query_understood_as": "Workflow-triggered blocks today",
                 "answer": f"{total} block(s) from {len(summary_rows)} workflow run(s) today.",
                 "component": "WorkflowBlocksView",
                 "drilldown": {"path": "/guard/activity", "filters": {"decision": "blocked"}},
@@ -366,6 +380,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "memory",
                 "ready": False,
+                "query_understood_as": "Recent team memory",
                 "answer": f"{len(rows)} team memory record(s)." if rows else "No team memory records yet.",
                 "component": "MemoryResultsTable",
                 "drilldown": {"path": "/guard/memory"},
@@ -384,6 +399,7 @@ def _handle(intent: str, executor: Executor) -> dict | None:
             return {
                 "skill": "session",
                 "ready": False,
+                "query_understood_as": "Recent session reports",
                 "answer": f"{len(rows)} session report(s)." if rows else "No session reports yet.",
                 "component": "SessionResultsTable",
                 "drilldown": {"path": "/guard/session-reports"},
