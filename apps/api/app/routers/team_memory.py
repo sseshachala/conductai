@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id
+from app.core.auth import get_workspace_id, require_permission
 from app.core.database import SessionLocal, get_db
 from app.models.team_session_memory import TeamSessionMemory
 
@@ -202,6 +202,7 @@ def _synthesize_mcp_sessions(workspace_id: str) -> None:
 def store_session_memory(
     body: SessionMemoryIn,
     workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.activity.view_own")),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     summary = _summarise(body.raw_transcript)
@@ -251,6 +252,7 @@ def search_session_memory(
     repo: str | None = Query(default=None),
     limit: int = Query(default=5, ge=1, le=50),
     workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.activity.view_own")),
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> list[dict[str, Any]]:
@@ -352,6 +354,7 @@ def search_session_memory(
 @router.delete("/sessions/unknown", status_code=200)
 def delete_unknown_sessions(
     workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.activity.view_all")),
     db: Session = Depends(get_db),
 ) -> dict:
     """Delete all team memory rows with no developer_id for this workspace."""
