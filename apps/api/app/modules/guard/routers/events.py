@@ -949,3 +949,71 @@ def verify_audit_chain(
         "verified_from": rows[0].ts.isoformat(),
         "broken_at": None,
     }
+
+
+@router.get("/correlated", tags=["guard"])
+def list_correlated_events(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    decision: str | None = Query(default=None, description="blocked|warned|allowed"),
+    user_email: str | None = Query(default=None),
+    ai_tool: str | None = Query(default=None),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """Audit events joined to their Guard session — groups events by session context."""
+    import uuid as _uuid
+    org_ws = _org_ws_subquery(db, workspace_id)
+
+    q = (
+        db.query(GuardAuditEvent, GuardSession)
+        .outerjoin(GuardSession, GuardAuditEvent.session_id == GuardSession.id)
+        .filter(GuardAuditEvent.workspace_id.in_(org_ws))
+    )
+    if decision:
+        q = q.filter(GuardAuditEvent.decision == decision)
+    if user_email:
+        q = q.filter(GuardAuditEvent.user_email == user_email)
+    if ai_tool:
+        q = q.filter(GuardAuditEvent.ai_tool == ai_tool)
+    if since:
+        q = q.filter(GuardAuditEvent.ts >= since)
+    if until:
+        q = q.filter(GuardAuditEvent.ts <= until)
+
+    rows = q.order_by(GuardAuditEvent.ts.desc()).limit(limit).all()
+
+    # Group by session
+    sessions: dict = {}
+    ungrouped = []
+    for event, session in rows:
+        evt = {
+            "id":         str(event.id),
+            "ts":         event.ts.isoformat(),
+            "decision":   event.decision,
+            "rule_id":    event.rule_id,
+            "ai_tool":    event.ai_tool,
+            "tool_name":  event.tool_name if hasattr(event, "tool_name") else None,
+            "user_email": event.user_email,
+        }
+        if session:
+            sid = str(session.id)
+            if sid not in sessions:
+                sessions[sid] = {
+                    "session_id":  sid,
+                    "user_email":  session.user_email,
+                    "ai_tool":     session.ai_tool,
+                    "started_at":  session.started_at.isoformat() if session.started_at else None,
+                    "ended_at":    session.ended_at.isoformat() if session.ended_at else None,
+                    "events":      [],
+                }
+            sessions[sid]["events"].append(evt)
+        else:
+            ungrouped.append(evt)
+
+    return {
+        "sessions": list(sessions.values()),
+        "ungrouped": ungrouped,
+        "total": len(rows),
+    }

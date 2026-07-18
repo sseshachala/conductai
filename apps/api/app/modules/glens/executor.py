@@ -580,6 +580,37 @@ class Executor:
             "frameworks": frameworks,
         }
 
+    def _tool_get_correlated_events(self, decision: str = "blocked", since: str | None = None, until: str | None = None, limit: int = 50):
+        from app.modules.guard.models import GuardSession as _GS
+        org_ws = _org_ws_subquery(self.db, self.workspace_id)
+        q = (
+            self.db.query(GuardAuditEvent, _GS)
+            .outerjoin(_GS, GuardAuditEvent.session_id == _GS.id)
+            .filter(GuardAuditEvent.workspace_id.in_(org_ws))
+            .filter(GuardAuditEvent.decision == decision)
+        )
+        if since:
+            q = q.filter(GuardAuditEvent.ts >= since)
+        if until:
+            q = q.filter(GuardAuditEvent.ts <= until)
+        rows = q.order_by(GuardAuditEvent.ts.desc()).limit(min(limit, 100)).all()
+        sessions: dict = {}
+        ungrouped = []
+        for event, session in rows:
+            evt = {"id": str(event.id), "ts": event.ts.isoformat(), "decision": event.decision,
+                   "rule_id": event.rule_id, "ai_tool": event.ai_tool, "user_email": event.user_email}
+            if session:
+                sid = str(session.id)
+                if sid not in sessions:
+                    sessions[sid] = {"session_id": sid, "user_email": session.user_email,
+                                     "ai_tool": session.ai_tool,
+                                     "started_at": session.started_at.isoformat() if session.started_at else None,
+                                     "events": []}
+                sessions[sid]["events"].append(evt)
+            else:
+                ungrouped.append(evt)
+        return {"sessions": list(sessions.values()), "ungrouped": ungrouped, "total": len(rows)}
+
     def _tool_get_savings_summary(self):
         from app.modules.guard.routers.savings import _build_summary, _EMPTY_SUMMARY
         try:
