@@ -32,7 +32,7 @@ _KNOWN_DISPATCH_TOOLS = {
     "get_budgets",
 }
 
-_DISPATCH_PROMPT = (Path(__file__).parent / "dispatch_prompt.txt").read_text()
+_DISPATCH_PROMPT = (Path(__file__).parent / "prompts" / "dispatch.txt").read_text()
 
 
 def get_client() -> OpenAI:
