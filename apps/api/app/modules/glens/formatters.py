@@ -29,6 +29,8 @@ def format_tool_result(tool: str, result) -> dict | None:
             "skill": "governance",
             "ready": False,
             "answer": _count_summary(rows),
+            "component": "ActivityTable",
+            "drilldown": {"path": "/guard/activity"},
             "columns": _ACTIVITY_COLUMNS,
             "rows": rows,
         }
@@ -50,6 +52,8 @@ def format_tool_result(tool: str, result) -> dict | None:
             "ready": True,
             "title": "Governance Overview",
             "answer": f"{n} events today, {b} blocked.",
+            "component": "GovernanceKpiCards",
+            "drilldown": {"path": "/guard"},
             "kpis": kpis,
             "charts": [],
             "tables": [],
@@ -68,6 +72,8 @@ def format_tool_result(tool: str, result) -> dict | None:
             "skill": "analytics",
             "ready": False,
             "answer": f"Total spend: ${total:,.4f}. {len(rows)} developer(s) active.",
+            "component": "SpendDashboard",
+            "drilldown": {"path": "/guard/spend"},
             "columns": dev_cols,
             "rows": rows,
         }
@@ -84,6 +90,8 @@ def format_tool_result(tool: str, result) -> dict | None:
             "skill": "rules",
             "ready": False,
             "answer": f"{len(rows)} Guard rule(s) configured.",
+            "component": "PoliciesTable",
+            "drilldown": {"path": "/guard/policies"},
             "columns": cols,
             "rows": rows,
         }
@@ -102,6 +110,8 @@ def format_tool_result(tool: str, result) -> dict | None:
             "skill": "compliance",
             "ready": False,
             "answer": f"Overall compliance score: {score}%. {len(controls)} control(s) evaluated.",
+            "component": "CompliancePacksTable",
+            "drilldown": {"path": "/guard/compliance"},
             "columns": cols,
             "rows": controls,
         }
@@ -115,6 +125,8 @@ def format_tool_result(tool: str, result) -> dict | None:
             "skill": "discovery",
             "ready": False,
             "answer": f"{covered} of {total} agents under Guard coverage.",
+            "component": "AgentsTable",
+            "drilldown": {"path": "/guard/discover"},
             "columns": [
                 {"key": "name",    "label": "Agent",    "type": "text"},
                 {"key": "tool",    "label": "AI Tool",  "type": "text"},

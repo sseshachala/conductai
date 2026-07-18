@@ -186,12 +186,14 @@ export function GenericTableBubble({
   rows,
   warning,
   skill,
+  drilldown,
 }: {
   answer: string
   columns?: Column[]   // optional — inferred from rows when absent
   rows: Record<string, unknown>[]
   warning?: string
   skill?: string
+  drilldown?: { path: string; filters?: Record<string, string> }
 }) {
   const effectiveCols = (columns && columns.length > 0) ? columns : inferColumns(rows)
 
@@ -299,6 +301,22 @@ export function GenericTableBubble({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {drilldown && (
+          <div style={{ marginTop: 12, textAlign: "right" }}>
+            <a
+              href={drilldown.path}
+              style={{
+                fontSize: 12,
+                color: "var(--accent, #6366f1)",
+                textDecoration: "none",
+                fontWeight: 500,
+              }}
+            >
+              View full &rarr;
+            </a>
           </div>
         )}
       </div>

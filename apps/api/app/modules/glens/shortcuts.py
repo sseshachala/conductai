@@ -105,6 +105,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "ready": True,
                 "title": "Governance Overview",
                 "answer": f"{n} events today, {b} blocked. {bm} blocks this month, ${risk:,.2f} risk avoided.",
+                "component": "GovernanceKpiCards",
+                "drilldown": {"path": "/guard"},
                 "kpis": [
                     {"label": "Events Today",        "value": n},
                     {"label": "Blocked Today",        "value": b},
@@ -121,6 +123,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "governance",
                 "ready": False,
                 "answer": _decision_summary(rows),
+                "component": "ActivityTable",
+                "drilldown": {"path": "/guard/activity"},
                 "columns": _ACTIVITY_COLUMNS,
                 "rows": rows,
             }
@@ -130,6 +134,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "governance",
                 "ready": False,
                 "answer": _decision_summary(rows, "blocks"),
+                "component": "ActivityTable",
+                "drilldown": {"path": "/guard/activity", "filters": {"decision": "blocked"}},
                 "columns": _ACTIVITY_COLUMNS,
                 "rows": rows,
             }
@@ -139,6 +145,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "governance",
                 "ready": False,
                 "answer": _decision_summary(rows, "warnings"),
+                "component": "ActivityTable",
+                "drilldown": {"path": "/guard/activity", "filters": {"decision": "warned"}},
                 "columns": _ACTIVITY_COLUMNS,
                 "rows": rows,
             }
@@ -150,6 +158,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "analytics",
                 "ready": False,
                 "answer": f"Total AI spend: ${total:,.4f} across {data.get('active_developers', len(devs))} developer(s).",
+                "component": "SpendDashboard",
+                "drilldown": {"path": "/guard/spend"},
                 "columns": [
                     {"key": "email",    "label": "Developer", "type": "text"},
                     {"key": "cost_usd", "label": "Cost (USD)", "type": "currency"},
@@ -163,6 +173,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "analytics",
                 "ready": False,
                 "answer": f"{len(rows)} budget(s) configured.",
+                "component": "BudgetsTable",
+                "drilldown": {"path": "/guard/spend/budgets"},
                 "columns": [
                     {"key": "scope",              "label": "Scope",          "type": "text"},
                     {"key": "email",              "label": "Developer",      "type": "text"},
@@ -182,6 +194,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "analytics",
                 "ready": False,
                 "answer": f"{tokens:,} tokens saved (${usd:,.4f}) across {len(members)} developer(s).",
+                "component": "SavingsKpiCards",
+                "drilldown": {"path": "/guard/spend"},
                 "columns": [
                     {"key": "email",                "label": "Developer",         "type": "text"},
                     {"key": "rtk_saved_tokens",     "label": "RTK Saved",         "type": "number"},
@@ -199,6 +213,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "discovery",
                 "ready": False,
                 "answer": f"{covered} of {total} agent(s) under Guard coverage.",
+                "component": "AgentsTable",
+                "drilldown": {"path": "/guard/discover"},
                 "columns": [
                     {"key": "name",        "label": "Agent",    "type": "text"},
                     {"key": "framework",   "label": "Framework","type": "text"},
@@ -217,6 +233,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "rules",
                 "ready": False,
                 "answer": f"{len(rows)} Guard rule(s) configured.",
+                "component": "PoliciesTable",
+                "drilldown": {"path": "/guard/policies"},
                 "columns": [
                     {"key": "rule_id",     "label": "Rule ID",     "type": "text"},
                     {"key": "description", "label": "Description", "type": "text"},
@@ -233,6 +251,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "compliance",
                 "ready": False,
                 "answer": f"{data.get('installed_count', 0)} compliance framework(s) installed.",
+                "component": "CompliancePacksTable",
+                "drilldown": {"path": "/guard/compliance"},
                 "columns": [
                     {"key": "framework",   "label": "Framework",    "type": "text"},
                     {"key": "rules_count", "label": "Rules",        "type": "number"},
@@ -247,6 +267,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "governance",
                 "ready": False,
                 "answer": data.get("paragraph", "Narrative unavailable."),
+                "component": "GovernanceNarrative",
+                "drilldown": {"path": "/guard"},
             }
 
         if intent == "correlated_activity":
@@ -268,6 +290,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "governance",
                 "ready": False,
                 "answer": f"{total} block(s) across {len(sessions)} session(s) today.",
+                "component": "ActivityTable",
+                "drilldown": {"path": "/guard/activity", "filters": {"decision": "blocked"}},
                 "columns": [
                     {"key": "ts",              "label": "Time",            "type": "date"},
                     {"key": "rule_id",         "label": "Rule",            "type": "text"},
@@ -315,6 +339,8 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "governance",
                 "ready": False,
                 "answer": f"{total} block(s) from {len(summary_rows)} workflow run(s) today.",
+                "component": "WorkflowBlocksView",
+                "drilldown": {"path": "/guard/activity", "filters": {"decision": "blocked"}},
                 "columns": [
                     {"key": "workflow_id", "label": "Workflow",  "type": "text"},
                     {"key": "run_id",      "label": "Run",       "type": "text"},
