@@ -135,5 +135,74 @@ def format_tool_result(tool: str, result) -> dict | None:
             "rows": result.get("agents", []),
         }
 
+    if tool == "create_guard_rule":
+        if not isinstance(result, dict):
+            return None
+        desc = result.get("description", "")
+        action = result.get("action", "block")
+        rule_id = result.get("rule_id") or _slugify(desc)
+        draft = {
+            "rule_id": rule_id,
+            "description": desc,
+            "action": action,
+            "match_tool": result.get("match_tool", "*"),
+            "match_pattern": result.get("match_pattern", ""),
+            "severity": result.get("severity", "medium"),
+        }
+        mapping = [
+            {"field": "rule_id",       "column": "rule_id",      "description": "Unique rule identifier"},
+            {"field": "description",   "column": "description",  "description": "What this rule does"},
+            {"field": "action",        "column": "action",       "description": "block / warn / audit"},
+            {"field": "match_tool",    "column": "match_tool",   "description": "AI tool this applies to"},
+            {"field": "match_pattern", "column": "match_pattern","description": "Regex matched against prompt"},
+            {"field": "severity",      "column": "severity",     "description": "Alert severity"},
+        ]
+        return {
+            "skill": "rules",
+            "ready": False,
+            "confirm_required": True,
+            "action": "create",
+            "answer": f"Create a new **{action}** rule: {desc}",
+            "draft": draft,
+            "mapping": [{"field": m["field"], "column": m["column"], "description": m["description"], "value": str(draft.get(m["field"], ""))} for m in mapping],
+        }
+
+    if tool == "edit_guard_rule":
+        if not isinstance(result, dict):
+            return None
+        rule_id = result.get("rule_id", "")
+        changes = {k: v for k, v in result.items() if k != "rule_id" and v is not None}
+        mapping = [{"field": k, "column": k, "description": "", "value": str(v)} for k, v in changes.items()]
+        return {
+            "skill": "rules",
+            "ready": False,
+            "confirm_required": True,
+            "action": "patch",
+            "answer": f"Edit rule **{rule_id}**: {', '.join(f'{k}={v}' for k, v in changes.items())}",
+            "draft": changes,
+            "target_rule_id": rule_id,
+            "mapping": mapping,
+        }
+
+    if tool == "delete_guard_rule":
+        if not isinstance(result, dict):
+            return None
+        rule_id = result.get("rule_id", "")
+        return {
+            "skill": "rules",
+            "ready": False,
+            "confirm_required": True,
+            "action": "delete",
+            "answer": f"Delete rule **{rule_id}**. This cannot be undone.",
+            "draft": {"rule_id": rule_id},
+            "target_rule_id": rule_id,
+            "mapping": [{"field": "rule_id", "column": "rule_id", "description": "Rule to delete", "value": rule_id}],
+        }
+
     # Unknown tool or complex result — fall back to full agent
     return None
+
+
+def _slugify(text: str) -> str:
+    import re
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")[:40] or "custom_rule"

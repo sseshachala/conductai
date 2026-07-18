@@ -227,6 +227,80 @@ actions:
       - "guard policies"
       - "active rules"
 
+  create_guard_rule:
+    endpoint: POST /guard/policies
+    component: PolicyConfirmBubble
+    write: true
+    tier1: false
+    parameters:
+      description:
+        type: string
+        required: true
+      action:
+        type: enum
+        values: [block, warn, audit]
+        default: block
+      match_tool:
+        type: string
+        description: AI tool to target (e.g. "cursor", "claude", "*" for all)
+      match_pattern:
+        type: string
+        description: Regex pattern to match prompt/content
+      severity:
+        type: enum
+        values: [low, medium, high, critical]
+        default: medium
+    phrases:
+      - "create a rule"
+      - "add a guard rule"
+      - "new rule to block"
+      - "block rule for"
+      - "create guard rule"
+      - "add rule that"
+
+  edit_guard_rule:
+    endpoint: PATCH /guard/policies/{rule_id}
+    component: PolicyConfirmBubble
+    write: true
+    tier1: false
+    parameters:
+      rule_id:
+        type: string
+        required: true
+      description:
+        type: string
+      action:
+        type: enum
+        values: [block, warn, audit]
+      enabled:
+        type: boolean
+      severity:
+        type: enum
+        values: [low, medium, high, critical]
+    phrases:
+      - "edit rule"
+      - "update rule"
+      - "change rule"
+      - "disable rule"
+      - "enable rule"
+      - "modify guard rule"
+
+  delete_guard_rule:
+    endpoint: DELETE /guard/policies/{rule_id}
+    component: PolicyConfirmBubble
+    write: true
+    destructive: true
+    tier1: false
+    parameters:
+      rule_id:
+        type: string
+        required: true
+    phrases:
+      - "delete rule"
+      - "remove rule"
+      - "delete guard rule"
+      - "remove guard rule"
+
   # ── Compliance ────────────────────────────────────────────────────────────
 
   view_compliance_packs:

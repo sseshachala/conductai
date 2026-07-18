@@ -396,15 +396,21 @@ async def glens_chat_stream(
                     log.debug("glens.stream.tier2_miss", action=action_name, error=str(e))
 
             # Tier 3: 1 LLM call — dispatch picks tool + args, Python formats result
+            _WRITE_TOOLS = {"create_guard_rule", "edit_guard_rule", "delete_guard_rule"}
             try:
                 _on_event({"type": "thinking", "label": "Analyzing your question..."})
                 tool_name, args = await asyncio.to_thread(dispatch_tool, req.message)
                 tool_label = tool_name.replace("_", " ").replace("get ", "").replace("list ", "")
-                _on_event({"type": "thinking", "label": f"Fetching {tool_label}..."})
-                raw = await asyncio.to_thread(executor.call, tool_name, _json.dumps(args))
-                _on_event({"type": "thinking", "label": "Formatting results..."})
-                result = _json.loads(raw)
-                formatted = format_tool_result(tool_name, result)
+                if tool_name in _WRITE_TOOLS:
+                    # Write tools: args IS the result — no DB call, just build confirmation preview
+                    _on_event({"type": "thinking", "label": "Building preview..."})
+                    formatted = format_tool_result(tool_name, args)
+                else:
+                    _on_event({"type": "thinking", "label": f"Fetching {tool_label}..."})
+                    raw = await asyncio.to_thread(executor.call, tool_name, _json.dumps(args))
+                    _on_event({"type": "thinking", "label": "Formatting results..."})
+                    result = _json.loads(raw)
+                    formatted = format_tool_result(tool_name, result)
                 if formatted:
                     log.debug("glens.stream.tier3_hit", tool=tool_name)
                     await event_q.put({"type": "done", "_parsed": formatted})
@@ -751,6 +757,21 @@ def policy_apply(
         db.commit()
         log.info("glens.policy.patched", workspace_id=workspace_id, rule_id=rule_id)
         return {"ok": True, "rule_id": rule_id, "action": "patched"}
+
+    elif req.action == "delete":
+        rule_id = req.target_rule_id or req.draft.get("rule_id")
+        if not rule_id:
+            raise HTTPException(status_code=400, detail="target_rule_id is required for delete")
+        rule = db.query(WorkspaceCustomRule).filter(
+            WorkspaceCustomRule.workspace_id == ws_uuid,
+            WorkspaceCustomRule.rule_id == rule_id,
+        ).first()
+        if not rule:
+            raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
+        db.delete(rule)
+        db.commit()
+        log.info("glens.policy.deleted", workspace_id=workspace_id, rule_id=rule_id)
+        return {"ok": True, "rule_id": rule_id, "action": "deleted"}
 
     raise HTTPException(status_code=400, detail=f"Unknown action '{req.action}'")
 
