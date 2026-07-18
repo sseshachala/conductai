@@ -76,10 +76,6 @@ _SHORTCUTS: list[tuple[str, str]] = [
     (r"compliance|framework|owasp|soc.?2|hipaa|pci|iso.?42001|gdpr|nist|nis.?2|dora|"
      r"installed.{0,10}pack|which.{0,10}pack",
      "compliance_packs"),
-    # Governance narrative
-    (r"governance.{0,10}narrative|explain.{0,10}governance|governance.{0,10}health|"
-     r"how.{0,10}doing.{0,10}governance|posture",
-     "governance_narrative"),
     # Team memory — generic browse (no semantic query)
     (r"team.{0,10}memory|team.{0,10}knowledge|what.{0,10}team.{0,10}know|"
      r"show.{0,10}memory|recent.{0,10}memory|memory.{0,10}feed",

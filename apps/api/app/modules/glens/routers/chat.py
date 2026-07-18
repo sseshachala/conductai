@@ -5,6 +5,7 @@ GET  /glens/sessions/{id}   — restore a session
 """
 import asyncio
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -24,7 +25,7 @@ from app.modules.glens.executor import Executor
 from app.modules.glens.formatters import format_tool_result
 from app.modules.glens.inference import dispatch_tool
 from app.modules.glens.planner import plan
-from app.modules.glens.shortcuts import try_shortcut
+from app.modules.glens.shortcuts import try_shortcut, _today, _ACTIVITY_COLUMNS
 from app.modules.glens.utils import extract_json
 from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
@@ -114,38 +115,46 @@ def _build_understood_as(tool_name: str, args: dict) -> str:
 
 
 def _generate_rule(db, workspace_id: str, description: str) -> dict | None:
-    """Call the guard generate endpoint inline. Returns rule fields dict or None on failure."""
+    """Generate a guard rule from a plain-English description using Qwen via inference client."""
+    import json as _j
     try:
-        from app.modules.guard.routers.policies import generate_policy, PolicyGenerateRequest
-        import uuid as _uuid
-        req = PolicyGenerateRequest(prompt=description, workspace_id=workspace_id)
-        # generate_policy needs db + workspace_id injected — call the underlying logic directly
         from app.modules.guard.routers.policies import _GENERATE_SYSTEM_FILE
-        from app.core.config import settings
-        import anthropic, json as _j
+        from app.modules.glens.inference import chat as qwen_chat
         system = _GENERATE_SYSTEM_FILE.read_text()
-        api_key = ""
-        try:
-            from app.modules.credentials.vault import get_credential
-            creds = get_credential(db, workspace_id, "anthropic")
-            api_key = creds.get("api_key") or ""
-        except Exception:
-            pass
-        if not api_key:
-            api_key = settings.anthropic_api_key or ""
-        if not api_key:
-            return None
-        client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=512,
-            system=system,
-            messages=[{"role": "user", "content": description}],
-        )
-        data = _j.loads(msg.content[0].text)
-        return data
+        raw = qwen_chat([
+            {"role": "system", "content": system},
+            {"role": "user", "content": description},
+        ])
+        return _j.loads(raw)
     except Exception:
         return None
+
+
+def _narrate(executor: "Executor", message: str, bundle: dict) -> str:
+    """Generate a data-grounded narrative answer using Qwen. Bundle is pre-fetched governance data."""
+    import json as _j
+    from app.modules.glens.inference import chat as qwen_chat
+    today = _today()
+    context_parts = []
+    if kpis := bundle.get("kpis"):
+        context_parts.append(f"KPIs: {_j.dumps(kpis)}")
+    if events := bundle.get("events"):
+        context_parts.append(f"Recent events (up to 10): {_j.dumps(events[:10])}")
+    if spend := bundle.get("spend"):
+        context_parts.append(f"Spend summary: {_j.dumps(spend)}")
+    if rules := bundle.get("rules"):
+        context_parts.append(f"Active rules: {_j.dumps(rules)}")
+    context = "\n\n".join(context_parts) or "No data available."
+    system = (
+        f"You are GLens, a governance analyst for an AI security platform. Today is {today}.\n"
+        "Answer the user's question using ONLY the data below. Be specific — cite numbers, rule names, "
+        "developer emails, and dates from the data. Do not invent facts. Keep the answer under 150 words.\n\n"
+        f"DATA:\n{context}"
+    )
+    return qwen_chat([
+        {"role": "system", "content": system},
+        {"role": "user", "content": message},
+    ])
 
 
 def _resolve_rule_id(args: dict, executor) -> dict:
@@ -500,6 +509,54 @@ async def glens_chat_stream(
                         return
                 except Exception as e:
                     log.debug("glens.stream.tier2_miss", action=action_name, error=str(e))
+
+            # Tier 3: narrative shortcut — pre-fetch bundle + Qwen narration (no dispatch needed)
+            _NARRATIVE_PATTERNS = re.compile(
+                r"how.{0,15}(doing|going|look|performing)|explain|summarize|narrative|posture|overview|"
+                r"give me.{0,10}(summary|overview|breakdown)|what.{0,10}(happening|going on)",
+                re.I,
+            )
+            if _NARRATIVE_PATTERNS.search(req.message):
+                _on_event({"type": "thinking", "label": "Fetching governance data..."})
+                import json as _json
+                today = _today()
+                kpis_raw, events_raw, spend_raw, rules_raw = await asyncio.gather(
+                    asyncio.to_thread(executor.call, "get_governance_kpis", "{}"),
+                    asyncio.to_thread(executor.call, "get_recent_governance_events", _json.dumps({"since": today, "limit": 10})),
+                    asyncio.to_thread(executor.call, "get_spend_summary", "{}"),
+                    asyncio.to_thread(executor.call, "list_policies", "{}"),
+                    return_exceptions=True,
+                )
+                bundle = {
+                    "kpis":   _json.loads(kpis_raw)   if isinstance(kpis_raw, str)   else {},
+                    "events": _json.loads(events_raw) if isinstance(events_raw, str) else [],
+                    "spend":  _json.loads(spend_raw)  if isinstance(spend_raw, str)  else {},
+                    "rules":  _json.loads(rules_raw)  if isinstance(rules_raw, str)  else [],
+                }
+                _on_event({"type": "thinking", "label": "Generating narrative..."})
+                narrative = await asyncio.to_thread(_narrate, executor, req.message, bundle)
+                kpis = bundle.get("kpis", {})
+                events = bundle.get("events", []) if isinstance(bundle.get("events"), list) else []
+                formatted = {
+                    "skill": "governance",
+                    "ready": False,
+                    "answer": narrative,
+                    "query_understood_as": "Governance narrative",
+                    "component": "ActivityTable",
+                    "drilldown": {"path": "/guard"},
+                    "columns": _ACTIVITY_COLUMNS,
+                    "rows": events,
+                    "kpis": [
+                        {"label": "Events Today",      "value": kpis.get("events_today", 0)},
+                        {"label": "Blocked Today",     "value": kpis.get("blocked_today", 0)},
+                        {"label": "Active Developers", "value": kpis.get("active_developers_today", 0)},
+                        {"label": "Blocks (MTD)",      "value": kpis.get("blocks_mtd", 0)},
+                    ],
+                    "followups": ["Who was blocked today?", "Show spend breakdown", "List active rules"],
+                }
+                log.debug("glens.stream.narrative_hit", message=req.message[:60])
+                await event_q.put({"type": "done", "_parsed": formatted})
+                return
 
             # Tier 3: 1 LLM call — dispatch picks tool + args, Python formats result
             try:
