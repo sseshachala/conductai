@@ -403,12 +403,16 @@ function PolicyConfirmBubble({
         </table>
 
         {status === "pending" && (
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <button
               onClick={confirm}
-              style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              style={{
+                padding: "8px 20px", borderRadius: 8, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                background: action === "delete" ? "var(--err, #ef4444)" : "var(--accent)",
+                color: "#fff",
+              }}
             >
-              Confirm
+              {action === "delete" ? "Delete" : "Confirm"}
             </button>
             <button
               onClick={() => onResult(`Policy ${action} cancelled.`)}
@@ -416,6 +420,9 @@ function PolicyConfirmBubble({
             >
               Cancel
             </button>
+            {action === "delete" && (
+              <span style={{ fontSize: 11, color: "var(--err, #ef4444)" }}>This cannot be undone.</span>
+            )}
           </div>
         )}
         {status === "loading" && <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Applying…</div>}

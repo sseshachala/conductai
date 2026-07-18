@@ -30,6 +30,10 @@ _KNOWN_DISPATCH_TOOLS = {
     "search_sessions",
     "get_guard_config",
     "get_budgets",
+    # write tools — return confirm_required preview, not live execution
+    "create_guard_rule",
+    "edit_guard_rule",
+    "delete_guard_rule",
 }
 
 _DISPATCH_PROMPT = (Path(__file__).parent / "prompts" / "dispatch.txt").read_text()
