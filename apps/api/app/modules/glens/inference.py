@@ -1,6 +1,8 @@
 """Qwen3 inference client for GLens."""
+import json
 import time
 import uuid
+from datetime import datetime, timezone
 
 import structlog
 from openai import OpenAI
@@ -10,6 +12,53 @@ from app.core.config import settings
 log = structlog.get_logger(__name__)
 
 _DECISION_NORMALIZE = {"block": "blocked", "warn": "warned", "audit": "audited", "allow": "allowed"}
+
+# ── Single-call dispatch ──────────────────────────────────────────────────────
+# Ask the model to return {"tool": "...", "args": {...}} — 1 LLM call total.
+# Python then runs the tool and formats the result with no second LLM call.
+
+_KNOWN_DISPATCH_TOOLS = {
+    "get_governance_kpis",
+    "get_recent_governance_events",
+    "get_spend_summary",
+    "get_discovery_summary",
+    "get_compliance_status",
+    "get_framework_coverage",
+    "list_policies",
+    "search_memory",
+    "search_sessions",
+    "get_guard_config",
+    "get_budgets",
+}
+
+_DISPATCH_PROMPT = """\
+You are a tool dispatcher. Return ONLY valid JSON: {"tool": "<name>", "args": {<key>: <value>}}
+
+Tools:
+- get_governance_kpis()
+- get_recent_governance_events(since?: YYYY-MM-DD, limit?: int, decision?: "blocked"|"warned"|"allowed")
+- get_spend_summary(month?: YYYY-MM)
+- get_discovery_summary()
+- get_compliance_status()
+- get_framework_coverage()
+- list_policies()
+- search_memory(q: str)
+- search_sessions(q: str)
+- get_guard_config()
+- get_budgets()
+
+Rules:
+- For "today" / "recent" events questions: use get_recent_governance_events with since=<today>
+- For "blocked" questions: add decision="blocked"
+- For "warned" questions: add decision="warned"
+- For "spend" / "cost" / "budget": use get_spend_summary
+- For "rules" / "policies" / "list rules" / "guard rules": use list_policies (NOT get_guard_config)
+- For "agents" / "coverage" / "discovered": use get_discovery_summary
+- For "compliance" / "frameworks" / "SOC2" / "OWASP": use get_compliance_status
+- For overview / dashboard / KPI: use get_governance_kpis
+- today = {today}
+
+Return ONLY the JSON object. No explanation."""
 
 
 def get_client() -> OpenAI:
@@ -55,6 +104,45 @@ def chat_with_tools(messages: list[dict], tools: list[dict], session_id: str | N
                 log.warning("glens.inference.tool_error_retry", session_id=sid, attempt=attempt, error=str(e))
                 time.sleep(2)
     log.warning("glens.inference.tool_error", session_id=sid, error=str(last_exc))
+    raise last_exc
+
+
+def dispatch_tool(user_message: str, session_id: str | None = None) -> tuple[str, dict]:
+    """1 LLM call: returns (tool_name, args_dict). Raises ValueError for unknown tools."""
+    sid = session_id or str(uuid.uuid4())
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    system = _DISPATCH_PROMPT.replace("{today}", today)
+    log.debug("glens.inference.dispatch", session_id=sid)
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            response = get_client().chat.completions.create(
+                model=settings.conduct_inference_model_name,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": user_message},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0,
+                max_tokens=1024,
+                timeout=60,
+                extra_body={"thinking": {"type": "disabled"}},
+            )
+            raw = response.choices[0].message.content or "{}"
+            parsed = json.loads(raw)
+            tool = parsed.get("tool", "")
+            if tool not in _KNOWN_DISPATCH_TOOLS:
+                raise ValueError(f"Unknown tool from dispatch: {tool!r}")
+            args = parsed.get("args", {})
+            if not isinstance(args, dict):
+                args = {}
+            log.debug("glens.inference.dispatch_ok", session_id=sid, tool=tool, args=args)
+            return tool, args
+        except Exception as e:
+            last_exc = e
+            if attempt == 0:
+                log.warning("glens.inference.dispatch_retry", session_id=sid, error=str(e))
+                time.sleep(1)
     raise last_exc
 
 

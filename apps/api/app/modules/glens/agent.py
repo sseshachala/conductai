@@ -9,7 +9,8 @@ import structlog
 
 from app.core.config import settings
 from app.modules.glens.executor import Executor
-from app.modules.glens.inference import chat_with_tools
+from app.modules.glens.formatters import format_tool_result
+from app.modules.glens.inference import chat_with_tools, dispatch_tool
 
 log = structlog.get_logger(__name__)
 
@@ -82,6 +83,24 @@ class Agent:
         executor: Executor,
         on_event: Callable[[dict], None] | None = None,
     ) -> dict:
+        # Fast path: 1 LLM call (dispatch) → Python formats result → done
+        user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+        try:
+            tool_name, args = dispatch_tool(user_msg)
+            if on_event:
+                on_event({"type": "thinking", "label": _tool_status(tool_name)})
+            import json as _json
+            raw = executor.call(tool_name, _json.dumps(args))
+            result = _json.loads(raw)
+            formatted = format_tool_result(tool_name, result)
+            if formatted is not None:
+                log.debug("glens.agent.dispatch_hit", tool=tool_name)
+                return formatted
+        except Exception as e:
+            log.debug("glens.agent.dispatch_miss", error=str(e))
+            # Fall through to multi-turn agent below
+
+        # Slow path: multi-turn tool-calling loop (complex/unsupported queries)
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         system = f"Today is {today} (UTC).\n\n{self.system}"
         loop_msgs = [{"role": "system", "content": system}] + list(messages[-20:])
