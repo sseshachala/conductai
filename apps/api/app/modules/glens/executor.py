@@ -617,16 +617,17 @@ class Executor:
             result = _build_summary(self.db, self.workspace_id)
         except Exception:
             result = _EMPTY_SUMMARY
-        total = result.total_tokens_saved if hasattr(result, "total_tokens_saved") else 0
-        usd = result.total_cost_saved_usd if hasattr(result, "total_cost_saved_usd") else 0.0
-        members = []
-        if hasattr(result, "by_member"):
-            for m in result.by_member:
-                members.append({
-                    "email": m.email,
-                    "rtk_saved_tokens": m.rtk_saved_tokens if hasattr(m, "rtk_saved_tokens") else 0,
-                    "booster_saved_tokens": m.booster_saved_tokens if hasattr(m, "booster_saved_tokens") else 0,
-                })
+        t = result.team_total
+        total = t.rtk_saved_tokens + t.booster_saved_tokens
+        usd = t.rtk_saved_usd + t.booster_saved_usd
+        members = [
+            {
+                "email": m.member_email,
+                "rtk_saved_tokens": m.rtk_saved_tokens,
+                "booster_saved_tokens": m.booster_saved_tokens,
+            }
+            for m in result.by_member
+        ]
         return {"total_tokens_saved": total, "total_cost_saved_usd": round(usd, 4), "by_member": members}
 
     def _tool_get_governance_narrative(self):

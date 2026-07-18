@@ -361,24 +361,44 @@ async def glens_chat_stream(
                 return
 
             # Tier 2: catalog phrase match — keyword match, no LLM
+            # Maps catalog action names → executor tool names
+            _ACTION_TO_TOOL = {
+                "view_guard_activity":     "get_recent_governance_events",
+                "view_blocked_events":     "get_recent_governance_events",
+                "view_warned_events":      "get_recent_governance_events",
+                "get_governance_kpis":     "get_governance_kpis",
+                "get_spend_summary":       "get_spend_summary",
+                "view_budgets":            "get_budgets",
+                "get_savings_summary":     "get_savings_summary",
+                "view_discovery_agents":   "get_discovery_summary",
+                "get_discovery_coverage":  "get_discovery_summary",
+                "list_policies":           "list_policies",
+                "view_compliance_packs":   "get_framework_coverage",
+                "get_compliance_pack_detail": "get_framework_coverage",
+                "get_governance_frameworks":  "get_framework_coverage",
+                "get_governance_narrative":   "get_governance_narrative",
+            }
             action_name = await asyncio.to_thread(_tier2_match, req.message)
             if action_name:
                 log.debug("glens.stream.tier2_hit", action=action_name)
                 label = action_name.replace("_", " ").replace("get ", "").replace("view ", "").replace("list ", "")
                 _on_event({"type": "thinking", "label": f"Loading {label}..."})
-                raw = await asyncio.to_thread(executor.call, action_name.replace("view_", "get_"), "{}")
                 import json as _json
-                result = _json.loads(raw)
-                formatted = format_tool_result(action_name, result)
-                if formatted:
-                    await event_q.put({"type": "done", "_parsed": formatted})
-                    return
+                try:
+                    tool_name = _ACTION_TO_TOOL.get(action_name, action_name)
+                    raw = await asyncio.to_thread(executor.call, tool_name, "{}")
+                    result = _json.loads(raw)
+                    formatted = format_tool_result(tool_name, result)
+                    if formatted:
+                        await event_q.put({"type": "done", "_parsed": formatted})
+                        return
+                except Exception as e:
+                    log.debug("glens.stream.tier2_miss", action=action_name, error=str(e))
 
             # Tier 3: 1 LLM call — dispatch picks tool + args, Python formats result
             try:
                 _on_event({"type": "thinking", "label": "Analyzing your question..."})
                 tool_name, args = await asyncio.to_thread(dispatch_tool, req.message)
-                import json as _json
                 tool_label = tool_name.replace("_", " ").replace("get ", "").replace("list ", "")
                 _on_event({"type": "thinking", "label": f"Fetching {tool_label}..."})
                 raw = await asyncio.to_thread(executor.call, tool_name, _json.dumps(args))
