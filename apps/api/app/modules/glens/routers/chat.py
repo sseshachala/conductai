@@ -64,6 +64,30 @@ def _tier2_match(message: str) -> str | None:
     return None
 
 
+# Curated fallback chips — shown when GLens can't match any catalog intent.
+_FALLBACK_CHIPS = [
+    "Who was blocked today?",
+    "How many events today?",
+    "Show recent activity",
+    "What's our AI spend this month?",
+    "Which agents are running?",
+    "Show guard policies",
+]
+
+def _suggest_followups(message: str) -> list[str]:
+    """Pick 3 relevant catalog phrases as suggestions, excluding ones that sound like the original query."""
+    low = message.lower()
+    # Words that appear in user query — avoid offering same-sounding suggestions
+    query_words = set(w for w in low.split() if len(w) > 3)
+    candidates = []
+    for chip in _FALLBACK_CHIPS:
+        chip_words = set(w.lower() for w in chip.split() if len(w) > 3)
+        if not query_words & chip_words:
+            candidates.append(chip)
+    # If all candidates overlap, just return first 3 defaults
+    return (candidates or _FALLBACK_CHIPS)[:3]
+
+
 # ---------------------------------------------------------------------------
 # Pydantic models for sanitizing model JSON output
 # ---------------------------------------------------------------------------
@@ -385,6 +409,10 @@ async def glens_chat_stream(
                 result = await asyncio.to_thread(agent.run, sub_msgs, executor, _on_event)
                 results.append(result)
             parsed = coordinate(results)
+            # Inject fallback chips when T4 returns plain text with no structured data
+            has_data = parsed.get("rows") or parsed.get("blocks") or parsed.get("spec") or parsed.get("kpis")
+            if not has_data and not parsed.get("followups"):
+                parsed["followups"] = _suggest_followups(req.message)
             await event_q.put({"type": "done", "_parsed": parsed})
         except Exception as e:
             logger.error("glens.stream.failed", error=str(e))
@@ -441,6 +469,8 @@ async def glens_chat_stream(
                         "spec": spec,
                         "page_kind": page_kind,
                         "page_data": page_data,
+                        "component": parsed.get("component"),
+                        "drilldown": parsed.get("drilldown"),
                         "blocks":   _sanitize_blocks(parsed.get("blocks")),
                         "rows":     _sanitize_rows(parsed.get("rows")),
                         "columns":  _sanitize_columns(parsed.get("columns")),
