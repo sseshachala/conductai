@@ -22,6 +22,7 @@ from app.modules.glens.agent import Agent
 from app.modules.glens.coordinator import coordinate
 from app.modules.glens.executor import Executor
 from app.modules.glens.planner import plan
+from app.modules.glens.shortcuts import try_shortcut
 from app.modules.glens.utils import extract_json
 from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
@@ -296,6 +297,13 @@ async def glens_chat_stream(
 
     async def _run_work() -> None:
         try:
+            # Fast path: bypass LLM for deterministic queries (~7s → <200ms)
+            shortcut = await asyncio.to_thread(try_shortcut, req.message, executor)
+            if shortcut:
+                log.debug("glens.stream.shortcut_hit", message=req.message[:60])
+                await event_q.put({"type": "done", "_parsed": shortcut})
+                return
+
             subtasks = await asyncio.to_thread(
                 plan, req.message, last_answer, req.page_context, context_summary
             )
