@@ -27,9 +27,9 @@ Rules:
 - For "agents" / "coverage" / "discovered": use get_discovery_summary
 - For "compliance" / "frameworks" / "SOC2" / "OWASP": use get_compliance_status
 - For overview / dashboard / KPI: use get_governance_kpis
-- For "create rule" / "add rule" / "new rule" / "block X": use create_guard_rule
-- For "edit rule" / "update rule" / "disable rule" / "enable rule": use edit_guard_rule with rule_id
-- For "delete rule" / "remove rule": use delete_guard_rule with rule_id
+- For "create rule" / "add rule" / "new rule" / "block X" / "add a rule": use create_guard_rule
+- For "edit rule" / "update rule" / "disable rule" / "enable rule" / "make * stricter" / "change rule" / "modify rule" / "make the rule": use edit_guard_rule; if no rule_id is mentioned, use rule_id=""
+- For "delete rule" / "remove rule" / "delete that rule": use delete_guard_rule; if no rule_id is mentioned, use rule_id=""
 - today = {today}
 
 Return ONLY the JSON object. No explanation.
