@@ -88,6 +88,41 @@ def _suggest_followups(message: str) -> list[str]:
     return (candidates or _FALLBACK_CHIPS)[:3]
 
 
+def _generate_rule(db, workspace_id: str, description: str) -> dict | None:
+    """Call the guard generate endpoint inline. Returns rule fields dict or None on failure."""
+    try:
+        from app.modules.guard.routers.policies import generate_policy, PolicyGenerateRequest
+        import uuid as _uuid
+        req = PolicyGenerateRequest(prompt=description, workspace_id=workspace_id)
+        # generate_policy needs db + workspace_id injected — call the underlying logic directly
+        from app.modules.guard.routers.policies import _GENERATE_SYSTEM_FILE
+        from app.core.config import settings
+        import anthropic, json as _j
+        system = _GENERATE_SYSTEM_FILE.read_text()
+        api_key = ""
+        try:
+            from app.modules.credentials.vault import get_credential
+            creds = get_credential(db, workspace_id, "anthropic")
+            api_key = creds.get("api_key") or ""
+        except Exception:
+            pass
+        if not api_key:
+            api_key = settings.anthropic_api_key or ""
+        if not api_key:
+            return None
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
+            system=system,
+            messages=[{"role": "user", "content": description}],
+        )
+        data = _j.loads(msg.content[0].text)
+        return data
+    except Exception:
+        return None
+
+
 def _resolve_rule_id(args: dict, executor) -> dict:
     """Fuzzy-resolve the rule_id from the live policy list.
 
@@ -447,10 +482,29 @@ async def glens_chat_stream(
                 tool_label = tool_name.replace("_", " ").replace("get ", "").replace("list ", "")
                 if tool_name in _WRITE_TOOLS:
                     _on_event({"type": "thinking", "label": "Building preview..."})
-                    # For edit/delete: resolve rule_id from live policy list to catch NL inaccuracy
                     if tool_name in ("edit_guard_rule", "delete_guard_rule"):
                         args = _resolve_rule_id(args, executor)
                     formatted = format_tool_result(tool_name, args)
+                    # create_guard_rule: good desc but no pattern/tool → call generate endpoint
+                    if formatted and formatted.get("_needs_generate"):
+                        _on_event({"type": "thinking", "label": "Generating rule from description..."})
+                        generated = await asyncio.to_thread(
+                            _generate_rule, executor.db, executor.workspace_id, formatted["description"]
+                        )
+                        if generated:
+                            formatted = format_tool_result(tool_name, {
+                                **formatted, "_needs_generate": False,
+                                "match_tool": generated.get("match_tool", "*"),
+                                "match_pattern": generated.get("match_pattern") or "",
+                                "rule_id": generated.get("rule_id"),
+                                "action": formatted.get("action") or generated.get("action", "block"),
+                            })
+                        else:
+                            formatted = {
+                                "skill": "rules", "ready": False, "clarification_required": True,
+                                "answer": "I couldn't generate a rule from that description. Try being more specific — include what to match (a file pattern, tool name, or content pattern).",
+                                "followups": ["Block .env file access for all tools", "Warn when Claude writes to config files", "Block cursor from reading secrets"],
+                            }
                 else:
                     _on_event({"type": "thinking", "label": f"Fetching {tool_label}..."})
                     raw = await asyncio.to_thread(executor.call, tool_name, _json.dumps(args))

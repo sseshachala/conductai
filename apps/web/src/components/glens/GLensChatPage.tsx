@@ -595,7 +595,14 @@ export function GLensChatPage() {
       setActiveId(data.session_id as string)
       setSessions(prev => [{ id: data.session_id as string, title: text.slice(0, 60), has_dashboard: !!data.spec, created_at: new Date().toISOString() }, ...prev])
     }
-    if (data.confirm_required) {
+    if (data.clarification_required) {
+      setMessages(prev => [...prev.slice(0, -1), {
+        role: "assistant", kind: "answer",
+        text: (data.answer as string) ?? "I need more detail to proceed.",
+        skill: (data.skill as string) ?? "rules",
+        followups: data.followups as string[] | undefined,
+      }])
+    } else if (data.confirm_required) {
       setMessages(prev => [...prev.slice(0, -1), {
         role: "assistant", kind: "policy_confirm",
         answer: (data.answer as string) ?? "Review the draft below:",
