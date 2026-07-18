@@ -336,11 +336,12 @@ async def glens_chat_stream(
                 await event_q.put({"type": "done", "_parsed": shortcut})
                 return
 
-            # Tier 2: catalog phrase match — keyword match against action phrases, no LLM
+            # Tier 2: catalog phrase match — keyword match, no LLM
             action_name = await asyncio.to_thread(_tier2_match, req.message)
             if action_name:
                 log.debug("glens.stream.tier2_hit", action=action_name)
-                _on_event({"type": "thinking", "label": f"Looking up {action_name.replace('_', ' ')}..."})
+                label = action_name.replace("_", " ").replace("get ", "").replace("view ", "").replace("list ", "")
+                _on_event({"type": "thinking", "label": f"Loading {label}..."})
                 raw = await asyncio.to_thread(executor.call, action_name.replace("view_", "get_"), "{}")
                 import json as _json
                 result = _json.loads(raw)
@@ -351,10 +352,13 @@ async def glens_chat_stream(
 
             # Tier 3: 1 LLM call — dispatch picks tool + args, Python formats result
             try:
+                _on_event({"type": "thinking", "label": "Analyzing your question..."})
                 tool_name, args = await asyncio.to_thread(dispatch_tool, req.message)
                 import json as _json
-                _on_event({"type": "thinking", "label": f"Running {tool_name.replace('_', ' ')}..."})
+                tool_label = tool_name.replace("_", " ").replace("get ", "").replace("list ", "")
+                _on_event({"type": "thinking", "label": f"Fetching {tool_label}..."})
                 raw = await asyncio.to_thread(executor.call, tool_name, _json.dumps(args))
+                _on_event({"type": "thinking", "label": "Formatting results..."})
                 result = _json.loads(raw)
                 formatted = format_tool_result(tool_name, result)
                 if formatted:
@@ -364,11 +368,13 @@ async def glens_chat_stream(
             except Exception as e:
                 log.debug("glens.stream.tier3_miss", error=str(e))
 
-            # Tier 4: full agent loop — escalation path for complex/multi-domain queries
+            # Tier 4: full agent loop — escalation for complex/multi-domain queries
             log.debug("glens.stream.tier4_escalate", message=req.message[:60])
+            _on_event({"type": "thinking", "label": "Analyzing your request..."})
             subtasks = await asyncio.to_thread(
                 plan, req.message, last_answer, req.page_context, context_summary
             )
+            _on_event({"type": "thinking", "label": f"Running {len(subtasks)} task(s)..."})
             results = []
             for subtask in subtasks:
                 skill = subtask.get("skill", "report")
