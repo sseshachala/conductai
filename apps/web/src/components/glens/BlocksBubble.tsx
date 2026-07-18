@@ -214,11 +214,13 @@ export function BlocksBubble({
   blocks,
   warning,
   skill,
+  understoodAs,
 }: {
   answer: string
   blocks: Block[]
   warning?: string
   skill?: string
+  understoodAs?: string
 }) {
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16, width: "100%" }}>
@@ -229,18 +231,18 @@ export function BlocksBubble({
         borderRadius: "4px 14px 14px 14px",
         padding: "16px 20px",
       }}>
-        {skill && (
-          <div style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: "var(--text-muted)",
-            textTransform: "uppercase",
-            letterSpacing: ".06em",
-            marginBottom: 6,
-          }}>
-            {SKILL_LABELS[skill] ?? skill}
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          {skill && (
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+              {SKILL_LABELS[skill] ?? skill}
+            </div>
+          )}
+          {understoodAs && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
+              · {understoodAs}
+            </div>
+          )}
+        </div>
 
         {answer && (
           <div style={{ fontSize: 14, color: "var(--text)", marginBottom: 16, lineHeight: 1.5 }}>

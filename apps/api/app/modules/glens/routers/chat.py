@@ -88,6 +88,31 @@ def _suggest_followups(message: str) -> list[str]:
     return (candidates or _FALLBACK_CHIPS)[:3]
 
 
+def _build_understood_as(tool_name: str, args: dict) -> str:
+    """Derive a human-readable echo string from the dispatched tool + args."""
+    if tool_name == "get_recent_governance_events":
+        decision = args.get("decision")
+        since = args.get("since", "today")
+        if decision:
+            return f"{decision.capitalize()} events from {since}"
+        return f"Guard events from {since}"
+    if tool_name == "search_memory":
+        q = args.get("q") or args.get("query", "")
+        return f"Team memory search: {q}" if q else "Team memory search"
+    if tool_name == "search_sessions":
+        q = args.get("q") or args.get("query", "")
+        return f"Session search: {q}" if q else "Session search"
+    if tool_name == "create_guard_rule":
+        return "Creating new Guard rule"
+    if tool_name == "edit_guard_rule":
+        rule_id = args.get("rule_id", "")
+        return f"Editing rule: {rule_id}" if rule_id else "Editing Guard rule"
+    if tool_name == "delete_guard_rule":
+        rule_id = args.get("rule_id", "")
+        return f"Deleting rule: {rule_id}" if rule_id else "Deleting Guard rule"
+    return tool_name.replace("_", " ").title()
+
+
 def _generate_rule(db, workspace_id: str, description: str) -> dict | None:
     """Call the guard generate endpoint inline. Returns rule fields dict or None on failure."""
     try:
@@ -470,6 +495,7 @@ async def glens_chat_stream(
                     result = _json.loads(raw)
                     formatted = format_tool_result(tool_name, result)
                     if formatted:
+                        formatted["query_understood_as"] = action_name.replace("_", " ").title()
                         await event_q.put({"type": "done", "_parsed": formatted})
                         return
                 except Exception as e:
@@ -520,6 +546,7 @@ async def glens_chat_stream(
                     result = _json.loads(raw)
                     formatted = format_tool_result(tool_name, result)
                 if formatted:
+                    formatted["query_understood_as"] = _build_understood_as(tool_name, args)
                     log.debug("glens.stream.tier3_hit", tool=tool_name)
                     await event_q.put({"type": "done", "_parsed": formatted})
                     return
@@ -547,6 +574,7 @@ async def glens_chat_stream(
             has_data = parsed.get("rows") or parsed.get("blocks") or parsed.get("spec") or parsed.get("kpis")
             if not has_data and not parsed.get("followups"):
                 parsed["followups"] = _suggest_followups(req.message)
+            parsed["query_understood_as"] = "Full analysis of your request"
             await event_q.put({"type": "done", "_parsed": parsed})
         except Exception as e:
             logger.error("glens.stream.failed", error=str(e))
@@ -600,6 +628,7 @@ async def glens_chat_stream(
                         "skill": parsed.get("skill", "report"),
                         "ready": spec is not None,
                         "answer": _build_answer(parsed, spec),
+                        "query_understood_as": parsed.get("query_understood_as"),
                         "spec": spec,
                         "page_kind": page_kind,
                         "page_data": page_data,

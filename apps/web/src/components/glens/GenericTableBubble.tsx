@@ -187,13 +187,15 @@ export function GenericTableBubble({
   warning,
   skill,
   drilldown,
+  understoodAs,
 }: {
   answer: string
-  columns?: Column[]   // optional — inferred from rows when absent
+  columns?: Column[]
   rows: Record<string, unknown>[]
   warning?: string
   skill?: string
   drilldown?: { path: string; filters?: Record<string, string> }
+  understoodAs?: string
 }) {
   const effectiveCols = (columns && columns.length > 0) ? columns : inferColumns(rows)
 
@@ -229,18 +231,18 @@ export function GenericTableBubble({
         borderRadius: "4px 14px 14px 14px",
         padding: "16px 20px",
       }}>
-        {skill && (
-          <div style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: "var(--text-muted)",
-            textTransform: "uppercase",
-            letterSpacing: ".06em",
-            marginBottom: 6,
-          }}>
-            {SKILL_LABELS[skill] ?? skill}
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          {skill && (
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+              {SKILL_LABELS[skill] ?? skill}
+            </div>
+          )}
+          {understoodAs && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
+              · {understoodAs}
+            </div>
+          )}
+        </div>
 
         {answer && (
           <div style={{ fontSize: 14, color: "var(--text)", marginBottom: 14, lineHeight: 1.5 }}>

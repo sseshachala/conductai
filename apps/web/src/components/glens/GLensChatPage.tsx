@@ -25,13 +25,13 @@ interface PolicyMapping {
 
 type Message =
   | { role: "user"; text: string }
-  | { role: "assistant"; kind: "answer"; text: string; skill?: string; drilldown?: { path: string; filters?: Record<string, string> }; followups?: string[] }
+  | { role: "assistant"; kind: "answer"; text: string; skill?: string; drilldown?: { path: string; filters?: Record<string, string> }; followups?: string[]; understoodAs?: string }
   | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string }
   | { role: "assistant"; kind: "loading"; label?: string }
   | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string }
   | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string; warning?: string }
-  | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> } }
-  | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> } }
+  | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
+  | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
 
 const DEFAULT_SUGGESTIONS = [
   "Who was blocked today?",
@@ -220,15 +220,22 @@ function renderMd(text: string): React.ReactNode[] {
   })
 }
 
-function AnswerBubble({ text, skill, drilldown, followups, onFollowup }: { text: string; skill?: string; drilldown?: { path: string }; followups?: string[]; onFollowup?: (q: string) => void }) {
+function AnswerBubble({ text, skill, drilldown, followups, onFollowup, understoodAs }: { text: string; skill?: string; drilldown?: { path: string }; followups?: string[]; onFollowup?: (q: string) => void; understoodAs?: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
       <div style={{ maxWidth: "75%" }}>
-        {skill && (
-          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>
-            {SKILL_LABELS[skill] ?? skill}
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          {skill && (
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+              {SKILL_LABELS[skill] ?? skill}
+            </div>
+          )}
+          {understoodAs && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
+              · {understoodAs}
+            </div>
+          )}
+        </div>
         <div style={{
           background: "var(--surface-2)",
           border: "1px solid var(--border)",
@@ -630,6 +637,7 @@ export function GLensChatPage() {
         blocks: data.blocks as unknown[],
         warning: data.warning as string | undefined,
         skill: (data.skill as string) ?? "report",
+        understoodAs: data.query_understood_as as string | undefined,
       }])
     } else if (data.rows) {
       setMessages(prev => [...prev.slice(0, -1), {
@@ -640,11 +648,12 @@ export function GLensChatPage() {
         warning: data.warning as string | undefined,
         skill: (data.skill as string) ?? "report",
         drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined,
+        understoodAs: data.query_understood_as as string | undefined,
       }])
     } else if (data.ready && data.spec) {
       setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: data.spec as GlensDashboardSpec, sessionId: data.session_id as string }])
     } else {
-      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: (data.answer as string) ?? "No answer returned.", skill: data.skill as string | undefined, drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined, followups: data.followups as string[] | undefined }])
+      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: (data.answer as string) ?? "No answer returned.", skill: data.skill as string | undefined, drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined, followups: data.followups as string[] | undefined, understoodAs: data.query_understood_as as string | undefined }])
     }
   }
 
@@ -769,13 +778,13 @@ export function GLensChatPage() {
                 />
               )
               if (msg.kind === "loading") return <LoadingBubble key={i} label={msg.label} />
-              if (msg.kind === "answer") return <AnswerBubble key={i} text={msg.text} skill={msg.skill} drilldown={msg.drilldown} followups={msg.followups} onFollowup={sendMessage} />
+              if (msg.kind === "answer") return <AnswerBubble key={i} text={msg.text} skill={msg.skill} drilldown={msg.drilldown} followups={msg.followups} onFollowup={sendMessage} understoodAs={msg.understoodAs} />
               if (msg.kind === "dashboard") return <DashboardBubble key={i} spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} />
               if (msg.kind === "blocks") return (
-                <BlocksBubble key={i} answer={msg.answer} blocks={msg.blocks as any} warning={msg.warning} skill={msg.skill} />
+                <BlocksBubble key={i} answer={msg.answer} blocks={msg.blocks as any} warning={msg.warning} skill={msg.skill} understoodAs={msg.understoodAs} />
               )
               if (msg.kind === "table") return (
-                <GenericTableBubble key={i} answer={msg.answer} columns={msg.columns as any} rows={msg.rows as any} warning={msg.warning} skill={msg.skill} drilldown={msg.drilldown} />
+                <GenericTableBubble key={i} answer={msg.answer} columns={msg.columns as any} rows={msg.rows as any} warning={msg.warning} skill={msg.skill} drilldown={msg.drilldown} understoodAs={msg.understoodAs} />
               )
               if (msg.kind === "page") return (
                 <GlensPageBubble
