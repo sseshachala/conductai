@@ -171,7 +171,8 @@ def format_tool_result(tool: str, result) -> dict | None:
         if not isinstance(result, dict):
             return None
         rule_id = result.get("rule_id", "")
-        changes = {k: v for k, v in result.items() if k != "rule_id" and v is not None}
+        warning = result.get("_warning")
+        changes = {k: v for k, v in result.items() if k not in ("rule_id", "_warning") and v is not None}
         mapping = [{"field": k, "column": k, "description": "", "value": str(v)} for k, v in changes.items()]
         return {
             "skill": "rules",
@@ -182,12 +183,14 @@ def format_tool_result(tool: str, result) -> dict | None:
             "draft": changes,
             "target_rule_id": rule_id,
             "mapping": mapping,
+            "warning": warning,
         }
 
     if tool == "delete_guard_rule":
         if not isinstance(result, dict):
             return None
         rule_id = result.get("rule_id", "")
+        warning = result.get("_warning")
         return {
             "skill": "rules",
             "ready": False,
@@ -197,6 +200,7 @@ def format_tool_result(tool: str, result) -> dict | None:
             "draft": {"rule_id": rule_id},
             "target_rule_id": rule_id,
             "mapping": [{"field": "rule_id", "column": "rule_id", "description": "Rule to delete", "value": rule_id}],
+            "warning": warning,
         }
 
     # Unknown tool or complex result — fall back to full agent

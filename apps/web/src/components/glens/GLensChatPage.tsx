@@ -29,7 +29,7 @@ type Message =
   | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string }
   | { role: "assistant"; kind: "loading"; label?: string }
   | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string }
-  | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string }
+  | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string; warning?: string }
   | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> } }
   | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> } }
 
@@ -337,6 +337,7 @@ function PolicyConfirmBubble({
   sessionId,
   authFetch,
   onResult,
+  warning,
 }: {
   answer: string
   action: string
@@ -347,6 +348,7 @@ function PolicyConfirmBubble({
   sessionId: string
   authFetch: (url: string, options?: RequestInit) => Promise<Response>
   onResult: (text: string) => void
+  warning?: string
 }) {
   const [status, setStatus] = useState<"pending" | "loading" | "done">("pending")
   const base = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -401,6 +403,12 @@ function PolicyConfirmBubble({
             ))}
           </tbody>
         </table>
+
+        {warning && (
+          <div style={{ fontSize: 12, color: "var(--warn, #f59e0b)", marginBottom: 12, padding: "8px 12px", background: "var(--warn-bg, #fef3c7)", borderRadius: 6 }}>
+            {warning}
+          </div>
+        )}
 
         {status === "pending" && (
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -597,6 +605,7 @@ export function GLensChatPage() {
         targetRuleId: data.target_rule_id as string | undefined,
         sessionId: data.session_id as string,
         skill: (data.skill as string) ?? "rules",
+        warning: data.warning as string | undefined,
       }])
     } else if (data.page_kind && data.page_data) {
       setMessages(prev => [...prev.slice(0, -1), {
@@ -781,6 +790,7 @@ export function GLensChatPage() {
                   targetRuleId={msg.targetRuleId}
                   sessionId={msg.sessionId}
                   authFetch={authFetch}
+                  warning={msg.warning}
                   onResult={text => setMessages(prev => [
                     ...prev.slice(0, i),
                     { role: "assistant", kind: "answer", text, skill: msg.skill },

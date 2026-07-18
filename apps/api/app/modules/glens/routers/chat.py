@@ -88,6 +88,50 @@ def _suggest_followups(message: str) -> list[str]:
     return (candidates or _FALLBACK_CHIPS)[:3]
 
 
+def _resolve_rule_id(args: dict, executor) -> dict:
+    """Fuzzy-resolve the rule_id from the live policy list.
+
+    NL queries ("disable the env file rule") often produce approximate rule_ids.
+    Fetch live rules and pick the best match so the confirm preview is accurate.
+    Adds `_warning` to args if the match is ambiguous so the formatter can surface it.
+    """
+    import json as _j
+    candidate = args.get("rule_id", "")
+    if not candidate:
+        return args
+    try:
+        raw = executor.call("list_policies", "{}")
+        policies = _j.loads(raw)
+        if not isinstance(policies, list):
+            return args
+        ids = [p.get("rule_id") or p.get("id", "") for p in policies]
+        # Exact match — no change needed
+        if candidate in ids:
+            return args
+        # Fuzzy: pick best substring match against id or description
+        clow = candidate.lower()
+        scored = []
+        for p in policies:
+            rid = p.get("rule_id") or p.get("id", "")
+            desc = (p.get("description") or "").lower()
+            score = 0
+            if clow in rid.lower():
+                score += 2
+            if clow in desc:
+                score += 1
+            if score:
+                scored.append((score, rid, desc))
+        if scored:
+            scored.sort(reverse=True)
+            best_id = scored[0][1]
+            warning = None if len(scored) == 1 else f"Matched '{best_id}' — verify this is the right rule."
+            return {**args, "rule_id": best_id, **({"_warning": warning} if warning else {})}
+        # No match — leave as-is, policy_apply will 404 with a clear message
+        return {**args, "_warning": f"Rule '{candidate}' not found in your policies. Check the rule ID."}
+    except Exception:
+        return args
+
+
 # ---------------------------------------------------------------------------
 # Pydantic models for sanitizing model JSON output
 # ---------------------------------------------------------------------------
@@ -402,8 +446,10 @@ async def glens_chat_stream(
                 tool_name, args = await asyncio.to_thread(dispatch_tool, req.message)
                 tool_label = tool_name.replace("_", " ").replace("get ", "").replace("list ", "")
                 if tool_name in _WRITE_TOOLS:
-                    # Write tools: args IS the result — no DB call, just build confirmation preview
                     _on_event({"type": "thinking", "label": "Building preview..."})
+                    # For edit/delete: resolve rule_id from live policy list to catch NL inaccuracy
+                    if tool_name in ("edit_guard_rule", "delete_guard_rule"):
+                        args = _resolve_rule_id(args, executor)
                     formatted = format_tool_result(tool_name, args)
                 else:
                     _on_event({"type": "thinking", "label": f"Fetching {tool_label}..."})
@@ -733,29 +779,45 @@ def policy_apply(
         return {"ok": True, "rule_id": rule_id, "action": "created"}
 
     elif req.action == "patch":
+        from app.modules.guard.routers.policies import _upsert_override
         rule_id = req.target_rule_id
         if not rule_id:
             raise HTTPException(status_code=400, detail="target_rule_id is required for patch")
-        rule = db.query(WorkspaceCustomRule).filter(
-            WorkspaceCustomRule.workspace_id == ws_uuid,
-            WorkspaceCustomRule.rule_id == rule_id,
-        ).first()
-        if not rule:
-            raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
         if pattern := req.draft.get("match_pattern"):
             import re
             try:
                 re.compile(pattern)
             except re.error as e:
                 raise HTTPException(status_code=400, detail=f"Invalid match_pattern regex: {e}")
+        custom = db.query(WorkspaceCustomRule).filter(
+            WorkspaceCustomRule.workspace_id == ws_uuid,
+            WorkspaceCustomRule.rule_id == rule_id,
+        ).first()
+        if custom:
+            if "enabled" in req.draft:
+                custom.enabled = req.draft["enabled"]
+            body_patch = {k: v for k, v in req.draft.items() if k != "enabled"}
+            if body_patch:
+                custom.body = {**custom.body, **body_patch}
+            custom.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            log.info("glens.policy.patched", workspace_id=workspace_id, rule_id=rule_id)
+            return {"ok": True, "rule_id": rule_id, "action": "patched"}
+        # Pack rule — write an override instead
+        touched = False
         if "enabled" in req.draft:
-            rule.enabled = req.draft["enabled"]
-        body_patch = {k: v for k, v in req.draft.items() if k != "enabled"}
-        if body_patch:
-            rule.body = {**rule.body, **body_patch}
-        rule.updated_at = datetime.now(timezone.utc)
+            _upsert_override(db, ws_uuid, rule_id, disabled=not req.draft["enabled"])
+            touched = True
+        action_val = req.draft.get("action")
+        msg_val = req.draft.get("message")
+        pat_val = req.draft.get("match_pattern")
+        if action_val or msg_val or pat_val:
+            _upsert_override(db, ws_uuid, rule_id, action=action_val, message=msg_val, match_pattern=pat_val)
+            touched = True
+        if not touched:
+            raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
         db.commit()
-        log.info("glens.policy.patched", workspace_id=workspace_id, rule_id=rule_id)
+        log.info("glens.policy.override_set", workspace_id=workspace_id, rule_id=rule_id)
         return {"ok": True, "rule_id": rule_id, "action": "patched"}
 
     elif req.action == "delete":
