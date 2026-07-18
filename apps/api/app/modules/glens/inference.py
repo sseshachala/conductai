@@ -19,14 +19,14 @@ def get_client() -> OpenAI:
     base_url = settings.conduct_inference_endpoint_url
     if not base_url.endswith("/v1"):
         base_url = f"{base_url}/v1"
-    return OpenAI(
-        base_url=base_url,
-        api_key="unused",
-        default_headers={
+    api_key = settings.conduct_inference_token_id or "unused"
+    extra: dict = {}
+    if settings.conduct_inference_token_secret:
+        extra["default_headers"] = {
             "Modal-Key": settings.conduct_inference_token_id,
             "Modal-Secret": settings.conduct_inference_token_secret,
-        },
-    )
+        }
+    return OpenAI(base_url=base_url, api_key=api_key, **extra)
 
 
 def chat_with_tools(messages: list[dict], tools: list[dict], session_id: str | None = None):
@@ -43,8 +43,6 @@ def chat_with_tools(messages: list[dict], tools: list[dict], session_id: str | N
                 tool_choice="auto",
                 temperature=0.2,
                 max_tokens=2048,
-                extra_headers={"Modal-Session-ID": sid},
-                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
                 timeout=120,
             )
             msg = response.choices[0].message
@@ -71,8 +69,6 @@ def chat(messages: list[dict], session_id: str | None = None) -> str:
                 response_format={"type": "json_object"},
                 temperature=0.2,
                 max_tokens=1024,
-                extra_headers={"Modal-Session-ID": sid},
-                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
                 timeout=90,
             )
             content = response.choices[0].message.content.strip()
