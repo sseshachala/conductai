@@ -580,6 +580,32 @@ class Executor:
             "frameworks": frameworks,
         }
 
+    def _tool_get_savings_summary(self):
+        from app.modules.guard.routers.savings import _build_summary, _EMPTY_SUMMARY
+        try:
+            result = _build_summary(self.db, self.workspace_id)
+        except Exception:
+            result = _EMPTY_SUMMARY
+        total = result.total_tokens_saved if hasattr(result, "total_tokens_saved") else 0
+        usd = result.total_cost_saved_usd if hasattr(result, "total_cost_saved_usd") else 0.0
+        members = []
+        if hasattr(result, "by_member"):
+            for m in result.by_member:
+                members.append({
+                    "email": m.email,
+                    "rtk_saved_tokens": m.rtk_saved_tokens if hasattr(m, "rtk_saved_tokens") else 0,
+                    "booster_saved_tokens": m.booster_saved_tokens if hasattr(m, "booster_saved_tokens") else 0,
+                })
+        return {"total_tokens_saved": total, "total_cost_saved_usd": round(usd, 4), "by_member": members}
+
+    def _tool_get_governance_narrative(self):
+        from app.routers.governance import get_narrative as _get_narrative, _compute_framework_coverage
+        try:
+            result = _get_narrative(db=self.db, workspace_id=self.workspace_id)
+            return {"paragraph": result.paragraph, "source": result.source}
+        except Exception as e:
+            return {"paragraph": f"Narrative unavailable: {e}", "source": "error"}
+
     def _tool_get_recent_governance_events(self, limit: int = 15, decision: str | None = None, since: str | None = None):
         if decision:
             decision = {"block": "blocked", "warn": "warned", "audit": "audited", "allow": "allowed"}.get(decision, decision)
