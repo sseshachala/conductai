@@ -160,12 +160,16 @@ def client_for(provider: str, api_key: str, pricing_snapshot: dict[str, Any] | N
     if provider == "perplexity":
         from app.runtime.adapters.perplexity import PerplexityClient
         return PerplexityClient(api_key=api_key, pricing_snapshot=pricing_snapshot, base_url=base_url)
-    raise ValueError(f"Unknown LLM provider: {provider!r}. Expected one of: anthropic, openai, perplexity")
+    if provider == "together":
+        from app.runtime.adapters.together import TogetherClient
+        return TogetherClient(api_key=api_key, pricing_snapshot=pricing_snapshot, base_url=base_url)
+    raise ValueError(f"Unknown LLM provider: {provider!r}. Expected one of: anthropic, openai, perplexity, together")
 
 
 # ── Re-exports for backward compatibility ─────────────────────────────────────
 # Existing imports like `from app.runtime.llm_client import AnthropicClient` continue to work.
 
-from app.runtime.adapters.anthropic import AnthropicClient as AnthropicClient  # noqa: E402, F401
-from app.runtime.adapters.openai import OpenAIClient as OpenAIClient            # noqa: E402, F401
+from app.runtime.adapters.anthropic import AnthropicClient as AnthropicClient    # noqa: E402, F401
+from app.runtime.adapters.openai import OpenAIClient as OpenAIClient              # noqa: E402, F401
 from app.runtime.adapters.perplexity import PerplexityClient as PerplexityClient  # noqa: E402, F401
+from app.runtime.adapters.together import TogetherClient as TogetherClient        # noqa: E402, F401
