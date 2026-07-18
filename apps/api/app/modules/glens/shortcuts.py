@@ -32,6 +32,10 @@ def _decision_summary(rows: list[dict], total_label: str = "events") -> str:
 
 # Each entry: (regex, intent) — ordered most-specific first to avoid false matches.
 _SHORTCUTS: list[tuple[str, str]] = [
+    # Correlated activity — most specific, check before generic block patterns
+    (r"relate.{0,10}block.{0,10}(user|action|session)|what.{0,15}user.{0,15}(doing|when).{0,15}block|"
+     r"block.{0,10}context|correlat.{0,10}(block|event)|session.{0,10}block",
+     "correlated_activity"),
     # Workflow blocks — most specific, check before generic block patterns
     (r"workflow.{0,15}block|block.{0,15}workflow|which.{0,15}workflow|automation.{0,10}block|"
      r"relate.{0,10}block|block.{0,10}context",
@@ -243,6 +247,35 @@ def _handle(intent: str, executor: Executor) -> dict | None:
                 "skill": "governance",
                 "ready": False,
                 "answer": data.get("paragraph", "Narrative unavailable."),
+            }
+
+        if intent == "correlated_activity":
+            data = executor._tool_get_correlated_events(decision="blocked", since=today)
+            sessions = data.get("sessions", [])
+            total = data.get("total", 0)
+            rows = []
+            for s in sessions:
+                for evt in s.get("events", []):
+                    rows.append({
+                        "ts":          evt.get("ts"),
+                        "decision":    evt.get("decision"),
+                        "rule_id":     evt.get("rule_id"),
+                        "ai_tool":     evt.get("ai_tool"),
+                        "user_email":  s.get("user_email"),
+                        "session_started": s.get("started_at"),
+                    })
+            return {
+                "skill": "governance",
+                "ready": False,
+                "answer": f"{total} block(s) across {len(sessions)} session(s) today.",
+                "columns": [
+                    {"key": "ts",              "label": "Time",            "type": "date"},
+                    {"key": "rule_id",         "label": "Rule",            "type": "text"},
+                    {"key": "ai_tool",         "label": "AI Tool",         "type": "text"},
+                    {"key": "user_email",      "label": "User",            "type": "text"},
+                    {"key": "session_started", "label": "Session Started", "type": "date"},
+                ],
+                "rows": rows,
             }
 
         if intent == "workflow_blocks":
