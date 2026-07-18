@@ -30,9 +30,13 @@ def _decision_summary(rows: list[dict], total_label: str = "events") -> str:
     return f"{len(rows)} {total_label} today — {', '.join(parts)}."
 
 
-# Each entry: (regex, handler_fn(msg, executor) -> dict | None)
+# Each entry: (regex, intent) — ordered most-specific first
 # Return None to fall through to the full agent pipeline.
-_SHORTCUTS: list[tuple[str, ...]] = [
+_SHORTCUTS: list[tuple[str, str]] = [
+    # MTD / monthly KPI questions — must come before "blocked today" to avoid false match
+    (r"block.{0,15}month|month.{0,15}block|how many block|blocks? mtd|blocks? so far|"
+     r"kpi|governance overview|governance summary|risk avoided",
+     "governance_kpis"),
     # Guard activity / events today
     (r"guard.?activit|today.{0,10}activit|activit.{0,10}today|"
      r"recent.{0,10}event|event.{0,10}today|event.{0,10}recent|"
@@ -59,6 +63,27 @@ def try_shortcut(message: str, executor: Executor) -> dict | None:
 def _handle(intent: str, executor: Executor) -> dict | None:
     today = _today()
     try:
+        if intent == "governance_kpis":
+            kpis = executor._tool_get_governance_kpis()
+            n = kpis.get("events_today", 0)
+            b = kpis.get("blocked_today", 0)
+            bm = kpis.get("blocks_mtd", 0)
+            risk = kpis.get("risk_avoided_usd_mtd", 0)
+            return {
+                "skill": "governance",
+                "ready": True,
+                "title": "Governance Overview",
+                "answer": f"{n} events today, {b} blocked. {bm} blocks this month, ${risk:,.2f} risk avoided.",
+                "kpis": [
+                    {"label": "Events Today",        "value": n},
+                    {"label": "Blocked Today",        "value": b},
+                    {"label": "Active Developers",    "value": kpis.get("active_developers_today", 0)},
+                    {"label": "Blocks (MTD)",         "value": bm},
+                    {"label": "Risk Avoided (MTD)",   "value": f"${risk:,.2f}"},
+                ],
+                "charts": [],
+                "tables": [],
+            }
         if intent == "governance_activity":
             rows = executor._tool_get_recent_governance_events(since=today, limit=20)
             return {
