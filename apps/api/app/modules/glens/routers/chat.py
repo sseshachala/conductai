@@ -114,26 +114,44 @@ def _build_understood_as(tool_name: str, args: dict) -> str:
     return tool_name.replace("_", " ").title()
 
 
+def _llm_client():
+    """Return the configured LLM client — Qwen on Modal via OpenAI-compatible adapter."""
+    from app.runtime.llm_client import client_for
+    from app.core.config import settings
+    endpoint = settings.conduct_inference_endpoint_url or ""
+    if not endpoint.endswith("/v1"):
+        endpoint = f"{endpoint}/v1"
+    return client_for(
+        "openai",
+        api_key=settings.conduct_inference_token_id or "unused",
+        base_url=endpoint,
+    )
+
+
 def _generate_rule(db, workspace_id: str, description: str) -> dict | None:
-    """Generate a guard rule from a plain-English description using Qwen via inference client."""
+    """Generate a guard rule from a plain-English description via the LLM client (Qwen on Modal)."""
     import json as _j
     try:
         from app.modules.guard.routers.policies import _GENERATE_SYSTEM_FILE
-        from app.modules.glens.inference import chat as qwen_chat
+        from app.core.config import settings
         system = _GENERATE_SYSTEM_FILE.read_text()
-        raw = qwen_chat([
-            {"role": "system", "content": system},
-            {"role": "user", "content": description},
-        ])
-        return _j.loads(raw)
+        client = _llm_client()
+        resp = client.create(
+            model=settings.conduct_inference_model_name,
+            system=system,
+            messages=[{"role": "user", "content": description}],
+            max_tokens=512,
+        )
+        text = next((b.text for b in resp.content if b.type == "text"), "")
+        return _j.loads(text)
     except Exception:
         return None
 
 
 def _narrate(executor: "Executor", message: str, bundle: dict) -> str:
-    """Generate a data-grounded narrative answer using Qwen. Bundle is pre-fetched governance data."""
+    """Generate a data-grounded narrative answer via the LLM client (Qwen on Modal)."""
     import json as _j
-    from app.modules.glens.inference import chat as qwen_chat
+    from app.core.config import settings
     today = _today()
     context_parts = []
     if kpis := bundle.get("kpis"):
@@ -151,10 +169,14 @@ def _narrate(executor: "Executor", message: str, bundle: dict) -> str:
         "developer emails, and dates from the data. Do not invent facts. Keep the answer under 150 words.\n\n"
         f"DATA:\n{context}"
     )
-    return qwen_chat([
-        {"role": "system", "content": system},
-        {"role": "user", "content": message},
-    ])
+    client = _llm_client()
+    resp = client.create(
+        model=settings.conduct_inference_model_name,
+        system=system,
+        messages=[{"role": "user", "content": message}],
+        max_tokens=512,
+    )
+    return next((b.text for b in resp.content if b.type == "text"), "Unable to generate narrative.")
 
 
 def _resolve_rule_id(args: dict, executor) -> dict:
