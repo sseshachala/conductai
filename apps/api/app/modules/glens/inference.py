@@ -44,6 +44,7 @@ def chat_with_tools(messages: list[dict], tools: list[dict], session_id: str | N
                 temperature=0.2,
                 max_tokens=2048,
                 timeout=120,
+                extra_body={"thinking": {"type": "disabled"}},
             )
             msg = response.choices[0].message
             log.debug("glens.inference.tool_response", session_id=sid, finish_reason=response.choices[0].finish_reason)
@@ -70,6 +71,7 @@ def chat(messages: list[dict], session_id: str | None = None) -> str:
                 temperature=0.2,
                 max_tokens=1024,
                 timeout=90,
+                extra_body={"thinking": {"type": "disabled"}},
             )
             content = response.choices[0].message.content.strip()
             log.debug("glens.inference.response", session_id=sid, length=len(content))
