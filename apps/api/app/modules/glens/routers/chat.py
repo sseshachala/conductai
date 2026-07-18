@@ -115,16 +115,16 @@ def _build_understood_as(tool_name: str, args: dict) -> str:
 
 
 def _llm_client():
-    """Return the configured LLM client — Qwen on Modal via OpenAI-compatible adapter."""
+    """Return the configured LLM client — provider and endpoint driven by settings."""
     from app.runtime.llm_client import client_for
     from app.core.config import settings
     endpoint = settings.conduct_inference_endpoint_url or ""
-    if not endpoint.endswith("/v1"):
+    if endpoint and not endpoint.endswith("/v1"):
         endpoint = f"{endpoint}/v1"
     return client_for(
-        "openai",
+        settings.conduct_inference_provider or "openai",
         api_key=settings.conduct_inference_token_id or "unused",
-        base_url=endpoint,
+        base_url=endpoint or None,
     )
 
 
