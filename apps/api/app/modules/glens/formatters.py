@@ -135,6 +135,55 @@ def format_tool_result(tool: str, result) -> dict | None:
             "rows": result.get("agents", []),
         }
 
+    if tool == "search_memory":
+        rows = result if isinstance(result, list) else []
+        if isinstance(result, dict) and "error" in result:
+            return {
+                "skill": "memory", "ready": False,
+                "answer": "Team memory search requires embeddings to be configured for this workspace.",
+                "component": "MemoryResultsTable", "rows": [], "columns": [],
+            }
+        return {
+            "skill": "memory",
+            "ready": False,
+            "answer": f"{len(rows)} team memory result(s) found." if rows else "No team memory results found for that query.",
+            "component": "MemoryResultsTable",
+            "drilldown": {"path": "/guard/memory"},
+            "columns": [
+                {"key": "summary",          "label": "Summary",    "type": "text"},
+                {"key": "developer_email",  "label": "Developer",  "type": "text"},
+                {"key": "topic_tags",       "label": "Tags",       "type": "text"},
+                {"key": "repo",             "label": "Repo",       "type": "text"},
+                {"key": "created_at",       "label": "Date",       "type": "date"},
+                {"key": "score",            "label": "Relevance",  "type": "number"},
+            ],
+            "rows": rows,
+        }
+
+    if tool == "search_sessions":
+        rows = result if isinstance(result, list) else []
+        if isinstance(result, dict) and "error" in result:
+            return {
+                "skill": "session", "ready": False,
+                "answer": "Session search requires embeddings to be configured for this workspace.",
+                "component": "SessionResultsTable", "rows": [], "columns": [],
+            }
+        return {
+            "skill": "session",
+            "ready": False,
+            "answer": f"{len(rows)} session report(s) found." if rows else "No session reports found for that query.",
+            "component": "SessionResultsTable",
+            "drilldown": {"path": "/guard/session-reports"},
+            "columns": [
+                {"key": "summary",         "label": "Summary",    "type": "text"},
+                {"key": "developer_email", "label": "Developer",  "type": "text"},
+                {"key": "ai_tool",         "label": "AI Tool",    "type": "text"},
+                {"key": "created_at",      "label": "Date",       "type": "date"},
+                {"key": "score",           "label": "Relevance",  "type": "number"},
+            ],
+            "rows": rows,
+        }
+
     if tool == "create_guard_rule":
         if not isinstance(result, dict):
             return None
