@@ -77,7 +77,7 @@ def chat_with_tools(messages: list[dict], tools: list[dict], session_id: str | N
             if attempt == 0:
                 log.warning("glens.inference.tool_error_retry", session_id=sid, attempt=attempt, error=str(e))
                 time.sleep(2)
-    log.warning("glens.inference.tool_error", session_id=sid, error=str(last_exc))
+    log.error("glens.inference.tool_error", session_id=sid, error=str(last_exc))
     raise last_exc
 
 
@@ -143,5 +143,5 @@ def chat(messages: list[dict], session_id: str | None = None) -> str:
             if attempt == 0:
                 log.warning("glens.inference.error_retry", session_id=sid, attempt=attempt, error=str(e))
                 time.sleep(2)
-    log.warning("glens.inference.error", session_id=sid, error=str(last_exc))
+    log.error("glens.inference.error", session_id=sid, error=str(last_exc))
     raise last_exc
