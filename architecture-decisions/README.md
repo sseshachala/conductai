@@ -9,3 +9,4 @@ Key architectural decisions for ConductAI. Each record explains what was decided
 | [ACD-0003](ACD-0003-hash-chained-audit-log.md) | Hash-chained append-only audit log | Accepted |
 | [ACD-0004](ACD-0004-provider-neutral-governance-layer.md) | Provider-neutral governance layer | Accepted |
 | [ACD-0005](ACD-0005-scoped-discontinuous-memory.md) | Scoped discontinuous agent memory | Accepted |
+| [ACD-0006](ACD-0006-mcp-as-universal-integration-layer.md) | MCP as universal integration layer | Accepted |
