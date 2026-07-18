@@ -138,25 +138,32 @@ def format_tool_result(tool: str, result) -> dict | None:
     if tool == "create_guard_rule":
         if not isinstance(result, dict):
             return None
-        desc = result.get("description", "")
+        desc = result.get("description", "").strip()
+        match_tool = result.get("match_tool") or ""
+        match_pattern = result.get("match_pattern") or ""
+        # Vague description — too short or single verb
+        if len(desc) < 10 or len(desc.split()) < 2:
+            return _clarify(
+                "I need a clearer description to create this rule. What should it block or warn on?",
+                ["Block .env file access for all tools",
+                 "Warn when Claude writes to config files",
+                 "Block cursor from reading secrets directories"],
+            )
+        # Catch-all: both match_tool and match_pattern are empty/wildcard — would fire on everything
+        needs_generate = (not match_pattern) and (not match_tool or match_tool == "*")
+        if needs_generate:
+            # Signal to T3 to call the generate endpoint — formatter can't make API calls
+            return {"_needs_generate": True, "description": desc, "action": result.get("action", "block")}
         action = result.get("action", "block")
         rule_id = result.get("rule_id") or _slugify(desc)
         draft = {
             "rule_id": rule_id,
             "description": desc,
             "action": action,
-            "match_tool": result.get("match_tool", "*"),
-            "match_pattern": result.get("match_pattern", ""),
+            "match_tool": match_tool or "*",
+            "match_pattern": match_pattern,
             "severity": result.get("severity", "medium"),
         }
-        mapping = [
-            {"field": "rule_id",       "column": "rule_id",      "description": "Unique rule identifier"},
-            {"field": "description",   "column": "description",  "description": "What this rule does"},
-            {"field": "action",        "column": "action",       "description": "block / warn / audit"},
-            {"field": "match_tool",    "column": "match_tool",   "description": "AI tool this applies to"},
-            {"field": "match_pattern", "column": "match_pattern","description": "Regex matched against prompt"},
-            {"field": "severity",      "column": "severity",     "description": "Alert severity"},
-        ]
         return {
             "skill": "rules",
             "ready": False,
@@ -164,16 +171,32 @@ def format_tool_result(tool: str, result) -> dict | None:
             "action": "create",
             "answer": f"Create a new **{action}** rule: {desc}",
             "draft": draft,
-            "mapping": [{"field": m["field"], "column": m["column"], "description": m["description"], "value": str(draft.get(m["field"], ""))} for m in mapping],
+            "mapping": [
+                {"field": "rule_id",       "column": "rule_id",      "description": "Unique rule identifier",       "value": rule_id},
+                {"field": "description",   "column": "description",  "description": "What this rule does",          "value": desc},
+                {"field": "action",        "column": "action",       "description": "block / warn / audit",         "value": action},
+                {"field": "match_tool",    "column": "match_tool",   "description": "AI tool this applies to",      "value": match_tool or "*"},
+                {"field": "match_pattern", "column": "match_pattern","description": "Regex matched against prompt", "value": match_pattern},
+                {"field": "severity",      "column": "severity",     "description": "Alert severity",               "value": result.get("severity", "medium")},
+            ],
         }
 
     if tool == "edit_guard_rule":
         if not isinstance(result, dict):
             return None
-        rule_id = result.get("rule_id", "")
+        rule_id = result.get("rule_id", "").strip()
+        if not rule_id:
+            return _clarify(
+                "Which rule should I update? Say 'list rules' to see your active rules, then say 'edit rule [rule_id]'.",
+                ["List my guard rules", "Disable rule cursor-block-env", "Change rule X to warn instead of block"],
+            )
         warning = result.get("_warning")
         changes = {k: v for k, v in result.items() if k not in ("rule_id", "_warning") and v is not None}
-        mapping = [{"field": k, "column": k, "description": "", "value": str(v)} for k, v in changes.items()]
+        if not changes:
+            return _clarify(
+                f"What should I change about rule **{rule_id}**? You can update its action, description, severity, or enable/disable it.",
+                [f"Disable rule {rule_id}", f"Change rule {rule_id} to warn", f"Update description for rule {rule_id}"],
+            )
         return {
             "skill": "rules",
             "ready": False,
@@ -182,14 +205,19 @@ def format_tool_result(tool: str, result) -> dict | None:
             "answer": f"Edit rule **{rule_id}**: {', '.join(f'{k}={v}' for k, v in changes.items())}",
             "draft": changes,
             "target_rule_id": rule_id,
-            "mapping": mapping,
+            "mapping": [{"field": k, "column": k, "description": "", "value": str(v)} for k, v in changes.items()],
             "warning": warning,
         }
 
     if tool == "delete_guard_rule":
         if not isinstance(result, dict):
             return None
-        rule_id = result.get("rule_id", "")
+        rule_id = result.get("rule_id", "").strip()
+        if not rule_id:
+            return _clarify(
+                "Which rule should I delete? Say 'list rules' to see your active rules, then say 'delete rule [rule_id]'.",
+                ["List my guard rules", "Delete rule cursor-block-env", "Remove the .env block rule"],
+            )
         warning = result.get("_warning")
         return {
             "skill": "rules",
@@ -205,6 +233,16 @@ def format_tool_result(tool: str, result) -> dict | None:
 
     # Unknown tool or complex result — fall back to full agent
     return None
+
+
+def _clarify(answer: str, suggestions: list[str]) -> dict:
+    return {
+        "skill": "rules",
+        "ready": False,
+        "clarification_required": True,
+        "answer": answer,
+        "followups": suggestions,
+    }
 
 
 def _slugify(text: str) -> str:
