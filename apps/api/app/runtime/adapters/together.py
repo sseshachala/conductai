@@ -24,8 +24,20 @@ _TOGETHER_PRICING: dict[str, dict[str, float]] = {
     # Qwen 2.5
     "Qwen/Qwen2.5-7B-Instruct-Turbo":               {"input": 0.20,  "output": 0.20},
     "Qwen/Qwen2.5-72B-Instruct-Turbo":              {"input": 1.20,  "output": 1.20},
+    # Qwen 3 (MoE)
+    "Qwen/Qwen3-235B-A22B":                         {"input": 0.60,  "output": 0.60},
     # Qwen 3.5
     "Qwen/Qwen3.5-9B":                              {"input": 0.20,  "output": 0.20},
+    "Qwen/Qwen3.5-27B":                             {"input": 0.40,  "output": 0.40},
+    "Qwen/Qwen3.5-35B-A3B":                         {"input": 0.30,  "output": 0.30},
+    "Qwen/Qwen3.5-397B-A17B":                       {"input": 1.20,  "output": 1.20},
+    # Qwen 3.6
+    "Qwen/Qwen3.6-27B":                             {"input": 0.40,  "output": 0.40},
+    "Qwen/Qwen3.6-235B-A22B":                       {"input": 0.60,  "output": 0.60},
+    # Qwen 3 Coder
+    "Qwen/Qwen3-Coder-480B-A35B-Instruct":          {"input": 1.80,  "output": 1.80},
+    "Qwen/Qwen3-Coder-Next":                        {"input": 1.80,  "output": 1.80},
+    "Qwen/Qwen3-Next-80B-A3B-Instruct":             {"input": 0.40,  "output": 0.40},
     # Mixtral
     "mistralai/Mixtral-8x7B-Instruct-v0.1":         {"input": 0.60,  "output": 0.60},
     "mistralai/Mixtral-8x22B-Instruct-v0.1":        {"input": 1.20,  "output": 1.20},
