@@ -673,7 +673,7 @@ class Executor:
         except Exception as e:
             return {"paragraph": f"Narrative unavailable: {e}", "source": "error"}
 
-    def _tool_get_recent_governance_events(self, limit: int = 15, decision: str | None = None, since: str | None = None):
+    def _tool_get_recent_governance_events(self, limit: int = 15, decision: str | None = None, since: str | None = None, until: str | None = None):
         if decision:
             decision = {"block": "blocked", "warn": "warned", "audit": "audited", "allow": "allowed"}.get(decision, decision)
         org_ws = _org_ws_subquery(self.db, self.workspace_id)
@@ -682,6 +682,8 @@ class Executor:
             q = q.filter(GuardAuditEvent.decision == decision)
         if since:
             q = q.filter(GuardAuditEvent.ts >= since)
+        if until:
+            q = q.filter(GuardAuditEvent.ts <= until)
         rows = (
             q.order_by(GuardAuditEvent.ts.desc())
             .limit(min(limit, 100))
