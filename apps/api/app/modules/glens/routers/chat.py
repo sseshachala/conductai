@@ -26,6 +26,7 @@ from app.modules.glens.formatters import format_tool_result
 from app.modules.glens.inference import dispatch_tool
 from app.modules.glens.planner import plan
 from app.modules.glens.shortcuts import try_shortcut, _today, _ACTIVITY_COLUMNS
+from app.modules.glens.slot_extractor import extract_slots
 from app.modules.glens.utils import extract_json
 from app.modules.glens.models import GlensChatSession
 from app.modules.glens.prompts import KPI_META, CHART_META, TABLE_META, VALID_KPIS, VALID_CHARTS, VALID_TABLES
@@ -532,13 +533,14 @@ async def glens_chat_stream(
                 _on_event({"type": "thinking", "label": "Fetching governance data..."})
                 import json as _json
                 today = _today()
-                kpis_raw, events_raw, spend_raw, rules_raw = await asyncio.gather(
-                    asyncio.to_thread(executor.call, "get_governance_kpis", "{}"),
-                    asyncio.to_thread(executor.call, "get_recent_governance_events", _json.dumps({"since": today, "limit": 10})),
-                    asyncio.to_thread(executor.call, "get_spend_summary", "{}"),
-                    asyncio.to_thread(executor.call, "list_policies", "{}"),
-                    return_exceptions=True,
-                )
+                # Sequential — SQLAlchemy session can't be shared across concurrent threads
+                slots = extract_slots(req.message)
+                date_args = {k: v for k, v in slots.items() if k in ("since", "until")}
+                events_args = _json.dumps({**date_args, "limit": 20}) if date_args else _json.dumps({"since": today, "limit": 10})
+                kpis_raw   = await asyncio.to_thread(executor.call, "get_governance_kpis", "{}")
+                events_raw = await asyncio.to_thread(executor.call, "get_recent_governance_events", events_args)
+                spend_raw  = await asyncio.to_thread(executor.call, "get_spend_summary", "{}")
+                rules_raw  = await asyncio.to_thread(executor.call, "list_policies", "{}")
                 bundle = {
                     "kpis":   _json.loads(kpis_raw)   if isinstance(kpis_raw, str)   else {},
                     "events": _json.loads(events_raw) if isinstance(events_raw, str) else [],
