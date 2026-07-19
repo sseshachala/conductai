@@ -85,7 +85,7 @@ class OpenAIClient:
         finish_reason = choice.get("finish_reason") or "stop"
 
         content: list[LLMTextBlock | LLMToolUseBlock] = []
-        text = message.get("content")
+        text = message.get("content") or message.get("reasoning_content") or ""
         if isinstance(text, str) and text.strip():
             content.append(LLMTextBlock(text=text))
 
