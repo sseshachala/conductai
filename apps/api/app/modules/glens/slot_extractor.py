@@ -25,7 +25,7 @@ def _month_key(s: str) -> int:
 
 def _month_bounds(year: int, month: int) -> tuple[str, str]:
     last = monthrange(year, month)[1]
-    return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last:02d}"
+    return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last:02d}T23:59:59"
 
 
 def extract_date_range(text: str) -> dict[str, str]:
