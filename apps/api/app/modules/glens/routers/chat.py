@@ -129,7 +129,10 @@ def _llm_client(db=None, workspace_id: str | None = None):
     if endpoint and endpoint.endswith("/v1"):
         endpoint = endpoint[:-3]  # OpenAI SDK appends /v1 itself
     # Workspace vault override
-    api_key = settings.conduct_inference_token_id or "unused"
+    # Fall back to provider-specific platform key if no dedicated inference key
+    api_key = settings.conduct_inference_token_id or (
+        settings.openai_api_key if provider == "openai" else ""
+    ) or "unused"
     if db and workspace_id:
         try:
             from app.modules.credentials.vault import get_credential
