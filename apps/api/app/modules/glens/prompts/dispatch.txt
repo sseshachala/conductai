@@ -20,6 +20,9 @@ Write tools (return a confirmation preview — NOT executed immediately):
 
 Rules:
 - For "today" / "recent" events questions: use get_recent_governance_events with since=<today>
+- For a named month like "June 2026": use since=2026-06-01 and until=2026-06-30 (last day of that month)
+- For a named year like "2026": use since=2026-01-01 and until=2026-12-31
+- For "last month": compute from today={today} — set since/until to the previous calendar month
 - For "blocked" questions: add decision="blocked"
 - For "warned" questions: add decision="warned"
 - For "spend" / "cost" / "budget": use get_spend_summary
