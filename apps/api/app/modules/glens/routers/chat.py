@@ -499,49 +499,28 @@ async def glens_chat_stream(
 
     async def _run_work() -> None:
         try:
-            # Tier 1: shortcut — deterministic regex, no LLM (<1ms)
-            shortcut = await asyncio.to_thread(try_shortcut, req.message, executor)
-            if shortcut:
-                log.debug("glens.stream.tier1_hit", message=req.message[:60])
-                await event_q.put({"type": "done", "_parsed": shortcut})
-                return
+            import json as _json
+            from app.modules.glens.semantic_router import route as _semantic_route
 
-            # Tier 2: catalog phrase match — keyword match, no LLM
-            # Maps catalog action names → executor tool names
-            _ACTION_TO_TOOL = {
-                "view_guard_activity":     "get_recent_governance_events",
-                "view_blocked_events":     "get_recent_governance_events",
-                "view_warned_events":      "get_recent_governance_events",
-                "get_governance_kpis":     "get_governance_kpis",
-                "get_spend_summary":       "get_spend_summary",
-                "view_budgets":            "get_budgets",
-                "get_savings_summary":     "get_savings_summary",
-                "view_discovery_agents":   "get_discovery_summary",
-                "get_discovery_coverage":  "get_discovery_summary",
-                "list_policies":           "list_policies",
-                "view_compliance_packs":   "get_framework_coverage",
-                "get_compliance_pack_detail": "get_framework_coverage",
-                "get_governance_frameworks":  "get_framework_coverage",
-                "get_governance_narrative":   "get_governance_narrative",
-            }
-            _WRITE_TOOLS = {"create_guard_rule", "edit_guard_rule", "delete_guard_rule"}
-            action_name = await asyncio.to_thread(_tier2_match, req.message)
-            if action_name and action_name not in _WRITE_TOOLS:
-                log.debug("glens.stream.tier2_hit", action=action_name)
-                label = action_name.replace("_", " ").replace("get ", "").replace("view ", "").replace("list ", "")
+            # Tier 1+2: semantic router — embed + cosine + slot extraction (replaces regex shortcuts + catalog)
+            routing = await asyncio.to_thread(_semantic_route, req.message)
+            if routing and not routing["is_write"]:
+                log.debug("glens.stream.semantic_hit", intent=routing["intent"], confidence=routing["confidence"])
+                label = routing["intent"].replace("_", " ").replace("get ", "").replace("list ", "")
                 _on_event({"type": "thinking", "label": f"Loading {label}..."})
-                import json as _json
                 try:
-                    tool_name = _ACTION_TO_TOOL.get(action_name, action_name)
-                    raw = await asyncio.to_thread(executor.call, tool_name, "{}")
+                    slots_json = _json.dumps(routing["slots"])
+                    raw = await asyncio.to_thread(executor.call, routing["tool"], slots_json)
                     result = _json.loads(raw)
-                    formatted = format_tool_result(tool_name, result)
+                    formatted = format_tool_result(routing["tool"], result)
                     if formatted:
-                        formatted["query_understood_as"] = action_name.replace("_", " ").title()
+                        formatted["query_understood_as"] = routing["understood_as"]
                         await event_q.put({"type": "done", "_parsed": formatted})
                         return
                 except Exception as e:
-                    log.debug("glens.stream.tier2_miss", action=action_name, error=str(e))
+                    log.debug("glens.stream.semantic_miss", intent=routing["intent"], error=str(e))
+
+            _WRITE_TOOLS = {"create_guard_rule", "edit_guard_rule", "delete_guard_rule"}
 
             # Tier 3: narrative shortcut — pre-fetch bundle + Qwen narration (no dispatch needed)
             _NARRATIVE_PATTERNS = re.compile(
