@@ -114,18 +114,29 @@ def _build_understood_as(tool_name: str, args: dict) -> str:
     return tool_name.replace("_", " ").title()
 
 
-def _llm_client():
-    """Return the configured LLM client — provider and endpoint driven by settings."""
+def _llm_client(db=None, workspace_id: str | None = None):
+    """Return the configured LLM client.
+
+    Resolution order for API key:
+      1. Workspace credential vault (provider-keyed) — workspace brings their own key
+      2. Platform env vars (CONDUCT_INFERENCE_TOKEN_ID) — platform default
+    """
     from app.runtime.llm_client import client_for
     from app.core.config import settings
+    provider = settings.conduct_inference_provider or "openai"
     endpoint = settings.conduct_inference_endpoint_url or ""
     if endpoint and not endpoint.endswith("/v1"):
         endpoint = f"{endpoint}/v1"
-    return client_for(
-        settings.conduct_inference_provider or "openai",
-        api_key=settings.conduct_inference_token_id or "unused",
-        base_url=endpoint or None,
-    )
+    # Workspace vault override
+    api_key = settings.conduct_inference_token_id or "unused"
+    if db and workspace_id:
+        try:
+            from app.modules.credentials.vault import get_credential
+            creds = get_credential(db, workspace_id, provider)
+            api_key = creds.get("api_key") or api_key
+        except Exception:
+            pass
+    return client_for(provider, api_key=api_key, base_url=endpoint or None)
 
 
 def _generate_rule(db, workspace_id: str, description: str) -> dict | None:
@@ -135,7 +146,7 @@ def _generate_rule(db, workspace_id: str, description: str) -> dict | None:
         from app.modules.guard.routers.policies import _GENERATE_SYSTEM_FILE
         from app.core.config import settings
         system = _GENERATE_SYSTEM_FILE.read_text()
-        client = _llm_client()
+        client = _llm_client(db=db, workspace_id=workspace_id)
         resp = client.create(
             model=settings.conduct_inference_model_name,
             system=system,
@@ -169,7 +180,7 @@ def _narrate(executor: "Executor", message: str, bundle: dict) -> str:
         "developer emails, and dates from the data. Do not invent facts. Keep the answer under 150 words.\n\n"
         f"DATA:\n{context}"
     )
-    client = _llm_client()
+    client = _llm_client(db=executor.db, workspace_id=executor.workspace_id)
     resp = client.create(
         model=settings.conduct_inference_model_name,
         system=system,
