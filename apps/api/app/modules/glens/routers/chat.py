@@ -124,9 +124,9 @@ def _llm_client(db=None, workspace_id: str | None = None):
     from app.runtime.llm_client import client_for
     from app.core.config import settings
     provider = settings.conduct_inference_provider or "openai"
-    endpoint = settings.conduct_inference_endpoint_url or ""
-    if endpoint and not endpoint.endswith("/v1"):
-        endpoint = f"{endpoint}/v1"
+    endpoint = (settings.conduct_inference_endpoint_url or "").rstrip("/")
+    if endpoint and endpoint.endswith("/v1"):
+        endpoint = endpoint[:-3]  # OpenAI SDK appends /v1 itself
     # Workspace vault override
     api_key = settings.conduct_inference_token_id or "unused"
     if db and workspace_id:
