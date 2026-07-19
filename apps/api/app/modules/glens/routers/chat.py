@@ -161,8 +161,9 @@ def _generate_rule(db, workspace_id: str, description: str) -> dict | None:
 
 
 def _narrate(executor: "Executor", message: str, bundle: dict) -> str:
-    """Generate a data-grounded narrative answer via the LLM client (Qwen on Modal)."""
+    """Generate a data-grounded narrative answer via the LLM client."""
     import json as _j
+    import logging as _log
     from app.core.config import settings
     today = _today()
     context_parts = []
@@ -181,14 +182,18 @@ def _narrate(executor: "Executor", message: str, bundle: dict) -> str:
         "developer emails, and dates from the data. Do not invent facts. Keep the answer under 150 words.\n\n"
         f"DATA:\n{context}"
     )
-    client = _llm_client(db=executor.db, workspace_id=executor.workspace_id)
-    resp = client.create(
-        model=settings.conduct_inference_model_name,
-        system=system,
-        messages=[{"role": "user", "content": message}],
-        max_tokens=512,
-    )
-    return next((b.text for b in resp.content if b.type == "text"), "Unable to generate narrative.")
+    try:
+        client = _llm_client(db=executor.db, workspace_id=executor.workspace_id)
+        resp = client.create(
+            model=settings.conduct_inference_model_name,
+            system=system,
+            messages=[{"role": "user", "content": message}],
+            max_tokens=512,
+        )
+        return next((b.text for b in resp.content if b.type == "text"), "No narrative returned.")
+    except Exception as e:
+        _log.getLogger(__name__).error("glens.narrate.failed", extra={"error": str(e)})
+        raise
 
 
 def _resolve_rule_id(args: dict, executor) -> dict:
@@ -536,7 +541,8 @@ async def glens_chat_stream(
                 # Sequential — SQLAlchemy session can't be shared across concurrent threads
                 slots = extract_slots(req.message)
                 date_args = {k: v for k, v in slots.items() if k in ("since", "until")}
-                events_args = _json.dumps({**date_args, "limit": 20}) if date_args else _json.dumps({"since": today, "limit": 10})
+                decision_arg = {"decision": slots["decision"]} if "decision" in slots else {}
+                events_args = _json.dumps({**date_args, **decision_arg, "limit": 50}) if (date_args or decision_arg) else _json.dumps({"since": today, "limit": 20})
                 kpis_raw   = await asyncio.to_thread(executor.call, "get_governance_kpis", "{}")
                 events_raw = await asyncio.to_thread(executor.call, "get_recent_governance_events", events_args)
                 spend_raw  = await asyncio.to_thread(executor.call, "get_spend_summary", "{}")
