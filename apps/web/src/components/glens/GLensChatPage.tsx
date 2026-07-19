@@ -569,8 +569,13 @@ export function GLensChatPage() {
         } else {
           try {
             const p = JSON.parse(m.content)
+            const rendered = m.rendered ?? {}
             if (p.ready && p.spec) {
               thread.push({ role: "assistant", kind: "dashboard", spec: p.spec, sessionId: id })
+            } else if (rendered.rows?.length) {
+              thread.push({ role: "assistant", kind: "table", rows: rendered.rows, answer: p.answer ?? "", skill: p.skill ?? "governance", columns: p.columns })
+            } else if (rendered.blocks?.length) {
+              thread.push({ role: "assistant", kind: "blocks", blocks: rendered.blocks, answer: p.answer ?? "", skill: p.skill ?? "governance" })
             } else {
               const text = p.answer || p.question
               if (text) thread.push({ role: "assistant", kind: "answer", text, skill: p.skill })
