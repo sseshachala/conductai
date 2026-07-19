@@ -676,8 +676,8 @@ class Executor:
     def _tool_get_recent_governance_events(self, limit: int = 15, decision: str | None = None, since: str | None = None, until: str | None = None):
         if decision:
             decision = {"block": "blocked", "warn": "warned", "audit": "audited", "allow": "allowed"}.get(decision, decision)
-        # when a full date range is given, fetch all events in that window
-        if since and until:
+        # when a full date range is given and no explicit limit, fetch all events in that window
+        if since and until and limit == 15:
             limit = 500
         org_ws = _org_ws_subquery(self.db, self.workspace_id)
         q = self.db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id.in_(org_ws))
