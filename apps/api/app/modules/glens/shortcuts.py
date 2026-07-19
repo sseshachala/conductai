@@ -87,9 +87,20 @@ _SHORTCUTS: list[tuple[str, str]] = [
 ]
 
 
+_DATE_OVERRIDE = re.compile(
+    r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}"
+    r"|\b\d{4}[-/]\d{2}|\b(last|past|previous)\s+(week|month|quarter|year)"
+    r"|\b(this|in)\s+(january|february|march|april|june|july|august|september|october|november|december)",
+    re.I,
+)
+
+
 def try_shortcut(message: str, executor: Executor) -> dict | None:
     """Return a formatted payload dict if we can answer without LLM, else None."""
     low = message.lower()
+    # ponytail: skip T1 if query names a specific date range — let T3 parse it
+    if _DATE_OVERRIDE.search(low):
+        return None
     for pattern, intent in _SHORTCUTS:
         if re.search(pattern, low):
             return _handle(intent, executor)
