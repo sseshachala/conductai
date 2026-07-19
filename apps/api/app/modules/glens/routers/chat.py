@@ -193,6 +193,12 @@ def _narrate(executor: "Executor", message: str, bundle: dict) -> str:
             messages=[{"role": "user", "content": message}],
             max_tokens=512,
         )
+        _log.getLogger(__name__).info("glens.narrate.resp", extra={
+            "model": settings.conduct_inference_model_name,
+            "content_len": len(resp.content),
+            "stop_reason": resp.stop_reason,
+            "raw_preview": str(resp._raw_content)[:200] if resp._raw_content else None,
+        })
         return next((b.text for b in resp.content if b.type == "text"), "No narrative returned.")
     except Exception as e:
         _log.getLogger(__name__).error("glens.narrate.failed", extra={"error": str(e)})
