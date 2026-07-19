@@ -24,6 +24,8 @@ _TOGETHER_PRICING: dict[str, dict[str, float]] = {
     # Qwen 2.5
     "Qwen/Qwen2.5-7B-Instruct-Turbo":               {"input": 0.20,  "output": 0.20},
     "Qwen/Qwen2.5-72B-Instruct-Turbo":              {"input": 1.20,  "output": 1.20},
+    # Qwen 3.5
+    "Qwen/Qwen3.5-9B":                              {"input": 0.20,  "output": 0.20},
     # Mixtral
     "mistralai/Mixtral-8x7B-Instruct-v0.1":         {"input": 0.60,  "output": 0.60},
     "mistralai/Mixtral-8x22B-Instruct-v0.1":        {"input": 1.20,  "output": 1.20},
