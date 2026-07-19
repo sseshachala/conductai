@@ -461,9 +461,6 @@ function ChatInput({ onSubmit, disabled }: { onSubmit: (t: string) => void; disa
 
   return (
     <div style={{
-      borderTop: "1px solid var(--border)",
-      padding: "14px 20px",
-      background: "var(--surface)",
       display: "flex",
       gap: 10,
       alignItems: "flex-end",
@@ -825,7 +822,11 @@ export function GLensChatPage() {
         </div>
 
         {/* Input */}
-        <ChatInput onSubmit={sendMessage} disabled={loading} />
+        <div style={{ borderTop: "1px solid var(--border)", background: "var(--surface)", padding: "12px 48px 16px" }}>
+          <div style={{ maxWidth: 800, margin: "0 auto" }}>
+            <ChatInput onSubmit={sendMessage} disabled={loading} />
+          </div>
+        </div>
       </div>
     </div>
   )
