@@ -24,6 +24,8 @@ log = structlog.get_logger(__name__)
 
 
 class Executor:
+    MIN_SIMILARITY_SCORE = 0.3
+
     def __init__(self, db: Session, workspace_id: str):
         self.db = db
         self.workspace_id = workspace_id
@@ -147,6 +149,7 @@ class Executor:
              "topic_tags": r.topic_tags or [], "repo": r.repo_full_name,
              "created_at": r.created_at.isoformat(), "score": round(1 - r.distance, 3)}
             for r in rows
+            if (1 - r.distance) >= self.MIN_SIMILARITY_SCORE
         ]
 
     def _tool_search_sessions(self, q: str, limit: int = 5):
@@ -170,6 +173,7 @@ class Executor:
              "summary": (r.report_md or "")[:500], "created_at": r.created_at.isoformat(),
              "score": round(1 - r.distance, 3)}
             for r in rows
+            if (1 - r.distance) >= self.MIN_SIMILARITY_SCORE
         ]
 
     def _tool_get_team_memory_feed(self, limit: int = 20):
