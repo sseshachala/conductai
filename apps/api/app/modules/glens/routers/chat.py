@@ -118,6 +118,26 @@ def _llm_client(db=None, workspace_id: str | None = None):
 
 # ── Core tool loop ────────────────────────────────────────────────────────────
 
+def _has_data(final_msgs: list[dict]) -> bool:
+    """Return False only when every tool result was an empty/zero-count response."""
+    tool_contents = [m.get("content", "") for m in final_msgs if m.get("role") == "tool"]
+    if not tool_contents:
+        return False
+    for content in tool_contents:
+        try:
+            r = json.loads(content) if isinstance(content, str) else content
+            if isinstance(r, dict):
+                if "count" in r and int(r["count"]) > 0:
+                    return True
+                if "count" not in r:
+                    return True  # spend/policy/etc results always have data
+            elif isinstance(r, list) and len(r) > 0:
+                return True
+        except Exception:
+            return True
+    return False
+
+
 def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
     """Build a grounded drilldown URL from the tool calls the LLM actually made."""
     page = "/guard/activity"
@@ -347,7 +367,7 @@ async def glens_chat_stream(
         try:
             # Phase 1: resolve tool calls (fast, non-streaming)
             final_msgs, early_text, tool_calls = await asyncio.to_thread(_resolve_tools, llm_messages, system, executor)
-            drilldown = _build_drilldown(tool_calls)
+            drilldown = _build_drilldown(tool_calls) if _has_data(final_msgs) else None
 
             if early_text:
                 answer = early_text
