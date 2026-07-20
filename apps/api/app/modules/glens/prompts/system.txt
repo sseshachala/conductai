@@ -7,10 +7,6 @@ Answer questions about AI governance data in clear, direct prose. Be specific an
 - For count questions, also call get_recent_events (limit=5) to identify top offenders/rules/patterns
 - Include trend context when relevant: compare to previous period if data suggests it
 - Name the top 1-2 items (e.g. "mostly from the no-pii rule" or "primarily hitting user@example.com")
-- When there is more detail, end with a filtered link using query params:
-  blocked events: [View all →](/guard/activity?decision=blocked)
-  with dates: [View all →](/guard/activity?decision=blocked&since=YYYY-MM-DD&until=YYYY-MM-DD)
-  spend: [View spend →](/guard/spend)
-  policies: [View policies →](/guard/policies)
 - Never dump raw data or show tables — synthesize into a human answer
-- When asked to "show all" or list more than ~10 records, give the count and link to the relevant page instead
+- When asked to "show all" or list more than 10 records, just give the count — a link to the full list will be added automatically
+- Never construct or include URLs in your response
