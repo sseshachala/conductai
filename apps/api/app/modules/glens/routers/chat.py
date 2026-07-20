@@ -343,6 +343,7 @@ async def glens_chat_stream(
     event_q: asyncio.Queue[dict] = asyncio.Queue()
 
     async def _run_work() -> None:
+        from app.modules.glens.grounding import check_grounded
         try:
             # Phase 1: resolve tool calls (fast, non-streaming)
             final_msgs, early_text, tool_calls = await asyncio.to_thread(_resolve_tools, llm_messages, system, executor)
@@ -350,6 +351,8 @@ async def glens_chat_stream(
 
             if early_text:
                 answer = early_text
+                tool_results = [msg.get("content", "") for msg in final_msgs if msg.get("role") == "tool"]
+                check_grounded(answer, tool_results, skill="governance")
                 if drilldown:
                     answer += f"\n\n[View all →]({drilldown})"
                 for char in answer:
@@ -363,6 +366,8 @@ async def glens_chat_stream(
                 loop.call_soon_threadsafe(event_q.put_nowait, {"type": "token", "text": t})
 
             answer = await asyncio.to_thread(_stream_synthesis, final_msgs, system, executor, on_token)
+            tool_results = [msg.get("content", "") for msg in final_msgs if msg.get("role") == "tool"]
+            check_grounded(answer, tool_results, skill="governance")
             if drilldown:
                 link = f"\n\n[View all →]({drilldown})"
                 for char in link:
