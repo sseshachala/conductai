@@ -31,6 +31,10 @@ BUILTIN_POLICIES_YAML = (
     Path(__file__).resolve().parents[3]
     / "apps/api/app/modules/guard/builtin_policies.yaml"
 )
+CONDUCT_BASE_JSON = (
+    Path(__file__).resolve().parents[3]
+    / "apps/api/app/modules/guard/skill_packs/conduct-base.json"
+)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -299,10 +303,18 @@ class TestReturnValues:
 
 @pytest.fixture(scope="module")
 def builtin_rules():
-    """Load rules from builtin_policies.yaml (requires PyYAML)."""
+    """Load rules from conduct-base.json (falls back to builtin_policies.yaml)."""
+    import json as _json  # noqa: PLC0415
+
+    if CONDUCT_BASE_JSON.exists():
+        rules = _json.loads(CONDUCT_BASE_JSON.read_text())["rules"]
+        # conduct-base uses "id"; _check_policy reads "rule_id"
+        for r in rules:
+            if "id" in r and "rule_id" not in r:
+                r["rule_id"] = r["id"]
+        return rules
     pytest.importorskip("yaml")
     import yaml  # noqa: PLC0415
-
     if not BUILTIN_POLICIES_YAML.exists():
         pytest.skip(f"builtin_policies.yaml not found at {BUILTIN_POLICIES_YAML}")
     return yaml.safe_load(BUILTIN_POLICIES_YAML.read_text())
@@ -426,3 +438,44 @@ class TestBuiltinPolicies:
         assert rule_id != "warn-large-context-dump"
 
 
+
+    # ── Vision / OCR ──────────────────────────────────────────────────────────
+    def test_proxy_audit_vision_input_png(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy(
+            "bash", {"content": "data:image/png;base64,iVBORw0KGgo="}
+        )
+        assert action == "audit"
+        assert rule_id == "proxy-audit-vision-input"
+
+    def test_proxy_audit_vision_input_jpeg(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy(
+            "bash", {"content": "data:image/jpeg;base64,/9j/4AAQ="}
+        )
+        assert action == "audit"
+        assert rule_id == "proxy-audit-vision-input"
+
+    def test_proxy_audit_vision_no_false_positive(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy(
+            "bash", {"content": "just plain text, no images here"}
+        )
+        assert rule_id != "proxy-audit-vision-input"
+
+    def test_audit_image_file_read_png(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy(
+            "read", {"file_path": "/tmp/scan_result.png"}
+        )
+        assert action == "audit"
+        assert rule_id == "audit-image-file-read"
+
+    def test_audit_image_file_read_pdf(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy(
+            "read", {"file_path": "/docs/contract.pdf"}
+        )
+        assert action == "audit"
+        assert rule_id == "audit-image-file-read"
+
+    def test_audit_image_file_read_no_false_positive(self, builtin_policy_path):
+        _, action, rule_id, _ = _check_policy(
+            "read", {"file_path": "/src/main.py"}
+        )
+        assert rule_id != "audit-image-file-read"
