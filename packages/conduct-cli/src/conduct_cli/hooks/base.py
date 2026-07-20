@@ -309,6 +309,10 @@ def post_event(
         return
     import platform as _platform
     _os_info = f"{_platform.system()} {_platform.release()} {_platform.machine()}".strip()
+    # Read goal session fields directly from config — avoids circular import with guard.py
+    import json as _json_gcfg, pathlib as _pl_gcfg
+    _gcfg_path = _pl_gcfg.Path.home() / ".conduct" / "config.json"
+    _gcfg = _json_gcfg.loads(_gcfg_path.read_text()) if _gcfg_path.exists() else {}
     payload = json.dumps({
         "workspace_id":    workspace_id,
         "clerk_user_id":   cfg.get("user_email"),
@@ -323,6 +327,8 @@ def post_event(
         "os_info":         _os_info,
         "hostname":        _platform.node(),
         "blast_radius":    blast_radius,
+        "goal_id":         _gcfg.get("current_goal_id") or None,
+        "goal_name":       _gcfg.get("current_goal_name") or None,
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     journal_append(payload, api_url)

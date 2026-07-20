@@ -155,6 +155,9 @@ class GuardAuditEvent(Base):
     previous_hash = Column(Text, nullable=True)
     entry_hash = Column(Text, nullable=True)
     policy_hash = Column(Text, nullable=True)  # version_hash from GuardPolicyCache at decision time
+    # session goal set by `conduct session start`
+    goal_id   = Column(String(255), nullable=True)
+    goal_name = Column(String(255), nullable=True)
 
 
 class GuardSavings(Base):

@@ -1878,6 +1878,9 @@ def cmd_guard_status(args):
         proxy_line = f"{RED}not configured{RESET} — run: {BOLD}conduct guard sync{RESET}"
 
     print(f"\n{BOLD}Guard status{RESET} — {user_email}")
+    _active_cfg = _load_guard_config()
+    if _active_cfg.get("current_goal_id"):
+        print(f"  Active goal: {CYAN}{_active_cfg.get('current_goal_name', 'unnamed')}{RESET}  ({_active_cfg['current_goal_id'][:8]}...)")
     print(f"{rule_count} polic{'y' if rule_count == 1 else 'ies'} active")
     print()
     print(f"Proxy coverage: {proxy_line}")
@@ -1929,6 +1932,32 @@ def cmd_guard_savings(args):
     if tools:
         print(f"  Tools contributing:    {', '.join(tools)}")
     print()
+
+
+def cmd_guard_session(args):
+    sub = getattr(args, "session_cmd", None)
+    if sub == "start":
+        import uuid as _uuid
+        goal = getattr(args, "goal", "") or ""
+        goal_id = str(_uuid.uuid4())
+        cfg = _load_guard_config()
+        cfg["current_goal_id"] = goal_id
+        cfg["current_goal_name"] = goal
+        _save_guard_config(cfg)
+        print(f"  {GREEN}Session started{RESET}")
+        if goal:
+            print(f"  Goal: {CYAN}{goal}{RESET}")
+        print(f"  ID:   {goal_id}")
+        print(f"\nAll Guard events in this session will be tagged with this goal.")
+        print(f"Run {BOLD}conduct guard session stop{RESET} when done.")
+    elif sub == "stop":
+        cfg = _load_guard_config()
+        name = cfg.pop("current_goal_name", "")
+        cfg.pop("current_goal_id", None)
+        _save_guard_config(cfg)
+        print(f"  {GREEN}Session stopped{RESET}" + (f" — {name}" if name else ""))
+    else:
+        print("Usage: conduct guard session start [--goal GOAL] | stop")
 
 
 def cmd_guard_audit(args):
@@ -2084,6 +2113,14 @@ def register_guard_parser(sub):
     lint_p = guard_sub.add_parser("lint", help="Validate local policy — show errors and warnings")
     lint_p.add_argument("--file", default=None, metavar="FILE",
                         help="Path to policy YAML/JSON (default: ~/.conduct/policy.json)")
+
+    # conduct guard session start|stop
+    p_session = guard_sub.add_parser("session", help="Start or stop a named goal session")
+    session_sub = p_session.add_subparsers(dest="session_cmd")
+    p_sess_start = session_sub.add_parser("start", help="Start a goal session — tags all Guard events with a goal ID")
+    p_sess_start.add_argument("--goal", default="", help="Human-readable goal label")
+    session_sub.add_parser("stop", help="End the current goal session")
+    p_session.set_defaults(func=cmd_guard_session)
 
     return guard_p, guard_sub
 
@@ -2797,6 +2834,8 @@ def dispatch_guard(args, guard_p):
         cmd_guard_booster_status(args)
     elif guard_command == "debug-hook":
         cmd_guard_debug_hook(args)
+    elif guard_command == "session":
+        cmd_guard_session(args)
     else:
         guard_p.print_help()
         sys.exit(1)

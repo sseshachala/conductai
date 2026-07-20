@@ -30,6 +30,8 @@ export interface AuditEvent {
   conductai_run_id?: string | null
   conductai_workflow?: string | null
   conductai_workflow_id?: string | null
+  goal_id?: string | null
+  goal_name?: string | null
   blast_radius?: { files: number; symbols?: number; tier: string } | null
   hostname?: string | null
   hook_session_id?: string | null
