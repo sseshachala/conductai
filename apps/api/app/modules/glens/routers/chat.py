@@ -96,13 +96,9 @@ Answer questions about AI governance data in clear, direct prose. Be specific an
 - For count questions, also call get_recent_events (limit=5) to identify top offenders/rules/patterns
 - Include trend context when relevant: compare to previous period if data suggests it
 - Name the top 1-2 items (e.g. "mostly from the no-pii rule" or "primarily hitting user@example.com")
-- When there is more detail, end with a filtered link using query params:
-  blocked events: [View all →](/guard/activity?decision=blocked)
-  with dates: [View all →](/guard/activity?decision=blocked&since=YYYY-MM-DD&until=YYYY-MM-DD)
-  spend: [View spend →](/guard/spend)
-  policies: [View policies →](/guard/policies)
 - Never dump raw data or show tables — synthesize into a human answer
-- IMPORTANT: When asked to "show all", "display all", "list all", or retrieve more than 10 records, do NOT attempt to fetch them. Immediately respond: "There were X [events] — for the full list, [View all →](/guard/activity?...)" using the count you already know. Never apologize for a "technical limitation".
+- When asked to "show all" or list more than 10 records, just give the count — a link to the full list will be added automatically
+- Never construct or include URLs in your response
 """
 
 
@@ -130,10 +126,38 @@ def _llm_client(db=None, workspace_id: str | None = None):
 
 # ── Core tool loop ────────────────────────────────────────────────────────────
 
-def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tuple[list[dict], str | None]:
-    """Phase 1: Execute tool calls. Returns (final_msgs, early_text).
-    early_text is set when LLM answered without tools (no streaming needed).
-    final_msgs is set when tools were resolved and synthesis call is still needed."""
+def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
+    """Build a grounded drilldown URL from the tool calls the LLM actually made."""
+    page = "/guard/activity"
+    filters: dict[str, str] = {}
+
+    for name, args in tool_calls:
+        if name in ("get_event_count", "get_recent_events"):
+            if args.get("decision"):
+                filters["decision"] = args["decision"]
+            if args.get("since"):
+                filters["since"] = args["since"]
+            if args.get("until"):
+                filters["until"] = args["until"]
+            if args.get("rule_id"):
+                filters["rule_id"] = args["rule_id"]
+        elif name == "get_spend_summary":
+            page = "/guard/spend"
+        elif name == "list_policies":
+            page = "/guard/policies"
+        elif name == "get_savings_summary":
+            page = "/guard/spend"
+
+    if not filters and page == "/guard/activity":
+        return None
+    if filters:
+        qs = "&".join(f"{k}={v}" for k, v in filters.items())
+        return f"{page}?{qs}"
+    return page
+
+
+def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tuple[list[dict], str | None, list[tuple[str, dict]]]:
+    """Phase 1: Execute tool calls. Returns (final_msgs, early_text, tool_calls_made)."""
     from app.runtime.llm_client import LLMToolUseBlock
     from app.core.config import settings as _s
 
@@ -143,6 +167,7 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
     log.info("glens.llm_call", provider=provider, model=model, endpoint=endpoint)
     client = _llm_client(executor.db, executor.workspace_id)
     msgs = list(messages)
+    tool_calls_made: list[tuple[str, dict]] = []
 
     for _ in range(5):
         resp = client.create(model=model, messages=msgs, system=system, tools=TOOLS, max_tokens=512)
@@ -150,17 +175,18 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
         text = next((b.text for b in resp.content if hasattr(b, "text") and b.text), "")
 
         if not tool_blocks:
-            return msgs, text or "I couldn't find relevant data to answer that."
+            return msgs, text or "I couldn't find relevant data to answer that.", tool_calls_made
 
         msgs.extend(client.make_assistant_turn(resp))
         results = []
         for block in tool_blocks:
+            tool_calls_made.append((block.name, block.input))
             result = executor.call(block.name, json.dumps(block.input))
             log.debug("glens.tool", name=block.name, result_len=len(result))
             results.append((block.id, result))
         msgs.extend(client.make_tool_results_turn(results))
 
-    return msgs, None
+    return msgs, None, tool_calls_made
 
 
 def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_token) -> str:
@@ -327,14 +353,17 @@ async def glens_chat_stream(
     async def _run_work() -> None:
         try:
             # Phase 1: resolve tool calls (fast, non-streaming)
-            final_msgs, early_text = await asyncio.to_thread(_resolve_tools, llm_messages, system, executor)
+            final_msgs, early_text, tool_calls = await asyncio.to_thread(_resolve_tools, llm_messages, system, executor)
+            drilldown = _build_drilldown(tool_calls)
 
             if early_text:
-                # LLM answered without calling tools — emit as tokens for streaming feel
-                for char in early_text:
+                answer = early_text
+                if drilldown:
+                    answer += f"\n\n[View all →]({drilldown})"
+                for char in answer:
                     await event_q.put({"type": "token", "text": char})
                     await asyncio.sleep(0)
-                await event_q.put({"type": "done", "answer": early_text})
+                await event_q.put({"type": "done", "answer": answer})
                 return
 
             # Phase 2: stream synthesis (tools already resolved)
@@ -342,6 +371,12 @@ async def glens_chat_stream(
                 loop.call_soon_threadsafe(event_q.put_nowait, {"type": "token", "text": t})
 
             answer = await asyncio.to_thread(_stream_synthesis, final_msgs, system, executor, on_token)
+            if drilldown:
+                link = f"\n\n[View all →]({drilldown})"
+                for char in link:
+                    await event_q.put({"type": "token", "text": char})
+                    await asyncio.sleep(0)
+                answer += link
             await event_q.put({"type": "done", "answer": answer})
         except Exception as e:
             logger.error("glens.stream.failed", error=str(e))
