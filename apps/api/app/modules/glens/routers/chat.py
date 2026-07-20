@@ -142,6 +142,17 @@ def _llm_client(db=None, workspace_id: str | None = None):
 
 # ── Core tool loop ────────────────────────────────────────────────────────────
 
+_APOLOGY_PHRASES = (
+    "there is an issue", "unable to retrieve", "i cannot provide",
+    "i am unable", "it seems", "i'm unable", "cannot access",
+    "having trouble", "experiencing an issue",
+)
+
+def _answer_is_apology(text: str) -> bool:
+    low = text.lower()
+    return any(p in low for p in _APOLOGY_PHRASES)
+
+
 def _has_data(final_msgs: list[dict]) -> bool:
     """Return False only when every tool result was an empty/zero-count response."""
     tool_contents = [m.get("content", "") for m in final_msgs if m.get("role") == "tool"]
@@ -412,7 +423,7 @@ async def glens_chat_stream(
             answer = await asyncio.to_thread(_stream_synthesis, final_msgs, system, executor, on_token)
             tool_results = [msg.get("content", "") for msg in final_msgs if msg.get("role") == "tool"]
             check_grounded(answer, tool_results, skill="governance")
-            if drilldown:
+            if drilldown and not _answer_is_apology(answer):
                 link = f"\n\n[View all →]({drilldown})"
                 for char in link:
                     await event_q.put({"type": "token", "text": char})
