@@ -163,6 +163,10 @@ function ActivityContent() {
     if (t) setFilterTool(t)
     const r = searchParams.get("rule_id")
     if (r) setFilterRuleId(r)
+    const s = searchParams.get("since")
+    if (s) setFilterSince(s)
+    const u = searchParams.get("until")
+    if (u) setFilterUntil(u)
     // dev override left out — admins viewing all is the default; per-user
     // restriction kicks in via effectiveDeveloperFilter below.
   }, [searchParams])
