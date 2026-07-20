@@ -1,3 +1,0 @@
-[
-  {"name": "current_policies", "source": "guard_context", "description": "All workspace policies injected via [LIVE DATA]"}
-]
