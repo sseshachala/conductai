@@ -207,15 +207,20 @@ function UserBubble({ text, onEdit }: { text: string; onEdit?: (newText: string)
   )
 }
 
+function renderInline(text: string): React.ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/).map((p, j) => {
+    if (p.startsWith("**")) return <strong key={j}>{p.slice(2, -2)}</strong>
+    const link = p.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+    if (link) return <a key={j} href={link[2]} style={{ color: "var(--accent, #6366f1)", textDecoration: "underline" }}>{link[1]}</a>
+    return p
+  })
+}
+
 function renderMd(text: string): React.ReactNode[] {
   return text.split("\n").map((line, i) => {
-    // bullet: "* foo" or "- foo"
     const bullet = line.match(/^[*-]\s+(.+)/)
     const content = bullet ? bullet[1] : line
-    // inline **bold**
-    const parts = content.split(/(\*\*[^*]+\*\*)/).map((p, j) =>
-      p.startsWith("**") ? <strong key={j}>{p.slice(2, -2)}</strong> : p
-    )
+    const parts = renderInline(content)
     if (bullet) return <div key={i} style={{ paddingLeft: 12, position: "relative" }}><span style={{ position: "absolute", left: 0 }}>•</span>{parts}</div>
     return <div key={i} style={{ minHeight: line ? undefined : "0.6em" }}>{parts}</div>
   })
