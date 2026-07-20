@@ -135,8 +135,9 @@ function Sidebar({
         ))}
       </div>
 
-      <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)", fontSize: 11, color: "var(--text-muted)" }}>
-        AI governance analytics
+      <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)", fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span>AI governance analytics</span>
+        <a href="/theguard/team-memory" style={{ fontSize: 11, color: "var(--accent-text)", textDecoration: "none", fontWeight: 500 }}>Team Memory →</a>
       </div>
     </div>
   )
