@@ -125,6 +125,11 @@ class Executor:
 
     # ── Memory / session semantic search ─────────────────────────────────────
 
+    # Below this cosine-similarity score, a vector match is considered too
+    # weak to ground an answer in — surface "no confident match" instead of
+    # forcing a low-relevance result into the response (see grounding.py).
+    MIN_SIMILARITY_SCORE = 0.3
+
     def _tool_search_memory(self, q: str, limit: int = 5):
         client = embedding_client_for_workspace(self.db, self.workspace_id)
         if not client:
@@ -147,6 +152,7 @@ class Executor:
              "topic_tags": r.topic_tags or [], "repo": r.repo_full_name,
              "created_at": r.created_at.isoformat(), "score": round(1 - r.distance, 3)}
             for r in rows
+            if (1 - r.distance) >= self.MIN_SIMILARITY_SCORE
         ]
 
     def _tool_search_sessions(self, q: str, limit: int = 5):
@@ -170,6 +176,7 @@ class Executor:
              "summary": (r.report_md or "")[:500], "created_at": r.created_at.isoformat(),
              "score": round(1 - r.distance, 3)}
             for r in rows
+            if (1 - r.distance) >= self.MIN_SIMILARITY_SCORE
         ]
 
     def _tool_get_team_memory_feed(self, limit: int = 20):

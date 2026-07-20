@@ -44,6 +44,11 @@ INTENT_EXAMPLES: dict[str, list[str]] = {
         "compliance status", "SOC2 coverage", "OWASP compliance",
         "framework coverage", "how compliant are we",
     ],
+    "framework_coverage": [
+        "which frameworks are installed", "compliance framework breakdown",
+        "framework coverage by pack", "list installed frameworks",
+        "what compliance packs do we have",
+    ],
     "get_guard_config": [
         "guard config", "guard settings", "is guard enabled",
         "guard status", "what is guard configured to do",
@@ -85,6 +90,7 @@ INTENT_TO_TOOL: dict[str, str] = {
     "list_policies":         "list_policies",
     "discovery_summary":     "get_discovery_summary",
     "compliance_status":     "get_compliance_status",
+    "framework_coverage":    "get_framework_coverage",
     "get_guard_config":      "get_guard_config",
     "get_budgets":           "get_budgets",
     "search_memory":         "search_memory",

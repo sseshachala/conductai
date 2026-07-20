@@ -118,6 +118,7 @@ def _understood_as(intent: str, slots: dict) -> str:
         "list_policies": "Guard policies",
         "discovery_summary": "Agent discovery",
         "compliance_status": "Compliance status",
+        "framework_coverage": "Framework coverage",
         "get_guard_config": "Guard configuration",
         "get_budgets": "Budget limits",
         "search_memory": "Team memory search",

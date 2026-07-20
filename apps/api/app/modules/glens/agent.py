@@ -10,6 +10,7 @@ import structlog
 from app.core.config import settings
 from app.modules.glens.executor import Executor
 from app.modules.glens.formatters import format_tool_result
+from app.modules.glens.grounding import check_grounded
 from app.modules.glens.inference import chat_with_tools, dispatch_tool
 
 log = structlog.get_logger(__name__)
@@ -104,16 +105,14 @@ class Agent:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         system = f"Today is {today} (UTC).\n\n{self.system}"
         loop_msgs = [{"role": "system", "content": system}] + list(messages[-20:])
+        collected_tool_results: list = []
 
         for round_num in range(MAX_TOOL_ROUNDS):
             msg = chat_with_tools(loop_msgs, self.tools)
 
             if not msg.tool_calls:
                 # Final answer
-                try:
-                    return json.loads(msg.content or "{}")
-                except json.JSONDecodeError:
-                    return {"skill": self.skills[0]["name"], "ready": False, "answer": msg.content}
+                return self._finalize(msg.content, collected_tool_results)
 
             # Append assistant turn with tool calls (content may be None per OpenAI spec)
             loop_msgs.append({
@@ -128,6 +127,10 @@ class Agent:
                     on_event({"type": "thinking", "label": _tool_status(tc.function.name)})
                 result = executor.call(tc.function.name, tc.function.arguments)
                 log.debug("glens.agent.tool_executed", tool=tc.function.name, round=round_num)
+                try:
+                    collected_tool_results.append(json.loads(result))
+                except json.JSONDecodeError:
+                    collected_tool_results.append(result)
                 loop_msgs.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
@@ -138,7 +141,17 @@ class Agent:
         log.warning("glens.agent.max_rounds_exceeded", skill=self.skills[0]["name"])
         loop_msgs.append({"role": "user", "content": "Please give your final answer now."})
         msg = chat_with_tools(loop_msgs, self.tools)
+        return self._finalize(msg.content, collected_tool_results, default_msg="Could not generate answer.")
+
+    def _finalize(self, content: str | None, tool_results: list, default_msg: str | None = None) -> dict:
+        """Parse the model's final message and run the (non-blocking) groundedness check."""
+        skill_name = self.skills[0]["name"]
         try:
-            return json.loads(msg.content or "{}")
+            parsed = json.loads(content or "{}")
         except json.JSONDecodeError:
-            return {"skill": self.skills[0]["name"], "ready": False, "answer": msg.content or "Could not generate answer."}
+            return {"skill": skill_name, "ready": False, "answer": content or default_msg}
+
+        answer = parsed.get("answer") if isinstance(parsed, dict) else None
+        if answer:
+            check_grounded(answer, tool_results, skill=parsed.get("skill", skill_name))
+        return parsed

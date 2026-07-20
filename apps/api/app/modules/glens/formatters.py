@@ -146,7 +146,7 @@ def format_tool_result(tool: str, result) -> dict | None:
         return {
             "skill": "memory",
             "ready": False,
-            "answer": f"{len(rows)} team memory result(s) found." if rows else "No team memory results found for that query.",
+            "answer": f"{len(rows)} team memory result(s) found." if rows else "No confident team memory match found for that query.",
             "component": "MemoryResultsTable",
             "drilldown": {"path": "/guard/memory"},
             "columns": [
@@ -171,7 +171,7 @@ def format_tool_result(tool: str, result) -> dict | None:
         return {
             "skill": "session",
             "ready": False,
-            "answer": f"{len(rows)} session report(s) found." if rows else "No session reports found for that query.",
+            "answer": f"{len(rows)} session report(s) found." if rows else "No confident session report match found for that query.",
             "component": "SessionResultsTable",
             "drilldown": {"path": "/guard/session-reports"},
             "columns": [
