@@ -200,7 +200,7 @@ def _has_data(final_msgs: list[dict]) -> bool:
 
 def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
     """Build a grounded drilldown URL from the tool calls the LLM actually made."""
-    page = "/guard/activity"
+    page = "/logs/guard"
     filters: dict[str, str] = {}
 
     for name, args in tool_calls:
@@ -222,7 +222,7 @@ def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
         elif name in ("get_compliance_status", "get_framework_coverage"):
             page = "/guard/compliance"
 
-    if not filters and page == "/guard/activity":
+    if not filters and page == "/logs/guard":
         return None
     if filters:
         qs = "&".join(f"{k}={v}" for k, v in filters.items())
