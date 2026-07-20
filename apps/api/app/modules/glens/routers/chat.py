@@ -86,20 +86,12 @@ TOOLS = [
     },
 ]
 
-_SYSTEM = """\
-You are GLens, a governance assistant for ConductAI Guard.
-Today is {today}.
+def _load_system_prompt() -> str:
+    from pathlib import Path
+    return (Path(__file__).parent.parent / "prompts" / "system.txt").read_text()
 
-Answer questions about AI governance data in clear, direct prose. Be specific and use exact numbers.
-- 2-4 sentences for simple questions; a short paragraph for summaries
-- Always call the right tool first — do not guess numbers
-- For count questions, also call get_recent_events (limit=5) to identify top offenders/rules/patterns
-- Include trend context when relevant: compare to previous period if data suggests it
-- Name the top 1-2 items (e.g. "mostly from the no-pii rule" or "primarily hitting user@example.com")
-- Never dump raw data or show tables — synthesize into a human answer
-- When asked to "show all" or list more than 10 records, just give the count — a link to the full list will be added automatically
-- Never construct or include URLs in your response
-"""
+
+_SYSTEM = _load_system_prompt()
 
 
 # ── LLM client factory ────────────────────────────────────────────────────────
