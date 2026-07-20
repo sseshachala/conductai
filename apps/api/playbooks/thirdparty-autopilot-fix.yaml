@@ -37,26 +37,28 @@ on:
 blocks:
 
   fetch_issue:
-    type: tool
-    integration: github
-    action: fetch_issue
+    type: mcp
     label: Fetch issue
     description: Pull the issue from the upstream repo
-    params:
-      owner: "{{inputs.upstream_owner}}"
-      repo: "{{inputs.upstream_repo}}"
-      issue_number: "{{inputs.issue_number}}"
+    config:
+      server_name: github
+      tool_name: get_issue
+      inputs:
+        owner: "{{inputs.upstream_owner}}"
+        repo: "{{inputs.upstream_repo}}"
+        issue_number: "{{inputs.issue_number}}"
     next: fork_upstream
 
   fork_upstream:
-    type: tool
-    integration: github
-    action: fork_repo
+    type: mcp
     label: Fork upstream repo
     description: Fork into the authenticated user's GitHub account (reuses existing fork if already present)
-    params:
-      owner: "{{inputs.upstream_owner}}"
-      repo: "{{inputs.upstream_repo}}"
+    config:
+      server_name: github
+      tool_name: fork_repository
+      inputs:
+        owner: "{{inputs.upstream_owner}}"
+        repo: "{{inputs.upstream_repo}}"
     next: read_memory
 
   read_memory:
@@ -186,24 +188,25 @@ blocks:
     model: "{{inputs.model}}"
     label: Open pull request
     description: |
-      Open a PR from the pushed branch to the upstream repo via the GitHub API.
-      Capture both success and failure cleanly — do not let HTTP errors raise.
+      Open a PR from the pushed branch to the upstream repo using the github::create_pull_request tool.
+      Capture both success and failure cleanly — do not let errors raise.
 
       Repo:  {{fetch_issue.owner}}/{{fetch_issue.repo}}
       Head:  {{implement_fix.head_ref}}
       Base:  {{implement_fix.base_branch}}
       Title: fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})
 
-      In ONE run_shell call, POST to:
-        https://api.github.com/repos/{{fetch_issue.owner}}/{{fetch_issue.repo}}/pulls
-      Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-      Body: {"title": "<above>", "head": "{{implement_fix.head_ref}}",
-             "base": "{{implement_fix.base_branch}}",
-             "body": "Fixes #{{inputs.issue_number}}\n\n{{$snippet: pr_attribution}}"}
+      Use the github::create_pull_request tool:
+        - owner: {{fetch_issue.owner}}
+        - repo: {{fetch_issue.repo}}
+        - title: "fix: {{fetch_issue.title}} (closes #{{inputs.issue_number}})"
+        - head: "{{implement_fix.head_ref}}"
+        - base: "{{implement_fix.base_branch}}"
+        - body: "Fixes #{{inputs.issue_number}}\n\n{{$snippet: pr_attribution}}"
 
       Output ONLY one of these JSON lines:
-      ON SUCCESS (HTTP 201): {"pr_url": "<html_url from response>"}
-      ON FAILURE (any non-2xx): {"pr_url": null, "error": "<HTTP status + brief reason from response.message>"}
+      ON SUCCESS: {"pr_url": "<html_url from response>"}
+      ON FAILURE: {"pr_url": null, "error": "<brief reason>"}
     next: pr_opened
 
   pr_opened:

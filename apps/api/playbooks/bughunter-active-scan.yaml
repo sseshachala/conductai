@@ -224,37 +224,40 @@ blocks:
 
   # ── 6. Create GitHub issue for team visibility ───────────────────────────────
   create_github_issue:
-    type: tool
-    action: github/create_issue
+    type: mcp
     for_each: "{{ collect_findings.output }}"
     next: write_memory
-    input:
-      repo: "{{ inputs.target_repo }}"
-      title: "[{{ item.severity | upper }}] {{ item.type }} in {{ item.endpoint_or_file }}"
-      body: |
-        ## Security Finding — {{ item.type }}
+    config:
+      server_name: github
+      tool_name: create_issue
+      inputs:
+        owner: "{{ inputs.target_repo.split('/')[0] }}"
+        repo: "{{ inputs.target_repo.split('/')[1] }}"
+        title: "[{{ item.severity | upper }}] {{ item.type }} in {{ item.endpoint_or_file }}"
+        body: |
+          ## Security Finding — {{ item.type }}
 
-        **Severity:** {{ item.severity }}
-        **Skill:** {{ item.skill }}
-        **CWE:** {{ item.cwe | default('N/A') }}
-        **Location:** `{{ item.endpoint_or_file }}`
+          **Severity:** {{ item.severity }}
+          **Skill:** {{ item.skill }}
+          **CWE:** {{ item.cwe | default('N/A') }}
+          **Location:** `{{ item.endpoint_or_file }}`
 
-        ### Description
-        {{ item.description }}
+          ### Description
+          {{ item.description }}
 
-        ### Suggested Fix
-        {{ item.suggested_fix }}
+          ### Suggested Fix
+          {{ item.suggested_fix }}
 
-        ### Evidence
-        {{ item.evidence }}
+          ### Evidence
+          {{ item.evidence }}
 
-        ---
-        *Found by BugHunter Active Scan via [Conduct](https://conductai.ai)*
-      labels:
-        - security
-        - "severity-{{ item.severity }}"
-        - bughunter
-        - autopilot-ready
+          ---
+          *Found by BugHunter Active Scan via [Conduct](https://conductai.ai)*
+        labels:
+          - security
+          - "severity-{{ item.severity }}"
+          - bughunter
+          - autopilot-ready
 
   write_memory:
     type: memory

@@ -158,13 +158,18 @@ class Block(BaseModel):
     input: dict[str, Any] | None = None  # alias for params on tool blocks (#565)
 
     # — mcp blocks —
+    # ``config`` holds the full MCP block configuration dict as authored in YAML.
+    # Fields: server_name, tool_name, inputs (params), credential_key, provider,
+    # server_url, transport.  The loader maps this dict into data["config"] which
+    # mcp_block.py reads at runtime.
+    config: dict[str, Any] | None = None
     credential_key: str | None = None
     tool_name: str | None = None
 
     # — brain blocks —
     mode: Literal["single", "agentic"] | None = None
     model: str | None = None  # Claude model ID, e.g. "claude-haiku-4-5-20251001"
-    runs_on: RunsOn | None = None
+    runs_on: RunsOn | str | None = None  # str form: "e2b" | "modal" shorthand
     custom_instructions: str | None = None  # user-editable zone, appended to description at runtime
     prompt_file: str | None = None  # path relative to playbook dir, e.g. prompts/fetch_issue.txt
     system: str | None = None   # brain block system prompt (alternative to description) (#565)
@@ -266,13 +271,18 @@ class Block(BaseModel):
                     "output blocks require an `output:` section, or `channels` + `template`"
                 )
         elif t == "mcp":
-            has_provider = bool((self.config or {}).get("provider"))
-            if not self.credential_key and not has_provider:
+            cfg = self.config or {}
+            has_provider = bool(cfg.get("provider"))
+            has_server_name = bool(cfg.get("server_name"))  # YAML-authored MCP blocks
+            has_credential = bool(self.credential_key or cfg.get("credential_key"))
+            if not has_provider and not has_server_name and not has_credential:
                 raise ValueError(
-                    "mcp blocks require `credential_key` or a configured MCP server (provider)"
+                    "mcp blocks require `config.server_name`, `config.provider`, or `credential_key`"
                 )
-            if not self.tool_name:
-                raise ValueError("mcp blocks require `tool_name`")
+            # tool_name may be top-level or nested inside config
+            effective_tool = self.tool_name or cfg.get("tool_name")
+            if not effective_tool:
+                raise ValueError("mcp blocks require `tool_name` or `config.tool_name`")
         return self
 
 

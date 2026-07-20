@@ -101,19 +101,17 @@ blocks:
          <summary of the vulnerability>
          Patched to: <patched_version>"
 
-      6. Push and open PR:
+      6. Push branch and open PR:
          git remote set-url origin https://<github_token>@github.com/<repo>.git
          git push origin security/patch-<package>-<cve or date>
 
-         POST https://api.github.com/repos/<repo>/pulls
-         Headers: Authorization: token <github_token>
-         Body:
-         {
-           "title": "security: patch <package> (<cve>, <severity>)",
-           "head": "security/patch-<package>-<cve or date>",
-           "base": "<default_branch>",
-           "body": "## Security Patch\n\n**Package:** <package>\n**CVE:** <cve>\n**Severity:** <severity>\n**Patched to:** <patched_version>\n\n### Vulnerability summary\n<summary>\n\n---\n*Automated security patch by Conduct AI. Review the diff and merge when CI is green.*"
-         }
+         Use the github::create_pull_request tool:
+         - owner: (extract owner from <repo>)
+         - repo: (extract repo name from <repo>)
+         - title: "security: patch <package> (<cve>, <severity>)"
+         - head: "security/patch-<package>-<cve or date>"
+         - base: "<default_branch>"
+         - body: "## Security Patch\n\n**Package:** <package>\n**CVE:** <cve>\n**Severity:** <severity>\n**Patched to:** <patched_version>\n\n### Vulnerability summary\n<summary>\n\n---\n*Automated security patch by Conduct AI. Review the diff and merge when CI is green.*"
 
       {% if recall_context.entries %}
       Prior context for this repo:
