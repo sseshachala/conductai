@@ -39,6 +39,7 @@ def _executor_tool_names() -> set[str]:
 
 def test_every_intent_has_examples():
     """Every intent must have at least one example phrase for embedding routing."""
+    assert INTENT_EXAMPLES, "INTENT_EXAMPLES is empty — no intents registered for semantic routing"
     empty = [intent for intent, examples in INTENT_EXAMPLES.items() if not examples]
     assert not empty, f"Intents with no example phrases: {empty}"
 

@@ -57,6 +57,14 @@ def _tool_status(tool_name: str) -> str:
     return _TOOL_STATUS.get(tool_name, f"Running {tool_name}...")
 
 
+def _parse_tool_result(result: str):
+    """Best-effort JSON decode of a raw tool result; falls back to the raw string."""
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError:
+        return result
+
+
 def _build_system(skills: list[dict]) -> str:
     if len(skills) == 1:
         return skills[0]["prompt"]
@@ -127,10 +135,7 @@ class Agent:
                     on_event({"type": "thinking", "label": _tool_status(tc.function.name)})
                 result = executor.call(tc.function.name, tc.function.arguments)
                 log.debug("glens.agent.tool_executed", tool=tc.function.name, round=round_num)
-                try:
-                    collected_tool_results.append(json.loads(result))
-                except json.JSONDecodeError:
-                    collected_tool_results.append(result)
+                collected_tool_results.append(_parse_tool_result(result))
                 loop_msgs.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
@@ -141,15 +146,15 @@ class Agent:
         log.warning("glens.agent.max_rounds_exceeded", skill=self.skills[0]["name"])
         loop_msgs.append({"role": "user", "content": "Please give your final answer now."})
         msg = chat_with_tools(loop_msgs, self.tools)
-        return self._finalize(msg.content, collected_tool_results, default_msg="Could not generate answer.")
+        return self._finalize(msg.content, collected_tool_results, fallback_answer="Could not generate answer.")
 
-    def _finalize(self, content: str | None, tool_results: list, default_msg: str | None = None) -> dict:
+    def _finalize(self, content: str | None, tool_results: list, fallback_answer: str | None = None) -> dict:
         """Parse the model's final message and run the (non-blocking) groundedness check."""
         skill_name = self.skills[0]["name"]
         try:
             parsed = json.loads(content or "{}")
         except json.JSONDecodeError:
-            return {"skill": skill_name, "ready": False, "answer": content or default_msg}
+            return {"skill": skill_name, "ready": False, "answer": content or fallback_answer}
 
         answer = parsed.get("answer") if isinstance(parsed, dict) else None
         if answer:

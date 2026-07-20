@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Any
 
 import structlog
 
@@ -18,6 +19,10 @@ log = structlog.get_logger(__name__)
 
 # Matches integers and decimals, including those with thousands separators
 # or a leading currency symbol (e.g. "$1,240", "12", "3.5", "42%").
+# - `[\$]?` / trailing `%?` are match-only (not captured) since the symbol
+#   itself isn't part of the numeric value being compared.
+# - `[\d,]*` allows thousands separators (e.g. "1,240") which are stripped
+#   before parsing with float().
 _NUMBER_RE = re.compile(r"[\$]?(\d[\d,]*(?:\.\d+)?)%?")
 
 # Small integers are extremely common in prose (e.g. "a few", numbered lists,
@@ -42,7 +47,7 @@ def _extract_numbers(text: str) -> set[str]:
     return numbers
 
 
-def _flatten_to_text(value) -> str:
+def _flatten_to_text(value: Any) -> str:
     """Serialize a tool result (dict/list/primitive) to a single searchable string."""
     if isinstance(value, str):
         return value
