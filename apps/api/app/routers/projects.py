@@ -979,12 +979,13 @@ def _seed_workflow_from_template(db, project_id: uuid.UUID, tmpl) -> None:
 
 @router.post("/admin/backfill-session-report-embeddings", status_code=200)
 def backfill_session_report_embeddings(
-    x_admin_secret: Annotated[str | None, Header()] = None,
+    authorization: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
 ):
     from app.modules.guard.embedding import embedding_client_for_workspace
-    if not settings.admin_secret or not hmac.compare_digest(x_admin_secret or "", settings.admin_secret):
-        raise HTTPException(status_code=403, detail="Invalid admin secret")
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    if not settings.cli_api_key or not hmac.compare_digest(token, settings.cli_api_key):
+        raise HTTPException(status_code=403, detail="Invalid token")
 
     rows = db.execute(text(
         "SELECT id, workspace_id, report_md FROM session_reports WHERE embedding IS NULL"
