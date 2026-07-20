@@ -973,3 +973,46 @@ def _seed_workflow_from_template(db, project_id: uuid.UUID, tmpl) -> None:
 
     db.execute(text("UPDATE workflows SET current_version_id = :vid WHERE id = :id"),
                {"vid": str(version_id), "id": str(wf_id)})
+
+
+# ── One-off backfill (remove after use) ──────────────────────────────────────
+
+@router.post("/admin/backfill-session-report-embeddings", status_code=200)
+def backfill_session_report_embeddings(
+    x_admin_secret: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db),
+):
+    from app.modules.guard.embedding import embedding_client_for_workspace
+    if not settings.admin_secret or not hmac.compare_digest(x_admin_secret or "", settings.admin_secret):
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+
+    rows = db.execute(text(
+        "SELECT id, workspace_id, report_md FROM session_reports WHERE embedding IS NULL"
+    )).fetchall()
+
+    if not rows:
+        return {"backfilled": 0, "message": "Nothing to do"}
+
+    workspace_id = str(rows[0].workspace_id)
+    client = embedding_client_for_workspace(db, workspace_id)
+    if not client:
+        raise HTTPException(status_code=500, detail="No embedding client — OPENAI_API_KEY not in workspace env_vars")
+
+    ok, failed = 0, []
+    for row in rows:
+        txt = (row.report_md or "")[:8000]
+        if not txt.strip():
+            continue
+        try:
+            vec = client.embed(txt)
+            db.execute(
+                text("UPDATE session_reports SET embedding = CAST(:vec AS vector) WHERE id = :id"),
+                {"vec": str(vec), "id": str(row.id)},
+            )
+            db.commit()
+            ok += 1
+        except Exception as e:
+            db.rollback()
+            failed.append({"id": str(row.id), "error": str(e)})
+
+    return {"backfilled": ok, "total": len(rows), "failed": failed}
