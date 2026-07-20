@@ -352,7 +352,7 @@
             "match_tool": "filesystem-write",
             "match_ai_tool": "claude-code,codex-cli,cursor,windsurf",
             "match_path_pattern": "(/prod/|/production/|\\.env\\.prod|render\\.yaml|vercel\\.json|Dockerfile)",
-            "action": "audited",
+            "action": "audit",
             "message": "Write to production configuration detected \u2014 logged for audit trail.",
             "severity": "medium",
             "frameworks": [
@@ -366,7 +366,7 @@
             "non_overridable": false,
             "description": "Audit every workflow trigger — no pattern required, fires on all workflow tool calls",
             "match_tool": "workflow",
-            "action": "audited",
+            "action": "audit",
             "message": "Workflow trigger logged for audit trail.",
             "severity": "low",
             "frameworks": [
@@ -440,7 +440,7 @@
             "non_overridable": false,
             "description": "Audit all MCP server tool calls",
             "match_mcp_server": "*",
-            "action": "audited",
+            "action": "audit",
             "message": "MCP tool call logged for audit trail.",
             "severity": "low",
             "frameworks": [
