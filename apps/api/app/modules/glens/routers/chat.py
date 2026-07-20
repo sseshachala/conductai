@@ -127,10 +127,13 @@ def _llm_client(db=None, workspace_id: str | None = None):
 def _run_tool_loop(messages: list[dict], system: str, executor: Executor) -> str:
     """Run LLM with tools until it returns prose. Synchronous — call via asyncio.to_thread."""
     from app.runtime.llm_client import LLMToolUseBlock
-    from app.core.config import settings
+    from app.core.config import settings as _s
 
+    provider = _s.conduct_inference_provider or "openai"
+    model = _s.conduct_inference_model_name or "gpt-4o-mini"
+    endpoint = (_s.conduct_inference_endpoint_url or "").rstrip("/") or "(default)"
+    log.info("glens.llm_call", provider=provider, model=model, endpoint=endpoint)
     client = _llm_client(executor.db, executor.workspace_id)
-    model = settings.conduct_inference_model_name or "gpt-4o-mini"
     msgs = list(messages)
 
     for _ in range(5):
