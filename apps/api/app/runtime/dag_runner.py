@@ -513,9 +513,9 @@ def _execute_memory_inner(block: dict, state: dict, db, run_id: str, workspace_i
     return _memory_inner_impl(block, state, db, run_id, workspace_id, playbook_slug)
 
 
-def _execute_mcp(block: dict, state: dict, cred_store: object) -> dict:
+def _execute_mcp(block: dict, state: dict, cred_store: object, workspace_id: str = "") -> dict:
     from app.runtime.blocks.mcp_block import _execute_mcp as _mcp_impl
-    return _mcp_impl(block, state, cred_store)
+    return _mcp_impl(block, state, cred_store, workspace_id=workspace_id)
 
 
 # ── for_each resolution ───────────────────────────────────────────────────────
@@ -709,7 +709,7 @@ def _dispatch_single_block(
         result = {"status": "skipped", "reason": "guard_applied_automatically"}
 
     elif block_type == "mcp":
-        result = _execute_mcp(block, state, credentials)
+        result = _execute_mcp(block, state, credentials, workspace_id=workspace_id_str)
 
     elif block_type == "for_each":
         # Called per-item by the for_each expansion loop (lines ~1260).

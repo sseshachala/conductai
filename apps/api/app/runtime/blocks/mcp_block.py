@@ -11,13 +11,13 @@ import structlog
 log = structlog.get_logger(__name__)
 
 
-def _execute_mcp(block: dict, state: dict, cred_store: object) -> dict:
+def _execute_mcp(block: dict, state: dict, cred_store: object, workspace_id: str = "") -> dict:
     """Execute an MCP tool call.
 
     Config may specify the server via either:
-    - ``credential_key``: legacy path — looks up the credential vault for server_url + token.
-    - ``provider``: new canvas path — a UUID from the ``mcp_servers`` table; server_url and
-      encrypted_auth are fetched directly from the DB, decrypted at point of use.
+    - ``server_name``: playbook path — logical name matched against mcp_servers.name for the workspace.
+    - ``provider``: canvas path — UUID from the mcp_servers table.
+    - ``credential_key``: legacy path — credential vault lookup for server_url + token.
     """
     from app.runtime.integrations.mcp_client import call_tool
     from app.runtime.tool_engine import _resolve_refs
@@ -27,6 +27,7 @@ def _execute_mcp(block: dict, state: dict, cred_store: object) -> dict:
 
     credential_key = config.get("credential_key", "")
     server_id      = config.get("provider", "")  # UUID stored by canvas MCP block
+    server_name    = config.get("server_name", "")  # logical name used in playbooks
     tool_name      = config.get("tool_name", "")
     transport      = config.get("transport", "auto")
     raw_params     = config.get("params", {}) or {}
@@ -38,7 +39,32 @@ def _execute_mcp(block: dict, state: dict, cred_store: object) -> dict:
     server_url: str | None = config.get("server_url") or None
     token: str | None = None
 
-    if server_id and not credential_key:
+    if server_name and not server_id and not credential_key:
+        # Playbook path: resolve logical name → mcp_servers row for this workspace.
+        from sqlalchemy import text as _text
+        from app.core.database import get_db as _get_db
+        from app.core.crypto import decrypt as _decrypt
+
+        db = next(_get_db())
+        try:
+            row = db.execute(
+                _text(
+                    "SELECT url, transport, encrypted_auth FROM mcp_servers "
+                    "WHERE name = :name AND workspace_id = :ws"
+                ),
+                {"name": server_name, "ws": workspace_id},
+            ).fetchone()
+        finally:
+            db.close()
+
+        if not row:
+            return {"skipped": True, "reason": f"MCP server '{server_name}' not registered in workspace"}
+
+        server_url = row.url
+        transport  = row.transport or transport
+        token = _decrypt(row.encrypted_auth).get("token") if row.encrypted_auth else None
+
+    elif server_id and not credential_key:
         # New path: resolve server from mcp_servers table.
         from sqlalchemy import text as _text
         from app.core.database import get_db as _get_db
