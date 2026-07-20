@@ -77,7 +77,8 @@ class OpenAIClient:
             json=payload,
             timeout=60,
         )
-        r.raise_for_status()
+        if r.status_code >= 400:
+            raise Exception(f"OpenAI {r.status_code}: {r.text[:500]}")
         raw = r.json()
 
         choice = ((raw.get("choices") or [{}])[0])
