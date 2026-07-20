@@ -73,6 +73,8 @@ class HookEvent(BaseModel):
     blast_radius: dict | None = None
     os_info: str | None = None
     hostname: str | None = None
+    goal_id:   str | None = None
+    goal_name: str | None = None
 
 
 class UsageUpdate(BaseModel):
@@ -121,6 +123,8 @@ class EventOut(BaseModel):
     ts: str
     entry_hash: str | None = None
     policy_hash: str | None = None
+    goal_id:   str | None = None
+    goal_name: str | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -155,6 +159,8 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "ts": e.ts.isoformat(),
         "entry_hash": e.entry_hash,
         "policy_hash": e.policy_hash,
+        "goal_id": e.goal_id,
+        "goal_name": e.goal_name,
     }
 
 
@@ -411,6 +417,8 @@ def ingest_event(
         previous_hash=prev_hash,
         entry_hash=entry_hash,
         policy_hash=policy_hash,
+        goal_id=body.goal_id,
+        goal_name=body.goal_name,
     )
     db.add(event)
     db.flush()  # get event.id before commit
