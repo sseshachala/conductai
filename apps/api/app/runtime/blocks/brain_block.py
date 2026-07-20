@@ -182,6 +182,84 @@ def _extract_last_json_object(text: str) -> dict | None:
     return None
 
 
+def _load_workspace_mcp_tools(workspace_id: str, environment_id: str | None, db) -> list[dict]:
+    """Query registered MCP servers and return their tools in Anthropic tool format.
+
+    Tool names are prefixed as ``{server_name}::{tool_name}`` so the dispatcher
+    can split on ``::`` to route the call.  Fail-open: server connection errors
+    are logged and skipped — they must never kill the brain block.
+    """
+    import json as _json
+
+    # Deferred imports — must stay inside this function to avoid circular imports
+    # at module load time (brain_block -> models -> database -> app startup).
+    from app.core.crypto import decrypt as _decrypt
+
+    tools: list[dict] = []
+
+    try:
+        from app.models.mcp_server import McpServer as _McpServer
+        query = db.query(_McpServer).filter(_McpServer.workspace_id == workspace_id)
+        if environment_id:
+            query = query.filter(
+                (_McpServer.environment_id == environment_id)
+                | (_McpServer.environment_id.is_(None))
+            )
+        servers = query.all()
+    except Exception as exc:
+        log.warning("brain.mcp_tools.query_failed", workspace_id=workspace_id, error=str(exc))
+        return tools
+
+    from app.runtime.integrations import mcp_client as _mcp_client
+
+    for server in servers:
+        cache_key = f"mcp_tools:{server.id}"
+        raw_tools: list[dict] | None = None
+
+        # Cache read — best effort
+        try:
+            import redis as _redis
+            r = _redis.from_url(settings.redis_url, decode_responses=True)
+            cached = r.get(cache_key)
+            if cached:
+                raw_tools = _json.loads(cached)
+        except Exception:
+            pass
+
+        if raw_tools is None:
+            try:
+                token = _decrypt(server.encrypted_auth).get("token") if server.encrypted_auth else None
+                raw_tools, _ = _mcp_client.list_tools(server.url, token, server.transport or "auto")
+                # Cache write — best effort
+                try:
+                    r = _redis.from_url(settings.redis_url, decode_responses=True)
+                    r.setex(cache_key, 300, _json.dumps(raw_tools))
+                except Exception:
+                    pass
+            except Exception as exc:
+                log.warning(
+                    "brain.mcp_tools.server_unreachable",
+                    server_id=str(server.id),
+                    server_name=server.name,
+                    error=str(exc),
+                )
+                continue
+
+        for t in raw_tools:
+            tool_name = t.get("name", "")
+            if not tool_name:
+                continue
+            tools.append({
+                "name": f"{server.name}::{tool_name}",
+                "description": (
+                    f"[MCP:{server.name}] {t.get('description', '')}"
+                ).strip(),
+                "input_schema": t.get("inputSchema") or t.get("input_schema") or {"type": "object", "properties": {}},
+            })
+
+    return tools
+
+
 def _execute_brain(
     block: dict,
     state: dict,
@@ -494,6 +572,40 @@ def _execute_brain(
             if _allowed_tools_cfg is None or t["name"] in _allowed_tools_cfg
         ]
 
+        # Load MCP tools for this workspace and append them to the active tool list.
+        # _load_workspace_mcp_tools is fail-open — always returns a list, never raises.
+        if db and workspace_id:
+            _mcp_tools = _load_workspace_mcp_tools(workspace_id, environment_id, db)
+            if _mcp_tools:
+                _active_tools = _active_tools + _mcp_tools
+                log.debug(
+                    "brain.mcp_tools.loaded",
+                    count=len(_mcp_tools),
+                    workspace_id=workspace_id,
+                )
+
+        # Build a lookup: {server_name -> McpServer row} for MCP dispatch during tool calls.
+        # Populated lazily on first MCP tool call.
+        _mcp_server_cache: dict | None = None
+
+        def _get_mcp_server_map():
+            nonlocal _mcp_server_cache
+            if _mcp_server_cache is not None:
+                return _mcp_server_cache
+            _mcp_server_cache = {}
+            if not db or not workspace_id:
+                return _mcp_server_cache
+            try:
+                from app.models.mcp_server import McpServer as _McpServer
+                servers = db.query(_McpServer).filter(
+                    _McpServer.workspace_id == workspace_id
+                ).all()
+                for s in servers:
+                    _mcp_server_cache[s.name] = s
+            except Exception as exc:
+                log.warning("brain.mcp_dispatch.map_failed", error=str(exc))
+            return _mcp_server_cache
+
         while turns < max_turns:
             # Skip turns that were already completed before a crash.
             # The LLM cache hit path below reconstructs messages correctly.
@@ -682,8 +794,99 @@ def _execute_brain(
                     }
 
                 try:
-                    result_content = _dispatch_with_creds(tc.name, tc.input)
-                    result_content = _classify_tool_error(result_content)
+                    if "::" in tc.name:
+                        # MCP tool dispatch — server_name::tool_name
+                        _mcp_server_name, _mcp_tool_name = tc.name.split("::", 1)
+
+                        # Guard check before every MCP tool call
+                        if state.get("__guard_enabled") and db and workspace_id:
+                            try:
+                                from app.modules.guard.routers.mcp import _match_policy, _get_rules
+                                import uuid as _uuid
+                                _guard_rules = _get_rules(db, _uuid.UUID(workspace_id))
+
+                                # Evaluate match_mcp_server and match_tool against MCP calls
+                                _mcp_inp_text = json.dumps(tc.input)
+                                _guard_hit = None
+                                _ACTION_PRIORITY = {"block": 0, "approval": 1, "warn": 2, "audit": 3}
+                                _best_priority = 999
+                                import re as _re
+                                for _rule in _guard_rules:
+                                    # match_mcp_server — matches against server name prefix
+                                    _ms = (_rule.get("match_mcp_server") or "").strip()
+                                    if _ms and _ms != "*":
+                                        if not _re.fullmatch(_ms, _mcp_server_name, _re.IGNORECASE):
+                                            continue
+                                    # match_tool — matches against the MCP tool name (after ::)
+                                    _mt = (_rule.get("match_tool") or "").strip()
+                                    if _mt and _mt != "*":
+                                        _mt_allowed = [t.strip() for t in _mt.split(",")]
+                                        if _mcp_tool_name.lower() not in _mt_allowed:
+                                            # Also try regex for patterns like delete_.*
+                                            try:
+                                                if not any(_re.fullmatch(p, _mcp_tool_name, _re.IGNORECASE) for p in _mt_allowed):
+                                                    continue
+                                            except _re.error:
+                                                continue
+                                    # match_pattern — against serialised input
+                                    _mp = _rule.get("match_pattern")
+                                    if _mp:
+                                        try:
+                                            if not _re.search(_mp, _mcp_inp_text, _re.IGNORECASE):
+                                                continue
+                                        except _re.error:
+                                            continue
+                                    _p = _ACTION_PRIORITY.get(_rule.get("action", "audit"), 3)
+                                    if _p < _best_priority:
+                                        _best_priority = _p
+                                        _guard_hit = _rule
+
+                                if _guard_hit:
+                                    _guard_action = _guard_hit.get("action", "audit")
+                                    _guard_msg = _guard_hit.get("message", "")
+                                    if db and run_id:
+                                        _emit(db, run_id, block_id, "brain_tool_call", {
+                                            "tool": tc.name,
+                                            "guard_action": _guard_action,
+                                            "guard_rule": _guard_hit.get("id"),
+                                            "guard_message": _guard_msg,
+                                            "turn": turns,
+                                        })
+                                    if _guard_action == "block":
+                                        raw_tool_results.append((tc.id, f"[guard_blocked] {_guard_msg}"))
+                                        continue
+                            except Exception as _guard_exc:
+                                log.warning("brain.mcp_dispatch.guard_failed", error=str(_guard_exc))
+
+                        _mcp_map = _get_mcp_server_map()
+                        _mcp_server_row = _mcp_map.get(_mcp_server_name)
+                        if not _mcp_server_row:
+                            result_content = f"[mcp_error] MCP server '{_mcp_server_name}' not found in workspace"
+                        else:
+                            try:
+                                from app.core.crypto import decrypt as _decrypt
+                                from app.runtime.integrations import mcp_client as _mcp_client
+                                _mcp_token = (
+                                    _decrypt(_mcp_server_row.encrypted_auth).get("token")
+                                    if _mcp_server_row.encrypted_auth else None
+                                )
+                                _mcp_result = _mcp_client.call_tool(
+                                    _mcp_server_row.url,
+                                    _mcp_token,
+                                    _mcp_tool_name,
+                                    tc.input or {},
+                                    transport=_mcp_server_row.transport or "auto",
+                                )
+                                if isinstance(_mcp_result, dict):
+                                    result_content = json.dumps(_mcp_result)
+                                else:
+                                    result_content = str(_mcp_result)
+                            except Exception as _mcp_exc:
+                                result_content = f"[mcp_error] {_mcp_exc!s:.500}"
+                        result_content = _classify_tool_error(result_content)
+                    else:
+                        result_content = _dispatch_with_creds(tc.name, tc.input)
+                        result_content = _classify_tool_error(result_content)
                 except RuntimeError as sandbox_err:
                     if db and run_id:
                         _emit(db, run_id, block_id, "brain_tool_call", {

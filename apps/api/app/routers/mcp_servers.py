@@ -175,6 +175,64 @@ def test_mcp_connection(
     )
 
 
+class McpToolOut(BaseModel):
+    name: str
+    description: str
+    inputSchema: dict
+
+
+_MCP_TOOLS_CACHE_TTL = 300  # 5 minutes
+
+
+def _redis_client():
+    import redis as _redis
+    from app.core.config import settings as _settings
+    return _redis.from_url(_settings.redis_url, decode_responses=True)
+
+
+@router.get("/{server_id}/tools", response_model=list[McpToolOut])
+def list_mcp_server_tools(
+    server_id: str,
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
+    _: Annotated[str, Depends(require_permission("platform.workflows.view"))],
+    db: Session = Depends(get_db),
+):
+    """List tools exposed by an MCP server. Results are cached for 5 minutes."""
+    from app.runtime.integrations.mcp_client import list_tools
+
+    row = db.execute(
+        text("SELECT * FROM mcp_servers WHERE id = :id AND workspace_id = :ws"),
+        {"id": server_id, "ws": workspace_id},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+
+    cache_key = f"mcp_tools:{server_id}"
+    try:
+        r = _redis_client()
+        cached = r.get(cache_key)
+        if cached:
+            import json as _json
+            return _json.loads(cached)
+    except Exception:
+        pass
+
+    token = decrypt(row.encrypted_auth).get("token") if row.encrypted_auth else None
+    try:
+        tools, _ = list_tools(row.url, token, row.transport or "auto")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"MCP server unreachable: {exc!s:.200}")
+
+    try:
+        import json as _json
+        r = _redis_client()
+        r.setex(cache_key, _MCP_TOOLS_CACHE_TTL, _json.dumps(tools))
+    except Exception:
+        pass
+
+    return tools
+
+
 @router.delete("/{server_id}", status_code=204)
 def delete_mcp_server(
     server_id: str,
