@@ -102,7 +102,7 @@ Answer questions about AI governance data in clear, direct prose. Be specific an
   spend: [View spend →](/guard/spend)
   policies: [View policies →](/guard/policies)
 - Never dump raw data or show tables — synthesize into a human answer
-- When asked to "show all" or list more than ~10 records, give the count and link to the relevant page instead
+- IMPORTANT: When asked to "show all", "display all", "list all", or retrieve more than 10 records, do NOT attempt to fetch them. Immediately respond: "There were X [events] — for the full list, [View all →](/guard/activity?...)" using the count you already know. Never apologize for a "technical limitation".
 """
 
 
