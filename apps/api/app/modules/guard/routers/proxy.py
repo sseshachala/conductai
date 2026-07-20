@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 import re
 
 from app.core.auth import get_workspace_id, require_permission, resolve_agent_token
+from app.core.pii import redact_secrets
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.database import SessionLocal, get_db
@@ -328,6 +329,7 @@ async def _proxy(
         _workflow = request.headers.get("x-conductai-workflow") or None
         _workflow_id = request.headers.get("x-conductai-workflow-id") or None
         _environment_id = request.headers.get("x-conductai-environment-id") or None
+        _hook_session_id = request.headers.get("x-conduct-session-id") or None
 
         # 4c. Pre-call Guard policy evaluation
         prompt_summary = _flatten_prompt(body)[:200]
@@ -340,7 +342,7 @@ async def _proxy(
                 body=body, response_bytes=None,
                 prompt_summary=prompt_summary, user_email=_user_email,
                 conductai_run_id=_run_id, conductai_workflow=_workflow,
-                conductai_workflow_id=_workflow_id,
+                conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
             )
             return JSONResponse(status_code=403, content={
                 "error": {"type": "guard_block", "message": decision["message"], "rule": decision["rule_id"]},
@@ -365,6 +367,12 @@ async def _proxy(
     finally:
         db.close()
 
+    # 5.5 Redact secrets from body before forwarding — runs after policy eval so
+    # credential-leak rules still fire first and can block.
+    body, _redacted = _redact_body(body)
+    if _redacted:
+        log.info("guard.proxy.redacted", types=_redacted, workspace_id=workspace_id)
+
     # 6. Forward + stream back. Use a fresh DB session inside the background task.
     is_stream = bool(body.get("stream"))
     # Pass through all vendor-specific headers the SDK sends (anthropic-beta,
@@ -385,7 +393,7 @@ async def _proxy(
         is_stream=is_stream,
         extra_headers=extra_headers,
         background=background,
-        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, _audit_decision, _audit_rule_id, started, body, prompt_summary, _user_email, _run_id, _workflow, _workflow_id),
+        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, _audit_decision, _audit_rule_id, started, body, prompt_summary, _user_email, _run_id, _workflow, _workflow_id, _hook_session_id),
         upstream_api_key=_upstream_key,
         vendor_key=_vault_key_val,
         provider=provider,
@@ -550,6 +558,37 @@ def _rule_matches(rule: dict, provider: str, model: str, prompt_text: str) -> bo
     return True
 
 
+def _redact_body(body: dict) -> tuple[dict, list[str]]:
+    """Redact credentials from prompt body before forwarding to the LLM provider.
+
+    Runs after policy evaluation so credential-leak rules still fire first.
+    Returns a deep-copied body with secrets replaced by [REDACTED:label] and
+    a list of secret type labels found.
+    """
+    import copy
+    body = copy.deepcopy(body)
+    found: list[str] = []
+
+    def _clean(text: str) -> str:
+        cleaned, secrets = redact_secrets(text)
+        found.extend(secrets)
+        return cleaned
+
+    if isinstance(body.get("system"), str):
+        body["system"] = _clean(body["system"])
+
+    for msg in body.get("messages") or []:
+        content = msg.get("content")
+        if isinstance(content, str):
+            msg["content"] = _clean(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and isinstance(block.get("text"), str):
+                    block["text"] = _clean(block["text"])
+
+    return body, found
+
+
 def _flatten_prompt(body: dict) -> str:
     """Best-effort: join all user message contents for prompt-pattern matching.
 
@@ -679,6 +718,7 @@ async def _forward(
         conductai_run_id=audit_args[11] if len(audit_args) > 11 else None,
         conductai_workflow=audit_args[12] if len(audit_args) > 12 else None,
         conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
+        hook_session_id=audit_args[14] if len(audit_args) > 14 else None,
     )
     return JSONResponse(
         status_code=resp.status_code,
@@ -710,6 +750,7 @@ async def _stream_chunks(
             conductai_run_id=audit_args[11] if len(audit_args) > 11 else None,
             conductai_workflow=audit_args[12] if len(audit_args) > 12 else None,
             conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
+            hook_session_id=audit_args[14] if len(audit_args) > 14 else None,
         )
 
 
@@ -719,7 +760,7 @@ def _record_audit(
     *, body: dict, response_bytes: bytes | None, upstream: str | None = None,
     prompt_summary: str = "", user_email: str | None = None,
     conductai_run_id: str | None = None, conductai_workflow: str | None = None,
-    conductai_workflow_id: str | None = None,
+    conductai_workflow_id: str | None = None, hook_session_id: str | None = None,
 ) -> None:
     """Background task — best-effort, never blocks the response."""
     db = SessionLocal()
@@ -738,14 +779,16 @@ def _record_audit(
                   decision, rule_id, ts,
                   tokens_before, tokens_after, duration_ms,
                   cost_usd_after, input_summary, user_email,
-                  conductai_run_id, conductai_workflow, conductai_workflow_id
+                  conductai_run_id, conductai_workflow, conductai_workflow_id,
+                  hook_session_id
                 ) VALUES (
                   :ws, :uid, :ai, NULL,
                   'proxy', :prov, :model,
                   :dec, :rid, :ts,
                   :tin, :tout, :dur,
                   :cost, :summary, :email,
-                  :run_id, :workflow, :workflow_id
+                  :run_id, :workflow, :workflow_id,
+                  :hook_session_id
                 )
             """),
             {
@@ -761,6 +804,7 @@ def _record_audit(
                 "run_id": conductai_run_id,
                 "workflow": conductai_workflow,
                 "workflow_id": conductai_workflow_id,
+                "hook_session_id": hook_session_id,
             },
         )
         db.commit()
