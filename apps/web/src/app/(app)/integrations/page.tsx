@@ -89,6 +89,7 @@ function McpModal({
   onTest,
   onClose,
   isSystem,
+  isConductManaged,
   hasExistingAuth,
 }: {
   mode: "add" | "edit"
@@ -98,6 +99,7 @@ function McpModal({
   onTest: (body: { url: string; auth_token: string | null; transport: string }) => Promise<{ ok: boolean; msg: string }>
   onClose: () => void
   isSystem?: boolean
+  isConductManaged?: boolean
   hasExistingAuth?: boolean
 }) {
   const [form, setForm] = useState<FormState>(initial)
@@ -105,7 +107,8 @@ function McpModal({
   const [error, setError] = useState("")
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
-  const readOnly = !!isSystem
+  // Conduct AI Guard token is managed by us — truly read-only. Public system servers (GitHub, Slack, Linear) are seeded by us but user-configured.
+  const readOnly = !!isConductManaged
 
   async function handleTest() {
     if (!form.url.trim()) { setError("URL is required to test."); return }
@@ -281,7 +284,7 @@ function McpModal({
               style={{ ...inputStyle, opacity: readOnly ? 0.6 : 1 }}
             />
             {(() => {
-              if (isSystem) {
+              if (isConductManaged) {
                 return (
                   <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0" }}>
                     Provisioned by Conduct on workspace creation. Rotate via <code style={{ fontFamily: "monospace", background: "var(--surface-2)", padding: "1px 4px", borderRadius: 3 }}>conduct guard rotate</code> or Settings → Tokens.
@@ -643,6 +646,7 @@ function IntegrationsPageInner({
         <McpModal
           mode={modalMode}
           isSystem={!!editTarget?.is_system}
+          isConductManaged={editTarget?.name === "Conduct AI Guard"}
           hasExistingAuth={!!editTarget?.has_auth}
           initial={initialForm}
           environments={environments}

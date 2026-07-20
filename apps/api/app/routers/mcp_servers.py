@@ -105,11 +105,13 @@ def update_mcp_server(
     db: Session = Depends(get_db),
 ):
     encrypted = encrypt({"token": body.auth_token}) if body.auth_token else None
-    existing = db.execute(text("SELECT is_system FROM mcp_servers WHERE id = :id AND workspace_id = :ws"),
+    existing = db.execute(text("SELECT is_system, name FROM mcp_servers WHERE id = :id AND workspace_id = :ws"),
                           {"id": server_id, "ws": workspace_id}).fetchone()
     is_system = existing and existing.is_system
-    # System entries: only transport can change
-    if is_system:
+    is_conduct_managed = existing and existing.name == "Conduct AI Guard"
+    # Conduct AI Guard: token managed by us, only transport can change
+    # Public system servers (GitHub, Slack, Linear): user provides their own token
+    if is_conduct_managed:
         row = db.execute(text("""
             UPDATE mcp_servers SET transport = :transport
             WHERE id = :id AND workspace_id = :ws RETURNING *

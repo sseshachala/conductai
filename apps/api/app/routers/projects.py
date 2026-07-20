@@ -350,6 +350,21 @@ def list_projects(
             ON CONFLICT DO NOTHING
         """), {"ws": str(project_id), "auth": _enc_bearer, "now": now})
 
+        # Pre-seed well-known public MCP servers (no auth — user adds token via Integrations)
+        _PUBLIC_MCP = [
+            ("github",  "https://api.githubcopilot.com/mcp", "http"),
+            ("slack",   "https://mcp.slack.com",              "sse"),
+            ("linear",  "https://mcp.linear.app/mcp",         "http"),
+        ]
+        for _name, _url, _transport in _PUBLIC_MCP:
+            db.execute(text("""
+                INSERT INTO mcp_servers
+                    (id, workspace_id, environment_id, name, url, transport, is_system, encrypted_auth, created_at)
+                VALUES
+                    (gen_random_uuid(), :ws, NULL, :name, :url, :transport, true, NULL, :now)
+                ON CONFLICT DO NOTHING
+            """), {"ws": str(project_id), "name": _name, "url": _url, "transport": _transport, "now": now})
+
         db.commit()
         return [ProjectOut(id=str(project_id), name="Engineering", owner_id=user_id,
                            is_approved=True, created_at=now, workflow_count=0)]
