@@ -150,3 +150,41 @@ def test_canonical_workspace_id_is_cached(monkeypatch):
 
     assert result1 == result2
     assert len(calls) == 1  # DB hit only once
+
+
+# ── _redact_body ─────────────────────────────────────────────────────────────
+
+from app.modules.guard.routers.proxy import _redact_body
+
+
+def test_redact_body_cleans_string_message():
+    body = {"messages": [{"role": "user", "content": "key is sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnop"}]}
+    cleaned, found = _redact_body(body)
+    assert "sk-ant" not in cleaned["messages"][0]["content"]
+    assert found  # at least one secret type detected
+
+
+def test_redact_body_cleans_system_prompt():
+    body = {"system": "DB_PASSWORD=supersecret123", "messages": []}
+    cleaned, found = _redact_body(body)
+    assert "supersecret123" not in cleaned["system"]
+
+
+def test_redact_body_cleans_content_block():
+    body = {"messages": [{"role": "user", "content": [{"type": "text", "text": "token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890AB"}]}]}
+    cleaned, found = _redact_body(body)
+    assert "ghp_" not in cleaned["messages"][0]["content"][0]["text"]
+    assert found
+
+
+def test_redact_body_no_mutation_of_original():
+    original = "postgres://user:pass@host/db"
+    body = {"messages": [{"role": "user", "content": original}]}
+    _redact_body(body)
+    assert body["messages"][0]["content"] == original  # deep copy — original unchanged
+
+
+def test_redact_body_clean_body_returns_empty_found():
+    body = {"messages": [{"role": "user", "content": "hello world"}]}
+    _, found = _redact_body(body)
+    assert found == []
