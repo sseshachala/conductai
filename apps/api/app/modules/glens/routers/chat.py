@@ -108,6 +108,31 @@ TOOLS = [
             "required": ["q"],
         },
     },
+    {
+        "name": "get_discovery_summary",
+        "description": "Get discovered AI agents: total count, how many are under Guard, coverage %, high-risk agents, breakdown by framework. Use for 'what agents are running', 'agent coverage', 'unguarded agents', 'risk score' questions.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_compliance_status",
+        "description": "Get compliance posture: overall grade (A-F), score, ASI control statuses, events in last 24h. Use for 'compliance', 'SOC2', 'grade', 'are we compliant', 'ASI controls' questions.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_framework_coverage",
+        "description": "List installed compliance framework packs (OWASP, SOC2, HIPAA, etc.) with rule counts. Use for 'which frameworks', 'compliance packs', 'framework coverage' questions.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_budgets",
+        "description": "Get spend budgets: workspace-level and per-developer monthly limits, hard limits, alert thresholds. Use for 'budget', 'spending limit', 'who has a cap' questions.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_guard_config",
+        "description": "Get Guard configuration: enforcement mode (block/warn/advisory/off), fail mode, whether Slack notifications are on. Use for 'guard settings', 'is guard blocking', 'enforcement mode' questions.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
 ]
 
 def _load_system_prompt() -> str:
@@ -188,12 +213,14 @@ def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
                 filters["until"] = args["until"]
             if args.get("rule_id"):
                 filters["rule_id"] = args["rule_id"]
-        elif name == "get_spend_summary":
+        elif name in ("get_spend_summary", "get_savings_summary", "get_budgets"):
             page = "/guard/spend"
-        elif name == "list_policies":
+        elif name in ("list_policies", "get_guard_config"):
             page = "/guard/policies"
-        elif name == "get_savings_summary":
-            page = "/guard/spend"
+        elif name in ("get_discovery_summary",):
+            page = "/guard/discovery"
+        elif name in ("get_compliance_status", "get_framework_coverage"):
+            page = "/guard/compliance"
 
     if not filters and page == "/guard/activity":
         return None
