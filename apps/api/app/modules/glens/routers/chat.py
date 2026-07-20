@@ -93,10 +93,16 @@ Today is {today}.
 Answer questions about AI governance data in clear, direct prose. Be specific and use exact numbers.
 - 2-4 sentences for simple questions; a short paragraph for summaries
 - Always call the right tool first — do not guess numbers
-- Mention the top 2-3 items when listing (e.g. top blocked users, top rules)
-- When there is more detail than fits in a summary, end with a relevant link:
-  [View all activity →](/guard/activity) | [View spend →](/guard/spend) | [View policies →](/guard/policies)
+- For count questions, also call get_recent_events (limit=5) to identify top offenders/rules/patterns
+- Include trend context when relevant: compare to previous period if data suggests it
+- Name the top 1-2 items (e.g. "mostly from the no-pii rule" or "primarily hitting user@example.com")
+- When there is more detail, end with a filtered link using query params:
+  blocked events: [View all →](/guard/activity?decision=blocked)
+  with dates: [View all →](/guard/activity?decision=blocked&since=YYYY-MM-DD&until=YYYY-MM-DD)
+  spend: [View spend →](/guard/spend)
+  policies: [View policies →](/guard/policies)
 - Never dump raw data or show tables — synthesize into a human answer
+- When asked to "show all" or list more than ~10 records, give the count and link to the relevant page instead
 """
 
 
@@ -124,8 +130,10 @@ def _llm_client(db=None, workspace_id: str | None = None):
 
 # ── Core tool loop ────────────────────────────────────────────────────────────
 
-def _run_tool_loop(messages: list[dict], system: str, executor: Executor) -> str:
-    """Run LLM with tools until it returns prose. Synchronous — call via asyncio.to_thread."""
+def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tuple[list[dict], str | None]:
+    """Phase 1: Execute tool calls. Returns (final_msgs, early_text).
+    early_text is set when LLM answered without tools (no streaming needed).
+    final_msgs is set when tools were resolved and synthesis call is still needed."""
     from app.runtime.llm_client import LLMToolUseBlock
     from app.core.config import settings as _s
 
@@ -137,19 +145,12 @@ def _run_tool_loop(messages: list[dict], system: str, executor: Executor) -> str
     msgs = list(messages)
 
     for _ in range(5):
-        resp = client.create(
-            model=model,
-            messages=msgs,
-            system=system,
-            tools=TOOLS,
-            max_tokens=1024,
-        )
-
+        resp = client.create(model=model, messages=msgs, system=system, tools=TOOLS, max_tokens=512)
         tool_blocks = [b for b in resp.content if isinstance(b, LLMToolUseBlock)]
         text = next((b.text for b in resp.content if hasattr(b, "text") and b.text), "")
 
         if not tool_blocks:
-            return text or "I couldn't find relevant data to answer that."
+            return msgs, text or "I couldn't find relevant data to answer that."
 
         msgs.extend(client.make_assistant_turn(resp))
         results = []
@@ -159,7 +160,56 @@ def _run_tool_loop(messages: list[dict], system: str, executor: Executor) -> str
             results.append((block.id, result))
         msgs.extend(client.make_tool_results_turn(results))
 
-    return text or "Could not complete the analysis."
+    return msgs, None
+
+
+def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_token) -> str:
+    """Phase 2: Stream the final synthesis response, calling on_token for each chunk."""
+    import httpx
+    from app.core.config import settings as _s
+
+    model = _s.conduct_inference_model_name or "gpt-4o-mini"
+    endpoint = (_s.conduct_inference_endpoint_url or "").rstrip("/")
+    if endpoint and endpoint.endswith("/v1"):
+        endpoint = endpoint[:-3]
+    base_url = endpoint or "https://api.openai.com"
+    api_key = _s.conduct_inference_token_id or _s.openai_api_key or "unused"
+
+    if executor.db and executor.workspace_id:
+        try:
+            from app.modules.credentials.vault import get_credential
+            provider = _s.conduct_inference_provider or "openai"
+            creds = get_credential(executor.db, executor.workspace_id, provider)
+            api_key = creds.get("api_key") or api_key
+        except Exception:
+            pass
+
+    oai_msgs = [{"role": "system", "content": system}] + msgs
+    payload = {"model": model, "messages": oai_msgs, "max_tokens": 1024, "stream": True}
+
+    full_text = ""
+    with httpx.stream(
+        "POST", f"{base_url}/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json=payload,
+        timeout=60,
+    ) as r:
+        if r.status_code >= 400:
+            body = r.read().decode()[:500]
+            raise Exception(f"OpenAI stream {r.status_code}: {body}")
+        for line in r.iter_lines():
+            if not line or line == "data: [DONE]":
+                continue
+            if line.startswith("data: "):
+                try:
+                    chunk = json.loads(line[6:])
+                    token = ((chunk.get("choices") or [{}])[0]).get("delta", {}).get("content") or ""
+                    if token:
+                        full_text += token
+                        on_token(token)
+                except Exception:
+                    pass
+    return full_text or "Could not complete the analysis."
 
 
 # ── Session helpers ───────────────────────────────────────────────────────────
@@ -276,7 +326,22 @@ async def glens_chat_stream(
 
     async def _run_work() -> None:
         try:
-            answer = await asyncio.to_thread(_run_tool_loop, llm_messages, system, executor)
+            # Phase 1: resolve tool calls (fast, non-streaming)
+            final_msgs, early_text = await asyncio.to_thread(_resolve_tools, llm_messages, system, executor)
+
+            if early_text:
+                # LLM answered without calling tools — emit as tokens for streaming feel
+                for char in early_text:
+                    await event_q.put({"type": "token", "text": char})
+                    await asyncio.sleep(0)
+                await event_q.put({"type": "done", "answer": early_text})
+                return
+
+            # Phase 2: stream synthesis (tools already resolved)
+            def on_token(t: str):
+                loop.call_soon_threadsafe(event_q.put_nowait, {"type": "token", "text": t})
+
+            answer = await asyncio.to_thread(_stream_synthesis, final_msgs, system, executor, on_token)
             await event_q.put({"type": "done", "answer": answer})
         except Exception as e:
             logger.error("glens.stream.failed", error=str(e))
@@ -292,6 +357,9 @@ async def glens_chat_stream(
                 if evt.get("type") == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': evt['message']})}\n\n"
                     break
+
+                elif evt.get("type") == "token":
+                    yield f"data: {json.dumps({'type': 'token', 'text': evt['text']})}\n\n"
 
                 elif evt.get("type") == "done":
                     answer = evt["answer"]

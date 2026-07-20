@@ -26,6 +26,7 @@ interface PolicyMapping {
 type Message =
   | { role: "user"; text: string }
   | { role: "assistant"; kind: "answer"; text: string; skill?: string; drilldown?: { path: string; filters?: Record<string, string> }; followups?: string[]; understoodAs?: string }
+  | { role: "assistant"; kind: "streaming"; text: string }
   | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string }
   | { role: "assistant"; kind: "loading"; label?: string }
   | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string }
@@ -704,6 +705,15 @@ export function GLensChatPage() {
               }
               return prev
             })
+          } else if (evt.type === "token") {
+            setMessages(prev => {
+              const last = prev[prev.length - 1]
+              if (last?.role === "assistant" && (last.kind === "loading" || last.kind === "streaming")) {
+                const current = last.kind === "streaming" ? (last as { text: string }).text : ""
+                return [...prev.slice(0, -1), { role: "assistant", kind: "streaming", text: current + (evt.text as string) }]
+              }
+              return prev
+            })
           } else if (evt.type === "done") {
             _applyData(evt, text)
           } else if (evt.type === "error") {
@@ -780,6 +790,7 @@ export function GLensChatPage() {
                 />
               )
               if (msg.kind === "loading") return <LoadingBubble key={i} label={msg.label} />
+              if (msg.kind === "streaming") return <AnswerBubble key={i} text={msg.text} skill="governance" />
               if (msg.kind === "answer") return <AnswerBubble key={i} text={msg.text} skill={msg.skill} drilldown={msg.drilldown} followups={msg.followups} onFollowup={sendMessage} understoodAs={msg.understoodAs} />
               if (msg.kind === "dashboard") return <DashboardBubble key={i} spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} />
               if (msg.kind === "blocks") return (
