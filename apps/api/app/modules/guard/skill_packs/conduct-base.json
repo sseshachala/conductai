@@ -1,9 +1,9 @@
 {
     "slug": "conduct-base",
     "name": "Conduct Base",
-    "version": "2.4.0",
+    "version": "2.6.0",
     "tier": "free",
-    "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, and workflow governance across all AI tools. 3 proxy + 13 agent + 7 surface + 4 workflow rules.",
+    "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
     "rules": [
         {
             "id": "proxy-no-credential-leak",
@@ -45,6 +45,34 @@
             "frameworks": [
                 "GDPR:Art32",
                 "HIPAA:164.514"
+            ]
+        },
+        {
+            "id": "proxy-audit-vision-input",
+            "persona": "proxy",
+            "non_overridable": false,
+            "description": "Audit LLM calls that include inline image data — text-based policy rules cannot inspect image contents",
+            "match_pattern": "data:image/(png|jpeg|gif|webp|bmp|tiff)",
+            "action": "audit",
+            "message": "Vision/image content detected in LLM prompt. Text policies cannot inspect image contents — OCR or handwritten data may bypass scanning.",
+            "severity": "medium",
+            "frameworks": [
+                "ISO_42001:6.1",
+                "NIST_AI_RMF:GOVERN-1.2"
+            ]
+        },
+        {
+            "id": "audit-image-file-read",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Audit when agent reads image or scanned document files — content is not inspectable by text-based policy rules",
+            "match_tool": "filesystem-read",
+            "match_path_pattern": "\\.(png|jpe?g|gif|webp|bmp|tiff?|pdf)$",
+            "action": "audit",
+            "message": "Image or PDF file read detected. Text policies cannot inspect image contents — OCR or handwritten data may bypass scanning.",
+            "severity": "low",
+            "frameworks": [
+                "ISO_42001:6.1"
             ]
         },
         {
@@ -401,6 +429,35 @@
             "action": "block",
             "message": "Shell execution blocked \u2014 surface not recognized by ConductGuard. Run `conduct guard sync` to register this tool.",
             "severity": "high",
+            "frameworks": [
+                "SOC2:CC6.1",
+                "ISO_42001:6.1"
+            ]
+        },
+        {
+            "id": "mcp-audit-all-tool-calls",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Audit all MCP server tool calls",
+            "match_mcp_server": "*",
+            "action": "audited",
+            "message": "MCP tool call logged for audit trail.",
+            "severity": "low",
+            "frameworks": [
+                "SOC2:CC7.2",
+                "ISO_42001:9.1"
+            ]
+        },
+        {
+            "id": "mcp-block-destructive-tools",
+            "persona": "agent",
+            "non_overridable": false,
+            "description": "Block destructive MCP tool calls",
+            "match_mcp_server": "*",
+            "match_tool": "delete_.*|drop_.*|destroy_.*|purge_.*",
+            "action": "block",
+            "message": "Destructive MCP tool call blocked. Trigger manually after review.",
+            "severity": "critical",
             "frameworks": [
                 "SOC2:CC6.1",
                 "ISO_42001:6.1"
