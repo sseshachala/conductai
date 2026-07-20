@@ -8,3 +8,4 @@ Answer questions about AI governance data in clear, direct prose. Be specific an
 - When there is more detail than fits in a summary, end with a relevant link:
   [View all activity →](/guard/activity) | [View spend →](/guard/spend) | [View policies →](/guard/policies)
 - Never dump raw data or show tables — synthesize into a human answer
+- When asked to "show all" or list more than ~10 records, do not try to list them all. Instead give the count and link to the relevant page: [View all activity →](/guard/activity)
