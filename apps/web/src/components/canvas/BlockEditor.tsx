@@ -957,7 +957,7 @@ function GuardBlockPanel({
   )
 }
 
-// ── MCP block panel ──────────────────────────────────────────────────────────
+// ── MCP shared types ──────────────────────────────────────────────────────────
 
 interface MCPTool {
   name: string
@@ -968,7 +968,63 @@ interface MCPTool {
   }
 }
 
-// MCP_PROVIDERS sourced from shared registry — see lib/mcpProviders.ts
+interface MCPServer {
+  id: string
+  name: string
+  url: string
+  transport: string
+}
+
+// ── Shared auth header builder used by both MCP panels ───────────────────────
+
+async function buildMCPAuthHeaders(
+  getToken: (() => Promise<string | null>) | null | undefined,
+  workspaceId: string,
+): Promise<Record<string, string>> {
+  const h: Record<string, string> = { "Content-Type": "application/json" }
+  if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
+  if (workspaceId) h["X-Workspace-Id"] = workspaceId
+  return h
+}
+
+// ── Fetch tools from the Phase 2 GET endpoint ─────────────────────────────────
+
+async function fetchMCPServerTools(
+  serverId: string,
+  headers: Record<string, string>,
+): Promise<{ tools: MCPTool[]; error: string | null }> {
+  try {
+    const r = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/mcp-servers/${serverId}/tools`,
+      { headers },
+    )
+    if (r.status === 502) {
+      const data = await r.json().catch(() => ({}))
+      return { tools: [], error: (data as { detail?: string }).detail || "Server unreachable — check connection at /integrations" }
+    }
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}))
+      return { tools: [], error: (data as { detail?: string }).detail || `HTTP ${r.status}` }
+    }
+    const data: MCPTool[] = await r.json()
+    return { tools: Array.isArray(data) ? data : [], error: null }
+  } catch (e) {
+    return { tools: [], error: e instanceof Error ? e.message : "Network error" }
+  }
+}
+
+// ── Transport badge helper ────────────────────────────────────────────────────
+
+function TransportBadge({ transport }: { transport: string }) {
+  const label = transport === "sse" ? "SSE" : transport === "stdio" ? "stdio" : transport.toUpperCase()
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-cyan-100 text-cyan-700 border border-cyan-200 ml-1.5 shrink-0">
+      {label}
+    </span>
+  )
+}
+
+// ── MCP block config panel (P2.1) ─────────────────────────────────────────────
 
 function MCPBlockPanel({
   getToken,
@@ -984,93 +1040,90 @@ function MCPBlockPanel({
   environmentId?: string
 }) {
   const { activeWorkspace } = useWorkspace()
+  const wsId = activeWorkspace?.id ?? ""
+
+  const [servers, setServers] = useState<MCPServer[]>([])
+  const [serversLoading, setServersLoading] = useState(true)
+
   const [tools, setTools] = useState<MCPTool[]>([])
-  const [discovering, setDiscovering] = useState(false)
-  const [discoverErr, setDiscoverErr] = useState<string | null>(null)
-  const [integrationServers, setIntegrationServers] = useState<{ id: string; name: string; url: string; transport: string }[]>([])
+  const [toolsLoading, setToolsLoading] = useState(false)
+  const [toolsErr, setToolsErr] = useState<string | null>(null)
 
-  const savedProvider = (getNestedValue(blockData, "config.provider") as string) || ""
-  const [provider, setProvider] = useState(savedProvider)
-  useEffect(() => { if (savedProvider && savedProvider !== provider) setProvider(savedProvider) }, [savedProvider])
-  const transport = (getNestedValue(blockData, "config.transport") as string) || "auto"
-  const toolName  = (getNestedValue(blockData, "config.tool_name") as string) || ""
-
-  // Fetch workspace MCP servers from Integrations
+  // Read saved values from blockData
+  const savedServerId = (getNestedValue(blockData, "config.server_id") as string) || ""
+  const [serverId, setServerId] = useState(savedServerId)
   useEffect(() => {
-    const wsId = activeWorkspace?.id ?? ""
+    if (savedServerId && savedServerId !== serverId) setServerId(savedServerId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedServerId])
+
+  const toolName = (getNestedValue(blockData, "config.tool_name") as string) || ""
+
+  // Fetch workspace MCP servers on mount
+  useEffect(() => {
     if (!wsId) return
-    authHeaders().then(h =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp-servers?workspace_id=${wsId}${environmentId ? `&environment_id=${environmentId}` : ""}`, { headers: h })
+    setServersLoading(true)
+    buildMCPAuthHeaders(getToken, wsId).then(h =>
+      fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/mcp-servers?workspace_id=${wsId}${environmentId ? `&environment_id=${environmentId}` : ""}`,
+        { headers: h },
+      )
         .then(r => r.ok ? r.json() : [])
-        .then(d => { if (Array.isArray(d)) setIntegrationServers(d) })
+        .then(d => { if (Array.isArray(d)) setServers(d) })
         .catch(() => {})
+        .finally(() => setServersLoading(false))
     )
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [environmentId])
+  }, [wsId, environmentId])
 
-  const selectedTool = tools.find(t => t.name === toolName) ?? null
-  const paramProps   = selectedTool?.inputSchema?.properties ?? {}
+  // Load tools when a server is already saved (e.g. re-opening block)
+  useEffect(() => {
+    if (!savedServerId || !wsId) return
+    buildMCPAuthHeaders(getToken, wsId).then(h =>
+      fetchMCPServerTools(savedServerId, h).then(({ tools: list, error }) => {
+        if (!error) setTools(list)
+      })
+    )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedServerId, wsId])
+
+  const selectedServer = servers.find(s => s.id === serverId) ?? null
+  const selectedTool   = tools.find(t => t.name === toolName) ?? null
+  const paramProps     = selectedTool?.inputSchema?.properties ?? {}
   const requiredParams = new Set(selectedTool?.inputSchema?.required ?? [])
 
-  async function handleProviderChange(val: string) {
-    const ws = integrationServers.find(s => s.id === val)
-    if (!ws) return
-    setProvider(val)
-    onChange("config.provider",  ws.id)
-    onChange("config.transport", ws.transport)
-    onChange("config.tool_name", "")
+  async function handleServerChange(val: string) {
+    if (isViewer) return
+    const srv = servers.find(s => s.id === val)
+    if (!srv) return
+
+    setServerId(val)
+    onChange("config.server_id",   srv.id)
+    onChange("config.server_name", srv.name)
+    onChange("config.transport",   srv.transport)
+    onChange("config.tool_name",   "")
+    onChange("config.inputs",      {})
     setTools([])
-    setDiscoverErr(null)
-    // Auto-discover tools on select
-    setDiscovering(true)
-    try {
-      const h = await authHeaders()
-      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp/tools`, {
-        method: "POST", headers: h,
-        body: JSON.stringify({ server_id: ws.id }),
-      })
-      const data = await r.json()
-      if (r.ok) {
-        const list: MCPTool[] = Array.isArray(data) ? data : (data.tools ?? [])
-        setTools(list)
-        if (list.length > 0) onChange("config.tool_name", list[0].name)
-      } else {
-        setDiscoverErr(data.detail || `HTTP ${r.status}`)
-      }
-    } catch (e) {
-      setDiscoverErr(e instanceof Error ? e.message : "Network error")
-    } finally {
-      setDiscovering(false)
-    }
+    setToolsErr(null)
+    setToolsLoading(true)
+
+    const h = await buildMCPAuthHeaders(getToken, wsId)
+    const { tools: list, error } = await fetchMCPServerTools(srv.id, h)
+    setToolsLoading(false)
+    if (error) { setToolsErr(error); return }
+    setTools(list)
   }
 
-  async function authHeaders() {
-    const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    const ws = activeWorkspace?.id ?? ""
-    if (ws) h["X-Workspace-Id"] = ws
-    return h
+  function handleToolChange(name: string) {
+    if (isViewer) return
+    onChange("config.tool_name", name)
+    onChange("config.inputs", {})
   }
 
-  async function discoverTools() {
-    if (!provider) { setDiscoverErr("Select an MCP server first."); return }
-    setDiscovering(true); setDiscoverErr(null)
-    try {
-      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp/tools`, {
-        method: "POST",
-        headers: await authHeaders(),
-        body: JSON.stringify({ server_id: provider }),
-      })
-      const data = await r.json()
-      if (!r.ok) { setDiscoverErr(data.detail || `HTTP ${r.status}`); return }
-      const list: MCPTool[] = Array.isArray(data) ? data : (data.tools ?? [])
-      setTools(list)
-      if (list.length > 0 && !toolName) onChange("config.tool_name", list[0].name)
-    } catch (e) {
-      setDiscoverErr(e instanceof Error ? e.message : "Network error")
-    } finally {
-      setDiscovering(false)
-    }
+  function handleInputChange(paramKey: string, value: string) {
+    if (isViewer) return
+    const currentInputs = (getNestedValue(blockData, "config.inputs") as Record<string, string>) || {}
+    onChange("config.inputs", { ...currentInputs, [paramKey]: value })
   }
 
   const inputBase = "w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white disabled:opacity-60 disabled:cursor-not-allowed"
@@ -1079,94 +1132,110 @@ function MCPBlockPanel({
   return (
     <div className="px-4 py-3 space-y-4">
 
-      {/* Provider */}
+      {/* Step 1 — Server selector */}
       <div>
-        <span className={sectionLabel}>MCP Server <span className="text-red-500">*</span></span>
-        {integrationServers.length === 0 ? (
-          <div style={{ padding: "12px 16px", background: "var(--surface-2)", borderRadius: 8, fontSize: 13, color: "var(--text-3)" }}>
-            No MCP servers configured.{" "}
-            <a href="/integrations" style={{ color: "var(--accent)" }}>Add one in Integrations →</a>
+        <span className={sectionLabel}>Server <span className="text-red-500">*</span></span>
+        {serversLoading ? (
+          <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-[11px] text-stone-400">
+            Loading servers…
+          </div>
+        ) : servers.length === 0 ? (
+          <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-[11px] text-stone-500 space-y-1">
+            <p>No MCP servers registered.</p>
+            <a href="/integrations" className="text-cyan-600 hover:text-cyan-800 font-medium">
+              Add one at /integrations →
+            </a>
           </div>
         ) : (
-          <select
-            value={provider}
-            onChange={e => !isViewer && handleProviderChange(e.target.value)}
-            disabled={isViewer}
-            className={inputBase}
-          >
-            <option value="" disabled>Select a workspace MCP…</option>
-            {integrationServers.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
+          <>
+            <select
+              value={serverId}
+              onChange={e => handleServerChange(e.target.value)}
+              disabled={isViewer}
+              className={inputBase}
+            >
+              <option value="" disabled>Select a registered MCP server</option>
+              {servers.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            {selectedServer && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <span className="text-[10px] text-stone-400">Transport:</span>
+                <TransportBadge transport={selectedServer.transport} />
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Discover */}
-      <div>
-        <button
-          type="button"
-          onClick={discoverTools}
-          disabled={isViewer || discovering || !provider}
-          className="w-full rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-700 text-xs font-semibold px-3 py-2 hover:bg-cyan-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {discovering ? "Discovering…" : "Discover tools"}
-        </button>
-        {discoverErr && <p className="text-[10px] text-red-600 mt-1">{discoverErr}</p>}
-        {tools.length > 0 && <p className="text-[10px] text-emerald-600 mt-1">{tools.length} tool{tools.length !== 1 ? "s" : ""} found</p>}
-      </div>
+      {/* Step 2 — Tool selector (shown after server selected) */}
+      {serverId && (
+        <div>
+          <span className={sectionLabel}>Tool <span className="text-red-500">*</span></span>
+          {toolsLoading ? (
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-[11px] text-stone-400">
+              Loading tools…
+            </div>
+          ) : toolsErr ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[11px] text-red-700 space-y-1">
+              <p>{toolsErr}</p>
+              {toolsErr.toLowerCase().includes("unreachable") && (
+                <a href="/integrations" className="text-red-600 hover:text-red-800 font-medium underline">
+                  Check connection at /integrations
+                </a>
+              )}
+            </div>
+          ) : tools.length > 0 ? (
+            <>
+              <select
+                value={toolName}
+                onChange={e => handleToolChange(e.target.value)}
+                disabled={isViewer}
+                className={inputBase}
+              >
+                <option value="">— pick a tool —</option>
+                {tools.map(t => (
+                  <option key={t.name} value={t.name}>
+                    {t.name}{t.description ? ` — ${t.description}` : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedTool?.description && (
+                <p className="text-[10px] text-stone-400 mt-1">{selectedTool.description}</p>
+              )}
+            </>
+          ) : (
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-[11px] text-stone-400">
+              No tools returned by this server.
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Tool picker */}
-      <div>
-        <span className={sectionLabel}>Tool <span className="text-red-500">*</span></span>
-        {tools.length > 0 ? (
-          <select
-            value={toolName}
-            onChange={e => !isViewer && onChange("config.tool_name", e.target.value)}
-            disabled={isViewer}
-            className={inputBase}
-          >
-            <option value="">— pick a tool —</option>
-            {tools.map(t => (
-              <option key={t.name} value={t.name}>{t.name}{t.description ? ` — ${t.description}` : ""}</option>
-            ))}
-          </select>
-        ) : toolName ? (
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
-            <span className="text-sm font-mono text-emerald-800 flex-1 truncate">{toolName}</span>
-            <span className="text-[10px] text-emerald-600 shrink-0">Discover to change</span>
-          </div>
-        ) : (
-          <input
-            type="text"
-            value={toolName}
-            onChange={e => !isViewer && onChange("config.tool_name", e.target.value)}
-            disabled={isViewer}
-            placeholder="Click Discover to populate"
-            className={inputBase}
-          />
-        )}
-        {selectedTool?.description && <p className="text-[10px] text-stone-400 mt-1">{selectedTool.description}</p>}
-      </div>
-
-      {/* Dynamic params */}
-      {Object.keys(paramProps).length > 0 && (
+      {/* Step 3 — Input fields (shown after tool selected, rendered from inputSchema) */}
+      {toolName && Object.keys(paramProps).length > 0 && (
         <div className="space-y-3">
-          <span className={sectionLabel}>Parameters</span>
+          <span className={sectionLabel}>Inputs</span>
           {Object.entries(paramProps).map(([paramKey, paramDef]) => {
             const req = requiredParams.has(paramKey)
-            const val = (getNestedValue(blockData, `config.params.${paramKey}`) as string) || ""
+            const currentInputs = (getNestedValue(blockData, "config.inputs") as Record<string, string>) || {}
+            const val = currentInputs[paramKey] || ""
             return (
               <div key={paramKey}>
                 <div className="flex items-center gap-1.5 mb-1">
-                  <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">{paramKey}</label>
+                  <label className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide">
+                    {paramKey}
+                  </label>
                   {req && <span className="text-red-500 text-[10px]">*</span>}
-                  {paramDef.description && <span className="text-[10px] text-stone-400">{paramDef.description}</span>}
+                  {paramDef.description && (
+                    <span className="text-[10px] text-stone-400">{paramDef.description}</span>
+                  )}
                 </div>
                 <input
                   type="text"
                   value={val}
-                  onChange={e => !isViewer && onChange(`config.params.${paramKey}`, e.target.value)}
+                  onChange={e => handleInputChange(paramKey, e.target.value)}
                   disabled={isViewer}
                   placeholder={`{{previous_block.${paramKey}}}`}
                   className={inputBase}
@@ -1180,6 +1249,160 @@ function MCPBlockPanel({
         </div>
       )}
 
+    </div>
+  )
+}
+
+// ── Brain block MCP server selector (P2.2) ───────────────────────────────────
+
+function BrainMCPSection({
+  getToken,
+  blockData,
+  blockId,
+  onChange,
+  isViewer,
+  environmentId,
+  section,
+  sectionLabel,
+}: {
+  getToken?: (() => Promise<string | null>) | null
+  blockData: Record<string, unknown>
+  blockId: string
+  onChange: (id: string, data: Record<string, unknown>) => void
+  isViewer: boolean
+  environmentId?: string
+  section: string
+  sectionLabel: string
+}) {
+  const { activeWorkspace } = useWorkspace()
+  const wsId = activeWorkspace?.id ?? ""
+
+  const [servers, setServers] = useState<MCPServer[]>([])
+  const [serversLoading, setServersLoading] = useState(true)
+  const [toolCounts, setToolCounts] = useState<Record<string, number>>({})
+
+  // mcp_server_ids: ["all"] means use all; specific UUIDs means selective
+  const savedIds = (blockData.mcp_server_ids as string[]) ?? ["all"]
+  const useAll = savedIds.length === 1 && savedIds[0] === "all"
+
+  // Fetch workspace MCP servers
+  useEffect(() => {
+    if (!wsId) return
+    setServersLoading(true)
+    buildMCPAuthHeaders(getToken, wsId).then(h =>
+      fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/mcp-servers?workspace_id=${wsId}${environmentId ? `&environment_id=${environmentId}` : ""}`,
+        { headers: h },
+      )
+        .then(r => r.ok ? r.json() : [])
+        .then((d: MCPServer[]) => {
+          if (Array.isArray(d)) {
+            setServers(d)
+            // Fetch tool counts for all servers (cached by backend, fast)
+            d.forEach(srv => {
+              buildMCPAuthHeaders(getToken, wsId).then(hh =>
+                fetchMCPServerTools(srv.id, hh).then(({ tools }) => {
+                  setToolCounts(prev => ({ ...prev, [srv.id]: tools.length }))
+                })
+              )
+            })
+          }
+        })
+        .catch(() => {})
+        .finally(() => setServersLoading(false))
+    )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wsId, environmentId])
+
+  function setUseAll(val: boolean) {
+    if (isViewer) return
+    if (val) {
+      onChange(blockId, { ...blockData, mcp_server_ids: ["all"] })
+    } else {
+      // Switch to empty selection — user must opt in to specific servers
+      onChange(blockId, { ...blockData, mcp_server_ids: [] })
+    }
+  }
+
+  function toggleServer(id: string) {
+    if (isViewer) return
+    const current: string[] = useAll ? servers.map(s => s.id) : (blockData.mcp_server_ids as string[]) ?? []
+    const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id]
+    onChange(blockId, { ...blockData, mcp_server_ids: next })
+  }
+
+  if (servers.length === 0 && !serversLoading) return null
+
+  const selectedIds: string[] = useAll ? servers.map(s => s.id) : savedIds
+
+  return (
+    <div className={section}>
+      <span className={sectionLabel}>MCP Servers</span>
+
+      {serversLoading ? (
+        <p className="text-[11px] text-stone-400">Loading servers…</p>
+      ) : (
+        <>
+          {/* Use-all toggle */}
+          <label className="flex items-center gap-2.5 cursor-pointer mb-3">
+            <div
+              role="checkbox"
+              aria-checked={useAll}
+              onClick={() => setUseAll(!useAll)}
+              className={cn(
+                "w-9 h-5 rounded-full transition-colors relative cursor-pointer",
+                useAll ? "bg-violet-500" : "bg-stone-300",
+                isViewer && "opacity-60 cursor-not-allowed",
+              )}
+            >
+              <span className={cn(
+                "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform",
+                useAll ? "translate-x-4" : "translate-x-0.5",
+              )} />
+            </div>
+            <span className="text-xs font-medium text-stone-700">Use all registered MCP servers</span>
+          </label>
+
+          {/* Per-server checkboxes (shown when not using all) */}
+          {!useAll && (
+            <div className="space-y-2 pl-1">
+              {servers.map(srv => {
+                const checked = selectedIds.includes(srv.id)
+                const count = toolCounts[srv.id]
+                return (
+                  <label
+                    key={srv.id}
+                    className={cn(
+                      "flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2 border transition-colors",
+                      checked ? "border-violet-200 bg-violet-50" : "border-stone-200 bg-white hover:bg-stone-50",
+                      isViewer && "opacity-60 cursor-not-allowed",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleServer(srv.id)}
+                      disabled={isViewer}
+                      className="rounded border-stone-300 text-violet-600 focus:ring-violet-300"
+                    />
+                    <span className="text-sm font-medium text-stone-800 flex-1">{srv.name}</span>
+                    <TransportBadge transport={srv.transport} />
+                    {count !== undefined && (
+                      <span className="text-[10px] text-stone-400 shrink-0">{count} tools</span>
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+          )}
+
+          {useAll && servers.length > 0 && (
+            <p className="text-[10px] text-stone-400">
+              {servers.length} server{servers.length !== 1 ? "s" : ""} available — agent will use all of their tools.
+            </p>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -1578,6 +1801,17 @@ export default function BlockEditor({
               })}
             </select>
           </div>
+
+          <BrainMCPSection
+            getToken={getToken}
+            blockData={blockData}
+            blockId={blockId}
+            onChange={onChange}
+            isViewer={isViewer}
+            environmentId={selectedEnvId}
+            section={section}
+            sectionLabel={sectionLabel}
+          />
         </>
       )}
 
