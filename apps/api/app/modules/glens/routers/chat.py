@@ -84,6 +84,30 @@ TOOLS = [
         "description": "Get token and cost savings from Guard enforcement: tokens blocked, estimated cost saved.",
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "search_memory",
+        "description": "Semantic search across team memory entries. Use for 'what did the team work on', 'find sessions about X', 'who worked on Y topic'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "q": {"type": "string", "description": "Search query"},
+                "limit": {"type": "integer", "default": 5, "description": "Max results (max 10)"},
+            },
+            "required": ["q"],
+        },
+    },
+    {
+        "name": "search_sessions",
+        "description": "Semantic search across developer session reports. Use for 'find sessions about X', 'what sessions involved Y', 'show productivity reports for topic Z'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "q": {"type": "string", "description": "Search query"},
+                "limit": {"type": "integer", "default": 5, "description": "Max results (max 10)"},
+            },
+            "required": ["q"],
+        },
+    },
 ]
 
 def _load_system_prompt() -> str:
