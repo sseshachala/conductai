@@ -438,9 +438,9 @@ def _execute_tool(block: dict, state: dict, credentials: dict, allowed_hosts: li
     return _tool_impl(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id)
 
 
-def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: str = "Agent", trace_url: str = "", run_id: str = "") -> dict:
+def _execute_output(block: dict, state: dict, credentials: dict, workflow_name: str = "Agent", trace_url: str = "", run_id: str = "", workspace_id: str = "") -> dict:
     from app.runtime.blocks.output_block import _execute_output as _output_impl
-    return _output_impl(block, state, credentials, workflow_name=workflow_name, trace_url=trace_url, run_id=run_id)
+    return _output_impl(block, state, credentials, workflow_name=workflow_name, trace_url=trace_url, run_id=run_id, workspace_id=workspace_id)
 
 
 def _evaluate_condition_jinja(raw: str, state: dict) -> str | None:
@@ -685,7 +685,7 @@ def _dispatch_single_block(
             f"{_settings.app_url.rstrip('/')}/workflows/{version.workflow.id}/runs/{run_id}"
             if version.workflow else ""
         )
-        result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
+        result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id, workspace_id=workspace_id_str)
 
     elif block_type == "logic":
         result = _execute_logic(block, state)
@@ -957,7 +957,7 @@ def _execute_dag(
                         if version.workflow else ""
                     )
                     try:
-                        result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id)
+                        result = _execute_output(block, state, credentials, workflow_name=wf_name, trace_url=trace_url, run_id=run_id, workspace_id=workspace_id_str)
                     except Exception as out_err:
                         log.error("block.output_failed", block_id=block_id, error=str(out_err))
                         result = {"sent": False, "error": str(out_err)}

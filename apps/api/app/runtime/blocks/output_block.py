@@ -121,6 +121,30 @@ def _fill_template(template: str, state: dict, workflow_name: str = "Agent", tra
 
 # ── block executor ────────────────────────────────────────────────────────────
 
+def _resolve_slack_mcp(workspace_id: str) -> tuple[str, str, str] | None:
+    """Return (url, transport, token) for the workspace's Slack MCP server, or None."""
+    if not workspace_id:
+        return None
+    try:
+        from sqlalchemy import text as _text
+        from app.core.database import get_db as _get_db
+        from app.core.crypto import decrypt as _decrypt
+        db = next(_get_db())
+        try:
+            row = db.execute(
+                _text("SELECT url, transport, encrypted_auth FROM mcp_servers WHERE name = 'slack' AND workspace_id = :ws"),
+                {"ws": workspace_id},
+            ).fetchone()
+        finally:
+            db.close()
+        if not row or not row.encrypted_auth:
+            return None
+        token = _decrypt(row.encrypted_auth).get("token", "")
+        return (row.url, row.transport or "sse", token)
+    except Exception:
+        return None
+
+
 def _execute_output(
     block: dict,
     state: dict,
@@ -128,6 +152,7 @@ def _execute_output(
     workflow_name: str = "Agent",
     trace_url: str = "",
     run_id: str = "",
+    workspace_id: str = "",
 ) -> dict:
     from app.runtime.integrations import slack, email as email_integration
     from app.core.config import settings
@@ -154,24 +179,34 @@ def _execute_output(
     if send_slack:
         slack_creds = fetch_credential(_cred_token, "slack", _cred_api_url) if "slack" in _cred_handles else {}
         channel = _resolve_refs(config.get("channel", "#general"), state)
-        if not slack_creds:
-            results["slack"] = {"sent": False, "reason": "No Slack credentials configured"}
-        elif not channel:
+        if not channel:
             results["slack"] = {"sent": False, "reason": "No Slack channel configured"}
         else:
             try:
                 _, body = _fill_template(_load_template("slack_output.txt"), state, workflow_name, trace_url)
                 use_approval = config.get("approval", False) and bool(run_id)
-                if use_approval:
-                    r = slack.execute("post_approval_message", {
-                        "channel": channel,
-                        "text": body,
-                        "run_id": run_id,
-                        "callback_url": trace_url,
-                    }, slack_creds)
-                else:
+                mcp_slack = None if use_approval else _resolve_slack_mcp(workspace_id)
+                if mcp_slack:
+                    # Route through Slack MCP server — no separate credential needed
+                    from app.runtime.integrations.mcp_client import call_tool
+                    mcp_url, mcp_transport, mcp_token = mcp_slack
+                    r = call_tool(mcp_url, mcp_token or None, "post_message",
+                                  {"channel": channel, "text": body}, transport=mcp_transport)
+                    results["slack"] = r if isinstance(r, dict) else {"output": str(r)}
+                elif use_approval:
+                    if not slack_creds:
+                        results["slack"] = {"sent": False, "reason": "No Slack credentials configured"}
+                    else:
+                        r = slack.execute("post_approval_message", {
+                            "channel": channel, "text": body,
+                            "run_id": run_id, "callback_url": trace_url,
+                        }, slack_creds)
+                        results["slack"] = r
+                elif slack_creds:
                     r = slack.execute("post_message", {"channel": channel, "text": body}, slack_creds)
-                results["slack"] = r
+                    results["slack"] = r
+                else:
+                    results["slack"] = {"sent": False, "reason": "No Slack credentials configured — add token in Integrations"}
             except Exception as e:
                 results["slack"] = {"sent": False, "error": str(e)}
 
