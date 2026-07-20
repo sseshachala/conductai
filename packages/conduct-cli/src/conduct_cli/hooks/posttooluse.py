@@ -247,6 +247,27 @@ def _scan_codex_tokens(transcript_path: str):
     return 0, 0
 
 
+def _git_context() -> "tuple[str | None, str | None]":
+    """Return (repo_url, branch) from git — best-effort, never raises."""
+    import subprocess as _sp
+    repo = branch = None
+    try:
+        repo = _sp.check_output(
+            ["git", "remote", "get-url", "origin"],
+            timeout=2, stderr=_sp.DEVNULL, text=True,
+        ).strip() or None
+    except Exception:
+        pass
+    try:
+        branch = _sp.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            timeout=2, stderr=_sp.DEVNULL, text=True,
+        ).strip() or None
+    except Exception:
+        pass
+    return repo, branch
+
+
 def _compute_blast_radius(tool_name: str, tool_input: dict, tool_response: str) -> "dict | None":
     """Classify blast radius after tool execution. Returns None for read-only tools."""
     import re as _re
@@ -258,6 +279,7 @@ def _compute_blast_radius(tool_name: str, tool_input: dict, tool_response: str) 
     files = 0
     symbols: "int | None" = None
     tier = "local"
+    file_paths: "list[str]" = []
 
     if tool_name in ("bash", "terminal"):
         cmd = (tool_input.get("command") or "").lower()
@@ -269,43 +291,55 @@ def _compute_blast_radius(tool_name: str, tool_input: dict, tool_response: str) 
             tier = "network"
         # count path-like lines in output as proxy for files touched
         lines = (tool_response or "").splitlines()
-        files = min(sum(1 for l in lines if "/" in l or ("." in l and len(l) < 200)), 50)
+        path_lines = [l.strip() for l in lines if "/" in l or ("." in l and len(l) < 200)]
+        files = min(len(path_lines), 50)
+        file_paths = path_lines[:20]
 
     elif tool_name in ("write",):
         files = 1
         content = tool_input.get("content") or ""
         symbols = len(content.splitlines()) or None
+        fp = tool_input.get("file_path") or tool_input.get("path")
+        if fp:
+            file_paths = [fp]
 
     elif tool_name in ("edit", "str_replace_based_edit_tool", "str_replace_editor"):
         files = 1
         new_str = tool_input.get("new_string") or tool_input.get("new_content") or ""
         symbols = len(new_str.splitlines()) or None
+        fp = tool_input.get("file_path") or tool_input.get("path")
+        if fp:
+            file_paths = [fp]
 
     elif tool_name in ("multiedit",):
         edits = tool_input.get("edits") or []
         files = len(edits)
+        file_paths = [e.get("file_path") or e.get("path") for e in edits if e.get("file_path") or e.get("path")]
 
     else:
         files = 1  # unknown write-like tool
 
-    return {"files": files, "symbols": symbols, "tier": tier}
+    repo, branch = _git_context()
+    return {"files": files, "symbols": symbols, "tier": tier, "file_paths": file_paths, "repo": repo, "branch": branch}
 
 
-def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms, blast_radius=None) -> None:
+def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms, blast_radius=None, execution_status=None, result_summary=None) -> None:
     """Fire-and-forget POST to /guard/events/usage."""
     cfg = load_config()
     workspace_id = cfg.get("workspace_id")
     if not workspace_id or not session_id:
         return
     payload = json.dumps({
-        "workspace_id":    workspace_id,
-        "hook_session_id": session_id,
-        "tool_name":       tool_name,
-        "tokens_input":    tokens_input,
-        "tokens_output":   tokens_output,
-        "duration_ms":     duration_ms,
-        "ai_tool":         detect_ai_tool(),
-        "blast_radius":    blast_radius,
+        "workspace_id":     workspace_id,
+        "hook_session_id":  session_id,
+        "tool_name":        tool_name,
+        "tokens_input":     tokens_input,
+        "tokens_output":    tokens_output,
+        "duration_ms":      duration_ms,
+        "ai_tool":          detect_ai_tool(),
+        "blast_radius":     blast_radius,
+        "execution_status": execution_status,
+        "result_summary":   result_summary,
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     script = (
@@ -369,6 +403,15 @@ def main() -> None:
     tool_input    = data.get("tool_input") or {}
     blast_radius  = _compute_blast_radius(tool_name, tool_input, str(tool_response))
 
+    # Derive execution outcome from hook data
+    _resp_str = str(tool_response)
+    if data.get("error") or "Error" in _resp_str[:100]:
+        execution_status = "error"
+        result_summary   = _resp_str[:200] or None
+    else:
+        execution_status = "success"
+        result_summary   = None
+
     if is_codex and transcript_path:
         import uuid as _uuid
         pending = GUARD_DIR / f"codex_pending_{_uuid.uuid4().hex[:8]}.json"
@@ -389,7 +432,7 @@ def main() -> None:
             pass
     elif transcript_path:
         tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
-        _post_usage(session_id, tool_name, tokens_input, tokens_output, None, blast_radius)
+        _post_usage(session_id, tool_name, tokens_input, tokens_output, None, blast_radius, execution_status, result_summary)
         _, action, rule_id, message = check_policy(tool_name, {}, tokens_before=tokens_input)
         if action in ("warn", "block"):
             decision = "warned" if action == "warn" else "blocked"

@@ -149,6 +149,8 @@ class GuardAuditEvent(Base):
         default=lambda: datetime.now(timezone.utc),
     )
     duration_ms = Column(Integer, nullable=True)
+    execution_status = Column(String(20), nullable=True)   # success | error | timeout
+    result_summary = Column(Text, nullable=True)
     # hash-chain integrity — do not UPDATE or DELETE rows, chain breaks
     previous_hash = Column(Text, nullable=True)
     entry_hash = Column(Text, nullable=True)

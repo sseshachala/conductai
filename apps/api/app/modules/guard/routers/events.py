@@ -84,6 +84,8 @@ class UsageUpdate(BaseModel):
     duration_ms: int | None = None
     ai_tool: str | None = None   # for pricing
     blast_radius: dict | None = None
+    execution_status: str | None = None   # success | error | timeout
+    result_summary: str | None = None
 
 
 class UsageOut(BaseModel):
@@ -617,6 +619,10 @@ def update_usage(
         event.duration_ms = body.duration_ms
     if body.blast_radius is not None:
         event.blast_radius = body.blast_radius
+    if body.execution_status is not None:
+        event.execution_status = body.execution_status
+    if body.result_summary is not None:
+        event.result_summary = body.result_summary
 
     db.commit()
 
