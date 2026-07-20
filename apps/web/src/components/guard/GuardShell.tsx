@@ -12,12 +12,13 @@ type TabDef = { href: string; label: string; roles?: GuardRole[] }
 
 // roles = undefined means visible to all; otherwise restrict to listed roles
 export const GUARD_TABS: TabDef[] = [
-  { href: "/theguard/chat",            label: "Chat"            },
-  { href: "/theguard/policies",        label: "Policies"        },
-  { href: "/theguard/discovery",       label: "Discovery"       },
-  { href: "/theguard/compliance",      label: "Compliance",      roles: ["admin", "security"] },
-  { href: "/theguard/settings",        label: "Settings",        roles: ["admin"] },
-  // hidden: Overview, Spend, Flight Recorder, Session Reports, Team Memory — covered by Chat
+  { href: "/theguard/chat",       label: "GLens"       },
+  { href: "/theguard/activity",   label: "Activity"    },
+  { href: "/theguard/spend",      label: "Spend"       },
+  { href: "/theguard/policies",   label: "Policies"    },
+  { href: "/theguard/discovery",  label: "Discovery"   },
+  { href: "/theguard/compliance", label: "Compliance", roles: ["admin", "security"] },
+  { href: "/theguard/settings",   label: "Settings",   roles: ["admin"] },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
