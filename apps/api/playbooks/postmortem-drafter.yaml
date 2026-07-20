@@ -119,14 +119,12 @@ blocks:
       Action items: {{gather_context.action_items}}
 
       Steps:
-      1. Create a GitHub issue to track action items:
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body: {
-           "title": "{{gather_context.title}}",
-           "body": "{{gather_context.draft_markdown}}",
-           "labels": ["postmortem"]
-         }
+      1. Use the github::create_issue tool to create a tracking issue:
+         - owner: (extract from {{_trigger.repository.full_name}})
+         - repo: (extract from {{_trigger.repository.full_name}})
+         - title: "{{gather_context.title}}"
+         - body: "{{gather_context.draft_markdown}}"
+         - labels: ["postmortem"]
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<url>", "issue_number": <number>}

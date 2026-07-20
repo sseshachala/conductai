@@ -74,15 +74,9 @@ blocks:
         P3 (medium): issue has a workaround, affects some users
         P4 (low): cosmetic, edge case, nice-to-have
 
-      Step 5 — Add labels via GitHub API:
-        GET https://api.github.com/repos/{{_trigger.repository.full_name}}/labels
-        to see which labels exist.
-
-        POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{_trigger.issue.number}}/labels
-        {
-          "labels": ["<type label>", "<priority label>"]
-        }
-        Use Authorization: token $GIT_TOKEN
+      Step 5 — Add labels using MCP tools:
+        Use the github::list_labels tool to see which labels exist in the repo.
+        Use the github::add_label tool to add the matched type and priority labels.
         Only add labels that exist in the repo — do not create new ones.
         Map type → label name (best match from what exists):
           bug → "bug", "Bug", "type: bug"
@@ -98,12 +92,11 @@ blocks:
           - It's a feature request with no description of the problem being solved
           - The title is too vague (e.g. "Bug", "Help", "Issue")
 
-        If clarification is needed, POST a comment:
-        POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{_trigger.issue.number}}/comments
-        {
-          "body": "Thanks for opening this issue, @<author>! To help us triage faster, could you provide:\n\n<bullet list of 2-3 specific questions based on what's missing>\n\nThis will help us reproduce and fix it more quickly."
-        }
-        Use Authorization: token $GIT_TOKEN
+        If clarification is needed, use the github::create_issue_comment tool:
+          - owner: (extract from {{_trigger.repository.full_name}})
+          - repo: (extract from {{_trigger.repository.full_name}})
+          - issue_number: {{_trigger.issue.number}}
+          - body: "Thanks for opening this issue, @<author>! To help us triage faster, could you provide:\n\n<bullet list of 2-3 specific questions based on what's missing>\n\nThis will help us reproduce and fix it more quickly."
 
         If the issue is clear and well-described, post a brief acknowledgment:
         "Thanks @<author> — triaged as <type>, <priority>. We'll review shortly."

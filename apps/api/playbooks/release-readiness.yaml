@@ -43,22 +43,21 @@ blocks:
       Run these checks and collect results:
 
       1. **Open PRs targeting this release**
-         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls?state=open&base={{inputs.base_branch}}
-         Headers: Authorization: token $GIT_TOKEN
+         Use the github::list_pull_requests tool:
+         - owner: (extract from {{_trigger.repository.full_name}})
+         - repo: (extract from {{_trigger.repository.full_name}})
+         - state: "open", base: "{{inputs.base_branch}}"
          List any open PRs — these are blockers.
 
       2. **Recent CI status on base branch**
-         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/actions/runs?branch={{inputs.base_branch}}&per_page=5
-         Headers: Authorization: token $GIT_TOKEN
-         Check if the last run passed.
+         Use the github::list_workflow_runs tool to check the last 5 runs on {{inputs.base_branch}}.
 
       3. **Open issues labeled "release-blocker" or "critical"**
-         GET https://api.github.com/search/issues?q=repo:{{_trigger.repository.full_name}}+is:open+is:issue+label:release-blocker
-         Headers: Authorization: token $GIT_TOKEN
+         Use the github::search_issues tool:
+         - query: "repo:{{_trigger.repository.full_name}} is:open is:issue label:release-blocker"
 
       4. **Commits since last tag**
-         GET https://api.github.com/repos/{{_trigger.repository.full_name}}/commits?sha={{inputs.base_branch}}&per_page=20
-         Headers: Authorization: token $GIT_TOKEN
+         Use the github::list_commits tool to get the last 20 commits on {{inputs.base_branch}}.
          Summarise what changed (feat/fix/chore).
 
       5. **Determine go/no-go:**

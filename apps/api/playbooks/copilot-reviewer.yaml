@@ -81,9 +81,7 @@ blocks:
       - Base branch: {{_trigger.pull_request.base.ref}}
 
       Steps:
-      1. Fetch the diff:
-         GET {{_trigger.pull_request.diff_url}}
-         Use Authorization: token $GIT_TOKEN header
+      1. Use the github::get_pull_request_diff tool to fetch the diff for PR {{_trigger.number}} in {{_trigger.repository.full_name}}.
       2. Review with extra scrutiny for AI-generated code:
          - Correctness: does the change actually solve the stated problem?
          - Security: hardcoded secrets, injection risks, insecure defaults
@@ -91,13 +89,12 @@ blocks:
          - Hallucinated APIs: calls to methods/packages that don't exist
          - Over-engineering: unnecessary abstractions or complexity
          - Breaking changes: interface changes that affect callers
-      3. Post a review comment via GitHub API:
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls/{{_trigger.number}}/reviews
-         {
-           "body": "<your structured review>",
-           "event": "COMMENT"
-         }
-         Use Authorization: token $GIT_TOKEN header
+      3. Use the github::create_review tool to post a review comment:
+         - owner: (extract from {{_trigger.repository.full_name}})
+         - repo: (extract from {{_trigger.repository.full_name}})
+         - pull_number: {{_trigger.number}}
+         - body: "<your structured review>"
+         - event: "COMMENT"
 
       Format your review with three sections:
       🔴 Critical (must fix before merge)
@@ -149,11 +146,9 @@ blocks:
       PR number: {{_trigger.number}}
 
       Steps:
-      1. Retrieve the GitHub token from the Conduct AI credentials vault.
-      2. Search GitHub for existing open issues:
-         GET https://api.github.com/search/issues?q=repo:{{_trigger.repository.full_name}}+is:issue+is:open+"PR+%23{{_trigger.number}}"+in:title
-         Headers: Authorization: token $GIT_TOKEN
-      3. If any issue has a title containing "PR #{{_trigger.number}}", return its number and URL.
+      1. Use the github::search_issues tool:
+         - query: "repo:{{_trigger.repository.full_name}} is:issue is:open PR #{{_trigger.number}} in:title"
+      2. If any issue has a title containing "PR #{{_trigger.number}}", return its number and URL.
 
       Output ONLY the following JSON on the last line:
         {"exists": true, "issue_url": "<url>", "issue_number": <number>} if found
@@ -184,18 +179,13 @@ blocks:
       Critical issues: {{review_pr.critical}}
 
       Steps:
-      1. Retrieve the GitHub token from the Conduct AI credentials vault.
-      2. Append a comment to the existing issue:
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/comments
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body: {"body": "## Follow-up review findings\n\nAI PR #{{_trigger.number}} was re-reviewed and {{review_pr.critical}} additional critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\nPlease also address these findings."}
-      3. Remove the "autopilot ready" label (so re-adding it fires the webhook):
-         DELETE https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/labels/autopilot%20ready
-         Headers: Authorization: token $GIT_TOKEN
-      4. Re-add the label (this fires issues.labeled and re-triggers Autopilot):
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/labels
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body: {"labels": ["autopilot ready"]}
+      1. Use the github::create_issue_comment tool to append a comment:
+         - owner: (extract from {{_trigger.repository.full_name}})
+         - repo: (extract from {{_trigger.repository.full_name}})
+         - issue_number: {{check_existing_issue.issue_number}}
+         - body: "## Follow-up review findings\n\nAI PR #{{_trigger.number}} was re-reviewed and {{review_pr.critical}} additional critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\nPlease also address these findings."
+      2. Use the github::remove_label tool to remove the "autopilot ready" label.
+      3. Use the github::add_label tool to re-add "autopilot ready" (this fires issues.labeled and re-triggers Autopilot).
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "{{check_existing_issue.issue_url}}", "issue_number": {{check_existing_issue.issue_number}}}
@@ -214,24 +204,17 @@ blocks:
       Critical issues: {{review_pr.critical}}
 
       IMPORTANT: Create the issue WITHOUT labels first, then add the label in a
-      separate API call. GitHub only fires the `issues.labeled` webhook when a label
-      is added to an existing issue — not when an issue is created with labels attached.
+      separate call. GitHub only fires the `issues.labeled` webhook when a label
+      is added to an existing issue — not when created with labels attached.
 
       Steps:
-      1. Retrieve the GitHub token from the Conduct AI credentials vault.
-      2. Create the issue (no labels):
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body:
-         {
-           "title": "fix: address critical review findings on AI PR #{{_trigger.number}}",
-           "body": "## Context\nAI-generated PR #{{_trigger.number}} was reviewed and {{review_pr.critical}} critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\n## Task\nRead the review comment on the PR, identify all 🔴 Critical findings, and implement fixes."
-         }
+      1. Use the github::create_issue tool (no labels):
+         - owner: (extract from {{_trigger.repository.full_name}})
+         - repo: (extract from {{_trigger.repository.full_name}})
+         - title: "fix: address critical review findings on AI PR #{{_trigger.number}}"
+         - body: "## Context\nAI-generated PR #{{_trigger.number}} was reviewed and {{review_pr.critical}} critical issue(s) were found.\n\nReview: {{review_pr.review_url}}\n\n## Task\nRead the review comment on the PR, identify all 🔴 Critical findings, and implement fixes."
          Save the returned issue number.
-      3. Add the label in a separate call (this fires the webhook):
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/<issue_number>/labels
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body: {"labels": ["autopilot ready"]}
+      2. Use the github::add_label tool to add "autopilot ready" to the new issue (this fires the webhook).
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<created issue URL>", "issue_number": <number>}

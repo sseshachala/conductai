@@ -133,38 +133,41 @@ blocks:
     next: open_issues
 
   open_issues:
-    type: tool
-    action: github/create_issue
+    type: mcp
     label: Open GitHub issue for risky dependency
     for_each: "{{ assess_risk }}"
     item_var: item
-    input:
-      repo: "{{ inputs.repo }}"
-      title: "[dep-audit] Upgrade {{ item.name }} {{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='current') | first }} → {{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='latest') | first }} ({{ item.risk }})"
-      body: |
-        ## Dependency Audit — {{ item.name }}
+    config:
+      server_name: github
+      tool_name: create_issue
+      inputs:
+        owner: "{{ inputs.repo.split('/')[0] }}"
+        repo: "{{ inputs.repo.split('/')[1] }}"
+        title: "[dep-audit] Upgrade {{ item.name }} {{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='current') | first }} → {{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='latest') | first }} ({{ item.risk }})"
+        body: |
+          ## Dependency Audit — {{ item.name }}
 
-        | Field | Value |
-        |-------|-------|
-        | **Package** | `{{ item.name }}` |
-        | **Current version** | `{{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='current') | first }}` |
-        | **Latest version** | `{{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='latest') | first }}` |
-        | **Risk level** | {{ item.risk }} |
+          | Field | Value |
+          |-------|-------|
+          | **Package** | `{{ item.name }}` |
+          | **Current version** | `{{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='current') | first }}` |
+          | **Latest version** | `{{ fetch_outdated.deps | selectattr('name', 'equalto', item.name) | map(attribute='latest') | first }}` |
+          | **Risk level** | {{ item.risk }} |
 
-        ### Breaking Changes
-        {% for change in item.breaking_changes %}
-        - {{ change }}
-        {% endfor %}
+          ### Breaking Changes
+          {% for change in item.breaking_changes %}
+          - {{ change }}
+          {% endfor %}
 
-        ### Recommendation
-        {{ item.recommendation }}
+          ### Recommendation
+          {{ item.recommendation }}
 
-        ---
-        *Opened by Dependency Audit via [Conduct](https://conductai.ai)*
-      labels:
-        - dependencies
-        - "risk-{{ item.risk }}"
-        - dep-audit
+          ---
+          *Opened by Dependency Audit via [Conduct](https://conductai.ai)*
+        labels:
+          - dependencies
+          - "risk-{{ item.risk }}"
+          - dep-audit
     next: write_memory
 
   write_memory:

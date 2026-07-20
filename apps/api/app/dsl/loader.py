@@ -597,14 +597,18 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
         if block.allowed_tools is not None:
             config["allowed_tools"] = block.allowed_tools
         if block.runs_on:
-            config["remote_host"] = {
-                "ip_ref": block.runs_on.ip,
-                "credentials_from": block.runs_on.credentials_from,
-            }
-            if block.runs_on.username:
-                config["remote_host"]["username"] = block.runs_on.username
-            if block.runs_on.port:
-                config["remote_host"]["port"] = block.runs_on.port
+            if isinstance(block.runs_on, str):
+                # Shorthand string form: "e2b" or "modal"
+                data["sandbox"] = block.runs_on
+            else:
+                config["remote_host"] = {
+                    "ip_ref": block.runs_on.ip,
+                    "credentials_from": block.runs_on.credentials_from,
+                }
+                if block.runs_on.username:
+                    config["remote_host"]["username"] = block.runs_on.username
+                if block.runs_on.port:
+                    config["remote_host"]["port"] = block.runs_on.port
         if block.max_turns is not None:
             data["max_turns"] = block.max_turns
         if block.complexity is not None:
@@ -634,6 +638,19 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
             config["slack_user"] = block.slack_user
         if block.message:
             config["message"] = block.message
+
+    elif block.type == "mcp":
+        # Pass the full config dict through to the executor.
+        # ``inputs`` is the YAML-native alias for ``params`` in MCP blocks.
+        mcp_cfg = dict(block.config or {})
+        if "inputs" in mcp_cfg:
+            mcp_cfg["params"] = mcp_cfg.pop("inputs")
+        # Top-level credential_key / tool_name shadow config entries if set
+        if block.credential_key:
+            mcp_cfg["credential_key"] = block.credential_key
+        if block.tool_name:
+            mcp_cfg["tool_name"] = block.tool_name
+        config.update(mcp_cfg)
 
     elif block.type == "output":
         if block.output is not None:

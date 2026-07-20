@@ -105,17 +105,16 @@ blocks:
          git add .
          git commit -m "chore: auto-update patch/minor dependencies"
 
-      10. Push and open PR:
+      10. Push branch and open PR:
          git push https://$GIT_TOKEN@github.com/{{_trigger.repo}}.git deps/auto-update-<date>
 
-         POST https://api.github.com/repos/{{_trigger.repo}}/pulls
-         {
-           "title": "chore: auto-update patch/minor dependencies",
-           "head": "deps/auto-update-<date>",
-           "base": "{{_trigger.default_branch}}",
-           "body": "Automated dependency update by Conduct AI.\n\n**Patch and minor bumps only — no breaking changes.**\n\nMerge when CI passes."
-         }
-         Header: Authorization: token $GIT_TOKEN
+         Use the github::create_pull_request tool:
+         - owner: (extract from {{_trigger.repo}})
+         - repo: (extract from {{_trigger.repo}})
+         - title: "chore: auto-update patch/minor dependencies"
+         - head: "deps/auto-update-<date>"
+         - base: "{{_trigger.default_branch}}"
+         - body: "Automated dependency update by Conduct AI.\n\n**Patch and minor bumps only — no breaking changes.**\n\nMerge when CI passes."
 
       {% if recall_context.entries %}
       Prior context for this repo:

@@ -158,14 +158,15 @@ blocks:
 
   # ── 3. Fork once, reuse across all fixes ────────────────────────────────────
   fork_upstream:
-    type: tool
-    integration: github
-    action: fork_repo
+    type: mcp
     label: Fork upstream repo
     description: Fork into authenticated user's account (reuses existing fork).
-    params:
-      owner: "{{inputs.upstream_owner}}"
-      repo: "{{inputs.upstream_repo}}"
+    config:
+      server_name: github
+      tool_name: fork_repository
+      inputs:
+        owner: "{{inputs.upstream_owner}}"
+        repo: "{{inputs.upstream_repo}}"
     next: read_memory
 
   # ── 4. Read accumulated memory for this repo ────────────────────────────────

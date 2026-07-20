@@ -44,24 +44,22 @@ blocks:
       Run these checks and collect results:
 
       1. **Open PRs targeting the default branch**
-         GET https://api.github.com/repos/{{inputs.repo}}/pulls?state=open&base=main
-         Headers: Authorization: token $GIT_TOKEN
+         Use the github::list_pull_requests tool:
+         - owner: (extract from {{inputs.repo}})
+         - repo: (extract from {{inputs.repo}})
+         - state: "open", base: "main"
          List any open PRs — these are potential blockers.
 
       2. **Recent CI status on default branch**
-         GET https://api.github.com/repos/{{inputs.repo}}/actions/runs?branch=main&per_page=5
-         Headers: Authorization: token $GIT_TOKEN
-         Check if the last workflow run passed.
+         Use the github::list_workflow_runs tool to check the last 5 runs on the main branch.
 
       3. **Open issues labeled "release-blocker" or "critical"**
-         GET https://api.github.com/search/issues?q=repo:{{inputs.repo}}+is:open+is:issue+label:release-blocker
-         Headers: Authorization: token $GIT_TOKEN
+         Use the github::search_issues tool:
+         - query: "repo:{{inputs.repo}} is:open is:issue label:release-blocker"
          Count any open release-blocker issues.
 
       4. **Commits since last tag**
-         GET https://api.github.com/repos/{{inputs.repo}}/tags?per_page=2
-         Headers: Authorization: token $GIT_TOKEN
-         GET https://api.github.com/repos/{{inputs.repo}}/commits?sha=main&per_page=20
+         Use the github::list_tags tool to find the last tag, then github::list_commits to get recent commits.
          Summarise what changed since the last tag (feat/fix/chore).
 
       5. **Determine go/no-go verdict:**
@@ -122,28 +120,32 @@ blocks:
       The release has been approved. Create git tag {{inputs.version}} on {{inputs.repo}}
       and generate release notes summarising commits since the last tag.
 
-      Step 1 — Find the default branch SHA:
-        GET https://api.github.com/repos/{{inputs.repo}}/git/ref/heads/main
-        Headers: Authorization: token $GIT_TOKEN
-        Extract the SHA from object.sha.
+      Step 1 — Use the github::get_ref tool to find the default branch SHA:
+        - owner: (extract from {{inputs.repo}})
+        - repo: (extract from {{inputs.repo}})
+        - ref: "heads/main"
+        Extract the SHA from the response.
 
-      Step 2 — Create the tag object:
-        POST https://api.github.com/repos/{{inputs.repo}}/git/tags
-        Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-        Body: {"tag": "{{inputs.version}}", "message": "Release {{inputs.version}}", "object": "<SHA>", "type": "commit"}
+      Step 2 — Use the github::create_tag tool to create the tag object:
+        - owner/repo: (extract from {{inputs.repo}})
+        - tag: "{{inputs.version}}"
+        - message: "Release {{inputs.version}}"
+        - object: "<SHA from step 1>"
+        - type: "commit"
         Note the tag SHA from the response.
 
-      Step 3 — Create the ref (push the tag):
-        POST https://api.github.com/repos/{{inputs.repo}}/git/refs
-        Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-        Body: {"ref": "refs/tags/{{inputs.version}}", "sha": "<tag SHA>"}
+      Step 3 — Use the github::create_ref tool to push the tag:
+        - owner/repo: (extract from {{inputs.repo}})
+        - ref: "refs/tags/{{inputs.version}}"
+        - sha: "<tag SHA from step 2>"
 
-      Step 4 — Create the GitHub release:
-        POST https://api.github.com/repos/{{inputs.repo}}/releases
-        Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-        Body: {"tag_name": "{{inputs.version}}", "name": "Release {{inputs.version}}", "body": "<release notes>", "draft": false, "prerelease": false}
-        The release notes body should summarise the readiness check: {{check_readiness.summary}}
-        Include bullet points for each recent commit category (feat/fix/chore).
+      Step 4 — Use the github::create_release tool to create the GitHub release:
+        - owner/repo: (extract from {{inputs.repo}})
+        - tag_name: "{{inputs.version}}"
+        - name: "Release {{inputs.version}}"
+        - body: "<release notes summarising {{check_readiness.summary}} with bullet points for feat/fix/chore>"
+        - draft: false
+        - prerelease: false
         Note the release html_url from the response.
 
       Step 5 — Build the tag URL:

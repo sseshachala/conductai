@@ -124,14 +124,12 @@ blocks:
       Merged PR: {{_trigger.pull_request.html_url}}
 
       Steps:
-      1. Create the issue:
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body: {
-           "title": "docs: update docs after PR #{{_trigger.number}} — {{_trigger.pull_request.title}}",
-           "body": "## Docs drift detected\n\nPR #{{_trigger.number}} was merged but the following docs need updating:\n\n**Stale files:** {{analyze_drift.stale_docs}}\n\n**What needs updating:**\n{{analyze_drift.changes_needed}}\n\n**Merged PR:** {{_trigger.pull_request.html_url}}\n\n---\n**Proposed changes:**\n{{analyze_drift.draft_content}}"
-         }
-      2. Add label: {"labels": ["documentation", "autopilot ready"]}
+      1. Use the github::create_issue tool (no labels):
+         - owner: (extract from {{_trigger.repository.full_name}})
+         - repo: (extract from {{_trigger.repository.full_name}})
+         - title: "docs: update docs after PR #{{_trigger.number}} — {{_trigger.pull_request.title}}"
+         - body: "## Docs drift detected\n\nPR #{{_trigger.number}} was merged but the following docs need updating:\n\n**Stale files:** {{analyze_drift.stale_docs}}\n\n**What needs updating:**\n{{analyze_drift.changes_needed}}\n\n**Merged PR:** {{_trigger.pull_request.html_url}}\n\n---\n**Proposed changes:**\n{{analyze_drift.draft_content}}"
+      2. Use the github::add_label tool to add labels ["documentation", "autopilot ready"] to the new issue.
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<url>", "issue_number": <number>}

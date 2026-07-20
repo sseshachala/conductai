@@ -117,14 +117,12 @@ blocks:
       Run: {{investigate_failures.run_url}}
 
       Steps:
-      1. Create the issue (no labels):
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body: {
-           "title": "fix: flaky test(s) — {{investigate_failures.failing_tests}}",
-           "body": "## Flaky Test Report\n\n**Failure rate:** {{investigate_failures.failure_rate}}\n**Branch:** {{_trigger.workflow_run.head_branch}}\n**Run:** {{investigate_failures.run_url}}\n\n### Failing tests\n{{investigate_failures.failing_tests}}\n\n### Likely cause\n{{investigate_failures.likely_cause}}\n\n### Recommendation\n{{investigate_failures.recommendation}}"
-         }
-      2. Add label: POST .../labels with {"labels": ["flaky-test", "autopilot ready"]}
+      1. Use the github::create_issue tool (no labels):
+         - owner: (extract from {{_trigger.repository.full_name}})
+         - repo: (extract from {{_trigger.repository.full_name}})
+         - title: "fix: flaky test(s) — {{investigate_failures.failing_tests}}"
+         - body: "## Flaky Test Report\n\n**Failure rate:** {{investigate_failures.failure_rate}}\n**Branch:** {{_trigger.workflow_run.head_branch}}\n**Run:** {{investigate_failures.run_url}}\n\n### Failing tests\n{{investigate_failures.failing_tests}}\n\n### Likely cause\n{{investigate_failures.likely_cause}}\n\n### Recommendation\n{{investigate_failures.recommendation}}"
+      2. Use the github::add_label tool to add labels ["flaky-test", "autopilot ready"] to the new issue.
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<url>", "issue_number": <number>}

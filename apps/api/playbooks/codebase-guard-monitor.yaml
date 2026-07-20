@@ -68,9 +68,7 @@ blocks:
       {% endif %}
 
       Steps:
-      1. Fetch the PR diff:
-         GET {{_trigger.pull_request.diff_url}}
-         Headers: Authorization: token $GIT_TOKEN
+      1. Use the github::get_pull_request_diff tool to fetch the diff for PR {{_trigger.number}} in {{_trigger.repository.full_name}}.
       2. Scan the diff against these ConductGuard security policies:
          🔴 CRITICAL (score -30 each):
            - Hardcoded secrets, API keys, tokens, passwords
@@ -86,14 +84,12 @@ blocks:
            - Sensitive data logged without sanitization
            - New env vars added without .env.example update
       3. Calculate risk_score: start at 100, subtract per finding above.
-      4. Post a review comment via GitHub API:
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/pulls/{{_trigger.number}}/reviews
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body:
-         {
-           "body": "<review summary with findings grouped by severity>",
-           "event": "REQUEST_CHANGES" if risk_score < {{inputs.risk_threshold}} else "COMMENT"
-         }
+      4. Use the github::create_review tool to post a review comment:
+         - owner: (extract from {{_trigger.repository.full_name}})
+         - repo: (extract from {{_trigger.repository.full_name}})
+         - pull_number: {{_trigger.number}}
+         - body: "<review summary with findings grouped by severity>"
+         - event: "REQUEST_CHANGES" if risk_score < {{inputs.risk_threshold}} else "COMMENT"
          If clean: event = "APPROVE", body = "✅ ConductGuard: No security violations found."
 
       Output ONLY the following JSON on the last line:
@@ -121,9 +117,8 @@ blocks:
       PR number: {{_trigger.number}}
 
       Steps:
-      1. Search GitHub for existing open issues:
-         GET https://api.github.com/search/issues?q=repo:{{_trigger.repository.full_name}}+is:issue+is:open+"PR+%23{{_trigger.number}}"+in:title
-         Headers: Authorization: token $GIT_TOKEN
+      1. Use the github::search_issues tool:
+         - query: "repo:{{_trigger.repository.full_name}} is:issue is:open PR #{{_trigger.number}} in:title"
       2. If found, return its number and URL.
 
       Output ONLY the following JSON on the last line:
@@ -155,14 +150,13 @@ blocks:
       Critical: {{scan_pr.critical}}, High: {{scan_pr.high}}, Medium: {{scan_pr.medium}}
 
       Steps:
-      1. Append a comment to the existing issue:
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/comments
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body: {"body": "## Updated scan findings\n\nPR #{{_trigger.number}} re-scanned. Risk score: {{scan_pr.risk_score}}/100\nViolations: {{scan_pr.violations}}\n\nReview: {{scan_pr.review_url}}"}
-      2. Remove label then re-add to re-trigger Autopilot:
-         DELETE https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/labels/autopilot%20ready
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/{{check_existing_issue.issue_number}}/labels
-         Body: {"labels": ["autopilot ready"]}
+      1. Use the github::create_issue_comment tool to append a comment:
+         - owner: (extract from {{_trigger.repository.full_name}})
+         - repo: (extract from {{_trigger.repository.full_name}})
+         - issue_number: {{check_existing_issue.issue_number}}
+         - body: "## Updated scan findings\n\nPR #{{_trigger.number}} re-scanned. Risk score: {{scan_pr.risk_score}}/100\nViolations: {{scan_pr.violations}}\n\nReview: {{scan_pr.review_url}}"
+      2. Use the github::remove_label tool to remove "autopilot ready".
+      3. Use the github::add_label tool to re-add "autopilot ready" (re-triggers Autopilot).
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "{{check_existing_issue.issue_url}}", "issue_number": {{check_existing_issue.issue_number}}}
@@ -187,19 +181,13 @@ blocks:
       so GitHub fires the issues.labeled webhook to trigger Autopilot.
 
       Steps:
-      1. Create the issue (no labels):
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body:
-         {
-           "title": "fix(guard): security violations on PR #{{_trigger.number}} — risk score {{scan_pr.risk_score}}/100",
-           "body": "## ConductGuard Security Scan\n\nPR #{{_trigger.number}} blocked with risk score **{{scan_pr.risk_score}}/100**.\n\n### Violations\n{{scan_pr.violations}}\n\n### Counts\n- 🔴 Critical: {{scan_pr.critical}}\n- 🟠 High: {{scan_pr.high}}\n- 🟡 Medium: {{scan_pr.medium}}\n\n### Review\n{{scan_pr.review_url}}\n\n---\n*Detected by ConductGuard. Fix the violations above and re-push to re-scan.*"
-         }
+      1. Use the github::create_issue tool (no labels):
+         - owner: (extract from {{_trigger.repository.full_name}})
+         - repo: (extract from {{_trigger.repository.full_name}})
+         - title: "fix(guard): security violations on PR #{{_trigger.number}} — risk score {{scan_pr.risk_score}}/100"
+         - body: "## ConductGuard Security Scan\n\nPR #{{_trigger.number}} blocked with risk score **{{scan_pr.risk_score}}/100**.\n\n### Violations\n{{scan_pr.violations}}\n\n### Counts\n- 🔴 Critical: {{scan_pr.critical}}\n- 🟠 High: {{scan_pr.high}}\n- 🟡 Medium: {{scan_pr.medium}}\n\n### Review\n{{scan_pr.review_url}}\n\n---\n*Detected by ConductGuard. Fix the violations above and re-push to re-scan.*"
          Save the returned issue number.
-      2. Add label separately:
-         POST https://api.github.com/repos/{{_trigger.repository.full_name}}/issues/<issue_number>/labels
-         Headers: Authorization: token $GIT_TOKEN, Content-Type: application/json
-         Body: {"labels": ["autopilot ready"]}
+      2. Use the github::add_label tool to add "autopilot ready" to the new issue (fires the webhook).
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<created issue URL>", "issue_number": <number>}

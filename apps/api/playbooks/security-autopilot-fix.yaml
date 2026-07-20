@@ -146,35 +146,36 @@ blocks:
     next: open_pr
 
   open_pr:
-    type: tool
-    integration: github
-    action: open_pull_request
+    type: mcp
     label: Open security fix PR
-    params:
-      owner: "{{generate_fix.repo_owner}}"
-      repo: "{{generate_fix.repo_name}}"
-      title: "fix(security): {{_trigger.type}} in {{_trigger.file}} [{{_trigger.severity}}]"
-      head: "{{generate_fix.branch}}"
-      base: "{{generate_fix.default_branch}}"
-      body: |
-        ## Security Fix — {{_trigger.type}}
+    config:
+      server_name: github
+      tool_name: create_pull_request
+      inputs:
+        owner: "{{generate_fix.repo_owner}}"
+        repo: "{{generate_fix.repo_name}}"
+        title: "fix(security): {{_trigger.type}} in {{_trigger.file}} [{{_trigger.severity}}]"
+        head: "{{generate_fix.branch}}"
+        base: "{{generate_fix.default_branch}}"
+        body: |
+          ## Security Fix — {{_trigger.type}}
 
-        | Field | Value |
-        |---|---|
-        | **Finding ID** | `{{_trigger.finding_id}}` |
-        | **Severity** | {{_trigger.severity}} |
-        | **File** | `{{_trigger.file}}:{{_trigger.line}}` |
-        | **Type** | {{_trigger.type}} |
+          | Field | Value |
+          |---|---|
+          | **Finding ID** | `{{_trigger.finding_id}}` |
+          | **Severity** | {{_trigger.severity}} |
+          | **File** | `{{_trigger.file}}:{{_trigger.line}}` |
+          | **Type** | {{_trigger.type}} |
 
-        ### Description
-        {{_trigger.description}}
+          ### Description
+          {{_trigger.description}}
 
-        ### Applied Fix
-        {{_trigger.suggested_fix}}
+          ### Applied Fix
+          {{_trigger.suggested_fix}}
 
-        ---
-        *Automated security patch by [Conduct AI](https://conductai.ai) · security-autopilot-fix playbook*
-        *Review the diff, verify CI is green, then merge.*
+          ---
+          *Automated security patch by [Conduct AI](https://conductai.ai) · security-autopilot-fix playbook*
+          *Review the diff, verify CI is green, then merge.*
     next: write_memory
 
   write_memory:
