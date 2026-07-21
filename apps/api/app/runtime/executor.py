@@ -277,7 +277,7 @@ def execute_run(run_id: str):
 
         # Read pre-minted agent run token (created at trigger time).
         from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
-        from app.core.crypto import decrypt as _rt_decrypt
+        from app.core.crypto import decrypt as _rt_decrypt, encrypt as _rt_encrypt
         _conduct_run_token = ""
         _rt = db.query(_AgentRunToken).filter(
             _AgentRunToken.run_id == str(run.id),
@@ -289,13 +289,32 @@ def execute_run(run_id: str):
                 _plaintext = (_rt_decrypt(_rt.token_encrypted) or {}).get("token") if _rt.token_encrypted else None
                 if _plaintext:
                     _conduct_run_token = _plaintext
-                    _ev = credentials.get("env_vars") or {}
-                    if isinstance(_ev, dict):
-                        _ev["CONDUCT_RUN_TOKEN"] = _plaintext
-                        credentials._data["env_vars"] = _ev
-                    # ponytail: keep token_encrypted intact — run may retry across blocks
             except Exception:
-                pass  # fail-open: run proceeds without short-lived token
+                pass
+
+        if not _conduct_run_token:
+            # Token missing or decrypt failed — mint one now so brain blocks can auth with the proxy.
+            try:
+                import hashlib as _ht_hash, uuid as _ht_uuid
+                from datetime import datetime as _ht_dt, timezone as _ht_tz
+                _ht_plaintext = "cond_run_" + _ht_uuid.uuid4().hex
+                _ht_row = _AgentRunToken(
+                    id=str(_ht_uuid.uuid4()),
+                    agent_identity_id=None,
+                    workspace_id=run.workspace_id,
+                    run_id=str(run.id),
+                    token_hash=_ht_hash.sha256(_ht_plaintext.encode()).hexdigest(),
+                    token_prefix=_ht_plaintext[:16],
+                    token_encrypted=_rt_encrypt({"token": _ht_plaintext}),
+                    created_at=_ht_dt.now(_ht_tz.utc),
+                )
+                db.add(_ht_row)
+                db.commit()
+                _run_token_row_id = _ht_row.id
+                _conduct_run_token = _ht_plaintext
+                log.info("run.token_minted_at_executor", run_id=run_id)
+            except Exception:
+                log.warning("run.token_mint_failed_at_executor", run_id=run_id)
 
         # Construct RunContext — single typed source of truth for all run infrastructure.
         # apply_to_state() writes every field into state so blocks read them unchanged.
