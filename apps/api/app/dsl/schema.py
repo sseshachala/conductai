@@ -209,6 +209,10 @@ class Block(BaseModel):
     max_turns: int | None = None  # overrides the run-level __max_turns for this block only
     complexity: str | None = None  # "small" | "medium" | "large" — resolved to max_turns via agent_config.yaml
 
+    # — execution policy (brain blocks) —
+    # Guardrail constraints applied at runtime; instructions are injected into system prompt.
+    execution_policy: dict[str, Any] | None = None
+
     # — canvas display flags —
     is_readonly: bool = False  # True for blocks resolved from $use — canvas shows read-only banner
 

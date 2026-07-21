@@ -615,6 +615,21 @@ def _block_to_node(block_id: str, block: Block, col: int) -> dict[str, Any]:
             data["complexity"] = block.complexity
         if block.sandbox:
             data["sandbox"] = block.sandbox
+        # Wire execution_policy: append instructions to description, copy
+        # constraints onto data so the brain block executor can read them.
+        if block.execution_policy:
+            ep = block.execution_policy
+            ep_instructions: list[str] = ep.get("instructions") or []
+            if ep_instructions:
+                bullet_list = "\n".join(f"- {i}" for i in ep_instructions)
+                current_desc = data.get("description") or ""
+                data["description"] = (
+                    f"{current_desc}\n\nExecution policy instructions:\n{bullet_list}".strip()
+                )
+            ep_constraints: dict = ep.get("constraints") or {}
+            for field in ("rollback_on_failure", "require_tests_pass", "max_retries", "max_cost_usd"):
+                if field in ep_constraints:
+                    data[field] = ep_constraints[field]
 
     elif block.type == "memory":
         if block.action:
