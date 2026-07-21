@@ -27,6 +27,10 @@ inputs:
     label: Risk Score Threshold (block above this)
     default: "60"
     type: string
+  slack_channel:
+    label: Slack channel
+    default: "#security"
+    type: string
 
 on:
   webhook:
@@ -213,7 +217,7 @@ blocks:
     output:
       via: slack
       slack:
-        channel: "#security"
+        channel: "{{inputs.slack_channel}}"
 
 test_trigger:
   payload:

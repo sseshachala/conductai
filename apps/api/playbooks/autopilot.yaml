@@ -56,6 +56,10 @@ inputs:
       - "50"
       - "75"
     hint: "Floor for the AI turn budget — complex repos may need more"
+  slack_channel:
+    label: Slack channel
+    default: "#engineering"
+    type: string
 
 on:
   github.issue_labeled:
@@ -184,7 +188,7 @@ blocks:
     output:
       via: slack
       slack:
-        channel: "#engineering"
+        channel: "{{inputs.slack_channel}}"
 
 
   run_tests:
@@ -279,7 +283,7 @@ blocks:
     output:
       via: slack
       slack:
-        channel: "#engineering"
+        channel: "{{inputs.slack_channel}}"
         approval: true
 
   notify_failure:
@@ -288,7 +292,7 @@ blocks:
     output:
       via: slack
       slack:
-        channel: "#engineering"
+        channel: "{{inputs.slack_channel}}"
 
 test_trigger:
   payload:

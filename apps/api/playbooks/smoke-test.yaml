@@ -21,6 +21,10 @@ inputs:
       - "off"
       - warn
       - block
+  slack_channel:
+    label: Slack channel
+    default: "#ops"
+    type: string
 
 on:
   manual:
@@ -56,7 +60,7 @@ blocks:
     output:
       via: slack
       slack:
-        channel: "#ops"
+        channel: "{{inputs.slack_channel}}"
 
 test_trigger:
   payload:
