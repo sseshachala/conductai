@@ -1998,29 +1998,6 @@ def test_trigger(
     db.add(run)
     db.commit()
 
-    # Mint a short-lived run token for every run (audit log + proxy auth)
-    try:
-        import hashlib as _ht_hash, uuid as _ht_uuid
-        from datetime import datetime as _ht_dt, timezone as _ht_tz
-        from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
-        from app.core.crypto import encrypt as _ht_encrypt
-
-        _ht_plaintext = "cond_run_" + _ht_uuid.uuid4().hex
-        _ht_row = _AgentRunToken(
-            id=str(_ht_uuid.uuid4()),
-            agent_identity_id=None,
-            workspace_id=run.workspace_id,
-            run_id=str(run.id),
-            token_hash=_ht_hash.sha256(_ht_plaintext.encode()).hexdigest(),
-            token_prefix=_ht_plaintext[:16],
-            token_encrypted=_ht_encrypt({"token": _ht_plaintext}),
-            created_at=_ht_dt.now(_ht_tz.utc),
-        )
-        db.add(_ht_row)
-        db.commit()
-    except Exception:
-        pass  # ponytail: mint failure is non-fatal, run proceeds without run token
-
     try:
         r = _redis_mod.from_url(_settings.redis_url, decode_responses=True)
         r.rpush("marshal:runs:queue", str(run.id))
