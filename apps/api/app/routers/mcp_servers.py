@@ -140,6 +140,8 @@ class McpTestIn(BaseModel):
     url: str
     auth_token: Optional[str] = None
     transport: str = "auto"
+    environment_id: Optional[str] = None
+    credential_key: Optional[str] = None  # e.g. GITHUB_TOKEN — resolve from env if auth_token blank
 
 
 class McpTestOut(BaseModel):
@@ -154,6 +156,7 @@ class McpTestOut(BaseModel):
 def test_mcp_connection(
     body: McpTestIn,
     _: str = Depends(require_permission("platform.credentials.manage")),
+    db: Session = Depends(get_db),
 ):
     """Call tools/list on the candidate MCP server with the user-supplied auth.
 
@@ -163,10 +166,24 @@ def test_mcp_connection(
     """
     from app.runtime.integrations.mcp_client import list_tools
 
+    token = body.auth_token or None
+    # If no inline token but environment + credential_key provided, resolve from env credentials
+    if not token and body.environment_id and body.credential_key:
+        try:
+            from sqlalchemy import text as _text
+            row = db.execute(
+                _text("SELECT encrypted_value FROM credentials WHERE environment_id = :env AND key = :key LIMIT 1"),
+                {"env": body.environment_id, "key": body.credential_key},
+            ).fetchone()
+            if row:
+                token = decrypt(row.encrypted_value)
+        except Exception:
+            pass
+
     try:
-        tools, transport_used = list_tools(body.url, body.auth_token or None, body.transport)
+        tools, transport_used = list_tools(body.url, token, body.transport)
     except Exception as e:
-        return McpTestOut(ok=False, error=str(e)[:200])
+        return McpTestOut(ok=False, error=str(e)[:300])
 
     sample = [t.get("name", "") for t in tools[:5] if t.get("name")]
     return McpTestOut(

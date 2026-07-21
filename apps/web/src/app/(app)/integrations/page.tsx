@@ -96,7 +96,7 @@ function McpModal({
   initial: FormState
   environments: Environment[]
   onSave: (form: FormState) => Promise<void>
-  onTest: (body: { url: string; auth_token: string | null; transport: string }) => Promise<{ ok: boolean; msg: string }>
+  onTest: (body: { url: string; auth_token: string | null; transport: string; environment_id?: string; credential_key?: string }) => Promise<{ ok: boolean; msg: string }>
   onClose: () => void
   isSystem?: boolean
   isConductManaged?: boolean
@@ -120,6 +120,8 @@ function McpModal({
         url: form.url.trim(),
         auth_token: form.auth_token.trim() || null,
         transport: form.transport,
+        environment_id: form.environment_id || undefined,
+        credential_key: getProvider(form.provider)?.credentialKey || undefined,
       })
       setTestResult(result)
     } catch (e: unknown) {
@@ -418,7 +420,7 @@ function IntegrationsPageInner({
     setEditTarget(null)
   }
 
-  async function handleTest(body: { url: string; auth_token: string | null; transport: string }): Promise<{ ok: boolean; msg: string }> {
+  async function handleTest(body: { url: string; auth_token: string | null; transport: string; environment_id?: string; credential_key?: string }): Promise<{ ok: boolean; msg: string }> {
     const headers = await buildHeaders(true)
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp-servers/test-connection`, {
       method: "POST",
