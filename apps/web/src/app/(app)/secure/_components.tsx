@@ -53,10 +53,8 @@ export const STATUS_STYLES: Record<FindingStatus, { bg: string; color: string; l
 }
 
 const SECURE_TABS = [
-  { href: "/secure",           label: "Overview"  },
-  { href: "/secure/policies",  label: "Security Policies"  },
-  { href: "/secure/activity",  label: "Activity"  },
-  { href: "/secure/settings",  label: "Settings"  },
+  { href: "/secure",          label: "Overview" },
+  { href: "/secure/activity", label: "Activity" },
 ]
 
 export function SecureShell({ children }: { children: React.ReactNode }) {
@@ -78,7 +76,7 @@ export function SecureShell({ children }: { children: React.ReactNode }) {
             </span>
           </div>
           <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
-            Security Loop for Claude Code — captures findings from every AI-assisted coding session.
+            Security findings from every scan — PR reviews, BugHunter, Guard violations. Triages automatically, triggers fixes.
           </p>
         </div>
       </div>
@@ -156,9 +154,7 @@ export function FindingsTable({
       ) : findings.length === 0 ? (
         <div style={{ padding: "48px 20px", textAlign: "center" }}>
           <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>
-            No findings — enable Security Emit in{" "}
-            <Link href="/secure/settings" style={{ color: "var(--accent)", textDecoration: "none" }}>Settings</Link>
-            {" "}to start capturing.
+            No findings yet. Install the Security Scanner playbook or run BugHunter to start capturing.
           </div>
         </div>
       ) : findings.map((f, i, arr) => {
