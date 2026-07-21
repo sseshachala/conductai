@@ -25,7 +25,7 @@ def _execute_approval(block: dict, state: dict, credentials: dict | None = None,
     from app.runtime.tool_engine import _resolve_refs
     from app.core.credentials import fetch_credential
 
-    from app.runtime.run_contract import cred_from_state
+    from app.runtime.run_contract import cred_from_state, get_email_creds
     _cred_token, _cred_api_url, _cred_handles = cred_from_state(state)
 
     block_id = block["id"]
@@ -80,9 +80,7 @@ def _execute_approval(block: dict, state: dict, credentials: dict | None = None,
                 f"Approve: {approve_url}\n"
                 f"Reject:  {reject_url}\n"
             )
-            email_creds = fetch_credential(_cred_token, "email", _cred_api_url) if "email" in _cred_handles else {}
-            if not email_creds:
-                email_creds = fetch_credential(_cred_token, "resend", _cred_api_url) if "resend" in _cred_handles else {}
+            email_creds = get_email_creds(_cred_token, _cred_api_url, _cred_handles)
             email_int.execute(
                 "send",
                 {

@@ -154,7 +154,7 @@ def _execute_output(
     from app.runtime.tool_engine import _resolve_refs
     from app.core.credentials import fetch_credential
 
-    from app.runtime.run_contract import cred_from_state
+    from app.runtime.run_contract import cred_from_state, get_email_creds
     _cred_token, _cred_api_url, _cred_handles = cred_from_state(state)
 
     dry_run = state.get("__dry_run", False)
@@ -206,10 +206,7 @@ def _execute_output(
                 results["slack"] = {"sent": False, "error": str(e)}
 
     if send_email:
-        email_creds = fetch_credential(_cred_token, "email", _cred_api_url) if "email" in _cred_handles else {}
-        if not email_creds:
-            email_creds = fetch_credential(_cred_token, "resend", _cred_api_url) if "resend" in _cred_handles else {}
-        email_creds = dict(email_creds)
+        email_creds = dict(get_email_creds(_cred_token, _cred_api_url, _cred_handles))
         if not email_creds.get("resend_api_key") and settings.resend_api_key:
             email_creds["resend_api_key"] = settings.resend_api_key
         to = _resolve_refs(config.get("to", ""), state)

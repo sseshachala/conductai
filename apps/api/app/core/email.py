@@ -185,12 +185,8 @@ def _workspace_credential(workspace_id: str, db) -> EmailCredential | None:
 
 def _send_via_resend(api_key: str, from_addr: str, to: str, subject: str, html: str) -> bool:
     try:
-        r = httpx.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"from": from_addr, "to": [to], "subject": subject, "html": html},
-            timeout=10,
-        )
+        from app.runtime.integrations.email import send_via_resend_html
+        r = send_via_resend_html(api_key, from_addr, to, subject, html)
         if not r.is_success:
             log.warning("email.resend_error", status_code=r.status_code, to=to, from_addr=from_addr, response=r.text[:400])
         return r.is_success

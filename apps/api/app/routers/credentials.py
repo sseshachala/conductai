@@ -423,12 +423,7 @@ def _translate_git_error(status_code: int, response_text: str) -> str:
     return f"Git API error (HTTP {status_code}): {body[:200]}"
 
 
-def _gh_headers(token: str) -> dict:
-    return {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
+from app.runtime.integrations.github import _github_headers as _gh_headers
 
 
 @router.get("/github/issues")
@@ -763,11 +758,7 @@ def test_credential(
                 return {"ok": False, "error": "Missing 'token' field"}
             r = httpx.get(
                 "https://api.github.com/user",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                },
+                headers=_gh_headers(token),
                 timeout=10,
             )
             if r.status_code == 200:
