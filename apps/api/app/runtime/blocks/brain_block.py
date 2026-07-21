@@ -558,6 +558,21 @@ def _execute_brain(
             max_turns = max(1, max_turns)
         max_cost_usd = float(state.get("__max_cost_usd", 5.0) or 5.0)
         max_cost_usd = max(0.01, max_cost_usd)
+
+        # Guardrail fields from execution_policy (wired in by the loader)
+        _block_data = block.get("data", {})
+        _rollback_on_failure = bool(_block_data.get("rollback_on_failure", False))
+        _require_tests_pass = bool(_block_data.get("require_tests_pass", False))
+        _max_retries = int(_block_data.get("max_retries", 3))
+        _block_max_cost = _block_data.get("max_cost_usd")
+        if _block_max_cost is not None:
+            # Per-block cap overrides run-level cap when it is tighter
+            _block_max_cost_f = float(_block_max_cost)
+            if _block_max_cost_f < max_cost_usd:
+                max_cost_usd = max(0.01, _block_max_cost_f)
+        # Track whether a test run was observed in the current turn
+        _test_ran_this_turn: bool = False
+
         total_input_tokens = 0
         total_output_tokens = 0
         total_cache_read_tokens = 0
@@ -686,6 +701,14 @@ def _execute_brain(
                         "pricing_rates": pricing_rates,
                         "next_action": "Reduce scope or raise max_cost_usd before retrying.",
                     })
+                if _rollback_on_failure and db and run_id:
+                    _emit(db, run_id, block_id, "guardrail.rollback_triggered", {
+                        "reason": "max_cost_reached",
+                        "turns": turns,
+                        "cost_usd": cost_usd,
+                        "max_cost_usd": max_cost_usd,
+                        "note": "rollback_on_failure=true — full git revert is a follow-up action",
+                    })
                 _close_session()
                 raise RuntimeError(
                     f"Cost budget exhausted: agent reached ${cost_usd:.4f} with cap ${max_cost_usd:.4f} "
@@ -765,6 +788,7 @@ def _execute_brain(
                     })
 
             # Execute tool calls and collect results
+            _test_ran_this_turn = False  # reset per-turn; set True when a test command runs
             raw_tool_results: list[tuple[str, str]] = []
             for tc in tool_calls:
                 # Trace: tool_use
@@ -885,7 +909,41 @@ def _execute_brain(
                                 result_content = f"[mcp_error] {_mcp_exc!s:.500}"
                         result_content = _classify_tool_error(result_content)
                     else:
-                        result_content = _dispatch_with_creds(tc.name, tc.input)
+                        # require_tests_pass guardrail: intercept commit-like calls
+                        # when no test run has been observed yet in this turn.
+                        _GIT_COMMIT_PATTERNS = ("git commit", "git push", "gh pr create")
+                        _is_commit_call = (
+                            tc.name == "run_shell"
+                            and any(
+                                p in (tc.input or {}).get("command", "")
+                                for p in _GIT_COMMIT_PATTERNS
+                            )
+                        )
+                        if _require_tests_pass and _is_commit_call and not _test_ran_this_turn:
+                            result_content = (
+                                "[guardrail_blocked] Tests must pass before committing. "
+                                "Run tests first."
+                            )
+                            if db and run_id:
+                                _emit(db, run_id, block_id, "guardrail.require_tests_pass", {
+                                    "tool": tc.name,
+                                    "command": (tc.input or {}).get("command", ""),
+                                    "turn": turns,
+                                    "message": "Blocked: tests must pass before committing",
+                                })
+                        else:
+                            result_content = _dispatch_with_creds(tc.name, tc.input)
+                            # Detect test runs so subsequent commit calls are allowed
+                            if (
+                                _require_tests_pass
+                                and tc.name == "run_shell"
+                                and not _test_ran_this_turn
+                            ):
+                                _cmd = (tc.input or {}).get("command", "").lower()
+                                _TEST_MARKERS = ("pytest", "npm test", "yarn test", "make test",
+                                                 "go test", "cargo test", "rspec", "jest", "vitest")
+                                if any(m in _cmd for m in _TEST_MARKERS):
+                                    _test_ran_this_turn = True
                         result_content = _classify_tool_error(result_content)
                 except RuntimeError as sandbox_err:
                     if db and run_id:
@@ -953,6 +1011,13 @@ def _execute_brain(
                 "pricing_version": pricing_version,
                 "pricing_rates": pricing_rates,
                 "next_action": "Reduce scope or increase max_turns before retrying.",
+            })
+        if _rollback_on_failure and db and run_id:
+            _emit(db, run_id, block_id, "guardrail.rollback_triggered", {
+                "reason": "max_turns_reached",
+                "turns": max_turns,
+                "cost_usd": cost_usd,
+                "note": "rollback_on_failure=true — full git revert is a follow-up action",
             })
         _record_turns(db, run_id, max_turns, True)
         _close_session()
