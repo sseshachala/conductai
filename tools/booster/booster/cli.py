@@ -52,22 +52,22 @@ Run `booster gain` to see token savings.
 <!-- booster:end -->"""
 
 def _hook_command(root: Path) -> str:
-    return f"python3 {root / '.claude' / 'hooks' / 'booster-gate.py'}"
+    return "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-gate.py\"'"
 
 def _grep_hook_command(root: Path) -> str:
-    return f"python3 {root / '.claude' / 'hooks' / 'booster-grep-nudge.py'}"
+    return "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-grep-nudge.py\"'"
 
 def _route_hook_command(root: Path) -> str:
-    return f"python3 {root / '.claude' / 'hooks' / 'booster-route.py'}"
+    return "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-route.py\"'"
 
 def _agent_inject_command(root: Path) -> str:
-    return f"python3 {root / '.claude' / 'hooks' / 'booster-agent-inject.py'}"
+    return "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-agent-inject.py\"'"
 
 def _session_start_command(root: Path) -> str:
-    return f"python3 {root / '.claude' / 'hooks' / 'booster-session-start.py'}"
+    return "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-session-start.py\"'"
 
 def _stop_command(root: Path) -> str:
-    return f"python3 {root / '.claude' / 'hooks' / 'booster-stop.py'}"
+    return "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-stop.py\"'"
 
 _STOP_SCRIPT = '''\
 #!/usr/bin/env python3
@@ -499,6 +499,19 @@ def _install_hook(root: Path) -> None:
 
     hooks = settings.setdefault("hooks", {})
     pre = hooks.setdefault("PreToolUse", [])
+
+    # Migrate: remove any old absolute-path or relative-path hook entries so we don't accumulate duplicates
+    _hooks_dir = root / ".claude" / "hooks"
+    for section_key in ("PreToolUse", "UserPromptSubmit", "SessionStart", "Stop"):
+        section = hooks.get(section_key, [])
+        for group in section:
+            group["hooks"] = [
+                e for e in group.get("hooks", [])
+                if not (
+                    str(_hooks_dir) in e.get("command", "") or
+                    e.get("command", "").startswith("python3 .claude/hooks/booster")
+                )
+            ]
 
     def _has(matcher: str, cmd: str) -> bool:
         return any(
