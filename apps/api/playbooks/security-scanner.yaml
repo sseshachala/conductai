@@ -26,6 +26,10 @@ inputs:
     label: Slack channel
     default: "#security"
     type: string
+  label_filter:
+    label: Autopilot label to apply on critical findings
+    default: "autopilot ready"
+    type: string
 
 on:
   webhook:
@@ -257,7 +261,7 @@ blocks:
          - Body: "## Re-scan findings\n\nPR #{{_trigger.number}} was re-scanned. {{security_scan.critical}} critical and {{security_scan.high}} high severity issue(s) found.\n\nSee PR review: {{security_scan.review_url}}"
       2. Remove then re-add the autopilot label to re-trigger:
          - Tool: github.remove_label, then github.add_label
-         - Label: "autopilot ready"
+         - Label: "{{inputs.label_filter}}"
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "{{check_existing_issue.issue_url}}", "issue_number": {{check_existing_issue.issue_number}}}
@@ -292,7 +296,7 @@ blocks:
       2. Add label in a separate call:
          - Tool: github.add_label
          - Issue: <issue_number>
-         - Label: "autopilot ready"
+         - Label: "{{inputs.label_filter}}"
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<url>", "issue_number": <number>}
