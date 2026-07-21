@@ -18,7 +18,7 @@
           },
           {
             "type": "command",
-            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/validate-playbooks.py"
+            "command": "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/validate-playbooks.py\"'"
           }
         ]
       },
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-gate.py"
+            "command": "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-gate.py\"'"
           }
         ]
       },
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-grep-nudge.py"
+            "command": "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-grep-nudge.py\"'"
           }
         ]
       },
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-agent-inject.py"
+            "command": "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-agent-inject.py\"'"
           }
         ]
       }
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-route.py"
+            "command": "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-route.py\"'"
           }
         ]
       }
@@ -75,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/guard-session-start.py"
+            "command": "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/guard-session-start.py\"'"
           }
         ]
       },
@@ -83,7 +83,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-session-start.py",
+            "command": "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-session-start.py\"'",
             "async": true
           }
         ]
@@ -94,7 +94,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "conduct guard sync"
+            "command": "/Users/sudhiseshachala/Library/Python/3.9/bin/conduct guard sync || true"
           }
         ]
       },
@@ -102,7 +102,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/sudhiseshachala/projects/marshal/.claude/hooks/booster-stop.py"
+            "command": "sh -c 'python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/booster-stop.py\"'"
           }
         ]
       }
