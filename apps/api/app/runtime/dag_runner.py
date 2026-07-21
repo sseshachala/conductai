@@ -518,6 +518,52 @@ def _execute_mcp(block: dict, state: dict, cred_store: object, workspace_id: str
     return _mcp_impl(block, state, cred_store, workspace_id=workspace_id)
 
 
+# MCP tool name → (integration handle, REST action, param rename map)
+# param rename map: MCP input key → REST param key (only keys that differ)
+_MCP_REST_MAP: dict[str, tuple[str, str, dict]] = {
+    "get_issue":          ("github", "fetch_issue",       {"issue_number": "issue_number"}),
+    "get_repository":     ("github", "get_repo",          {"owner": "owner", "repo": "repo"}),
+    "create_issue":       ("github", "create_issue",      {}),
+    "create_pull_request":("github", "open_pull_request", {}),
+    "fork_repository":    ("github", "fork_repo",         {}),
+    "search_code":        ("github", "search_code",       {}),
+    "post_message":       ("slack",  "post_message",      {}),
+}
+
+
+def _mcp_needs_fallback(result: dict) -> bool:
+    if result.get("skipped"):
+        return True
+    err = str(result.get("error", ""))
+    return "unknown tool" in err.lower() or "not registered" in err.lower()
+
+
+def _mcp_rest_fallback(block: dict, state: dict, credentials: dict,
+                       allowed_hosts, workspace_id: str) -> dict | None:
+    config = (block.get("data") or {}).get("config") or {}
+    tool_name = config.get("tool_name", "")
+    entry = _MCP_REST_MAP.get(tool_name)
+    if not entry:
+        return None
+    handle, action, _ = entry
+    # Build a synthetic tool block for the existing REST dispatcher
+    rest_block = {
+        **block,
+        "data": {
+            **block.get("data", {}),
+            "type": "tool",
+            "integration": handle,
+            "action": action,
+            "config": {"action": action, "params": config.get("params") or config.get("inputs") or {}},
+        },
+    }
+    try:
+        return _execute_tool(rest_block, state, credentials,
+                             allowed_hosts=allowed_hosts, workspace_id=workspace_id)
+    except Exception as e:
+        return {"error": str(e), "fallback": "rest"}
+
+
 # ── for_each resolution ───────────────────────────────────────────────────────
 
 def _resolve_as_list(expr: str, state: dict) -> list:
@@ -710,6 +756,11 @@ def _dispatch_single_block(
 
     elif block_type == "mcp":
         result = _execute_mcp(block, state, credentials, workspace_id=workspace_id_str)
+        # Fall back to REST if MCP server not registered or returned unknown tool
+        if _mcp_needs_fallback(result):
+            rest = _mcp_rest_fallback(block, state, credentials, allowed_hosts, workspace_id_str)
+            if rest is not None:
+                result = rest
 
     elif block_type == "for_each":
         # Called per-item by the for_each expansion loop (lines ~1260).
