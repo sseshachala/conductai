@@ -168,22 +168,12 @@ def test_mcp_connection(
     from app.runtime.integrations.mcp_client import list_tools
 
     token = body.auth_token or None
-    # If no inline token but environment + credential_key provided, resolve from Integration store
-    if not token and body.environment_id and body.credential_key:
+    if not token and body.credential_key:
         try:
-            from app.routers.credentials import _ENV_VAR_MAP
-            from app.models.integration import Integration
-            from app.core.crypto import decrypt as _dec
-            handle, field = _ENV_VAR_MAP.get(body.credential_key, (None, None))
-            if handle:
-                row = db.query(Integration).filter(
-                    Integration.workspace_id == workspace_id,
-                    Integration.environment_id == body.environment_id,
-                    Integration.handle == handle,
-                ).first()
-                if row and row.encrypted_credentials:
-                    creds = _dec(row.encrypted_credentials) or {}
-                    token = creds.get(field) or None
+            from app.runtime.mcp_credentials import resolve_mcp_token_by_credential_key
+            token = resolve_mcp_token_by_credential_key(
+                body.credential_key, workspace_id, body.environment_id or None, db
+            )
         except Exception:
             pass
 
