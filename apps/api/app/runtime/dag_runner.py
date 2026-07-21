@@ -755,12 +755,13 @@ def _dispatch_single_block(
         result = {"status": "skipped", "reason": "guard_applied_automatically"}
 
     elif block_type == "mcp":
-        result = _execute_mcp(block, state, credentials, workspace_id=workspace_id_str)
-        # Fall back to REST if MCP server not registered or returned unknown tool
-        if _mcp_needs_fallback(result):
+        try:
+            result = _execute_mcp(block, state, credentials, workspace_id=workspace_id_str)
+            if _mcp_needs_fallback(result):
+                raise RuntimeError(result.get("reason") or "mcp_fallback")
+        except Exception as _mcp_err:
             rest = _mcp_rest_fallback(block, state, credentials, allowed_hosts, workspace_id_str)
-            if rest is not None:
-                result = rest
+            result = rest if rest is not None else {"error": str(_mcp_err)}
 
     elif block_type == "for_each":
         # Called per-item by the for_each expansion loop (lines ~1260).
