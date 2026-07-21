@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "conduct-guard": {
+      "type": "http",
+      "url": "https://api.conductai.ai/guard/mcp"
+    },
     "agent-booster": {
       "command": "booster",
       "args": [
