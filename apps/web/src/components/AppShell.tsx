@@ -753,6 +753,9 @@ function AppShellInnerContent({
           />
 
           {/* GOVERN group — Guard */}
+          {!canSeeGuard && !collapsed && (
+            <EnableGuardButton getToken={getToken} workspaceId={activeWorkspace?.id} />
+          )}
           {canSeeGuard && (
             <div>
               {!collapsed && (
@@ -1324,6 +1327,58 @@ function AppShellInnerContent({
 
     {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
     </PreferencesProvider>
+  )
+}
+
+// ── EnableGuardButton ─────────────────────────────────────────────────────────
+
+function EnableGuardButton({ getToken, workspaceId }: { getToken?: (() => Promise<string | null>) | null; workspaceId?: string }) {
+  const [loading, setLoading] = useState(false)
+
+  async function handleEnable() {
+    if (!workspaceId) return
+    setLoading(true)
+    try {
+      const h: Record<string, string> = {}
+      if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/guard/config?workspace_id=${workspaceId}`,
+        { headers: h }
+      )
+      if (res.ok) {
+        window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: true } }))
+      }
+    } catch {}
+    setLoading(false)
+  }
+
+  return (
+    <div style={{ padding: "10px 10px 4px" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 6 }}>
+        Govern
+      </div>
+      <button
+        onClick={handleEnable}
+        disabled={loading}
+        style={{
+          width: "100%",
+          padding: "7px 10px",
+          borderRadius: 8,
+          border: "1px dashed var(--border)",
+          background: "transparent",
+          color: "var(--text-3)",
+          fontSize: 13,
+          cursor: loading ? "wait" : "pointer",
+          textAlign: "left",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <Icons.Shield />
+        {loading ? "Enabling…" : "Enable Guard"}
+      </button>
+    </div>
   )
 }
 
