@@ -18,9 +18,12 @@ depends_on = None
 
 # (name, url, transport) — name must match server_name in playbook YAML
 SYSTEM_SERVERS = [
-    ("github",  "https://api.githubcopilot.com/mcp", "http"),
-    ("slack",   "https://mcp.slack.com",              "sse"),
-    ("linear",  "https://mcp.linear.app/mcp",         "http"),
+    # Hosted MCP servers with real public endpoints
+    ("slack",  "https://mcp.slack.com",     "sse"),
+    ("linear", "https://mcp.linear.app/mcp","http"),
+    # GitHub has no universal public MCP endpoint — users add their own URL
+    # (Docker: ghcr.io/github/github-mcp-server on localhost:3000)
+    # REST fallback in dag_runner covers GitHub until MCP is configured
 ]
 
 
