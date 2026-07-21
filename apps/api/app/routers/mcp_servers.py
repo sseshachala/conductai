@@ -156,6 +156,7 @@ class McpTestOut(BaseModel):
 def test_mcp_connection(
     body: McpTestIn,
     _: str = Depends(require_permission("platform.credentials.manage")),
+    workspace_id: Annotated[str, Depends(get_workspace_id)] = "",
     db: Session = Depends(get_db),
 ):
     """Call tools/list on the candidate MCP server with the user-supplied auth.
@@ -167,16 +168,22 @@ def test_mcp_connection(
     from app.runtime.integrations.mcp_client import list_tools
 
     token = body.auth_token or None
-    # If no inline token but environment + credential_key provided, resolve from env credentials
+    # If no inline token but environment + credential_key provided, resolve from Integration store
     if not token and body.environment_id and body.credential_key:
         try:
-            from sqlalchemy import text as _text
-            row = db.execute(
-                _text("SELECT encrypted_value FROM credentials WHERE environment_id = :env AND key = :key LIMIT 1"),
-                {"env": body.environment_id, "key": body.credential_key},
-            ).fetchone()
-            if row:
-                token = decrypt(row.encrypted_value)
+            from app.routers.credentials import _ENV_VAR_MAP
+            from app.models.integration import Integration
+            from app.core.crypto import decrypt as _dec
+            handle, field = _ENV_VAR_MAP.get(body.credential_key, (None, None))
+            if handle:
+                row = db.query(Integration).filter(
+                    Integration.workspace_id == workspace_id,
+                    Integration.environment_id == body.environment_id,
+                    Integration.handle == handle,
+                ).first()
+                if row and row.encrypted_credentials:
+                    creds = _dec(row.encrypted_credentials) or {}
+                    token = creds.get(field) or None
         except Exception:
             pass
 
