@@ -15,7 +15,7 @@ export const MCP_PROVIDERS: McpProvider[] = [
   { value: "anthropic",  label: "Claude (Anthropic)",   serverUrl: "https://mcp.anthropic.com",                   transport: "http", credentialKey: "ANTHROPIC_API_KEY",    description: "Claude AI tools" },
   { value: "gemini",     label: "Gemini (Google)",      serverUrl: "https://mcp.googleapis.com",                  transport: "http", credentialKey: "GEMINI_API_KEY",       description: "Google Gemini models" },
   // Dev tools
-  { value: "github",     label: "GitHub",               serverUrl: "https://api.githubcopilot.com/mcp",           transport: "http", credentialKey: "GITHUB_TOKEN",         description: "GitHub repos, PRs, issues" },
+  { value: "github",     label: "GitHub",               serverUrl: "http://localhost:3000",           transport: "http", credentialKey: "GITHUB_TOKEN",         description: "Self-hosted — docker run ghcr.io/github/github-mcp-server" },
   { value: "vercel",     label: "Vercel",               serverUrl: "https://mcp.vercel.com",                      transport: "http", credentialKey: "VERCEL_TOKEN",         description: "Vercel deployments and projects" },
   { value: "railway",    label: "Railway",              serverUrl: "https://mcp.railway.com",                     transport: "http", credentialKey: "RAILWAY_TOKEN",        description: "Railway deployments" },
   { value: "sentry",     label: "Sentry",               serverUrl: "https://mcp.sentry.io/mcp",                   transport: "http", credentialKey: "SENTRY_TOKEN",         description: "Error tracking and alerts" },

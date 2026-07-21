@@ -356,9 +356,8 @@ def list_projects(
 
         # Pre-seed well-known public MCP servers (no auth — user adds token via Integrations)
         _PUBLIC_MCP = [
-            ("github",  "https://api.githubcopilot.com/mcp", "http"),
-            ("slack",   "https://mcp.slack.com",              "sse"),
-            ("linear",  "https://mcp.linear.app/mcp",         "http"),
+            ("slack",  "https://mcp.slack.com",      "sse"),
+            ("linear", "https://mcp.linear.app/mcp", "http"),
         ]
         for _name, _url, _transport in _PUBLIC_MCP:
             db.execute(text("""
