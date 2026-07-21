@@ -275,7 +275,7 @@ def execute_run(run_id: str):
                 run.agent_role_id = str(_identity.id)
                 db.commit()
 
-        # Read pre-minted agent run token (created at trigger time).
+        # Read pre-minted run token (created at trigger time).
         from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
         from app.core.crypto import decrypt as _rt_decrypt, encrypt as _rt_encrypt
         _conduct_run_token = ""
@@ -289,32 +289,45 @@ def execute_run(run_id: str):
                 _plaintext = (_rt_decrypt(_rt.token_encrypted) or {}).get("token") if _rt.token_encrypted else None
                 if _plaintext:
                     _conduct_run_token = _plaintext
+                    _ev = credentials.get("env_vars") or {}
+                    if isinstance(_ev, dict):
+                        _ev["CONDUCT_RUN_TOKEN"] = _plaintext
+                        credentials._data["env_vars"] = _ev
+                    # ponytail: keep token_encrypted intact — run may retry across blocks
             except Exception:
-                pass
+                log.warning("run.token_decrypt_failed", run_id=run_id)
 
+        # Resumed runs: executor finally-block invalidated the token in the previous segment.
+        # The token was already written into state before the run paused — recover it.
         if not _conduct_run_token:
-            # Token missing or decrypt failed — mint one now so brain blocks can auth with the proxy.
+            _saved_token = state.get("__conduct_run_token__", "")
+            if _saved_token:
+                _conduct_run_token = _saved_token
+                log.info("run.token_recovered_from_state", run_id=run_id)
+
+        # Mint a fresh token if trigger-time mint failed or token is unrecoverable.
+        if not _conduct_run_token:
+            import hashlib as _rth, uuid as _rtu
+            from datetime import datetime as _rtdt, timezone as _rttz
+            _pt = "cond_run_" + _rtu.uuid4().hex
+            _mint_row = _AgentRunToken(
+                id=str(_rtu.uuid4()),
+                agent_identity_id=None,
+                workspace_id=run.workspace_id,
+                run_id=str(run.id),
+                token_hash=_rth.sha256(_pt.encode()).hexdigest(),
+                token_prefix=_pt[:16],
+                token_encrypted=_rt_encrypt({"token": _pt}),
+                created_at=_rtdt.now(_rttz.utc),
+            )
             try:
-                import hashlib as _ht_hash, uuid as _ht_uuid
-                from datetime import datetime as _ht_dt, timezone as _ht_tz
-                _ht_plaintext = "cond_run_" + _ht_uuid.uuid4().hex
-                _ht_row = _AgentRunToken(
-                    id=str(_ht_uuid.uuid4()),
-                    agent_identity_id=None,
-                    workspace_id=run.workspace_id,
-                    run_id=str(run.id),
-                    token_hash=_ht_hash.sha256(_ht_plaintext.encode()).hexdigest(),
-                    token_prefix=_ht_plaintext[:16],
-                    token_encrypted=_rt_encrypt({"token": _ht_plaintext}),
-                    created_at=_ht_dt.now(_ht_tz.utc),
-                )
-                db.add(_ht_row)
+                db.add(_mint_row)
                 db.commit()
-                _run_token_row_id = _ht_row.id
-                _conduct_run_token = _ht_plaintext
+                _run_token_row_id = _mint_row.id
+                _conduct_run_token = _pt
                 log.info("run.token_minted_at_executor", run_id=run_id)
             except Exception:
-                log.warning("run.token_mint_failed_at_executor", run_id=run_id)
+                log.warning("run.token_mint_at_executor_failed", run_id=run_id)
 
         # Construct RunContext — single typed source of truth for all run infrastructure.
         # apply_to_state() writes every field into state so blocks read them unchanged.
