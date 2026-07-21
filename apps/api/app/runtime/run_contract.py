@@ -68,6 +68,15 @@ class RunContext:
         state[USER_EMAIL_KEY]   = self.user_email
 
 
+def get_email_creds(cred_token: str, cred_api_url: str, cred_handles: list) -> dict:
+    """Return email credentials, trying 'email' first then 'resend' as fallback."""
+    from app.core.credentials import fetch_credential
+    creds = fetch_credential(cred_token, "email", cred_api_url) if "email" in cred_handles else {}
+    if not creds:
+        creds = fetch_credential(cred_token, "resend", cred_api_url) if "resend" in cred_handles else {}
+    return creds
+
+
 def enrich_run_state_contract(
     initial_state: dict[str, Any],
     *,

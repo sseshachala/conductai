@@ -5,16 +5,26 @@ Actions: send_email.
 import httpx
 
 
-def send_via_resend(api_key: str, to: str, subject: str, body: str, from_address: str = "Conduct AI <notifications@conductai.ai>") -> dict:
-    r = httpx.post(
+def _resend_post(api_key: str, payload: dict, timeout: int = 15) -> httpx.Response:
+    """Single httpx call to the Resend API — shared by text and HTML senders."""
+    return httpx.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"from": from_address, "to": [to], "subject": subject, "text": body},
-        timeout=15,
+        json=payload,
+        timeout=timeout,
     )
+
+
+def send_via_resend(api_key: str, to: str, subject: str, body: str, from_address: str = "Conduct AI <notifications@conductai.ai>") -> dict:
+    r = _resend_post(api_key, {"from": from_address, "to": [to], "subject": subject, "text": body})
     r.raise_for_status()
     d = r.json()
     return {"sent": True, "provider": "resend", "id": d.get("id"), "to": to, "subject": subject}
+
+
+def send_via_resend_html(api_key: str, from_addr: str, to: str, subject: str, html: str, timeout: int = 10) -> httpx.Response:
+    """Send an HTML email via Resend. Returns the raw response for the caller to inspect."""
+    return _resend_post(api_key, {"from": from_addr, "to": [to], "subject": subject, "html": html}, timeout=timeout)
 
 
 def send_via_sendgrid(api_key: str, to: str, subject: str, body: str, from_address: str = "notifications@conductai.ai") -> dict:

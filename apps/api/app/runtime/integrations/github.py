@@ -15,6 +15,10 @@ def _headers(token: str) -> dict:
     }
 
 
+# Public alias — imported by routers that build GitHub API requests directly.
+_github_headers = _headers
+
+
 def fetch_issue(token: str, owner: str, repo: str, issue_number: int) -> dict:
     r = httpx.get(f"{BASE}/repos/{owner}/{repo}/issues/{issue_number}", headers=_headers(token), timeout=15)
     r.raise_for_status()

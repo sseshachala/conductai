@@ -43,6 +43,10 @@ def _audit(db, *, workspace_id: str, actor_id: str, actor_email: str | None,
     ))
 
 
+def _clerk_headers() -> dict:
+    return {"Authorization": f"Bearer {settings.clerk_secret_key}", "Content-Type": "application/json"}
+
+
 def _send_clerk_invite(db, workspace_id: str, email: str, conduct_role: str, invite_id: str) -> None:
     """Send a Clerk org invitation and store clerk_invitation_id back on workspace_invites."""
     import httpx as _httpx
@@ -61,7 +65,7 @@ def _send_clerk_invite(db, workspace_id: str, email: str, conduct_role: str, inv
         try:
             r = _httpx.post(
                 "https://api.clerk.com/v1/organizations",
-                headers={"Authorization": f"Bearer {settings.clerk_secret_key}", "Content-Type": "application/json"},
+                headers=_clerk_headers(),
                 json={"name": ws.name or f"workspace-{workspace_id[:8]}", "created_by": ws.owner_id},
                 timeout=10,
             )
@@ -82,7 +86,7 @@ def _send_clerk_invite(db, workspace_id: str, email: str, conduct_role: str, inv
     try:
         r = _httpx.post(
             f"https://api.clerk.com/v1/organizations/{org_id}/invitations",
-            headers={"Authorization": f"Bearer {settings.clerk_secret_key}", "Content-Type": "application/json"},
+            headers=_clerk_headers(),
             json={"email_address": email, "role": clerk_role},
             timeout=10,
         )

@@ -206,12 +206,9 @@ def _register_git_webhook(
 
 def _register_github_webhook(token: str, repo: str, webhook_url: str, events: list[str], secret: str | None) -> tuple[str | None, str | None]:
     import httpx
+    from app.runtime.integrations.github import _github_headers
     owner, repo_name = repo.split("/", 1)
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
+    headers = _github_headers(token)
     hook_config: dict = {"url": webhook_url, "content_type": "json"}
     if secret:
         hook_config["secret"] = secret
@@ -336,9 +333,10 @@ def _deregister_git_webhook(token: str, repo: str, hook_id: str, provider: str =
             httpx.delete(f"https://api.bitbucket.org/2.0/repositories/{workspace_slug}/{repo_slug}/hooks/{hook_id}", headers={"Authorization": f"Bearer {token}"}, timeout=10)
         else:
             owner, repo_name = repo.split("/", 1)
+            from app.runtime.integrations.github import _github_headers
             httpx.delete(
                 f"https://api.github.com/repos/{owner}/{repo_name}/hooks/{hook_id}",
-                headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+                headers=_github_headers(token),
                 timeout=10,
             )
     except Exception as e:
@@ -352,11 +350,12 @@ def _deregister_github_webhook(token: str, repo: str, hook_id: str) -> None:
 def _github_hook_exists(token: str, repo: str, hook_id: str) -> bool:
     """Return True if the hook still exists on GitHub, False if 404 or error."""
     import httpx
+    from app.runtime.integrations.github import _github_headers
     try:
         owner, repo_name = repo.split("/", 1)
         r = httpx.get(
             f"https://api.github.com/repos/{owner}/{repo_name}/hooks/{hook_id}",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+            headers=_github_headers(token),
             timeout=10,
         )
         return r.status_code == 200

@@ -667,11 +667,8 @@ def promote_fixture_candidate(
         raise HTTPException(status_code=503, detail="Could not determine target repo — set GITHUB_PROMOTION_REPO or connect a GitHub repo to the workflow")
     fixture_path = f"apps/api/eval/fixtures/{row.slug}.yaml"
     branch = f"fixture/promote-{str(row.id)[:8]}"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
+    from app.runtime.integrations.github import _github_headers
+    headers = _github_headers(token)
 
     try:
         base = f"https://api.github.com/repos/{repo}"
