@@ -775,6 +775,13 @@ function AppShellInnerContent({
                 active={pathname.startsWith("/theguard")}
                 collapsed={collapsed}
               />
+              <SideNavItem
+                href="/secure"
+                label="Secure"
+                icon={<Icons.Shield />}
+                active={pathname.startsWith("/secure")}
+                collapsed={collapsed}
+              />
               {/* Guard sub-nav — auto-expand when on any /theguard route */}
               {pathname.startsWith("/theguard") && !collapsed && (
                 <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
