@@ -53,6 +53,11 @@ inputs:
       discovered skills automatically.
     required: false
 
+  label_filter:
+    label: Label to apply to GitHub issues for autopilot pickup
+    default: "autopilot-ready"
+    type: string
+
   model:
     label: AI Model
     type: select
@@ -257,7 +262,7 @@ blocks:
           - security
           - "severity-{{ item.severity }}"
           - bughunter
-          - autopilot-ready
+          - "{{inputs.label_filter}}"
 
   write_memory:
     type: memory

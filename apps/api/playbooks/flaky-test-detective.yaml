@@ -19,6 +19,10 @@ inputs:
     label: Slack channel for alerts
     default: "#engineering"
     type: string
+  label_filter:
+    label: Labels to apply to flaky test issues
+    default: "flaky-test"
+    type: string
 
 on:
   webhook:
@@ -122,7 +126,7 @@ blocks:
          - repo: (extract from {{_trigger.repository.full_name}})
          - title: "fix: flaky test(s) — {{investigate_failures.failing_tests}}"
          - body: "## Flaky Test Report\n\n**Failure rate:** {{investigate_failures.failure_rate}}\n**Branch:** {{_trigger.workflow_run.head_branch}}\n**Run:** {{investigate_failures.run_url}}\n\n### Failing tests\n{{investigate_failures.failing_tests}}\n\n### Likely cause\n{{investigate_failures.likely_cause}}\n\n### Recommendation\n{{investigate_failures.recommendation}}"
-      2. Use the github::add_label tool to add labels ["flaky-test", "autopilot ready"] to the new issue.
+      2. Use the github::add_label tool to add labels ["{{inputs.label_filter}}", "autopilot ready"] to the new issue.
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<url>", "issue_number": <number>}

@@ -23,6 +23,10 @@ inputs:
     label: Slack channel for alerts
     default: "#engineering"
     type: string
+  label_filter:
+    label: Labels to apply to docs update issues
+    default: "documentation"
+    type: string
 
 on:
   webhook:
@@ -129,7 +133,7 @@ blocks:
          - repo: (extract from {{_trigger.repository.full_name}})
          - title: "docs: update docs after PR #{{_trigger.number}} — {{_trigger.pull_request.title}}"
          - body: "## Docs drift detected\n\nPR #{{_trigger.number}} was merged but the following docs need updating:\n\n**Stale files:** {{analyze_drift.stale_docs}}\n\n**What needs updating:**\n{{analyze_drift.changes_needed}}\n\n**Merged PR:** {{_trigger.pull_request.html_url}}\n\n---\n**Proposed changes:**\n{{analyze_drift.draft_content}}"
-      2. Use the github::add_label tool to add labels ["documentation", "autopilot ready"] to the new issue.
+      2. Use the github::add_label tool to add labels ["{{inputs.label_filter}}", "autopilot ready"] to the new issue.
 
       Output ONLY the following JSON on the last line:
         {"issue_url": "<url>", "issue_number": <number>}
