@@ -8,6 +8,14 @@ import json
 from typing import Any
 
 
+def _unwrap_exc(exc: BaseException) -> BaseException:
+    """anyio wraps connection errors in ExceptionGroup — extract the real cause."""
+    excs = getattr(exc, "exceptions", None)
+    if excs:
+        return _unwrap_exc(excs[0])
+    return exc
+
+
 def _run(coro):
     try:
         loop = asyncio.get_event_loop()
@@ -43,14 +51,17 @@ async def _list_tools_sse(server_url: str, token: str | None) -> list[dict]:
 
 
 def list_tools(server_url: str, token: str | None = None, transport: str = "auto") -> tuple[list[dict], str]:
-    if transport == "http":
-        return _run(_list_tools_http(server_url, token)), "http"
-    if transport == "sse":
-        return _run(_list_tools_sse(server_url, token)), "sse"
     try:
-        return _run(_list_tools_http(server_url, token)), "http"
-    except Exception:
-        return _run(_list_tools_sse(server_url, token)), "sse"
+        if transport == "http":
+            return _run(_list_tools_http(server_url, token)), "http"
+        if transport == "sse":
+            return _run(_list_tools_sse(server_url, token)), "sse"
+        try:
+            return _run(_list_tools_http(server_url, token)), "http"
+        except Exception:
+            return _run(_list_tools_sse(server_url, token)), "sse"
+    except BaseException as exc:
+        raise _unwrap_exc(exc) from exc
 
 
 async def _call_tool_http(server_url: str, token: str | None, tool_name: str, tool_input: dict) -> Any:
@@ -86,11 +97,14 @@ async def _call_tool_sse(server_url: str, token: str | None, tool_name: str, too
 
 
 def call_tool(server_url: str, token: str | None, tool_name: str, tool_input: dict, transport: str = "auto") -> Any:
-    if transport == "http":
-        return _run(_call_tool_http(server_url, token, tool_name, tool_input))
-    if transport == "sse":
-        return _run(_call_tool_sse(server_url, token, tool_name, tool_input))
     try:
-        return _run(_call_tool_http(server_url, token, tool_name, tool_input))
-    except Exception:
-        return _run(_call_tool_sse(server_url, token, tool_name, tool_input))
+        if transport == "http":
+            return _run(_call_tool_http(server_url, token, tool_name, tool_input))
+        if transport == "sse":
+            return _run(_call_tool_sse(server_url, token, tool_name, tool_input))
+        try:
+            return _run(_call_tool_http(server_url, token, tool_name, tool_input))
+        except Exception:
+            return _run(_call_tool_sse(server_url, token, tool_name, tool_input))
+    except BaseException as exc:
+        raise _unwrap_exc(exc) from exc
