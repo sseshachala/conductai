@@ -158,6 +158,43 @@ _TOOLS = [
         },
     },
     {
+        "name": "post_finding",
+        "description": (
+            "Report a security vulnerability or finding directly to Conduct's Security Loop. "
+            "Use this when you detect a secret leak, injection risk, path traversal, auth bypass, "
+            "or any other security issue in the code you're reviewing. "
+            "Conduct will auto-triage it and can trigger an automated fix via the security_autopilot_fix playbook."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tool":         {"type": "string", "description": "Tool or scanner that found this (e.g. 'claude_code', 'semgrep', 'bughunter')"},
+                "severity":     {"type": "string", "description": "critical | high | medium | low | info"},
+                "type":         {"type": "string", "description": "injection | path-traversal | secret-leak | auth-bypass | crypto | guard_violation | other"},
+                "description":  {"type": "string", "description": "Clear description of the vulnerability"},
+                "file":         {"type": "string", "description": "File path where the issue was found"},
+                "line":         {"type": "integer", "description": "Line number"},
+                "repo_full_name": {"type": "string", "description": "GitHub repo (e.g. 'org/repo') — required for trigger_fix to open a PR"},
+                "suggested_fix": {"type": "string", "description": "Optional suggested remediation"},
+            },
+            "required": ["tool", "severity", "type", "description"],
+        },
+    },
+    {
+        "name": "trigger_fix",
+        "description": (
+            "Trigger the security_autopilot_fix playbook for a finding that was previously reported via post_finding. "
+            "Conduct will open a PR with an automated fix. The finding must have a repo_full_name set."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "finding_id": {"type": "string", "description": "Finding UUID returned by post_finding"},
+            },
+            "required": ["finding_id"],
+        },
+    },
+    {
         "name": "conduct_list_agents",
         "description": "List all installed agents in your Conduct workspace.",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
@@ -830,6 +867,127 @@ async def mcp_endpoint(
                     return JSONResponse(_text(msg_id, f"Agent '{row.name or agent_id}' ({row.framework}) is now under Guard."))
                 except Exception as e:
                     return JSONResponse(_text(msg_id, f"Error registering agent: {e}"))
+
+            elif tool_name == "post_finding":
+                from app.models.security_finding import SecurityFinding as SF
+                from app.core.queue import enqueue_run
+                _sev = arguments.get("severity", "info")
+                _typ = arguments.get("type", "other")
+                _valid_sev = {"critical", "high", "medium", "low", "info"}
+                _valid_typ = {"injection", "path-traversal", "secret-leak", "auth-bypass", "crypto", "guard_violation", "other"}
+                if _sev not in _valid_sev:
+                    return JSONResponse(_text(msg_id, f"Error — severity must be one of: {', '.join(sorted(_valid_sev))}"))
+                if _typ not in _valid_typ:
+                    return JSONResponse(_text(msg_id, f"Error — type must be one of: {', '.join(sorted(_valid_typ))}"))
+                _now_dt = datetime.now(timezone.utc)
+                finding = SF(
+                    id=uuid.uuid4(),
+                    workspace_id=ws_uuid,
+                    tool=arguments.get("tool", "mcp"),
+                    severity=_sev,
+                    type=_typ,
+                    description=arguments.get("description", ""),
+                    file=arguments.get("file"),
+                    line=arguments.get("line"),
+                    repo_full_name=arguments.get("repo_full_name"),
+                    suggested_fix=arguments.get("suggested_fix"),
+                    reporter_email=user_email,
+                    status="open",
+                    created_at=_now_dt,
+                    updated_at=_now_dt,
+                )
+                db.add(finding)
+                db.flush()
+                # Auto-trigger security_loop if installed
+                try:
+                    from app.models.workflow import Workflow
+                    from app.models.run import Run
+                    _wf = db.query(Workflow).filter(
+                        Workflow.workspace_id == ws_uuid,
+                        Workflow.playbook_slug == "security_loop",
+                    ).first()
+                    if _wf and _wf.current_version_id:
+                        _run = Run(
+                            workflow_version_id=_wf.current_version_id,
+                            triggered_by="security_finding",
+                            status="pending",
+                            state={
+                                "_trigger": {
+                                    "event_type": "security_finding",
+                                    "finding_id": str(finding.id),
+                                    "tool": finding.tool,
+                                    "severity": finding.severity,
+                                    "type": finding.type,
+                                    "description": finding.description,
+                                    "file": finding.file,
+                                    "repo_full_name": finding.repo_full_name,
+                                },
+                                "__input_contract": {"version": "phase2.v1", "status": "validated", "shape": "trigger"},
+                            },
+                        )
+                        db.add(_run)
+                        db.flush()
+                        finding.run_id = str(_run.id)
+                        enqueue_run(str(_run.id))
+                except Exception:
+                    pass
+                db.commit()
+                return JSONResponse(_text(msg_id, json.dumps({
+                    "finding_id": str(finding.id),
+                    "status": "open",
+                    "message": f"Finding reported — severity={_sev}, type={_typ}. Use trigger_fix to enqueue an automated fix.",
+                }, indent=2)))
+
+            elif tool_name == "trigger_fix":
+                from app.models.security_finding import SecurityFinding as SF
+                from app.models.workflow import Workflow
+                from app.models.run import Run
+                from app.core.queue import enqueue_run
+                _fid = arguments.get("finding_id", "")
+                try:
+                    _fid_uuid = uuid.UUID(_fid)
+                except ValueError:
+                    return JSONResponse(_text(msg_id, "Error — finding_id must be a valid UUID"))
+                finding = db.query(SF).filter(SF.id == _fid_uuid, SF.workspace_id == ws_uuid).first()
+                if not finding:
+                    return JSONResponse(_text(msg_id, f"Error — finding {_fid} not found"))
+                _wf = db.query(Workflow).filter(
+                    Workflow.workspace_id == ws_uuid,
+                    Workflow.playbook_slug == "security_autopilot_fix",
+                ).first()
+                if not _wf or not _wf.current_version_id:
+                    return JSONResponse(_text(msg_id, "Error — security_autopilot_fix playbook is not installed in this workspace"))
+                _run = Run(
+                    workflow_version_id=_wf.current_version_id,
+                    triggered_by="security_finding_fix",
+                    status="pending",
+                    state={
+                        "_trigger": {
+                            "event_type": "security_finding_fix",
+                            "finding_id": str(finding.id),
+                            "severity": finding.severity,
+                            "type": finding.type,
+                            "file": finding.file,
+                            "line": finding.line,
+                            "description": finding.description,
+                            "suggested_fix": finding.suggested_fix,
+                            "repo_full_name": finding.repo_full_name,
+                        },
+                        "__input_contract": {"version": "phase2.v1", "status": "validated", "shape": "trigger"},
+                    },
+                )
+                db.add(_run)
+                db.flush()
+                enqueue_run(str(_run.id))
+                finding.status = "triaging"
+                finding.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                return JSONResponse(_text(msg_id, json.dumps({
+                    "run_id": str(_run.id),
+                    "finding_id": str(finding.id),
+                    "status": "triaging",
+                    "message": "security_autopilot_fix enqueued — finding set to triaging.",
+                }, indent=2)))
 
             elif tool_name == "conduct_list_agents":
                 return JSONResponse(_text(msg_id, json.dumps(_list_agents(db, ws_uuid), indent=2)))
