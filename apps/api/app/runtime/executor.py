@@ -293,8 +293,7 @@ def execute_run(run_id: str):
                     if isinstance(_ev, dict):
                         _ev["CONDUCT_RUN_TOKEN"] = _plaintext
                         credentials._data["env_vars"] = _ev
-                    _rt.token_encrypted = None
-                    db.commit()
+                    # ponytail: keep token_encrypted intact — run may retry across blocks
             except Exception:
                 pass  # fail-open: run proceeds without short-lived token
 
