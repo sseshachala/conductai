@@ -126,21 +126,16 @@ def _resolve_slack_mcp(workspace_id: str) -> tuple[str, str, str] | None:
     if not workspace_id:
         return None
     try:
-        from sqlalchemy import text as _text
         from app.core.database import get_db as _get_db
-        from app.core.crypto import decrypt as _decrypt
+        from app.runtime.mcp_credentials import resolve_mcp_server
         db = next(_get_db())
         try:
-            row = db.execute(
-                _text("SELECT url, transport, encrypted_auth FROM mcp_servers WHERE name = 'slack' AND workspace_id = :ws"),
-                {"ws": workspace_id},
-            ).fetchone()
+            resolved = resolve_mcp_server(server_name="slack", workspace_id=workspace_id, db=db)
         finally:
             db.close()
-        if not row or not row.encrypted_auth:
+        if not resolved or not resolved[2]:
             return None
-        token = _decrypt(row.encrypted_auth).get("token", "")
-        return (row.url, row.transport or "sse", token)
+        return resolved
     except Exception:
         return None
 

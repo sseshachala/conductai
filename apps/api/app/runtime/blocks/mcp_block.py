@@ -39,52 +39,26 @@ def _execute_mcp(block: dict, state: dict, cred_store: object, workspace_id: str
     server_url: str | None = config.get("server_url") or None
     token: str | None = None
 
-    if server_name and not server_id and not credential_key:
-        # Playbook path: resolve logical name → mcp_servers row for this workspace.
-        from sqlalchemy import text as _text
+    if (server_name or server_id) and not credential_key:
         from app.core.database import get_db as _get_db
-        from app.core.crypto import decrypt as _decrypt
+        from app.runtime.mcp_credentials import resolve_mcp_server
 
         db = next(_get_db())
         try:
-            row = db.execute(
-                _text(
-                    "SELECT url, transport, encrypted_auth FROM mcp_servers "
-                    "WHERE name = :name AND workspace_id = :ws"
-                ),
-                {"name": server_name, "ws": workspace_id},
-            ).fetchone()
+            resolved = resolve_mcp_server(
+                server_name=server_name,
+                server_id=server_id,
+                workspace_id=workspace_id,
+                db=db,
+            )
         finally:
             db.close()
 
-        if not row:
-            return {"skipped": True, "reason": f"MCP server '{server_name}' not registered in workspace"}
+        if not resolved:
+            label = server_name or server_id
+            return {"skipped": True, "reason": f"MCP server '{label}' not registered in workspace"}
 
-        server_url = row.url
-        transport  = row.transport or transport
-        token = _decrypt(row.encrypted_auth).get("token") if row.encrypted_auth else None
-
-    elif server_id and not credential_key:
-        # New path: resolve server from mcp_servers table.
-        from sqlalchemy import text as _text
-        from app.core.database import get_db as _get_db
-        from app.core.crypto import decrypt as _decrypt
-
-        db = next(_get_db())
-        try:
-            row = db.execute(
-                _text("SELECT url, transport, encrypted_auth FROM mcp_servers WHERE id = :id"),
-                {"id": server_id},
-            ).fetchone()
-        finally:
-            db.close()
-
-        if not row:
-            return {"error": f"MCP server '{server_id}' not found"}
-
-        server_url = row.url
-        transport  = row.transport or transport
-        token = _decrypt(row.encrypted_auth).get("token") if row.encrypted_auth else None
+        server_url, transport, token = resolved
 
     elif credential_key:
         # Legacy path: resolve server from credential vault.
