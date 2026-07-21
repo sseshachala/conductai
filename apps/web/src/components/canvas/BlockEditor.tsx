@@ -1761,6 +1761,59 @@ export default function BlockEditor({
             </p>
           </div>
 
+          {/* ── Guardrails ── */}
+          <div className={section}>
+            <span className={sectionLabel}>Guardrails</span>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!(blockData.rollback_on_failure as boolean)}
+                  onChange={e => onChange(blockId, { ...blockData, rollback_on_failure: e.target.checked })}
+                  disabled={isViewer}
+                  className="h-3.5 w-3.5 rounded border-stone-300 text-indigo-500 accent-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+                <span className="text-xs text-stone-600">Rollback on failure</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!(blockData.require_tests_pass as boolean)}
+                  onChange={e => onChange(blockId, { ...blockData, require_tests_pass: e.target.checked })}
+                  disabled={isViewer}
+                  className="h-3.5 w-3.5 rounded border-stone-300 text-indigo-500 accent-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+                <span className="text-xs text-stone-600">Require tests to pass before commit</span>
+              </label>
+            </div>
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-xs text-stone-600 shrink-0">Max retries per item</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={20}
+                  value={blockData.max_retries !== undefined ? (blockData.max_retries as number) : 3}
+                  onChange={e => onChange(blockId, { ...blockData, max_retries: Number(e.target.value) })}
+                  disabled={isViewer}
+                  className="w-16 border border-stone-200 rounded-lg px-2 py-1 text-xs text-stone-900 text-right focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-xs text-stone-600 shrink-0">Max cost ($)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.50}
+                  value={blockData.max_cost_usd !== undefined ? (blockData.max_cost_usd as number) : 2.00}
+                  onChange={e => onChange(blockId, { ...blockData, max_cost_usd: Number(e.target.value) })}
+                  disabled={isViewer}
+                  className="w-16 border border-stone-200 rounded-lg px-2 py-1 text-xs text-stone-900 text-right focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className={section}>
             <span className={sectionLabel}>Mode</span>
             <div className="flex items-center justify-between">
