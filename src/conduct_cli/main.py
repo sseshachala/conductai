@@ -3238,6 +3238,7 @@ def main():
     verify_p.add_argument("--strict",    action="store_true",          help="Exit 1 if any blocked events in last 24h (CI mode).")
     verify_p.add_argument("--format",    choices=["text", "json"],     default="text", help="Output format (default: text)")
     verify_p.add_argument("--since",     default="24h",                help="Time window for blocked event check (e.g. 7d, 24h)")
+    verify_p.add_argument("--run",       action="store_true",          help="Fire live adversarial test battery and show per-test verdicts.")
     sub.add_parser("test-guard",            help="Fire a synthetic event per guard policy rule and show decisions")
     sub.add_parser("test-security",         help="Post a synthetic finding per security classifier pattern")
     sub.add_parser("test-security-verify",  help="Post test findings and verify full triage pipeline end-to-end")
