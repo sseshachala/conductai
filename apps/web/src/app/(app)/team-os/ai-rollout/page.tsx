@@ -19,11 +19,11 @@ async function apiFetch(path: string, token: string, opts?: RequestInit) {
 // ─── Tool tabs ─────────────────────────────────────────────────────────────────
 
 const TOOL_TABS = [
-  { id: "claude-md",          label: "CLAUDE.md",                filename: "CLAUDE.md" },
-  { id: "copilot",            label: "copilot-instructions.md",   filename: ".github/copilot-instructions.md" },
-  { id: "agents-md",          label: "AGENTS.md",                filename: "AGENTS.md" },
-  { id: "cursorrules",        label: ".cursorrules",              filename: ".cursorrules" },
-  { id: "windsurfrules",      label: ".windsurfrules",            filename: ".windsurfrules" },
+  { id: "claude-md",     label: "Claude Code",   filename: "CLAUDE.md" },
+  { id: "copilot",       label: "Copilot",        filename: ".github/copilot-instructions.md" },
+  { id: "agents-md",     label: "Codex",          filename: "AGENTS.md" },
+  { id: "cursorrules",   label: "Cursor",         filename: ".cursorrules" },
+  { id: "windsurfrules", label: "Windsurf",       filename: ".windsurfrules" },
 ]
 
 // ─── Guard policy block ────────────────────────────────────────────────────────
@@ -43,6 +43,7 @@ function PreviewPane({ content, activeTab }: { content: string; activeTab: strin
         borderBottom: "1px solid var(--border)",
         overflowX: "auto",
         flexShrink: 0,
+        scrollbarWidth: "none",
       }}>
         {TOOL_TABS.map(t => (
           <button
@@ -53,8 +54,9 @@ function PreviewPane({ content, activeTab }: { content: string; activeTab: strin
               e.currentTarget.dispatchEvent(new CustomEvent("tab-select", { detail: t.id, bubbles: true }))
             }}
             style={{
-              padding: "10px 14px",
-              fontSize: 12.5,
+              flex: 1,
+              padding: "10px 8px",
+              fontSize: 12,
               fontWeight: activeTab === t.id ? 600 : 400,
               color: activeTab === t.id ? "var(--accent-text)" : "var(--text-2)",
               background: "transparent",
