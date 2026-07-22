@@ -240,7 +240,7 @@ export default function TeamOSPage() {
     try {
       const token = await getToken()
       if (!token) {
-        setError("You don't have permission to view team instructions")
+        setError("Not authenticated")
         return
       }
 
@@ -250,7 +250,7 @@ export default function TeamOSPage() {
       ])
 
       if (instRes.status === 401 || instRes.status === 403) {
-        setError("You don't have permission to view team instructions")
+        setError("Not authorized to view team instructions")
         return
       }
       if (!instRes.ok) {
@@ -261,17 +261,11 @@ export default function TeamOSPage() {
       const instData: Instructions = await instRes.json()
       setInstructions(instData)
 
-      if (adoptRes.status === 401 || adoptRes.status === 403) {
-        setError("You don't have permission to view team instructions")
-        return
+      // adoption is admin-only — silently skip if no permission
+      if (adoptRes.ok) {
+        const adoptData: AdoptionRow[] = await adoptRes.json()
+        setAdoption(adoptData)
       }
-      if (!adoptRes.ok) {
-        setError(`Failed to load adoption data (${adoptRes.status})`)
-        return
-      }
-
-      const adoptData: AdoptionRow[] = await adoptRes.json()
-      setAdoption(adoptData)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
