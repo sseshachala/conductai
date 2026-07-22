@@ -524,10 +524,11 @@ async def mcp_sse(
 
     if not _extract_token(request, token):
         ua = request.headers.get("User-Agent", "")
-        # Suppress OAuth discovery header for non-Claude clients (e.g. Smithery)
-        # so they fall back to API key auth instead of triggering an OAuth flow.
-        # Claude.ai sends "claude-mcp" in the User-Agent; only it gets the hint.
-        is_claude = "claude" in ua.lower()
+        # Only send OAuth discovery header to clients that support it.
+        # Smithery and similar tools fall back to API key auth — sending WWW-Authenticate
+        # breaks them. Claude.ai sends "claude-mcp"; VS Code Copilot sends "github-copilot".
+        _ua = ua.lower()
+        is_claude = "claude" in _ua or "github-copilot" in _ua or "vscode" in _ua or "cursor" in _ua
         resp_headers = {}
         if is_claude:
             ws_param = f"?workspace_id={workspace_id}" if workspace_id else ""
