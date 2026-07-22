@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { useAuth, useUser } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
 import type { Instructions, AdoptionRow } from "./types"
@@ -224,6 +225,7 @@ function SetupCard({ version }: { version: string }) {
 
 export default function TeamOSPage() {
   const { getToken } = useAuth()
+  const { activeWorkspace } = useWorkspace()
   const { user } = useUser()
 
   const [instructions, setInstructions] = useState<Instructions | null>(null)
@@ -245,8 +247,8 @@ export default function TeamOSPage() {
       }
 
       const [instRes, adoptRes] = await Promise.all([
-        apiFetch("/team-os/instructions", token),
-        apiFetch("/team-os/instructions/adoption", token),
+        apiFetch(`/team-os/instructions${activeWorkspace?.id ? `?workspace_id=${activeWorkspace.id}` : ""}`, token),
+        apiFetch(`/team-os/instructions/adoption${activeWorkspace?.id ? `?workspace_id=${activeWorkspace.id}` : ""}`, token),
       ])
 
       if (instRes.status === 401 || instRes.status === 403) {
