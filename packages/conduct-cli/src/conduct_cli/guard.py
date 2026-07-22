@@ -2720,6 +2720,9 @@ def _grade_below(actual: str, minimum: str) -> bool:
     return _GRADE_ORDER.index(actual) > _GRADE_ORDER.index(minimum.upper())
 
 
+_VERDICT_COLOR = {"held": GREEN, "bypassed": RED, "not_tested": YELLOW}
+
+
 def cmd_verify(args) -> None:
     """conduct verify — governance grade + OWASP Agentic Top 10 coverage."""
     import json as _json
@@ -2729,6 +2732,7 @@ def cmd_verify(args) -> None:
     min_grade    = getattr(args, "min_grade", None)
     strict       = getattr(args, "strict", False)
     fmt          = getattr(args, "format", "text")
+    run_battery  = getattr(args, "run", False)
 
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
@@ -2748,6 +2752,46 @@ def cmd_verify(args) -> None:
     blocked_24h  = ev.get("blocked_24h", 0)
     controls     = ev.get("controls", [])
     generated_at = ev.get("generated_at", "")
+
+    # ── --run (live adversarial battery) ─────────────────────────────────────
+    run_result = None
+    if run_battery:
+        print(f"\n{BOLD}Running adversarial test battery…{RESET}")
+        run_result = _req(
+            "POST",
+            f"{base_url}/guard/verify/run?workspace_id={workspace_id}",
+            api_key=api_key,
+        )
+        if fmt == "json":
+            print(_json.dumps(run_result, indent=2))
+            return
+        rs      = run_result.get("score", 0)
+        rg      = run_result.get("grade", "F")
+        passed  = run_result.get("passed_tests", 0)
+        total   = run_result.get("total_tests", 0)
+        results = run_result.get("results", [])
+        rg_col  = _GRADE_COLORS.get(rg, GRAY)
+        print()
+        print(f"{BOLD}conduct verify --run — Live Adversarial Score{RESET}")
+        print("─" * 60)
+        print(f"\n  Live Grade: {rg_col}{BOLD}{rg}{RESET}  ({rs}/100) · {passed}/{total} held\n")
+        print(f"  {BOLD}{'ASI':<8} {'Verdict':<12} {'Expected':<10} {'Actual':<10} Test{RESET}")
+        print("  " + "─" * 56)
+        for r in results:
+            vc = _VERDICT_COLOR.get(r.get("verdict", ""), GRAY)
+            print(
+                f"  {r.get('asi',''):<8} "
+                f"{vc}{r.get('verdict',''):<12}{RESET} "
+                f"{r.get('expected',''):<10} "
+                f"{r.get('actual',''):<10} "
+                f"{r.get('name','')}"
+            )
+        print()
+        if min_grade and _grade_below(rg, min_grade):
+            print(f"  {RED}✗ Live grade {rg} is below minimum {min_grade.upper()}.{RESET}\n")
+            sys.exit(1)
+        print(f"  {GREEN}✓ PASS{RESET}\n")
+        return
 
     # ── --badge ───────────────────────────────────────────────────────────────
     if badge:
