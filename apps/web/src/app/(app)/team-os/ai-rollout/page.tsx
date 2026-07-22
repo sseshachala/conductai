@@ -28,14 +28,6 @@ const TOOL_TABS = [
 
 // ─── Guard policy block ────────────────────────────────────────────────────────
 
-const GUARD_POLICY_BLOCK = `# ConductGuard — Managed policy block
-# This section is auto-managed by ConductGuard. Do not edit manually.
-
-[guard]
-proxy = true
-policy_version = "latest"
-enforce = true
-`
 
 // ─── Preview pane ──────────────────────────────────────────────────────────────
 
@@ -125,7 +117,7 @@ function PreviewPane({ content, activeTab }: { content: string; activeTab: strin
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
           }}>
-            {GUARD_POLICY_BLOCK}
+            {"# ConductGuard policy block (auto-managed by guard sync)"}
           </pre>
         </div>
 
