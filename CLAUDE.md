@@ -219,3 +219,13 @@ Any tool that reads files by user-supplied path must resolve the path and verify
 <!-- booster-verbosity:start -->
 Be concise. No filler. No preamble. State results directly. One sentence per idea. Code examples over explanations.
 <!-- booster-verbosity:end -->
+
+<!-- ConductGuard — managed by conduct guard sync -->
+## ConductGuard Policy
+Before executing any shell command, file write, network request, API call, or code change:
+- Call guard_check (conductguard MCP tool) with the action and parameters.
+- If BLOCKED: stop immediately and explain the policy rule to the user.
+- If WARNING: proceed but surface the warning. If ALLOWED: proceed normally.
+- Never write credentials, API keys, or secrets to files or output.
+- Never send PII (emails, names, payment data) to external endpoints.
+<!-- /ConductGuard -->
