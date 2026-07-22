@@ -4,24 +4,8 @@ import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Instructions {
-  content: string
-  version: string
-  updated_at: string
-  updated_by: string
-}
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const MOCK_INSTRUCTIONS: Instructions = {
-  content: "",
-  version: "v1",
-  updated_at: new Date().toISOString(),
-  updated_by: "admin",
-}
+import type { Instructions } from "../types"
+import { MOCK_INSTRUCTIONS } from "../types"
 
 // ─── Tool tabs ─────────────────────────────────────────────────────────────────
 
