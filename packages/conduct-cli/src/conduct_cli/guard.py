@@ -441,7 +441,7 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
 
     # Cursor global rules — write Guard policies as user rules so they apply across all projects.
     _patch_cursor_global_rules()
-    _patch_copilot_instructions()
+    _patch_tool_instruction_files(agent_token, api_url)
 
 
 def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
@@ -541,59 +541,81 @@ def _patch_cursor_global_rules() -> None:
         print(f"  {GREEN}Cursor global rules updated with ConductGuard policy{RESET}")
 
 
-def _patch_copilot_instructions() -> None:
-    """Write ConductGuard enforcement instructions into .github/copilot-instructions.md.
+def _patch_tool_instruction_files(agent_token: str, api_url: str) -> None:
+    """Write ConductGuard policy block into instruction files for all AI tools.
 
-    Copilot injects this file into every conversation automatically — soft hooks
-    for tools that don't support PreToolUse/PostToolUse interception.
-    Written to the current repo root if a .github/ dir exists, and to ~/
-    as a global fallback.
+    Targets:
+      CLAUDE.md                         — Claude Code + Claude Desktop
+      .github/copilot-instructions.md   — Copilot + VS Code
+      AGENTS.md                         — Codex CLI + Codex Desktop
+      .cursorrules                      — Cursor
+      .windsurfrules                    — Windsurf
+
+    Merge strategy (never clobbers existing content):
+      First sync : appends block between <!-- ConductGuard --> markers
+      Re-sync    : replaces only the block, leaves surrounding content untouched
     """
-    GUARD_BLOCK = (
-        "<!-- ConductGuard — managed by conduct guard sync, do not edit this block -->\n"
-        "## ConductGuard Policy\n"
+    import re as _re
+
+    MARKER_START = "<!-- ConductGuard — managed by conduct guard sync -->"
+    MARKER_END   = "<!-- /ConductGuard -->"
+    GUARD_RULES  = (
         "Before executing any shell command, file write, network request, API call, or code change:\n"
         "- Call `guard_check` (conductguard MCP tool) with the action and parameters.\n"
         "- If BLOCKED: stop immediately and explain the policy rule to the user.\n"
-        "- If WARNING: proceed but surface the warning.\n"
-        "- If ALLOWED: proceed normally.\n"
-        "Never write credentials, API keys, or secrets to files or output.\n"
-        "Never send PII (emails, names, payment data) to external endpoints.\n"
-        "<!-- /ConductGuard -->"
+        "- If WARNING: proceed but surface the warning. If ALLOWED: proceed normally.\n"
+        "- Never write credentials, API keys, or secrets to files or output.\n"
+        "- Never send PII (emails, names, payment data) to external endpoints."
     )
 
-    candidates: list[Path] = []
-    # Repo-level: walk up from cwd to find .github/
-    cwd = Path.cwd()
-    for parent in [cwd, *cwd.parents]:
-        gh = parent / ".github"
-        if gh.is_dir():
-            candidates.append(gh / "copilot-instructions.md")
-            break
-    # Global fallback
-    candidates.append(Path.home() / ".github" / "copilot-instructions.md")
+    # Pull team instructions from API (non-fatal)
+    team_content = ""
+    try:
+        resp = _req("GET", f"{api_url}/team-os/instructions", token=agent_token)
+        team_content = (resp.get("content") or "").strip()
+    except Exception:
+        pass
 
-    wrote_any = False
-    for path in candidates:
+    parts = [MARKER_START, "## ConductGuard Policy"]
+    if team_content:
+        parts.append(team_content)
+    parts.append(GUARD_RULES)
+    parts.append(MARKER_END)
+    guard_block = "\n".join(parts)
+
+    repo_root: Path | None = None
+    for parent in [Path.cwd(), *Path.cwd().parents]:
+        if (parent / ".git").exists() or (parent / ".github").is_dir():
+            repo_root = parent
+            break
+
+    # (repo path, global fallback, label)
+    targets = [
+        (repo_root / "CLAUDE.md"                           if repo_root else None, Path.home() / "CLAUDE.md",                           "CLAUDE.md"),
+        (repo_root / ".github" / "copilot-instructions.md" if repo_root else None, Path.home() / ".github" / "copilot-instructions.md", "Copilot instructions"),
+        (repo_root / "AGENTS.md"                           if repo_root else None, Path.home() / ".codex"   / "instructions.md",        "AGENTS.md"),
+        (repo_root / ".cursorrules"                        if repo_root else None, Path.home() / ".cursor"  / "rules" / "conduct.md",   ".cursorrules"),
+        (repo_root / ".windsurfrules"                      if repo_root else None, Path.home() / ".windsurf"/ "rules" / "conduct.md",   ".windsurfrules"),
+    ]
+    pattern = _re.compile(_re.escape(MARKER_START) + r".*?" + _re.escape(MARKER_END), _re.DOTALL)
+
+    for repo_path, global_path, label in targets:
+        path = repo_path if (repo_path and repo_path.exists()) else global_path
+        if not path.exists() and repo_path:
+            path = repo_path
         path.parent.mkdir(parents=True, exist_ok=True)
         existing = path.read_text() if path.exists() else ""
-        if "<!-- ConductGuard" in existing:
-            print(f"  {GRAY}Copilot instructions already contain ConductGuard policy ({path}){RESET}")
-            wrote_any = True
-            continue
-        updated = (existing.rstrip() + "\n\n" + GUARD_BLOCK).lstrip()
-        path.write_text(updated)
-        print(f"  {GREEN}Copilot instructions updated with ConductGuard policy ({path}){RESET}")
-        wrote_any = True
-        break  # repo-level wins; skip global if repo found
-
-    if not wrote_any:
-        # No .github/ dir found anywhere — write global
-        global_path = Path.home() / ".github" / "copilot-instructions.md"
-        global_path.parent.mkdir(parents=True, exist_ok=True)
-        global_path.write_text(GUARD_BLOCK)
-        print(f"  {GREEN}Copilot instructions written ({global_path}){RESET}")
-
+        if MARKER_START in existing:
+            updated = pattern.sub(guard_block, existing)
+            if updated == existing:
+                print(f"  {GRAY}{label} already up to date{RESET}")
+            else:
+                path.write_text(updated)
+                print(f"  {GREEN}{label} updated{RESET}")
+        else:
+            sep = "\n\n" if existing.strip() else ""
+            path.write_text((existing.rstrip() + sep + guard_block + "\n").lstrip())
+            print(f"  {GREEN}{label} — ConductGuard block added{RESET}")
 
 def _install_codex_hook(hook_path: Path) -> None:
     """Register PreToolUse and PostToolUse hooks in ~/.codex/hooks.json."""
