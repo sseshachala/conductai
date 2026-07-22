@@ -148,7 +148,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0 }}>Agent Identity</h1>
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0" }}>
-            Your CLI token and per-run tokens issued to workflow agents.
+            Your CLI token and per-run tokens issued to workflow agents. Guard validates authority at the execution boundary — short-lived run tokens mean permissions expire with the action, not the session. There are no stale approvals.
           </p>
         </div>
 
@@ -380,7 +380,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         </div>
 
         <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          Run tokens are single-use and workspace-scoped. They are invalidated automatically when their run completes.
+          Run tokens are single-use and workspace-scoped. They are invalidated automatically when their run completes. Every run mints fresh credentials — authority validation happens at the execution boundary on every action.
         </p>
       </div>
     </AppShell>

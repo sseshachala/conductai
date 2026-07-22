@@ -453,7 +453,7 @@ export default function GovernancePage() {
               Governance
             </h1>
             <p style={{ fontSize: 13, color: "var(--text-3)", margin: "4px 0 0" }}>
-              Certify your delegation policies, not just individual events. Who authorized this agent to act. Under what rules. What it did.
+              Certify your delegation policies, not just individual events. Who authorised this agent to act. Under what rules. What it did. Runtime admissibility states are logged at the execution boundary — every decision is custody proof, not a reconstruction.
             </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-3)", paddingTop: 4 }}>
@@ -1119,7 +1119,7 @@ export default function GovernancePage() {
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                  SHA-256 chain links every audit event to the previous one. Click to confirm the log has not been altered.
+                  SHA-256 chain links every audit event to the previous one — custody proof at the execution boundary. Click to confirm the log has not been altered and that every Governance Authorization Artifact is intact.
                 </div>
               )}
             </div>
