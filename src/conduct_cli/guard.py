@@ -441,6 +441,7 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
 
     # Cursor global rules — write Guard policies as user rules so they apply across all projects.
     _patch_cursor_global_rules()
+    _patch_copilot_instructions()
 
 
 def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
@@ -538,6 +539,60 @@ def _patch_cursor_global_rules() -> None:
         cfg["cursor.rules.user"] = (existing + "\n\n" + GUARD_RULES).strip()
         settings_path.write_text(json.dumps(cfg, indent=2))
         print(f"  {GREEN}Cursor global rules updated with ConductGuard policy{RESET}")
+
+
+def _patch_copilot_instructions() -> None:
+    """Write ConductGuard enforcement instructions into .github/copilot-instructions.md.
+
+    Copilot injects this file into every conversation automatically — soft hooks
+    for tools that don't support PreToolUse/PostToolUse interception.
+    Written to the current repo root if a .github/ dir exists, and to ~/
+    as a global fallback.
+    """
+    GUARD_BLOCK = (
+        "<!-- ConductGuard — managed by conduct guard sync, do not edit this block -->\n"
+        "## ConductGuard Policy\n"
+        "Before executing any shell command, file write, network request, API call, or code change:\n"
+        "- Call `guard_check` (conductguard MCP tool) with the action and parameters.\n"
+        "- If BLOCKED: stop immediately and explain the policy rule to the user.\n"
+        "- If WARNING: proceed but surface the warning.\n"
+        "- If ALLOWED: proceed normally.\n"
+        "Never write credentials, API keys, or secrets to files or output.\n"
+        "Never send PII (emails, names, payment data) to external endpoints.\n"
+        "<!-- /ConductGuard -->"
+    )
+
+    candidates: list[Path] = []
+    # Repo-level: walk up from cwd to find .github/
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        gh = parent / ".github"
+        if gh.is_dir():
+            candidates.append(gh / "copilot-instructions.md")
+            break
+    # Global fallback
+    candidates.append(Path.home() / ".github" / "copilot-instructions.md")
+
+    wrote_any = False
+    for path in candidates:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing = path.read_text() if path.exists() else ""
+        if "<!-- ConductGuard" in existing:
+            print(f"  {GRAY}Copilot instructions already contain ConductGuard policy ({path}){RESET}")
+            wrote_any = True
+            continue
+        updated = (existing.rstrip() + "\n\n" + GUARD_BLOCK).lstrip()
+        path.write_text(updated)
+        print(f"  {GREEN}Copilot instructions updated with ConductGuard policy ({path}){RESET}")
+        wrote_any = True
+        break  # repo-level wins; skip global if repo found
+
+    if not wrote_any:
+        # No .github/ dir found anywhere — write global
+        global_path = Path.home() / ".github" / "copilot-instructions.md"
+        global_path.parent.mkdir(parents=True, exist_ok=True)
+        global_path.write_text(GUARD_BLOCK)
+        print(f"  {GREEN}Copilot instructions written ({global_path}){RESET}")
 
 
 def _install_codex_hook(hook_path: Path) -> None:
@@ -1351,7 +1406,7 @@ def cmd_guard_sync(args):
         for t in _tools:
             routed = "✓ Routed" if t.get("proxy_routed") else ("— Partial" if t["name"] == "codex-desktop" else "✗ Not routed")
             mcp  = "✓" if t.get("mcp_registered") else "✗"
-            hook = "✓" if t.get("hook_registered") else "—"
+            hook = "✓" if t.get("hook_registered") else ("~ soft" if t["name"] in ("copilot", "cursor") else "—")
             print(f"  {t['name']:<20} {routed:<16} {mcp:<8} {hook}")
         print()
 
