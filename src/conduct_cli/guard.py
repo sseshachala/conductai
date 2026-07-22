@@ -388,7 +388,7 @@ _MCP_TARGETS = [
 ]
 
 
-def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
+def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bool = False) -> None:
     """Write conductguard + agent-booster MCP entries into every AI tool config found.
 
     Credentials are NOT stored in the MCP config — the server reads them from
@@ -441,7 +441,7 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
 
     # Cursor global rules — write Guard policies as user rules so they apply across all projects.
     _patch_cursor_global_rules()
-    _patch_tool_instruction_files(agent_token, api_url)
+    _patch_tool_instruction_files(agent_token, api_url, dry_run=dry_run)
 
 
 def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
@@ -542,7 +542,7 @@ def _patch_cursor_global_rules() -> None:
         print(f"  {GREEN}Cursor global rules updated with ConductGuard policy{RESET}")
 
 
-def _patch_tool_instruction_files(agent_token: str, api_url: str) -> None:
+def _patch_tool_instruction_files(agent_token: str, api_url: str, dry_run: bool = False) -> None:
     """Write ConductGuard policy block into instruction files for all AI tools.
 
     Targets:
@@ -597,19 +597,64 @@ def _patch_tool_instruction_files(agent_token: str, api_url: str) -> None:
         path = repo_path if (repo_path and repo_path.exists()) else global_path
         if not path.exists() and repo_path:
             path = repo_path
-        path.parent.mkdir(parents=True, exist_ok=True)
         existing = path.read_text() if path.exists() else ""
         if MARKER_START in existing:
             updated = pattern.sub(guard_block, existing)
-            if updated == existing:
-                print(f"  {GRAY}{label} already up to date{RESET}")
+            if dry_run:
+                if updated == existing:
+                    print(f"  [dry-run] No change: {path}")
+                else:
+                    print(f"  [dry-run] Would write: {path}")
             else:
-                path.write_text(updated)
-                print(f"  {GREEN}{label} updated{RESET}")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if updated == existing:
+                    print(f"  {GRAY}{label} already up to date{RESET}")
+                else:
+                    path.write_text(updated)
+                    print(f"  {GREEN}{label} updated{RESET}")
         else:
-            sep = "\n\n" if existing.strip() else ""
-            path.write_text((existing.rstrip() + sep + guard_block + "\n").lstrip())
-            print(f"  {GREEN}{label} — ConductGuard block added{RESET}")
+            new_content = (existing.rstrip() + ("\n\n" if existing.strip() else "") + guard_block + "\n").lstrip()
+            if dry_run:
+                if new_content == existing:
+                    print(f"  [dry-run] No change: {path}")
+                else:
+                    print(f"  [dry-run] Would write: {path}")
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(new_content)
+                print(f"  {GREEN}{label} — ConductGuard block added{RESET}")
+
+
+def _reset_tool_instruction_files() -> None:
+    """Remove ConductGuard blocks from all instruction files."""
+    import re as _re
+    MARKER_RE = _re.compile(
+        r"\n?<!-- ConductGuard -->\n.*?<!-- /ConductGuard -->\n?",
+        _re.DOTALL,
+    )
+    targets = [
+        Path.home() / "CLAUDE.md",
+        Path.cwd() / "CLAUDE.md",
+        Path.cwd() / ".github" / "copilot-instructions.md",
+        Path.cwd() / "AGENTS.md",
+        Path.cwd() / ".cursorrules",
+        Path.cwd() / ".windsurfrules",
+    ]
+    removed = 0
+    for p in targets:
+        if not p.exists():
+            continue
+        original = p.read_text(encoding="utf-8")
+        cleaned = MARKER_RE.sub("", original).strip()
+        if cleaned != original.strip():
+            p.write_text(cleaned + "\n", encoding="utf-8")
+            print(f"  {GREEN}Removed ConductGuard block: {p}{RESET}")
+            removed += 1
+        else:
+            print(f"  {YELLOW}No ConductGuard block found: {p}{RESET}")
+    if removed == 0:
+        print("  No ConductGuard blocks found in any instruction files.")
+
 
 def _install_codex_hook(hook_path: Path) -> None:
     """Register PreToolUse and PostToolUse hooks in ~/.codex/hooks.json."""
@@ -1319,6 +1364,12 @@ def cmd_guard_sync(args):
     # Persona selection — prompt once, skip if already chosen
 
     dry_run = getattr(args, "dry_run", False)
+
+    if getattr(args, "reset_instructions", False):
+        print("Removing ConductGuard blocks from instruction files…")
+        _reset_tool_instruction_files()
+        return
+
     print(f"{'[dry-run] ' if dry_run else ''}Syncing policy…")
     _check_and_upgrade_packages()
 
@@ -1463,7 +1514,7 @@ def cmd_guard_sync(args):
     _install_claude_hook(hook_path)
     _install_codex_hook(hook_path)
     cfg2 = _load_guard_config()
-    _register_mcp(workspace_id, cfg2.get("agent_token", ""), base_url)
+    _register_mcp(workspace_id, cfg2.get("agent_token", ""), base_url, dry_run=dry_run)
     try:
         _install_session_hooks()
     except Exception:
@@ -2176,6 +2227,8 @@ def register_guard_parser(sub):
     sync_p = guard_sub.add_parser("sync", help="Refresh policy and re-scan for AI tools")
     sync_p.add_argument("--cursor", action="store_true", help="Write active Guard policies to .cursorrules")
     sync_p.add_argument("--dry-run", action="store_true", help="Preview policy changes without writing anything")
+    sync_p.add_argument("--reset-instructions", action="store_true", dest="reset_instructions",
+                        help="Remove ConductGuard blocks from all instruction files")
     sync_p.add_argument("--proxy-url", default=None,
                         help="Override the Guard proxy URL (default: https://api.conductai.ai/proxy/anthropic)")
     sync_p.add_argument("--no-local-audit", action="store_true",
