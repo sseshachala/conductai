@@ -381,6 +381,7 @@ _MCP_TARGETS = [
     (Path.home() / ".cursor"   / "mcp.json",       "Cursor"),
     (Path.home() / ".windsurf" / "mcp.json",        "Windsurf"),
     (Path.home() / ".codex"    / "mcp.json",        "Codex"),
+    # ~/.copilot/mcp-config.json handled separately by _patch_copilot_mcp (SSE + token)
     # Claude Desktop — only if already installed
     (Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json", "Claude Desktop"),
     (Path.home() / "AppData"  / "Roaming" / "Claude" / "claude_desktop_config.json",             "Claude Desktop"),
@@ -431,6 +432,9 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
     if not found_any:
         print(f"  {GRAY}No AI tool configs found for MCP registration{RESET}")
 
+    # GitHub Copilot uses SSE + Bearer token (can't run local stdio process via mcp-config.json)
+    _patch_copilot_mcp(agent_token, api_url)
+
     # Claude Desktop doesn't source shell env — patch apiBaseUrl directly in config
     # so all LLM calls route through the Guard proxy (PII blocking, spend limits, audit).
     _patch_claude_desktop_proxy(api_url, agent_token)
@@ -466,6 +470,34 @@ def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
         cfg_path.write_text(json.dumps(cfg, indent=2))
         print(f"  {GREEN}Claude Desktop proxy set → {proxy_url}{RESET}")
         print(f"  {YELLOW}Restart Claude Desktop for proxy routing to take effect{RESET}")
+
+
+def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
+    """Keep ~/.copilot/mcp-config.json in sync with current agent token.
+
+    Copilot's mcp-config.json uses SSE + Bearer — it can't run a local stdio binary
+    the way Claude Code / Cursor can, so we write the SSE entry with a fresh token.
+    """
+    cfg_path = Path.home() / ".copilot" / "mcp-config.json"
+    if not cfg_path.exists():
+        return
+    try:
+        cfg = json.loads(cfg_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        cfg = {}
+    mcp = cfg.setdefault("mcpServers", {})
+    entry = {
+        "type": "sse",
+        "url": f"{api_url}/guard/mcp",
+        "headers": {"Authorization": f"Bearer {agent_token}"},
+        "tools": ["**"],
+    }
+    if mcp.get("conduct-guard") == entry:
+        print(f"  {GRAY}conduct-guard MCP already registered in GitHub Copilot{RESET}")
+        return
+    mcp["conduct-guard"] = entry
+    cfg_path.write_text(json.dumps(cfg, indent=2))
+    print(f"  {GREEN}conduct-guard MCP registered in GitHub Copilot (SSE){RESET}")
 
 
 def _patch_cursor_global_rules() -> None:
