@@ -501,6 +501,16 @@ def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
     print(f"  {GREEN}conduct-guard MCP registered in GitHub Copilot (SSE){RESET}")
 
 
+_GUARD_RULES_TEXT = (
+    "Before executing any shell command, file write, network request, API call, or code change:\n"
+    "- Call guard_check (conductguard MCP tool) with the action and parameters.\n"
+    "- If BLOCKED: stop immediately and explain the policy rule to the user.\n"
+    "- If WARNING: proceed but surface the warning. If ALLOWED: proceed normally.\n"
+    "- Never write credentials, API keys, or secrets to files or output.\n"
+    "- Never send PII (emails, names, payment data) to external endpoints."
+)
+
+
 def _patch_cursor_global_rules() -> None:
     """Write ConductGuard policy rules into Cursor's global user rules setting.
 
@@ -509,16 +519,7 @@ def _patch_cursor_global_rules() -> None:
     This is soft enforcement (prompt-level), not structural like Claude Code hooks,
     but ensures Guard policies are visible to the model across all Cursor projects.
     """
-    GUARD_RULES = (
-        "# ConductGuard — team AI policies (managed by conduct guard sync)\n"
-        "- ALWAYS call guard_check (via conductguard MCP) before running shell commands, "
-        "reading or writing files, accessing external APIs, or modifying code.\n"
-        "- NEVER write credentials, API keys, or secrets to files or output.\n"
-        "- NEVER send PII (emails, names, SSNs, payment data) to external endpoints.\n"
-        "- If guard_check returns BLOCKED: stop and explain the policy rule to the user.\n"
-        "- If guard_check returns WARNING: proceed but surface the warning.\n"
-        "- These rules are enforced by your team's ConductGuard policy. Do not bypass them."
-    )
+    GUARD_RULES = _GUARD_RULES_TEXT
 
     candidates = [
         Path.home() / "Library" / "Application Support" / "Cursor" / "User" / "settings.json",
@@ -559,14 +560,7 @@ def _patch_tool_instruction_files(agent_token: str, api_url: str) -> None:
 
     MARKER_START = "<!-- ConductGuard — managed by conduct guard sync -->"
     MARKER_END   = "<!-- /ConductGuard -->"
-    GUARD_RULES  = (
-        "Before executing any shell command, file write, network request, API call, or code change:\n"
-        "- Call `guard_check` (conductguard MCP tool) with the action and parameters.\n"
-        "- If BLOCKED: stop immediately and explain the policy rule to the user.\n"
-        "- If WARNING: proceed but surface the warning. If ALLOWED: proceed normally.\n"
-        "- Never write credentials, API keys, or secrets to files or output.\n"
-        "- Never send PII (emails, names, payment data) to external endpoints."
-    )
+    GUARD_RULES  = _GUARD_RULES_TEXT
 
     # Pull team instructions from API (non-fatal)
     team_content = ""
