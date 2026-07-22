@@ -309,6 +309,19 @@ def get_workspace_id(
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
 
+    # run_token (cond_run_*) — short-lived per-run token, validated by hash
+    if credentials.credentials.startswith("cond_run_"):
+        import hashlib as _h
+        from app.modules.agent_identity.run_token_model import AgentRunToken as _ART
+        _hash = _h.sha256(credentials.credentials.encode()).hexdigest()
+        _rt = db.query(_ART).filter(_ART.token_hash == _hash, _ART.invalidated_at.is_(None)).first()
+        if not _rt:
+            raise HTTPException(status_code=401, detail="Invalid or expired run token")
+        token_ws = str(_rt.workspace_id)
+        if explicit_ws and explicit_ws != token_ws:
+            raise HTTPException(status_code=403, detail="Run token does not belong to the requested workspace")
+        return explicit_ws or token_ws
+
     # agent_token (cond_agt_* / cond_api_*) — look up in agent_identities
     if credentials.credentials.startswith(("cond_agt_", "cond_api_")):
         ai, _ = _resolve_agent_token(credentials.credentials, db)
