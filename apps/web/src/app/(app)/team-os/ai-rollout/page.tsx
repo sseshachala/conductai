@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth, useUser } from "@clerk/nextjs"
+import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import type { Instructions } from "../types"
 
@@ -151,6 +152,7 @@ function PreviewPane({ content, activeTab }: { content: string; activeTab: strin
 export default function AIRolloutEditorPage() {
   const { getToken } = useAuth()
   const { user } = useUser()
+  const { activeWorkspace } = useWorkspace()
   const router = useRouter()
 
   const [instructions, setInstructions] = useState<Instructions | null>(null)
@@ -165,7 +167,7 @@ export default function AIRolloutEditorPage() {
     try {
       const token = await getToken()
       if (!token) return
-      const res = await apiFetch("/team-os/instructions", token)
+      const res = await apiFetch(`/team-os/instructions${activeWorkspace?.id ? `?workspace_id=${activeWorkspace.id}` : ""}`, token)
       if (res.ok) {
         const data: Instructions = await res.json()
         setInstructions(data)
@@ -199,7 +201,7 @@ export default function AIRolloutEditorPage() {
         setSaveError("Not authenticated")
         return
       }
-      const res = await apiFetch("/team-os/instructions", token, {
+      const res = await apiFetch(`/team-os/instructions${activeWorkspace?.id ? `?workspace_id=${activeWorkspace.id}` : ""}`, token, {
         method: "POST",
         body: JSON.stringify({ content: draft }),
       })
