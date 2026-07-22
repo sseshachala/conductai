@@ -1084,7 +1084,7 @@ def _detect_ai_tools() -> list[dict]:
             except Exception:
                 pass
         tools.append({
-            "name": "vscode",
+            "name": "copilot",
             "mcp_registered": mcp_reg,
             "hook_registered": False,
             "proxy_routed": False,
