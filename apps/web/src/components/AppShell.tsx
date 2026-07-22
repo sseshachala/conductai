@@ -91,6 +91,7 @@ const Icons = {
   Arrow: () => <Icon><path d="M5 12h14M12 5l7 7-7 7" /></Icon>,
   Lock: () => <Icon><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></Icon>,
   Plug: () => <Icon><path d="M18 6L6 18M7 17l-4 4M17 7l4-4M9 3v4M15 3v4M9 7h6M9 7a3 3 0 000 6h6a3 3 0 000-6" /></Icon>,
+  Users: () => <Icon><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /></Icon>,
 }
 
 // ── Breadcrumb logic ──────────────────────────────────────────────────────────
@@ -103,6 +104,8 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/theguard/activity')) return ['Guard', 'Activity']
   if (pathname.startsWith('/theguard/settings')) return ['Guard', 'Settings']
   if (pathname.startsWith('/governance')) return ['Governance']
+  if (pathname.startsWith('/team-os/ai-rollout')) return ['Team OS', 'AI Rollout']
+  if (pathname.startsWith('/team-os')) return ['Team OS']
   if (pathname.startsWith('/theguard')) return ['Guard', 'Overview']
   if (pathname.startsWith('/settings')) return ['Settings']
   if (pathname.startsWith('/marketplace')) return ['Registry']
@@ -824,6 +827,44 @@ function AppShellInnerContent({
                     { label: "Findings",  href: "/secure/activity" },
                   ].map(sub => {
                     const subActive = sub.href === "/secure" ? pathname === "/secure" : pathname.startsWith(sub.href)
+                    return (
+                      <Link
+                        key={sub.href}
+                        href={sub.href}
+                        style={{
+                          display: "block",
+                          padding: "5px 10px",
+                          borderRadius: 7,
+                          fontSize: 13,
+                          fontWeight: subActive ? 600 : 400,
+                          color: subActive ? "var(--accent-text)" : "var(--text-3)",
+                          background: subActive ? "var(--accent-weak)" : "transparent",
+                          textDecoration: "none",
+                        }}
+                        onMouseEnter={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
+                        onMouseLeave={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
+                      >
+                        {sub.label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+              <SideNavItem
+                href="/team-os"
+                label="Team OS"
+                icon={<Icons.Users />}
+                active={pathname.startsWith("/team-os")}
+                collapsed={collapsed}
+              />
+              {/* Team OS sub-nav */}
+              {pathname.startsWith("/team-os") && !collapsed && (
+                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+                  {[
+                    { label: "AI Rollout", href: "/team-os" },
+                    { label: "Instructions", href: "/team-os/ai-rollout" },
+                  ].map(sub => {
+                    const subActive = sub.href === "/team-os" ? pathname === "/team-os" : pathname.startsWith(sub.href)
                     return (
                       <Link
                         key={sub.href}
