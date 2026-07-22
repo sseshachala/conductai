@@ -57,6 +57,34 @@ def _check_proxy_token() -> None:
         pass
 
 
+def _check_instructions_staleness() -> None:
+    """Warn if team AI instructions have been updated since last sync.
+
+    Reads local instructions_version from config, hits GET /team-os/instructions/version,
+    prints one-line warning if stale. Timeout 2s — never blocks the session.
+    """
+    try:
+        import urllib.request as _req
+        cfg = load_config()
+        api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+        agent_token = cfg.get("agent_token", "")
+        local_version = cfg.get("instructions_version")
+        if not agent_token or not local_version:
+            return  # not synced yet — nothing to compare
+
+        request = _req.Request(
+            f"{api_url}/team-os/instructions/version",
+            headers={"Authorization": f"Bearer {agent_token}"},
+        )
+        with _req.urlopen(request, timeout=2) as resp:
+            data = json.loads(resp.read())
+        remote_version = data.get("version")
+        if remote_version and remote_version != local_version:
+            print(f"⚠  Team AI instructions updated ({local_version} → {remote_version}) — run `conduct guard sync` to pull latest\n")
+    except Exception:
+        pass  # always silent — session-start must never fail
+
+
 def _backfill_prev_session(current_session_id: str, cwd: str | None) -> None:
     """Parse + PATCH the most recent completed session (the one that just ended).
 
@@ -155,6 +183,7 @@ def main() -> None:
             pass
 
     _check_proxy_token()
+    _check_instructions_staleness()
 
     if not SNAPSHOT_PATH.exists():
         sys.exit(0)
