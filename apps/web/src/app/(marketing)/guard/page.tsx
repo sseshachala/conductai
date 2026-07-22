@@ -20,6 +20,7 @@ export default function GuardLandingPage() {
       <AgentIdentitySection />
       <EnterpriseGradeSection />
       <GatewayVsGuardSection />
+      <FoundationLayerSection />
       <FinalCTASection />
     </>
   )
@@ -49,8 +50,11 @@ function HeroSection() {
       <p className="text-base text-indigo-600 italic max-w-2xl mx-auto leading-relaxed mb-3">
         GitHub gives the CISO a setting. ConductGuard gives them enforcement.
       </p>
-      <p className="text-base text-stone-500 italic max-w-2xl mx-auto leading-relaxed mb-8">
+      <p className="text-base text-stone-500 italic max-w-2xl mx-auto leading-relaxed mb-4">
         The agent inherits the permission. It doesn&apos;t inherit the caution.
+      </p>
+      <p className="text-base text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
+        Guard evaluates runtime admissibility before every agent action executes — applying refusal rails at the execution boundary, not in a policy document. Without runtime enforcement, agents experience permission drift, accumulating authority across tool calls that no single approval authorised.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />
@@ -209,7 +213,7 @@ function EnforcementLayerSection() {
           <div className="space-y-3">
             {[
               { label: "Prompt-based reviewer", desc: "Model can ignore it or hallucinate compliance", bad: true },
-              { label: "ConductGuard policy", desc: "Evaluated against real rule set — block exits with code 2", bad: false },
+              { label: "ConductGuard policy", desc: "Refusal rails evaluated against real rule set — block exits with code 2. Refusal conditions are structural, not advisory.", bad: false },
               { label: "Chat history audit", desc: "No structured search, no team visibility", bad: true },
               { label: "Conduct audit log", desc: "Every run, every block, every output — searchable", bad: false },
               { label: "Spend as an afterthought", desc: "You see the bill at end of month", bad: true },
@@ -740,7 +744,8 @@ function MCPSection() {
                 ["PII in prompts", "Patient data, PII flagged before it reaches the provider."],
                 ["Spend limits", "Per-developer token budgets enforced across every connected agent."],
                 ["Blast radius tracking", "Every action scored by scope — local / repo / network / destructive."],
-                ["Full audit trail", "Tamper-evident hash chain. SOC2 auditors get proof, not promises."],
+                ["Human sovereignty", "Approval gates are first-class workflow blocks, not optional add-ons. Conduct preserves human sovereignty at every step that matters."],
+                ["Custody proof", "Every decision cryptographically logged at the execution boundary — not reconstructed after the fact. SOC2 auditors get proof, not promises. Every allowed action produces a Governance Authorization Artifact: replay-verifiable evidence that authorisation was confirmed before execution."],
               ].map(([label, desc]) => (
                 <li key={label} className="flex gap-3">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0 mt-[7px]" />
@@ -950,6 +955,9 @@ function AgentIdentitySection() {
           <p className="text-stone-500 text-lg leading-relaxed max-w-2xl mx-auto">
             Guard issues scoped tokens to every agent. Short-lived for interactive tools, long-lived for CI and integrations. Both enforce the same proxy rules and write to the same audit trail.
           </p>
+          <p className="text-stone-500 text-base leading-relaxed max-w-2xl mx-auto mt-3">
+            Guard validates authority at the execution boundary — short-lived run tokens mean permissions expire with the action, not the session. Conduct uses short-lived run tokens: every run mints fresh credentials. There are no stale approvals.
+          </p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 mb-10">
@@ -1087,7 +1095,7 @@ function GatewayVsGuardSection() {
                 ["no",  "Blocks destructive commands before they run"],
                 ["no",  "Detects credential leaks in tool input"],
                 ["no",  "One policy across Claude, Codex, ChatGPT, Cursor, Copilot"],
-                ["no",  "Tamper-evident audit log"],
+                ["no",  "Custody proof audit log"],
               ] as [string, string][]).map(([state, label]) => (
                 <li key={label} className="flex items-start gap-2">
                   <span className={state === "yes" ? "text-green-500 font-bold mt-0.5" : "text-stone-300 font-bold mt-0.5"}>{state === "yes" ? "✓" : "✗"}</span>
@@ -1107,7 +1115,7 @@ function GatewayVsGuardSection() {
                 "Blocks destructive commands before they run",
                 "Detects credential leaks in tool input",
                 "One policy across Claude, Codex, ChatGPT, Cursor, Copilot",
-                "Tamper-evident audit log",
+                "Custody proof audit log",
               ].map((label) => (
                 <li key={label} className="flex items-start gap-2">
                   <span className="text-indigo-500 font-bold mt-0.5">✓</span>
@@ -1120,6 +1128,41 @@ function GatewayVsGuardSection() {
         <p className="text-stone-400 text-sm">
           Use a provider gateway for spend control. Use ConductGuard for everything the model touches after it decides what to do.
         </p>
+      </div>
+    </section>
+  )
+}
+
+function FoundationLayerSection() {
+  return (
+    <section className="bg-stone-50 border-y border-stone-100 py-14 px-6">
+      <div className="max-w-5xl mx-auto">
+        <p className="text-center text-xs font-semibold uppercase tracking-widest text-stone-400 mb-8">Guard is Layer 2. Start at Layer 0.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <a href="/team-os" className="group rounded-2xl border border-stone-200 bg-white p-6 hover:border-stone-400 hover:shadow-md transition-all flex gap-4">
+            <div className="text-2xl shrink-0">📄</div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <p className="font-bold text-stone-900 text-sm">Team OS</p>
+                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold">Free</span>
+              </div>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                CLAUDE.md, REVIEW.md, and standards files — the quality bar Guard enforces, written down so every agent on your team starts from the same place.
+              </p>
+              <p className="text-xs font-semibold text-stone-600 group-hover:text-stone-900 mt-2 transition-colors">Get the templates →</p>
+            </div>
+          </a>
+          <a href="/sdd" className="group rounded-2xl border border-stone-200 bg-white p-6 hover:border-stone-400 hover:shadow-md transition-all flex gap-4">
+            <div className="text-2xl shrink-0">📐</div>
+            <div>
+              <p className="font-bold text-stone-900 text-sm mb-1">Spec-Driven Development</p>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                Generate a SPEC.md before agents touch code. Guard enforces spec compliance at runtime — blocking actions that diverge from approved architecture.
+              </p>
+              <p className="text-xs font-semibold text-stone-600 group-hover:text-stone-900 mt-2 transition-colors">Generate your spec →</p>
+            </div>
+          </a>
+        </div>
       </div>
     </section>
   )

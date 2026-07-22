@@ -225,8 +225,11 @@ function HeroSection() {
         Every framework your auditor<br />
         <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">cares about. Pre-built.</span>
       </h1>
-      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
+      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-4">
         EU AI Act, NIST AI RMF, ISO 42001, OWASP LLM Top 10, SOC 2, HIPAA, PCI DSS. Install a pack. Guard enforces it. Audit log is automatic.
+      </p>
+      <p className="text-base text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
+        Conduct makes compliance structural — not documented after the fact, enforced before execution. Every allowed action produces a Governance Authorization Artifact: replay-verifiable evidence that authorisation was confirmed before execution. Custody proof, not a reconstructed log.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />
@@ -304,7 +307,7 @@ function CTASection() {
           Your auditor wants evidence.<br />Guard produces it automatically.
         </h2>
         <p className="text-indigo-200 text-lg leading-relaxed mb-10 max-w-xl mx-auto">
-          Install a compliance pack. Every agent decision is logged, mapped to a framework control, and exportable.
+          Install a compliance pack. Every agent decision is logged as a Governance Authorization Artifact, mapped to a framework control, and exportable. Structural compliance — not documented after the fact.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <CtaLink className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center" />
