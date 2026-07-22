@@ -1076,6 +1076,13 @@ def _detect_ai_tools() -> list[dict]:
             mcp_reg = "conduct" in d.get("mcp", {}).get("servers", {})
         except Exception:
             mcp_reg = False
+        # Also check ~/.copilot/mcp-config.json (SSE entry written by guard sync)
+        if not mcp_reg:
+            try:
+                copilot_cfg = home / ".copilot" / "mcp-config.json"
+                mcp_reg = "conduct-guard" in json.loads(copilot_cfg.read_text()).get("mcpServers", {})
+            except Exception:
+                pass
         tools.append({
             "name": "vscode",
             "mcp_registered": mcp_reg,
