@@ -15,6 +15,20 @@ interface Evidence {
   controls: ControlStatus[]; generated_at: string; workspace_id: string;
 }
 
+interface TestResult {
+  asi: string; name: string; tool: string
+  expected: string; actual: string; verdict: string; matched_rule: string | null
+}
+interface VerifyRunOut {
+  run_id: string; score: number; grade: string
+  passed_tests: number; total_tests: number
+  results: TestResult[]; created_at: string
+}
+interface VerifyRunSummary {
+  run_id: string; score: number; grade: string
+  passed_tests: number; total_tests: number; created_at: string
+}
+
 const GRADE_COLOR: Record<string, string> = {
   A: "var(--ok)", B: "var(--ok)", C: "var(--warn)", D: "var(--warn)", F: "var(--block)",
 }
@@ -34,8 +48,226 @@ const STATUS_BD: Record<string, string> = {
   active: "var(--ok-bd)", partial: "var(--warn-bd)", missing: "var(--block-bd)",
 }
 
+const VERDICT_COLOR: Record<string, string> = {
+  held: "var(--ok)", bypassed: "var(--block)", not_tested: "var(--warn)",
+}
+const VERDICT_BG: Record<string, string> = {
+  held: "var(--ok-bg)", bypassed: "var(--block-bg)", not_tested: "var(--warn-bg)",
+}
+const VERDICT_BD: Record<string, string> = {
+  held: "var(--ok-bd)", bypassed: "var(--block-bd)", not_tested: "var(--warn-bd)",
+}
+
 export default function CompliancePage() {
   return <AppShell><GuardShell><ComplianceContent /></GuardShell></AppShell>
+}
+
+function VerifyRunPanel({ wsId, base, getToken }: { wsId: string; base: string; getToken: () => Promise<string | null> }) {
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<VerifyRunOut | null>(null)
+  const [runError, setRunError] = useState<string | null>(null)
+
+  async function handleRun() {
+    setRunning(true)
+    setRunError(null)
+    try {
+      const token = await getToken()
+      const h: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) h["Authorization"] = `Bearer ${token}`
+      const res = await fetch(`${base}/guard/verify/run?workspace_id=${wsId}`, { method: "POST", headers: h })
+      if (!res.ok) throw new Error(`Verification failed (${res.status})`)
+      const data = await res.json()
+      setResult(data)
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : "Verification failed")
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="card" style={{ overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontWeight: 650, fontSize: 14 }}>Live Adversarial Verification</span>
+        <button
+          onClick={handleRun}
+          disabled={running}
+          className="btn btn-sm"
+          style={{ opacity: running ? 0.6 : 1 }}
+        >
+          {running ? "Running…" : "Run Verification"}
+        </button>
+      </div>
+
+      {runError && (
+        <div style={{ padding: "12px 20px", fontSize: 13, color: "var(--block)" }}>{runError}</div>
+      )}
+
+      {!result && !runError && (
+        <div style={{ padding: "24px 20px", fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
+          Click &apos;Run Verification&apos; to fire 10 adversarial test cases against your Guard policy
+        </div>
+      )}
+
+      {result && (
+        <div>
+          <div style={{ padding: "12px 20px", display: "flex", alignItems: "center", gap: 12, borderBottom: "1px solid var(--border)", fontSize: 13 }}>
+            <span style={{ color: "var(--text-2)" }}>
+              Live Score: {result.score}/100 · {result.passed_tests}/{result.total_tests} held
+            </span>
+            <span style={{ fontWeight: 600, color: "var(--text-2)" }}>· Grade</span>
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 20,
+              background: GRADE_BG[result.grade] ?? "var(--surface-2)",
+              color: GRADE_COLOR[result.grade] ?? "var(--text-muted)",
+              border: `1px solid ${GRADE_BD[result.grade] ?? "var(--border)"}`,
+            }}>
+              {result.grade}
+            </span>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "var(--surface-2)" }}>
+                {["ASI", "Test", "Expected", "Actual", "Verdict"].map(h => (
+                  <th key={h} style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600, fontSize: 11.5, color: "var(--text-3)", borderBottom: "1px solid var(--border)" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {result.results.map((r, i) => {
+                const vc  = VERDICT_COLOR[r.verdict] ?? "var(--text-muted)"
+                const vb  = VERDICT_BG[r.verdict]   ?? "var(--surface-2)"
+                const vbd = VERDICT_BD[r.verdict]   ?? "var(--border)"
+                return (
+                  <tr key={i} style={{ borderBottom: i < result.results.length - 1 ? "1px solid var(--border)" : "none" }}>
+                    <td style={{ padding: "10px 16px", fontWeight: 600, fontFamily: "ui-monospace,monospace", fontSize: 12 }}>{r.asi}</td>
+                    <td style={{ padding: "10px 16px", color: "var(--text-2)" }}>
+                      <div>{r.name}</div>
+                      {r.matched_rule && (
+                        <div style={{ fontSize: 11, fontFamily: "ui-monospace,monospace", color: "var(--text-muted)", marginTop: 2 }}>{r.matched_rule}</div>
+                      )}
+                    </td>
+                    <td style={{ padding: "10px 16px", color: "var(--text-3)", fontSize: 12 }}>{r.expected}</td>
+                    <td style={{ padding: "10px 16px", color: "var(--text-3)", fontSize: 12 }}>{r.actual}</td>
+                    <td style={{ padding: "10px 16px" }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20, background: vb, color: vc, border: `1px solid ${vbd}` }}>
+                        {r.verdict}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ScoreHistory({ wsId, base, getToken }: { wsId: string; base: string; getToken: () => Promise<string | null> }) {
+  const [runs, setRuns] = useState<VerifyRunSummary[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!wsId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const token = await getToken()
+        const h: Record<string, string> = {}
+        if (token) h["Authorization"] = `Bearer ${token}`
+        const res = await fetch(`${base}/guard/verify/history?workspace_id=${wsId}&limit=30`, { headers: h })
+        if (!res.ok) throw new Error(`Failed (${res.status})`)
+        const data = await res.json()
+        if (!cancelled) setRuns(data)
+      } catch {
+        // silently leave runs empty
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [wsId, base, getToken])
+
+  const recent = runs.slice(0, 10)
+
+  return (
+    <div className="card" style={{ overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontWeight: 650, fontSize: 14 }}>
+        Verification History
+      </div>
+
+      {loading && (
+        <div style={{ padding: "24px 20px", fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>Loading…</div>
+      )}
+
+      {!loading && runs.length === 0 && (
+        <div style={{ padding: "24px 20px", fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>No verification runs yet</div>
+      )}
+
+      {!loading && runs.length > 0 && (
+        <div>
+          {/* Mini bar chart */}
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 48, overflow: "hidden" }}>
+              {runs.map((r, i) => {
+                const barHeight = Math.max(4, Math.round((r.score / 100) * 48))
+                const barColor = GRADE_COLOR[r.grade] ?? "var(--text-muted)"
+                const dateStr = new Date(r.created_at).toLocaleDateString()
+                return (
+                  <div
+                    key={r.run_id ?? i}
+                    title={`${r.grade} (${r.score}) — ${dateStr}`}
+                    style={{
+                      width: 8,
+                      height: barHeight,
+                      background: barColor,
+                      borderRadius: 2,
+                      flexShrink: 0,
+                      cursor: "default",
+                    }}
+                  />
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Last 10 runs table */}
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "var(--surface-2)" }}>
+                {["Date", "Grade", "Score", "Passed/Total"].map(h => (
+                  <th key={h} style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600, fontSize: 11.5, color: "var(--text-3)", borderBottom: "1px solid var(--border)" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {recent.map((r, i) => {
+                const gc  = GRADE_COLOR[r.grade] ?? "var(--text-muted)"
+                const gb  = GRADE_BG[r.grade]   ?? "var(--surface-2)"
+                const gbd = GRADE_BD[r.grade]   ?? "var(--border)"
+                return (
+                  <tr key={r.run_id ?? i} style={{ borderBottom: i < recent.length - 1 ? "1px solid var(--border)" : "none" }}>
+                    <td style={{ padding: "10px 16px", color: "var(--text-2)", fontSize: 12 }}>
+                      {new Date(r.created_at).toLocaleString()}
+                    </td>
+                    <td style={{ padding: "10px 16px" }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20, background: gb, color: gc, border: `1px solid ${gbd}` }}>
+                        {r.grade}
+                      </span>
+                    </td>
+                    <td style={{ padding: "10px 16px", color: "var(--text-2)", fontSize: 12 }}>{r.score}/100</td>
+                    <td style={{ padding: "10px 16px", color: "var(--text-3)", fontSize: 12 }}>{r.passed_tests}/{r.total_tests}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function ComplianceContent() {
@@ -155,6 +387,13 @@ function ComplianceContent() {
           Generated {new Date(generated_at).toLocaleString()}
         </div>
       </div>
+
+      {wsId && (
+        <>
+          <VerifyRunPanel wsId={wsId} base={base} getToken={getToken} />
+          <ScoreHistory wsId={wsId} base={base} getToken={getToken} />
+        </>
+      )}
     </div>
   )
 }
