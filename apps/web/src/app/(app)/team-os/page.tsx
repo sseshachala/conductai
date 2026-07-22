@@ -4,52 +4,9 @@ import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Instructions {
-  content: string
-  version: string
-  updated_at: string
-  updated_by: string
-}
-
-interface AdoptionRow {
-  email: string
-  tools: string[]
-  last_synced: string | null
-  version: string | null
-}
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const MOCK_INSTRUCTIONS: Instructions = {
-  content: "",
-  version: "v1",
-  updated_at: new Date().toISOString(),
-  updated_by: "admin",
-}
-
-const MOCK_ADOPTION: AdoptionRow[] = [
-  {
-    email: "sudhi@b2bsphere.com",
-    tools: ["claude-code", "copilot"],
-    last_synced: new Date().toISOString(),
-    version: "v1",
-  },
-  {
-    email: "alice@example.com",
-    tools: ["cursor"],
-    last_synced: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    version: "v0",
-  },
-  {
-    email: "bob@example.com",
-    tools: [],
-    last_synced: null,
-    version: null,
-  },
-]
+import { timeAgo } from "@/lib/runUtils"
+import type { Instructions, AdoptionRow } from "./types"
+import { MOCK_INSTRUCTIONS, MOCK_ADOPTION } from "./types"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -64,17 +21,6 @@ const TOOL_LABELS: Record<string, string> = {
 
 function formatToolLabel(tool: string): string {
   return TOOL_LABELS[tool] ?? tool
-}
-
-function timeAgo(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  if (diffMin < 1) return "just now"
-  if (diffMin < 60) return `${diffMin} min ago`
-  const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24) return `${diffH}h ago`
-  const diffD = Math.floor(diffH / 24)
-  return `${diffD} days ago`
 }
 
 function getSyncStatus(row: AdoptionRow, currentVersion: string): "current" | "stale" | "not-set-up" {
