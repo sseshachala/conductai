@@ -1376,6 +1376,14 @@ def cmd_guard_sync(args):
     except Exception as e:
         print(f"  {YELLOW}Warning: could not refresh token ({e}) — using cached value{RESET}")
 
+    # Fetch team instructions version so session-start hook can detect staleness
+    try:
+        ver_resp = _req("GET", f"{base_url}/team-os/instructions/version", token=_token)
+        if ver_resp.get("version"):
+            _save_guard_config({"instructions_version": ver_resp["version"]})
+    except Exception:
+        pass  # non-fatal
+
     # Write LLM proxy env vars so any AI tool (Claude Code, Cursor, Codex, …)
     # routes through Conduct Guard. Customer-overridable via --proxy-url or
     # CONDUCT_PROXY_URL env var; otherwise fetched from server (workspace_config).

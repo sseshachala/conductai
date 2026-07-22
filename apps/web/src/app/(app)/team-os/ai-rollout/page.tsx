@@ -5,7 +5,16 @@ import { useRouter } from "next/navigation"
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import type { Instructions } from "../types"
-import { MOCK_INSTRUCTIONS } from "../types"
+
+// ─── API helper ────────────────────────────────────────────────────────────────
+
+async function apiFetch(path: string, token: string, opts?: RequestInit) {
+  const base = process.env.NEXT_PUBLIC_API_URL ?? "https://api.conductai.ai"
+  return fetch(`${base}${path}`, {
+    ...opts,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...opts?.headers },
+  })
+}
 
 // ─── Tool tabs ─────────────────────────────────────────────────────────────────
 
@@ -150,28 +159,28 @@ export default function AIRolloutEditorPage() {
   const { user } = useUser()
   const router = useRouter()
 
-  const [instructions, setInstructions] = useState<Instructions>(MOCK_INSTRUCTIONS)
+  const [instructions, setInstructions] = useState<Instructions | null>(null)
   const [draft, setDraft] = useState("")
   const [activeTab, setActiveTab] = useState("claude-md")
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [successBanner, setSuccessBanner] = useState(false)
 
   const load = useCallback(async () => {
     try {
       const token = await getToken()
-      const base = process.env.NEXT_PUBLIC_API_URL
-      const res = await fetch(`${base}/team-os/instructions`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      if (!token) return
+      const res = await apiFetch("/team-os/instructions", token)
       if (res.ok) {
         const data: Instructions = await res.json()
         setInstructions(data)
         setDraft(data.content)
+      } else {
+        setSaveError(`Failed to load instructions (${res.status})`)
       }
-    } catch {
-      // API not built yet — use mock defaults
-      setDraft(MOCK_INSTRUCTIONS.content)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to load instructions")
     }
   }, [getToken])
 
@@ -192,13 +201,12 @@ export default function AIRolloutEditorPage() {
     setSaveError(null)
     try {
       const token = await getToken()
-      const base = process.env.NEXT_PUBLIC_API_URL
-      const res = await fetch(`${base}/team-os/instructions`, {
+      if (!token) {
+        setSaveError("Not authenticated")
+        return
+      }
+      const res = await apiFetch("/team-os/instructions", token, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({ content: draft }),
       })
       if (!res.ok) {
@@ -208,13 +216,14 @@ export default function AIRolloutEditorPage() {
         const data: Instructions = await res.json()
         setInstructions(data)
         setSaved(true)
-        setTimeout(() => setSaved(false), 2000)
+        setSuccessBanner(true)
+        setTimeout(() => {
+          setSaved(false)
+          setSuccessBanner(false)
+        }, 3000)
       }
-    } catch {
-      // API not built — optimistic mock update
-      setInstructions(prev => ({ ...prev, content: draft, updated_at: new Date().toISOString() }))
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to publish")
     } finally {
       setSaving(false)
     }
@@ -222,6 +231,23 @@ export default function AIRolloutEditorPage() {
 
   return (
     <AppShell>
+      {successBanner && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 100,
+          background: "#10b981",
+          color: "#fff",
+          textAlign: "center",
+          padding: "12px 16px",
+          fontSize: 13.5,
+          fontWeight: 600,
+        }}>
+          Instructions published — engineers will get this on next sync
+        </div>
+      )}
       <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 0", display: "flex", flexDirection: "column", height: "calc(100vh - 60px)" }}>
 
         {/* Header */}
@@ -242,9 +268,11 @@ export default function AIRolloutEditorPage() {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "monospace" }}>
-              {instructions.version}
-            </span>
+            {instructions && (
+              <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                {instructions.version}
+              </span>
+            )}
           </div>
         </div>
 
@@ -331,9 +359,6 @@ export default function AIRolloutEditorPage() {
         }}>
           {saveError && (
             <span style={{ fontSize: 12.5, color: "#ef4444" }}>{saveError}</span>
-          )}
-          {saved && (
-            <span style={{ fontSize: 12.5, color: "#10b981", fontWeight: 600 }}>Published</span>
           )}
           <button
             onClick={() => router.push("/team-os")}

@@ -6,7 +6,16 @@ import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
 import type { Instructions, AdoptionRow } from "./types"
-import { MOCK_INSTRUCTIONS, MOCK_ADOPTION } from "./types"
+
+// ─── API helper ────────────────────────────────────────────────────────────────
+
+async function apiFetch(path: string, token: string, opts?: RequestInit) {
+  const base = process.env.NEXT_PUBLIC_API_URL ?? "https://api.conductai.ai"
+  return fetch(`${base}${path}`, {
+    ...opts,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...opts?.headers },
+  })
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -217,35 +226,54 @@ export default function TeamOSPage() {
   const { getToken } = useAuth()
   const { user } = useUser()
 
-  const [instructions, setInstructions] = useState<Instructions>(MOCK_INSTRUCTIONS)
-  const [adoption, setAdoption] = useState<AdoptionRow[]>(MOCK_ADOPTION)
-  const [loading, setLoading] = useState(false)
+  const [instructions, setInstructions] = useState<Instructions | null>(null)
+  const [adoption, setAdoption] = useState<AdoptionRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const syncedCount = adoption.filter(r => getSyncStatus(r, instructions.version) === "current").length
+  const syncedCount = adoption.filter(r => getSyncStatus(r, instructions?.version ?? "")).length
   const totalCount = adoption.length
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const token = await getToken()
-      const base = process.env.NEXT_PUBLIC_API_URL
-      const headers = { Authorization: `Bearer ${token}` }
+      if (!token) {
+        setError("You don't have permission to view team instructions")
+        return
+      }
 
       const [instRes, adoptRes] = await Promise.all([
-        fetch(`${base}/team-os/instructions`, { headers }),
-        fetch(`${base}/team-os/instructions/adoption`, { headers }),
+        apiFetch("/team-os/instructions", token),
+        apiFetch("/team-os/instructions/adoption", token),
       ])
 
-      if (instRes.ok) {
-        const data = await instRes.json()
-        setInstructions(data)
+      if (instRes.status === 401 || instRes.status === 403) {
+        setError("You don't have permission to view team instructions")
+        return
       }
-      if (adoptRes.ok) {
-        const data = await adoptRes.json()
-        setAdoption(data)
+      if (!instRes.ok) {
+        setError(`Failed to load instructions (${instRes.status})`)
+        return
       }
-    } catch {
-      // API not built yet — mock data stays
+
+      const instData: Instructions = await instRes.json()
+      setInstructions(instData)
+
+      if (adoptRes.status === 401 || adoptRes.status === 403) {
+        setError("You don't have permission to view team instructions")
+        return
+      }
+      if (!adoptRes.ok) {
+        setError(`Failed to load adoption data (${adoptRes.status})`)
+        return
+      }
+
+      const adoptData: AdoptionRow[] = await adoptRes.json()
+      setAdoption(adoptData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
       setLoading(false)
     }
@@ -271,9 +299,14 @@ export default function TeamOSPage() {
               AI Rollout
             </h1>
             <div style={{ fontSize: 13.5, color: "var(--text-2)" }}>
-              {syncedCount} of {totalCount} engineer{totalCount !== 1 ? "s" : ""} synced
-              {" · "}
-              Last published {publishedAgo(instructions.updated_at)}
+              {instructions ? (
+                <>
+                  {syncedCount} of {totalCount} engineer{totalCount !== 1 ? "s" : ""} synced
+                  {instructions.updated_at && (
+                    <>{" · "}Last published {publishedAgo(instructions.updated_at)}</>
+                  )}
+                </>
+              ) : null}
             </div>
           </div>
           <Link
@@ -296,39 +329,58 @@ export default function TeamOSPage() {
           </Link>
         </div>
 
+        {/* Error state */}
+        {error && (
+          <div style={{
+            padding: "14px 18px",
+            borderRadius: 10,
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            color: "#991b1b",
+            fontSize: 13.5,
+            marginBottom: 20,
+          }}>
+            {error}
+          </div>
+        )}
+
         {/* Adoption tracker */}
-        <section style={{ marginBottom: 28 }}>
-          <div style={{
-            fontWeight: 600,
-            fontSize: 14,
-            color: "var(--text)",
-            marginBottom: 12,
-          }}>
-            Adoption tracker
-          </div>
-          <div style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 12,
-            overflow: "hidden",
-          }}>
-            {loading ? (
-              <div style={{ padding: "32px 24px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-                Loading...
-              </div>
-            ) : (
-              <AdoptionTable rows={adoption} currentVersion={instructions.version} />
-            )}
-          </div>
-        </section>
+        {!error && (
+          <section style={{ marginBottom: 28 }}>
+            <div style={{
+              fontWeight: 600,
+              fontSize: 14,
+              color: "var(--text)",
+              marginBottom: 12,
+            }}>
+              Adoption tracker
+            </div>
+            <div style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              overflow: "hidden",
+            }}>
+              {loading ? (
+                <div style={{ padding: "32px 24px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                  Loading...
+                </div>
+              ) : (
+                <AdoptionTable rows={adoption} currentVersion={instructions?.version ?? ""} />
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Setup card */}
-        <section>
-          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text)", marginBottom: 12 }}>
-            Setup
-          </div>
-          <SetupCard version={instructions.version} />
-        </section>
+        {!error && instructions && (
+          <section>
+            <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text)", marginBottom: 12 }}>
+              Setup
+            </div>
+            <SetupCard version={instructions.version} />
+          </section>
+        )}
 
       </div>
     </AppShell>
