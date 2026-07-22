@@ -779,13 +779,14 @@ function AppShellInnerContent({
                 collapsed={collapsed}
               />
               {/* Guard sub-nav */}
-              {pathname.startsWith("/theguard") && !collapsed && (
+              {(pathname.startsWith("/theguard") || pathname.startsWith("/team-os")) && !collapsed && (
                 <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
                     { label: "Overview",    href: "/theguard" },
                     { label: "Policies",    href: "/theguard/policies" },
                     { label: "Team Memory", href: "/theguard/team-memory" },
                     { label: "Activity",    href: "/logs/guard" },
+                    { label: "Team OS",     href: "/team-os" },
                     { label: "Settings",    href: "/theguard/settings", adminOnly: true },
                   ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
                     const subActive = sub.href === "/theguard" ? pathname === "/theguard" : pathname.startsWith(sub.href)
@@ -827,44 +828,6 @@ function AppShellInnerContent({
                     { label: "Findings",  href: "/secure/activity" },
                   ].map(sub => {
                     const subActive = sub.href === "/secure" ? pathname === "/secure" : pathname.startsWith(sub.href)
-                    return (
-                      <Link
-                        key={sub.href}
-                        href={sub.href}
-                        style={{
-                          display: "block",
-                          padding: "5px 10px",
-                          borderRadius: 7,
-                          fontSize: 13,
-                          fontWeight: subActive ? 600 : 400,
-                          color: subActive ? "var(--accent-text)" : "var(--text-3)",
-                          background: subActive ? "var(--accent-weak)" : "transparent",
-                          textDecoration: "none",
-                        }}
-                        onMouseEnter={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
-                        onMouseLeave={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
-                      >
-                        {sub.label}
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
-              <SideNavItem
-                href="/team-os"
-                label="Team OS"
-                icon={<Icons.Users />}
-                active={pathname.startsWith("/team-os")}
-                collapsed={collapsed}
-              />
-              {/* Team OS sub-nav */}
-              {pathname.startsWith("/team-os") && !collapsed && (
-                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                  {[
-                    { label: "AI Rollout", href: "/team-os" },
-                    { label: "Instructions", href: "/team-os/ai-rollout" },
-                  ].map(sub => {
-                    const subActive = sub.href === "/team-os" ? pathname === "/team-os" : pathname.startsWith(sub.href)
                     return (
                       <Link
                         key={sub.href}
