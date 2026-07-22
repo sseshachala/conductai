@@ -109,6 +109,9 @@ function MarketingNav() {
         <nav className="hidden md:flex items-center gap-6">
           <ProductsDropdown />
           <SolutionsDropdown />
+          <a href="/team-os" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+            Team OS <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest">Free</span>
+          </a>
           <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
           <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
         </nav>
