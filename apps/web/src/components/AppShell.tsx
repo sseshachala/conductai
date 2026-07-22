@@ -105,7 +105,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/theguard/settings')) return ['Guard', 'Settings']
   if (pathname.startsWith('/governance')) return ['Governance']
   if (pathname.startsWith('/team-os/ai-rollout')) return ['Team OS', 'AI Rollout']
-  if (pathname.startsWith('/team-os')) return ['Team OS']
+  if (pathname.startsWith('/theguard/team-os')) return ['Team OS']
   if (pathname.startsWith('/theguard')) return ['Guard', 'Overview']
   if (pathname.startsWith('/settings')) return ['Settings']
   if (pathname.startsWith('/marketplace')) return ['Registry']
@@ -779,14 +779,14 @@ function AppShellInnerContent({
                 collapsed={collapsed}
               />
               {/* Guard sub-nav */}
-              {(pathname.startsWith("/theguard") || pathname.startsWith("/team-os")) && !collapsed && (
+              {(pathname.startsWith("/theguard") || pathname.startsWith("/theguard/team-os")) && !collapsed && (
                 <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
                     { label: "Overview",    href: "/theguard" },
                     { label: "Policies",    href: "/theguard/policies" },
                     { label: "Team Memory", href: "/theguard/team-memory" },
                     { label: "Activity",    href: "/logs/guard" },
-                    { label: "Team OS",     href: "/team-os" },
+                    { label: "Team OS",     href: "/theguard/team-os" },
                     { label: "Settings",    href: "/theguard/settings", adminOnly: true },
                   ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
                     const subActive = sub.href === "/theguard" ? pathname === "/theguard" : pathname.startsWith(sub.href)

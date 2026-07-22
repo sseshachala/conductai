@@ -357,7 +357,7 @@ export default function AIRolloutEditorPage() {
             <span style={{ fontSize: 12.5, color: "#ef4444" }}>{saveError}</span>
           )}
           <button
-            onClick={() => router.push("/team-os")}
+            onClick={() => router.push("/theguard/team-os")}
             style={{
               padding: "8px 18px",
               borderRadius: 8,

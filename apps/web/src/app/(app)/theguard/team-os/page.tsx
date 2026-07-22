@@ -306,7 +306,7 @@ export default function TeamOSPage() {
             </div>
           </div>
           <Link
-            href="/team-os/ai-rollout"
+            href="/theguard/team-os/ai-rollout"
             style={{
               display: "inline-flex",
               alignItems: "center",
