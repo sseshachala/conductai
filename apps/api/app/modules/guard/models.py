@@ -83,6 +83,9 @@ class GuardMemberConfig(Base):
     persona = Column(String(20), nullable=True)
     # 'user' = self-selected via conduct init; 'admin' = locked by admin
     assigned_by = Column(String(10), nullable=False, default="user")
+    # Version string of workspace_instructions last synced by this member's CLI.
+    # Null = never synced. Written by conduct guard sync.
+    instructions_version = Column(String(64), nullable=True)
     joined_at = Column(
         DateTime(timezone=True),
         nullable=False,

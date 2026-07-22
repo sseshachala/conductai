@@ -51,6 +51,7 @@ from app.modules.agent_identity.router import router as agent_identity_router
 from app.routers.security import router as security_findings_router
 from app.modules.auth.cli_token import router as cli_auth_router
 from app.modules.auth.token_exchange import router as token_exchange_router
+from app.routers.team_os import router as team_os_router
 
 setup_logging()
 log = structlog.get_logger(__name__)
@@ -159,6 +160,7 @@ app.include_router(agent_identity_router)
 app.include_router(cli_auth_router)
 app.include_router(token_exchange_router)
 app.include_router(security_findings_router)
+app.include_router(team_os_router)
 
 
 @app.on_event("startup")
