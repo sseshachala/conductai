@@ -386,6 +386,21 @@ class DiscoveredAgent(Base):
     last_seen_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
+class GuardVerifyRun(Base):
+    """Persisted result of a Guard Verify adversarial test battery execution."""
+
+    __tablename__ = "guard_verify_runs"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    score        = Column(Integer, nullable=False)
+    grade        = Column(String(2), nullable=False)
+    results      = Column(JSONB, nullable=False)   # list of test result dicts
+    total_tests  = Column(Integer, nullable=False)
+    passed_tests = Column(Integer, nullable=False)
+    created_at   = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class GuardKnowledgeIndex(Base):
     """Unified semantic index across Guard sources — audit events, rules, discovered agents.
     Used by GLens for intent-based search ('blocks related to secrets', etc.)."""

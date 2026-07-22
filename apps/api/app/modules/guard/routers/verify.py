@@ -1,9 +1,10 @@
 """
 GET /guard/verify/evidence — OWASP Agentic Top 10 coverage + governance grade.
 GET /guard/verify/chain   — Walk the SHA-256 hash chain and confirm integrity.
+POST /guard/verify/run    — Run adversarial test battery and persist results.
+GET /guard/verify/history — Fetch past battery run summaries.
 
 Reads existing guard_config, policies, signing keys, and audit events.
-No new tables.
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -23,10 +24,12 @@ from app.models.workspace import Workspace
 from app.modules.guard.models import (
     GuardAuditEvent,
     GuardConfig,
+    GuardVerifyRun,
     WorkspaceCustomRule,
     WorkspaceSigningKey,
     WorkspaceSkillPack,
 )
+from app.modules.guard.test_battery import run_battery
 
 router = APIRouter(prefix="/guard/verify", tags=["guard"])
 
@@ -275,4 +278,136 @@ def verify_chain(
         first_event=first_event,
         last_event=last_event,
         verified_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+# ── Guard Verify v2 — adversarial battery ─────────────────────────────────────
+
+class TestResult(BaseModel):
+    asi: str
+    name: str
+    tool: str
+    expected: str
+    actual: str
+    verdict: str
+    matched_rule: Optional[str]
+
+
+class VerifyRunOut(BaseModel):
+    run_id: str
+    score: int
+    grade: str
+    passed_tests: int
+    total_tests: int
+    results: list[TestResult]
+    created_at: str
+
+
+class VerifyRunSummary(BaseModel):
+    run_id: str
+    score: int
+    grade: str
+    passed_tests: int
+    total_tests: int
+    created_at: str
+
+
+class VerifyHistoryOut(BaseModel):
+    runs: list[VerifyRunSummary]
+
+
+@router.post("/run", response_model=VerifyRunOut)
+def run_verify_battery(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Execute the adversarial test battery against the workspace's compiled policy.
+
+    Runs 10 simulated hook-level tool calls covering ASI-01 through ASI-10 and
+    measures how many the current Guard configuration correctly intercepts.
+    Persists the result as a GuardVerifyRun row and writes an audit event so
+    the run appears in the Guard activity trail.
+
+    Score = (passed / total) * 100. Grade via the same _grade() thresholds used
+    by GET /guard/verify/evidence.
+    """
+    ws_uuid = uuid.UUID(workspace_id)
+    now = datetime.now(timezone.utc)
+
+    results = run_battery(db, workspace_id)
+
+    total_tests  = len(results)
+    passed_tests = sum(1 for r in results if r["verdict"] == "held")
+    score        = round(passed_tests / total_tests * 100) if total_tests else 0
+    grade        = _grade(score)
+
+    run = GuardVerifyRun(
+        workspace_id=ws_uuid,
+        score=score,
+        grade=grade,
+        results=results,
+        total_tests=total_tests,
+        passed_tests=passed_tests,
+    )
+    db.add(run)
+
+    # Write an audit event so the verify run appears in the Guard activity feed.
+    audit = GuardAuditEvent(
+        workspace_id=ws_uuid,
+        ai_tool="guard.verify",
+        tool_call="guard.verify",
+        source="hook",
+        decision="verify_run",
+        input_summary=f"Verify battery: {passed_tests}/{total_tests} held (grade {grade})",
+        ts=now,
+    )
+    db.add(audit)
+
+    db.commit()
+    db.refresh(run)
+
+    return VerifyRunOut(
+        run_id=str(run.id),
+        score=run.score,
+        grade=run.grade,
+        passed_tests=run.passed_tests,
+        total_tests=run.total_tests,
+        results=[TestResult(**r) for r in run.results],
+        created_at=run.created_at.isoformat(),
+    )
+
+
+@router.get("/history", response_model=VerifyHistoryOut)
+def get_verify_history(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    limit: int = Query(default=30, ge=1, le=200),
+):
+    """Return recent Guard Verify battery runs for the workspace.
+
+    Returns summary rows only (no per-test results) to keep the payload light.
+    Use GET /guard/verify/run/{run_id} for full drill-down (future endpoint).
+    """
+    ws_uuid = uuid.UUID(workspace_id)
+
+    rows = (
+        db.query(GuardVerifyRun)
+        .filter(GuardVerifyRun.workspace_id == ws_uuid)
+        .order_by(GuardVerifyRun.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    return VerifyHistoryOut(
+        runs=[
+            VerifyRunSummary(
+                run_id=str(r.id),
+                score=r.score,
+                grade=r.grade,
+                passed_tests=r.passed_tests,
+                total_tests=r.total_tests,
+                created_at=r.created_at.isoformat(),
+            )
+            for r in rows
+        ]
     )
