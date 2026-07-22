@@ -401,11 +401,17 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
     if shutil.which("booster"):
         servers["agent-booster"] = {"command": "booster", "args": ["serve"]}
 
-    targets = list(_MCP_TARGETS) + _vscode_mcp_paths()
+    vscode_paths = _vscode_mcp_paths()
+    targets = list(_MCP_TARGETS) + vscode_paths
+    vscode_cfg_paths = {p for p, _ in vscode_paths}
     found_any = False
     for cfg_path, label in targets:
         if not cfg_path.exists():
-            continue
+            # Create mcp.json for VS Code if Copilot is confirmed installed
+            if cfg_path in vscode_cfg_paths:
+                cfg_path.write_text("{}")
+            else:
+                continue
         found_any = True
         try:
             existing = json.loads(cfg_path.read_text())
