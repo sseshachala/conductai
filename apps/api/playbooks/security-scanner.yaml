@@ -193,7 +193,42 @@ blocks:
       {% endif %}
 
       Output ONLY the following JSON on the last line:
-        {"review_url": "<PR URL>", "critical": <count of 🔴 findings>, "high": <count of 🟠 findings>, "medium": <count of 🟡 findings>, "total": <total findings>}
+        {"review_url": "<PR URL>", "critical": <count>, "high": <count>, "medium": <count>, "total": <count>, "conduct_findings": [{"severity": "<level>", "type": "<category>", "description": "<one line>", "file": "<path or null>", "line": <number or null>, "suggested_fix": "<one line or null>"}]}
+    next: post_findings
+
+  post_findings:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Post findings to Conduct Security Loop
+    max_turns: 10
+    description: |
+      Post each finding from the security scan to the Conduct API.
+      This surfaces findings in /secure/activity and triggers the Security Loop for triage.
+
+      Environment variables available in this sandbox:
+        CONDUCT_RUN_TOKEN — Bearer token for this run
+        CONDUCT_API_URL   — Conduct API base URL
+        CONDUCT_RUN_ID    — ID of this scanner run (used as source_run_id)
+
+      If CONDUCT_RUN_TOKEN or CONDUCT_API_URL is empty, output {"posted": 0} and stop.
+
+      Findings to post (from security_scan output):
+      {{security_scan.conduct_findings}}
+
+      Repo: {{_trigger.repository.full_name}}
+
+      For each finding, POST to the Conduct API:
+        curl -s -X POST "${CONDUCT_API_URL}/security-findings" \
+          -H "Authorization: Bearer ${CONDUCT_RUN_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d "{\"tool\":\"security_scanner\",\"severity\":\"SEVERITY\",\"type\":\"TYPE\",\"description\":\"DESC\",\"file\":\"FILE\",\"repo_full_name\":\"{{_trigger.repository.full_name}}\",\"source_run_id\":\"${CONDUCT_RUN_ID}\"}"
+
+      Replace SEVERITY/TYPE/DESC/FILE from each finding. Omit file/line/suggested_fix if null.
+      Count successful posts (HTTP 201 responses).
+
+      Output ONLY the following JSON on the last line:
+        {"posted": <number of findings successfully posted>}
     next: has_critical
 
   has_critical:
