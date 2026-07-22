@@ -303,7 +303,7 @@ export default function AIRolloutEditorPage() {
             <textarea
               value={draft}
               onChange={e => setDraft(e.target.value)}
-              placeholder="Write team coding standards, workflow rules, and AI constraints here..."
+              placeholder="Customize your team's AI instructions. This template is pre-filled with sensible defaults."
               spellCheck={false}
               style={{
                 flex: 1,

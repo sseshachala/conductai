@@ -14,6 +14,45 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
+DEFAULT_INSTRUCTIONS = """# Team AI Instructions
+
+## Project context
+This is a [describe your project]. The primary language is [language]. The main entry point is [file/service].
+
+## Stack
+- Language: 
+- Framework: 
+- Database: 
+- Key dependencies: 
+
+## Coding standards
+- Follow existing patterns before introducing new abstractions
+- Prefer editing existing files over creating new ones
+- No commented-out code in PRs
+- All new endpoints require auth — no exceptions
+
+## Workflow
+- Branch from `main`, PR back to `main`
+- Write the test before asking for a fix to be verified
+- One logical change per PR
+
+## What to ask before doing
+- Any schema change → confirm migration strategy first
+- New dependency → confirm it's approved
+- Touching auth or payments → flag for human review before proceeding
+
+## Off-limits
+- Never commit secrets, API keys, or `.env` files
+- Never force-push to `main`
+- Never disable linting or type checks to make a build pass
+
+## Context
+- Staging: 
+- Docs: 
+- Slack: 
+""".strip()
+
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -70,7 +109,7 @@ def _get_instructions(db: Session, workspace_id: str) -> InstructionsOut:
     try:
         ws_uuid = uuid.UUID(workspace_id)
     except ValueError:
-        return InstructionsOut(content="", version="v0", updated_at=None, updated_by=None)
+        return InstructionsOut(content=DEFAULT_INSTRUCTIONS, version="v0", updated_at=None, updated_by=None)
 
     row = db.execute(
         text("""
@@ -84,7 +123,7 @@ def _get_instructions(db: Session, workspace_id: str) -> InstructionsOut:
 
     if not row:
         return InstructionsOut(
-            content="",
+            content=DEFAULT_INSTRUCTIONS,
             version="v1",
             updated_at=None,
             updated_by=None,
