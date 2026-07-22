@@ -764,7 +764,7 @@ function AppShellInnerContent({
               <SideNavItem
                 href="/governance"
                 label="Governance"
-                icon={<Icons.Shield />}
+                icon={<Icons.Eye />}
                 active={pathname.startsWith("/governance")}
                 collapsed={collapsed}
               />
@@ -775,16 +775,9 @@ function AppShellInnerContent({
                 active={pathname.startsWith("/theguard")}
                 collapsed={collapsed}
               />
-              <SideNavItem
-                href="/secure"
-                label="Secure"
-                icon={<Icons.Shield />}
-                active={pathname.startsWith("/secure")}
-                collapsed={collapsed}
-              />
-              {/* Guard sub-nav — auto-expand when on any /theguard route */}
+              {/* Guard sub-nav */}
               {pathname.startsWith("/theguard") && !collapsed && (
-                <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
                     { label: "Overview",    href: "/theguard" },
                     { label: "Policies",    href: "/theguard/policies" },
@@ -793,6 +786,44 @@ function AppShellInnerContent({
                     { label: "Settings",    href: "/theguard/settings", adminOnly: true },
                   ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
                     const subActive = sub.href === "/theguard" ? pathname === "/theguard" : pathname.startsWith(sub.href)
+                    return (
+                      <Link
+                        key={sub.href}
+                        href={sub.href}
+                        style={{
+                          display: "block",
+                          padding: "5px 10px",
+                          borderRadius: 7,
+                          fontSize: 13,
+                          fontWeight: subActive ? 600 : 400,
+                          color: subActive ? "var(--accent-text)" : "var(--text-3)",
+                          background: subActive ? "var(--accent-weak)" : "transparent",
+                          textDecoration: "none",
+                        }}
+                        onMouseEnter={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
+                        onMouseLeave={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
+                      >
+                        {sub.label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+              <SideNavItem
+                href="/secure"
+                label="Secure"
+                icon={<Icons.Lock />}
+                active={pathname.startsWith("/secure")}
+                collapsed={collapsed}
+              />
+              {/* Secure sub-nav */}
+              {pathname.startsWith("/secure") && !collapsed && (
+                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+                  {[
+                    { label: "Overview",  href: "/secure" },
+                    { label: "Findings",  href: "/secure/activity" },
+                  ].map(sub => {
+                    const subActive = sub.href === "/secure" ? pathname === "/secure" : pathname.startsWith(sub.href)
                     return (
                       <Link
                         key={sub.href}
