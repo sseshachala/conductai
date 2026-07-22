@@ -1415,7 +1415,7 @@ def cmd_guard_sync(args):
     if workspace_id and agent_token:
         mcp_url = "https://api.conductai.ai/guard/mcp"
         masked = agent_token[:13] + "•" * 20
-        print(f"\n{BOLD}MCP server{RESET} (Claude.ai, Cursor, Windsurf, any MCP client):")
+        print(f"\n{BOLD}MCP server{RESET} (Claude.ai, Copilot, Cursor, Windsurf, any MCP client):")
         print(f"  URL:    {CYAN}{mcp_url}{RESET}")
         print(f"  Auth:   {CYAN}Bearer {masked}{RESET}  {GRAY}(run `conduct token` to reveal){RESET}\n")
 
