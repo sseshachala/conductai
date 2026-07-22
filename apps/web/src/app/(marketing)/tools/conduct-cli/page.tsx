@@ -1275,7 +1275,7 @@ function FooterCTASection() {
           View on GitHub
         </a>
       </div>
-      <p className="mt-4 text-xs text-stone-400">Python 3.10+ &middot; MIT licensed</p>
+      <p className="mt-4 text-xs text-stone-400">Python 3.10+ · Free for individuals · commercial license for companies</p>
     </section>
   )
 }

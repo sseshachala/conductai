@@ -1,0 +1,119 @@
+# CLAUDE.md — [Your Project Name]
+
+<!--
+  CLAUDE.md is the first file an AI agent reads.
+  It gives the agent the context a new engineer would get in their first week.
+  Fill in every {{ }} before committing. Delete this comment block.
+
+  Keep it under 200 lines. Agents read the whole thing on every task.
+  Long CLAUDE.md = expensive context + ignored sections.
+-->
+
+## About this project
+{{ One paragraph: what this codebase does, who uses it, what problem it solves. }}
+
+**Stack:** {{ e.g. FastAPI + PostgreSQL + Next.js + Redis }}
+**Primary language(s):** {{ Python / TypeScript / Go / etc. }}
+**Monorepo layout:**
+```
+{{ Show your top-level directory tree, 2 levels deep }}
+```
+
+---
+
+## Before starting any task
+
+1. Read `REVIEW.md` — every task ends with this checklist
+2. Check the relevant standard in `standards/` if your change touches auth, security, or the database
+3. Run the test suite before and after your change: `{{ your test command }}`
+
+---
+
+## Architecture — what to know
+
+### The pieces
+{{ 2-4 sentences describing how the main components relate. No more. }}
+
+### What agents should never do
+- {{ e.g. Never mint tokens outside executor.py }}
+- {{ e.g. Never push directly to the main branch }}
+- {{ e.g. Never add a new dependency without checking if the stdlib covers it }}
+- {{ e.g. Never skip the downgrade() step in a migration }}
+
+### The patterns we use (use these, not alternatives)
+- **Auth:** {{ e.g. require_permission("platform.xyz") — not require_workspace_role() }}
+- **DB queries:** {{ e.g. SQLAlchemy ORM, parameterised only — no f-string SQL }}
+- **Error responses:** {{ e.g. HTTPException with a string detail — no internal state in messages }}
+- **Logging:** {{ e.g. structlog with snake_case keys — no print() in production code }}
+
+---
+
+## Security rules (non-negotiable)
+
+{{ Pick the ones that apply. Delete the rest. }}
+
+- Every API endpoint requires an auth dependency — no exceptions without a documented allowlist entry
+- User input is never concatenated into SQL
+- Secrets and tokens are never logged or returned in API responses
+- File paths from user input are resolved and bounds-checked before reading
+
+---
+
+## Key files — where things live
+
+| What | Where |
+|---|---|
+| {{ Auth logic }} | `{{ path/to/auth.py }}` |
+| {{ Database models }} | `{{ path/to/models/ }}` |
+| {{ API routers }} | `{{ path/to/routers/ }}` |
+| {{ Background jobs }} | `{{ path/to/workers/ }}` |
+| {{ Config / env vars }} | `{{ path/to/settings.py }}` |
+
+---
+
+## Running the project locally
+
+```bash
+{{ Your setup commands — copy-paste ready }}
+```
+
+---
+
+## CI gates (these must pass before merging)
+
+```bash
+{{ Your test command }}         # Tests — no || true
+{{ Your lint command }}         # Lint
+{{ Your typecheck command }}    # Types (if applicable)
+{{ python scripts/check_auth_coverage.py }}  # Auth coverage (if applicable)
+```
+
+---
+
+## Team conventions
+
+{{ Add 3-5 conventions that would surprise a new engineer. Skip obvious ones. }}
+
+- {{ e.g. PRs stay open for 24h before merging — Slack #eng-review if urgent }}
+- {{ e.g. Migrations are one-way on prod — always define downgrade() but never run it there }}
+- {{ e.g. All user-facing copy goes through #copy-review before shipping }}
+
+---
+
+## What this project is NOT
+
+<!--
+  This section prevents the most common agent mistakes: adding features that
+  already exist elsewhere, or solving problems the wrong way for this codebase.
+-->
+
+- {{ e.g. Not a microservices architecture — don't split into new services }}
+- {{ e.g. Not a public API yet — don't add versioning or backwards-compat shims }}
+- {{ e.g. Not responsible for billing — that's handled by [other system] }}
+
+---
+
+<!--
+  Layer 0: Team OS · conductai.ai/team-os · Free for individuals, commercial license for companies
+  Layer 2: Conduct AI enforces these standards automatically · conductai.ai
+-->

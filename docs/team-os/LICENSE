@@ -1,16 +1,16 @@
-Conduct AI License
+Conduct AI Team OS License
 Copyright (c) 2026 Conduct AI (Sudhi Seshachala)
 
 ─────────────────────────────────────────────────────────────────────────────
 
 FREE USE (no license required)
 
-You may use, copy, adapt, and share this software at no cost if ALL of the
+You may use, copy, adapt, and share this work at no cost if ALL of the
 following are true:
 
   1. Your use is non-commercial, OR you are an individual developer or a
      team of fewer than 10 people.
-  2. You are not offering a product or service where this software (or a
+  2. You are not offering a product or service where Team OS (or a
      derivative of it) is a primary component.
   3. You include the attribution notice below in any published or
      distributed copy.
@@ -20,17 +20,17 @@ ATTRIBUTION (required in all cases)
 Any copy, adaptation, or derivative of this work must include the following
 notice, visible to the people who use it:
 
-  "Powered by Conduct AI — conductai.ai"
+  "Based on Conduct AI Team OS — conductai.ai/team-os"
 
 COMMERCIAL LICENSE (required for companies)
 
 A commercial license is required if:
 
   - Your organisation has 10 or more employees or contractors, AND
-  - You use this software in a commercial context (internal tooling, client
+  - You use this work in a commercial context (internal tooling, client
     work, products, training, or consulting), OR
-  - You distribute or embed this software as part of a commercial product
-    or service.
+  - You distribute or embed this work as part of a commercial product or
+    service.
 
 To obtain a commercial license, contact: hello@conductai.ai
 Commercial licensees receive: written permission for their specific use,
@@ -41,13 +41,13 @@ from the Conduct AI team.
 
 WHAT THIS MEANS IN PLAIN ENGLISH
 
-  ✓  Individual developer using or building on this: free.
-  ✓  Startup (< 10 people) using this for their product: free.
+  ✓  Individual developer learning and using this for their own projects: free.
+  ✓  Startup (< 10 people) adopting this for their engineering team: free.
   ✓  Open-source project using or adapting this: free.
   ✓  University course or bootcamp teaching from this: free.
 
-  ✗  Company of 10+ using this as part of their engineering platform
-     without a commercial agreement: not free.
+  ✗  Company of 10+ using this to standardise AI development across their
+     engineering team without a commercial agreement: not free.
   ✗  Consulting firm using this as the basis of a client engagement: not free.
   ✗  Product that packages or distributes this as a feature: not free.
 
@@ -55,10 +55,11 @@ WHAT THIS MEANS IN PLAIN ENGLISH
 
 NO WARRANTIES
 
-This software is provided as-is, without warranty of any kind. The authors
+This work is provided as-is, without warranty of any kind. The authors
 are not liable for any damages arising from its use.
 
 ─────────────────────────────────────────────────────────────────────────────
 
-If you are unsure whether your use requires a commercial license, email
-hello@conductai.ai and ask. We will respond within two business days.
+This license is intentionally plain. If you are unsure whether your use
+requires a commercial license, email hello@conductai.ai and ask. We will
+respond within two business days.

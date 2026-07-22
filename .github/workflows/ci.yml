@@ -45,11 +45,14 @@ jobs:
         run: make schema-check
         working-directory: apps/api
       - name: Test
-        run: python -m pytest tests/ -v --tb=short || true
+        run: python -m pytest tests/ -x -q
         working-directory: apps/api
         env:
           DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Auth coverage
+        run: python scripts/check_auth_coverage.py
+        working-directory: apps/api
 
   web:
     name: Web — typecheck + lint

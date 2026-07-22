@@ -9,7 +9,7 @@ export const TOOLS = [
     categoryColor: "bg-indigo-100 text-indigo-700",
     url: "https://conductai.ai",
     oneLiner: "Governed AI automations for engineering teams, turn tickets, PRs, alerts, and incidents into auditable agent workflows.",
-    description: "Conduct is a governed automation layer for engineering teams. It doesn't replace GitHub, Git, or your IDE, it wraps around your existing stack to automate the repetitive parts: reviewing PRs, fixing labeled issues, triaging incoming bugs, diagnosing CI failures, patching dependencies, and responding to incidents. Every automation is a visual YAML playbook your team can read, fork, and customise. Human-in-the-loop approval gates are first-class blocks, nothing ships without a reviewer unless you explicitly remove the gate. Every run is fully audited with cost visibility. MIT licensed.",
+    description: "Conduct is a governed automation layer for engineering teams. It doesn't replace GitHub, Git, or your IDE, it wraps around your existing stack to automate the repetitive parts: reviewing PRs, fixing labeled issues, triaging incoming bugs, diagnosing CI failures, patching dependencies, and responding to incidents. Every automation is a visual YAML playbook your team can read, fork, and customise. Human-in-the-loop approval gates are first-class blocks, nothing ships without a reviewer unless you explicitly remove the gate. Every run is fully audited with cost visibility. Source-available.",
     strengths: [
       "Visual canvas, see and edit the entire agent workflow at a glance",
       "Copilot↔autopilot spectrum, tune automation level per workflow",
@@ -18,7 +18,7 @@ export const TOOLS = [
       "Full autonomous fix loop: PR review → issue → autopilot → new PR",
       "Per-run cost and audit trail visibility",
       "Multi-model per block, mix Claude, GPT-4, Gemini in one workflow",
-      "MIT licensed, config-as-code, no vendor lock-in",
+      "Source-available, config-as-code, no vendor lock-in",
       "Built around engineering-stack events: tickets, PRs, alerts, incidents, and releases",
     ],
     tradeoffs: [
@@ -394,7 +394,7 @@ export const FEATURE_GROUPS = [
       },
       {
         name: "Open source",
-        values: { conduct: "✅ MIT", copilot: "❌", devin: "❌", linearb: "❌", bito: "❌", amazonq: "❌", coderabbit: "❌", xhawk: "❌", runtm: "✅ AGPL/Apache/MIT" },
+        values: { conduct: "✅ Source-available", copilot: "❌", devin: "❌", linearb: "❌", bito: "❌", amazonq: "❌", coderabbit: "❌", xhawk: "❌", runtm: "✅ AGPL/Apache/MIT" },
       },
       {
         name: "Free tier",
@@ -515,7 +515,7 @@ export const DECISION_GUIDE = [
   {
     icon: "🔓",
     situation: "I want open-source, no vendor lock-in, config-as-code",
-    detail: "Workflows as YAML in your repo, MIT licensed, self-hostable direction, and the ability to audit or modify the logic.",
+    detail: "Workflows as YAML in your repo, source-available, self-hostable direction, and the ability to audit or modify the logic.",
     picks: [
       { name: "Conduct AI", highlight: true },
     ],
