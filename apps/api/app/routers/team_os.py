@@ -70,7 +70,7 @@ def _get_instructions(db: Session, workspace_id: str) -> InstructionsOut:
     try:
         ws_uuid = uuid.UUID(workspace_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+        return InstructionsOut(content="", version="v0", updated_at=None, updated_by=None)
 
     row = db.execute(
         text("""
