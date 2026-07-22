@@ -25,6 +25,14 @@ function ProductsDropdown() {
       </a>
       <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
+          <a href="/team-os" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>📄</span>
+            <div>
+              <p className="font-semibold">Team OS <span className="text-[10px] text-emerald-600 font-bold ml-1 uppercase tracking-widest">Free</span></p>
+              <p className="text-xs text-stone-400">CLAUDE.md · REVIEW.md · Standards</p>
+            </div>
+          </a>
+          <div className="border-t border-stone-100 my-1" />
           <a href="/guard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span>🛡️</span>
             <div>
@@ -130,7 +138,7 @@ function MarketingFooter() {
               { heading: "Product", links: [["Guard", "/guard"], ["Registry", "/registry"], ["SDD Scanner", "/sdd"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
               { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Deployment options", "/deployment"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], ["Blog", "/blog"]] as [string, string][] },
-              { heading: "Resources", links: [["Docs", "/docs"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
+              { heading: "Resources", links: [["Team OS", "/team-os"], ["Docs", "/docs"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
               { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
             ].map(col => (
               <div key={col.heading}>

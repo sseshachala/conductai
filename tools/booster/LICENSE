@@ -1,21 +1,42 @@
-MIT License
+Conduct AI License
+Copyright (c) 2026 Conduct AI (Sudhi Seshachala)
 
-Copyright (c) 2026 conductai
+─────────────────────────────────────────────────────────────────────────────
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+FREE USE (no license required)
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+You may use, copy, adapt, and share this software at no cost if ALL of the
+following are true:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+  1. Your use is non-commercial, OR you are an individual developer or a
+     team of fewer than 10 people.
+  2. You are not offering a product or service where this software (or a
+     derivative of it) is a primary component.
+  3. You include the attribution notice below in any published or
+     distributed copy.
+
+ATTRIBUTION (required in all cases)
+
+  "Powered by Conduct AI — conductai.ai"
+
+COMMERCIAL LICENSE (required for companies)
+
+A commercial license is required if:
+
+  - Your organisation has 10 or more employees or contractors, AND
+  - You use this software in a commercial context, OR
+  - You distribute or embed this software as part of a commercial product
+    or service.
+
+To obtain a commercial license, contact: hello@conductai.ai
+
+─────────────────────────────────────────────────────────────────────────────
+
+NO WARRANTIES
+
+This software is provided as-is, without warranty of any kind.
+
+─────────────────────────────────────────────────────────────────────────────
+
+If you are unsure whether your use requires a commercial license, email
+hello@conductai.ai. We respond within two business days.
