@@ -563,10 +563,12 @@ def _patch_tool_instruction_files(agent_token: str, api_url: str, dry_run: bool 
     GUARD_RULES  = _GUARD_RULES_TEXT
 
     # Pull team instructions from API (non-fatal)
+    # Only write if admin has explicitly published (version != "v0")
     team_content = ""
     try:
         resp = _req("GET", f"{api_url}/team-os/instructions", token=agent_token)
-        team_content = (resp.get("content") or "").strip()
+        if (resp.get("version") or "v0") != "v0":
+            team_content = (resp.get("content") or "").strip()
     except Exception:
         pass
 
