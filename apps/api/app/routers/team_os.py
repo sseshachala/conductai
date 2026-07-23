@@ -104,6 +104,33 @@ def _get_instructions(db: Session, workspace_id: str) -> InstructionsOut:
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
+
+TEMPLATES_DIR = _Path(__file__).parent.parent / "templates"
+
+class TemplateItem(BaseModel):
+    id: str
+    name: str
+    filename: str
+    content: str
+
+@router.get("/templates", response_model=list[TemplateItem])
+def list_templates(
+    _user_id: str = Depends(get_user_id),
+):
+    """Return built-in Team OS templates admins can use as a starting point."""
+    templates = [
+        ("claude-md",    "CLAUDE.md",          "CLAUDE.md"),
+        ("review-md",    "REVIEW.md",           "REVIEW.md"),
+        ("auth-standard","Auth Standard",        "standards/auth.md"),
+    ]
+    result = []
+    for tid, name, filename in templates:
+        p = TEMPLATES_DIR / filename
+        if p.exists():
+            result.append(TemplateItem(id=tid, name=name, filename=filename, content=p.read_text().strip()))
+    return result
+
+
 @router.get("/instructions", response_model=InstructionsOut)
 def get_instructions(
     db: Session = Depends(get_db),
