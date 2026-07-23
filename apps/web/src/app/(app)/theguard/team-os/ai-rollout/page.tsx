@@ -162,6 +162,8 @@ export default function AIRolloutEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [successBanner, setSuccessBanner] = useState(false)
+  const [templates, setTemplates] = useState<{ id: string; name: string; content: string }[]>([])
+  const [showTemplates, setShowTemplates] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -175,6 +177,11 @@ export default function AIRolloutEditorPage() {
       } else {
         setSaveError(`Failed to load instructions (${res.status})`)
       }
+      // Load templates (non-fatal)
+      try {
+        const tRes = await apiFetch("/team-os/templates", token)
+        if (tRes.ok) setTemplates(await tRes.json())
+      } catch {}
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to load instructions")
     }
@@ -268,6 +275,63 @@ export default function AIRolloutEditorPage() {
               <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "monospace" }}>
                 {instructions.version}
               </span>
+            )}
+            {templates.length > 0 && (
+              <div style={{ position: "relative" }}>
+                <button
+                  onClick={() => setShowTemplates(v => !v)}
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-2)",
+                    color: "var(--text-2)",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  Start from template
+                </button>
+                {showTemplates && (
+                  <div style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "calc(100% + 6px)",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    boxShadow: "0 4px 20px rgba(0,0,0,.1)",
+                    zIndex: 200,
+                    minWidth: 200,
+                    overflow: "hidden",
+                  }}>
+                    {templates.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => { setDraft(t.content); setShowTemplates(false) }}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "10px 16px",
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: "var(--text)",
+                          background: "transparent",
+                          border: "none",
+                          cursor: "pointer",
+                          borderBottom: "1px solid var(--border)",
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
