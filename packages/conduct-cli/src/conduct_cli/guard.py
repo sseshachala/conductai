@@ -1084,7 +1084,7 @@ def _detect_ai_tools() -> list[dict]:
     def _check_json_mcp(path: Path) -> bool:
         try:
             d = json.loads(path.read_text()) if path.exists() else {}
-            return "conduct" in d.get("mcpServers", {})
+            return any("conduct" in k for k in d.get("mcpServers", {}))
         except Exception:
             return False
 
@@ -1191,7 +1191,7 @@ def _detect_ai_tools() -> list[dict]:
         vscode_settings = next((p for p in vscode_candidates if p.exists()), None)
         try:
             d = json.loads(vscode_settings.read_text()) if vscode_settings else {}
-            mcp_reg = "conduct" in d.get("mcp", {}).get("servers", {})
+            mcp_reg = any("conduct" in k for k in d.get("mcp", {}).get("servers", {}))
         except Exception:
             mcp_reg = False
         # Also check ~/.copilot/mcp-config.json (SSE entry written by guard sync)
@@ -2321,7 +2321,7 @@ def _discover_config_agents() -> list[tuple]:
                 return "conduct" in text and "mcp_servers" in text
             import json as _j
             d = _j.loads(text)
-            return "conduct" in d.get("mcpServers", {})
+            return any("conduct" in k for k in d.get("mcpServers", {}))
         except Exception:
             return False
 
@@ -2347,6 +2347,7 @@ def _discover_config_agents() -> list[tuple]:
         ("codex",       home / ".codex",   home / ".codex"   / "config.toml",    "mcp"),
         ("cursor",      home / ".cursor",  home / ".cursor"  / "mcp.json",       "mcp"),
         ("windsurf",    home / ".codeium" / "windsurf", home / ".codeium" / "windsurf" / "mcp_config.json", "mcp"),
+        ("copilot",     home / ".copilot", home / ".copilot" / "mcp-config.json", "mcp"),
     ]
     for name, check_dir, config_path, _ in TOOLS:
         if check_dir.exists():
