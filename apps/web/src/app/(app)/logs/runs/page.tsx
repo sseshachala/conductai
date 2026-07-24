@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import StatusBadge from "@/components/runs/StatusBadge"
@@ -495,6 +497,7 @@ function RunsWithAuth() {
 const PAGE_SIZE = 50
 
 function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
@@ -557,17 +560,16 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
       params.append("created_after", afterDate.toISOString())
     }
 
-    return `${process.env.NEXT_PUBLIC_API_URL}/runs?${params.toString()}`
+    return `${API}/runs?${params.toString()}`
   }
 
   // load() is stable — defined outside effect so Retry button can call it too (#1)
   async function load() {
     setLoading(true)
     setError(null)
-    const headers = await buildHeaders()
     try {
       const url = buildRunsUrl(0)
-      const res = await fetch(url, { headers })
+      const res = await authFetch(url)
       if (res.ok) {
         const data: Run[] = await res.json()
         setRuns(data)
@@ -605,9 +607,8 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
   async function loadMore() {
     setLoadingMore(true)
     try {
-      const headers = await buildHeaders()
       const url = buildRunsUrl(offset)
-      const res = await fetch(url, { headers })
+      const res = await authFetch(url)
       if (res.ok) {
         const data: Run[] = await res.json()
         if (data.length === 0) {
@@ -630,10 +631,9 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
     setError(null)
     setOffset(0)
     setHasMore(false)
-    const headers = await buildHeaders()
     try {
       const url = buildRunsUrl(0)
-      const res = await fetch(url, { headers })
+      const res = await authFetch(url)
       if (res.ok) {
         const data: Run[] = await res.json()
         setRuns(data)

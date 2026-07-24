@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
-
-const API = process.env.NEXT_PUBLIC_API_URL
+import { credentials } from "@/lib/api"
+import type { AuthFetch } from "@/lib/api"
 
 interface Repo {
   full_name: string
@@ -35,17 +35,16 @@ export function GitHubRepoField({ value, onChange, getToken }: RepoFieldProps) {
     if (reposCache) { setRepos(reposCache); setLoading(false); return }
     ;(async () => {
       try {
-        const headers: Record<string, string> = activeWorkspace?.id ? { "X-Workspace-Id": activeWorkspace.id } : {}
-        if (getToken) {
-          const token = await getToken()
-          if (token) headers["Authorization"] = `Bearer ${token}`
+        const wsId = activeWorkspace?.id ?? null
+        const authFetch: AuthFetch = async (url, opts) => {
+          const headers: Record<string, string> = { ...(opts?.headers as Record<string, string> | undefined) }
+          if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+          if (wsId) headers["X-Workspace-ID"] = wsId
+          return fetch(url, { ...opts, headers })
         }
-        const r = await fetch(`${API}/credentials/github/repos`, { headers })
-        if (r.ok) {
-          const data: Repo[] = await r.json()
-          reposCache = data
-          setRepos(data)
-        }
+        const data = await credentials.github.repos(authFetch)
+        reposCache = data
+        setRepos(data)
       } finally {
         setLoading(false)
       }
@@ -125,19 +124,16 @@ export function GitHubRepoAllowlistField({ value, onChange, getToken, environmen
     setRepos([]); setLoading(true)
     ;(async () => {
       try {
-        const headers: Record<string, string> = activeWorkspace?.id ? { "X-Workspace-Id": activeWorkspace.id } : {}
-        if (getToken) {
-          const token = await getToken()
-          if (token) headers["Authorization"] = `Bearer ${token}`
+        const wsId = activeWorkspace?.id ?? null
+        const authFetch: AuthFetch = async (url, opts) => {
+          const headers: Record<string, string> = { ...(opts?.headers as Record<string, string> | undefined) }
+          if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+          if (wsId) headers["X-Workspace-ID"] = wsId
+          return fetch(url, { ...opts, headers })
         }
-        const url = new URL(`${API}/credentials/github/repos`)
-        if (environmentId) url.searchParams.set("environment_id", environmentId)
-        const r = await fetch(url.toString(), { headers })
-        if (r.ok) {
-          const data: Repo[] = await r.json()
-          reposCache = data
-          setRepos(data)
-        }
+        const data = await credentials.github.repos(authFetch, environmentId)
+        reposCache = data
+        setRepos(data)
       } finally { setLoading(false) }
     })()
   }, [environmentId])
@@ -242,18 +238,17 @@ export function GitHubBranchField({ owner, repo, value, onChange, getToken }: Br
     setLoading(true)
     ;(async () => {
       try {
-        const headers: Record<string, string> = activeWorkspace?.id ? { "X-Workspace-Id": activeWorkspace.id } : {}
-        if (getToken) {
-          const token = await getToken()
-          if (token) headers["Authorization"] = `Bearer ${token}`
+        const wsId = activeWorkspace?.id ?? null
+        const authFetch: AuthFetch = async (url, opts) => {
+          const headers: Record<string, string> = { ...(opts?.headers as Record<string, string> | undefined) }
+          if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+          if (wsId) headers["X-Workspace-ID"] = wsId
+          return fetch(url, { ...opts, headers })
         }
-        const r = await fetch(`${API}/credentials/github/repos/${owner}/${repo}/branches`, { headers })
-        if (r.ok) {
-          const data: { name: string }[] = await r.json()
-          const names = data.map(b => b.name)
-          branchCache[key] = names
-          setBranches(names)
-        }
+        const data: { name: string }[] = await credentials.github.branches(authFetch, owner, repo)
+        const names = data.map(b => b.name)
+        branchCache[key] = names
+        setBranches(names)
       } finally {
         setLoading(false)
       }

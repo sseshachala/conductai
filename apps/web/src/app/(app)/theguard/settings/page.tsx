@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
+import { API } from "@/lib/api/client"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useTokenGuardrails, patchTokenGuardrails } from "@/hooks/useTokenGuardrails"
@@ -71,6 +74,7 @@ export default function GuardSettingsPage() {
 }
 
 function SettingsContent() {
+  const { authFetch } = useAuthFetch()
   const { getToken } = useAuth()
   const { activeWorkspace } = useWorkspace()
   const { teamId } = useGuardTeam()
@@ -115,27 +119,15 @@ function SettingsContent() {
 
   // MCP connect
 
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
   const wsId = activeWorkspace?.id ?? null
   const isAdmin = permissions.canEditSettings
-
-  async function authHeaders(): Promise<Record<string, string>> {
-    const token = await getToken()
-    const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) h["Authorization"] = `Bearer ${token}`
-    return h
-  }
 
   const load = useCallback(async () => {
     if (!wsId) return
     setLoading(true)
     setError(null)
     try {
-      const headers = await authHeaders()
-      const res = await fetch(`${base}/guard/config?workspace_id=${wsId}`, { headers })
-      if (res.status === 404) { setLoading(false); return }
-      if (!res.ok) throw new Error(`Failed to load team (${res.status})`)
-      const data = await res.json()
+      const data = await guard.config.get(authFetch, wsId)
       setPrefs({
         alert_channel: data.alert_channel ?? null,
         alert_slack_integration_id: data.alert_slack_integration_id ?? null,
@@ -150,18 +142,17 @@ function SettingsContent() {
       if (data.fail_mode) setFailMode(data.fail_mode as "fail_open" | "fail_closed")
       if (data.deny_on_error !== undefined) setDenyOnError(data.deny_on_error)
       setLastFetched(new Date())
-      // Load sync coverage + member token in parallel
-      fetch(`${base}/guard/developer-tools?workspace_id=${wsId}`, { headers })
-        .then(r => r.ok ? r.json() : null)
+      // Load sync coverage in parallel — non-fatal
+      guard.developerTools.list(authFetch, wsId)
         .then(d => { if (d) setToolCoverage(d) })
         .catch(() => {})
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.message?.includes("404") || String(e).includes("404")) { setLoading(false); return }
       setError(e instanceof Error ? e.message : "Failed to load settings")
     } finally {
       setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base, wsId])
+  }, [authFetch, wsId])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -173,13 +164,9 @@ function SettingsContent() {
     })
   }, [tokenGuardrails])
 
-  async function patch(body: Partial<TeamPrefs>) {
+  async function patchConfig(body: Partial<TeamPrefs>) {
     if (!wsId) return
-    const headers = await authHeaders()
-    const res = await fetch(`${base}/guard/config?workspace_id=${wsId}`, {
-      method: "PATCH", headers,
-      body: JSON.stringify(body),
-    })
+    const res = await guard.config.patch(authFetch, wsId, body as Record<string, unknown>)
     if (!res.ok) throw new Error(`Save failed (${res.status})`)
     return res.json()
   }
@@ -189,10 +176,7 @@ function SettingsContent() {
     setResyncing(true)
     setResyncDone(false)
     try {
-      const headers = await authHeaders()
-      const res = await fetch(`${base}/guard/config/resync?workspace_id=${wsId}`, {
-        method: "POST", headers,
-      })
+      const res = await guard.config.resync(authFetch, wsId)
       if (!res.ok) throw new Error(`Resync failed (${res.status})`)
       setResyncDone(true)
       setTimeout(() => setResyncDone(false), 2000)
@@ -207,7 +191,7 @@ function SettingsContent() {
   async function handleToggle(field: "notify_on_block" | "notify_on_budget", value: boolean) {
     setPrefs(p => ({ ...p, [field]: value }))
     try {
-      await patch({ [field]: value })
+      await patchConfig({ [field]: value })
     } catch (e) {
       setPrefs(p => ({ ...p, [field]: !value }))
       setError(e instanceof Error ? e.message : "Save failed")
@@ -219,7 +203,7 @@ function SettingsContent() {
     setGuardrailState(s => ({ ...s, [field]: value }))
     try {
       const token = await getToken()
-      await patchTokenGuardrails(wsId, token ?? "", base, { [field]: value })
+      await patchTokenGuardrails(wsId, token ?? "", API, { [field]: value })
       refreshGuardrails()
       setGuardrailSaved(true)
       setTimeout(() => setGuardrailSaved(false), 2000)
@@ -315,7 +299,7 @@ function SettingsContent() {
                   {/* Alert channel — Slack integration picker */}
                   <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>Alert channel</div>
                   <SlackIntegrationPicker
-                    base={base}
+                    base={API}
                     wsId={wsId ?? undefined}
                     buildHeaders={async () => {
                       const token = await getToken()
@@ -327,7 +311,7 @@ function SettingsContent() {
                     channel={prefs.alert_channel ?? ""}
                     isAdmin={isAdmin}
                     onSave={async (integrationId, channel) => {
-                      await patch({ alert_slack_integration_id: integrationId as any, alert_channel: channel || null })
+                      await patchConfig({ alert_slack_integration_id: integrationId as any, alert_channel: channel || null })
                       setPrefs(p => ({ ...p, alert_slack_integration_id: integrationId, alert_channel: channel || null }))
                     }}
                   />
@@ -451,7 +435,7 @@ function SettingsContent() {
                         setEnforcementMode(k)
                         setEnforcementError(null)
                         try {
-                          await patch({ enforcement_mode: k } as never)
+                          await patchConfig({ enforcement_mode: k } as never)
                         } catch (e) {
                           setEnforcementMode(prev)
                           setEnforcementError(e instanceof Error ? e.message : "Failed to save enforcement mode")
@@ -508,7 +492,7 @@ function SettingsContent() {
                         const prev = failMode
                         setFailMode(k)
                         try {
-                          await patch({ fail_mode: k } as never)
+                          await patchConfig({ fail_mode: k } as never)
                         } catch {
                           setFailMode(prev)
                         }
@@ -551,7 +535,7 @@ function SettingsContent() {
                     if (!isAdmin) return
                     const next = !denyOnError
                     setDenyOnError(next)
-                    try { await patch({ deny_on_error: next } as never) }
+                    try { await patchConfig({ deny_on_error: next } as never) }
                     catch { setDenyOnError(!next) }
                   }}>
                   <GuardToggle on={denyOnError} onClick={() => {}} disabled={!isAdmin} />

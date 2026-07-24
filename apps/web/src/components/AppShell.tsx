@@ -9,6 +9,8 @@ import { setActiveGuardWorkspace } from "@/lib/guardStorage"
 import { PreferencesProvider } from "@/lib/PreferencesContext"
 import Toast, { type ToastData } from "@/components/ui/Toast"
 import ErrorBoundary from "@/components/ui/ErrorBoundary"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { workspaces as workspacesApi, projects as projectsApi, organizations, runs, guard, workflows } from "@/lib/api"
 
 interface Project { id: string; name: string; agent_count: number; project_type?: string }
 
@@ -219,6 +221,7 @@ function AppShellInnerContent({
   const deleteConfirmRef = useRef<HTMLInputElement>(null)
 
   const { workspaces, activeWorkspace, setActiveWorkspace, refresh: refreshWorkspaces } = useWorkspace()
+  const { authFetch } = useAuthFetch()
 
   // Guard install state
   const [guardInstalled, setGuardInstalled] = useState(false)
@@ -270,14 +273,6 @@ function AppShellInnerContent({
   useEffect(() => { if (renamingProjectId) renameInputRef.current?.focus() }, [renamingProjectId])
   useEffect(() => { if (creatingProject) newProjectInputRef.current?.focus() }, [creatingProject])
 
-  async function authHeaders(wsId?: string): Promise<Record<string, string>> {
-    const h: Record<string, string> = {}
-    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    const id = wsId ?? activeWorkspace?.id
-    if (id) h["X-Workspace-ID"] = id
-    return h
-  }
-
   const unreadCount = notifications.filter(n => n.unread).length
 
   useEffect(() => {
@@ -286,13 +281,7 @@ function AppShellInnerContent({
       if (!activeWorkspace?.id) return
       setNotificationsLoading(true)
       try {
-        const h = await authHeaders()
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/notifications?limit=8`,
-          { headers: h }
-        )
-        if (!res.ok || cancelled) return
-        const data = await res.json()
+        const data = await workspacesApi.notifications(authFetch, activeWorkspace.id, 8)
         const items = Array.isArray(data?.items) ? data.items : []
         if (!cancelled) setNotifications(items)
       } catch {
@@ -312,10 +301,7 @@ function AppShellInnerContent({
     async function fetchRole() {
       if (!activeWorkspace || !userId) return
       try {
-        const h = await authHeaders()
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}/members`, { headers: h })
-        if (!res.ok || cancelled) return
-        const members: { clerk_user_id: string; role: string }[] = await res.json()
+        const members: { clerk_user_id: string; role: string }[] = await projectsApi.members.list(authFetch, activeWorkspace.id)
         const myRole = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
         if (!cancelled) setUserRole(myRole ?? "admin")
       } catch {
@@ -331,10 +317,7 @@ function AppShellInnerContent({
     let cancelled = false
     async function fetchOrgName() {
       try {
-        const h = await authHeaders()
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/organizations`, { headers: h })
-        if (!res.ok || cancelled) return
-        const data = await res.json()
+        const data = await organizations.list(authFetch)
         const name = Array.isArray(data) && data.length > 0 ? data[0].name : null
         if (!cancelled) setOrgName(name)
       } catch {}
@@ -357,10 +340,7 @@ function AppShellInnerContent({
     async function fetchRunsCount() {
       if (!activeWorkspace?.id) return
       try {
-        const h = await authHeaders()
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=500&offset=0`, { headers: h })
-        if (!res.ok || cancelled) return
-        const data: { status: string }[] = await res.json()
+        const data: { status: string }[] = await runs.list(authFetch, { limit: 500, offset: 0 })
         const active = data.filter(r => r.status === "running" || r.status === "paused").length
         if (!cancelled) setActiveRunsCount(active > 0 ? active : undefined)
       } catch {}
@@ -374,9 +354,7 @@ function AppShellInnerContent({
     let cancelled = false
     async function fetchPlaybookCount() {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks`)
-        if (!res.ok || cancelled) return
-        const data: unknown[] = await res.json()
+        const data: unknown[] = await workflows.playbooks.list(authFetch)
         if (!cancelled) setPlaybookCount(Array.isArray(data) && data.length > 0 ? data.length : undefined)
       } catch {}
     }
@@ -391,14 +369,8 @@ function AppShellInnerContent({
       const wsId = activeWorkspace?.id
       if (!wsId) return
       try {
-        const h: Record<string, string> = {}
-        if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/guard/config/installed?workspace_id=${wsId}`,
-          { headers: h }
-        )
-        if (!cancelled && res.ok) {
-          const data = await res.json()
+        const data = await guard.config.installed(authFetch, wsId)
+        if (!cancelled) {
           setGuardInstalled(!!data.installed)
           if (data.installed && wsId) setActiveGuardWorkspace(wsId)
         }
@@ -415,18 +387,15 @@ function AppShellInnerContent({
       cancelled = true
       window.removeEventListener("guard-install-changed", onGuardChange)
     }
-  }, [getToken, activeWorkspace])
+  }, [activeWorkspace])
 
   const fetchProjects = useCallback(async () => {
     if (!activeWorkspace) return
     try {
-      const h = await authHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects`, { headers: h })
-      if (!res.ok) return
-      const data = await res.json()
+      const data = await workspacesApi.projects.list(authFetch, activeWorkspace.id)
       setProjects(Array.isArray(data) ? data : [])
     } catch {}
-  }, [activeWorkspace])
+  }, [activeWorkspace, authFetch])
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
 
@@ -435,11 +404,7 @@ function AppShellInnerContent({
     setCreatingTeam(false); setNewTeamValue("")
     if (!name) return
     try {
-      const h = await authHeaders()
-      h["Content-Type"] = "application/json"
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, {
-        method: "POST", headers: h, body: JSON.stringify({ name })
-      })
+      const res = await projectsApi.create(authFetch, { name })
       if (res.ok) { setWsOpen(false); refreshWorkspaces() }
       else showError("Could not create team — please try again.")
     } catch { showError("Could not create team — check your connection.") }
@@ -449,8 +414,7 @@ function AppShellInnerContent({
     if (deleteConfirmValue !== ws.name) return
     setDeletingTeamId(null); setDeleteConfirmValue("")
     try {
-      const h = await authHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${ws.id}`, { method: "DELETE", headers: h })
+      const res = await projectsApi.remove(authFetch, ws.id)
       if (res.ok) {
         const next = workspaces.find(w => w.id !== ws.id)
         if (activeWorkspace?.id === ws.id && next) setActiveWorkspace(next)
@@ -464,11 +428,7 @@ function AppShellInnerContent({
     setCreatingProject(false); setNewProjectValue("")
     if (!name || !activeWorkspace) return
     try {
-      const h = await authHeaders()
-      h["Content-Type"] = "application/json"
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects`, {
-        method: "POST", headers: h, body: JSON.stringify({ name })
-      })
+      const res = await workspacesApi.projects.create(authFetch, activeWorkspace.id, { name })
       if (res.ok) fetchProjects()
       else showError("Could not create project — please try again.")
     } catch { showError("Could not create project — check your connection.") }
@@ -479,11 +439,7 @@ function AppShellInnerContent({
     setRenamingProjectId(null)
     if (!name || !activeWorkspace) return
     try {
-      const h = await authHeaders()
-      h["Content-Type"] = "application/json"
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects/${projectId}`, {
-        method: "PATCH", headers: h, body: JSON.stringify({ name })
-      })
+      const res = await workspacesApi.projects.rename(authFetch, activeWorkspace.id, projectId, { name })
       if (res.ok) fetchProjects()
       else showError("Could not rename project — please try again.")
     } catch { showError("Could not rename project — check your connection.") }

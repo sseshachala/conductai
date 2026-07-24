@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
 import { buildWorkspaceHeaders } from "@/lib/workspaceHeaders"
@@ -127,7 +129,7 @@ function fmt(n: number, decimals = 0): string {
 }
 
 export default function ObservabilityPage() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
   const router = useRouter()
   const [summary, setSummary] = useState<ObservabilitySummary | null>(null)
@@ -146,11 +148,8 @@ export default function ObservabilityPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
   const loadAgents = useCallback(async () => {
-    const token = await getToken()
-    const headers = buildWorkspaceHeaders(token, activeWorkspace?.id)
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
-      const res = await fetch(`${base}/observability/agents`, { headers })
+      const res = await authFetch(`${API}/observability/agents`)
       if (!res.ok) throw new Error("Failed to load agent data")
       setAgents(await res.json())
       setAgentError(false)
@@ -160,51 +159,42 @@ export default function ObservabilityPage() {
     } finally {
       setAgentsLoading(false)
     }
-  }, [getToken, activeWorkspace])
+  }, [authFetch])
 
   const loadAnalytics = useCallback(async () => {
-    const token = await getToken()
-    const headers = buildWorkspaceHeaders(token, activeWorkspace?.id)
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
-      const res = await fetch(`${base}/analytics/summary?days=30`, { headers })
+      const res = await authFetch(`${API}/analytics/summary?days=30`)
       if (res.ok) setAnalytics(await res.json())
     } catch {
       // non-fatal — keep last known state
     }
-  }, [getToken, activeWorkspace])
+  }, [authFetch])
 
   const loadDora = useCallback(async () => {
-    const token = await getToken()
-    const headers = buildWorkspaceHeaders(token, activeWorkspace?.id)
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
-      const res = await fetch(`${base}/analytics/dora?days=30`, { headers })
+      const res = await authFetch(`${API}/analytics/dora?days=30`)
       if (res.ok) setDora(await res.json())
     } catch { }
-  }, [getToken, activeWorkspace])
+  }, [authFetch])
 
   const loadScorecards = useCallback(async () => {
-    const token = await getToken()
-    const headers = buildWorkspaceHeaders(token, activeWorkspace?.id)
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
-      const res = await fetch(`${base}/analytics/scorecards?days=30`, { headers })
+      const res = await authFetch(`${API}/analytics/scorecards?days=30`)
       if (res.ok) {
         const list: PlaybookScorecard[] = await res.json()
         setScorecards(new Map(list.map(s => [s.playbook_slug, s])))
       }
     } catch { }
-  }, [getToken, activeWorkspace])
+  }, [authFetch])
 
+  const { getToken } = useAuth()
   const connectSSE = useCallback(async (attempt = 0) => {
     const token = await getToken()
     const workspaceId = activeWorkspace?.id ?? ""
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params = new URLSearchParams()
     if (token) params.set("token", token)
     if (workspaceId) params.set("workspace_id", workspaceId)
-    const url = `${base}/observability/stream?${params.toString()}`
+    const url = `${API}/observability/stream?${params.toString()}`
 
     if (esRef.current) esRef.current.close()
     if (reconnectTimer.current) clearTimeout(reconnectTimer.current)

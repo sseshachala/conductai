@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { workspaces as workspacesApi } from "@/lib/api"
 
 interface AuditEntry {
   id: string
@@ -17,6 +19,7 @@ interface AuditEntry {
 
 interface Props {
   workspaceId: string
+  /** @deprecated No longer used — auth is handled by useAuthFetch. Kept for backwards-compat with callers. */
   getToken?: (() => Promise<string | null>) | null
 }
 
@@ -44,8 +47,9 @@ function actionLabel(action: string) {
   return action.replace(".", " ").replace(/_/g, " ")
 }
 
-export default function AuditLog({ workspaceId, getToken }: Props) {
+export default function AuditLog({ workspaceId }: Props) {
   const { activeWorkspace } = useWorkspace()
+  const { authFetch } = useAuthFetch()
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -59,27 +63,21 @@ export default function AuditLog({ workspaceId, getToken }: Props) {
     setLoading(true)
     setError(null)
     try {
-      const h: Record<string, string> = {}
-      if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
       const ws = activeWorkspace?.id ?? ""
       const effectiveWorkspaceId = workspaceId || ws
       if (!effectiveWorkspaceId) {
         setEntries([])
         return
       }
-      if (ws) h["X-Workspace-Id"] = ws
-
-      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
-      if (actionFilter) params.set("action", actionFilter)
-
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${effectiveWorkspaceId}/audit-log?${params}`,
-        { headers: h }
-      )
-      if (!res.ok) throw res
-      setEntries(await res.json())
-    } catch (e) {
-      if (e instanceof Response && e.status === 403) {
+      const data = await workspacesApi.auditLog(authFetch, effectiveWorkspaceId, {
+        limit,
+        offset,
+        action: actionFilter || undefined,
+      })
+      setEntries(data)
+    } catch (e: unknown) {
+      const res = e as Response | undefined
+      if (res && typeof res.status === "number" && res.status === 403) {
         setError("You don't have permission to view the activity log.")
       } else {
         setError("Could not load audit log. Check workspace access or refresh.")

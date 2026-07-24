@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { environments as environmentsApi, credentials } from "@/lib/api"
 import {
   SERVICE_DETECTION,
   affectedServices,
@@ -118,14 +119,7 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 export default function EnvironmentsManager({ isAdmin = true }: { isAdmin?: boolean }) {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  if (clerkEnabled) return <EnvironmentsManagerWithAuth isAdmin={isAdmin} />
-  return <EnvironmentsManagerInner getToken={null} isAdmin={isAdmin} />
-}
-
-function EnvironmentsManagerWithAuth({ isAdmin }: { isAdmin: boolean }) {
-  const { getToken } = useAuth()
-  return <EnvironmentsManagerInner getToken={getToken} isAdmin={isAdmin} />
+  return <EnvironmentsManagerInner isAdmin={isAdmin} />
 }
 
 interface EnvVar { key: string; value: string; handle?: string }
@@ -137,8 +131,9 @@ function normalizeKey(raw: string): string {
   return raw.trim().toUpperCase()
 }
 
-function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Promise<string | null>) | null; isAdmin: boolean }) {
+function EnvironmentsManagerInner({ isAdmin }: { isAdmin: boolean }) {
   const { activeWorkspace } = useWorkspace()
+  const { authFetch } = useAuthFetch()
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [listLoading, setListLoading] = useState(true)
   const [active, setActive] = useState(0)
@@ -155,33 +150,23 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
   const [viewingDetail, setViewingDetail] = useState(false)
   const loadingRef = useRef(false)
 
+  // Thin adapter so sub-components that still expect buildHeaders continue to work.
+  // authFetch already injects auth + workspace headers, so we only add Content-Type when requested.
   const buildHeaders = useCallback(async (contentType = false): Promise<Record<string, string>> => {
     const headers: Record<string, string> = {}
-    if (contentType) headers["Content-Type"] = "application/json"
-    if (getToken) {
-      const token = await getToken()
-      if (token) headers["Authorization"] = `Bearer ${token}`
-    }
-    const ws = activeWorkspace?.id ?? ""
-    if (ws) headers["X-Workspace-Id"] = ws
+    const wsId = activeWorkspace?.id
+    if (wsId) headers["X-Workspace-Id"] = wsId
     return headers
-  }, [getToken, activeWorkspace])
+  }, [activeWorkspace])
 
   const loadEnvironments = useCallback(async () => {
     if (loadingRef.current) return
     loadingRef.current = true
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers })
-      if (!res.ok) return
-      const envs: Environment[] = await res.json()
+      const envs: Environment[] = await environmentsApi.list(authFetch)
       const enriched = await Promise.all(envs.map(async env => {
         try {
-          const r = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/credentials/by-environment/${env.id}`,
-            { headers }
-          )
-          const creds: Credential[] = r.ok ? await r.json() : []
+          const creds: Credential[] = await credentials.byEnvironment(authFetch, env.id)
           return { ...env, connectedServices: creds.map(c => c.service) }
         } catch { return env }
       }))
@@ -196,10 +181,8 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
   const loadVarsForEnv = useCallback(async (envId: string) => {
     setVarsLoading(true)
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/env-vars/${envId}`, { headers })
-      if (res.ok) setEnvVars(await res.json())
-      else setEnvVars([])
+      const data = await credentials.envVars.get(authFetch, envId)
+      setEnvVars(Array.isArray(data) ? data : [])
     } catch { setEnvVars([]) }
     finally { setVarsLoading(false) }
   }, [buildHeaders])
@@ -218,10 +201,7 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
     setCreatingEnv(true)
     setCreateError("")
     try {
-      const headers = await buildHeaders(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, {
-        method: "POST", headers, body: JSON.stringify({ name }),
-      })
+      const res = await environmentsApi.create(authFetch, { name })
       if (res.ok) {
         setNewEnvName("")
         setShowNewEnv(false)
@@ -244,11 +224,7 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
       const updated = envVars.some(v => v.key === credKey)
         ? envVars.map(v => v.key === credKey ? { ...v, value } : v)
         : [...envVars, { key: credKey, value }]
-      const headers = await buildHeaders(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/env-vars/${env.id}`, {
-        method: "PUT", headers,
-        body: JSON.stringify(updated.map(v => ({ key: v.key, value: v.value }))),
-      })
+      const res = await credentials.envVars.update(authFetch, env.id, updated.map(v => ({ key: v.key, value: v.value })) as unknown as Record<string, unknown>)
       if (!res.ok) throw new Error("Save failed")
       setEnvVars(updated)
       setSettingKey(null)
@@ -287,6 +263,7 @@ function EnvironmentsManagerInner({ getToken, isAdmin }: { getToken: (() => Prom
       <EnvironmentDetail
         environment={env}
         buildHeaders={buildHeaders}
+        authFetch={authFetch}
         onBack={() => setViewingDetail(false)}
         isAdmin={isAdmin}
       />
@@ -444,10 +421,12 @@ function resultDetail(body: Record<string, unknown>): string {
 function TestConnectionsPanel({
   vars,
   buildHeaders,
+  authFetch,
   autoRun,
 }: {
   vars: EnvVar[]
   buildHeaders: (contentType?: boolean) => Promise<Record<string, string>>
+  authFetch: (url: string, opts?: RequestInit) => Promise<Response>
   autoRun?: { services: string[]; at: number } | null
 }) {
   const [manualSel, setManualSel] = useState<Record<string, Record<string, string>>>({})
@@ -504,11 +483,7 @@ function TestConnectionsPanel({
   async function runTest(service: string) {
     setResults(prev => ({ ...prev, [service]: "testing" }))
     try {
-      const headers = await buildHeaders(true)
-      const res  = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/test`, {
-        method: "POST", headers,
-        body: JSON.stringify({ service, credentials: buildCreds(service) }),
-      })
+      const res = await credentials.test(authFetch, { service, credentials: buildCreds(service) })
       const body = await res.json() as Record<string, unknown>
       if (body.ok) {
         setResults(prev => ({ ...prev, [service]: { ok: true, detail: resultDetail(body) } }))
@@ -605,11 +580,13 @@ function TestConnectionsPanel({
 function EnvironmentDetail({
   environment,
   buildHeaders,
+  authFetch,
   onBack,
   isAdmin,
 }: {
   environment: Environment
   buildHeaders: (contentType?: boolean) => Promise<Record<string, string>>
+  authFetch: (url: string, opts?: RequestInit) => Promise<Response>
   onBack: () => void
   isAdmin: boolean
 }) {
@@ -643,11 +620,7 @@ function EnvironmentDetail({
   async function saveHosts(updated: string[]) {
     setHostSaving(true)
     try {
-      const headers = await buildHeaders(true)
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments/${environment.id}`, {
-        method: "PATCH", headers,
-        body: JSON.stringify({ allowed_hosts: updated.length > 0 ? updated : null }),
-      })
+      await environmentsApi.update(authFetch, environment.id, { allowed_hosts: updated.length > 0 ? updated : null })
     } finally { setHostSaving(false) }
   }
 
@@ -669,9 +642,8 @@ function EnvironmentDetail({
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/env-vars/${environment.id}`, { headers })
-      if (res.ok) setVars(await res.json())
+      const data = await credentials.envVars.get(authFetch, environment.id)
+      setVars(Array.isArray(data) ? data : [])
     } finally { setLoading(false) }
   }, [buildHeaders, environment.id])
 
@@ -680,11 +652,7 @@ function EnvironmentDetail({
   async function saveAll(updated: EnvVar[], changedKeys?: string[]) {
     setSaving(true); setError(""); setSaved(false)
     try {
-      const headers = await buildHeaders(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/env-vars/${environment.id}`, {
-        method: "PUT", headers,
-        body: JSON.stringify(updated.map(v => ({ key: v.key, value: v.value }))),
-      })
+      const res = await credentials.envVars.update(authFetch, environment.id, updated.map(v => ({ key: v.key, value: v.value })) as unknown as Record<string, unknown>)
       if (!res.ok) throw new Error("Save failed")
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -913,7 +881,7 @@ function EnvironmentDetail({
         ))}
       </div>
 
-      {!loading && <TestConnectionsPanel vars={vars} buildHeaders={buildHeaders} autoRun={testTrigger} />}
+      {!loading && <TestConnectionsPanel vars={vars} buildHeaders={buildHeaders} authFetch={authFetch} autoRun={testTrigger} />}
 
       <div style={{ marginTop: 24 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>

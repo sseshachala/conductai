@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 
 export interface TokenGuardrails {
   prompt_caching: boolean
@@ -36,7 +37,7 @@ interface UseTokenGuardrailsResult {
 }
 
 export function useTokenGuardrails(workspaceId: string | null): UseTokenGuardrailsResult {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const [guardrails, setGuardrails] = useState<TokenGuardrails | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -44,23 +45,14 @@ export function useTokenGuardrails(workspaceId: string | null): UseTokenGuardrai
     if (!workspaceId) return
     setLoading(true)
     try {
-      const token = await getToken()
-      const headers: Record<string, string> = {}
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await fetch(
-        `${base}/guard/token-guardrails?workspace_id=${workspaceId}`,
-        { headers },
-      )
-      if (res.status === 404) { setGuardrails(DEFAULTS); return }
-      if (!res.ok) { setGuardrails(DEFAULTS); return }
-      setGuardrails(await res.json())
+      const data = await guard.tokenGuardrails.get(authFetch, workspaceId)
+      setGuardrails(data)
     } catch {
       setGuardrails(DEFAULTS)
     } finally {
       setLoading(false)
     }
-  }, [getToken, workspaceId])
+  }, [authFetch, workspaceId])
 
   useEffect(() => {
     setGuardrails(null)
@@ -70,6 +62,7 @@ export function useTokenGuardrails(workspaceId: string | null): UseTokenGuardrai
   return { guardrails, loading, refresh: load }
 }
 
+// Kept for callers that already hold a raw token + apiUrl (settings page patch flow).
 export async function patchTokenGuardrails(
   workspaceId: string,
   token: string,

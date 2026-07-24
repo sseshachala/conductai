@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
 import { SecureShell, SeverityPill, StatusBadge, FindingsTable } from "./_components"
 import type { SecurityFinding, FindingStatus } from "./_components"
 import { useWorkspace } from "@/lib/WorkspaceContext"
-import { buildWorkspaceHeaders } from "@/lib/workspaceHeaders"
 
 interface SecuritySummary {
   total: number
@@ -22,7 +22,7 @@ export default function SecureOverviewPage() {
 }
 
 function SecureOverview() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
   const wsId = activeWorkspace?.id
   const [summary, setSummary] = useState<SecuritySummary | null>(null)
@@ -30,21 +30,18 @@ function SecureOverview() {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<Record<string, boolean>>({})
 
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const headers = buildWorkspaceHeaders(await getToken())
       const [fr, sr] = await Promise.all([
-        fetch(`${base}/security-findings?workspace_id=${wsId}&days=30&limit=100`, { headers }),
-        fetch(`${base}/security-findings/summary?workspace_id=${wsId}&days=30`, { headers }),
+        authFetch(`${API}/security-findings?workspace_id=${wsId}&days=30&limit=100`),
+        authFetch(`${API}/security-findings/summary?workspace_id=${wsId}&days=30`),
       ])
       if (fr.ok) setFindings(await fr.json())
       if (sr.ok) setSummary(await sr.json())
     } catch {}
     finally { setLoading(false) }
-  }, [base, wsId, getToken])
+  }, [authFetch, wsId])
 
   useEffect(() => {
     load()
@@ -55,9 +52,8 @@ function SecureOverview() {
   const updateStatus = useCallback(async (id: string, next: FindingStatus) => {
     setUpdating(u => ({ ...u, [id]: true }))
     try {
-      const headers = buildWorkspaceHeaders(await getToken())
-      const res = await fetch(`${base}/security-findings/${id}?workspace_id=${wsId}`, {
-        method: "PATCH", headers, body: JSON.stringify({ status: next }),
+      const res = await authFetch(`${API}/security-findings/${id}?workspace_id=${wsId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: next }),
       })
       if (res.ok) {
         const updated: SecurityFinding = await res.json()
@@ -65,7 +61,7 @@ function SecureOverview() {
       }
     } catch {}
     finally { setUpdating(u => ({ ...u, [id]: false })) }
-  }, [base, wsId, getToken])
+  }, [authFetch, wsId])
 
   const open = summary?.by_status?.open ?? 0
   const critHigh = (summary?.by_severity?.critical ?? 0) + (summary?.by_severity?.high ?? 0)

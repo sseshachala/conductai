@@ -1,4 +1,4 @@
-import { API, AuthFetch, del, json, post, put } from "./client"
+import { API, AuthFetch, del, json, patch, post, put } from "./client"
 
 const base = () => `${API}/workflows`
 
@@ -21,11 +21,25 @@ export const workflows = {
   validate: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
     post(f, `${base()}/${id}/validate`, body),
 
+  validateInputs: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
+    post(f, `${base()}/${id}/validate-inputs`, body),
+
   preflight: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
     post(f, `${base()}/${id}/preflight`, body),
 
+  trigger: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
+    post(f, `${base()}/${id}/trigger`, body),
+
+  estimate: (f: AuthFetch, id: string, params?: { issues?: number }) => {
+    const q = params?.issues != null ? `?issues=${params.issues}` : ""
+    return json<any>(f, `${base()}/${id}/estimate${q}`)
+  },
+
   setEnvironment: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
     post(f, `${base()}/${id}/set-environment`, body),
+
+  patchEnvironment: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
+    patch(f, `${base()}/${id}/environment`, body),
 
   setTurnSettings: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
     post(f, `${base()}/${id}/turn-settings`, body),
@@ -44,6 +58,11 @@ export const workflows = {
     create: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
       post(f, `${base()}/${id}/webhook`, body),
     remove: (f: AuthFetch, id: string) => del(f, `${base()}/${id}/webhook`),
+  },
+
+  blocks: {
+    compileStreamUrl: (workflowId: string, blockId: string) =>
+      `${base()}/${workflowId}/blocks/${blockId}/compile/stream`,
   },
 
   runs: {
@@ -70,4 +89,9 @@ export const workflows = {
     list: (f: AuthFetch) => json<any[]>(f, `${base()}/playbooks`),
     get: (f: AuthFetch, slug: string) => json<any>(f, `${base()}/playbooks/${slug}`),
   },
+
+  generate: (f: AuthFetch, body: Record<string, unknown>) =>
+    post(f, `${base()}/generate`, body),
 }
+
+// Appended by migration

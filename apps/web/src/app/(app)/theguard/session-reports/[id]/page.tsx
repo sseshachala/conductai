@@ -2,9 +2,10 @@
 
 import Link from "next/link"
 import { useEffect, useState, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
 import { useParams } from "next/navigation"
 import AppShell from "@/components/AppShell"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
@@ -54,7 +55,7 @@ export default function SessionReportDetailPage() {
 }
 
 function SessionReportDetailContent() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { id } = useParams<{ id: string }>()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
@@ -74,25 +75,19 @@ function SessionReportDetailContent() {
     setError(null)
     setNotFound(false)
     try {
-      const token = await getToken()
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const headers: Record<string, string> = {}
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const res = await fetch(`${base}/guard/session-reports/${id}?workspace_id=${wsId}`, { headers })
-      if (res.status === 404) {
+      const data: SessionReport = await guard.sessionReports.get(authFetch, id as string, { workspace_id: wsId })
+      setReport(data)
+      setLastUpdated(new Date())
+    } catch (err: any) {
+      if (err?.message?.includes("404") || String(err).includes("404")) {
         setNotFound(true)
         return
       }
-      if (!res.ok) throw new Error(`Failed to load session report (${res.status})`)
-      const data: SessionReport = await res.json()
-      setReport(data)
-      setLastUpdated(new Date())
-    } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error")
     } finally {
       setLoading(false)
     }
-  }, [getToken, wsId, id])
+  }, [authFetch, wsId, id])
 
   useEffect(() => {
     if (!teamLoading && !wsId) {

@@ -8,6 +8,8 @@ import AppShell from "@/components/AppShell"
 import AgentStatusPill from "@/components/workflows/AgentStatusPill"
 import { formatTrigger, timeAgo, duration, effectiveStatus } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 
 interface Workflow {
   id: string
@@ -111,17 +113,7 @@ function ProjectContent({ getToken, currentUserId }: {
   const renameInputRef = useRef<HTMLInputElement>(null)
   const confirmInputRef = useRef<HTMLInputElement>(null)
 
-  // P0-3: authHeaders reads workspace_id from project state, falling back to active workspace
-  async function authHeaders(): Promise<Record<string, string>> {
-    const h: Record<string, string> = {}
-    if (getToken) {
-      const token = await getToken()
-      if (token) h["Authorization"] = `Bearer ${token}`
-    }
-    const wsId = project?.workspace_id || activeWorkspace?.id
-    if (wsId) h["X-Workspace-Id"] = wsId // P0-3: consistent lowercase d
-    return h
-  }
+  const { authFetch } = useAuthFetch()
 
   // P0-3: run loadProject first, then loadWorkflows sequentially
   useEffect(() => {
@@ -142,8 +134,7 @@ function ProjectContent({ getToken, currentUserId }: {
   // P0-4: surface errors; P0-2: fix /workspaces/ endpoint for member check
   async function loadProject() {
     try {
-      const h = await authHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${projectId}`, { headers: h })
+      const res = await authFetch(`${API}/projects/${projectId}`)
       if (!res.ok) {
         setError(res.status === 404 ? "Project not found." : `Failed to load project (${res.status}).`)
         setLoading(false)
@@ -153,7 +144,7 @@ function ProjectContent({ getToken, currentUserId }: {
       setProject(found)
       if (clerkEnabled && currentUserId) {
         // P0-2: was /projects/${workspace_id}/members — fixed to /workspaces/${workspace_id}/members
-        const mRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${found.workspace_id}/members`, { headers: h })
+        const mRes = await authFetch(`${API}/workspaces/${found.workspace_id}/members`)
         if (mRes.ok) {
           const members: { clerk_user_id: string; role: string }[] = await mRes.json()
           setIsAdmin(members.find(m => m.clerk_user_id === currentUserId)?.role === "admin")
@@ -168,8 +159,7 @@ function ProjectContent({ getToken, currentUserId }: {
   // P0-3: loadWorkflows is called after loadProject resolves
   async function loadWorkflows() {
     try {
-      const h = await authHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows?project_id=${projectId}`, { headers: h })
+      const res = await authFetch(`${API}/workflows?project_id=${projectId}`)
       if (res.ok) setWorkflows(await res.json())
     } finally {
       setLoading(false)
@@ -180,8 +170,7 @@ function ProjectContent({ getToken, currentUserId }: {
     setRunsLoading(true)
     setRunsError(null)
     try {
-      const h = await authHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?project_id=${projectId}&limit=100`, { headers: h })
+      const res = await authFetch(`${API}/runs?project_id=${projectId}&limit=100`)
       if (res.ok) {
         setRuns(await res.json())
       } else {
@@ -202,10 +191,8 @@ function ProjectContent({ getToken, currentUserId }: {
   }
 
   async function renameAgent(id: string, name: string) {
-    const h = await authHeaders()
-    h["Content-Type"] = "application/json"
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, {
-      method: "PUT", headers: h, body: JSON.stringify({ name }),
+    const res = await authFetch(`${API}/workflows/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }),
     })
     if (res.ok) {
       const updated = await res.json()
@@ -214,8 +201,7 @@ function ProjectContent({ getToken, currentUserId }: {
   }
 
   async function deleteAgent(id: string) {
-    const h = await authHeaders()
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, { method: "DELETE", headers: h })
+    await authFetch(`${API}/workflows/${id}`, { method: "DELETE" })
     setWorkflows(prev => prev.filter(w => w.id !== id))
     setConfirming(null)
     setConfirmValue("")

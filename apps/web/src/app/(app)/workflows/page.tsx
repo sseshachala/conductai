@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
 import AgentStatusPill from "@/components/workflows/AgentStatusPill"
 import Toggle from "@/components/workflows/Toggle"
@@ -58,14 +60,14 @@ export default function WorkflowsPage() {
 
 function WorkflowsWithAuth() {
   const router = useRouter()
-  const { getToken, isLoaded, isSignedIn, userId } = useAuth()
+  const { isLoaded, isSignedIn, userId } = useAuth()
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.replace("/")
   }, [isLoaded, isSignedIn, router])
 
   if (!isLoaded) return null
-  return <WorkflowsContent getToken={getToken} currentUserId={userId ?? null} />
+  return <WorkflowsContent getToken={null} currentUserId={userId ?? null} />
 }
 
 function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promise<string | null>) | null; currentUserId: string | null }) {
@@ -102,14 +104,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   // #11: escape flag to prevent blur from committing rename when Escape pressed
   const escapePressed = useRef(false)
 
-  async function authHeaders(): Promise<Record<string, string>> {
-    const h: Record<string, string> = {}
-    if (getToken) {
-      const token = await getToken()
-      if (token) h["Authorization"] = `Bearer ${token}`
-    }
-    return h
-  }
+  const { authFetch } = useAuthFetch()
 
   useEffect(() => {
     const p = activeWorkspace ? { id: activeWorkspace.id, name: activeWorkspace.name } : null
@@ -153,12 +148,9 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
       if (idx > 0) initial_state[line.slice(0, idx).trim()] = line.slice(idx + 1).trim()
     }
     try {
-      const h = await authHeaders()
-      h["Content-Type"] = "application/json"
-      if (project?.id) h["X-Workspace-ID"] = project.id
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${runModal.id}/runs`, {
+            const res = await authFetch(`${API}/workflows/${runModal.id}/runs`, {
         method: "POST",
-        headers: h,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ triggered_by: "manual", dry_run: runDryRun, guard_enabled: runGuard, initial_state }),
       })
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.detail ?? "Failed to start run") }
@@ -183,9 +175,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
 
   async function loadRole(projectId: string) {
     try {
-      const h = await authHeaders()
-      h["X-Workspace-Id"] = projectId
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${projectId}/my-role`, { headers: h })
+            const res = await authFetch(`${API}/projects/${projectId}/my-role`)
       if (!res.ok) return
       const data: { role: string } = await res.json()
       setIsAdmin(data.role === "admin")
@@ -199,9 +189,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
     if (document.visibilityState === "hidden") return
     setError(null)
     try {
-      const headers = await authHeaders()
-      if (pid) headers["X-Workspace-ID"] = pid
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, { headers })
+            const res = await authFetch(`${API}/workflows`)
       if (res.ok) {
         const data: Workflow[] = await res.json()
         setWorkflows(data)
@@ -219,13 +207,10 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   }
 
   async function renameAgent(id: string, name: string) {
-    const h = await authHeaders()
-    h["Content-Type"] = "application/json"
     const wf = workflows.find(w => w.id === id)
     const wsId = project?.id ?? wf?.workspace_id
-    if (wsId) h["X-Workspace-ID"] = wsId
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}`, {
-      method: "PUT", headers: h, body: JSON.stringify({ name }),
+    const res = await authFetch(`${API}/workflows/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }),
     })
     if (res.ok) {
       const updated = await res.json()
@@ -238,11 +223,10 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   }
 
   async function deleteAgent(id: string) {
-    const h = await authHeaders()
     const wf = workflows.find(w => w.id === id)
     const wsId = project?.id ?? wf?.workspace_id
     const qParam = wsId ? `?workspace_id=${wsId}` : ""
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${id}${qParam}`, { method: "DELETE", headers: h })
+    const res = await authFetch(`${API}/workflows/${id}${qParam}`, { method: "DELETE" })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
       // #13: replace alert() with setError

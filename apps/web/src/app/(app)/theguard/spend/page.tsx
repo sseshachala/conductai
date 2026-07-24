@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardSavings } from "@/hooks/useGuardSavings"
@@ -545,7 +546,7 @@ export default function SpendPage() {
 }
 
 function SpendContent() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: roleLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
@@ -553,11 +554,11 @@ function SpendContent() {
   useEffect(() => {
     if (!roleLoading && !permissions.canViewAllActivity) router.replace("/theguard")
   }, [roleLoading, permissions.canViewAllActivity, router])
-  const { savings, loading: savingsLoading } = useGuardSavings(teamId)
   const now = new Date()
   const [month, setMonth] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
   )
+  const { savings, loading: savingsLoading } = useGuardSavings(teamId, month)
   const [data, setData] = useState<SpendData | null>(null)
   const [budgets, setBudgets] = useState<Record<string, number | null>>({})
   const [hardLimits, setHardLimits] = useState<Record<string, number | null>>({})
@@ -579,30 +580,17 @@ function SpendContent() {
     if (!teamId) return
     setLoading(true)
     setError(null)
-    const token = await getToken()
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
 
     try {
-      const [spendRes, budgetRes] = await Promise.all([
-        fetch(`${base}/guard/spend?workspace_id=${teamId}&month=${month}`, { headers }),
-        fetch(`${base}/guard/spend/budgets?workspace_id=${teamId}`, { headers }),
+      const [spendData, budgetList] = await Promise.all([
+        guard.spend.get(authFetch, { workspace_id: teamId, month }),
+        guard.spend.budgets.get(authFetch, { workspace_id: teamId }),
       ])
-      if (!spendRes.ok) {
-        if (spendRes.status === 401) throw new Error("Session expired — please refresh")
-        if (spendRes.status === 403) throw new Error("You don't have permission to view spend data")
-        if (spendRes.status >= 500) throw new Error("Server error — try again later")
-        throw new Error(`Failed to load (${spendRes.status})`)
-      }
-      const spendJson: SpendData = await spendRes.json()
+      const spendJson: SpendData = spendData
       setData(spendJson)
 
-      if (budgetRes.ok) {
-        const budgetList: BudgetOut[] = await budgetRes.json()
-        const teamBudget = budgetList.find(b => b.clerk_user_id === null)
+      if (Array.isArray(budgetList)) {
+        const teamBudget = budgetList.find((b: any) => b.clerk_user_id === null)
         if (teamBudget) {
           setTeamSettings({
             team_monthly_limit_usd: teamBudget.monthly_limit_usd,
@@ -613,7 +601,7 @@ function SpendContent() {
         }
         const map: Record<string, number | null> = {}
         const hardMap: Record<string, number | null> = {}
-        for (const b of budgetList) {
+        for (const b of budgetList as any[]) {
           const key = b.email ?? b.clerk_user_id
           if (key) {
             map[key] = b.monthly_limit_usd
@@ -624,12 +612,16 @@ function SpendContent() {
         setHardLimits(hardMap)
       }
       setLastUpdated(new Date())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error")
+    } catch (err: any) {
+      const msg = err?.message ?? String(err)
+      if (msg.includes("401")) setError("Session expired — please refresh")
+      else if (msg.includes("403")) setError("You don't have permission to view spend data")
+      else if (msg.includes("5")) setError("Server error — try again later")
+      else setError(err instanceof Error ? err.message : "Unknown error")
     } finally {
       setLoading(false)
     }
-  }, [getToken, teamId, month])
+  }, [authFetch, teamId, month])
 
   useEffect(() => {
     load()
@@ -643,23 +635,13 @@ function SpendContent() {
 
   async function saveTeamSettings(s: TeamBudgetSettings) {
     if (!teamId) return
-    const token = await getToken()
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-    const res = await fetch(`${base}/guard/spend/budgets`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        workspace_id: teamId,
-        clerk_user_id: null,
-        monthly_limit_usd: s.team_monthly_limit_usd ?? 0,
-        alert_threshold_pct: s.alert_threshold_pct,
-        hard_limit_usd: s.hard_cap_enabled ? (s.team_monthly_limit_usd ?? 0) : null,
-        default_per_developer_usd: s.default_per_developer_usd,
-      }),
+    const res = await guard.spend.budgets.set(authFetch, {
+      workspace_id: teamId,
+      clerk_user_id: null,
+      monthly_limit_usd: s.team_monthly_limit_usd ?? 0,
+      alert_threshold_pct: s.alert_threshold_pct,
+      hard_limit_usd: s.hard_cap_enabled ? (s.team_monthly_limit_usd ?? 0) : null,
+      default_per_developer_usd: s.default_per_developer_usd,
     })
     if (!res.ok) throw new Error("Failed to save spend controls")
     setTeamSettings(s)
@@ -667,21 +649,11 @@ function SpendContent() {
 
   async function saveBudget(email: string, limit: number, hard: number | null) {
     if (!teamId) return
-    const token = await getToken()
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-    const res = await fetch(`${base}/guard/spend/budgets`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        workspace_id: teamId,
-        email,
-        monthly_limit_usd: limit,
-        hard_limit_usd: hard,
-      }),
+    const res = await guard.spend.budgets.set(authFetch, {
+      workspace_id: teamId,
+      email,
+      monthly_limit_usd: limit,
+      hard_limit_usd: hard,
     })
     if (!res.ok) throw new Error("Failed to save budget")
     setBudgets(prev => ({ ...prev, [email]: limit }))
@@ -808,7 +780,7 @@ function SpendContent() {
                     ↓
                   </span>
                   <div>
-                    <div style={{ fontWeight: 650, fontSize: 15, color: "var(--text)" }}>Team token savings — all time</div>
+                    <div style={{ fontWeight: 650, fontSize: 15, color: "var(--text)" }}>Team token savings — cumulative as of {monthLabel}</div>
                     <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
                       Reported by {savings.by_member.length} developer{savings.by_member.length !== 1 ? "s" : ""} via{" "}
                       <span className="mono" style={{ fontSize: 11 }}>conduct guard sync</span>

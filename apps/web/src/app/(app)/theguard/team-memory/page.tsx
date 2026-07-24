@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { useAuth, useUser } from "@clerk/nextjs"
+import { useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { teamMemory } from "@/lib/api"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
@@ -54,7 +56,7 @@ export default function TeamMemoryPage() {
 }
 
 function TeamMemoryContent() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
@@ -78,20 +80,12 @@ function TeamMemoryContent() {
     setLoading(true)
     setError(null)
 
-    const token = await getToken()
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
-
     const trimmed = q.trim()
-    const params = new URLSearchParams({ limit: "50" })
-    if (trimmed) params.set("q", trimmed)
-    params.set("workspace_id", workspaceId)
+    const params: Record<string, string> = { limit: "50", workspace_id: workspaceId }
+    if (trimmed) params.q = trimmed
 
     try {
-      const res = await fetch(`${base}/team-memory/search?${params.toString()}`, { headers })
-      if (!res.ok) throw new Error(`Failed to load team memories (${res.status})`)
-      const data: MemoryEntry[] = await res.json()
+      const data: MemoryEntry[] = await teamMemory.search(authFetch, params)
       data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       setEntries(data)
       setLastFetched(new Date())
@@ -100,7 +94,7 @@ function TeamMemoryContent() {
     } finally {
       setLoading(false)
     }
-  }, [getToken, workspaceId])
+  }, [authFetch, workspaceId])
 
   useEffect(() => {
     if (!teamLoading && !workspaceId) { setLoading(false); return }

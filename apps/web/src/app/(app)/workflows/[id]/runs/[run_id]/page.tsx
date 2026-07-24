@@ -9,6 +9,8 @@ import ConversationTrace from "@/components/runs/ConversationTrace"
 import AppShell from "@/components/AppShell"
 import { statusStyle, formatTrigger, duration, isTerminal, isActive, isAwaiting, effectiveStatus } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 
 // ── Tab error boundary ────────────────────────────────────────────────────────
 class TabErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -63,6 +65,7 @@ function Pill({ children, color = "stone" }: { children: React.ReactNode; color?
 export default function RunDetailPage() {
   const { id: workflowId, run_id: runId } = useParams<{ id: string; run_id: string }>()
   const { getToken, isLoaded } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
 
   const [run, setRun] = useState<RunMeta | null>(null)
@@ -80,18 +83,11 @@ export default function RunDetailPage() {
   const [sseActive, setSseActive] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  async function buildHeaders() {
-    const token = await getToken()
-    const workspaceId = activeWorkspace?.id ?? null
-    const headers: Record<string, string> = {}
-    if (token) headers["Authorization"] = `Bearer ${token}`
-    if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-    return headers
-  }
 
-  async function fetchRun(headers: Record<string, string>) {
+
+  async function fetchRun() {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
+      const res = await authFetch(`${API}/workflows/${workflowId}/runs/${runId}`)
       if (res.ok) { const data = await res.json(); setRun(data); return data as RunMeta }
       setFetchError(res.status === 403 ? "Access denied — you may not be a member of this workspace." : res.status === 404 ? "Run not found." : `Error ${res.status} — could not load run.`)
       return null
@@ -103,16 +99,14 @@ export default function RunDetailPage() {
 
   async function refresh() {
     setRefreshing(true)
-    await fetchRun(await buildHeaders())
+    await fetchRun()
     setRefreshing(false)
   }
 
   async function stopRun() {
     setStopping(true)
     try {
-      const headers = await buildHeaders()
-      headers["Content-Type"] = "application/json"
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/cancel`, { method: "POST", headers })
+      await authFetch(`${API}/workflows/${workflowId}/runs/${runId}/cancel`, { method: "POST", headers: { "Content-Type": "application/json" } })
       setRun(prev => prev ? { ...prev, status: "cancelled" } : prev)
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     } finally { setStopping(false) }
@@ -121,11 +115,9 @@ export default function RunDetailPage() {
   async function handleApproval(decision: "approved" | "rejected") {
     setApprovingRun(true)
     try {
-      const headers = await buildHeaders()
-      headers["Content-Type"] = "application/json"
-      await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/approve`,
-        { method: "POST", headers, body: JSON.stringify({ decision }) }
+      await authFetch(
+        `${API}/workflows/${workflowId}/runs/${runId}/approve`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) }
       )
       setApprovalDecision(decision)
       setRun(prev => prev ? { ...prev, status: decision === "approved" ? "running" : "cancelled" } : prev)
@@ -144,10 +136,9 @@ export default function RunDetailPage() {
   useEffect(() => {
     if (!isLoaded) return
     async function load() {
-      const headers = await buildHeaders()
       const [runData, wfRes] = await Promise.all([
-        fetchRun(headers),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers }),
+        fetchRun(),
+        authFetch(`${API}/workflows/${workflowId}`),
       ])
       if (wfRes.ok) {
         const wf = await wfRes.json()
@@ -160,7 +151,7 @@ export default function RunDetailPage() {
       }
       setLoading(false)
       if (runData && !isTerminal(runData.status)) {
-        pollRef.current = setInterval(async () => { await fetchRun(await buildHeaders()) }, 4000)
+        pollRef.current = setInterval(async () => { await fetchRun() }, 4000)
       }
     }
     load()
@@ -404,7 +395,7 @@ export default function RunDetailPage() {
                 setSseActive(false)
                 if (!run || isTerminal(run.status)) return
                 if (!pollRef.current) {
-                  pollRef.current = setInterval(async () => { await fetchRun(await buildHeaders()) }, 4000)
+                  pollRef.current = setInterval(async () => { await fetchRun() }, 4000)
                 }
               }}
             />

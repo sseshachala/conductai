@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { workflows } from "@/lib/api"
+import type { AuthFetch } from "@/lib/api"
 
 interface MissingInput {
   key: string
@@ -46,16 +48,13 @@ export default function RunInputsModal({
     setLoading(true)
     ;(async () => {
       try {
-        const headers: Record<string, string> = { "Content-Type": "application/json" }
-        if (getToken) {
-          const t = await getToken()
-          if (t) headers["Authorization"] = `Bearer ${t}`
+        const authFetch: AuthFetch = async (url, opts) => {
+          const headers: Record<string, string> = { ...(opts?.headers as Record<string, string> | undefined) }
+          if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+          if (workspaceId) headers["X-Workspace-ID"] = workspaceId
+          return fetch(url, { ...opts, headers })
         }
-        if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/validate-inputs`,
-          { method: "POST", headers, body: JSON.stringify({ inputs: initialInputs, phase: "run" }) },
-        )
+        const res = await workflows.validateInputs(authFetch, workflowId, { inputs: initialInputs, phase: "run" })
         if (!res.ok) { onCancel(); return }
         const data = await res.json()
         setSpec(data.inputs_spec || {})

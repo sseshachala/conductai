@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface WorkflowDetail {
@@ -22,7 +23,6 @@ interface Environment {
 export default function AgentSettingsPage() {
   const { id: workflowId } = useParams<{ id: string }>()
   const router = useRouter()
-  const { getToken } = useAuth()
   const { activeWorkspace } = useWorkspace()
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null)
   const [environments, setEnvironments] = useState<Environment[]>([])
@@ -35,21 +35,14 @@ export default function AgentSettingsPage() {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  async function headers(): Promise<Record<string, string>> {
-    const h: Record<string, string> = {}
-    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    const wsId = activeWorkspace?.id ?? ""
-    if (wsId) h["X-Workspace-ID"] = wsId
-    return h
-  }
+  const { authFetch } = useAuthFetch()
 
   useEffect(() => {
     async function load() {
       try {
-        const h = await headers()
         const [wfRes, envRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers: h }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers: h }),
+          authFetch(`${API}/workflows/${workflowId}`),
+          authFetch(`${API}/environments`),
         ])
         if (wfRes.ok) {
           const wf = await wfRes.json()
@@ -65,10 +58,8 @@ export default function AgentSettingsPage() {
   }, [workflowId])
 
   async function saveEnvironment(envId: string) {
-    const h = await headers()
-    h["Content-Type"] = "application/json"
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/set-environment`, {
-      method: "POST", headers: h, body: JSON.stringify({ environment_id: envId })
+    const res = await authFetch(`${API}/workflows/${workflowId}/set-environment`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ environment_id: envId })
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
@@ -83,10 +74,8 @@ export default function AgentSettingsPage() {
     if (val !== null && (isNaN(val) || val < 1)) return
     setTurnsSaving(true)
     try {
-      const h = await headers()
-      h["Content-Type"] = "application/json"
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/turn-settings`, {
-        method: "PATCH", headers: h, body: JSON.stringify({ default_max_turns: val })
+      const res = await authFetch(`${API}/workflows/${workflowId}/turn-settings`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ default_max_turns: val })
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -106,10 +95,8 @@ export default function AgentSettingsPage() {
     setDeleteError(null)
     setDeleting(true)
     try {
-      const h = await headers()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
+      const res = await authFetch(`${API}/workflows/${workflowId}`, {
         method: "DELETE",
-        headers: h,
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))

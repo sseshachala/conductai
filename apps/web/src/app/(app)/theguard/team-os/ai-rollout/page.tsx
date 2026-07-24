@@ -2,20 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth, useUser } from "@clerk/nextjs"
+import { useUser } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { teamOs } from "@/lib/api"
 import type { Instructions } from "../types"
-
-// ─── API helper ────────────────────────────────────────────────────────────────
-
-async function apiFetch(path: string, token: string, opts?: RequestInit) {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "https://api.conductai.ai"
-  return fetch(`${base}${path}`, {
-    ...opts,
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...opts?.headers },
-  })
-}
 
 // ─── Tool tabs ─────────────────────────────────────────────────────────────────
 
@@ -150,7 +142,7 @@ function PreviewPane({ content, activeTab }: { content: string; activeTab: strin
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AIRolloutEditorPage() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { user } = useUser()
   const { activeWorkspace } = useWorkspace()
   const router = useRouter()
@@ -167,25 +159,19 @@ export default function AIRolloutEditorPage() {
 
   const load = useCallback(async () => {
     try {
-      const token = await getToken()
-      if (!token) return
-      const res = await apiFetch(`/team-os/instructions${activeWorkspace?.id ? `?workspace_id=${activeWorkspace.id}` : ""}`, token)
-      if (res.ok) {
-        const data: Instructions = await res.json()
-        setInstructions(data)
-        setDraft(data.content)
-      } else {
-        setSaveError(`Failed to load instructions (${res.status})`)
-      }
+      const params = activeWorkspace?.id ? { workspace_id: activeWorkspace.id } : undefined
+      const data: Instructions = await teamOs.instructions(authFetch, params)
+      setInstructions(data)
+      setDraft(data.content)
       // Load templates (non-fatal)
       try {
-        const tRes = await apiFetch("/team-os/templates", token)
-        if (tRes.ok) setTemplates(await tRes.json())
+        const tData = await teamOs.templates(authFetch)
+        setTemplates(tData)
       } catch {}
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to load instructions")
     }
-  }, [getToken])
+  }, [authFetch, activeWorkspace?.id])
 
   useEffect(() => { load() }, [load])
 
@@ -203,28 +189,16 @@ export default function AIRolloutEditorPage() {
     setSaving(true)
     setSaveError(null)
     try {
-      const token = await getToken()
-      if (!token) {
-        setSaveError("Not authenticated")
-        return
-      }
-      const res = await apiFetch(`/team-os/instructions${activeWorkspace?.id ? `?workspace_id=${activeWorkspace.id}` : ""}`, token, {
-        method: "POST",
-        body: JSON.stringify({ content: draft }),
-      })
-      if (!res.ok) {
-        const body = await res.text()
-        setSaveError(body || `Error ${res.status}`)
-      } else {
-        const data: Instructions = await res.json()
-        setInstructions(data)
-        setSaved(true)
-        setSuccessBanner(true)
-        setTimeout(() => {
-          setSaved(false)
-          setSuccessBanner(false)
-        }, 3000)
-      }
+      const params = activeWorkspace?.id ? { workspace_id: activeWorkspace.id } : undefined
+      const res = await teamOs.publishInstructions(authFetch, params, { content: draft })
+      const data: Instructions = await res.json() as Instructions
+      setInstructions(data)
+      setSaved(true)
+      setSuccessBanner(true)
+      setTimeout(() => {
+        setSaved(false)
+        setSuccessBanner(false)
+      }, 3000)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to publish")
     } finally {

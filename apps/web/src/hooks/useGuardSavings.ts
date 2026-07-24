@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 
 interface SavingsTeamTotal {
   rtk_saved_tokens: number
@@ -30,8 +31,8 @@ interface GuardSavingsResult {
   loading: boolean
 }
 
-export function useGuardSavings(workspaceId: string | null): GuardSavingsResult {
-  const { getToken } = useAuth()
+export function useGuardSavings(workspaceId: string | null, month?: string): GuardSavingsResult {
+  const { authFetch } = useAuthFetch()
   const [savings, setSavings] = useState<GuardSavingsSummary | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -39,25 +40,15 @@ export function useGuardSavings(workspaceId: string | null): GuardSavingsResult 
     if (!workspaceId) return
     setLoading(true)
     try {
-      const token = await getToken()
-      const headers: Record<string, string> = {}
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await fetch(
-        `${base}/guard/savings/summary?workspace_id=${workspaceId}`,
-        { headers },
-      )
-      if (res.ok) {
-        const data: GuardSavingsSummary = await res.json()
-        setSavings(data)
-      }
+      const data = await guard.savings.summary(authFetch, workspaceId, month)
+      setSavings(data)
       // 404 / not-yet-deployed: leave savings as null — card shows "—" state
     } catch {
       // non-fatal — keep null state
     } finally {
       setLoading(false)
     }
-  }, [getToken, workspaceId])
+  }, [authFetch, workspaceId, month])
 
   useEffect(() => {
     setSavings(null)

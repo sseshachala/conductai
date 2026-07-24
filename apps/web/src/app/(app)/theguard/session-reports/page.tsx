@@ -2,8 +2,9 @@
 
 import Link from "next/link"
 import { useEffect, useState, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
@@ -35,7 +36,7 @@ export default function SessionReportsPage() {
 }
 
 function SessionReportsContent() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
 
@@ -52,13 +53,7 @@ function SessionReportsContent() {
     setLoading(true)
     setError(null)
     try {
-      const token = await getToken()
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const headers: Record<string, string> = {}
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const res = await fetch(`${base}/guard/session-reports?workspace_id=${wsId}`, { headers })
-      if (!res.ok) throw new Error(`Failed to load session reports (${res.status})`)
-      const data: SessionReport[] = await res.json()
+      const data: SessionReport[] = await guard.sessionReports.list(authFetch, { workspace_id: wsId })
       data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       setReports(data)
       setLastUpdated(new Date())
@@ -67,7 +62,7 @@ function SessionReportsContent() {
     } finally {
       setLoading(false)
     }
-  }, [getToken, wsId])
+  }, [authFetch, wsId])
 
   useEffect(() => {
     if (!teamLoading && !wsId) {
