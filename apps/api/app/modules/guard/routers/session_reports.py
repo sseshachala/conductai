@@ -11,6 +11,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,8 @@ from app.modules.guard.embedding import embedding_client_for_workspace as _embed
 from app.modules.guard.models import SessionReport
 
 log = structlog.get_logger(__name__)
+
+_bearer_optional = HTTPBearer(auto_error=False)
 
 router = APIRouter(prefix="/guard/session-reports", tags=["guard"])
 
