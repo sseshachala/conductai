@@ -2109,9 +2109,11 @@ def cmd_guard_savings(args):
 
     dev_count   = data.get("developer_count", 0)
     total_tok   = data.get("total_tokens_saved", 0)
+    total_usd   = data.get("total_cost_saved_usd", 0.0)
     per_day     = data.get("per_day_usd", 0.0)
     per_month   = data.get("per_month_usd", 0.0)
     per_year    = data.get("per_year_usd", 0.0)
+    days_obs    = data.get("days_observed", 1)
     tools       = data.get("tools_installed", [])
     avg_tok     = total_tok // dev_count if dev_count else 0
     avg_day_usd = round(per_day / dev_count, 2) if dev_count else 0.0
@@ -2119,8 +2121,8 @@ def cmd_guard_savings(args):
     print()
     print(f"{BOLD}Team Token Savings{RESET}  ({dev_count} developer{'s' if dev_count != 1 else ''})")
     print("─" * 52)
-    print(f"  Total tokens saved:    {total_tok:>14,}")
-    print(f"  Estimated savings:     ${per_day:>8.2f}/day  ·  ${per_month:,.0f}/month  ·  ${per_year:,.0f}/year")
+    print(f"  Total tokens saved:    {total_tok:>14,}    (${total_usd:,.2f} over {days_obs} day{'s' if days_obs != 1 else ''})")
+    print(f"  Daily rate:            ${per_day:>8.2f}/day  ·  projected ${per_month:,.0f}/month  ·  ${per_year:,.0f}/year")
     if dev_count:
         print(f"  Avg per developer:     {avg_tok:>14,} tokens  ·  ${avg_day_usd:.2f}/day")
     if tools:
