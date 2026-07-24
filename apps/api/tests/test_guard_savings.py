@@ -262,3 +262,59 @@ class TestProjectionMath:
     def test_usd_per_million_tokens_blended_rate(self):
         """Verify the blended rate constant: 3.0×0.8 + 15.0×0.2 = 5.4."""
         assert abs(_USD_PER_MILLION_TOKENS - 5.4) < 1e-9
+
+
+class TestMonthCutoff:
+    """Bug-fix regression: /guard/savings/summary must respect ?month=YYYY-MM
+    so past-month views show cumulative-as-of-end-of-month, not lifetime."""
+
+    def test_month_end_mid_year(self):
+        from app.modules.guard.routers.savings import _month_end
+        assert _month_end("2026-07") == datetime(2026, 8, 1, tzinfo=timezone.utc)
+
+    def test_month_end_december_rolls_year(self):
+        from app.modules.guard.routers.savings import _month_end
+        assert _month_end("2026-12") == datetime(2027, 1, 1, tzinfo=timezone.utc)
+
+    def test_month_end_none_passes_through(self):
+        from app.modules.guard.routers.savings import _month_end
+        assert _month_end(None) is None
+
+    def test_month_end_bad_format_returns_none(self):
+        from app.modules.guard.routers.savings import _month_end
+        assert _month_end("not-a-month") is None
+        assert _month_end("2026-13") is None
+
+    def test_no_month_omits_cutoff_from_query_params(self):
+        """When month is None, the SQL must not carry a :cutoff bind param."""
+        db = _make_db([])
+        _build_summary(db, _WS)
+        args, kwargs = db.execute.call_args
+        params = args[1] if len(args) > 1 else kwargs.get("params", {})
+        assert "cutoff" not in params
+        # And the SQL text must not reference :cutoff either
+        sql_text = str(args[0])
+        assert ":cutoff" not in sql_text
+
+    def test_month_adds_cutoff_bind_and_sql_clause(self):
+        """Passing month=YYYY-MM must inject the end-of-month cutoff into
+        BOTH the outer WHERE and the inner MAX subquery — otherwise the
+        latest snapshot could still leak in from a later month."""
+        db = _make_db([])
+        _build_summary(db, _WS, month="2026-04")
+        args, kwargs = db.execute.call_args
+        params = args[1] if len(args) > 1 else kwargs.get("params", {})
+        assert params.get("cutoff") == datetime(2026, 5, 1, tzinfo=timezone.utc)
+        sql_text = str(args[0])
+        # Cutoff must appear TWICE — once for the MAX(recorded_at) subquery,
+        # once for the outer SELECT — otherwise the outer join can pick up
+        # a later-month snapshot for a member.
+        assert sql_text.count("recorded_at < :cutoff") == 2
+
+    def test_month_december_cutoff_rolls_year(self):
+        db = _make_db([])
+        _build_summary(db, _WS, month="2026-12")
+        args, kwargs = db.execute.call_args
+        params = args[1] if len(args) > 1 else kwargs.get("params", {})
+        assert params.get("cutoff") == datetime(2027, 1, 1, tzinfo=timezone.utc)
+
