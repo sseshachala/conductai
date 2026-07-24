@@ -196,6 +196,10 @@ class TeamSummaryOut(BaseModel):
     per_day_usd: float
     per_month_usd: float
     per_year_usd: float
+    # Observation window. per_day_usd = total_cost_saved_usd / max(1, days_observed).
+    # Consumers should render "$X/day over N days" so the projection has honest scope.
+    days_observed: int
+    first_recorded_at: str | None
     tools_installed: list[str]
 
 
@@ -204,18 +208,46 @@ def get_team_summary(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Org-level savings aggregate for conduct guard savings --team."""
+    """Org-level savings aggregate for conduct guard savings --team.
+
+    per_day_usd is the actual daily rate: cumulative USD saved divided by
+    the number of days between the earliest reported snapshot and now
+    (min 1 day, to avoid div-by-zero on the first sync). per_month and
+    per_year are honest projections of that rate.
+    """
     summary = _build_summary(db, workspace_id)
     t = summary.team_total
     total_usd = round(t.rtk_saved_usd + t.booster_saved_usd, 6)
+
+    # Earliest snapshot across all members in this workspace's org scope.
+    first_ts_row = db.execute(
+        text("""
+            SELECT MIN(recorded_at) AS first_ts
+            FROM guard_savings
+            WHERE workspace_id = :ws
+        """),
+        {"ws": workspace_id},
+    ).fetchone()
+    first_ts = first_ts_row.first_ts if first_ts_row else None
+
+    if first_ts is not None:
+        if first_ts.tzinfo is None:
+            first_ts = first_ts.replace(tzinfo=timezone.utc)
+        days_observed = max(1, (_now() - first_ts).days)
+    else:
+        days_observed = 1
+
+    per_day = round(total_usd / days_observed, 2)
     return TeamSummaryOut(
         workspace_id=workspace_id,
         developer_count=len(summary.by_member),
         total_tokens_saved=t.rtk_saved_tokens + t.booster_saved_tokens,
         total_cost_saved_usd=total_usd,
-        per_day_usd=round(total_usd, 2),
-        per_month_usd=round(total_usd * 30, 2),
-        per_year_usd=round(total_usd * 365, 2),
+        per_day_usd=per_day,
+        per_month_usd=round(per_day * 30, 2),
+        per_year_usd=round(per_day * 365, 2),
+        days_observed=days_observed,
+        first_recorded_at=first_ts.isoformat() if first_ts is not None else None,
         tools_installed=summary.tools_installed,
     )
 
