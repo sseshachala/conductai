@@ -114,7 +114,7 @@ export const guard = {
     },
     history: (f: AuthFetch, params?: Record<string, string>) => {
       const q = params ? `?${new URLSearchParams(params)}` : ""
-      return json<any[]>(f, `${base()}/verify/history${q}`)
+      return json<{ runs: any[] }>(f, `${base()}/verify/history${q}`)
     },
     evidence: (f: AuthFetch, params?: Record<string, string>) => {
       const q = params ? `?${new URLSearchParams(params)}` : ""

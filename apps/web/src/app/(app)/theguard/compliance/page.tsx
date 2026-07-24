@@ -172,8 +172,8 @@ function ScoreHistory({ wsId, authFetch }: { wsId: string; authFetch: any }) {
     let cancelled = false
     ;(async () => {
       try {
-        const data = await guard.verify.history(authFetch, { workspace_id: wsId, limit: "30" })
-        if (!cancelled) setRuns(data)
+        const data: any = await guard.verify.history(authFetch, { workspace_id: wsId, limit: "30" })
+        if (!cancelled) setRuns(Array.isArray(data) ? data : (data?.runs ?? []))
       } catch {
         // silently leave runs empty
       } finally {
