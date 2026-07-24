@@ -74,5 +74,4 @@ apps/web/CLAUDE.md
 
 # Internal-only docs — never publish
 docs/internal/
-tools/booster/demos/
 .env*.local

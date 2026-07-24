@@ -542,7 +542,13 @@ async def mcp_sse(
             headers=resp_headers,
         )
 
+    # Build the POST endpoint URL from the request so it works across envs
+    base_url = str(request.base_url).rstrip("/")
+    post_url = f"{base_url}/guard/mcp"
+
     async def event_stream():
+        # MCP SSE transport: client waits for this before sending initialize
+        yield f"event: endpoint\ndata: {post_url}\n\n"
         yield ": keepalive\n\n"
         while True:
             await asyncio.sleep(15)
