@@ -314,6 +314,8 @@ def _detect_surface(client_info: dict) -> str:
         return "cursor"
     if "windsurf" in name:
         return "windsurf"
+    if "copilot" in name or "github" in name:
+        return "copilot"
     return "unknown"
 
 
