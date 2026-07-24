@@ -45,7 +45,7 @@ def post_session_to_api(session_id: str, transcript_path: str | None, repo: str 
     if not cfg:
         return False
     server = cfg.get("server", "").rstrip("/")
-    api_key = cfg.get("api_key", "")
+    api_key = cfg.get("agent_token", "")
     workspace_id = cfg.get("workspace_id") or cfg.get("workspace", "")
     if not server or not workspace_id:
         return False
@@ -96,7 +96,7 @@ def post_session_to_api(session_id: str, transcript_path: str | None, repo: str 
                 data=payload,
                 headers={
                     "Content-Type": "application/json",
-                    "X-API-Key": api_key,
+                    "Authorization": f"Bearer {api_key}",
                     "X-Workspace-ID": workspace_id,
                 },
                 method="POST",
@@ -116,7 +116,7 @@ def search_team_memory(query: str, repo: str | None = None, limit: int = 5) -> l
     if not cfg:
         return []
     server = cfg.get("server", "").rstrip("/")
-    api_key = cfg.get("api_key", "")
+    api_key = cfg.get("agent_token", "")
     workspace_id = cfg.get("workspace_id") or cfg.get("workspace", "")
     if not server or not workspace_id:
         return []
@@ -130,7 +130,7 @@ def search_team_memory(query: str, repo: str | None = None, limit: int = 5) -> l
         req = urllib.request.Request(
             url,
             headers={
-                "X-API-Key": api_key,
+                "Authorization": f"Bearer {api_key}",
                 "X-Workspace-ID": workspace_id,
             },
         )

@@ -276,11 +276,12 @@ _PERSONA_LABELS = {
 }
 
 
-def _ensure_persona(workspace_id: str, api_key: str, base_url: str) -> str:
+def _ensure_persona(workspace_id: str, base_url: str) -> str:
     """Prompt for persona if none is set yet. Saves choice to guard config and API.
 
     Returns the active persona name. Skips prompt silently if already set.
     """
+    agent_token = _default_agent_token() or ""
     cfg = _load_guard_config()
     if cfg.get("persona"):
         return cfg["persona"]
@@ -310,7 +311,7 @@ def _ensure_persona(workspace_id: str, api_key: str, base_url: str) -> str:
             "PATCH",
             f"{base_url}/guard/config/persona",
             body={"persona": chosen},
-            api_key=api_key,
+            token=agent_token or None,
         )
     except Exception:
         pass  # non-fatal — local config still records the choice
@@ -352,7 +353,7 @@ def _require_guard_config() -> dict:
     if not cfg or not ws:
         print(f"{RED}Guard not connected. Run: conduct login{RESET}", file=sys.stderr)
         sys.exit(0)
-    if not cfg.get("agent_token") and not cfg.get("api_key"):
+    if not cfg.get("agent_token"):
         print(f"{RED}Guard config is missing credentials. Run: conduct login{RESET}", file=sys.stderr)
         sys.exit(0)
     return cfg
@@ -589,22 +590,10 @@ def _patch_tool_instruction_files(agent_token: str, api_url: str, dry_run: bool 
     MARKER_END   = "<!-- /ConductGuard -->"
     GUARD_RULES  = _GUARD_RULES_TEXT
 
-    # Pull team instructions from API (non-fatal)
-    # Only write if admin has explicitly published (version != "v0")
-    team_content = ""
-    try:
-        resp = _req("GET", f"{api_url}/team-os/instructions", token=agent_token)
-        if (resp.get("version") or "v0") != "v0":
-            team_content = (resp.get("content") or "").strip()
-    except Exception:
-        pass
-
-    parts = [MARKER_START, "## ConductGuard Policy"]
-    if team_content:
-        parts.append(team_content)
-    parts.append(GUARD_RULES)
-    parts.append(MARKER_END)
-    guard_block = "\n".join(parts)
+    # Guard-only for now — team-os instructions are hidden pending redesign.
+    # This block just ensures every AI tool knows to invoke Guard via hooks
+    # or the conduct-guard MCP before taking action.
+    guard_block = "\n".join([MARKER_START, "## ConductGuard Policy", GUARD_RULES, MARKER_END])
 
     repo_root: Path | None = None
     for parent in [Path.cwd(), *Path.cwd().parents]:
@@ -758,12 +747,26 @@ def _install_codex_hook(hook_path: Path) -> None:
 
 # ── HTTP helpers (no third-party deps — mirrors api.py style) ─────────────────
 
-def _req(method: str, url: str, body=None, token: str = None, api_key: str = None, timeout: int = 20) -> dict:
+def _default_agent_token() -> str | None:
+    """Read the agent_token minted by `conduct login` from ~/.conduct/config.json.
+    This is the CLI's single canonical credential — every call to the central
+    API should carry it via Authorization: Bearer."""
+    try:
+        cfg_path = Path.home() / ".conduct" / "config.json"
+        if cfg_path.exists():
+            return json.loads(cfg_path.read_text()).get("agent_token") or None
+    except Exception:
+        pass
+    return None
+
+
+def _req(method: str, url: str, body=None, token: str = None, timeout: int = 20) -> dict:
+    # If no explicit token passed, fall back to the login-minted agent_token.
+    if not token:
+        token = _default_agent_token()
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    if api_key:
-        headers["X-Api-Key"] = api_key
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
@@ -899,10 +902,10 @@ def _install_claude_hook(hook_path: Path) -> None:
 
 def cmd_guard_install(args):
     """Called automatically from `conduct login`. Sets up Guard: downloads policies, installs hook + MCP."""
-    api_key = getattr(args, "api_key", None)
-    server  = (getattr(args, "server", None) or "https://api.conductai.ai").rstrip("/")
+    agent_token = getattr(args, "agent_token", None)
+    server      = (getattr(args, "server", None) or "https://api.conductai.ai").rstrip("/")
 
-    # Load workspace_id from ~/.conduct/config.json
+    # Load workspace_id (and fallback agent_token) from ~/.conduct/config.json
     conduct_cfg_path = Path.home() / ".conduct" / "config.json"
     conduct_cfg: dict = {}
     if conduct_cfg_path.exists():
@@ -912,7 +915,9 @@ def cmd_guard_install(args):
             pass
 
     workspace_id = conduct_cfg.get("workspace")
-    if not workspace_id or not api_key:
+    if not agent_token:
+        agent_token = conduct_cfg.get("agent_token")
+    if not workspace_id or not agent_token:
         return  # nothing to do
 
     print(f"  Setting up Guard…")
@@ -920,16 +925,16 @@ def cmd_guard_install(args):
     result = _req(
         "GET",
         f"{server}/guard/config/installed?workspace_id={workspace_id}",
-        api_key=api_key,
+        token=agent_token or None,
     )
 
     if not result.get("installed"):
         print(f"  {GRAY}Guard not installed for this workspace — skipping{RESET}")
         return
 
-    agent_token    = result.get("agent_token") or ""
-    user_email     = result.get("user_email") or ""
-    clerk_user_id  = result.get("clerk_user_id") or ""
+    resp_agent_token = result.get("agent_token") or agent_token
+    user_email       = result.get("user_email") or ""
+    clerk_user_id    = result.get("clerk_user_id") or ""
 
     # Persona selection — prompt once, skip if already chosen
 
@@ -937,10 +942,9 @@ def cmd_guard_install(args):
     import time as _time
     _save_guard_config({
         "workspace_id":          workspace_id,
-        "agent_token":           agent_token,
+        "agent_token":           resp_agent_token,
         "user_email":            user_email,
         "clerk_user_id":         clerk_user_id,
-        "api_key":               api_key,
         "api_url":               server,
         "last_synced_at":        _time.time(),
     })
@@ -1250,24 +1254,20 @@ def _report_tools_to_server() -> None:
         base_url = _api_url(cfg)
         email = cfg.get("user_email", "")
         token = cfg.get("agent_token", "")
-        api_key = cfg.get("api_key", "")
-
         if not email:
             return
-
-        # Also pull conduct API key for X-Api-Key auth (member_token is not accepted by this endpoint)
         conduct_cfg_path = Path.home() / ".conduct" / "config.json"
-        conduct_api_key = ""
+        conduct_agent_token = ""
         if conduct_cfg_path.exists():
             try:
-                conduct_api_key = json.loads(conduct_cfg_path.read_text()).get("api_key", "")
+                conduct_agent_token = json.loads(conduct_cfg_path.read_text()).get("agent_token", "")
             except Exception:
                 pass
 
         payload = json.dumps({"email": email, "tools": tools}).encode()
         headers = {"Content-Type": "application/json"}
-        if conduct_api_key and conduct_api_key.startswith("cond_live_"):
-            headers["X-Api-Key"] = conduct_api_key
+        if conduct_agent_token and conduct_agent_token.startswith("cond_live_"):
+            headers["Authorization"] = f"Bearer {conduct_agent_token}"
         elif token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
@@ -1471,14 +1471,6 @@ def cmd_guard_sync(args):
             print(f"  {YELLOW}Warning: server returned no token — proxy env may be stale{RESET}")
     except Exception as e:
         print(f"  {YELLOW}Warning: could not refresh token ({e}) — using cached value{RESET}")
-
-    # Fetch team instructions version so session-start hook can detect staleness
-    try:
-        ver_resp = _req("GET", f"{base_url}/team-os/instructions/version", token=_token)
-        if ver_resp.get("version"):
-            _save_guard_config({"instructions_version": ver_resp["version"]})
-    except Exception:
-        pass  # non-fatal
 
     # Write LLM proxy env vars so any AI tool (Claude Code, Cursor, Codex, …)
     # routes through Conduct Guard. Customer-overridable via --proxy-url or
@@ -1875,7 +1867,7 @@ def _ensure_booster(root: Path) -> None:
             pass
 
 
-def _report_savings(cfg: dict, base_url: str, api_key: str = "") -> None:
+def _report_savings(cfg: dict, base_url: str, agent_token: str = "") -> None:
     import subprocess
 
     rtk_data = {}
@@ -1936,12 +1928,10 @@ def _report_savings(cfg: dict, base_url: str, api_key: str = "") -> None:
     }
 
     try:
-        agent_token_evt = cfg.get("agent_token", "")
+        agent_token_evt = cfg.get("agent_token", "") or agent_token
         headers = {"Content-Type": "application/json"}
         if agent_token_evt:
             headers["Authorization"] = f"Bearer {agent_token_evt}"
-        elif api_key:
-            headers["X-Api-Key"] = api_key
         data = json.dumps(payload).encode()
         req = urllib.request.Request(
             f"{base_url}/guard/savings",
@@ -1970,13 +1960,13 @@ def cmd_guard_status(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
     user_email   = cfg.get("user_email", "")
-    api_key      = cfg.get("api_key", "")
+    agent_token  = cfg.get("agent_token", "")
     base_url     = _api_url(cfg)
 
     # Auto-refresh user_email + clerk_user_id into config if missing
-    if (not user_email or not cfg.get("clerk_user_id")) and api_key:
+    if (not user_email or not cfg.get("clerk_user_id")) and agent_token:
         try:
-            installed = _req("GET", f"{base_url}/guard/config/installed", api_key=api_key)
+            installed = _req("GET", f"{base_url}/guard/config/installed", token=agent_token or None)
             fetched_email = installed.get("user_email") or ""
             fetched_clerk = installed.get("clerk_user_id") or ""
             if fetched_email:
@@ -2000,7 +1990,7 @@ def cmd_guard_status(args):
         spend = _req(
             "GET",
             f"{base_url}/guard/spend?workspace_id={workspace_id}",
-            api_key=api_key,
+            token=agent_token or None,
         )
     except SystemExit:
         pass
@@ -2020,7 +2010,7 @@ def cmd_guard_status(args):
                 f"&since={today_iso}"
                 f"&limit=20"
             ),
-            api_key=api_key,
+            token=agent_token or None,
         )
         if not isinstance(events, list):
             events = events.get("events", [])
@@ -2101,14 +2091,14 @@ def cmd_guard_status(args):
 def cmd_guard_savings(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("api_key", "")
+    agent_token  = cfg.get("agent_token", "")
     base_url     = _api_url(cfg)
 
     try:
         data = _req(
             "GET",
             f"{base_url}/guard/savings/team-summary?workspace_id={workspace_id}",
-            api_key=api_key,
+            token=agent_token or None,
         )
     except Exception:
         print(f"{RED}Failed to fetch team savings.{RESET}")
@@ -2168,7 +2158,7 @@ def cmd_guard_audit(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
     user_email   = cfg.get("user_email", "")
-    api_key      = cfg.get("api_key", "")
+    agent_token  = cfg.get("agent_token", "")
     base_url     = _api_url(cfg)
 
     since_str = getattr(args, "since", None) or "24h"
@@ -2183,7 +2173,7 @@ def cmd_guard_audit(args):
             f"&since={since_iso}"
             f"&limit=50"
         ),
-        api_key=api_key,
+        token=agent_token or None,
     )
     events = events_resp if isinstance(events_resp, list) else events_resp.get("events", [])
 
@@ -2493,7 +2483,7 @@ def _watch_loop():
             c       = _cfg()
             api_url = _api_url(c)
             token   = c.get("agent_token", "")
-            api_key = c.get("api_key", "")
+            agent_token = c.get("agent_token", "")
             agents = []
             for name, config_path, mcp_key in _discover_config_agents():
                 agents.append({
@@ -2513,7 +2503,7 @@ def _watch_loop():
                 pass
             _req("POST", f"{api_url}/guard/discover/scan",
                  body={"triggered_by": "watch", "agents": agents},
-                 token=token, api_key=api_key)
+                 token=token or agent_token)
         except Exception:
             pass
         time.sleep(_WATCH_INTERVAL)
@@ -2669,7 +2659,6 @@ def cmd_guard_discover(args):
     cfg      = _load_guard_config()
     api_url  = _api_url(cfg)
     token    = cfg.get("agent_token", "")
-    api_key  = cfg.get("api_key", "")
     hdrs     = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     # Config file scan — detect AI tools from known config dirs
@@ -2729,7 +2718,7 @@ def cmd_guard_discover(args):
                 "proxy_routed": t.get("proxy_routed", False),
             })
         payload = {"triggered_by": "cli", "agents": agents_payload}
-        _req("POST", f"{api_url}/guard/discover/scan", body=payload, token=token, api_key=api_key)
+        _req("POST", f"{api_url}/guard/discover/scan", body=payload, token=token)
     except SystemExit:
         pass  # 401/network errors — local output still useful
 
@@ -2943,14 +2932,14 @@ def cmd_verify(args) -> None:
 
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("api_key", "")
+    agent_token  = cfg.get("agent_token", "")
     base_url     = _api_url(cfg)
 
     # ── fetch evidence from API ───────────────────────────────────────────────
     ev = _req(
         "GET",
         f"{base_url}/guard/verify/evidence?workspace_id={workspace_id}",
-        api_key=api_key,
+        token=agent_token or None,
     )
 
     grade        = ev.get("grade", "F")
@@ -2967,7 +2956,7 @@ def cmd_verify(args) -> None:
         run_result = _req(
             "POST",
             f"{base_url}/guard/verify/run?workspace_id={workspace_id}",
-            api_key=api_key,
+            token=agent_token or None,
         )
         if fmt == "json":
             print(_json.dumps(run_result, indent=2))

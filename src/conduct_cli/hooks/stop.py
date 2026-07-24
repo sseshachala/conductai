@@ -26,7 +26,7 @@ def _post_intent(session_id: str, ai_tool: str, cwd: str | None) -> None:
             return
         cfg = _json.loads(cfg_path.read_text())
         server = cfg.get("server", "").rstrip("/")
-        api_key = cfg.get("api_key", "")
+        agent_token = cfg.get("agent_token", "")
         workspace_id = cfg.get("workspace_id") or cfg.get("workspace", "")
         if not server or not session_id:
             return
@@ -43,7 +43,7 @@ def _post_intent(session_id: str, ai_tool: str, cwd: str | None) -> None:
             data=payload,
             headers={
                 "Content-Type": "application/json",
-                "X-API-Key": api_key,
+                "Authorization": f"Bearer {agent_token}",
                 "X-Workspace-ID": workspace_id,
             },
             method="PATCH",
