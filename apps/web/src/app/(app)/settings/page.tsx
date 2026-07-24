@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
@@ -25,7 +27,8 @@ export default function SettingsPage() {
 }
 
 function SettingsPageWithAuth() {
-  const { getToken, userId } = useAuth()
+  const { userId, getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const [isAdmin, setIsAdmin] = useState(false)
   const { activeWorkspace } = useWorkspace()
   const workspaceId = activeWorkspace?.id ?? ""
@@ -34,10 +37,7 @@ function SettingsPageWithAuth() {
     if (!workspaceId || !userId) return
     async function check() {
       try {
-        const headers: Record<string, string> = {}
-        if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-        headers["X-Workspace-ID"] = workspaceId
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${workspaceId}/my-role`, { headers })
+        const res = await authFetch(`${API}/projects/${workspaceId}/my-role`)
         if (!res.ok) { setIsAdmin(false); return }
         const data: { role: string } = await res.json()
         setIsAdmin(data.role === "admin")
@@ -52,7 +52,7 @@ function SettingsPageWithAuth() {
 // ── Organisation name editor ──────────────────────────────────────────────────
 
 function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+  const { authFetch } = useAuthFetch()
   const [orgId, setOrgId] = useState<string | null>(null)
   const [orgName, setOrgName] = useState("")
   const [inputValue, setInputValue] = useState("")
@@ -65,9 +65,7 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
     let cancelled = false
     async function load() {
       try {
-        const headers: Record<string, string> = {}
-        if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-        const res = await fetch(`${base}/organizations`, { headers })
+        const res = await authFetch(`${API}/organizations`)
         if (!res.ok || cancelled) return
         const data = await res.json()
         const org = Array.isArray(data) && data.length > 0 ? data[0] : null
@@ -90,11 +88,9 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
     setStatus("saving")
     setErrorMsg("")
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-      const res = await fetch(`${base}/organizations/${orgId}`, {
+      const res = await authFetch(`${API}/organizations/${orgId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: inputValue.trim() }),
       })
       if (!res.ok) {

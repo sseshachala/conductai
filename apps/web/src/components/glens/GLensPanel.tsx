@@ -1,4 +1,5 @@
 "use client"
+import { API } from "@/lib/api"
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { usePathname, useRouter } from "next/navigation"
@@ -284,8 +285,7 @@ export function GLensPanel() {
 
   useEffect(() => {
     if (!isGuardPage) return
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    authFetch(`${base}/glens/status`)
+    authFetch(`${API}/glens/status`)
       .then(r => r.ok ? r.json() : { installed: false })
       .then(d => setGlensEnabled(d.installed))
       .catch(() => setGlensEnabled(false))
@@ -311,8 +311,7 @@ export function GLensPanel() {
 
   useEffect(() => {
     if (!open || !workspaceId) return
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    authFetch(`${base}/glens/sessions`)
+    authFetch(`${API}/glens/sessions`)
       .then(r => r.ok ? r.json() : [])
       .then((list: GLensSession[]) => {
         setSessions(list)
@@ -347,8 +346,7 @@ export function GLensPanel() {
   }
 
   async function deleteSession(id: string) {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    await authFetch(`${base}/glens/sessions/${id}`, { method: "DELETE" }).catch(() => {})
+    await authFetch(`${API}/glens/sessions/${id}`, { method: "DELETE" }).catch(() => {})
     setSessions(prev => prev.filter(s => s.id !== id))
     if (sessionId === id) startNew()
   }
@@ -356,9 +354,8 @@ export function GLensPanel() {
   async function restoreSession(id: string) {
     setLoading(true)
     setShowHistory(false)
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
-      const res = await authFetch(`${base}/glens/sessions/${id}`)
+      const res = await authFetch(`${API}/glens/sessions/${id}`)
       if (!res.ok) return
       const data = await res.json()
       setSessionId(data.id)
@@ -401,12 +398,11 @@ export function GLensPanel() {
     setMessages(prev => [...prev, { role: "user", text }, { role: "assistant", kind: "loading" }])
     setLoading(true)
 
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     try {
       const body: Record<string, unknown> = { message: text }
       if (sessionId) body.session_id = sessionId
 
-      const res = await authFetch(`${base}/glens/chat/stream`, {
+      const res = await authFetch(`${API}/glens/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

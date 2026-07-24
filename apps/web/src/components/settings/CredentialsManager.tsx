@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { credentials } from "@/lib/api"
 
 interface Credential {
   handle: string
@@ -131,14 +132,7 @@ const SERVICES: ServiceDef[] = [
 
 
 export default function CredentialsManager({ isAdmin = true }: { isAdmin?: boolean }) {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  if (clerkEnabled) return <CredentialsManagerWithAuth isAdmin={isAdmin} />
-  return <CredentialsManagerInner getToken={null} isAdmin={isAdmin} />
-}
-
-function CredentialsManagerWithAuth({ isAdmin }: { isAdmin: boolean }) {
-  const { getToken } = useAuth()
-  return <CredentialsManagerInner getToken={getToken} isAdmin={isAdmin} />
+  return <CredentialsManagerInner isAdmin={isAdmin} />
 }
 
 function EyeIcon({ open }: { open: boolean }) {
@@ -154,9 +148,10 @@ function EyeIcon({ open }: { open: boolean }) {
   )
 }
 
-function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promise<string | null>) | null; isAdmin: boolean }) {
+function CredentialsManagerInner({ isAdmin }: { isAdmin: boolean }) {
   const { activeWorkspace } = useWorkspace()
-  const [credentials, setCredentials] = useState<Credential[]>([])
+  const { authFetch } = useAuthFetch()
+  const [credentialsList, setCredentialsList] = useState<Credential[]>([])
   const [openService, setOpenService] = useState<string | null>(null)
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
   const [showFields, setShowFields] = useState<Record<string, boolean>>({})
@@ -168,50 +163,29 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
   const [confirmValue, setConfirmValue] = useState("")
   const [error, setError] = useState("")
 
-  const connectedServices = new Set(credentials.map(c => c.service))
-
-  async function buildHeaders(contentType = false): Promise<Record<string, string>> {
-    const headers: Record<string, string> = {}
-    if (contentType) headers["Content-Type"] = "application/json"
-    if (getToken) {
-      const token = await getToken()
-      if (token) headers["Authorization"] = `Bearer ${token}`
-    }
-    const ws = activeWorkspace?.id ?? ""
-    if (ws) headers["X-Workspace-Id"] = ws
-    return headers
-  }
+  const connectedServices = new Set(credentialsList.map(c => c.service))
 
   async function revealCredential(handle: string) {
     if (revealedValues[handle]) {
-      // toggle off
       setRevealedValues(prev => { const n = { ...prev }; delete n[handle]; return n })
       return
     }
     setRevealing(handle)
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/reveal/${handle}`, { headers })
-      if (res.ok) {
-        const data = await res.json()
-        setRevealedValues(prev => ({ ...prev, [handle]: data }))
-        setTimeout(() => setRevealedValues(prev => { const n = { ...prev }; delete n[handle]; return n }), 30_000)
-      }
+      const data = await credentials.reveal(authFetch, handle)
+      setRevealedValues(prev => ({ ...prev, [handle]: data }))
+      setTimeout(() => setRevealedValues(prev => { const n = { ...prev }; delete n[handle]; return n }), 30_000)
     } finally { setRevealing(null) }
   }
 
   async function loadCredentials() {
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers })
-      if (res.ok) {
-        const data = await res.json()
-        if (Array.isArray(data)) setCredentials(data)
-      }
+      const data = await credentials.list(authFetch)
+      if (Array.isArray(data)) setCredentialsList(data)
     } catch { /* silent */ }
   }
 
-  useEffect(() => { loadCredentials() }, [])
+  useEffect(() => { loadCredentials() }, [activeWorkspace?.id])
 
   function toggleService(svc: string) {
     if (openService === svc) {
@@ -227,7 +201,6 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
   async function handleSave(svc: ServiceDef) {
     const credObj: Record<string, string> = {}
     for (const f of svc.fields) {
-      // For select fields, fall back to first option if user never touched it
       const defaultVal = f.options ? f.options[0].value : ""
       const val = (fieldValues[f.key] ?? defaultVal).trim()
       if (!val && !f.optional) {
@@ -240,24 +213,14 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
     setSaving(true)
     setError("")
     try {
-      const postHeaders = await buildHeaders(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, {
-        method: "POST",
-        headers: postHeaders,
-        body: JSON.stringify({ service: svc.value, handle: svc.value, credentials: credObj }),
-      })
+      const res = await credentials.create(authFetch, { service: svc.value, handle: svc.value, credentials: credObj })
       if (!res.ok) {
         let msg = "Failed to save — check your token and try again."
         try { const b = await res.json(); if (b.detail) msg = b.detail } catch {}
         setError(msg)
         return
       }
-      const listHeaders = await buildHeaders()
-      const listRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers: listHeaders })
-      if (listRes.ok) {
-        const list = await listRes.json()
-        if (Array.isArray(list)) setCredentials(list)
-      }
+      await loadCredentials()
       setOpenService(null)
       setFieldValues({})
     } catch {
@@ -271,14 +234,13 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
     setDeleting(handle)
     setError("")
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/${handle}`, { method: "DELETE", headers })
+      const res = await credentials.remove(authFetch, handle)
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setError(body.detail ?? "Failed to remove credential")
         return
       }
-      setCredentials(prev => prev.filter(c => c.handle !== handle))
+      setCredentialsList(prev => prev.filter(c => c.handle !== handle))
     } finally {
       setDeleting(null)
     }
@@ -289,7 +251,7 @@ function CredentialsManagerInner({ getToken, isAdmin }: { getToken: (() => Promi
       {SERVICES.map(svc => {
         const isConnected = connectedServices.has(svc.value)
         const isOpen = openService === svc.value
-        const cred = credentials.find(c => c.service === svc.value)
+        const cred = credentialsList.find(c => c.service === svc.value)
 
         return (
           <div

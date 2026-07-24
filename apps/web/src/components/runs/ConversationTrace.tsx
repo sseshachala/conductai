@@ -1,4 +1,5 @@
 "use client"
+import { API } from "@/lib/api"
 
 import { useEffect, useState } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -93,7 +94,7 @@ export default function ConversationTrace({ workflowId, runId, getToken }: Props
       try {
         const headers = await buildHeaders(getToken, activeWorkspace?.id)
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/trace`,
+          `${API}/workflows/${workflowId}/runs/${runId}/trace`,
           { headers }
         )
         if (!res.ok) throw new Error(`${res.status}`)

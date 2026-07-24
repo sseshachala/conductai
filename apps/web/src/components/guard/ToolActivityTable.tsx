@@ -7,8 +7,9 @@
  */
 "use client"
 
-import { useAuth } from "@clerk/nextjs"
 import { useCallback, useEffect, useState } from "react"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 
 type ToolEvent = {
   event_id:   string
@@ -44,7 +45,7 @@ function formatTs(ts: string | null): string {
 }
 
 export default function ToolActivityTable({ workspaceId }: Props) {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const [rows, setRows] = useState<ToolEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -54,25 +55,15 @@ export default function ToolActivityTable({ workspaceId }: Props) {
     setLoading(true)
     setError(null)
     try {
-      const token = await getToken()
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const params = new URLSearchParams({
-        workspace_id: workspaceId,
-        source: "tool",
-        limit: "100",
-      })
-      const res = await fetch(`${base}/guard/events/unified?${params}`, { headers })
-      if (!res.ok) throw new Error("Failed to load tool events")
-      const body = await res.json()
+      const params = { workspace_id: workspaceId, source: "tool", limit: "100" }
+      const body = await guard.events.unified(authFetch, params)
       setRows(body.items ?? [])
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load tool events")
     } finally {
       setLoading(false)
     }
-  }, [getToken, workspaceId])
+  }, [authFetch, workspaceId])
 
   useEffect(() => {
     load()

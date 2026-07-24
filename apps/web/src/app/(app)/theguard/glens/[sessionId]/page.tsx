@@ -5,6 +5,7 @@ import { useParams } from "next/navigation"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api/client"
 import { GlensDashboard } from "@/components/glens/GlensDashboard"
 import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
 
@@ -48,8 +49,7 @@ export default function GLensFullPage() {
       setError(null)
 
       try {
-        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const res = await authFetch(`${base}/glens/sessions/${sessionId}`, {
+        const res = await authFetch(`${API}/glens/sessions/${sessionId}`, {
           signal: controller.signal,
         })
 

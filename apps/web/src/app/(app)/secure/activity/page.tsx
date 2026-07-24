@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
 import { SecureShell, SeverityPill, StatusBadge, SEVERITY_STYLES, STATUS_TRANSITIONS } from "../_components"
 import { timeAgo } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
-import { buildWorkspaceHeaders } from "@/lib/workspaceHeaders"
 
 type Severity = "critical" | "high" | "medium" | "low" | "info"
 type FindingStatus = "open" | "triaging" | "fixed" | "dismissed"
@@ -32,7 +32,7 @@ export default function SecureActivityPage() {
 }
 
 function ActivityContent() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
   const wsId = activeWorkspace?.id
   const [findings, setFindings] = useState<SecurityFinding[]>([])
@@ -45,17 +45,15 @@ function ActivityContent() {
   const [updating, setUpdating] = useState<Record<string, boolean>>({})
   const [triggering, setTriggering] = useState<Record<string, boolean>>({})
 
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const headers = buildWorkspaceHeaders(await getToken())
-      const res = await fetch(`${base}/security-findings?workspace_id=${wsId}&days=${filterDays}&limit=500`, { headers })
+      const res = await authFetch(`${API}/security-findings?workspace_id=${wsId}&days=${filterDays}&limit=500`)
       if (res.ok) setFindings(await res.json())
     } catch {}
     finally { setLoading(false) }
-  }, [base, wsId, getToken, filterDays])
+  }, [authFetch, wsId, filterDays])
 
   useEffect(() => {
     load()
@@ -66,10 +64,9 @@ function ActivityContent() {
   const updateStatus = useCallback(async (id: string, next: FindingStatus) => {
     setUpdating(u => ({ ...u, [id]: true }))
     try {
-      const headers = buildWorkspaceHeaders(await getToken())
-      const res = await fetch(`${base}/security-findings/${id}?workspace_id=${wsId}`, {
+      const res = await authFetch(`${API}/security-findings/${id}?workspace_id=${wsId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: next }),
       })
       if (res.ok) {
@@ -78,14 +75,13 @@ function ActivityContent() {
       }
     } catch {}
     finally { setUpdating(u => ({ ...u, [id]: false })) }
-  }, [base, wsId, getToken])
+  }, [authFetch, wsId])
 
   const triggerFix = useCallback(async (id: string) => {
     setTriggering(t => ({ ...t, [id]: true }))
     try {
-      const headers = buildWorkspaceHeaders(await getToken())
-      const res = await fetch(`${base}/security-findings/${id}/trigger-fix?workspace_id=${wsId}`, {
-        method: "POST", headers,
+      const res = await authFetch(`${API}/security-findings/${id}/trigger-fix?workspace_id=${wsId}`, {
+        method: "POST",
       })
       if (res.ok) {
         const r = await res.json()
@@ -95,7 +91,7 @@ function ActivityContent() {
       }
     } catch {}
     finally { setTriggering(t => ({ ...t, [id]: false })) }
-  }, [base, wsId, getToken])
+  }, [authFetch, wsId])
 
   const tools = Array.from(new Set(findings.map(f => f.tool).filter(Boolean))) as string[]
 

@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useGuardRole } from "@/hooks/useGuardRole"
-import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 
 interface ControlStatus { id: string; name: string; status: string; control: string }
 interface Evidence {
@@ -62,7 +63,7 @@ export default function CompliancePage() {
   return <AppShell><GuardShell><ComplianceContent /></GuardShell></AppShell>
 }
 
-function VerifyRunPanel({ wsId, base, getToken }: { wsId: string; base: string; getToken: () => Promise<string | null> }) {
+function VerifyRunPanel({ wsId, authFetch }: { wsId: string; authFetch: any }) {
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<VerifyRunOut | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
@@ -71,10 +72,7 @@ function VerifyRunPanel({ wsId, base, getToken }: { wsId: string; base: string; 
     setRunning(true)
     setRunError(null)
     try {
-      const token = await getToken()
-      const h: Record<string, string> = { "Content-Type": "application/json" }
-      if (token) h["Authorization"] = `Bearer ${token}`
-      const res = await fetch(`${base}/guard/verify/run?workspace_id=${wsId}`, { method: "POST", headers: h })
+      const res = await guard.verify.run(authFetch, { workspace_id: wsId })
       if (!res.ok) throw new Error(`Verification failed (${res.status})`)
       const data = await res.json()
       setResult(data)
@@ -165,7 +163,7 @@ function VerifyRunPanel({ wsId, base, getToken }: { wsId: string; base: string; 
   )
 }
 
-function ScoreHistory({ wsId, base, getToken }: { wsId: string; base: string; getToken: () => Promise<string | null> }) {
+function ScoreHistory({ wsId, authFetch }: { wsId: string; authFetch: any }) {
   const [runs, setRuns] = useState<VerifyRunSummary[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -174,12 +172,7 @@ function ScoreHistory({ wsId, base, getToken }: { wsId: string; base: string; ge
     let cancelled = false
     ;(async () => {
       try {
-        const token = await getToken()
-        const h: Record<string, string> = {}
-        if (token) h["Authorization"] = `Bearer ${token}`
-        const res = await fetch(`${base}/guard/verify/history?workspace_id=${wsId}&limit=30`, { headers: h })
-        if (!res.ok) throw new Error(`Failed (${res.status})`)
-        const data = await res.json()
+        const data = await guard.verify.history(authFetch, { workspace_id: wsId, limit: "30" })
         if (!cancelled) setRuns(data)
       } catch {
         // silently leave runs empty
@@ -188,7 +181,7 @@ function ScoreHistory({ wsId, base, getToken }: { wsId: string; base: string; ge
       }
     })()
     return () => { cancelled = true }
-  }, [wsId, base, getToken])
+  }, [wsId, authFetch])
 
   const recent = runs.slice(0, 10)
 
@@ -271,7 +264,7 @@ function ScoreHistory({ wsId, base, getToken }: { wsId: string; base: string; ge
 }
 
 function ComplianceContent() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
   const wsId = activeWorkspace?.id ?? null
   const router = useRouter()
@@ -279,7 +272,6 @@ function ComplianceContent() {
   useEffect(() => {
     if (!roleLoading && !permissions.canEditPolicies) router.replace("/theguard")
   }, [roleLoading, permissions.canEditPolicies, router])
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
   const [evidence, setEvidence] = useState<Evidence | null>(null)
   const [loading, setLoading] = useState(true)
@@ -290,12 +282,7 @@ function ComplianceContent() {
     let cancelled = false
     ;(async () => {
       try {
-        const token = await getToken()
-        const h: Record<string, string> = {}
-        if (token) h["Authorization"] = `Bearer ${token}`
-        const res = await fetch(`${base}/guard/verify/evidence?workspace_id=${wsId}`, { headers: h })
-        if (!res.ok) throw new Error(`Failed to load evidence (${res.status})`)
-        const data = await res.json()
+        const data = await guard.verify.evidence(authFetch, { workspace_id: wsId })
         if (!cancelled) setEvidence(data)
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load")
@@ -304,7 +291,7 @@ function ComplianceContent() {
       }
     })()
     return () => { cancelled = true }
-  }, [wsId, base, getToken])
+  }, [wsId, authFetch])
 
   function downloadEvidence() {
     if (!evidence) return
@@ -390,8 +377,8 @@ function ComplianceContent() {
 
       {wsId && (
         <>
-          <VerifyRunPanel wsId={wsId} base={base} getToken={getToken} />
-          <ScoreHistory wsId={wsId} base={base} getToken={getToken} />
+          <VerifyRunPanel wsId={wsId} authFetch={authFetch} />
+          <ScoreHistory wsId={wsId} authFetch={authFetch} />
         </>
       )}
     </div>

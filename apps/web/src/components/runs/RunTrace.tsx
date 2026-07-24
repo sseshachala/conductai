@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { duration as formatDuration } from "@/lib/runUtils"
+import { API } from "@/lib/api"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 interface RunEvent {
@@ -699,7 +700,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   const refreshMeta = async () => {
     try {
       const headers = await buildHeaders(getToken, activeWorkspace?.id)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
+      const res = await fetch(`${API}/workflows/${workflowId}/runs/${runId}`, { headers })
       if (res.ok) {
         const run = await res.json()
         setMeta({
@@ -721,7 +722,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   useEffect(() => {
     if (!done) return
     buildHeaders(getToken, activeWorkspace?.id).then(headers =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers })
+      fetch(`${API}/workflows/${workflowId}/runs/${runId}`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(run => {
           if (!run) return
@@ -758,7 +759,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         if (token) params.set("token", token)
         if (wsId) params.set("workspace_id", wsId)
         const qs = params.toString() ? `?${params.toString()}` : ""
-        es = new EventSource(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/stream${qs}`)
+        es = new EventSource(`${API}/workflows/${workflowId}/runs/${runId}/stream${qs}`)
         es.onopen = () => { setSseError(false); attempt = 0; onSseConnected?.() }
         es.onmessage = (e) => {
           if (e.data === "[DONE]") { setDone(true); es?.close(); onSseEnded?.(); refreshMeta(); return }
@@ -890,7 +891,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
     try {
       const headers = await buildHeaders(getToken, activeWorkspace?.id)
       headers["Content-Type"] = "application/json"
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/approve`, {
+      const res = await fetch(`${API}/workflows/${workflowId}/runs/${runId}/approve`, {
         method: "POST", headers,
         body: JSON.stringify({ decision, approver: "canvas-user" }),
       })

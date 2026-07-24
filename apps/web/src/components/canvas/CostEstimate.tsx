@@ -4,6 +4,8 @@ import { useState } from "react"
 import { type BlockNodeData } from "./BlockNode"
 import { type Node } from "@xyflow/react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { workflows, credentials } from "@/lib/api"
+import type { AuthFetch } from "@/lib/api"
 
 interface BlockEstimate {
   block_id: string
@@ -71,10 +73,12 @@ export default function CostEstimate({ workflowId, nodes, getToken }: Props) {
     setLoading(true)
     setError("")
     try {
-      const headers: Record<string, string> = activeWorkspace?.id ? { "X-Workspace-Id": activeWorkspace.id } : {}
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
+      const wsId = activeWorkspace?.id ?? null
+      const authFetch: AuthFetch = async (url, opts) => {
+        const headers: Record<string, string> = { ...(opts?.headers as Record<string, string> | undefined) }
+        if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+        if (wsId) headers["X-Workspace-ID"] = wsId
+        return fetch(url, { ...opts, headers })
       }
 
       // Find trigger block — read repo_allowlist + label to count matching issues
@@ -95,26 +99,16 @@ export default function CostEstimate({ workflowId, nodes, getToken }: Props) {
           let total = 0
           await Promise.all(repos.map(async (repo) => {
             try {
-              const r = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/credentials/github/issues?repo=${encodeURIComponent(repo)}&label=${encodeURIComponent(label)}`,
-                { headers }
-              )
-              if (r.ok) {
-                const issues = await r.json()
-                total += Array.isArray(issues) ? issues.length : 0
-              }
+              const issues = await credentials.github.issues(authFetch, { repo, label })
+              total += Array.isArray(issues) ? issues.length : 0
             } catch { /* skip */ }
           }))
           issuesCount = Math.max(1, total)
         }
       }
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/estimate?issues=${issuesCount}`,
-        { headers }
-      )
-      if (!res.ok) throw new Error("Failed to estimate")
-      setEstimate(await res.json())
+      const estimate = await workflows.estimate(authFetch, workflowId, { issues: issuesCount })
+      setEstimate(estimate)
       setOpen(true)
     } catch {
       setError("Could not load estimate")

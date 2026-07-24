@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
@@ -703,7 +704,7 @@ export default function PoliciesPage() {
 }
 
 function PoliciesContent() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const searchParams = useSearchParams()
   useEffect(() => {
     const p = searchParams.get("persona")
@@ -729,17 +730,7 @@ function PoliciesContent() {
   const [editSaving, setEditSaving] = useState(false)
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
   const canWrite = !permissionsLoading && permissions.canEditPolicies
-
-  const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (getToken) {
-      const t = await getToken()
-      if (t) headers["Authorization"] = `Bearer ${t}`
-    }
-    return headers
-  }, [getToken])
 
   useEffect(() => {
     if (!teamLoading && !teamId) setLoading(false)
@@ -751,11 +742,7 @@ function PoliciesContent() {
       setLoading(true)
       setError(null)
       try {
-        const headers = await authHeaders()
-        const qs = `?workspace_id=${encodeURIComponent(teamId ?? "")}`
-        const res = await fetch(`${apiUrl}/guard/policies${qs}`, { headers })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data: Policy[] = await res.json()
+        const data = await guard.policies.list(authFetch, teamId)
         setPolicies(data)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load policies.")
@@ -764,7 +751,7 @@ function PoliciesContent() {
       }
     }
     load()
-  }, [apiUrl, authHeaders, teamId])
+  }, [authFetch, teamId])
 
   useEffect(() => {
     const msg = sessionStorage.getItem("guard.policies.saved")
@@ -780,15 +767,9 @@ function PoliciesContent() {
     if (!teamId) return
     setRefreshing(true)
     try {
-      const headers = await authHeaders()
-      const res = await fetch(
-        `${apiUrl}/guard/policies/reinstall-base?workspace_id=${encodeURIComponent(teamId ?? "")}`,
-        { method: "POST", headers }
-      )
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      // reload policies list
-      const listRes = await fetch(`${apiUrl}/guard/policies?workspace_id=${encodeURIComponent(teamId ?? "")}`, { headers })
-      if (listRes.ok) setPolicies(await listRes.json())
+      await guard.policies.reinstallBase(authFetch, teamId)
+      const data = await guard.policies.list(authFetch, teamId)
+      setPolicies(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Refresh failed.")
     } finally {
@@ -798,15 +779,10 @@ function PoliciesContent() {
 
   async function handleToggle(id: string) {
     const prev = policies.find(p => p.id === id)
-    if (!prev) return
+    if (!prev || !teamId) return
     setPolicies(ps => ps.map(p => p.id === id ? { ...p, enabled: !p.enabled } : p))
     try {
-      const headers = await authHeaders()
-      const res = await fetch(`${apiUrl}/guard/policies/${id}?workspace_id=${encodeURIComponent(teamId ?? "")}`, {
-        method: "PATCH", headers,
-        body: JSON.stringify({ enabled: !prev.enabled }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await guard.policies.patch(authFetch, id, teamId, { enabled: !prev.enabled })
     } catch (e) {
       setPolicies(ps => ps.map(p => p.id === id ? { ...p, enabled: prev.enabled } : p))
       setError(e instanceof Error ? e.message : "Failed to update rule. Please try again.")
@@ -814,14 +790,10 @@ function PoliciesContent() {
   }
 
   async function handleEditSave(id: string) {
+    if (!teamId) return
     setEditSaving(true)
     try {
-      const headers = await authHeaders()
-      const res = await fetch(`${apiUrl}/guard/policies/${id}?workspace_id=${encodeURIComponent(teamId ?? "")}`, {
-        method: "PATCH", headers,
-        body: JSON.stringify({ action: editAction, message: editMessage || undefined }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await guard.policies.patch(authFetch, id, teamId, { action: editAction, message: editMessage || undefined })
       setPolicies(ps => ps.map(p => p.id === id ? { ...p, action: editAction, message: editMessage || p.message } : p))
       setEditId(null)
     } catch (e) {
@@ -833,14 +805,13 @@ function PoliciesContent() {
 
   async function handleDelete(id: string) {
     const prev = policies.find(p => p.id === id)
-    if (!prev || prev.builtin) return
+    if (!prev || prev.builtin || !teamId) return
     if (confirmDeleteValue !== prev.rule_id) return
     setConfirmDeleteId(null)
     setConfirmDeleteValue("")
     setPolicies(ps => ps.filter(p => p.id !== id))
     try {
-      const headers = await authHeaders()
-      const res = await fetch(`${apiUrl}/guard/policies/${id}?workspace_id=${encodeURIComponent(teamId ?? "")}`, { method: "DELETE", headers })
+      const res = await guard.policies.delete(authFetch, id, teamId)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
     } catch (e) {
       setPolicies(ps => [...ps, prev].sort((a, b) => a.rule_id.localeCompare(b.rule_id)))
@@ -851,7 +822,6 @@ function PoliciesContent() {
   async function handleAddRule(formData: AddRuleFormData) {
     setSubmitting(true)
     try {
-      const headers = await authHeaders()
       const rule: Record<string, unknown> = {
         rule_id: formData.rule_id.trim(),
         description: formData.description.trim(),
@@ -867,26 +837,22 @@ function PoliciesContent() {
       if (formData.match_path_pattern.trim()) rule.match_path_pattern = formData.match_path_pattern.trim()
 
       // Lint before saving
-      const lintRes = await fetch(
-        `${apiUrl}/guard/policies/lint?workspace_id=${encodeURIComponent(teamId ?? "")}`,
-        { method: "POST", headers, body: JSON.stringify({ rules: [rule] }) }
-      )
-      if (lintRes.ok) {
-        const { errors } = await lintRes.json() as { errors: { field: string; message: string }[] }
-        if (errors.length > 0) {
-          throw new Error(errors.map(e => `${e.field}: ${e.message}`).join(" · "))
+      if (teamId) {
+        try {
+          const lintRes = await guard.policies.lint(authFetch, teamId, { rules: [rule] })
+          const lintData = await lintRes.json() as { errors: { field: string; message: string }[] }
+          if (lintData.errors?.length > 0) {
+            throw new Error(lintData.errors.map((e: { field: string; message: string }) => `${e.field}: ${e.message}`).join(" · "))
+          }
+        } catch (lintErr) {
+          if (lintErr instanceof Error && lintErr.message.includes(":")) throw lintErr
+          // non-fatal if lint endpoint is down
         }
       }
 
-      const body = { ...rule }
-      if (teamId) body.workspace_id = teamId
-
-      const res = await fetch(`${apiUrl}/guard/policies`, {
-        method: "POST", headers,
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const created: Policy = await res.json()
+      const body = { ...rule, ...(teamId ? { workspace_id: teamId } : {}) }
+      const createRes = await guard.policies.create(authFetch, body)
+      const created: Policy = await createRes.json() as Policy
       setPolicies(ps => [...ps, created])
       setShowModal(false)
       setPolicyTab("custom")

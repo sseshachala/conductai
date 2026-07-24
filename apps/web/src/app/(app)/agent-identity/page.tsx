@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 
 interface RunToken {
   id: string
@@ -40,7 +42,7 @@ function WithAuth() {
 function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
   const { activeWorkspace } = useWorkspace()
   const workspaceId = activeWorkspace?.id ?? ""
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL
+  const { authFetch } = useAuthFetch()
 
   const [tokens, setTokens] = useState<RunToken[]>([])
   const [loading, setLoading] = useState(true)
@@ -60,22 +62,16 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const [revoking, setRevoking] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
 
-  const headers = useCallback(async (): Promise<Record<string, string>> => {
-    const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    if (workspaceId) h["X-Workspace-Id"] = workspaceId
-    return h
-  }, [getToken, workspaceId])
+
 
   const load = useCallback(async () => {
-    if (!workspaceId || !apiUrl) return
+    if (!workspaceId) return
     try {
-      const h = await headers()
       const [tokensRes, installedRes, apiTokensRes, roleRes] = await Promise.all([
-        fetch(`${apiUrl}/workspaces/${workspaceId}/agent-run-tokens`, { headers: h }),
-        fetch(`${apiUrl}/guard/config/installed?workspace_id=${workspaceId}`, { headers: h }),
-        fetch(`${apiUrl}/workspaces/${workspaceId}/api-tokens`, { headers: h }),
-        fetch(`${apiUrl}/projects/${workspaceId}/my-role`, { headers: h }),
+        authFetch(`${API}/workspaces/${workspaceId}/agent-run-tokens`),
+        authFetch(`${API}/guard/config/installed?workspace_id=${workspaceId}`),
+        authFetch(`${API}/workspaces/${workspaceId}/api-tokens`),
+        authFetch(`${API}/projects/${workspaceId}/my-role`),
       ])
       if (tokensRes.ok) setTokens(await tokensRes.json())
       if (installedRes.ok) {
@@ -90,7 +86,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
     } catch {}
     setLoading(false)
     setApiLoading(false)
-  }, [workspaceId, apiUrl, headers])
+  }, [workspaceId, authFetch])
 
   useEffect(() => { load() }, [load])
 
@@ -116,11 +112,10 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   async function handleCreateToken() {
     if (!newTokenName.trim()) return
     setCreating(true)
-    const h = await headers()
     const body: Record<string, unknown> = { name: newTokenName.trim() }
     if (newTokenExpiry !== "never") body.expires_in_days = parseInt(newTokenExpiry)
-    const res = await fetch(`${apiUrl}/workspaces/${workspaceId}/api-tokens`, {
-      method: "POST", headers: h, body: JSON.stringify(body)
+    const res = await authFetch(`${API}/workspaces/${workspaceId}/api-tokens`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
     })
     if (res.ok) {
       const data = await res.json()
@@ -135,8 +130,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
 
   async function handleRevoke(id: string) {
     setRevoking(id)
-    const h = await headers()
-    await fetch(`${apiUrl}/workspaces/${workspaceId}/api-tokens/${id}`, { method: "DELETE", headers: h })
+    await authFetch(`${API}/workspaces/${workspaceId}/api-tokens/${id}`, { method: "DELETE" })
     setApiTokens(prev => prev.filter(t => t.id !== id))
     setRevokeId(null)
     setRevoking(null)

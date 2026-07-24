@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "./useAuthFetch"
+import { API } from "@/lib/api"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 export interface RoutingRow {
@@ -16,7 +18,8 @@ export type RoutingTable = Record<string, Record<string, RoutingRow>>
 let _cache: RoutingTable | null = null
 
 export function useRoutingTable(): { table: RoutingTable | null; loading: boolean } {
-  const { getToken, isLoaded, isSignedIn } = useAuth()
+  const { isLoaded, isSignedIn } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
 
   const [table, setTable] = useState<RoutingTable | null>(_cache)
@@ -29,11 +32,8 @@ export function useRoutingTable(): { table: RoutingTable | null; loading: boolea
 
     async function fetch_() {
       try {
-        const token = await getToken()
-        if (!token) { if (!cancelled) setLoading(false); return }
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/meta/routing-table`,
-          { headers: { Authorization: `Bearer ${token}`, "X-Workspace-Id": activeWorkspace!.id } }
+        const res = await authFetch(
+          `${API}/meta/routing-table`
         )
         if (res.ok) {
           const data: RoutingTable = await res.json()
@@ -49,7 +49,7 @@ export function useRoutingTable(): { table: RoutingTable | null; loading: boolea
 
     fetch_()
     return () => { cancelled = true }
-  }, [isLoaded, isSignedIn, activeWorkspace?.id, getToken])
+  }, [isLoaded, isSignedIn, activeWorkspace?.id, authFetch])
 
   return { table, loading }
 }

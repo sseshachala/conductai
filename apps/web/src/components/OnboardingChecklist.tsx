@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { environments as environmentsApi, workflows, runs } from "@/lib/api"
 
 const DISMISS_KEY = "conduct_onboarding_dismissed"
 
@@ -16,12 +18,14 @@ interface Step {
 
 interface Props {
   hasProject: boolean
-  getToken: (() => Promise<string | null>) | null
+  /** @deprecated No longer used — auth is handled by useAuthFetch. Kept for backwards-compat with callers. */
+  getToken?: (() => Promise<string | null>) | null
   // P2-5: optional callback to trigger new project modal in-page instead of navigating
   onNewProject?: () => void
 }
 
-export default function OnboardingChecklist({ hasProject, getToken, onNewProject }: Props) {
+export default function OnboardingChecklist({ hasProject, onNewProject }: Props) {
+  const { authFetch } = useAuthFetch()
   const [dismissed, setDismissed] = useState(true) // start hidden; reveal after check
   const [hasEnv, setHasEnv] = useState(false)
   const [hasAgent, setHasAgent] = useState(false)
@@ -36,33 +40,18 @@ export default function OnboardingChecklist({ hasProject, getToken, onNewProject
   useEffect(() => {
     if (dismissed) return
     async function load() {
-      const headers: Record<string, string> = {}
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
-      }
-      const base = process.env.NEXT_PUBLIC_API_URL
-      const [envRes, wfRes, runRes] = await Promise.allSettled([
-        fetch(`${base}/environments`, { headers }),
-        fetch(`${base}/workflows`, { headers }),
-        fetch(`${base}/runs`, { headers }),
+      const [envResult, wfResult, runResult] = await Promise.allSettled([
+        environmentsApi.list(authFetch),
+        workflows.list(authFetch),
+        runs.list(authFetch),
       ])
-      if (envRes.status === "fulfilled" && envRes.value.ok) {
-        const envs = await envRes.value.json()
-        setHasEnv(Array.isArray(envs) && envs.length > 0)
-      }
-      if (wfRes.status === "fulfilled" && wfRes.value.ok) {
-        const wfs = await wfRes.value.json()
-        setHasAgent(Array.isArray(wfs) && wfs.length > 0)
-      }
-      if (runRes.status === "fulfilled" && runRes.value.ok) {
-        const runs = await runRes.value.json()
-        setHasRun(Array.isArray(runs) && runs.length > 0)
-      }
+      if (envResult.status === "fulfilled") setHasEnv(Array.isArray(envResult.value) && envResult.value.length > 0)
+      if (wfResult.status === "fulfilled") setHasAgent(Array.isArray(wfResult.value) && wfResult.value.length > 0)
+      if (runResult.status === "fulfilled") setHasRun(Array.isArray(runResult.value) && runResult.value.length > 0)
       setLoaded(true)
     }
     load()
-  }, [dismissed, getToken])
+  }, [dismissed, authFetch])
 
   function dismiss() {
     localStorage.setItem(DISMISS_KEY, "1")

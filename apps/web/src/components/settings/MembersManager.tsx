@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { projects as projectsApi } from "@/lib/api"
 
 interface Member {
   clerk_user_id: string
@@ -61,18 +63,14 @@ function getGuardAccess(role: string): string {
 }
 
 export default function MembersManager() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  if (clerkEnabled) return <MembersManagerWithAuth />
-  return <MembersManagerInner getToken={null} currentClerkId={null} />
+  return <MembersManagerInner />
 }
 
-function MembersManagerWithAuth() {
-  const { getToken, userId } = useAuth()
-  return <MembersManagerInner getToken={getToken} currentClerkId={userId ?? null} />
-}
-
-function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Promise<string | null>) | null; currentClerkId: string | null }) {
+function MembersManagerInner() {
+  const { userId } = useAuth()
+  const currentClerkId = userId ?? null
   const { activeWorkspace } = useWorkspace()
+  const { authFetch } = useAuthFetch()
   const [members, setMembers] = useState<Member[]>([])
   const [invites, setInvites] = useState<Invite[]>([])
   const [loading, setLoading] = useState(true)
@@ -92,35 +90,16 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   const [memberWorkspaces, setMemberWorkspaces] = useState<Record<string, MemberWorkspace[]>>({})
   const [loadingWorkspaces, setLoadingWorkspaces] = useState<string | null>(null)
 
-  async function buildHeaders(contentType = false): Promise<Record<string, string>> {
-    const headers: Record<string, string> = {}
-    if (contentType) headers["Content-Type"] = "application/json"
-    if (getToken) {
-      const token = await getToken()
-      if (token) headers["Authorization"] = `Bearer ${token}`
-    }
-    const ws = activeWorkspace?.id ?? null
-    if (ws) headers["X-Workspace-Id"] = ws
-    return headers
-  }
-
   async function loadData() {
     if (!activeWorkspace) return
     setLoading(true)
     try {
-      const headers = await buildHeaders()
-      const [membersRes, invitesRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}/members`, { headers }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}/invites`, { headers }),
+      const [membersData, invitesData] = await Promise.all([
+        projectsApi.members.list(authFetch, activeWorkspace.id),
+        projectsApi.invites.list(authFetch, activeWorkspace.id),
       ])
-      if (membersRes.ok) {
-        const data = await membersRes.json()
-        if (Array.isArray(data)) setMembers(data)
-      }
-      if (invitesRes.ok) {
-        const data = await invitesRes.json()
-        if (Array.isArray(data)) setInvites(data)
-      }
+      if (Array.isArray(membersData)) setMembers(membersData)
+      if (Array.isArray(invitesData)) setInvites(invitesData)
     } finally {
       setLoading(false)
     }
@@ -135,12 +114,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
     setError("")
     setEmailWarning("")
     try {
-      const headers = await buildHeaders(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ email, role: inviteRole }),
-      })
+      const res = await projectsApi.members.add(authFetch, activeWorkspace!.id, { email, role: inviteRole })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         if (res.status >= 500) {
@@ -166,12 +140,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   async function handleRoleChange(clerk_user_id: string, role: string) {
     const prev_role = members.find(m => m.clerk_user_id === clerk_user_id)?.role
     setMembers(prev => prev.map(m => m.clerk_user_id === clerk_user_id ? { ...m, role: role as Member["role"] } : m))
-    const headers = await buildHeaders(true)
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members/${clerk_user_id}`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify({ role }),
-    })
+    const res = await projectsApi.members.patch(authFetch, activeWorkspace!.id, clerk_user_id, { role })
     if (!res.ok) {
       setMembers(prev => prev.map(m => m.clerk_user_id === clerk_user_id ? { ...m, role: prev_role as Member["role"] } : m))
       const body = await res.json().catch(() => ({}))
@@ -182,10 +151,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   async function handleRemove(clerk_user_id: string) {
     setRemoving(clerk_user_id)
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members/${clerk_user_id}`, {
-        method: "DELETE", headers,
-      })
+      const res = await projectsApi.members.remove(authFetch, activeWorkspace!.id, clerk_user_id)
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setError(body.detail ?? "Failed to remove member")
@@ -200,10 +166,7 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
   async function handleCancelInvite(invite_id: string) {
     setCancelling(invite_id)
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/invites/${invite_id}`, {
-        method: "DELETE", headers,
-      })
+      const res = await projectsApi.invites.cancel(authFetch, activeWorkspace!.id, invite_id)
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setError(body.detail ?? "Failed to cancel invite")
@@ -224,15 +187,8 @@ function MembersManagerInner({ getToken, currentClerkId }: { getToken: (() => Pr
     if (memberWorkspaces[clerk_user_id]) return
     setLoadingWorkspaces(clerk_user_id)
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace!.id}/members/${clerk_user_id}/workspaces`,
-        { headers },
-      )
-      if (res.ok) {
-        const data = await res.json()
-        setMemberWorkspaces(prev => ({ ...prev, [clerk_user_id]: data }))
-      }
+      const data = await projectsApi.members.workspaces(authFetch, activeWorkspace!.id, clerk_user_id)
+      setMemberWorkspaces(prev => ({ ...prev, [clerk_user_id]: data }))
     } finally {
       setLoadingWorkspaces(null)
     }

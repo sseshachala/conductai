@@ -2,21 +2,13 @@
 
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
-import { useAuth, useUser } from "@clerk/nextjs"
+import { useUser } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { teamOs } from "@/lib/api"
 import { timeAgo } from "@/lib/runUtils"
 import type { Instructions, AdoptionRow } from "./types"
-
-// ─── API helper ────────────────────────────────────────────────────────────────
-
-async function apiFetch(path: string, token: string, opts?: RequestInit) {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "https://api.conductai.ai"
-  return fetch(`${base}${path}`, {
-    ...opts,
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...opts?.headers },
-  })
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -224,7 +216,7 @@ function SetupCard({ version }: { version: string }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TeamOSPage() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
   const { user } = useUser()
 
@@ -240,40 +232,20 @@ export default function TeamOSPage() {
     setLoading(true)
     setError(null)
     try {
-      const token = await getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-
-      const [instRes, adoptRes] = await Promise.all([
-        apiFetch(`/team-os/instructions${activeWorkspace?.id ? `?workspace_id=${activeWorkspace.id}` : ""}`, token),
-        apiFetch(`/team-os/instructions/adoption${activeWorkspace?.id ? `?workspace_id=${activeWorkspace.id}` : ""}`, token),
-      ])
-
-      if (instRes.status === 401 || instRes.status === 403) {
-        setError("Not authorized to view team instructions")
-        return
-      }
-      if (!instRes.ok) {
-        setError(`Failed to load instructions (${instRes.status})`)
-        return
-      }
-
-      const instData: Instructions = await instRes.json()
+      const params = activeWorkspace?.id ? { workspace_id: activeWorkspace.id } : undefined
+      const instData: Instructions = await teamOs.instructions(authFetch, params)
       setInstructions(instData)
-
       // adoption is admin-only — silently skip if no permission
-      if (adoptRes.ok) {
-        const adoptData: AdoptionRow[] = await adoptRes.json()
+      try {
+        const adoptData: AdoptionRow[] = await teamOs.adoption(authFetch, params)
         setAdoption(adoptData)
-      }
+      } catch { /* non-fatal */ }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
       setLoading(false)
     }
-  }, [getToken])
+  }, [authFetch, activeWorkspace?.id])
 
   useEffect(() => { load() }, [load])
 

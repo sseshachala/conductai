@@ -1,4 +1,5 @@
 "use client"
+import { API } from "@/lib/api"
 
 import { useEffect, useState, useCallback } from "react"
 import {
@@ -109,11 +110,10 @@ function KpiTile({
   const [value, setValue] = useState<string | number>("—")
 
   useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     const qs = kpi.params
       ? "?" + new URLSearchParams(Object.fromEntries(Object.entries(kpi.params).map(([k, v]) => [k, String(v)]))).toString()
       : ""
-    authFetch(`${base}${kpi.endpoint}${qs}`)
+    authFetch(`${API}${kpi.endpoint}${qs}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data == null) return
@@ -155,8 +155,7 @@ function ChartBlock({
 
     async function load() {
       try {
-        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const res = await authFetch(`${base}${chart.endpoint}`, { signal: controller.signal })
+          const res = await authFetch(`${API}${chart.endpoint}`, { signal: controller.signal })
         if (!res.ok) {
           if (!cancelled) setFailed(true)
           return
@@ -417,11 +416,10 @@ function TableBlock({
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
 
   useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
     const qs = table.params
       ? "?" + new URLSearchParams(Object.fromEntries(Object.entries(table.params).map(([k, v]) => [k, String(v)]))).toString()
       : ""
-    authFetch(`${base}${table.endpoint}${qs}`)
+    authFetch(`${API}${table.endpoint}${qs}`)
       .then(r => r.ok ? r.json() : [])
       .then(d => setRows(Array.isArray(d) ? d : []))
       .catch(() => {})

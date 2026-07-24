@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { credentials } from "@/lib/api"
 
 interface SlackIntegration {
   id: string
@@ -10,16 +12,19 @@ interface SlackIntegration {
 }
 
 interface Props {
-  base: string
+  /** @deprecated Pass wsId instead — auth is handled by useAuthFetch internally. */
+  base?: string
   wsId: string | undefined
-  buildHeaders: () => Promise<Record<string, string>>
+  /** @deprecated Auth is handled by useAuthFetch internally. */
+  buildHeaders?: () => Promise<Record<string, string>>
   integrationId: string | null
   channel: string
   isAdmin: boolean
   onSave: (integrationId: string | null, channel: string) => Promise<void>
 }
 
-export function SlackIntegrationPicker({ base, wsId, buildHeaders, integrationId, channel, isAdmin, onSave }: Props) {
+export function SlackIntegrationPicker({ wsId, integrationId, channel, isAdmin, onSave }: Props) {
+  const { authFetch } = useAuthFetch()
   const [integrations, setIntegrations] = useState<SlackIntegration[]>([])
   const [loaded, setLoaded] = useState(false)
   const [selectedId, setSelectedId] = useState<string>(integrationId ?? "")
@@ -30,12 +35,11 @@ export function SlackIntegrationPicker({ base, wsId, buildHeaders, integrationId
   const load = useCallback(async () => {
     if (!wsId) return
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(`${base}/credentials/integrations/slack?workspace_id=${wsId}`, { headers })
-      if (res.ok) setIntegrations(await res.json())
+      const data = await credentials.slack.integration(authFetch, wsId)
+      setIntegrations(Array.isArray(data) ? data : [data].filter(Boolean))
     } catch {}
     setLoaded(true)
-  }, [base, wsId, buildHeaders])
+  }, [wsId, authFetch])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { setSelectedId(integrationId ?? "") }, [integrationId])

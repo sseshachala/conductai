@@ -1,4 +1,4 @@
-import { API, AuthFetch, del, json, post, put } from "./client"
+import { API, AuthFetch, del, json, patch, post, put } from "./client"
 
 const base = () => `${API}/projects`
 
@@ -17,10 +17,21 @@ export const projects = {
       post(f, `${base()}/${projectId}/members`, body),
     update: (f: AuthFetch, projectId: string, userId: string, body: Record<string, unknown>) =>
       put(f, `${base()}/${projectId}/members/${userId}`, body),
+    patch: (f: AuthFetch, projectId: string, userId: string, body: Record<string, unknown>) =>
+      patch(f, `${base()}/${projectId}/members/${userId}`, body),
     remove: (f: AuthFetch, projectId: string, userId: string) =>
       del(f, `${base()}/${projectId}/members/${userId}`),
     myRole: (f: AuthFetch, projectId: string) =>
       json<any>(f, `${base()}/${projectId}/my-role`),
+    workspaces: (f: AuthFetch, projectId: string, userId: string) =>
+      json<any[]>(f, `${base()}/${projectId}/members/${userId}/workspaces`),
+  },
+
+  invites: {
+    list: (f: AuthFetch, projectId: string) =>
+      json<any[]>(f, `${base()}/${projectId}/invites`),
+    cancel: (f: AuthFetch, projectId: string, inviteId: string) =>
+      del(f, `${base()}/${projectId}/invites/${inviteId}`),
   },
 
   guard: {

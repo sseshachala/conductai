@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { workflows, guard } from "@/lib/api"
+import type { AuthFetch } from "@/lib/api"
 
 interface WorkflowDetail {
   id: string
@@ -35,37 +37,33 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function headers(): Promise<Record<string, string>> {
-    const h: Record<string, string> = {}
-    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    const wsId = activeWorkspace?.id ?? ""
-    if (wsId) h["X-Workspace-ID"] = wsId
-    return h
+  function makeAuthFetch(): AuthFetch {
+    const wsId = activeWorkspace?.id ?? null
+    return async (url, opts) => {
+      const headers: Record<string, string> = {
+        ...(opts?.headers as Record<string, string> | undefined),
+      }
+      if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+      if (wsId) headers["X-Workspace-ID"] = wsId
+      return fetch(url, { ...opts, headers })
+    }
   }
 
   useEffect(() => {
     async function load() {
       try {
-        const h = await headers()
-        const [wfRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers: h }),
-        ])
-        if (wfRes.ok) {
-          const wf = await wfRes.json()
-          setWorkflow(wf)
-          setTurnsInput(wf.default_max_turns ? String(wf.default_max_turns) : "")
-          setGuardEnabled(wf.guard_enabled !== false)
-          setAgentIdentityRequired(wf.agent_identity_required !== false)
-          setPersona(wf.runtime_persona || "")
-          // Resolve what "Inherit from workspace" currently means.
-          try {
-            const pRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/guard/config/persona`, { headers: h })
-            if (pRes.ok) {
-              const pData = await pRes.json()
-              if (pData?.workspace_runtime_persona) setWorkspaceRuntimePersona(pData.workspace_runtime_persona)
-            }
-          } catch { /* non-fatal — fall back to 'conservative' */ }
-        }
+        const authFetch = makeAuthFetch()
+        const wf = await workflows.get(authFetch, workflowId)
+        setWorkflow(wf)
+        setTurnsInput(wf.default_max_turns ? String(wf.default_max_turns) : "")
+        setGuardEnabled(wf.guard_enabled !== false)
+        setAgentIdentityRequired(wf.agent_identity_required !== false)
+        setPersona(wf.runtime_persona || "")
+        // Resolve what "Inherit from workspace" currently means.
+        try {
+          const pData = await guard.config.persona(authFetch)
+          if (pData?.workspace_runtime_persona) setWorkspaceRuntimePersona(pData.workspace_runtime_persona)
+        } catch { /* non-fatal — fall back to 'conservative' */ }
       } finally {
         setLoading(false)
       }
@@ -77,14 +75,8 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
 async function saveGuard(enabled = guardEnabled) {
     setGuardSaving(true)
     try {
-      const token = getToken ? await getToken() : null
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ guard_enabled: enabled, runtime_persona: persona || null }),
-      })
+      const authFetch = makeAuthFetch()
+      const res = await workflows.update(authFetch, workflowId, { guard_enabled: enabled, runtime_persona: persona || null })
       if (!res.ok) throw new Error("Failed to save Guard settings")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save Guard settings")
@@ -96,16 +88,8 @@ async function saveGuard(enabled = guardEnabled) {
   async function saveAgentIdentity(required = agentIdentityRequired) {
     setAgentIdentitySaving(true)
     try {
-      const token = getToken ? await getToken() : null
-      const h: Record<string, string> = { "Content-Type": "application/json" }
-      if (token) h["Authorization"] = `Bearer ${token}`
-      const wsId = activeWorkspace?.id ?? ""
-      if (wsId) h["X-Workspace-ID"] = wsId
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
-        method: "PUT",
-        headers: h,
-        body: JSON.stringify({ agent_identity_required: required }),
-      })
+      const authFetch = makeAuthFetch()
+      const res = await workflows.update(authFetch, workflowId, { agent_identity_required: required })
       if (!res.ok) throw new Error("Failed to save Agent Identity setting")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save Agent Identity setting")
@@ -119,11 +103,8 @@ async function saveGuard(enabled = guardEnabled) {
     if (val !== null && (isNaN(val) || val < 1)) return
     setTurnsSaving(true)
     try {
-      const h = await headers()
-      h["Content-Type"] = "application/json"
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/turn-settings`, {
-        method: "PATCH", headers: h, body: JSON.stringify({ default_max_turns: val })
-      })
+      const authFetch = makeAuthFetch()
+      const res = await workflows.setTurnSettings(authFetch, workflowId, { default_max_turns: val })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setError(body.detail ?? `Failed to save turn budget (${res.status})`)
@@ -142,11 +123,8 @@ async function saveGuard(enabled = guardEnabled) {
     setError(null)
     setDeleting(true)
     try {
-      const h = await headers()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
-        method: "DELETE",
-        headers: h,
-      })
+      const authFetch = makeAuthFetch()
+      const res = await workflows.remove(authFetch, workflowId)
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setError(body.detail ?? "Could not delete agent. Please try again.")

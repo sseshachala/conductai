@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import Link from "next/link"
 import StatusBadge from "@/components/runs/StatusBadge"
 import { isActive, duration, timeAgo, effectiveStatus } from "@/lib/runUtils"
@@ -24,7 +25,6 @@ const PAGE_SIZE = 50
 
 export default function RunsPage() {
   const { id: workflowId } = useParams<{ id: string }>()
-  const { getToken } = useAuth()
   const { activeWorkspace } = useWorkspace()
 
   const [runs, setRuns] = useState<Run[]>([])
@@ -36,21 +36,12 @@ export default function RunsPage() {
   const [hasMore, setHasMore] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const buildHeaders = useCallback(async () => {
-    const token = await getToken()
-    const workspaceId = activeWorkspace?.id ?? null
-    const headers: Record<string, string> = {}
-    if (token) headers["Authorization"] = `Bearer ${token}`
-    if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-    return headers
-  }, [getToken, activeWorkspace])
+  const { authFetch } = useAuthFetch()
 
   const fetchRuns = useCallback(async (currentOffset: number, append = false) => {
     try {
-      const headers = await buildHeaders()
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs?limit=${PAGE_SIZE}&offset=${currentOffset}`,
-        { headers }
+      const res = await authFetch(
+        `${API}/workflows/${workflowId}/runs?limit=${PAGE_SIZE}&offset=${currentOffset}`
       )
       if (!res.ok) { setError(`Failed to load runs (${res.status})`); return }
       const data: Run[] = await res.json()
@@ -60,16 +51,15 @@ export default function RunsPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load runs")
     }
-  }, [buildHeaders, workflowId])
+  }, [authFetch, workflowId])
 
   // Initial load — workflow name + runs in parallel
   useEffect(() => {
     let cancelled = false
     async function init() {
-      const headers = await buildHeaders()
       const [runsRes, wfRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs?limit=${PAGE_SIZE}&offset=0`, { headers }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers }),
+        authFetch(`${API}/workflows/${workflowId}/runs?limit=${PAGE_SIZE}&offset=0`),
+        authFetch(`${API}/workflows/${workflowId}`),
       ])
       if (cancelled) return
       if (runsRes.ok) {

@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 // ponytail: AI generation removed — API key not configured on this deployment
-import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -382,7 +383,7 @@ export default function NewPolicyPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialPersona = (searchParams.get("persona") === "proxy" ? "proxy" : "agent") as "agent" | "proxy"
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { teamId } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
@@ -400,23 +401,10 @@ export default function NewPolicyPage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
-
-  const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (getToken) {
-      const t = await getToken()
-      if (t) h["Authorization"] = `Bearer ${t}`
-    }
-    return h
-  }, [getToken])
-
   async function handleSave() {
     setSaving(true)
     setSaveError(null)
-
     try {
-      const headers = await authHeaders()
       const body: Record<string, unknown> = {
         rule_id: policy.rule_id.trim(),
         description: policy.description.trim(),
@@ -428,32 +416,10 @@ export default function NewPolicyPage() {
         builtin: false,
         persona: policy.persona,
       }
-      if (policy.match_ai_tool.trim()) {
-        body.match_ai_tool = policy.match_ai_tool.trim()
-      }
-      if (policy.match_path_pattern.trim()) {
-        body.match_path_pattern = policy.match_path_pattern.trim()
-      }
+      if (policy.match_ai_tool.trim()) body.match_ai_tool = policy.match_ai_tool.trim()
+      if (policy.match_path_pattern.trim()) body.match_path_pattern = policy.match_path_pattern.trim()
       if (teamId) body.workspace_id = teamId
-
-      const res = await fetch(`${apiUrl}/guard/policies`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        if (res.status === 422) {
-          const json = await res.json().catch(() => null)
-          const d = json?.detail
-          if (Array.isArray(d) && d.length > 0) {
-            const field = Array.isArray(d[0]?.loc) ? d[0].loc.join(".") : null
-            const msg = d[0]?.msg ?? "Validation error"
-            throw new Error(field ? `${field}: ${msg}` : msg)
-          }
-        }
-        const detail = await res.text().catch(() => "")
-        throw new Error(detail || `HTTP ${res.status}`)
-      }
+      await guard.policies.create(authFetch, body)
       sessionStorage.setItem("guard.policies.saved", "Rule saved successfully.")
       router.push("/guard/policies")
     } catch (e) {

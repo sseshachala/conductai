@@ -1,4 +1,4 @@
-import { API, AuthFetch, json, post, put } from "./client"
+import { API, AuthFetch, json, patch, post, put } from "./client"
 
 const base = () => `${API}/guard`
 
@@ -12,7 +12,13 @@ export const guard = {
       const q = workspaceId ? `?workspace_id=${workspaceId}` : ""
       return json<any>(f, `${base()}/config/installed${q}`)
     },
-    resync: (f: AuthFetch) => post(f, `${base()}/config/resync`, {}),
+    persona: (f: AuthFetch) => json<any>(f, `${base()}/config/persona`),
+    patch: (f: AuthFetch, workspaceId: string, body: Record<string, unknown>) =>
+      patch(f, `${base()}/config?workspace_id=${workspaceId}`, body),
+    resync: (f: AuthFetch, workspaceId?: string) => {
+      const q = workspaceId ? `?workspace_id=${workspaceId}` : ""
+      return post(f, `${base()}/config/resync${q}`, {})
+    },
   },
 
   events: {
@@ -24,8 +30,10 @@ export const guard = {
       const q = params ? `?${new URLSearchParams(params)}` : ""
       return json<any>(f, `${base()}/events/unified${q}`)
     },
-    costTrend: (f: AuthFetch, period: string) =>
-      json<any>(f, `${base()}/events/cost-trend?period=${period}`),
+    costTrend: (f: AuthFetch, params: Record<string, string>) =>
+      json<any>(f, `${base()}/events/cost-trend?${new URLSearchParams(params)}`),
+    auditVerify: (f: AuthFetch, workspaceId: string) =>
+      json<any>(f, `${base()}/events/audit/verify?workspace_id=${workspaceId}`),
     streamUrl: () => `${base()}/events/stream`,
   },
 
@@ -39,6 +47,14 @@ export const guard = {
       post(f, `${base()}/policies`, body),
     update: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
       put(f, `${base()}/policies/${id}`, body),
+    patch: (f: AuthFetch, id: string, workspaceId: string, body: Record<string, unknown>) =>
+      patch(f, `${base()}/policies/${id}?workspace_id=${encodeURIComponent(workspaceId)}`, body),
+    delete: (f: AuthFetch, id: string, workspaceId: string) =>
+      f(`${base()}/policies/${id}?workspace_id=${encodeURIComponent(workspaceId)}`, { method: "DELETE" }),
+    reinstallBase: (f: AuthFetch, workspaceId: string) =>
+      post(f, `${base()}/policies/reinstall-base?workspace_id=${encodeURIComponent(workspaceId)}`, {}),
+    lint: (f: AuthFetch, workspaceId: string, body: Record<string, unknown>) =>
+      post(f, `${base()}/policies/lint?workspace_id=${encodeURIComponent(workspaceId)}`, body),
   },
 
   spend: {
@@ -47,17 +63,28 @@ export const guard = {
       return json<any>(f, `${base()}/spend${q}`)
     },
     budgets: {
-      get: (f: AuthFetch) => json<any>(f, `${base()}/spend/budgets`),
+      get: (f: AuthFetch, params?: Record<string, string>) => {
+        const q = params ? `?${new URLSearchParams(params)}` : ""
+        return json<any>(f, `${base()}/spend/budgets${q}`)
+      },
       set: (f: AuthFetch, body: Record<string, unknown>) =>
         post(f, `${base()}/spend/budgets`, body),
     },
-    sessions: (f: AuthFetch) => json<any[]>(f, `${base()}/spend/sessions`),
+    sessions: (f: AuthFetch, params?: Record<string, string>) => {
+      const q = params ? `?${new URLSearchParams(params)}` : ""
+      return json<any[]>(f, `${base()}/spend/sessions${q}`)
+    },
   },
 
   tokenGuardrails: {
-    get: (f: AuthFetch) => json<any>(f, `${base()}/token-guardrails`),
+    get: (f: AuthFetch, workspaceId?: string) => {
+      const q = workspaceId ? `?workspace_id=${workspaceId}` : ""
+      return json<any>(f, `${base()}/token-guardrails${q}`)
+    },
     set: (f: AuthFetch, body: Record<string, unknown>) =>
       post(f, `${base()}/token-guardrails`, body),
+    patch: (f: AuthFetch, body: Record<string, unknown>) =>
+      patch(f, `${base()}/token-guardrails`, body),
   },
 
   developerTools: {
@@ -77,25 +104,97 @@ export const guard = {
   },
 
   verify: {
-    chain: (f: AuthFetch) => json<any>(f, `${base()}/verify/chain`),
-    run: (f: AuthFetch, body: Record<string, unknown>) =>
-      post(f, `${base()}/verify/run`, body),
-    history: (f: AuthFetch) => json<any[]>(f, `${base()}/verify/history`),
+    chain: (f: AuthFetch, params?: Record<string, string>) => {
+      const q = params ? `?${new URLSearchParams(params)}` : ""
+      return json<any>(f, `${base()}/verify/chain${q}`)
+    },
+    run: (f: AuthFetch, params?: Record<string, string>) => {
+      const q = params ? `?${new URLSearchParams(params)}` : ""
+      return post(f, `${base()}/verify/run${q}`, {})
+    },
+    history: (f: AuthFetch, params?: Record<string, string>) => {
+      const q = params ? `?${new URLSearchParams(params)}` : ""
+      return json<any[]>(f, `${base()}/verify/history${q}`)
+    },
+    evidence: (f: AuthFetch, params?: Record<string, string>) => {
+      const q = params ? `?${new URLSearchParams(params)}` : ""
+      return json<any>(f, `${base()}/verify/evidence${q}`)
+    },
   },
 
   sessionReports: {
-    list: (f: AuthFetch) => json<any[]>(f, `${base()}/session-reports`),
-    get: (f: AuthFetch, id: string) => json<any>(f, `${base()}/session-reports/${id}`),
+    list: (f: AuthFetch, params?: Record<string, string>) => {
+      const q = params ? `?${new URLSearchParams(params)}` : ""
+      return json<any[]>(f, `${base()}/session-reports${q}`)
+    },
+    get: (f: AuthFetch, id: string, params?: Record<string, string>) => {
+      const q = params ? `?${new URLSearchParams(params)}` : ""
+      return json<any>(f, `${base()}/session-reports/${id}${q}`)
+    },
+  },
+
+  savings: {
+    summary: (f: AuthFetch, workspaceId: string, month?: string) => {
+      const q = new URLSearchParams({ workspace_id: workspaceId })
+      if (month) q.set("month", month)
+      return json<any>(f, `${base()}/savings/summary?${q}`)
+    },
   },
 
   proxyConfig: {
     get: (f: AuthFetch) => json<any>(f, `${base()}/proxy-config`),
     set: (f: AuthFetch, body: Record<string, unknown>) =>
       post(f, `${base()}/proxy-config`, body),
-    push: (f: AuthFetch) => post(f, `${base()}/proxy-config/push`, {}),
+    update: (f: AuthFetch, body: Record<string, unknown>) =>
+      put(f, `${base()}/proxy-config`, body),
+    push: (f: AuthFetch, body: Record<string, unknown>) =>
+      post(f, `${base()}/proxy-config/push`, body),
   },
 
   mcp: {
     memberToken: (f: AuthFetch) => json<any>(f, `${base()}/mcp/oauth/member-token`),
   },
+}
+
+export const governance = {
+  narrative: (f: AuthFetch, params?: Record<string, string>) => {
+    const q = params ? `?${new URLSearchParams(params)}` : ""
+    return json<any>(f, `${API}/governance/narrative${q}`)
+  },
+  frameworks: (f: AuthFetch, params?: Record<string, string>) => {
+    const q = params ? `?${new URLSearchParams(params)}` : ""
+    return json<any>(f, `${API}/governance/frameworks${q}`)
+  },
+  eventsRecent: (f: AuthFetch, params?: Record<string, string>) => {
+    const q = params ? `?${new URLSearchParams(params)}` : ""
+    return json<any[]>(f, `${API}/governance/events/recent${q}`)
+  },
+}
+
+export const teamMemory = {
+  search: (f: AuthFetch, params?: Record<string, string>) => {
+    const q = params ? `?${new URLSearchParams(params)}` : ""
+    return json<any[]>(f, `${API}/team-memory/search${q}`)
+  },
+}
+
+export const teamOs = {
+  instructions: (f: AuthFetch, params?: Record<string, string>) => {
+    const q = params ? `?${new URLSearchParams(params)}` : ""
+    return json<any>(f, `${API}/team-os/instructions${q}`)
+  },
+  publishInstructions: (f: AuthFetch, params: Record<string, string> | undefined, body: Record<string, unknown>) => {
+    const q = params ? `?${new URLSearchParams(params)}` : ""
+    return post(f, `${API}/team-os/instructions${q}`, body)
+  },
+  adoption: (f: AuthFetch, params?: Record<string, string>) => {
+    const q = params ? `?${new URLSearchParams(params)}` : ""
+    return json<any[]>(f, `${API}/team-os/instructions/adoption${q}`)
+  },
+  templates: (f: AuthFetch) => json<any[]>(f, `${API}/team-os/templates`),
+}
+
+export const glens = {
+  session: (f: AuthFetch, sessionId: string) =>
+    json<any>(f, `${API}/glens/sessions/${sessionId}`),
 }

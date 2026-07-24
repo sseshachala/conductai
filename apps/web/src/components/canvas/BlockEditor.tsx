@@ -15,6 +15,8 @@ import { GitHubRepoField, GitHubBranchField, GitHubRepoAllowlistField } from "./
 import { cn } from "@/lib/utils"
 import { useBlockSchemas, getSchemaRequiredKeys } from "@/hooks/useBlockSchemas"
 import { useRoutingTable, type RoutingTable } from "@/hooks/useRoutingTable"
+import { workflows, credentials, mcpServers, guard } from "@/lib/api"
+import type { AuthFetch } from "@/lib/api"
 
 interface BlockEditorProps {
   workflowId: string
@@ -171,9 +173,9 @@ function GitHubWebhookStatusPanel({
   async function register() {
     setBusy(true); setErr(null); setSharedWith(null)
     try {
-      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/webhook`, {
-        method: "POST", headers: await authHeaders(),
-      })
+      const h = await authHeaders()
+      const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...h, ...(opts?.headers as Record<string, string> | undefined) } })
+      const r = await workflows.webhook.create(authFetch, workflowId, {})
       const data = await r.json()
       if (!r.ok) { setErr(data.detail || `HTTP ${r.status}`); return }
       if (data.shared) setSharedWith(data.shared_with_name ?? "another agent")
@@ -186,9 +188,9 @@ function GitHubWebhookStatusPanel({
   async function deregister() {
     setBusy(true); setErr(null)
     try {
-      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/webhook`, {
-        method: "DELETE", headers: await authHeaders(),
-      })
+      const h = await authHeaders()
+      const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...h, ...(opts?.headers as Record<string, string> | undefined) } })
+      const r = await workflows.webhook.remove(authFetch, workflowId)
       if (!r.ok && r.status !== 204) {
         const data = await r.json().catch(() => ({}))
         setErr(data.detail || `HTTP ${r.status}`); return
@@ -286,14 +288,14 @@ function WebhookRegisterButton({ owner, repo, getToken }: {
   async function register() {
     setStatus("loading")
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL
-      if (!apiUrl) { setStatus("error"); setMsg("NEXT_PUBLIC_API_URL not set"); return }
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-      const ws = activeWorkspace?.id ?? ""
-      if (ws) headers["X-Workspace-Id"] = ws
-      const url = `${apiUrl}/credentials/github/repos/${owner}/${repo}/webhook`
-      const r = await fetch(url, { method: "POST", headers })
+      const wsId = activeWorkspace?.id ?? null
+      const authFetch: AuthFetch = async (url, opts) => {
+        const headers: Record<string, string> = { ...(opts?.headers as Record<string, string> | undefined) }
+        if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+        if (wsId) headers["X-Workspace-ID"] = wsId
+        return fetch(url, { ...opts, headers })
+      }
+      const r = await credentials.github.webhook(authFetch, owner, repo, {})
       const data = await r.json()
       if (!r.ok) { setStatus("error"); setMsg(data.detail || `HTTP ${r.status}`); return }
       setStatus("done")
@@ -340,17 +342,14 @@ function VercelWebhookRegisterButton({ eventType, getToken }: {
   async function register() {
     setStatus("loading")
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL
-      if (!apiUrl) { setStatus("error"); setMsg("NEXT_PUBLIC_API_URL not set"); return }
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-      const ws = activeWorkspace?.id ?? ""
-      if (ws) headers["X-Workspace-Id"] = ws
-      const r = await fetch(`${apiUrl}/credentials/vercel/webhook`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ event_type: eventType }),
-      })
+      const wsId = activeWorkspace?.id ?? null
+      const authFetch: AuthFetch = async (url, opts) => {
+        const headers: Record<string, string> = { ...(opts?.headers as Record<string, string> | undefined) }
+        if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+        if (wsId) headers["X-Workspace-ID"] = wsId
+        return fetch(url, { ...opts, headers })
+      }
+      const r = await credentials.vercel.webhook(authFetch, { event_type: eventType })
       const data = await r.json()
       if (!r.ok) { setStatus("error"); setMsg(data.detail || `HTTP ${r.status}`); return }
       setStatus("done")
@@ -777,25 +776,23 @@ function GuardBlockPanel({
     async function load() {
       try {
         const ws = activeWorkspace?.id ?? ""
-        const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
         const token = await getToken?.()
-        const headers: Record<string, string> = {}
-        if (token) headers["Authorization"] = `Bearer ${token}`
+        const authFetch: AuthFetch = async (url, opts) => {
+          const headers: Record<string, string> = { ...(opts?.headers as Record<string, string> | undefined) }
+          if (token) headers["Authorization"] = `Bearer ${token}`
+          if (ws) headers["X-Workspace-ID"] = ws
+          return fetch(url, { ...opts, headers })
+        }
 
-        const installUrl = ws ? `${base}/guard/config/installed?workspace_id=${ws}` : `${base}/guard/config/installed`
-        const installRes = await fetch(installUrl, { headers })
-        if (!installRes.ok) { if (!cancelled) setInstalled(false); return }
-        const installData = await installRes.json()
+        const installData = await guard.config.installed(authFetch, ws || undefined)
         if (cancelled) return
         if (!installData.installed) { setInstalled(false); return }
 
         setInstalled(true)
         setTeamId(ws ?? installData.workspace_id)
 
-        const polRes = await fetch(`${base}/guard/policies?workspace_id=${ws}`, { headers })
-        if (!polRes.ok) return
-        const polData: GuardPolicy[] = await polRes.json()
-        if (!cancelled) setPolicies(polData.filter(p => p.enabled))
+        const polData: GuardPolicy[] = await guard.policies.list(authFetch, ws || undefined)
+        if (!cancelled) setPolicies(polData.filter((p: GuardPolicy) => p.enabled))
       } catch {
         if (!cancelled) setInstalled(false)
       }
@@ -977,39 +974,28 @@ interface MCPServer {
 
 // ── Shared auth header builder used by both MCP panels ───────────────────────
 
-async function buildMCPAuthHeaders(
+async function buildMCPAuthFetch(
   getToken: (() => Promise<string | null>) | null | undefined,
   workspaceId: string,
-): Promise<Record<string, string>> {
+): Promise<AuthFetch> {
   const h: Record<string, string> = { "Content-Type": "application/json" }
   if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-  if (workspaceId) h["X-Workspace-Id"] = workspaceId
-  return h
+  if (workspaceId) h["X-Workspace-ID"] = workspaceId
+  return (url, opts) => fetch(url, { ...opts, headers: { ...h, ...(opts?.headers as Record<string, string> | undefined) } })
 }
 
 // ── Fetch tools from the Phase 2 GET endpoint ─────────────────────────────────
 
 async function fetchMCPServerTools(
   serverId: string,
-  headers: Record<string, string>,
+  authFetch: AuthFetch,
 ): Promise<{ tools: MCPTool[]; error: string | null }> {
   try {
-    const r = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/mcp-servers/${serverId}/tools`,
-      { headers },
-    )
-    if (r.status === 502) {
-      const data = await r.json().catch(() => ({}))
-      return { tools: [], error: (data as { detail?: string }).detail || "Server unreachable — check connection at /integrations" }
-    }
-    if (!r.ok) {
-      const data = await r.json().catch(() => ({}))
-      return { tools: [], error: (data as { detail?: string }).detail || `HTTP ${r.status}` }
-    }
-    const data: MCPTool[] = await r.json()
+    const data: MCPTool[] = await mcpServers.tools(authFetch, serverId)
     return { tools: Array.isArray(data) ? data : [], error: null }
   } catch (e) {
-    return { tools: [], error: e instanceof Error ? e.message : "Network error" }
+    const msg = e instanceof Error ? e.message : "Network error"
+    return { tools: [], error: msg }
   }
 }
 
@@ -1063,12 +1049,8 @@ function MCPBlockPanel({
   useEffect(() => {
     if (!wsId) return
     setServersLoading(true)
-    buildMCPAuthHeaders(getToken, wsId).then(h =>
-      fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/mcp-servers?workspace_id=${wsId}${environmentId ? `&environment_id=${environmentId}` : ""}`,
-        { headers: h },
-      )
-        .then(r => r.ok ? r.json() : [])
+    buildMCPAuthFetch(getToken, wsId).then(authFetch =>
+      mcpServers.list(authFetch, wsId)
         .then(d => { if (Array.isArray(d)) setServers(d) })
         .catch(() => {})
         .finally(() => setServersLoading(false))
@@ -1079,8 +1061,8 @@ function MCPBlockPanel({
   // Load tools when a server is already saved (e.g. re-opening block)
   useEffect(() => {
     if (!savedServerId || !wsId) return
-    buildMCPAuthHeaders(getToken, wsId).then(h =>
-      fetchMCPServerTools(savedServerId, h).then(({ tools: list, error }) => {
+    buildMCPAuthFetch(getToken, wsId).then(authFetch =>
+      fetchMCPServerTools(savedServerId, authFetch).then(({ tools: list, error }) => {
         if (!error) setTools(list)
       })
     )
@@ -1107,8 +1089,8 @@ function MCPBlockPanel({
     setToolsErr(null)
     setToolsLoading(true)
 
-    const h = await buildMCPAuthHeaders(getToken, wsId)
-    const { tools: list, error } = await fetchMCPServerTools(srv.id, h)
+    const authFetch = await buildMCPAuthFetch(getToken, wsId)
+    const { tools: list, error } = await fetchMCPServerTools(srv.id, authFetch)
     setToolsLoading(false)
     if (error) { setToolsErr(error); return }
     setTools(list)
@@ -1289,18 +1271,14 @@ function BrainMCPSection({
   useEffect(() => {
     if (!wsId) return
     setServersLoading(true)
-    buildMCPAuthHeaders(getToken, wsId).then(h =>
-      fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/mcp-servers?workspace_id=${wsId}${environmentId ? `&environment_id=${environmentId}` : ""}`,
-        { headers: h },
-      )
-        .then(r => r.ok ? r.json() : [])
+    buildMCPAuthFetch(getToken, wsId).then(authFetch =>
+      mcpServers.list(authFetch, wsId)
         .then((d: MCPServer[]) => {
           if (Array.isArray(d)) {
             setServers(d)
             // Fetch tool counts for all servers (cached by backend, fast)
             d.forEach(srv => {
-              buildMCPAuthHeaders(getToken, wsId).then(hh =>
+              buildMCPAuthFetch(getToken, wsId).then(hh =>
                 fetchMCPServerTools(srv.id, hh).then(({ tools }) => {
                   setToolCounts(prev => ({ ...prev, [srv.id]: tools.length }))
                 })
@@ -1659,13 +1637,13 @@ export default function BlockEditor({
       try {
         const headers: Record<string, string> = { "Content-Type": "application/json" }
         if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
-        if (wsId) headers["X-Workspace-Id"] = wsId
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/blocks/${blockId}/compile/stream`,
+        if (wsId) headers["X-Workspace-ID"] = wsId
+        const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+        const res = await authFetch(
+          workflows.blocks.compileStreamUrl(workflowId, blockId),
           {
             method: "POST",
             signal: abort.signal,
-            headers,
             body: JSON.stringify({ description, label, type: blockType }),
           }
         )
