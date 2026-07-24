@@ -474,31 +474,51 @@ def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
 
 
 def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
-    """Keep ~/.copilot/mcp-config.json in sync with current agent token.
-
-    Copilot's mcp-config.json uses SSE + Bearer — it can't run a local stdio binary
-    the way Claude Code / Cursor can, so we write the SSE entry with a fresh token.
-    """
-    cfg_path = Path.home() / ".copilot" / "mcp-config.json"
-    if not cfg_path.exists():
-        return
-    try:
-        cfg = json.loads(cfg_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        cfg = {}
-    mcp = cfg.setdefault("mcpServers", {})
-    entry = {
+    """Keep ~/.copilot/mcp-config.json and any .mcp.json in cwd in sync with current agent token."""
+    import shutil
+    sse_entry = {
         "type": "sse",
         "url": f"{api_url}/guard/mcp",
         "headers": {"Authorization": f"Bearer {agent_token}"},
         "tools": ["**"],
     }
-    if mcp.get("conduct-guard") == entry:
-        print(f"  {GRAY}conduct-guard MCP already registered in GitHub Copilot{RESET}")
-        return
-    mcp["conduct-guard"] = entry
-    cfg_path.write_text(json.dumps(cfg, indent=2))
-    print(f"  {GREEN}conduct-guard MCP registered in GitHub Copilot (SSE){RESET}")
+    booster_entry = {"command": "booster", "args": ["serve"]} if shutil.which("booster") else None
+
+    # ~/.copilot/mcp-config.json (global Copilot config)
+    global_path = Path.home() / ".copilot" / "mcp-config.json"
+    if global_path.exists():
+        _write_mcp_file(global_path, "conduct-guard", sse_entry, booster_entry, "GitHub Copilot (global)")
+
+    # .mcp.json in cwd (project-level, picked up by VS Code Copilot)
+    local_path = Path.cwd() / ".mcp.json"
+    if local_path.exists():
+        _write_mcp_file(local_path, "conduct-guard", sse_entry, booster_entry, "GitHub Copilot (.mcp.json)")
+
+
+def _write_mcp_file(
+    cfg_path: Path,
+    guard_key: str,
+    sse_entry: dict,
+    booster_entry: dict | None,
+    label: str,
+) -> None:
+    try:
+        cfg = json.loads(cfg_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        cfg = {}
+    mcp = cfg.setdefault("mcpServers", {})
+    changed = False
+    if mcp.get(guard_key) != sse_entry:
+        mcp[guard_key] = sse_entry
+        changed = True
+        print(f"  {GREEN}conduct-guard MCP registered in {label}{RESET}")
+    else:
+        print(f"  {GRAY}conduct-guard MCP already registered in {label}{RESET}")
+    if booster_entry and mcp.get("agent-booster") != booster_entry:
+        mcp["agent-booster"] = booster_entry
+        changed = True
+    if changed:
+        cfg_path.write_text(json.dumps(cfg, indent=2))
 
 
 _GUARD_RULES_TEXT = (
