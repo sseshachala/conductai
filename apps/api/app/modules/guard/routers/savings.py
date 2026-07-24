@@ -224,19 +224,47 @@ def get_team_summary(
 def get_savings_summary(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    month: str | None = Query(default=None, description="YYYY-MM. Cumulative as of end of month; None = all time."),
 ):
-    """Return team-wide savings summary — latest row per member, never 404."""
+    """Return team-wide savings summary — latest row per member, never 404.
+
+    When month is passed, returns cumulative-as-of-end-of-month totals
+    (latest guard_savings row per member with recorded_at < first day of
+    next month). Snapshots are cumulative, so this is the running total the
+    team had at that point in time.
+    """
     try:
-        return _build_summary(db, workspace_id)
+        return _build_summary(db, workspace_id, month)
     except Exception as exc:
         log.error("guard.savings_summary_error", workspace_id=workspace_id, exc=str(exc), exc_info=True)
         return _EMPTY_SUMMARY
 
 
-def _build_summary(db: Session, workspace_id: str) -> SavingsSummaryOut:
-    # Latest row per member_email using a subquery
+def _month_end(month: str | None) -> datetime | None:
+    """First instant of the month after `month` (YYYY-MM). None passes through."""
+    if not month:
+        return None
+    try:
+        start = datetime.strptime(month, "%Y-%m").replace(
+            tzinfo=timezone.utc, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+    except ValueError:
+        return None
+    if start.month == 12:
+        return start.replace(year=start.year + 1, month=1)
+    return start.replace(month=start.month + 1)
+
+
+def _build_summary(db: Session, workspace_id: str, month: str | None = None) -> SavingsSummaryOut:
+    # Latest row per member_email as of end of month (or all time when month is None).
+    cutoff = _month_end(month)
+    params: dict = {"ws": workspace_id}
+    cutoff_clause = ""
+    if cutoff is not None:
+        params["cutoff"] = cutoff
+        cutoff_clause = "AND recorded_at < :cutoff"
     latest_rows = db.execute(
-        text("""
+        text(f"""
             SELECT
                 gs.member_email,
                 gs.rtk_saved_tokens,
@@ -252,14 +280,16 @@ def _build_summary(db: Session, workspace_id: str) -> SavingsSummaryOut:
                 SELECT member_email, MAX(recorded_at) AS max_recorded_at
                 FROM guard_savings
                 WHERE workspace_id = :ws
+                  {cutoff_clause}
                 GROUP BY member_email
             ) latest
                 ON gs.member_email = latest.member_email
                AND gs.recorded_at  = latest.max_recorded_at
             WHERE gs.workspace_id = :ws
+              {cutoff_clause}
             ORDER BY gs.member_email ASC
         """),
-        {"ws": workspace_id},
+        params,
     ).fetchall()
 
     if not latest_rows:
