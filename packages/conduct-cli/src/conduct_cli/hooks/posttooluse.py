@@ -92,7 +92,7 @@ def _maybe_emit_security_finding(tool_response, session_id, tool_name, tool_inpu
     if not cfg.get("security_emit_enabled", False):
         return
     workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("api_key", "")
+    agent_token = cfg.get("agent_token", "")
     api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     if not workspace_id:
         return
@@ -138,7 +138,7 @@ def _maybe_emit_security_finding(tool_response, session_id, tool_name, tool_inpu
         "try:\n"
         f"    req = urllib.request.Request(\"{api_url}/security-findings?workspace_id={workspace_id}\","
         f" data={repr(payload.encode())}, headers={{\"Content-Type\": \"application/json\","
-        f" \"X-Api-Key\": \"{api_key}\"}}, method=\"POST\")\n"
+        f" \"Authorization\": \"Bearer {agent_token}\"}}, method=\"POST\")\n"
         "    urllib.request.urlopen(req, timeout=5)\n"
         "except: pass\n"
     )

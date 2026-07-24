@@ -735,14 +735,13 @@ function AppShellInnerContent({
                 collapsed={collapsed}
               />
               {/* Guard sub-nav */}
-              {(pathname.startsWith("/theguard") || pathname.startsWith("/theguard/team-os")) && !collapsed && (
+              {pathname.startsWith("/theguard") && !collapsed && (
                 <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
                     { label: "Overview",    href: "/theguard" },
                     { label: "Policies",    href: "/theguard/policies" },
                     { label: "Team Memory", href: "/theguard/team-memory" },
                     { label: "Activity",    href: "/logs/guard" },
-                    { label: "Team OS",     href: "/theguard/team-os" },
                     { label: "Settings",    href: "/theguard/settings", adminOnly: true },
                   ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
                     const subActive = sub.href === "/theguard" ? pathname === "/theguard" : pathname.startsWith(sub.href)

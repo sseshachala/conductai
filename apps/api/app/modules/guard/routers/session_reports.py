@@ -526,16 +526,16 @@ async def get_session_report_html(
     report_id: str,
     token: str | None = Query(None),
     workspace_id: str | None = Query(None),
-    x_api_key: str | None = Header(None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_optional),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Return a styled HTML view of a session report.
 
-    Auth: accepts ?token= or X-Api-Key header with a Clerk JWT.
+    Auth: accepts ?token= or Authorization: Bearer with a Clerk JWT.
     Workspace isolation is enforced — the report must belong to the
     authenticated workspace.
     """
-    api_key_val = token or x_api_key
+    api_key_val = token or (credentials.credentials if credentials else None)
     if not api_key_val:
         return _HTML_401
 

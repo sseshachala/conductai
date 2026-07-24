@@ -60,19 +60,8 @@ def get_workspace_id_sse(
     if not _clerk_enabled():
         return x_ws or DEV_WORKSPACE_ID
 
-    # Accept api_key from header OR query param (CLI streams can't always set headers)
-    api_key_hdr = (
-        request.headers.get("x-api-key")
-        or request.query_params.get("api_key")
-    )
-
-    # Master server-level CLI key
-    cli_key = settings.cli_api_key
-    if cli_key and api_key_hdr == cli_key:
-        if not settings.cli_workspace_id:
-            raise HTTPException(status_code=500, detail="CLI_WORKSPACE_ID is not configured on the server")
-        return settings.cli_workspace_id
-
+    # SSE clients (EventSource) can't set headers, so bearer token may come
+    # via ?token= query param instead of Authorization header.
     raw_token = None
     if auth_header.startswith("Bearer "):
         raw_token = auth_header.removeprefix("Bearer ")

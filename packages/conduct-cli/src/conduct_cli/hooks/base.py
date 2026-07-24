@@ -148,14 +148,14 @@ def _refresh_policy_from_api() -> None:
     try:
         cfg = load_config()
         workspace_id = cfg.get("workspace_id")
-        api_key = cfg.get("api_key", "")
+        agent_token = cfg.get("agent_token", "")
         api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-        if not api_key:
+        if not agent_token:
             return
         url = f"{api_url}/guard/policies/sync"
         if workspace_id:
             url += f"?workspace_id={workspace_id}"
-        req = urllib.request.Request(url, headers={"X-Api-Key": api_key})
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {agent_token}"})
         with urllib.request.urlopen(req, timeout=8) as resp:
             data = resp.read()
         POLICY_PATH.parent.mkdir(parents=True, exist_ok=True)

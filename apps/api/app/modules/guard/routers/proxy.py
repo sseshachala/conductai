@@ -39,7 +39,7 @@ from sqlalchemy.orm import Session
 import re
 
 from app.core.auth import get_workspace_id, require_permission, resolve_agent_token
-from app.core.pii import redact_secrets
+from app.core.pii import redact_pii, redact_secrets
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.database import SessionLocal, get_db
@@ -225,16 +225,12 @@ async def _proxy(
     token = _extract_member_token(raw, bearer=bearer)
 
     # Internal server-to-server bypass (brain block / runtime calling its own proxy).
-    # Accepts either CLI_API_KEY (legacy) or a cond_agt_ Agent Identity token.
+    # The runtime sends a per-run cond_run_* token OR the workspace's
+    # cond_agt_* Agent Identity token via x-conductai-internal.
     _internal_key = request.headers.get("x-conductai-internal", "")
-    _is_internal = bool(
-        _internal_key
-        and settings.cli_api_key
-        and _internal_key == settings.cli_api_key
-    )
-    # ponytail: flag only — DB validation deferred into main db block (one session, not two)
-    _needs_run_token_validation = bool(_internal_key and not _is_internal and _internal_key.startswith("cond_run_"))
-    _needs_agent_validation = bool(_internal_key and not _is_internal and _internal_key.startswith("cond_agt_"))
+    _is_internal = False  # flips to True only after run/agent token validation
+    _needs_run_token_validation = bool(_internal_key and _internal_key.startswith("cond_run_"))
+    _needs_agent_validation = bool(_internal_key and _internal_key.startswith("cond_agt_"))
     _agent_identity_id: str | None = None
 
     if not token and not _is_internal and not _needs_agent_validation and not _needs_run_token_validation:
@@ -570,7 +566,10 @@ def _redact_body(body: dict) -> tuple[dict, list[str]]:
     found: list[str] = []
 
     def _clean(text: str) -> str:
-        cleaned, secrets = redact_secrets(text)
+        pii_scrubbed = redact_pii(text)
+        if pii_scrubbed != text:
+            found.append("pii")
+        cleaned, secrets = redact_secrets(pii_scrubbed)
         found.extend(secrets)
         return cleaned
 
