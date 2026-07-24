@@ -6,7 +6,7 @@
         "serve"
       ],
       "env": {
-        "BOOSTER_SECRET": "35602ddf9cdf5a29237bf7fc5c11e8efc15a861be8cef4bee9146596ccd2f5d1"
+        "BOOSTER_SECRET": "ed5b6d373737b552ef947b881b8860dfcf06ed2954eb89aac557d2bc01ab2aa1"
       }
     }
   }
