@@ -544,8 +544,14 @@ async def mcp_sse(
             headers=resp_headers,
         )
 
-    # Build the POST endpoint URL from the request so it works across envs
+    # Build the POST endpoint URL from the request so it works across envs.
+    # Behind Render's TLS proxy request.base_url is http:// unless uvicorn is
+    # started with --proxy-headers; trust X-Forwarded-Proto as fallback so the
+    # SSE endpoint origin matches the connection origin (MCP requires match).
+    fwd_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
     base_url = str(request.base_url).rstrip("/")
+    if fwd_proto in ("http", "https") and "://" in base_url:
+        base_url = f"{fwd_proto}://{base_url.split('://', 1)[1]}"
     post_url = f"{base_url}/guard/mcp"
 
     async def event_stream():
