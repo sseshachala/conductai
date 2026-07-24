@@ -225,16 +225,11 @@ def _resolve_agent_token(token: str, db: Session):
 
 def get_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
-    x_api_key: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
 ) -> str | None:
     """Returns the Clerk user_id (sub claim), 'dev' in local dev mode, or None for machine API tokens."""
     if not _clerk_enabled():
         return DEV_USER_ID
-
-    # Master API key — return synthetic user ID scoped to the CLI workspace
-    if x_api_key and settings.cli_api_key and x_api_key == settings.cli_api_key:
-        return f"api-key:{settings.cli_workspace_id}"
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
@@ -284,7 +279,6 @@ def get_workspace_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
     ws_id: Annotated[str | None, Query(alias="workspace_id")] = None,
     x_workspace_id: Annotated[str | None, Header()] = None,
-    x_api_key: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
 ) -> str:
     """
@@ -293,18 +287,12 @@ def get_workspace_id(
     Resolution order:
     1. ?workspace_id= query param (explicit — preferred)
     2. X-Workspace-Id header (backward compat)
-    3. Clerk JWT org_id or sub (single-workspace-per-user fallback)
+    3. Bearer token (cond_run_* / cond_agt_* / cond_api_* / Clerk JWT)
     4. Dev workspace (when Clerk is not configured)
     """
     explicit_ws = ws_id or x_workspace_id
     if not _clerk_enabled():
         return explicit_ws or DEV_WORKSPACE_ID
-
-    # Master server-to-server key (env var) — unchanged
-    if x_api_key and settings.cli_api_key and x_api_key == settings.cli_api_key:
-        if not settings.cli_workspace_id:
-            raise HTTPException(status_code=500, detail="CLI_WORKSPACE_ID is not configured on the server")
-        return settings.cli_workspace_id
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")

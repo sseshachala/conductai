@@ -47,10 +47,6 @@ class Settings(BaseSettings):
     # Admin — used to approve waitlisted users via POST /projects/admin/approve
     admin_secret: str = ""
 
-    # CLI / server-to-server API key — bypasses Clerk auth
-    cli_api_key: str = ""
-    cli_workspace_id: str = ""  # workspace the CLI api key is scoped to
-
     # Modal sandbox — DEPRECATED: runtime now uses workspace BYO credentials (MODAL_TOKEN_ID
         # Embeddings — set one provider key to enable the memory block
     openai_api_key: str = ""   # text-embedding-3-small (1536d)

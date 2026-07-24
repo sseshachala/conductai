@@ -294,7 +294,7 @@ def main() -> None:
     cfg          = _load_conduct_config()
     server       = cfg.get("server", "").rstrip("/")
     workspace_id = cfg.get("workspace", "")
-    api_key      = cfg.get("api_key")
+    api_key      = cfg.get("agent_token")
     token        = cfg.get("token")
 
     for raw in sys.stdin:

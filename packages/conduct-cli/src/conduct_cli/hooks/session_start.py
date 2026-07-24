@@ -124,7 +124,7 @@ def _backfill_prev_session(current_session_id: str, cwd: str | None) -> None:
             return
         cfg = json.loads(cfg_path.read_text())
         server = cfg.get("server", "").rstrip("/")
-        api_key = cfg.get("api_key", "")
+        agent_token = cfg.get("agent_token", "")
         workspace_id = cfg.get("workspace_id") or cfg.get("workspace", "")
         if not server:
             return
@@ -145,7 +145,7 @@ def _backfill_prev_session(current_session_id: str, cwd: str | None) -> None:
                     data=payload,
                     headers={
                         "Content-Type": "application/json",
-                        "X-API-Key": api_key,
+                        "Authorization": f"Bearer {agent_token}",
                         "X-Workspace-ID": workspace_id,
                     },
                     method="PATCH",
