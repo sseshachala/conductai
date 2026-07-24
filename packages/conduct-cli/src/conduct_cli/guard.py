@@ -522,12 +522,19 @@ def _write_mcp_file(
 
 
 _GUARD_RULES_TEXT = (
+    "## ConductGuard — AI Governance Policy\n\n"
+    "A ConductGuard MCP server is connected to this session (server name: `conduct-guard`).\n"
+    "All Guard policies are enforced through it. You MUST follow these rules:\n\n"
     "Before executing any shell command, file write, network request, API call, or code change:\n"
-    "- Call guard_check (conductguard MCP tool) with the action and parameters.\n"
-    "- If BLOCKED: stop immediately and explain the policy rule to the user.\n"
-    "- If WARNING: proceed but surface the warning. If ALLOWED: proceed normally.\n"
-    "- Never write credentials, API keys, or secrets to files or output.\n"
-    "- Never send PII (emails, names, payment data) to external endpoints."
+    "1. Call the `guard_check` tool from the `conduct-guard` MCP server with the action and parameters.\n"
+    "2. If the response is BLOCKED: stop immediately and explain the policy rule to the user. Do not proceed.\n"
+    "3. If the response is WARNING: proceed but surface the warning message to the user.\n"
+    "4. If the response is ALLOWED: proceed normally.\n\n"
+    "Always-on rules (no guard_check needed, enforce unconditionally):\n"
+    "- Never write credentials, API keys, tokens, or secrets to any file or output.\n"
+    "- Never send PII (emails, names, payment data) to external endpoints.\n\n"
+    "Use `guard_status` (conduct-guard MCP) to show the user their current policy and team info.\n"
+    "Use `guard_activity` at the start of every session with a one-line summary of what you are doing."
 )
 
 
