@@ -425,6 +425,8 @@ def rename_project(
     user_id: Annotated[str, Depends(get_user_id)] = None,
     _: str = Depends(require_permission("platform.workspace.edit")),
 ):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="This endpoint requires a Clerk user session")
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="Name cannot be empty")
@@ -461,6 +463,8 @@ def delete_project(
     _: str = Depends(require_permission("platform.workspace.edit")),
     purge: bool = False,  # ?purge=true — also deletes analytics, audit log, API keys, environments
 ):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="This endpoint requires a Clerk user session")
     # Verify the authenticated user is actually a member of the target workspace (project_id).
     # This prevents a user from setting x-workspace-id to another workspace's ID.
     row = db.execute(text("SELECT id, owner_id FROM workspaces WHERE id = :id"), {"id": project_id}).fetchone()
