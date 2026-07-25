@@ -88,9 +88,9 @@ def test_hook_entrypoint_callable(module, fn):
 
 def _parse_entrypoints() -> dict[str, str]:
     """Read [project.scripts] from pyproject.toml."""
-    import tomllib  # Python 3.11+; fall back to tomli
     pyproject = Path(__file__).parent.parent / "pyproject.toml"
     try:
+        import tomllib  # Python 3.11+
         with open(pyproject, "rb") as f:
             data = tomllib.load(f)
     except ImportError:

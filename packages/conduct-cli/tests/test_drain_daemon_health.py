@@ -163,7 +163,7 @@ def test_refresh_policy_writes_file(tmp_path):
     with patch.object(base, "POLICY_PATH", policy_path), \
          patch.object(base, "load_config", return_value={
              "workspace_id": "ws_test",
-             "api_key": "cond_live_test",
+             "agent_token": "cond_agt_test",
              "api_url": "https://api.conductai.ai",
          }), \
          patch("urllib.request.urlopen", return_value=fake_resp):
@@ -197,7 +197,7 @@ def test_refresh_policy_works_without_workspace_id(tmp_path):
     fake_resp.__exit__ = MagicMock(return_value=False)
 
     with patch.object(base, "POLICY_PATH", policy_path), \
-         patch.object(base, "load_config", return_value={"api_key": "cond_live_test"}), \
+         patch.object(base, "load_config", return_value={"agent_token": "cond_agt_test"}), \
          patch("urllib.request.urlopen", return_value=fake_resp) as mock_open:
         base._refresh_policy_from_api()
 

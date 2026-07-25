@@ -36,7 +36,7 @@ def test_switch_list_prints_workspaces(tmp_path, capsys):
 
     config = {
         "server":    "https://api.conductai.ai",
-        "api_key":   "cond_live_testkey",
+        "agent_token": "cond_agt_testkey",
         "workspace": "ef0a7e36-0000-0000-0000-000000000001",
     }
     cfg_path = tmp_path / "config.json"
@@ -61,25 +61,17 @@ def test_switch_list_prints_workspaces(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 def test_switch_exact_name_updates_configs(tmp_path, capsys):
-    """conduct switch 'Marketing' updates ~/.conduct/config.json and guard config."""
+    """conduct switch 'Marketing' updates unified ~/.conduct/config.json and re-syncs guard policy."""
     from conduct_cli import main as m
     from conduct_cli import guard as g
 
-    cfg_path        = tmp_path / "conduct" / "config.json"
-    # Guard config lives at <home>/.conductguard/config.json; home is patched to tmp_path
-    guard_cfg_path  = tmp_path / ".conductguard" / "config.json"
-
+    cfg_path = tmp_path / "conduct" / "config.json"
     cfg_path.parent.mkdir(parents=True)
-    guard_cfg_path.parent.mkdir(parents=True)
 
     cfg_path.write_text(json.dumps({
         "server":    "https://api.conductai.ai",
-        "api_key":   "cond_live_testkey",
+        "agent_token": "cond_agt_testkey",
         "workspace": "ef0a7e36-0000-0000-0000-000000000001",
-    }))
-    guard_cfg_path.write_text(json.dumps({
-        "workspace_id": "ef0a7e36-0000-0000-0000-000000000001",
-        "user_email":   "dev@example.com",
     }))
 
     args = _make_args(workspace="Marketing")
@@ -101,9 +93,7 @@ def test_switch_exact_name_updates_configs(tmp_path, capsys):
 
     updated_cfg = json.loads(cfg_path.read_text())
     assert updated_cfg["workspace"] == "ab1b2c3d-0000-0000-0000-000000000002"
-
-    updated_guard = json.loads(guard_cfg_path.read_text())
-    assert updated_guard["workspace_id"] == "ab1b2c3d-0000-0000-0000-000000000002"
+    assert updated_cfg["workspace_id"] == "ab1b2c3d-0000-0000-0000-000000000002"
 
     mock_save_policy.assert_called_once_with(fake_policy)
 
@@ -119,7 +109,7 @@ def test_switch_ambiguous_exits_1(tmp_path, capsys):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
         "server":    "https://api.conductai.ai",
-        "api_key":   "cond_live_testkey",
+        "agent_token": "cond_agt_testkey",
         "workspace": "ef0a7e36-0000-0000-0000-000000000001",
     }))
 
@@ -149,7 +139,7 @@ def test_switch_no_match_exits_1(tmp_path, capsys):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
         "server":    "https://api.conductai.ai",
-        "api_key":   "cond_live_testkey",
+        "agent_token": "cond_agt_testkey",
         "workspace": "ef0a7e36-0000-0000-0000-000000000001",
     }))
 
@@ -178,27 +168,21 @@ def test_whoami_prints_all_sections(tmp_path, capsys):
     cfg_path = tmp_path / "conduct" / "config.json"
     cfg_path.parent.mkdir(parents=True)
     cfg_path.write_text(json.dumps({
-        "server":    "https://api.conductai.ai",
-        "api_key":   "cond_live_88a4longkeyxxx",
-        "workspace": "ef0a7e36-0000-0000-0000-000000000001",
+        "server":      "https://api.conductai.ai",
+        "agent_token": "cond_agt_88a4longkeyxxx",
+        "workspace":   "ef0a7e36-0000-0000-0000-000000000001",
+        "user_email":  "sudhi@b2bsphere.com",
     }))
 
-    guard_dir = tmp_path / ".conductguard"
-    guard_dir.mkdir()
-    (guard_dir / "config.json").write_text(json.dumps({
-        "workspace_id": "ef0a7e36-0000-0000-0000-000000000001",
-        "user_email":   "sudhi@b2bsphere.com",
-    }))
+    # Guard uses ~/.conduct/ now — policy.json here, hook.py absent
+    guard_dir = tmp_path / ".conduct"
+    guard_dir.mkdir(exist_ok=True)
     (guard_dir / "policy.json").write_text(json.dumps({
         "version": "1",
         "rules":   [{"rule_id": "r1"}, {"rule_id": "r2"}, {"rule_id": "r3"}],
     }))
-    # No hook.py — hook_status should say "hook missing"
 
     args = _make_args()
-
-    def fake_home():
-        return tmp_path
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
@@ -209,7 +193,7 @@ def test_whoami_prints_all_sections(tmp_path, capsys):
 
     out = capsys.readouterr().out
     assert "https://api.conductai.ai" in out
-    assert "cond_live_88" in out   # first 12 chars of the api_key
+    assert "cond_agt_88a" in out   # first 12 chars of the agent_token
     assert "sudhi@b2bsphere.com" in out
     assert "3 rules" in out
     assert "Booster" in out
