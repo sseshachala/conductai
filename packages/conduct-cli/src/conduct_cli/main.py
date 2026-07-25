@@ -1348,10 +1348,8 @@ def _atomic_write(path: Path, data: dict) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(existing, indent=2))
     os.replace(tmp, path)
-    try:
-        os.chmod(path, 0o600)
-    except Exception:
-        pass
+    from conduct_cli.hooks.base import restrict_to_owner
+    restrict_to_owner(path)
 
 
 def cmd_switch(args):
