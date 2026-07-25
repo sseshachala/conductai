@@ -478,7 +478,7 @@ def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
     """Keep ~/.copilot/mcp-config.json and any .mcp.json in cwd in sync with current agent token."""
     import shutil
     sse_entry = {
-        "type": "sse",
+        "type": "http",
         "url": f"{api_url}/guard/mcp",
         "headers": {"Authorization": f"Bearer {agent_token}"},
         "tools": ["**"],
