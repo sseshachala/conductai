@@ -36,31 +36,6 @@ jobs:
           } | ConvertTo-Json
           Set-Content -Path (Join-Path $dir "config.json") -Value $cfg
 
-      - name: diagnose token/workspace binding
-        shell: pwsh
-        env:
-          CONDUCT_SERVER:       ${{ secrets.CONDUCT_SERVER }}
-          CONDUCT_WORKSPACE_ID: ${{ secrets.CONDUCT_WORKSPACE_ID }}
-          CONDUCT_API_KEY:      ${{ secrets.CONDUCT_API_KEY }}
-        run: |
-          Write-Host "Secret shapes (values masked by GH):"
-          Write-Host ("  CONDUCT_SERVER len       = {0}" -f $env:CONDUCT_SERVER.Length)
-          Write-Host ("  CONDUCT_WORKSPACE_ID len = {0}" -f $env:CONDUCT_WORKSPACE_ID.Length)
-          Write-Host ("  CONDUCT_API_KEY len      = {0}" -f $env:CONDUCT_API_KEY.Length)
-          Write-Host ("  CONDUCT_API_KEY starts   = {0}..." -f $env:CONDUCT_API_KEY.Substring(0, [Math]::Min(9, $env:CONDUCT_API_KEY.Length)))
-          Write-Host ""
-          Write-Host "Projects visible to this token:"
-          $hdrs = @{ Authorization = "Bearer $env:CONDUCT_API_KEY" }
-          $resp = Invoke-RestMethod -Uri "$env:CONDUCT_SERVER/projects" -Headers $hdrs
-          $resp | ForEach-Object { Write-Host ("  - {0}  ({1})" -f $_.name, $_.id) }
-          Write-Host ""
-          $match = $resp | Where-Object { $_.id -eq $env:CONDUCT_WORKSPACE_ID }
-          if ($match) {
-            Write-Host "MATCH: token can access $env:CONDUCT_WORKSPACE_ID ($($match.name))"
-          } else {
-            Write-Host "NO MATCH: token cannot access requested workspace_id"
-          }
-
       - name: whoami
         run: conduct whoami
 
