@@ -1254,10 +1254,7 @@ def _report_tools_to_server() -> None:
 
         payload = json.dumps({"email": email, "tools": tools}).encode()
         headers = {"Content-Type": "application/json"}
-        # ponytail: legacy cond_live_* fallback for pre-migration configs; cond_agt_* falls through to elif token below
-        if conduct_agent_token and conduct_agent_token.startswith("cond_live_"):
-            headers["Authorization"] = f"Bearer {conduct_agent_token}"
-        elif token:
+        if token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
             f"{base_url}/guard/developer-tools",
