@@ -20,6 +20,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, get_guard_hook_auth
@@ -91,6 +92,7 @@ class PolicyOut(BaseModel):
     severity: str = "medium"
     iso_control: Optional[str] = None
     tag: Optional[str] = None
+    last_triggered: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -446,6 +448,15 @@ def list_policies(
 
     out: list[PolicyOut] = []
 
+    # Last-hit timestamp per rule_id, aggregated across org workspaces
+    last_hits: dict[str, datetime] = dict(
+        db.query(GuardAuditEvent.rule_id, func.max(GuardAuditEvent.ts))
+        .filter(GuardAuditEvent.workspace_id.in_(org_ws))
+        .filter(GuardAuditEvent.rule_id.isnot(None))
+        .group_by(GuardAuditEvent.rule_id)
+        .all()
+    )
+
     # 1. Custom rules
     customs = (
         db.query(WorkspaceCustomRule)
@@ -483,6 +494,9 @@ def list_policies(
                 continue
             seen.add(rule["id"])
             out.append(_pack_rule_to_out(rule, wp.pack_slug, wp.installed_at, ws_uuid, overrides.get(rule["id"])))
+
+    for p in out:
+        p.last_triggered = last_hits.get(p.rule_id)
 
     return out
 
