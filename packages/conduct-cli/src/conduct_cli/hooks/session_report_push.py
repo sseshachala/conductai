@@ -33,7 +33,7 @@ def _load_config() -> dict:
 def run(session_id: str = "") -> None:
     cfg = _load_config()
     server = (cfg.get("api_url") or cfg.get("server") or "https://api.conductai.ai").rstrip("/")
-    api_key = cfg.get("api_key", "")
+    agent_token = cfg.get("agent_token", "")
     member_token = cfg.get("member_token", "")
     workspace_id = cfg.get("workspace_id", "")
 
@@ -115,8 +115,8 @@ def run(session_id: str = "") -> None:
         }
         if member_token:
             headers["Authorization"] = f"Bearer {member_token}"
-        elif api_key:
-            headers["X-API-Key"] = api_key
+        elif agent_token:
+            headers["Authorization"] = f"Bearer {agent_token}"
 
         req = urllib.request.Request(
             f"{server}/guard/session-reports",

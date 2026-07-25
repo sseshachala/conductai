@@ -196,6 +196,10 @@ class TeamSummaryOut(BaseModel):
     per_day_usd: float
     per_month_usd: float
     per_year_usd: float
+    # Observation window. per_day_usd = total_cost_saved_usd / max(1, days_observed).
+    # Consumers should render "$X/day over N days" so the projection has honest scope.
+    days_observed: int
+    first_recorded_at: str | None
     tools_installed: list[str]
 
 
@@ -204,18 +208,46 @@ def get_team_summary(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Org-level savings aggregate for conduct guard savings --team."""
+    """Org-level savings aggregate for conduct guard savings --team.
+
+    per_day_usd is the actual daily rate: cumulative USD saved divided by
+    the number of days between the earliest reported snapshot and now
+    (min 1 day, to avoid div-by-zero on the first sync). per_month and
+    per_year are honest projections of that rate.
+    """
     summary = _build_summary(db, workspace_id)
     t = summary.team_total
     total_usd = round(t.rtk_saved_usd + t.booster_saved_usd, 6)
+
+    # Earliest snapshot across all members in this workspace's org scope.
+    first_ts_row = db.execute(
+        text("""
+            SELECT MIN(recorded_at) AS first_ts
+            FROM guard_savings
+            WHERE workspace_id = :ws
+        """),
+        {"ws": workspace_id},
+    ).fetchone()
+    first_ts = first_ts_row.first_ts if first_ts_row else None
+
+    if first_ts is not None:
+        if first_ts.tzinfo is None:
+            first_ts = first_ts.replace(tzinfo=timezone.utc)
+        days_observed = max(1, (_now() - first_ts).days)
+    else:
+        days_observed = 1
+
+    per_day = round(total_usd / days_observed, 2)
     return TeamSummaryOut(
         workspace_id=workspace_id,
         developer_count=len(summary.by_member),
         total_tokens_saved=t.rtk_saved_tokens + t.booster_saved_tokens,
         total_cost_saved_usd=total_usd,
-        per_day_usd=round(total_usd, 2),
-        per_month_usd=round(total_usd * 30, 2),
-        per_year_usd=round(total_usd * 365, 2),
+        per_day_usd=per_day,
+        per_month_usd=round(per_day * 30, 2),
+        per_year_usd=round(per_day * 365, 2),
+        days_observed=days_observed,
+        first_recorded_at=first_ts.isoformat() if first_ts is not None else None,
         tools_installed=summary.tools_installed,
     )
 
@@ -224,19 +256,47 @@ def get_team_summary(
 def get_savings_summary(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    month: str | None = Query(default=None, description="YYYY-MM. Cumulative as of end of month; None = all time."),
 ):
-    """Return team-wide savings summary — latest row per member, never 404."""
+    """Return team-wide savings summary — latest row per member, never 404.
+
+    When month is passed, returns cumulative-as-of-end-of-month totals
+    (latest guard_savings row per member with recorded_at < first day of
+    next month). Snapshots are cumulative, so this is the running total the
+    team had at that point in time.
+    """
     try:
-        return _build_summary(db, workspace_id)
+        return _build_summary(db, workspace_id, month)
     except Exception as exc:
         log.error("guard.savings_summary_error", workspace_id=workspace_id, exc=str(exc), exc_info=True)
         return _EMPTY_SUMMARY
 
 
-def _build_summary(db: Session, workspace_id: str) -> SavingsSummaryOut:
-    # Latest row per member_email using a subquery
+def _month_end(month: str | None) -> datetime | None:
+    """First instant of the month after `month` (YYYY-MM). None passes through."""
+    if not month:
+        return None
+    try:
+        start = datetime.strptime(month, "%Y-%m").replace(
+            tzinfo=timezone.utc, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+    except ValueError:
+        return None
+    if start.month == 12:
+        return start.replace(year=start.year + 1, month=1)
+    return start.replace(month=start.month + 1)
+
+
+def _build_summary(db: Session, workspace_id: str, month: str | None = None) -> SavingsSummaryOut:
+    # Latest row per member_email as of end of month (or all time when month is None).
+    cutoff = _month_end(month)
+    params: dict = {"ws": workspace_id}
+    cutoff_clause = ""
+    if cutoff is not None:
+        params["cutoff"] = cutoff
+        cutoff_clause = "AND recorded_at < :cutoff"
     latest_rows = db.execute(
-        text("""
+        text(f"""
             SELECT
                 gs.member_email,
                 gs.rtk_saved_tokens,
@@ -252,14 +312,16 @@ def _build_summary(db: Session, workspace_id: str) -> SavingsSummaryOut:
                 SELECT member_email, MAX(recorded_at) AS max_recorded_at
                 FROM guard_savings
                 WHERE workspace_id = :ws
+                  {cutoff_clause}
                 GROUP BY member_email
             ) latest
                 ON gs.member_email = latest.member_email
                AND gs.recorded_at  = latest.max_recorded_at
             WHERE gs.workspace_id = :ws
+              {cutoff_clause}
             ORDER BY gs.member_email ASC
         """),
-        {"ws": workspace_id},
+        params,
     ).fetchall()
 
     if not latest_rows:

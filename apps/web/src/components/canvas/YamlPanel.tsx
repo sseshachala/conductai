@@ -6,6 +6,8 @@ import type { Edge, Node } from "@xyflow/react"
 import { autoLayout } from "@/lib/auto-layout"
 import { yamlFilenameFor } from "@/lib/yaml-filename"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { workflows } from "@/lib/api"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
 
 type Status = "idle" | "loading" | "saving" | "saved" | "error"
 
@@ -16,8 +18,6 @@ interface YamlPanelProps {
   edges: Edge[]
   onLoaded: (next: { name?: string; nodes: Node[]; edges: Edge[] }) => void
 }
-
-const API = process.env.NEXT_PUBLIC_API_URL
 
 /**
  * YAML view of the workflow. The user can:
@@ -37,6 +37,7 @@ export default function YamlPanel({
   onLoaded,
 }: YamlPanelProps) {
   const { activeWorkspace } = useWorkspace()
+  const { authFetch } = useAuthFetch()
   const [yamlText, setYamlText] = useState("")
   const [status, setStatus] = useState<Status>("idle")
   const [error, setError] = useState<string | null>(null)
@@ -47,26 +48,19 @@ export default function YamlPanel({
     let cancelled = false
     setStatus("loading")
     setError(null)
-    fetch(`${API}/workflows/yaml/from-graph`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: workflowId,
-        workspace_id: activeWorkspace?.id,
-        name: workflowName,
-        graph: { nodes, edges },
-      }),
+    workflows.yaml.fromGraph(authFetch, {
+      id: workflowId,
+      workspace_id: activeWorkspace?.id,
+      name: workflowName,
+      graph: { nodes, edges },
     })
-      .then(async (r) => {
-        if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`)
-        return r.json() as Promise<{ yaml: string }>
-      })
-      .then((data) => {
+      .then(async (res: Response) => {
         if (cancelled) return
+        const data: { yaml: string } = await res.json()
         setYamlText(data.yaml)
         setStatus("idle")
       })
-      .catch((e) => {
+      .catch((e: Error) => {
         if (cancelled) return
         setError(String(e.message ?? e))
         setStatus("error")
@@ -81,11 +75,7 @@ export default function YamlPanel({
     setError(null)
     try {
       // 1. Validate + persist YAML on the server.
-      const putRes = await fetch(`${API}/workflows/${workflowId}/yaml`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/x-yaml" },
-        body: yamlText,
-      })
+      const putRes = await workflows.yaml.update(authFetch, workflowId, { yaml: yamlText })
       if (!putRes.ok) {
         const detail = await putRes.json().catch(() => ({}))
         throw new Error(detail.detail || `Save failed (${putRes.status})`)
@@ -93,12 +83,7 @@ export default function YamlPanel({
 
       // 2. Pull the derived graph straight from validate — this is the same
       //    graph the runtime will execute, so the canvas stays in sync.
-      const valRes = await fetch(`${API}/workflows/yaml/validate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ yaml: yamlText }),
-      })
-      const val = (await valRes.json()) as {
+      const val = await workflows.yaml.validate(authFetch, { yaml: yamlText }) as {
         ok: boolean
         error?: string
         name?: string
@@ -119,7 +104,7 @@ export default function YamlPanel({
       setError((e as Error).message)
       setStatus("error")
     }
-  }, [workflowId, yamlText, onLoaded])
+  }, [workflowId, yamlText, onLoaded, authFetch])
 
   const copy = useCallback(async () => {
     try {

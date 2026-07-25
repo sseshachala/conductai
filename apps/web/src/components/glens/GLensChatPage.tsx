@@ -1,4 +1,5 @@
 "use client"
+import { API } from "@/lib/api"
 
 import { useEffect, useRef, useState } from "react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
@@ -365,11 +366,10 @@ function PolicyConfirmBubble({
   warning?: string
 }) {
   const [status, setStatus] = useState<"pending" | "loading" | "done">("pending")
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
   async function confirm() {
     setStatus("loading")
-    const url = `${base}${SKILL_APPLY_URL[skill] ?? "/glens/policy/apply"}`
+    const url = `${API}${SKILL_APPLY_URL[skill] ?? "/glens/policy/apply"}`
     try {
       const res = await authFetch(url, {
         method: "POST",
@@ -528,25 +528,24 @@ export function GLensChatPage() {
 
   const threadRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
 
   // Load session list
   useEffect(() => {
     if (!workspaceId) return
-    authFetch(`${base}/glens/sessions`)
+    authFetch(`${API}/glens/sessions`)
       .then(r => r.ok ? r.json() : [])
       .then(setSessions)
       .catch(() => {})
-  }, [workspaceId, authFetch, base])
+  }, [workspaceId, authFetch])
 
   // Load data-grounded opener chips
   useEffect(() => {
     if (!workspaceId) return
-    authFetch(`${base}/glens/opener`)
+    authFetch(`${API}/glens/opener`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.chips?.length) setSuggestions(d.chips) })
       .catch(() => {})
-  }, [workspaceId, authFetch, base])
+  }, [workspaceId, authFetch])
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -563,7 +562,7 @@ export function GLensChatPage() {
     setActiveId(id)
     setMessages([])
     try {
-      const res = await authFetch(`${base}/glens/sessions/${id}`)
+      const res = await authFetch(`${API}/glens/sessions/${id}`)
       if (!res.ok) return
       const data = await res.json()
       const thread: Message[] = []
@@ -601,7 +600,7 @@ export function GLensChatPage() {
   }
 
   async function deleteSession(id: string) {
-    await authFetch(`${base}/glens/sessions/${id}`, { method: "DELETE" }).catch(() => {})
+    await authFetch(`${API}/glens/sessions/${id}`, { method: "DELETE" }).catch(() => {})
     setSessions(prev => prev.filter(s => s.id !== id))
     if (activeId === id) startNew()
   }
@@ -678,7 +677,7 @@ export function GLensChatPage() {
       const body: Record<string, unknown> = { message: text }
       if (activeId) body.session_id = activeId
 
-      const res = await authFetch(`${base}/glens/chat/stream`, {
+      const res = await authFetch(`${API}/glens/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

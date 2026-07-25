@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { guard, projects } from "@/lib/api"
 
 interface GuardTeamResult {
   teamId: string | null
@@ -11,7 +12,7 @@ interface GuardTeamResult {
 }
 
 export function useGuardTeam(): GuardTeamResult {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace, loading: wsLoading } = useWorkspace()
   const [teamId, setTeamId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -27,27 +28,19 @@ export function useGuardTeam(): GuardTeamResult {
         return
       }
       try {
-        const token = await getToken()
-        const headers: Record<string, string> = {}
-        if (token) headers["Authorization"] = `Bearer ${token}`
-        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
         const wsId = activeWorkspace.id
-        let res = await fetch(`${base}/guard/config?workspace_id=${wsId}`, { headers })
-
-        // Auto-install Guard if not yet configured
-        if (res.status === 404) {
-          await fetch(`${base}/projects/${wsId}/guard/install`, {
-            method: "POST",
-            headers: { ...headers, "Content-Type": "application/json", "X-Workspace-ID": wsId },
-          })
-          res = await fetch(`${base}/guard/config?workspace_id=${wsId}`, { headers })
+        let data: any
+        try {
+          data = await guard.config.get(authFetch, wsId)
+        } catch (err: any) {
+          // Auto-install Guard if not yet configured (404)
+          if (err?.message?.includes("404") || String(err).includes("404")) {
+            await projects.guard.install(authFetch, wsId)
+            data = await guard.config.get(authFetch, wsId)
+          } else {
+            throw err
+          }
         }
-
-        if (!res.ok) {
-          if (!cancelled) { setLoading(false); setError(`Guard not installed (${res.status})`) }
-          return
-        }
-        const data = await res.json()
         if (!cancelled) { setTeamId(data.workspace_id); setLoading(false) }
       } catch {
         if (!cancelled) { setLoading(false); setError("Failed to load Guard team") }

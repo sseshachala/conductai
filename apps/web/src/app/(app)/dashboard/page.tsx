@@ -7,6 +7,8 @@ import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { statusStyle as _statusStyle, formatTrigger, timeAgo } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 
 // #10 #15: statusStyle imported with alias to suppress unused-var; timeAgo from runUtils (removed local duplicate)
 void _statusStyle
@@ -245,6 +247,7 @@ function PriorityItem({
   getToken: (() => Promise<string | null>) | null
 }) {
   const { activeWorkspace } = useWorkspace()
+  const { authFetch } = useAuthFetch()
   const [acted, setAct] = useState<string | null>(null)
   const [approveError, setApproveError] = useState<string | null>(null)
 
@@ -274,17 +277,10 @@ function PriorityItem({
 
   async function handleApproval(approved: boolean) {
     setApproveError(null)
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (getToken) {
-      const token = await getToken()
-      if (token) headers["Authorization"] = `Bearer ${token}`
-    }
-    const workspaceId = activeWorkspace?.id ?? null
-    if (workspaceId) headers["X-Workspace-Id"] = workspaceId
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/runs/${run.run_id}/approve`,
-        { method: "POST", headers, body: JSON.stringify({ decision: approved ? "approved" : "rejected" }) }
+      const res = await authFetch(
+        `${API}/runs/${run.run_id}/approve`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: approved ? "approved" : "rejected" }) }
       )
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -772,22 +768,16 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
   const [dismissedGuardNudge, setDismissedGuardNudge] = useState(false)
   const router = useRouter()
 
-  async function buildHeaders(): Promise<{ headers: Record<string, string>; workspaceId: string | null }> {
-    const headers: Record<string, string> = {}
-    if (getToken) {
-      const token = await getToken()
-      if (token) headers["Authorization"] = `Bearer ${token}`
-    }
-    const workspaceId = activeWorkspace?.id ?? null
-    if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-    return { headers, workspaceId }
+  const { authFetch } = useAuthFetch()
+
+  function buildWorkspaceId(): string | null {
+    return activeWorkspace?.id ?? null
   }
 
   async function loadDash() {
-    const { headers } = await buildHeaders()
     try {
       setError(null)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/dashboard`, { headers })
+      const res = await authFetch(`${API}/dashboard`)
       if (res.ok) {
         setData(await res.json())
         setLastUpdated(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
@@ -802,16 +792,14 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
   }
 
   async function loadGuard() {
-    const { headers, workspaceId } = await buildHeaders()
+    const workspaceId = buildWorkspaceId()
     if (!workspaceId) { setGuardLoading(false); return }
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const wsHeaders = { ...headers, "X-Workspace-Id": workspaceId }
       const [toolsRes, meRes, guardConfigRes] = await Promise.all([
-        fetch(`${base}/guard/developer-tools`, { headers: wsHeaders }),
-        fetch(`${base}/guard/developer-tools/me`, { headers: wsHeaders }),
+        authFetch(`${API}/guard/developer-tools`),
+        authFetch(`${API}/guard/developer-tools/me`),
         // #4: fetch Guard config for spend cap
-        fetch(`${base}/guard/config?workspace_id=${workspaceId}`, { headers: wsHeaders }),
+        authFetch(`${API}/guard/config?workspace_id=${workspaceId}`),
       ])
       if (toolsRes.ok) {
         const tools = await toolsRes.json()

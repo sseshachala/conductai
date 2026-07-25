@@ -65,6 +65,7 @@ apps/web/e2e/auth-states/*.json
 .booster/
 
 # Per-app local tooling config (Claude Code, MCP) — not project files
+.mcp.json
 apps/api/.claude/
 apps/api/.mcp.json
 apps/api/CLAUDE.md
@@ -74,4 +75,4 @@ apps/web/CLAUDE.md
 
 # Internal-only docs — never publish
 docs/internal/
-tools/booster/demos/
+.env*.local

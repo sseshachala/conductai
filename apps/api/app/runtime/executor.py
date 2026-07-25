@@ -292,6 +292,8 @@ def execute_run(run_id: str):
                     _ev = credentials.get("env_vars") or {}
                     if isinstance(_ev, dict):
                         _ev["CONDUCT_RUN_TOKEN"] = _plaintext
+                        _ev["CONDUCT_RUN_ID"] = str(run.id)
+                        _ev["CONDUCT_API_URL"] = settings.api_base_url
                         credentials._data["env_vars"] = _ev
                     # ponytail: keep token_encrypted intact — run may retry across blocks
             except Exception:
@@ -325,6 +327,12 @@ def execute_run(run_id: str):
                 db.commit()
                 _run_token_row_id = _mint_row.id
                 _conduct_run_token = _pt
+                _ev2 = credentials.get("env_vars") or {}
+                if isinstance(_ev2, dict):
+                    _ev2["CONDUCT_RUN_TOKEN"] = _pt
+                    _ev2["CONDUCT_RUN_ID"] = str(run.id)
+                    _ev2["CONDUCT_API_URL"] = settings.api_base_url
+                    credentials._data["env_vars"] = _ev2
                 log.info("run.token_minted_at_executor", run_id=run_id)
             except Exception:
                 log.warning("run.token_mint_at_executor_failed", run_id=run_id)

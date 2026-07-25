@@ -156,7 +156,7 @@ def _maybe_sync_policy() -> None:
     try:
         cfg = load_config()
         workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
-        api_key      = cfg.get("agent_token") or cfg.get("api_key", "")
+        agent_token  = cfg.get("agent_token", "")
         api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
         if not workspace_id:
             return
@@ -175,7 +175,7 @@ def _maybe_sync_policy() -> None:
             if time.time() - cache.get("ts", 0) < VERSION_CACHE_TTL:
                 return
         url = f"{api_url}/guard/policies/sync?workspace_id={workspace_id}"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"} if api_key else {})
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {agent_token}"} if agent_token else {})
         with urllib.request.urlopen(req, timeout=2) as resp:
             remote = json.loads(resp.read())
 

@@ -1,5 +1,7 @@
 """Tests for drain daemon stale-PID detection and ensure_drain_daemon restart logic."""
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -86,18 +88,60 @@ def test_ensure_kills_stale_and_spawns(tmp_path):
     old = time.time() - base._DAEMON_STALE_SECS - 60
     os.utime(pid_file, (old, old))
 
-    killed = []
-
-    def fake_kill(pid, sig):
-        killed.append((pid, sig))
+    fake_proc = MagicMock()
+    fake_psutil = MagicMock()
+    fake_psutil.pid_exists.return_value = True
+    fake_psutil.Process.return_value = fake_proc
 
     with patch.object(base, "JOURNAL_PID_PATH", pid_file), \
          patch.object(base, "subprocess"), \
-         patch("os.kill", fake_kill):
+         patch.object(base, "_psutil", fake_psutil):
         base.ensure_drain_daemon(hook_module_path=Path("/fake/hook.py"))
 
-    # stale PID (our own process) should have received SIGTERM
-    assert any(sig == 15 for _, sig in killed)
+    fake_proc.terminate.assert_called_once()
+
+
+def test_ensure_daemon_uses_creationflags_on_windows(tmp_path):
+    """On Windows, Popen must use creationflags (not start_new_session)."""
+    pid_file = tmp_path / "drain.pid"  # missing → dead
+
+    # POSIX Python won't have these constants; fake them so the branch runs.
+    detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+
+    with patch.object(base, "JOURNAL_PID_PATH", pid_file), \
+         patch.object(base, "sys") as mock_sys, \
+         patch.object(base, "subprocess") as mock_sub:
+        mock_sys.platform = "win32"
+        mock_sys.executable = sys.executable
+        mock_sub.DEVNULL = subprocess.DEVNULL
+        mock_sub.DETACHED_PROCESS = detached
+        mock_sub.CREATE_NEW_PROCESS_GROUP = new_group
+        base.ensure_drain_daemon(hook_module_path=Path("/fake/hook.py"))
+
+    mock_sub.Popen.assert_called_once()
+    kwargs = mock_sub.Popen.call_args.kwargs
+    assert "creationflags" in kwargs
+    assert kwargs["creationflags"] != 0
+    assert "start_new_session" not in kwargs
+
+
+def test_ensure_daemon_uses_start_new_session_on_posix(tmp_path):
+    """On POSIX, Popen must use start_new_session=True (not creationflags)."""
+    pid_file = tmp_path / "drain.pid"  # missing → dead
+
+    with patch.object(base, "JOURNAL_PID_PATH", pid_file), \
+         patch.object(base, "sys") as mock_sys, \
+         patch.object(base, "subprocess") as mock_sub:
+        mock_sys.platform = "linux"
+        mock_sys.executable = sys.executable
+        mock_sub.DEVNULL = subprocess.DEVNULL
+        base.ensure_drain_daemon(hook_module_path=Path("/fake/hook.py"))
+
+    mock_sub.Popen.assert_called_once()
+    kwargs = mock_sub.Popen.call_args.kwargs
+    assert kwargs.get("start_new_session") is True
+    assert "creationflags" not in kwargs
 
 
 def test_ensure_no_spawn_without_hook_path(tmp_path):
@@ -163,7 +207,7 @@ def test_refresh_policy_writes_file(tmp_path):
     with patch.object(base, "POLICY_PATH", policy_path), \
          patch.object(base, "load_config", return_value={
              "workspace_id": "ws_test",
-             "api_key": "cond_live_test",
+             "agent_token": "cond_agt_test",
              "api_url": "https://api.conductai.ai",
          }), \
          patch("urllib.request.urlopen", return_value=fake_resp):
@@ -197,10 +241,42 @@ def test_refresh_policy_works_without_workspace_id(tmp_path):
     fake_resp.__exit__ = MagicMock(return_value=False)
 
     with patch.object(base, "POLICY_PATH", policy_path), \
-         patch.object(base, "load_config", return_value={"api_key": "cond_live_test"}), \
+         patch.object(base, "load_config", return_value={"agent_token": "cond_agt_test"}), \
          patch("urllib.request.urlopen", return_value=fake_resp) as mock_open:
         base._refresh_policy_from_api()
 
     called_url = mock_open.call_args[0][0].full_url
     assert "workspace_id" not in called_url
     assert policy_path.read_bytes() == fake_policy
+
+
+def test_restrict_to_owner_posix_calls_chmod(tmp_path):
+    """On POSIX, restrict_to_owner delegates to Path.chmod(0o600)."""
+    f = tmp_path / "config.json"
+    f.write_text("{}")
+    with patch.object(base, "sys") as mock_sys:
+        mock_sys.platform = "linux"
+        base.restrict_to_owner(f)
+    # On host that supports mode bits, the file should now be 0o600
+    mode = f.stat().st_mode & 0o777
+    assert mode == 0o600
+
+
+def test_restrict_to_owner_windows_invokes_icacls(tmp_path):
+    """On Windows, restrict_to_owner runs icacls to lock the file to USERNAME."""
+    f = tmp_path / "config.json"
+    f.write_text("{}")
+    with patch.object(base, "sys") as mock_sys, \
+         patch.object(base, "subprocess") as mock_sub, \
+         patch.dict(os.environ, {"USERNAME": "runneradmin"}, clear=False):
+        mock_sys.platform = "win32"
+        mock_sub.DEVNULL = subprocess.DEVNULL
+        base.restrict_to_owner(f)
+    mock_sub.run.assert_called_once()
+    args, _ = mock_sub.run.call_args
+    cmd = args[0]
+    assert cmd[0] == "icacls"
+    assert str(f) in cmd
+    assert "/inheritance:r" in cmd
+    assert "runneradmin:F" in cmd
+

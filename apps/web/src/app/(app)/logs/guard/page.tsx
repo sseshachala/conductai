@@ -18,6 +18,8 @@ import ToolActivityTable from "@/components/guard/ToolActivityTable"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { ActivityRow, ActivityHeader, ToolBadge, DecisionBadge, BlastRadiusBadge, formatTs, type AuditEvent } from "@/components/guard/ActivityRow"
 
@@ -102,6 +104,7 @@ export default function ActivityPage() {
 
 function ActivityContent() {
   const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
@@ -142,19 +145,14 @@ function ActivityContent() {
   // Fetch audit chain status + advisory mode on load
   useEffect(() => {
     if (!teamId) return
-    const base = process.env.NEXT_PUBLIC_API_BASE_URL
-    getToken().then(token => {
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      fetch(`${base}/guard/events/audit/verify?workspace_id=${teamId}`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => d && setChainStatus(d))
-        .catch(() => {})
-      fetch(`${base}/guard/config?workspace_id=${teamId}`, { headers })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => d && setAdvisoryMode(d.advisory_mode ?? false))
-        .catch(() => {})
-    })
+    authFetch(`${API}/guard/events/audit/verify?workspace_id=${teamId}`)
+      .then((r: Response) => r.ok ? r.json() : null)
+      .then((d: unknown) => d && setChainStatus(d as Parameters<typeof setChainStatus>[0]))
+      .catch(() => {})
+    authFetch(`${API}/guard/config?workspace_id=${teamId}`)
+      .then((r: Response) => r.ok ? r.json() : null)
+      .then((d: Record<string, unknown> | null) => d && setAdvisoryMode(d.advisory_mode as boolean ?? false))
+      .catch(() => {})
   }, [teamId])
 
   // Hydrate filters from URL on first load — lets callers like the governance
@@ -206,13 +204,8 @@ function ActivityContent() {
     setLoading(true)
     setError(null)
     offsetRef.current = 0
-    const token = await getToken()
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
-
     try {
-      const res = await fetch(`${base}/guard/events?${buildParams(0)}`, { headers })
+      const res = await authFetch(`${API}/guard/events?${buildParams(0)}`)
       if (!res.ok) throw new Error("Failed to load activity events")
       const rows: AuditEvent[] = await res.json()
       setEvents(rows)
@@ -227,20 +220,16 @@ function ActivityContent() {
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getToken, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId])
+  }, [authFetch, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId])
 
   const loadSessions = useCallback(async () => {
     if (!teamId) return
     setSessionsLoading(true)
     setSessionsError(null)
-    const token = await getToken()
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
     try {
       const p = new URLSearchParams({ limit: "100", offset: "0" })
       if (teamId) p.set("workspace_id", teamId)
-      const res = await fetch(`${base}/guard/spend/sessions?${p}`, { headers })
+      const res = await authFetch(`${API}/guard/spend/sessions?${p}`)
       if (!res.ok) throw new Error("Failed to load sessions")
       setSessions(await res.json())
     } catch (err) {
@@ -248,7 +237,7 @@ function ActivityContent() {
     } finally {
       setSessionsLoading(false)
     }
-  }, [getToken, teamId])
+  }, [authFetch, teamId])
 
   useEffect(() => {
     load()
@@ -266,8 +255,7 @@ function ActivityContent() {
     const connect = async (forceRefresh = false) => {
       const token = await getToken({ skipCache: forceRefresh } as Parameters<typeof getToken>[0])
       if (!token) return
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const url = `${base}/guard/events/stream?workspace_id=${teamId}&token=${encodeURIComponent(token)}`
+      const url = `${API}/guard/events/stream?workspace_id=${teamId}&token=${encodeURIComponent(token)}`
       es = new EventSource(url)
       esRef.current = es
       es.onmessage = (e) => {
@@ -309,12 +297,8 @@ function ActivityContent() {
     if (!teamId) return
     setReportsLoading(true)
     setReportsError(null)
-    const token = await getToken()
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const headers: Record<string, string> = {}
-    if (token) headers["Authorization"] = `Bearer ${token}`
     try {
-      const res = await fetch(`${base}/guard/session-reports?workspace_id=${teamId}`, { headers })
+      const res = await authFetch(`${API}/guard/session-reports?workspace_id=${teamId}`)
       if (!res.ok) throw new Error(`Failed to load session reports (${res.status})`)
       const data: SessionReport[] = await res.json()
       data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -324,7 +308,7 @@ function ActivityContent() {
     } finally {
       setReportsLoading(false)
     }
-  }, [getToken, teamId])
+  }, [authFetch, teamId])
 
   useEffect(() => {
     if (activeView !== "sessions") return
@@ -340,12 +324,8 @@ function ActivityContent() {
 
   async function loadMore() {
     setLoadingMore(true)
-    const token = await getToken()
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) headers["Authorization"] = `Bearer ${token}`
     try {
-      const res = await fetch(`${base}/guard/events?${buildParams(offsetRef.current)}`, { headers })
+      const res = await authFetch(`${API}/guard/events?${buildParams(offsetRef.current)}`)
       if (!res.ok) throw new Error("Failed to load more events")
       const rows: AuditEvent[] = await res.json()
       setEvents(prev => [...prev, ...rows])

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { ActivityRow, ActivityHeader } from "@/components/guard/ActivityRow"
@@ -266,8 +267,8 @@ function timeAgo(iso: string): string {
 
 export default function GovernancePage() {
   const { activeWorkspace } = useWorkspace()
+  const { authFetch } = useAuthFetch()
   const workspaceId = activeWorkspace?.id ?? null
-  const { getToken } = useAuth()
   const [stats, setStats] = useState<SpendStats | null>(null)
   const [installedPacks, setInstalledPacks] = useState<string[]>([])
   const [frameworks, setFrameworks] = useState<FrameworksOut | null>(null)
@@ -300,18 +301,13 @@ export default function GovernancePage() {
     if (!workspaceId) return
     let cancelled = false
     const load = async () => {
-      const token = await getToken()
-      const headers: Record<string, string> = {}
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-
       try {
-        const res = await fetch(`${base}/guard/spend?workspace_id=${workspaceId}`, { headers })
+        const res = await authFetch(`${API}/guard/spend?workspace_id=${workspaceId}`)
         if (res.ok && !cancelled) setStats(await res.json())
       } catch { /* non-fatal */ }
 
       try {
-        const res = await fetch(`${base}/compliance/packs/installed?workspace_id=${workspaceId}`, { headers })
+        const res = await authFetch(`${API}/compliance/packs/installed?workspace_id=${workspaceId}`)
         if (res.ok && !cancelled) {
           const data: InstalledPacksResponse = await res.json()
           setInstalledPacks(Array.isArray(data?.installed) ? data.installed : [])
@@ -319,7 +315,7 @@ export default function GovernancePage() {
       } catch { /* non-fatal */ }
 
       try {
-        const res = await fetch(`${base}/governance/frameworks?workspace_id=${workspaceId}`, { headers })
+        const res = await authFetch(`${API}/governance/frameworks?workspace_id=${workspaceId}`)
         if (res.ok && !cancelled) {
           const data: FrameworksOut = await res.json()
           setFrameworks(data)
@@ -331,13 +327,13 @@ export default function GovernancePage() {
       } catch { /* non-fatal */ }
 
       try {
-        const res = await fetch(`${base}/governance/narrative?workspace_id=${workspaceId}&period=${narrativePeriod}`, { headers })
+        const res = await authFetch(`${API}/governance/narrative?workspace_id=${workspaceId}&period=${narrativePeriod}`)
         if (res.ok && !cancelled) setNarrative(await res.json())
       } catch { /* non-fatal */ }
 
       try {
         const filterParam = eventFilter ? `&decision=${eventFilter}` : ""
-        const res = await fetch(`${base}/governance/events/recent?workspace_id=${workspaceId}&limit=15${filterParam}`, { headers })
+        const res = await authFetch(`${API}/governance/events/recent?workspace_id=${workspaceId}&limit=15${filterParam}`)
         if (res.ok && !cancelled) {
           setRecentEvents(await res.json())
           setRecentLoaded(true)
@@ -345,7 +341,7 @@ export default function GovernancePage() {
       } catch { /* non-fatal */ }
 
       try {
-        const res = await fetch(`${base}/governance/kpis?workspace_id=${workspaceId}`, { headers })
+        const res = await authFetch(`${API}/governance/kpis?workspace_id=${workspaceId}`)
         if (res.ok && !cancelled) setKpis(await res.json())
       } catch { /* non-fatal */ }
 
@@ -353,25 +349,21 @@ export default function GovernancePage() {
     }
     load()
     return () => { cancelled = true }
-  }, [workspaceId, getToken, activeFramework, eventFilter, narrativePeriod, tick])
+  }, [workspaceId, authFetch, activeFramework, eventFilter, narrativePeriod, tick])
 
   // Certifications — only reload when installed packs change, not every 60s tick.
   useEffect(() => {
     if (!workspaceId || installedPacks.length === 0) return
     let cancelled = false
     const load = async () => {
-      const token = await getToken()
-      const hdrs: Record<string, string> = {}
-      if (token) hdrs["Authorization"] = `Bearer ${token}`
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ""
       try {
-        const res = await fetch(`${apiBase}/governance/certifications?workspace_id=${workspaceId}`, { headers: hdrs })
+        const res = await authFetch(`${API}/governance/certifications?workspace_id=${workspaceId}`)
         if (res.ok && !cancelled) setCertifications(await res.json())
       } catch { /* non-fatal */ }
     }
     load()
     return () => { cancelled = true }
-  }, [workspaceId, getToken, installedPacks])
+  }, [workspaceId, authFetch, installedPacks])
 
   // Fetch the rules covering the selected control whenever it changes.
   useEffect(() => {
@@ -383,13 +375,8 @@ export default function GovernancePage() {
     const load = async () => {
       setDrillLoading(true)
       try {
-        const token = await getToken()
-        const headers: Record<string, string> = {}
-        if (token) headers["Authorization"] = `Bearer ${token}`
-        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-        const res = await fetch(
-          `${base}/governance/frameworks/${activeFramework}/controls/${activeControl}/rules?workspace_id=${workspaceId}`,
-          { headers },
+        const res = await authFetch(
+          `${API}/governance/frameworks/${activeFramework}/controls/${activeControl}/rules?workspace_id=${workspaceId}`
         )
         if (res.ok && !cancelled) setControlDrill(await res.json())
       } catch { /* non-fatal */ } finally {
@@ -398,22 +385,18 @@ export default function GovernancePage() {
     }
     load()
     return () => { cancelled = true }
-  }, [workspaceId, getToken, activeFramework, activeControl])
+  }, [workspaceId, authFetch, activeFramework, activeControl])
 
   const verifyChain = useCallback(async () => {
     if (!workspaceId) return
     setChainLoading(true)
     try {
-      const token = await getToken()
-      const headers: Record<string, string> = {}
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await fetch(`${base}/guard/verify/chain?workspace_id=${workspaceId}`, { headers })
+      const res = await authFetch(`${API}/guard/verify/chain?workspace_id=${workspaceId}`)
       if (res.ok) setChain(await res.json())
     } finally {
       setChainLoading(false)
     }
-  }, [workspaceId, getToken])
+  }, [workspaceId, authFetch])
 
   const certMap = Object.fromEntries(certifications.map(c => [c.pack_slug, c]))
 
@@ -421,17 +404,13 @@ export default function GovernancePage() {
     if (!workspaceId) return
     setCertifying(packSlug)
     try {
-      const token = await getToken()
-      const hdrs: Record<string, string> = { "Content-Type": "application/json" }
-      if (token) hdrs["Authorization"] = `Bearer ${token}`
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await fetch(`${apiBase}/governance/certify?workspace_id=${workspaceId}`, {
+      const res = await authFetch(`${API}/governance/certify?workspace_id=${workspaceId}`, {
         method: "POST",
-        headers: hdrs,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pack_slug: packSlug }),
       })
       if (res.ok) {
-        const fresh = await fetch(`${apiBase}/governance/certifications?workspace_id=${workspaceId}`, { headers: hdrs })
+        const fresh = await authFetch(`${API}/governance/certifications?workspace_id=${workspaceId}`)
         if (fresh.ok) setCertifications(await fresh.json())
       }
     } finally {
@@ -453,7 +432,7 @@ export default function GovernancePage() {
               Governance
             </h1>
             <p style={{ fontSize: 13, color: "var(--text-3)", margin: "4px 0 0" }}>
-              Certify your delegation policies, not just individual events. Who authorized this agent to act. Under what rules. What it did.
+              Certify your delegation policies, not just individual events. Who authorised this agent to act. Under what rules. What it did. Runtime admissibility states are logged at the execution boundary — every decision is custody proof, not a reconstruction.
             </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-3)", paddingTop: 4 }}>
@@ -1119,7 +1098,7 @@ export default function GovernancePage() {
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                  SHA-256 chain links every audit event to the previous one. Click to confirm the log has not been altered.
+                  SHA-256 chain links every audit event to the previous one — custody proof at the execution boundary. Click to confirm the log has not been altered and that every Governance Authorization Artifact is intact.
                 </div>
               )}
             </div>

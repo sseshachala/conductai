@@ -37,6 +37,9 @@ import { autoLayout } from "@/lib/auto-layout"
 import { type BlockType } from "@/lib/block-types"
 import { usePreferences } from "@/lib/PreferencesContext"
 import { cn } from "@/lib/utils"
+import { workflows, credentials, environments as environmentsApi, projects } from "@/lib/api"
+import type { AuthFetch } from "@/lib/api"
+import { API as API_URL } from "@/lib/api/client"
 
 const nodeTypes = { block: BlockNode }
 
@@ -202,9 +205,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       try {
         const headers = await authHeaders(getToken, wsId)
         if (abort.signal.aborted) return
-        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}`, { headers, signal: abort.signal })
-        if (!r.ok) { localStorage.removeItem(STORAGE_KEY); return }
-        const run = await r.json()
+        const authFetch: AuthFetch = (url, opts) => fetch(url, { signal: abort.signal, ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+        const run = await workflows.runs.get(authFetch, workflowId, runId).catch(() => null)
+        if (!run) { localStorage.removeItem(STORAGE_KEY); return }
         if (abort.signal.aborted) return
         if (run.status === "running" || run.status === "pending") {
           setActiveRunId(runId)
@@ -237,9 +240,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     const poll = async () => {
       try {
         const headers = await authHeaders(getToken, wsId)
-        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${testRunId}`, { headers })
-        if (!r.ok) return
-        const run = await r.json()
+        const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+        const run = await workflows.runs.get(authFetch, workflowId, testRunId!)
         setTestRunStatus(run.status)
         // Feed live state into Definition panel as blocks complete
         if (run.state) setLastRunState(run.state)
@@ -261,8 +263,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       try {
         const headers = await authHeaders(getToken, wsId)
         if (abort.signal.aborted) return
-        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers, signal: abort.signal })
-        if (!abort.signal.aborted) setEnvironments(r.ok ? await r.json() : [])
+        const authFetch: AuthFetch = (url, opts) => fetch(url, { signal: abort.signal, ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+        if (!abort.signal.aborted) setEnvironments(await environmentsApi.list(authFetch).catch(() => []))
       } catch {}
     })()
     return () => abort.abort()
@@ -276,8 +278,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       try {
         const headers = await authHeaders(getToken, wsId)
         if (abort.signal.aborted) return
-        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/by-environment/${selectedEnvId}`, { headers, signal: abort.signal })
-        if (!abort.signal.aborted) setEnvCredentials(r.ok ? await r.json() : [])
+        const authFetch: AuthFetch = (url, opts) => fetch(url, { signal: abort.signal, ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+        if (!abort.signal.aborted) setEnvCredentials(await credentials.byEnvironment(authFetch, selectedEnvId).catch(() => []))
       } catch {}
     })()
     return () => abort.abort()
@@ -286,12 +288,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const fetchRuns = () => {
     if (!workflowId) return
     setRunsLoading(true)
-    authHeaders(getToken, wsId).then(headers =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs?limit=50`, { headers })
-        .then(r => r.ok ? r.json() : [])
+    authHeaders(getToken, wsId).then(headers => {
+      const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+      return workflows.runs.list(authFetch, workflowId, { limit: 50 })
         .then(data => { setRuns(data); setRunsLoading(false) })
         .catch(() => setRunsLoading(false))
-    ).catch(() => setRunsLoading(false))
+    }).catch(() => setRunsLoading(false))
   }
 
   useEffect(() => {
@@ -319,9 +321,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       if (stopped) return
       try {
         const headers = await authHeaders(getToken, wsId)
-        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${activeRunId}`, { headers })
-        if (!r.ok || stopped) return
-        const run = await r.json()
+        const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+        const run = await workflows.runs.get(authFetch, workflowId, activeRunId)
+        if (stopped) return
         setLastRunState(run.state ?? {})
         setLastRunSummary({ status: run.status, created_at: run.created_at, run_id: run.id })
         if (terminal.has(run.status)) stopped = true
@@ -341,13 +343,11 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       try {
         const headers = await authHeaders(getToken, wsId)
         if (abort.signal.aborted) return
-        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs?limit=1`, { headers, signal: abort.signal })
-        if (!r.ok || abort.signal.aborted) return
-        const [latest] = await r.json()
+        const authFetch: AuthFetch = (url, opts) => fetch(url, { signal: abort.signal, ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+        const [latest] = await workflows.runs.list(authFetch, workflowId, { limit: 1 })
         if (!latest || abort.signal.aborted) return
-        const r2 = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${latest.id}`, { headers, signal: abort.signal })
-        if (!r2.ok || abort.signal.aborted) return
-        const full = await r2.json()
+        const full = await workflows.runs.get(authFetch, workflowId, latest.id)
+        if (abort.signal.aborted) return
         setLastRunSummary({ status: full.status, created_at: full.created_at, run_id: full.id })
         setLastRunState(full.state ?? {})
       } catch { /* silent */ }
@@ -362,9 +362,10 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   useEffect(() => {
     if (!workflowId || workflowId === "undefined") return
     const abort = new AbortController()
-    authHeaders(getToken, wsId).then(headers =>
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, { headers, signal: abort.signal })
-      .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+    authHeaders(getToken, wsId).then(headers => {
+      const authFetch: AuthFetch = (url, opts) => fetch(url, { signal: abort.signal, ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+      return workflows.get(authFetch, workflowId)
+    })
       .then((data) => {
         setWorkflowName(data.name)
         setSelectedEnvId(data.environment_id ?? "")
@@ -415,7 +416,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 150)
       })
       .catch(() => { if (!abort.signal.aborted) { isFirstLoad.current = false; setCanvasLoading(false) } })
-    ).catch(() => { isFirstLoad.current = false; setCanvasLoading(false) })
     return () => abort.abort()
   }, [workflowId, getToken, setNodes, setEdges])
 
@@ -423,12 +423,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     setSelectedEnvId(envId)
     try {
       const headers = await authHeaders(getToken, wsId)
-      headers["Content-Type"] = "application/json"
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/environment`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({ environment_id: envId || null }),
-      })
+      const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+      await workflows.patchEnvironment(authFetch, workflowId, { environment_id: envId || null })
     } catch { /* non-fatal */ }
   }, [workflowId, getToken])
 
@@ -439,11 +435,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     setSaveStatus("saving")
     try {
       const headers = await authHeaders(getToken, wsId)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ name, graph: { nodes: currentNodes, edges: currentEdges } }),
-      })
+      const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+      const res = await workflows.update(authFetch, workflowId, { name, graph: { nodes: currentNodes, edges: currentEdges } })
       if (!res.ok) {
         setSaveStatus("error")
         setTimeout(() => setSaveStatus("idle"), 3000)
@@ -597,10 +590,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     // Server-side pre-flight: credentials, brain descriptions, required fields
     try {
       const headers = await authHeaders(getToken, wsId)
-      const vRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/validate`,
-        { method: "POST", headers }
-      )
+      const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+      const vRes = await workflows.validate(authFetch, workflowId, {})
       if (vRes.ok) {
         const { valid, errors } = await vRes.json()
         if (!valid) {
@@ -676,11 +667,11 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
 
         // Pass environment_id so the credential lookup uses the workflow's env,
         // not whichever workspace-level GitHub token comes back first.
+        const issueAuthFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
         const issueParams = new URLSearchParams({ repo, label })
         if (selectedEnvId) issueParams.set("environment_id", selectedEnvId)
-        const issueRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/credentials/github/issues?${issueParams.toString()}`,
-          { headers }
+        const issueRes = await issueAuthFetch(
+          `${API_URL}/credentials/github/issues?${issueParams.toString()}`
         )
         if (!issueRes.ok) {
           // Read server detail + GitHub message buried inside it
@@ -786,18 +777,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         ? (initialState.github_issue as Record<string, string> | undefined)
         : undefined
       try {
-        const pfRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/preflight`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              issue_title: issue?.title ?? "",
-              issue_body:  issue?.body  ?? "",
-              run_inputs: initialState ?? {},
-            }),
-          }
-        )
+        const pfAuthFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+        const pfRes = await workflows.preflight(pfAuthFetch, workflowId, {
+          issue_title: issue?.title ?? "",
+          issue_body:  issue?.body  ?? "",
+          run_inputs: initialState ?? {},
+        })
         if (pfRes.ok) {
           const pf = await pfRes.json()
           if (pf.suggested_max_turns > 20) {
@@ -864,14 +849,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           },
         },
       }
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ triggered_by: "manual", dry_run: dryRun, initial_state: initialState }),
-        }
-      )
+      const runAuthFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+      const res = await workflows.runs.trigger(runAuthFetch, workflowId, { triggered_by: "manual", dry_run: dryRun, initial_state: initialState })
       if (!res.ok) throw new Error("Failed to start run")
       const run = await res.json()
       if (!isMountedRef.current) return
@@ -897,19 +876,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     initialState: Record<string, unknown> | undefined,
     maxTurns: number | undefined,
   ) => {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          triggered_by: "manual",
-          dry_run: dryRun,
-          ...(initialState ? { initial_state: initialState } : {}),
-          ...(maxTurns    ? { max_turns: maxTurns }          : {}),
-        }),
-      }
-    )
+    const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+    const res = await workflows.runs.trigger(authFetch, workflowId, {
+      triggered_by: "manual",
+      dry_run: dryRun,
+      ...(initialState ? { initial_state: initialState } : {}),
+      ...(maxTurns    ? { max_turns: maxTurns }          : {}),
+    })
     if (!res.ok) throw new Error("Failed to start run")
     const run = await res.json()
     if (dryRun) {
@@ -925,10 +898,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   }, [workflowId, router, STORAGE_KEY])
 
   const performTestTrigger = useCallback(async (payload: Record<string, unknown>, headers: Record<string, string>) => {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/trigger`,
-      { method: "POST", headers, body: JSON.stringify(payload) }
-    )
+    const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+    const res = await workflows.trigger(authFetch, workflowId, payload)
     if (res.status === 422) {
       const errBody = await res.json().catch(() => null)
       if (errBody?.detail?.error === "missing_required_inputs") {
@@ -1707,9 +1678,8 @@ function CanvasEditorWithClerk({ workflowId }: { workflowId: string }) {
         const token = getToken ? await getToken() : null
         const headers: Record<string, string> = { "X-Workspace-Id": ws }
         if (token) headers["Authorization"] = `Bearer ${token}`
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${ws}/members`, { headers })
-        if (!res.ok) return
-        const members: { clerk_user_id: string; role: string }[] = await res.json()
+        const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
+        const members: { clerk_user_id: string; role: string }[] = await projects.members.list(authFetch, ws)
         const role = members.find(m => m.clerk_user_id === userId)?.role
         setIsViewer(role === "viewer")
         setIsAdmin(role === "admin")

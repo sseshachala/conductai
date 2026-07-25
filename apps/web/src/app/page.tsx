@@ -16,6 +16,7 @@ export default function HomePage() {
         <ProofStripSection />
         <ProblemSection />
         <TwoLanesSection />
+        <StackStripSection />
         <GovernanceNarrativeSection />
         <GuardLearnsTeaser />
         <PersonasSection />
@@ -154,8 +155,11 @@ function HeroSection() {
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
         Your AI agents are taking real actions. Nobody is watching.
       </h1>
-      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
+      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-6">
         One policy. Every AI tool your team uses — Claude Code, Claude.ai, Claude Desktop, Codex, ChatGPT, Cursor, Copilot, Windsurf.
+      </p>
+      <p className="font-mono text-sm sm:text-base text-stone-700 max-w-3xl mx-auto mb-8">
+        What the agent tried. What Guard allowed. What the reviewer signed. What the chain proves.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
         {chips.map(chip => (
@@ -197,7 +201,7 @@ function ControlPlaneSection() {
           </div>
         </div>
         <p className="text-sm text-stone-500 mt-8 max-w-md mx-auto">
-          Governed before it executes. Not after the fact.
+          Conduct makes compliance structural — not documented after the fact, enforced before execution.
         </p>
       </div>
     </section>
@@ -317,7 +321,7 @@ function ProblemSection() {
       num: "03",
       icon: "📄",
       headline: "You have an AI usage policy. It didn't stop anything.",
-      detail: "It exists in a doc. It wasn't running at the moment the agent acted. That's the only moment that matters.",
+      detail: "It exists in a doc. It wasn't running at the moment the agent acted. That's the only moment that matters. Without runtime enforcement, agents experience permission drift — accumulating authority across tool calls that no single approval authorised.",
     },
     {
       num: "04",
@@ -411,7 +415,7 @@ function TwoLanesSection() {
             <div>
               <h3 className="text-2xl font-bold text-white tracking-tight mb-2">Every agent action is structurally governed</h3>
               <p className="text-stone-400 leading-relaxed text-sm">
-                One env var routes every LLM call through Guard — regardless of framework, language, or developer discipline. Actions Guard denies are not unlikely. They are structurally impossible.
+                One env var routes every LLM call through Guard — regardless of framework, language, or developer discipline. Actions Guard denies are not unlikely. They are structurally impossible. Guard enforces policy at the execution boundary — one layer below the agent, one layer above the enterprise system.
               </p>
             </div>
             <ul className="space-y-2.5 flex-1">
@@ -433,6 +437,78 @@ function TwoLanesSection() {
             </a>
           </div>
 
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Stack Strip ──────────────────────────────────────────────────────── */
+
+function StackStripSection() {
+  const steps = [
+    {
+      step: "01",
+      label: "Team OS",
+      href: "/team-os",
+      badge: "Free",
+      badgeColor: "bg-emerald-100 text-emerald-700",
+      icon: "📄",
+      title: "Write down your standards",
+      desc: "CLAUDE.md gives agents project memory. REVIEW.md sets the quality bar. Standards encode how your team handles auth, security, and migrations.",
+      cta: "Get the templates →",
+    },
+    {
+      step: "02",
+      label: "SDD",
+      href: "/sdd",
+      badge: "Spec first",
+      badgeColor: "bg-indigo-100 text-indigo-700",
+      icon: "📐",
+      title: "Spec before you build",
+      desc: "Generate a SPEC.md before agents touch code. Every decision has a why. Drift detection tells you when implementation diverges from intent.",
+      cta: "Generate your spec →",
+    },
+    {
+      step: "03",
+      label: "Guard",
+      href: "/guard",
+      badge: "Enforcement",
+      badgeColor: "bg-stone-200 text-stone-700",
+      icon: "🛡️",
+      title: "Enforce it at the MCP layer",
+      desc: "Guard intercepts every AI tool call before it runs. One policy across Claude Code, Cursor, Copilot, and every MCP client. Blocks, logs, audits automatically.",
+      cta: "Explore Guard →",
+    },
+  ]
+
+  return (
+    <section className="bg-stone-50 border-y border-stone-100 py-16 px-6">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-10">
+          <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-3">The full stack</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
+            From standards to enforcement — three layers, one platform.
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {steps.map((s) => (
+            <a key={s.step} href={s.href} className="group rounded-2xl bg-white border border-stone-200 p-6 hover:border-stone-400 hover:shadow-md transition-all flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">{s.icon}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-stone-300">{s.step}</span>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${s.badgeColor}`}>{s.badge}</span>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-1">{s.label}</p>
+                <h3 className="font-bold text-stone-900 text-base mb-2">{s.title}</h3>
+                <p className="text-sm text-stone-500 leading-relaxed">{s.desc}</p>
+              </div>
+              <p className="text-xs font-semibold text-stone-700 group-hover:text-stone-900 transition-colors mt-auto">{s.cta}</p>
+            </a>
+          ))}
         </div>
       </div>
     </section>

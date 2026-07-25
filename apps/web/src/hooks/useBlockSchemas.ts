@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "./useAuthFetch"
+import { API } from "@/lib/api"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 export interface SchemaField {
@@ -28,7 +30,8 @@ export type BlockSchemaMap = Record<string, BlockSchemaDef>
 let _cache: BlockSchemaMap | null = null
 
 export function useBlockSchemas(): { schemas: BlockSchemaMap | null; loading: boolean } {
-  const { getToken, isLoaded, isSignedIn } = useAuth()
+  const { isLoaded, isSignedIn } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
 
   const [schemas, setSchemas] = useState<BlockSchemaMap | null>(_cache)
@@ -41,11 +44,8 @@ export function useBlockSchemas(): { schemas: BlockSchemaMap | null; loading: bo
 
     async function fetch_() {
       try {
-        const token = await getToken()
-        if (!token) { if (!cancelled) setLoading(false); return }
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/meta/block-schemas?workspace_id=${activeWorkspace!.id}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+        const res = await authFetch(
+          `${API}/meta/block-schemas?workspace_id=${activeWorkspace!.id}`
         )
         if (res.ok) {
           const data: BlockSchemaMap = await res.json()
@@ -61,7 +61,7 @@ export function useBlockSchemas(): { schemas: BlockSchemaMap | null; loading: bo
 
     fetch_()
     return () => { cancelled = true }
-  }, [isLoaded, isSignedIn, activeWorkspace?.id, getToken])
+  }, [isLoaded, isSignedIn, activeWorkspace?.id, authFetch])
 
   return { schemas, loading }
 }

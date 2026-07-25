@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import AgentStatusPill from "@/components/workflows/AgentStatusPill"
@@ -107,27 +109,18 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
     return "list"
   })
 
-  async function authHeaders(): Promise<Record<string, string>> {
-    const h: Record<string, string> = {}
-    if (getToken) {
-      const token = await getToken()
-      if (token) h["Authorization"] = `Bearer ${token}`
-    }
-    return h
-  }
+  const { authFetch } = useAuthFetch()
 
   // P0-1: add error handling and setError on non-ok responses
   async function fetchAll() {
     setError(null)
     try {
       const wsId = activeWorkspace?.id ?? ""
-      const headers = await authHeaders()
-      if (wsId) headers["X-Workspace-Id"] = wsId
 
       // Load projects first so the page renders immediately
       const projRes = await (wsId
-        ? fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects`, { headers })
-        : fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers }))
+        ? authFetch(`${API}/workspaces/${wsId}/projects`)
+        : authFetch(`${API}/projects`))
       if (!projRes.ok) {
         setError(projRes.status === 403 ? "You don't have access to this workspace." : `Failed to load projects (${projRes.status}).`)
         setLoading(false)
@@ -137,9 +130,7 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
       setLoading(false)
 
       // Load workflows in the background — agents populate without blocking the page
-      const wfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
-        headers: { ...headers, ...(wsId ? { "X-Workspace-Id": wsId } : {}) },
-      })
+      const wfRes = await authFetch(`${API}/workflows`)
       if (wfRes.ok) setWorkflows(await wfRes.json())
     } catch {
       setError("Network error — please check your connection.")
@@ -150,14 +141,11 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   useEffect(() => { fetchAll() }, [])
 
   async function renameProject(id: string, name: string) {
-    const h = await authHeaders()
-    h["Content-Type"] = "application/json"
     const wsId = activeWorkspace?.id ?? ""
-    if (wsId) h["X-Workspace-Id"] = wsId
     const url = wsId
-      ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects/${id}`
-      : `${process.env.NEXT_PUBLIC_API_URL}/projects/${id}`
-    const res = await fetch(url, { method: "PATCH", headers: h, body: JSON.stringify({ name }) })
+      ? `${API}/workspaces/${wsId}/projects/${id}`
+      : `${API}/projects/${id}`
+    const res = await authFetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })
     if (res.ok) {
       const updated = await res.json()
       setProjects(prev => prev.map(p => p.id === id ? { ...p, name: updated.name } : p))
@@ -165,13 +153,11 @@ function ProjectsContent({ getToken }: { getToken: (() => Promise<string | null>
   }
 
   async function deleteProject(id: string) {
-    const h = await authHeaders()
     const wsId = activeWorkspace?.id ?? ""
-    if (wsId) h["X-Workspace-Id"] = wsId
     const url = wsId
-      ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${wsId}/projects/${id}`
-      : `${process.env.NEXT_PUBLIC_API_URL}/projects/${id}`
-    await fetch(url, { method: "DELETE", headers: h })
+      ? `${API}/workspaces/${wsId}/projects/${id}`
+      : `${API}/projects/${id}`
+    await authFetch(url, { method: "DELETE" })
     setProjects(prev => prev.filter(p => p.id !== id))
   }
 

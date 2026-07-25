@@ -276,11 +276,12 @@ _PERSONA_LABELS = {
 }
 
 
-def _ensure_persona(workspace_id: str, api_key: str, base_url: str) -> str:
+def _ensure_persona(workspace_id: str, base_url: str) -> str:
     """Prompt for persona if none is set yet. Saves choice to guard config and API.
 
     Returns the active persona name. Skips prompt silently if already set.
     """
+    agent_token = _default_agent_token() or ""
     cfg = _load_guard_config()
     if cfg.get("persona"):
         return cfg["persona"]
@@ -310,7 +311,7 @@ def _ensure_persona(workspace_id: str, api_key: str, base_url: str) -> str:
             "PATCH",
             f"{base_url}/guard/config/persona",
             body={"persona": chosen},
-            api_key=api_key,
+            token=agent_token or None,
         )
     except Exception:
         pass  # non-fatal — local config still records the choice
@@ -343,7 +344,8 @@ def _save_guard_config(data: dict, workspace_id: str | None = None):
             pass
     existing.update(data)
     CONFIG_PATH.write_text(json.dumps(existing, indent=2))
-    CONFIG_PATH.chmod(0o600)
+    from conduct_cli.hooks.base import restrict_to_owner
+    restrict_to_owner(CONFIG_PATH)
 
 
 def _require_guard_config() -> dict:
@@ -352,7 +354,7 @@ def _require_guard_config() -> dict:
     if not cfg or not ws:
         print(f"{RED}Guard not connected. Run: conduct login{RESET}", file=sys.stderr)
         sys.exit(0)
-    if not cfg.get("agent_token") and not cfg.get("api_key"):
+    if not cfg.get("agent_token"):
         print(f"{RED}Guard config is missing credentials. Run: conduct login{RESET}", file=sys.stderr)
         sys.exit(0)
     return cfg
@@ -381,13 +383,14 @@ _MCP_TARGETS = [
     (Path.home() / ".cursor"   / "mcp.json",       "Cursor"),
     (Path.home() / ".windsurf" / "mcp.json",        "Windsurf"),
     (Path.home() / ".codex"    / "mcp.json",        "Codex"),
+    # ~/.copilot/mcp-config.json handled separately by _patch_copilot_mcp (SSE + token)
     # Claude Desktop — only if already installed
     (Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json", "Claude Desktop"),
     (Path.home() / "AppData"  / "Roaming" / "Claude" / "claude_desktop_config.json",             "Claude Desktop"),
 ]
 
 
-def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
+def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bool = False) -> None:
     """Write conductguard + agent-booster MCP entries into every AI tool config found.
 
     Credentials are NOT stored in the MCP config — the server reads them from
@@ -401,11 +404,17 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
     if shutil.which("booster"):
         servers["agent-booster"] = {"command": "booster", "args": ["serve"]}
 
-    targets = list(_MCP_TARGETS) + _vscode_mcp_paths()
+    vscode_paths = _vscode_mcp_paths()
+    targets = list(_MCP_TARGETS) + vscode_paths
+    vscode_cfg_paths = {p for p, _ in vscode_paths}
     found_any = False
     for cfg_path, label in targets:
         if not cfg_path.exists():
-            continue
+            # Create mcp.json for VS Code if Copilot is confirmed installed
+            if cfg_path in vscode_cfg_paths:
+                cfg_path.write_text("{}")
+            else:
+                continue
         found_any = True
         try:
             existing = json.loads(cfg_path.read_text())
@@ -425,12 +434,16 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str) -> None:
     if not found_any:
         print(f"  {GRAY}No AI tool configs found for MCP registration{RESET}")
 
+    # GitHub Copilot uses SSE + Bearer token (can't run local stdio process via mcp-config.json)
+    _patch_copilot_mcp(agent_token, api_url)
+
     # Claude Desktop doesn't source shell env — patch apiBaseUrl directly in config
     # so all LLM calls route through the Guard proxy (PII blocking, spend limits, audit).
     _patch_claude_desktop_proxy(api_url, agent_token)
 
     # Cursor global rules — write Guard policies as user rules so they apply across all projects.
     _patch_cursor_global_rules()
+    _patch_tool_instruction_files(agent_token, api_url, dry_run=dry_run)
 
 
 def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
@@ -462,6 +475,56 @@ def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
         print(f"  {YELLOW}Restart Claude Desktop for proxy routing to take effect{RESET}")
 
 
+def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
+    """Keep ~/.copilot/mcp-config.json and any .mcp.json in cwd in sync with current agent token."""
+    import shutil
+    sse_entry = {
+        "type": "http",
+        "url": f"{api_url}/guard/mcp",
+        "headers": {"Authorization": f"Bearer {agent_token}"},
+    }
+    booster_entry = {"command": "booster", "args": ["serve"]} if shutil.which("booster") else None
+
+    # ~/.copilot/mcp-config.json (global Copilot config)
+    global_path = Path.home() / ".copilot" / "mcp-config.json"
+    if global_path.exists():
+        _write_mcp_file(global_path, "conduct-guard", sse_entry, booster_entry, "GitHub Copilot (global)")
+
+    # .mcp.json in cwd (project-level, picked up by VS Code Copilot)
+    local_path = Path.cwd() / ".mcp.json"
+    if local_path.exists():
+        _write_mcp_file(local_path, "conduct-guard", sse_entry, booster_entry, "GitHub Copilot (.mcp.json)")
+
+
+def _write_mcp_file(
+    cfg_path: Path,
+    guard_key: str,
+    sse_entry: dict,
+    booster_entry: dict | None,
+    label: str,
+) -> None:
+    try:
+        cfg = json.loads(cfg_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        cfg = {}
+    mcp = cfg.setdefault("mcpServers", {})
+    changed = False
+    if mcp.get(guard_key) != sse_entry:
+        mcp[guard_key] = sse_entry
+        changed = True
+        print(f"  {GREEN}conduct-guard MCP registered in {label}{RESET}")
+    else:
+        print(f"  {GRAY}conduct-guard MCP already registered in {label}{RESET}")
+    if booster_entry and mcp.get("agent-booster") != booster_entry:
+        mcp["agent-booster"] = booster_entry
+        changed = True
+    if changed:
+        cfg_path.write_text(json.dumps(cfg, indent=2))
+
+
+_GUARD_RULES_TEXT = (Path(__file__).parent / "guard_policy.md").read_text().rstrip()
+
+
 def _patch_cursor_global_rules() -> None:
     """Write ConductGuard policy rules into Cursor's global user rules setting.
 
@@ -470,16 +533,7 @@ def _patch_cursor_global_rules() -> None:
     This is soft enforcement (prompt-level), not structural like Claude Code hooks,
     but ensures Guard policies are visible to the model across all Cursor projects.
     """
-    GUARD_RULES = (
-        "# ConductGuard — team AI policies (managed by conduct guard sync)\n"
-        "- ALWAYS call guard_check (via conductguard MCP) before running shell commands, "
-        "reading or writing files, accessing external APIs, or modifying code.\n"
-        "- NEVER write credentials, API keys, or secrets to files or output.\n"
-        "- NEVER send PII (emails, names, SSNs, payment data) to external endpoints.\n"
-        "- If guard_check returns BLOCKED: stop and explain the policy rule to the user.\n"
-        "- If guard_check returns WARNING: proceed but surface the warning.\n"
-        "- These rules are enforced by your team's ConductGuard policy. Do not bypass them."
-    )
+    GUARD_RULES = _GUARD_RULES_TEXT
 
     candidates = [
         Path.home() / "Library" / "Application Support" / "Cursor" / "User" / "settings.json",
@@ -500,6 +554,112 @@ def _patch_cursor_global_rules() -> None:
         cfg["cursor.rules.user"] = (existing + "\n\n" + GUARD_RULES).strip()
         settings_path.write_text(json.dumps(cfg, indent=2))
         print(f"  {GREEN}Cursor global rules updated with ConductGuard policy{RESET}")
+
+
+def _patch_tool_instruction_files(agent_token: str, api_url: str, dry_run: bool = False) -> None:
+    """Write ConductGuard policy block into instruction files for all AI tools.
+
+    Targets:
+      CLAUDE.md                         — Claude Code + Claude Desktop
+      .github/copilot-instructions.md   — Copilot + VS Code
+      AGENTS.md                         — Codex CLI + Codex Desktop
+      .cursorrules                      — Cursor
+      .windsurfrules                    — Windsurf
+
+    Merge strategy (never clobbers existing content):
+      First sync : appends block between <!-- ConductGuard --> markers
+      Re-sync    : replaces only the block, leaves surrounding content untouched
+    """
+    import re as _re
+
+    MARKER_START = "<!-- ConductGuard — managed by conduct guard sync -->"
+    MARKER_END   = "<!-- /ConductGuard -->"
+    GUARD_RULES  = _GUARD_RULES_TEXT
+
+    # Guard-only for now — team-os instructions are hidden pending redesign.
+    # This block just ensures every AI tool knows to invoke Guard via hooks
+    # or the conduct-guard MCP before taking action.
+    guard_block = "\n".join([MARKER_START, "## ConductGuard Policy", GUARD_RULES, MARKER_END])
+
+    repo_root: Path | None = None
+    for parent in [Path.cwd(), *Path.cwd().parents]:
+        if (parent / ".git").exists() or (parent / ".github").is_dir():
+            repo_root = parent
+            break
+
+    # (repo path, global fallback, label)
+    targets = [
+        (repo_root / "CLAUDE.md"                           if repo_root else None, Path.home() / "CLAUDE.md",                           "CLAUDE.md"),
+        (repo_root / ".github" / "copilot-instructions.md" if repo_root else None, Path.home() / ".github" / "copilot-instructions.md", "Copilot instructions"),
+        (repo_root / "AGENTS.md"                           if repo_root else None, Path.home() / ".codex"   / "instructions.md",        "AGENTS.md"),
+        (repo_root / ".cursorrules"                        if repo_root else None, Path.home() / ".cursor"  / "rules" / "conduct.md",   ".cursorrules"),
+        (repo_root / ".windsurfrules"                      if repo_root else None, Path.home() / ".windsurf"/ "rules" / "conduct.md",   ".windsurfrules"),
+    ]
+    # Tolerate legacy marker variants (e.g. ", do not edit this block") so re-sync
+    # replaces old blocks in place instead of appending a second one.
+    pattern = _re.compile(r"<!-- ConductGuard[^\n]*-->.*?<!-- /ConductGuard -->", _re.DOTALL)
+
+    for repo_path, global_path, label in targets:
+        path = repo_path if (repo_path and repo_path.exists()) else global_path
+        if not path.exists() and repo_path:
+            path = repo_path
+        existing = path.read_text() if path.exists() else ""
+        if pattern.search(existing):
+            updated = pattern.sub(guard_block, existing)
+            if dry_run:
+                if updated == existing:
+                    print(f"  [dry-run] No change: {path}")
+                else:
+                    print(f"  [dry-run] Would write: {path}")
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if updated == existing:
+                    print(f"  {GRAY}{label} already up to date{RESET}")
+                else:
+                    path.write_text(updated)
+                    print(f"  {GREEN}{label} updated{RESET}")
+        else:
+            new_content = (existing.rstrip() + ("\n\n" if existing.strip() else "") + guard_block + "\n").lstrip()
+            if dry_run:
+                if new_content == existing:
+                    print(f"  [dry-run] No change: {path}")
+                else:
+                    print(f"  [dry-run] Would write: {path}")
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(new_content)
+                print(f"  {GREEN}{label} — ConductGuard block added{RESET}")
+
+
+def _reset_tool_instruction_files() -> None:
+    """Remove ConductGuard blocks from all instruction files."""
+    import re as _re
+    MARKER_RE = _re.compile(
+        r"\n?<!-- ConductGuard -->\n.*?<!-- /ConductGuard -->\n?",
+        _re.DOTALL,
+    )
+    targets = [
+        Path.home() / "CLAUDE.md",
+        Path.cwd() / "CLAUDE.md",
+        Path.cwd() / ".github" / "copilot-instructions.md",
+        Path.cwd() / "AGENTS.md",
+        Path.cwd() / ".cursorrules",
+        Path.cwd() / ".windsurfrules",
+    ]
+    removed = 0
+    for p in targets:
+        if not p.exists():
+            continue
+        original = p.read_text(encoding="utf-8")
+        cleaned = MARKER_RE.sub("", original).strip()
+        if cleaned != original.strip():
+            p.write_text(cleaned + "\n", encoding="utf-8")
+            print(f"  {GREEN}Removed ConductGuard block: {p}{RESET}")
+            removed += 1
+        else:
+            print(f"  {YELLOW}No ConductGuard block found: {p}{RESET}")
+    if removed == 0:
+        print("  No ConductGuard blocks found in any instruction files.")
 
 
 def _install_codex_hook(hook_path: Path) -> None:
@@ -575,12 +735,26 @@ def _install_codex_hook(hook_path: Path) -> None:
 
 # ── HTTP helpers (no third-party deps — mirrors api.py style) ─────────────────
 
-def _req(method: str, url: str, body=None, token: str = None, api_key: str = None, timeout: int = 20) -> dict:
+def _default_agent_token() -> str | None:
+    """Read the agent_token minted by `conduct login` from ~/.conduct/config.json.
+    This is the CLI's single canonical credential — every call to the central
+    API should carry it via Authorization: Bearer."""
+    try:
+        cfg_path = Path.home() / ".conduct" / "config.json"
+        if cfg_path.exists():
+            return json.loads(cfg_path.read_text()).get("agent_token") or None
+    except Exception:
+        pass
+    return None
+
+
+def _req(method: str, url: str, body=None, token: str = None, timeout: int = 20) -> dict:
+    # If no explicit token passed, fall back to the login-minted agent_token.
+    if not token:
+        token = _default_agent_token()
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    if api_key:
-        headers["X-Api-Key"] = api_key
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
@@ -716,10 +890,10 @@ def _install_claude_hook(hook_path: Path) -> None:
 
 def cmd_guard_install(args):
     """Called automatically from `conduct login`. Sets up Guard: downloads policies, installs hook + MCP."""
-    api_key = getattr(args, "api_key", None)
-    server  = (getattr(args, "server", None) or "https://api.conductai.ai").rstrip("/")
+    agent_token = getattr(args, "agent_token", None)
+    server      = (getattr(args, "server", None) or "https://api.conductai.ai").rstrip("/")
 
-    # Load workspace_id from ~/.conduct/config.json
+    # Load workspace_id (and fallback agent_token) from ~/.conduct/config.json
     conduct_cfg_path = Path.home() / ".conduct" / "config.json"
     conduct_cfg: dict = {}
     if conduct_cfg_path.exists():
@@ -729,7 +903,9 @@ def cmd_guard_install(args):
             pass
 
     workspace_id = conduct_cfg.get("workspace")
-    if not workspace_id or not api_key:
+    if not agent_token:
+        agent_token = conduct_cfg.get("agent_token")
+    if not workspace_id or not agent_token:
         return  # nothing to do
 
     print(f"  Setting up Guard…")
@@ -737,16 +913,16 @@ def cmd_guard_install(args):
     result = _req(
         "GET",
         f"{server}/guard/config/installed?workspace_id={workspace_id}",
-        api_key=api_key,
+        token=agent_token or None,
     )
 
     if not result.get("installed"):
         print(f"  {GRAY}Guard not installed for this workspace — skipping{RESET}")
         return
 
-    agent_token    = result.get("agent_token") or ""
-    user_email     = result.get("user_email") or ""
-    clerk_user_id  = result.get("clerk_user_id") or ""
+    resp_agent_token = result.get("agent_token") or agent_token
+    user_email       = result.get("user_email") or ""
+    clerk_user_id    = result.get("clerk_user_id") or ""
 
     # Persona selection — prompt once, skip if already chosen
 
@@ -754,10 +930,9 @@ def cmd_guard_install(args):
     import time as _time
     _save_guard_config({
         "workspace_id":          workspace_id,
-        "agent_token":           agent_token,
+        "agent_token":           resp_agent_token,
         "user_email":            user_email,
         "clerk_user_id":         clerk_user_id,
-        "api_key":               api_key,
         "api_url":               server,
         "last_synced_at":        _time.time(),
     })
@@ -928,7 +1103,7 @@ def _detect_ai_tools() -> list[dict]:
     def _check_json_mcp(path: Path) -> bool:
         try:
             d = json.loads(path.read_text()) if path.exists() else {}
-            return "conduct" in d.get("mcpServers", {})
+            return any("conduct" in k for k in d.get("mcpServers", {}))
         except Exception:
             return False
 
@@ -1035,11 +1210,18 @@ def _detect_ai_tools() -> list[dict]:
         vscode_settings = next((p for p in vscode_candidates if p.exists()), None)
         try:
             d = json.loads(vscode_settings.read_text()) if vscode_settings else {}
-            mcp_reg = "conduct" in d.get("mcp", {}).get("servers", {})
+            mcp_reg = any("conduct" in k for k in d.get("mcp", {}).get("servers", {}))
         except Exception:
             mcp_reg = False
+        # Also check ~/.copilot/mcp-config.json (SSE entry written by guard sync)
+        if not mcp_reg:
+            try:
+                copilot_cfg = home / ".copilot" / "mcp-config.json"
+                mcp_reg = "conduct-guard" in json.loads(copilot_cfg.read_text()).get("mcpServers", {})
+            except Exception:
+                pass
         tools.append({
-            "name": "vscode",
+            "name": "copilot",
             "mcp_registered": mcp_reg,
             "hook_registered": False,
             "proxy_routed": False,
@@ -1060,24 +1242,20 @@ def _report_tools_to_server() -> None:
         base_url = _api_url(cfg)
         email = cfg.get("user_email", "")
         token = cfg.get("agent_token", "")
-        api_key = cfg.get("api_key", "")
-
         if not email:
             return
-
-        # Also pull conduct API key for X-Api-Key auth (member_token is not accepted by this endpoint)
         conduct_cfg_path = Path.home() / ".conduct" / "config.json"
-        conduct_api_key = ""
+        conduct_agent_token = ""
         if conduct_cfg_path.exists():
             try:
-                conduct_api_key = json.loads(conduct_cfg_path.read_text()).get("api_key", "")
+                conduct_agent_token = json.loads(conduct_cfg_path.read_text()).get("agent_token", "")
             except Exception:
                 pass
 
         payload = json.dumps({"email": email, "tools": tools}).encode()
         headers = {"Content-Type": "application/json"}
-        if conduct_api_key and conduct_api_key.startswith("cond_live_"):
-            headers["X-Api-Key"] = conduct_api_key
+        if conduct_agent_token:
+            headers["Authorization"] = f"Bearer {conduct_agent_token}"
         elif token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
@@ -1203,6 +1381,12 @@ def cmd_guard_sync(args):
     # Persona selection — prompt once, skip if already chosen
 
     dry_run = getattr(args, "dry_run", False)
+
+    if getattr(args, "reset_instructions", False):
+        print("Removing ConductGuard blocks from instruction files…")
+        _reset_tool_instruction_files()
+        return
+
     print(f"{'[dry-run] ' if dry_run else ''}Syncing policy…")
     _check_and_upgrade_packages()
 
@@ -1255,7 +1439,7 @@ def cmd_guard_sync(args):
     _save_policy(policy)
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
 
-    # Refresh member token from server (workspace API key → fresh guard-mt- token).
+    # Refresh agent token from server via refresh_token grant.
     # Never rely on the locally-cached value — it may be stale or missing.
     try:
         installed = _req(
@@ -1295,9 +1479,11 @@ def cmd_guard_sync(args):
     agent_token = cfg.get("agent_token", "")
     rc_path, newly_sourced = _write_proxy_env(agent_token, proxy_url)
     if agent_token:
-        print(f"  {GREEN}Proxy env written:{RESET} ~/.conduct/env → {proxy_url}")
+        env_name = "env.ps1" if sys.platform == "win32" else "env"
+        activate_cmd = f". {rc_path}" if sys.platform == "win32" else f"source {rc_path}"
+        print(f"  {GREEN}Proxy env written:{RESET} ~/.conduct/{env_name} → {proxy_url}")
         if newly_sourced:
-            print(f"  {CYAN}Run `source {rc_path}` (or open a new shell) to activate.{RESET}")
+            print(f"  {CYAN}Run `{activate_cmd}` (or open a new shell) to activate.{RESET}")
 
     _tools = _detect_ai_tools()
     if _tools:
@@ -1306,7 +1492,7 @@ def cmd_guard_sync(args):
         for t in _tools:
             routed = "✓ Routed" if t.get("proxy_routed") else ("— Partial" if t["name"] == "codex-desktop" else "✗ Not routed")
             mcp  = "✓" if t.get("mcp_registered") else "✗"
-            hook = "✓" if t.get("hook_registered") else "—"
+            hook = "✓" if t.get("hook_registered") else ("~ soft" if t["name"] in ("copilot", "cursor") else "—")
             print(f"  {t['name']:<20} {routed:<16} {mcp:<8} {hook}")
         print()
 
@@ -1339,7 +1525,7 @@ def cmd_guard_sync(args):
     _install_claude_hook(hook_path)
     _install_codex_hook(hook_path)
     cfg2 = _load_guard_config()
-    _register_mcp(workspace_id, cfg2.get("agent_token", ""), base_url)
+    _register_mcp(workspace_id, cfg2.get("agent_token", ""), base_url, dry_run=dry_run)
     try:
         _install_session_hooks()
     except Exception:
@@ -1377,7 +1563,7 @@ def cmd_guard_sync(args):
     if workspace_id and agent_token:
         mcp_url = "https://api.conductai.ai/guard/mcp"
         masked = agent_token[:13] + "•" * 20
-        print(f"\n{BOLD}MCP server{RESET} (Claude.ai, Cursor, Windsurf, any MCP client):")
+        print(f"\n{BOLD}MCP server{RESET} (Claude.ai, Copilot, Cursor, Windsurf, any MCP client):")
         print(f"  URL:    {CYAN}{mcp_url}{RESET}")
         print(f"  Auth:   {CYAN}Bearer {masked}{RESET}  {GRAY}(run `conduct token` to reveal){RESET}\n")
 
@@ -1473,6 +1659,62 @@ def _post_local_findings(cfg: dict, base_url: str, findings: list[dict]) -> None
         print(f"  {YELLOW}Audit upload skipped: {e}{RESET}")
 
 
+def _write_proxy_env_windows(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
+    """Windows equivalent of _write_proxy_env — PowerShell profile + env.ps1."""
+    CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
+    token = agent_token
+    proxy = proxy_url.rstrip("/")
+
+    ps1_file = CONDUCT_DIR / "env.ps1"
+    ps1_file.write_text("\n".join([
+        SHELL_RC_MARKER,
+        "# Edit ~/.conduct/env-override.ps1 to add your own vars — sourced after this file.",
+        "",
+        f'$env:ANTHROPIC_BASE_URL = "{proxy}"',
+        f'$env:ANTHROPIC_API_KEY  = "{token}"',
+        "",
+        f'$env:OPENAI_BASE_URL = "{proxy}/openai"',
+        f'$env:OPENAI_API_KEY  = "{token}"',
+        "",
+        f'$env:PERPLEXITY_BASE_URL = "{proxy}/perplexity"',
+        f'$env:PERPLEXITY_API_KEY  = "{token}"',
+        "",
+        'if (Test-Path "$HOME/.conduct/env-override.ps1") { . "$HOME/.conduct/env-override.ps1" }',
+        "",
+    ]))
+
+    # ponytail: prefer PS7 profile; fall back to WPS5 only if its file already exists
+    ps7_profile = Path.home() / "Documents" / "PowerShell" / "Microsoft.PowerShell_profile.ps1"
+    wps5_profile = Path.home() / "Documents" / "WindowsPowerShell" / "Microsoft.PowerShell_profile.ps1"
+    if ps7_profile.parent.exists() or not wps5_profile.exists():
+        rc = ps7_profile
+    else:
+        rc = wps5_profile
+
+    existing = rc.read_text() if rc.exists() else ""
+    CLAUDE_ALIAS = (
+        "function claude { "
+        "$prev=$env:ANTHROPIC_BASE_URL; $env:ANTHROPIC_BASE_URL=$null; "
+        "try { & claude @args } finally { $env:ANTHROPIC_BASE_URL=$prev } }"
+    )
+    PS_SOURCE_LINE = 'if (Test-Path "$HOME/.conduct/env.ps1") { . "$HOME/.conduct/env.ps1" }'
+
+    if SHELL_RC_MARKER in existing:
+        if CLAUDE_ALIAS not in existing:
+            rc.write_text(existing.rstrip() + f"\n{CLAUDE_ALIAS}\n")
+            return rc, True
+        return rc, False
+
+    rc.parent.mkdir(parents=True, exist_ok=True)
+    addition = (
+        f"\n\n{SHELL_RC_MARKER}\n"
+        f"{PS_SOURCE_LINE}\n"
+        f"{CLAUDE_ALIAS}\n"
+    )
+    rc.write_text(existing.rstrip() + addition if existing else addition.lstrip())
+    return rc, True
+
+
 def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
     """Write ~/.conduct/env with the 3 provider env-var pairs and ensure the
     user's shell rc sources it.
@@ -1486,8 +1728,11 @@ def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
         print(f"  {YELLOW}Proxy env skipped — no agent token in config{RESET}")
         return Path(), False
 
+    if sys.platform == "win32":
+        return _write_proxy_env_windows(agent_token, proxy_url)
+
     CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
-    token = agent_token  # cond_agt_* used directly as the API key value
+    token = agent_token  # cond_agt_* used directly as the bearer value
     proxy = proxy_url.rstrip("/")
 
     PROXY_ENV_FILE.write_text("\n".join([
@@ -1671,7 +1916,7 @@ def _ensure_booster(root: Path) -> None:
             pass
 
 
-def _report_savings(cfg: dict, base_url: str, api_key: str = "") -> None:
+def _report_savings(cfg: dict, base_url: str, agent_token: str = "") -> None:
     import subprocess
 
     rtk_data = {}
@@ -1732,12 +1977,10 @@ def _report_savings(cfg: dict, base_url: str, api_key: str = "") -> None:
     }
 
     try:
-        agent_token_evt = cfg.get("agent_token", "")
+        agent_token_evt = cfg.get("agent_token", "") or agent_token
         headers = {"Content-Type": "application/json"}
         if agent_token_evt:
             headers["Authorization"] = f"Bearer {agent_token_evt}"
-        elif api_key:
-            headers["X-Api-Key"] = api_key
         data = json.dumps(payload).encode()
         req = urllib.request.Request(
             f"{base_url}/guard/savings",
@@ -1766,13 +2009,13 @@ def cmd_guard_status(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
     user_email   = cfg.get("user_email", "")
-    api_key      = cfg.get("api_key", "")
+    agent_token  = cfg.get("agent_token", "")
     base_url     = _api_url(cfg)
 
     # Auto-refresh user_email + clerk_user_id into config if missing
-    if (not user_email or not cfg.get("clerk_user_id")) and api_key:
+    if (not user_email or not cfg.get("clerk_user_id")) and agent_token:
         try:
-            installed = _req("GET", f"{base_url}/guard/config/installed", api_key=api_key)
+            installed = _req("GET", f"{base_url}/guard/config/installed", token=agent_token or None)
             fetched_email = installed.get("user_email") or ""
             fetched_clerk = installed.get("clerk_user_id") or ""
             if fetched_email:
@@ -1796,7 +2039,7 @@ def cmd_guard_status(args):
         spend = _req(
             "GET",
             f"{base_url}/guard/spend?workspace_id={workspace_id}",
-            api_key=api_key,
+            token=agent_token or None,
         )
     except SystemExit:
         pass
@@ -1816,7 +2059,7 @@ def cmd_guard_status(args):
                 f"&since={today_iso}"
                 f"&limit=20"
             ),
-            api_key=api_key,
+            token=agent_token or None,
         )
         if not isinstance(events, list):
             events = events.get("events", [])
@@ -1897,14 +2140,14 @@ def cmd_guard_status(args):
 def cmd_guard_savings(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("api_key", "")
+    agent_token  = cfg.get("agent_token", "")
     base_url     = _api_url(cfg)
 
     try:
         data = _req(
             "GET",
             f"{base_url}/guard/savings/team-summary?workspace_id={workspace_id}",
-            api_key=api_key,
+            token=agent_token or None,
         )
     except Exception:
         print(f"{RED}Failed to fetch team savings.{RESET}")
@@ -1915,9 +2158,11 @@ def cmd_guard_savings(args):
 
     dev_count   = data.get("developer_count", 0)
     total_tok   = data.get("total_tokens_saved", 0)
+    total_usd   = data.get("total_cost_saved_usd", 0.0)
     per_day     = data.get("per_day_usd", 0.0)
     per_month   = data.get("per_month_usd", 0.0)
     per_year    = data.get("per_year_usd", 0.0)
+    days_obs    = data.get("days_observed", 1)
     tools       = data.get("tools_installed", [])
     avg_tok     = total_tok // dev_count if dev_count else 0
     avg_day_usd = round(per_day / dev_count, 2) if dev_count else 0.0
@@ -1925,8 +2170,8 @@ def cmd_guard_savings(args):
     print()
     print(f"{BOLD}Team Token Savings{RESET}  ({dev_count} developer{'s' if dev_count != 1 else ''})")
     print("─" * 52)
-    print(f"  Total tokens saved:    {total_tok:>14,}")
-    print(f"  Estimated savings:     ${per_day:>8.2f}/day  ·  ${per_month:,.0f}/month  ·  ${per_year:,.0f}/year")
+    print(f"  Total tokens saved:    {total_tok:>14,}    (${total_usd:,.2f} over {days_obs} day{'s' if days_obs != 1 else ''})")
+    print(f"  Daily rate:            ${per_day:>8.2f}/day  ·  projected ${per_month:,.0f}/month  ·  ${per_year:,.0f}/year")
     if dev_count:
         print(f"  Avg per developer:     {avg_tok:>14,} tokens  ·  ${avg_day_usd:.2f}/day")
     if tools:
@@ -1964,7 +2209,7 @@ def cmd_guard_audit(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
     user_email   = cfg.get("user_email", "")
-    api_key      = cfg.get("api_key", "")
+    agent_token  = cfg.get("agent_token", "")
     base_url     = _api_url(cfg)
 
     since_str = getattr(args, "since", None) or "24h"
@@ -1979,7 +2224,7 @@ def cmd_guard_audit(args):
             f"&since={since_iso}"
             f"&limit=50"
         ),
-        api_key=api_key,
+        token=agent_token or None,
     )
     events = events_resp if isinstance(events_resp, list) else events_resp.get("events", [])
 
@@ -2052,6 +2297,8 @@ def register_guard_parser(sub):
     sync_p = guard_sub.add_parser("sync", help="Refresh policy and re-scan for AI tools")
     sync_p.add_argument("--cursor", action="store_true", help="Write active Guard policies to .cursorrules")
     sync_p.add_argument("--dry-run", action="store_true", help="Preview policy changes without writing anything")
+    sync_p.add_argument("--reset-instructions", action="store_true", dest="reset_instructions",
+                        help="Remove ConductGuard blocks from all instruction files")
     sync_p.add_argument("--proxy-url", default=None,
                         help="Override the Guard proxy URL (default: https://api.conductai.ai/proxy/anthropic)")
     sync_p.add_argument("--no-local-audit", action="store_true",
@@ -2142,7 +2389,7 @@ def _discover_config_agents() -> list[tuple]:
                 return "conduct" in text and "mcp_servers" in text
             import json as _j
             d = _j.loads(text)
-            return "conduct" in d.get("mcpServers", {})
+            return any("conduct" in k for k in d.get("mcpServers", {}))
         except Exception:
             return False
 
@@ -2168,6 +2415,7 @@ def _discover_config_agents() -> list[tuple]:
         ("codex",       home / ".codex",   home / ".codex"   / "config.toml",    "mcp"),
         ("cursor",      home / ".cursor",  home / ".cursor"  / "mcp.json",       "mcp"),
         ("windsurf",    home / ".codeium" / "windsurf", home / ".codeium" / "windsurf" / "mcp_config.json", "mcp"),
+        ("copilot",     home / ".copilot", home / ".copilot" / "mcp-config.json", "mcp"),
     ]
     for name, check_dir, config_path, _ in TOOLS:
         if check_dir.exists():
@@ -2286,7 +2534,7 @@ def _watch_loop():
             c       = _cfg()
             api_url = _api_url(c)
             token   = c.get("agent_token", "")
-            api_key = c.get("api_key", "")
+            agent_token = c.get("agent_token", "")
             agents = []
             for name, config_path, mcp_key in _discover_config_agents():
                 agents.append({
@@ -2306,7 +2554,7 @@ def _watch_loop():
                 pass
             _req("POST", f"{api_url}/guard/discover/scan",
                  body={"triggered_by": "watch", "agents": agents},
-                 token=token, api_key=api_key)
+                 token=token or agent_token)
         except Exception:
             pass
         time.sleep(_WATCH_INTERVAL)
@@ -2462,7 +2710,6 @@ def cmd_guard_discover(args):
     cfg      = _load_guard_config()
     api_url  = _api_url(cfg)
     token    = cfg.get("agent_token", "")
-    api_key  = cfg.get("api_key", "")
     hdrs     = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     # Config file scan — detect AI tools from known config dirs
@@ -2522,7 +2769,7 @@ def cmd_guard_discover(args):
                 "proxy_routed": t.get("proxy_routed", False),
             })
         payload = {"triggered_by": "cli", "agents": agents_payload}
-        _req("POST", f"{api_url}/guard/discover/scan", body=payload, token=token, api_key=api_key)
+        _req("POST", f"{api_url}/guard/discover/scan", body=payload, token=token)
     except SystemExit:
         pass  # 401/network errors — local output still useful
 
@@ -2720,6 +2967,9 @@ def _grade_below(actual: str, minimum: str) -> bool:
     return _GRADE_ORDER.index(actual) > _GRADE_ORDER.index(minimum.upper())
 
 
+_VERDICT_COLOR = {"held": GREEN, "bypassed": RED, "not_tested": YELLOW}
+
+
 def cmd_verify(args) -> None:
     """conduct verify — governance grade + OWASP Agentic Top 10 coverage."""
     import json as _json
@@ -2729,17 +2979,18 @@ def cmd_verify(args) -> None:
     min_grade    = getattr(args, "min_grade", None)
     strict       = getattr(args, "strict", False)
     fmt          = getattr(args, "format", "text")
+    run_battery  = getattr(args, "run", False)
 
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("api_key", "")
+    agent_token  = cfg.get("agent_token", "")
     base_url     = _api_url(cfg)
 
     # ── fetch evidence from API ───────────────────────────────────────────────
     ev = _req(
         "GET",
         f"{base_url}/guard/verify/evidence?workspace_id={workspace_id}",
-        api_key=api_key,
+        token=agent_token or None,
     )
 
     grade        = ev.get("grade", "F")
@@ -2748,6 +2999,46 @@ def cmd_verify(args) -> None:
     blocked_24h  = ev.get("blocked_24h", 0)
     controls     = ev.get("controls", [])
     generated_at = ev.get("generated_at", "")
+
+    # ── --run (live adversarial battery) ─────────────────────────────────────
+    run_result = None
+    if run_battery:
+        print(f"\n{BOLD}Running adversarial test battery…{RESET}")
+        run_result = _req(
+            "POST",
+            f"{base_url}/guard/verify/run?workspace_id={workspace_id}",
+            token=agent_token or None,
+        )
+        if fmt == "json":
+            print(_json.dumps(run_result, indent=2))
+            return
+        rs      = run_result.get("score", 0)
+        rg      = run_result.get("grade", "F")
+        passed  = run_result.get("passed_tests", 0)
+        total   = run_result.get("total_tests", 0)
+        results = run_result.get("results", [])
+        rg_col  = _GRADE_COLORS.get(rg, GRAY)
+        print()
+        print(f"{BOLD}conduct verify --run — Live Adversarial Score{RESET}")
+        print("─" * 60)
+        print(f"\n  Live Grade: {rg_col}{BOLD}{rg}{RESET}  ({rs}/100) · {passed}/{total} held\n")
+        print(f"  {BOLD}{'ASI':<8} {'Verdict':<12} {'Expected':<10} {'Actual':<10} Test{RESET}")
+        print("  " + "─" * 56)
+        for r in results:
+            vc = _VERDICT_COLOR.get(r.get("verdict", ""), GRAY)
+            print(
+                f"  {r.get('asi',''):<8} "
+                f"{vc}{r.get('verdict',''):<12}{RESET} "
+                f"{r.get('expected',''):<10} "
+                f"{r.get('actual',''):<10} "
+                f"{r.get('name','')}"
+            )
+        print()
+        if min_grade and _grade_below(rg, min_grade):
+            print(f"  {RED}✗ Live grade {rg} is below minimum {min_grade.upper()}.{RESET}\n")
+            sys.exit(1)
+        print(f"  {GREEN}✓ PASS{RESET}\n")
+        return
 
     # ── --badge ───────────────────────────────────────────────────────────────
     if badge:

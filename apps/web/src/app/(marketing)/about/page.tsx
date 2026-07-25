@@ -101,7 +101,7 @@ export default function AboutPage() {
         <hr className="border-stone-100" />
 
         <p>
-          Source on GitHub, MIT licensed. No demo gates before you can
+          Source on GitHub, free for individuals and small teams. No demo gates before you can
           see what you&apos;re buying.
         </p>
 

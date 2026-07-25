@@ -109,12 +109,10 @@ def _resolve(args, key: str, config_key=None):
 
 
 def _require_auth(args):
-    """Return (server, workspace_id, api_key, token) — exit if not configured."""
+    """Return (server, workspace_id, token) — exit if not configured."""
     cfg        = _load_config()
     server     = _resolve(args, "server") or cfg.get("api_url", "")
     workspace  = _resolve(args, "workspace") or cfg.get("workspace_id") or cfg.get("workspace")
-    api_key    = _resolve(args, "api_key", "api_key")
-    # agent_token (new) takes precedence over legacy token
     token      = _resolve(args, "token") or cfg.get("agent_token")
 
     if not server:
@@ -123,23 +121,21 @@ def _require_auth(args):
     if not workspace:
         print(f"{RED}No workspace set. Run: conduct login{RESET}")
         sys.exit(1)
-    if not api_key and not token:
+    if not token:
         print(f"{RED}Not authenticated. Run: conduct login{RESET}")
         sys.exit(1)
 
-    return server.rstrip("/"), workspace, api_key, token
+    return server.rstrip("/"), workspace, token
 
 
 # ── Stream helper ─────────────────────────────────────────────────────────────
 
-def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, token=None, api_key=None) -> bool:
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, token=None) -> bool:
+    hdrs = api.headers(workspace_id, token, "application/json")
     # SSE endpoint reads auth from query params (EventSource can't set headers)
     qs_parts = [f"workspace_id={workspace_id}"]
     if token:
         qs_parts.append(f"token={token}")
-    if api_key:
-        qs_parts.append(f"api_key={api_key}")
     url  = f"{server}/workflows/{workflow_id}/runs/{run_id}/stream?{'&'.join(qs_parts)}"
 
     for data in api.stream(url, hdrs):
@@ -348,7 +344,7 @@ def _report_tool_coverage() -> None:
     try:
         cfg = _load_config()
         server  = cfg.get("server", "").rstrip("/")
-        api_key = cfg.get("api_key", "")
+        api_key = cfg.get("agent_token", "")
         token   = cfg.get("token", "")
         email   = cfg.get("email", "")
 
@@ -362,8 +358,8 @@ def _report_tool_coverage() -> None:
 
         payload = json.dumps({"email": email, "tools": tools}).encode()
         headers = {"Content-Type": "application/json"}
-        if api_key and api_key.startswith("cond_live_"):
-            headers["X-Api-Key"] = api_key
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         elif token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
@@ -594,8 +590,8 @@ def cmd_login(args):
 
 
 def cmd_agents(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
 
     project_filter = getattr(args, "project", None)
     url = f"{server}/workflows"
@@ -638,8 +634,8 @@ def cmd_agents(args):
 
 
 def cmd_test(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
 
     agent_names    = args.agents
     run_all        = getattr(args, "all", False)
@@ -717,10 +713,10 @@ def cmd_test(args):
             })
         return payload
 
-    _run_tests(server, workspace_id, api_key, token, hdrs, targets, _build_payload, parallel=parallel)
+    _run_tests(server, workspace_id, token, hdrs, targets, _build_payload, parallel=parallel)
 
 
-def _run_tests(server, workspace_id, api_key, token, hdrs, targets, build_payload, *, parallel: bool = False):
+def _run_tests(server, workspace_id, token, hdrs, targets, build_payload, *, parallel: bool = False):
     import threading
 
     if not parallel:
@@ -739,7 +735,7 @@ def _run_tests(server, workspace_id, api_key, token, hdrs, targets, build_payloa
             run_id = run.get("run_id")
             print(f"  {GRAY}run: {run_id}{RESET}")
             try:
-                ok = _stream_run(server, wf_id, run_id, workspace_id, token, api_key)
+                ok = _stream_run(server, wf_id, run_id, workspace_id, token)
             except Exception:
                 ok = _poll_run(server, wf_id, run_id, hdrs)
             results.append((name, ok, run_id))
@@ -824,8 +820,8 @@ def _resolve_environment(server: str, workspace_id: str, hdrs: dict, name: str) 
 # ── Environment commands ──────────────────────────────────────────────────────
 
 def cmd_environments(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
     envs = _list_environments(server, workspace_id, hdrs)
 
     if not envs:
@@ -840,8 +836,8 @@ def cmd_environments(args):
 
 
 def cmd_credentials(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
     env = _resolve_environment(server, workspace_id, hdrs, args.environment)
 
     rows = api.req("GET", f"{server}/credentials/env-vars/{env['id']}", hdrs)
@@ -862,8 +858,8 @@ def cmd_credentials(args):
     print()
 
 
-def _do_set_credential(server, workspace_id, api_key, token, env_name, key, value):
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+def _do_set_credential(server, workspace_id, token, env_name, key, value):
+    hdrs = api.headers(workspace_id, token, "application/json")
     env = _resolve_environment(server, workspace_id, hdrs, env_name)
 
     existing = api.req("GET", f"{server}/credentials/env-vars/{env['id']}", hdrs)
@@ -875,8 +871,8 @@ def _do_set_credential(server, workspace_id, api_key, token, env_name, key, valu
     print(f"{GREEN}✓ {key}{RESET} set in environment '{env_name}'  {GRAY}({masked}){RESET}")
 
 
-def _do_delete_credential(server, workspace_id, api_key, token, env_name, key, yes):
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+def _do_delete_credential(server, workspace_id, token, env_name, key, yes):
+    hdrs = api.headers(workspace_id, token, "application/json")
     env = _resolve_environment(server, workspace_id, hdrs, env_name)
 
     existing = api.req("GET", f"{server}/credentials/env-vars/{env['id']}", hdrs)
@@ -898,12 +894,12 @@ def _do_delete_credential(server, workspace_id, api_key, token, env_name, key, y
 
 def cmd_set(args):
     if args.set_command == "credential":
-        server, workspace_id, api_key, token = _require_auth(args)
-        _do_set_credential(server, workspace_id, api_key, token,
+        server, workspace_id, token = _require_auth(args)
+        _do_set_credential(server, workspace_id, token,
                            args.environment, args.key, args.value)
     elif args.set_command == "environment":
-        server, workspace_id, api_key, token = _require_auth(args)
-        hdrs = api.headers(workspace_id, token, "application/json", api_key)
+        server, workspace_id, token = _require_auth(args)
+        hdrs = api.headers(workspace_id, token, "application/json")
 
         workflows = api.req("GET", f"{server}/workflows", hdrs)
         wf = next((w for w in workflows if w["name"].lower() == args.agent.lower()), None)
@@ -936,8 +932,8 @@ def _resolve_project(server: str, workspace_id: str, hdrs: dict, name: str) -> d
 
 
 def cmd_projects(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs     = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs     = api.headers(workspace_id, token, "application/json")
     projects = _list_projects(server, workspace_id, hdrs)
 
     if not projects:
@@ -953,8 +949,8 @@ def cmd_projects(args):
 
 
 def cmd_create(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
     parts = args.create_args
 
     if parts and parts[0] == "environment":
@@ -975,8 +971,8 @@ def cmd_create(args):
 
 
 def cmd_delete(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
     parts = args.delete_args
 
     if parts and parts[0] == "environment":
@@ -999,7 +995,7 @@ def cmd_delete(args):
         if not env_name or not key:
             print(f"{RED}Usage: conduct delete credential --environment <name> --key <KEY>{RESET}")
             sys.exit(1)
-        _do_delete_credential(server, workspace_id, api_key, token, env_name, key, args.yes)
+        _do_delete_credential(server, workspace_id, token, env_name, key, args.yes)
 
     else:
         # conduct delete [project] <name> [--yes] [--purge]
@@ -1035,8 +1031,8 @@ def cmd_delete(args):
 # ── Playbook commands ─────────────────────────────────────────────────────────
 
 def cmd_playbooks(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
     slug = getattr(args, "slug", None)
 
     if slug:
@@ -1080,8 +1076,8 @@ def cmd_playbooks(args):
 # ── Install command ───────────────────────────────────────────────────────────
 
 def cmd_install(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
 
     slug = args.slug
 
@@ -1181,8 +1177,8 @@ def cmd_install(args):
 # ── Reset command ─────────────────────────────────────────────────────────────
 
 def cmd_reset(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
     proj = _resolve_project(server, workspace_id, hdrs, args.name)
     project_id = proj["id"]
 
@@ -1268,8 +1264,8 @@ _FRIENDLY_NAMES = {
 
 
 def cmd_install_all(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
 
     slugs = _ALL_SLUGS
 
@@ -1352,25 +1348,23 @@ def _atomic_write(path: Path, data: dict) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(existing, indent=2))
     os.replace(tmp, path)
-    try:
-        os.chmod(path, 0o600)
-    except Exception:
-        pass
+    from conduct_cli.hooks.base import restrict_to_owner
+    restrict_to_owner(path)
 
 
 def cmd_switch(args):
     cfg = _load_config()
     server  = cfg.get("server", "").rstrip("/")
-    api_key = cfg.get("api_key", "")
+    api_key = cfg.get("agent_token", "")
     token   = cfg.get("token", "")
 
     if not server or (not api_key and not token):
-        print(f"{RED}Not logged in. Run: conduct login --server <url> --api-key <key>{RESET}")
+        print(f"{RED}Not logged in. Run: conduct login{RESET}")
         sys.exit(1)
 
     hdrs = {"Content-Type": "application/json"}
     if api_key:
-        hdrs["X-Api-Key"] = api_key
+        hdrs["Authorization"] = f"Bearer {api_key}"
     elif token:
         hdrs["Authorization"] = f"Bearer {token}"
 
@@ -1433,7 +1427,7 @@ def cmd_switch(args):
         policy = _guard._req(
             "GET",
             f"{server}/guard/policies/sync?workspace_id={new_id}",
-            api_key=api_key,
+            token=token,
         )
         _guard._save_policy(policy)
         rule_count = len(policy.get("rules", []))
@@ -1449,21 +1443,22 @@ def cmd_switch(args):
 def cmd_whoami(args):
     cfg = _load_config()
 
-    workspace_id   = cfg.get("workspace", "")
-    server         = cfg.get("server", "—")
-    api_key        = cfg.get("api_key", "")
+    # cfg key drift: canonical keys are workspace_id / api_url, older configs used workspace / server
+    workspace_id   = cfg.get("workspace_id") or cfg.get("workspace") or ""
+    server         = cfg.get("api_url") or cfg.get("server") or "—"
+    api_key        = cfg.get("agent_token", "")
 
     # Try to resolve workspace name from /projects
     workspace_name = ""
     if workspace_id and server != "—" and api_key:
         try:
-            hdrs = {"Content-Type": "application/json", "X-Api-Key": api_key}
+            hdrs = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
             projects = api.req("GET", f"{server.rstrip('/')}/projects", hdrs)
             match = next((p for p in projects if str(p.get("id", "")) == str(workspace_id)), None)
             if match:
                 workspace_name = match["name"]
-        except Exception:
-            pass
+        except (Exception, SystemExit):
+            pass  # server error on /projects (e.g. agent token → 500) is cosmetic
 
     ws_display = workspace_name if workspace_name else workspace_id
     ws_id_hint = f"  ({workspace_id[:8]})" if workspace_id else ""
@@ -1471,7 +1466,7 @@ def cmd_whoami(args):
 
     print(f"\n{BOLD}Workspace:{RESET}  {ws_display}{ws_id_hint}")
     print(f"{BOLD}Server:{RESET}     {server}")
-    print(f"{BOLD}API key:{RESET}    {api_key_display}")
+    print(f"{BOLD}Agent token:{RESET} {api_key_display}")
 
     # Guard section — all under ~/.conduct/
     policy_path = Path.home() / ".conduct" / "policy.json"
@@ -1804,12 +1799,12 @@ def _render_table(rows: list[dict]) -> str:
 def _fetch_runs(cfg: dict) -> list[dict]:
     """Fetch recent runs from GET /runs."""
     server  = cfg.get("server", "").rstrip("/")
-    api_key = cfg.get("api_key", "")
+    api_key = cfg.get("agent_token", "")
     ws_id   = cfg.get("workspace", "")
     if not all([server, api_key, ws_id]):
         return []
     try:
-        hdrs = {"Content-Type": "application/json", "X-Api-Key": api_key}
+        hdrs = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
         data = api.req("GET", f"{server}/runs?limit=15&workspace_id={ws_id}", hdrs)
         runs = data if isinstance(data, list) else data.get("runs", data.get("items", []))
         return runs[:15]
@@ -1820,12 +1815,12 @@ def _fetch_runs(cfg: dict) -> list[dict]:
 def _fetch_guard_activity(cfg: dict, guard_cfg: dict) -> list[dict]:
     """Fetch recent Guard events grouped by developer."""
     server  = cfg.get("server", "").rstrip("/")
-    api_key = cfg.get("api_key", "")
+    api_key = cfg.get("agent_token", "")
     ws_id   = cfg.get("workspace", "")
     if not all([server, api_key, ws_id]):
         return []
     try:
-        hdrs = {"Content-Type": "application/json", "X-Api-Key": api_key}
+        hdrs = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
         data = api.req("GET", f"{server}/guard/events?workspace_id={ws_id}&limit=200", hdrs)
         events = data if isinstance(data, list) else data.get("events", [])
         # Group by user_email
@@ -2280,8 +2275,8 @@ def cmd_session_report(args):
 
     # ── 5. Push report to Guard dashboard ────────────────────────────────────
     try:
-        server, workspace_id, api_key, token = _require_auth(args)
-        hdrs = api.headers(workspace_id, token, "application/json", api_key)
+        server, workspace_id, token = _require_auth(args)
+        hdrs = api.headers(workspace_id, token, "application/json")
         import getpass as _getpass
         email = getattr(args, "developer", None) or _getpass.getuser()
         payload = _json.dumps({
@@ -2313,8 +2308,8 @@ def cmd_session_report(args):
 
 def cmd_emit_finding(args):
     """POST a security finding to /security-findings."""
-    server, workspace_id, api_key, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    hdrs = api.headers(workspace_id, token, "application/json")
 
     from_stdin = getattr(args, "from_stdin", False)
 
@@ -2408,8 +2403,8 @@ def _prompt_issue_choice(issues: list) -> dict:
 
 
 def cmd_run(args):
-    server, workspace_id, api_key, token = _require_auth(args)
-    json_h = api.headers(workspace_id, token, "application/json", api_key)
+    server, workspace_id, token = _require_auth(args)
+    json_h = api.headers(workspace_id, token, "application/json")
 
     # Fix 1: --input values go into state["inputs"], not top-level state.
     # {{inputs.key}} refs in YAML only resolve when the executor finds state["inputs"].
@@ -2548,7 +2543,7 @@ def cmd_run(args):
         body["__max_turns"] = suggested
     run = api.req("POST", f"{server}/workflows/{workflow_id}/trigger", json_h, body)
     run_id = run.get("run_id") or run.get("id")
-    _stream_run(server, workflow_id, run_id, workspace_id, token, api_key)
+    _stream_run(server, workflow_id, run_id, workspace_id, token)
 
 
 # ── conduct sync / test-guard / test-security ────────────────────────────────
@@ -2630,7 +2625,7 @@ def cmd_test_security(args):
         cfg = {}
 
     workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("api_key", "")
+    api_key      = cfg.get("agent_token", "")
     user_email   = cfg.get("user_email", "")
     api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
 
@@ -2647,7 +2642,7 @@ def cmd_test_security(args):
     try:
         req = urllib.request.Request(
             f"{api_url}/security-findings?workspace_id={workspace_id}&source_run_id=conduct-test-security",
-            headers={"X-Api-Key": api_key},
+            headers={"Authorization": f"Bearer {api_key}"},
             method="DELETE",
         )
         with urllib.request.urlopen(req, timeout=8) as resp:
@@ -2678,7 +2673,7 @@ def cmd_test_security(args):
             req = urllib.request.Request(
                 f"{api_url}/security-findings?workspace_id={workspace_id}",
                 data=payload,
-                headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=8) as resp:
@@ -2707,7 +2702,7 @@ def cmd_test_security_verify(args):
         cfg = {}
 
     workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("api_key", "")
+    api_key      = cfg.get("agent_token", "")
     user_email   = cfg.get("user_email", "")
     api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
 
@@ -2727,7 +2722,7 @@ def cmd_test_security_verify(args):
         req = urllib.request.Request(
             f"{api_url}/secure/refresh-automation?workspace_id={workspace_id}",
             data=b"{}",
-            headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -2743,7 +2738,7 @@ def cmd_test_security_verify(args):
     try:
         req = urllib.request.Request(
             f"{api_url}/security-findings?workspace_id={workspace_id}&source_run_id=conduct-test-security",
-            headers={"X-Api-Key": api_key},
+            headers={"Authorization": f"Bearer {api_key}"},
             method="DELETE",
         )
         with urllib.request.urlopen(req, timeout=8) as resp:
@@ -2773,7 +2768,7 @@ def cmd_test_security_verify(args):
             req = urllib.request.Request(
                 f"{api_url}/security-findings?workspace_id={workspace_id}",
                 data=payload,
-                headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=8) as resp:
@@ -2799,7 +2794,7 @@ def cmd_test_security_verify(args):
         try:
             req = urllib.request.Request(
                 f"{api_url}/security-findings?workspace_id={workspace_id}&source_run_id=conduct-test-security&limit=100",
-                headers={"X-Api-Key": api_key},
+                headers={"Authorization": f"Bearer {api_key}"},
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
                 findings = _json.loads(resp.read())
@@ -2890,7 +2885,7 @@ def cmd_test_guard(args):
         sys.exit(0)
 
     workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("api_key", "")
+    api_key      = cfg.get("agent_token", "")
     api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
 
     print(f"\n{BOLD}▶ conduct test-guard — {len(rules)} rule(s){RESET}\n")
@@ -2934,7 +2929,7 @@ def cmd_test_guard(args):
                 req = urllib.request.Request(
                     f"{api_url}/guard/events/test?workspace_id={workspace_id}",
                     data=payload,
-                    headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+                    headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
                     method="POST",
                 )
                 with urllib.request.urlopen(req, timeout=5):
@@ -3009,12 +3004,10 @@ def _check_guard_setup(command: str) -> None:
 def cmd_skill(args):
     """conduct skill list | install <slug> | uninstall <slug>"""
     skill_command = getattr(args, "skill_command", None)
-    server, workspace, api_key, token = _require_auth(args)
+    server, workspace, token = _require_auth(args)
 
     headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["X-Api-Key"] = api_key
-    elif token:
+    if token:
         headers["Authorization"] = f"Bearer {token}"
 
     def _req(method, path, expect=None):
@@ -3086,7 +3079,6 @@ def main():
     )
     # Global overrides (optional — config file is preferred)
     parser.add_argument("--server",    help="API URL (default: from ~/.conduct/config.json)")
-    parser.add_argument("--api-key",   dest="api_key", help="CLI API key")
     parser.add_argument("--token",     help=argparse.SUPPRESS)
     parser.add_argument("--workspace", help="Workspace ID")
 
@@ -3204,7 +3196,7 @@ def main():
     sub.add_parser("token", help="Show your agent token (masked by default)")
 
     # conduct whoami
-    sub.add_parser("whoami", help="Show current workspace, server, API key, and Guard/Booster status")
+    sub.add_parser("whoami", help="Show current workspace, server, agent token, and Guard/Booster status")
 
     # conduct guard
     guard_p, _guard_sub = _guard.register_guard_parser(sub)
@@ -3238,6 +3230,7 @@ def main():
     verify_p.add_argument("--strict",    action="store_true",          help="Exit 1 if any blocked events in last 24h (CI mode).")
     verify_p.add_argument("--format",    choices=["text", "json"],     default="text", help="Output format (default: text)")
     verify_p.add_argument("--since",     default="24h",                help="Time window for blocked event check (e.g. 7d, 24h)")
+    verify_p.add_argument("--run",       action="store_true",          help="Fire live adversarial test battery and show per-test verdicts.")
     sub.add_parser("test-guard",            help="Fire a synthetic event per guard policy rule and show decisions")
     sub.add_parser("test-security",         help="Post a synthetic finding per security classifier pattern")
     sub.add_parser("test-security-verify",  help="Post test findings and verify full triage pipeline end-to-end")

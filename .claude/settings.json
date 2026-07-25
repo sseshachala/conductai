@@ -1,10 +1,18 @@
 {
   "permissions": {
     "allow": [
+      "Bash(conduct)",
+      "Bash(gh api *)",
+      "Bash(gh issue *)",
+      "mcp__agent-booster__get_symbols",
+      "mcp__agent-booster__route_model",
       "mcp__agent-booster__search_context",
       "mcp__agent-booster__smart_read",
-      "mcp__agent-booster__get_symbols",
-      "mcp__agent-booster__route_model"
+      "mcp__claude_ai_Conduct_AI__guard_activity",
+      "mcp__claude_ai_Conduct_AI__guard_check",
+      "mcp__conduct__conduct_get_run",
+      "mcp__plugin_vercel_vercel__list_deployments",
+      "mcp__plugin_vercel_vercel__list_projects"
     ]
   },
   "hooks": {

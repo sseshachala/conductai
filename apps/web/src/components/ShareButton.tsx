@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { useAuth } from "@clerk/nextjs"
-import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { share as shareApi } from "@/lib/api"
 
 interface Props {
   resourceType: string
@@ -12,26 +12,13 @@ interface Props {
 }
 
 export default function ShareButton({ resourceType, resourceId, label = "Share" }: Props) {
-  const { getToken } = useAuth()
-  const { activeWorkspace } = useWorkspace()
+  const { authFetch } = useAuthFetch()
   const [state, setState] = useState<"idle" | "loading" | "copied" | "error">("idle")
 
   async function handleShare() {
     setState("loading")
     try {
-      const token = await getToken()
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await fetch(`${base}/share`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          "x-workspace-id": activeWorkspace?.id ?? "",
-        },
-        body: JSON.stringify({ resource_type: resourceType, resource_id: resourceId }),
-      })
-      if (!res.ok) throw new Error(await res.text())
-      const { share_url } = await res.json()
+      const { share_url } = await shareApi.create(authFetch, { resource_type: resourceType, resource_id: resourceId })
       await navigator.clipboard.writeText(share_url)
       setState("copied")
       setTimeout(() => setState("idle"), 2500)

@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardRole } from "@/hooks/useGuardRole"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { workspaces as workspacesApi } from "@/lib/api"
 
 interface ApiKey {
   id: string
@@ -16,21 +17,14 @@ interface ApiKey {
 }
 
 export default function ApiKeysManager() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-  if (clerkEnabled) return <ApiKeysManagerWithAuth />
-  return <ApiKeysManagerInner getToken={null} />
+  return <ApiKeysManagerInner />
 }
 
-function ApiKeysManagerWithAuth() {
-  const { getToken } = useAuth()
-  return <ApiKeysManagerInner getToken={getToken} />
-}
-
-function ApiKeysManagerInner({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+function ApiKeysManagerInner() {
   const { activeWorkspace } = useWorkspace()
   const workspaceId = activeWorkspace?.id ?? ""
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL
   const { role } = useGuardRole(null, workspaceId || null)
+  const { authFetch } = useAuthFetch()
   const isAdmin = role === "admin"
   const canGenerateKey = role === "admin" || role === "developer"
 
@@ -46,22 +40,14 @@ function ApiKeysManagerInner({ getToken }: { getToken: (() => Promise<string | n
   const [error, setError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
 
-  const headers = useCallback(async (): Promise<Record<string, string>> => {
-    const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    if (workspaceId) h["X-Workspace-Id"] = workspaceId
-    return h
-  }, [getToken, workspaceId])
-
   const load = useCallback(async () => {
-    if (!workspaceId || !apiUrl) return
+    if (!workspaceId) return
     try {
-      const h = await headers()
-      const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/api-keys`, { headers: h })
-      if (r.ok) setKeys(await r.json())
+      const data = await workspacesApi.apiKeys.list(authFetch, workspaceId)
+      setKeys(data)
     } catch {}
     setLoading(false)
-  }, [workspaceId, apiUrl, headers])
+  }, [workspaceId, authFetch])
 
   useEffect(() => { load() }, [load])
 
@@ -70,12 +56,7 @@ function ApiKeysManagerInner({ getToken }: { getToken: (() => Promise<string | n
     setCreating(true)
     setError(null)
     try {
-      const h = await headers()
-      const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/api-keys`, {
-        method: "POST",
-        headers: h,
-        body: JSON.stringify({ name: newName.trim() }),
-      })
+      const r = await workspacesApi.apiKeys.create(authFetch, workspaceId, { name: newName.trim() })
       if (r.ok) {
         const data = await r.json()
         setNewKey(data.key)
@@ -96,8 +77,7 @@ function ApiKeysManagerInner({ getToken }: { getToken: (() => Promise<string | n
     setRevoking(id)
     setError(null)
     try {
-      const h = await headers()
-      const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/api-keys/${id}`, { method: "DELETE", headers: h })
+      const r = await workspacesApi.apiKeys.remove(authFetch, workspaceId, id)
       if (r.ok) setKeys(k => k.filter(x => x.id !== id))
       else {
         const body = await r.json().catch(() => ({}))

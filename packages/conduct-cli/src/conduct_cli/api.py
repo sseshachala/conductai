@@ -22,11 +22,9 @@ def _friendly(code: int, detail: str) -> str:
     return detail
 
 
-def headers(workspace_id: str, token=None, content_type="application/json", api_key=None) -> dict:
+def headers(workspace_id: str, token=None, content_type="application/json") -> dict:
     h = {"Content-Type": content_type, "X-Workspace-Id": workspace_id}
-    if api_key:
-        h["X-Api-Key"] = api_key
-    elif token:
+    if token:
         h["Authorization"] = f"Bearer {token}"
     return h
 

@@ -1,0 +1,231 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# threat-modeler — STRIDE auto-draft on every architecture change
+#
+# Reads the PR diff + architecture surface (ADRs, docs/architecture, topology
+# yaml), drafts a STRIDE threat model with the brain, and files each row as a
+# security_finding so it flows through the same security-loop as scanner
+# output (autopilot-fix chain, MTTR metrics, compliance rollups).
+#
+# Design-time enforcement to pair with runtime Guard. Complements the scanner
+# playbooks — they catch known-bad patterns in existing code; this catches
+# design flaws in new code before they land.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Threat Modeler
+version: 1
+description: >
+  Auto-drafts a STRIDE threat model on every PR that changes architecture,
+  services, endpoints, or trust boundaries. Files each threat as a
+  security_finding so the security loop picks it up (autopilot-fix chain,
+  MTTR metrics, compliance evidence for SOC 2 CC7.3, PCI 12.3.1,
+  ISO 27001 A.14.2.1).
+
+inputs:
+  target_repo:
+    label: Target GitHub Repo
+    type: string
+    placeholder: "owner/repo"
+    description: GitHub repository containing the PR to threat-model.
+
+  pr_number:
+    label: PR number
+    type: number
+    description: Pull request number to analyse.
+    required: false
+
+  severity_threshold:
+    label: Min severity to file
+    type: select
+    default: medium
+    options:
+      - critical
+      - high
+      - medium
+      - low
+    description: Only file findings at or above this severity.
+
+  architecture_paths:
+    label: Architecture doc paths (comma-separated globs)
+    type: string
+    default: "docs/architecture/**,ADRs/**,architecture/**,*.arch.md,topology.yaml"
+    description: >
+      Where architecture surface lives in this repo. The threat modeler reads
+      these files plus the PR diff to derive trust boundaries and data flows.
+
+  model:
+    label: AI Model
+    type: select
+    default: claude-sonnet-4-6
+    options:
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+    description: Sonnet is sufficient for structured STRIDE drafting.
+
+on:
+  manual:
+    next: recall_prior
+  pull_request:
+    events: [opened, synchronize]
+    next: recall_prior
+
+blocks:
+
+  # ── 1. Recall prior threat model for this repo ──────────────────────────────
+  recall_prior:
+    type: memory
+    label: Recall prior threat model
+    action: read
+    scope: repo
+    limit: 3
+    key: "{{inputs.target_repo}}:threat_model"
+    next: plan
+
+  # ── 2. Plan the surface (single-turn scoping) ───────────────────────────────
+  plan:
+    type: brain
+    mode: single
+    model: "{{ inputs.model }}"
+    next: draft_stride
+    system: |
+      You are scoping a threat-modeling exercise for a PR. Your job is to
+      identify the architecture surface that changed and pick the STRIDE
+      categories most relevant to it. Do not draft threats yet.
+    prompt: |
+      Repo: {{inputs.target_repo}}
+      {% if inputs.pr_number %}PR: #{{inputs.pr_number}}{% endif %}
+      Architecture doc globs: {{inputs.architecture_paths}}
+      Prior threat model: {{recall_prior.output}}
+
+      Look at the PR diff and the architecture docs. Output ONLY this JSON on
+      the last line — no prose:
+      {
+        "changed_services": ["name1"],
+        "new_endpoints":    ["METHOD /path"],
+        "new_data_flows":   ["source -> sink"],
+        "trust_boundaries_touched": ["internet->api", "api->db"],
+        "stride_categories_in_scope": ["S","T","R","I","D","E"]
+      }
+
+  # ── 3. Draft STRIDE threat model (agentic, bounded turns) ───────────────────
+  draft_stride:
+    type: brain
+    mode: agentic
+    model: "{{ inputs.model }}"
+    max_turns: 30
+    next: file_findings
+    credentials:
+      github: github
+    system: |
+      You are drafting a STRIDE threat model against a PR's changes.
+
+      For each item in plan.stride_categories_in_scope, enumerate concrete
+      threats that the PR introduces or worsens. Threats must be tied to
+      specific code paths, endpoints, or data flows — not generic categories.
+
+      For each threat provide: title, category (S|T|R|I|D|E), severity
+      (critical|high|medium|low), evidence (file + brief code reference),
+      proposed mitigation.
+
+      Do NOT propose threats that already have a control in place per the
+      recall_prior context. Do NOT include theoretical threats that have no
+      concrete surface in the diff.
+
+      Skip threats below inputs.severity_threshold.
+    prompt: |
+      Plan output: {{plan.output}}
+      Repo: {{inputs.target_repo}}
+      {% if inputs.pr_number %}PR: #{{inputs.pr_number}}{% endif %}
+      Severity threshold: {{inputs.severity_threshold}}
+      Prior threat model (skip duplicates): {{recall_prior.output}}
+
+      Read the PR diff and any relevant architecture docs, then produce a
+      STRIDE threat model.
+
+      Output a markdown block for the PR comment first (headers + table), then
+      on the very last line output ONLY this JSON array — one row per threat:
+      [
+        {"title":"...","category":"I","severity":"high","evidence":"apps/api/routes/billing.py:42 — no ownership check on userId param","mitigation":"Add ownership check: verify userId matches session user."}
+      ]
+
+  # ── 4. File each threat as a security_finding ───────────────────────────────
+  file_findings:
+    type: brain
+    mode: single
+    model: "{{ inputs.model }}"
+    next: comment_pr
+    description: |
+      Post each STRIDE threat to /security-findings so it enters the same
+      pipeline as scanner findings — routes to /secure/findings, feeds MTTR
+      metrics, chains into security-autopilot-fix on severity >= high.
+
+      Environment:
+        CONDUCT_RUN_TOKEN — Bearer for this run
+        CONDUCT_API_URL   — Conduct API base URL
+        CONDUCT_RUN_ID    — Source run ID
+
+      If CONDUCT_RUN_TOKEN or CONDUCT_API_URL is empty, output {"posted": 0} and stop.
+    prompt: |
+      Threats to file (from draft_stride, JSON array on the last line):
+      {{draft_stride.output}}
+
+      Repo: {{inputs.target_repo}}
+      {% if inputs.pr_number %}PR: #{{inputs.pr_number}}{% endif %}
+
+      For each threat, POST to the Conduct API:
+        curl -s -X POST "${CONDUCT_API_URL}/security-findings" \
+          -H "Authorization: Bearer ${CONDUCT_RUN_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "tool": "threat_modeler",
+            "kind": "threat_model",
+            "severity": "SEVERITY",
+            "type": "STRIDE_CATEGORY",
+            "description": "TITLE — EVIDENCE — Mitigation: MITIGATION",
+            "file": "FILE_FROM_EVIDENCE",
+            "repo_full_name": "{{inputs.target_repo}}",
+            "source_run_id": "'"${CONDUCT_RUN_ID}"'"
+          }'
+
+      Replace SEVERITY, STRIDE_CATEGORY, TITLE, EVIDENCE, MITIGATION, FILE per row.
+      Count successful posts (HTTP 201 responses).
+
+      Output ONLY on the last line: {"posted": <count>}
+
+  # ── 5. Comment the human-readable threat model on the PR ────────────────────
+  comment_pr:
+    type: brain
+    mode: single
+    model: "{{ inputs.model }}"
+    next: record
+    credentials:
+      github: github
+    description: |
+      Post the markdown threat model as a PR comment so reviewers see it
+      inline without needing to open Guard.
+    prompt: |
+      Repo: {{inputs.target_repo}}
+      {% if inputs.pr_number %}PR: #{{inputs.pr_number}}{% endif %}
+
+      Use the GitHub API to post a comment on PR #{{inputs.pr_number}} in
+      {{inputs.target_repo}}. Body: everything from draft_stride.output
+      EXCEPT the trailing JSON line. Prepend a short header:
+
+        > Threat model auto-drafted by Conduct. {{file_findings.posted}} threats
+        > filed to Guard. View in /secure/findings.
+
+      Output ONLY on the last line: {"commented": true|false}
+
+  # ── 6. Record outcome for next PR's recall ──────────────────────────────────
+  record:
+    type: memory
+    label: Save threat model to repo memory
+    action: write
+    scope: repo
+    key: "{{inputs.target_repo}}:threat_model"
+    summary: "Threat model — {{file_findings.posted}} threats filed for {{inputs.target_repo}}{% if inputs.pr_number %} PR #{{inputs.pr_number}}{% endif %}"
+    payload: |
+      {
+        "pr": {{inputs.pr_number|default:"null"}},
+        "threats_filed": {{file_findings.posted}},
+        "categories_covered": {{plan.stride_categories_in_scope|tojson}},
+        "run_id": "{{_run_id}}"
+      }

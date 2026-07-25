@@ -158,6 +158,43 @@ _TOOLS = [
         },
     },
     {
+        "name": "post_finding",
+        "description": (
+            "Report a security vulnerability or finding directly to Conduct's Security Loop. "
+            "Use this when you detect a secret leak, injection risk, path traversal, auth bypass, "
+            "or any other security issue in the code you're reviewing. "
+            "Conduct will auto-triage it and can trigger an automated fix via the security_autopilot_fix playbook."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tool":         {"type": "string", "description": "Tool or scanner that found this (e.g. 'claude_code', 'semgrep', 'bughunter')"},
+                "severity":     {"type": "string", "description": "critical | high | medium | low | info"},
+                "type":         {"type": "string", "description": "injection | path-traversal | secret-leak | auth-bypass | crypto | guard_violation | other"},
+                "description":  {"type": "string", "description": "Clear description of the vulnerability"},
+                "file":         {"type": "string", "description": "File path where the issue was found"},
+                "line":         {"type": "integer", "description": "Line number"},
+                "repo_full_name": {"type": "string", "description": "GitHub repo (e.g. 'org/repo') — required for trigger_fix to open a PR"},
+                "suggested_fix": {"type": "string", "description": "Optional suggested remediation"},
+            },
+            "required": ["tool", "severity", "type", "description"],
+        },
+    },
+    {
+        "name": "trigger_fix",
+        "description": (
+            "Trigger the security_autopilot_fix playbook for a finding that was previously reported via post_finding. "
+            "Conduct will open a PR with an automated fix. The finding must have a repo_full_name set."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "finding_id": {"type": "string", "description": "Finding UUID returned by post_finding"},
+            },
+            "required": ["finding_id"],
+        },
+    },
+    {
         "name": "conduct_list_agents",
         "description": "List all installed agents in your Conduct workspace.",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
@@ -277,6 +314,8 @@ def _detect_surface(client_info: dict) -> str:
         return "cursor"
     if "windsurf" in name:
         return "windsurf"
+    if "copilot" in name or "github" in name:
+        return "copilot"
     return "unknown"
 
 
@@ -487,10 +526,11 @@ async def mcp_sse(
 
     if not _extract_token(request, token):
         ua = request.headers.get("User-Agent", "")
-        # Suppress OAuth discovery header for non-Claude clients (e.g. Smithery)
-        # so they fall back to API key auth instead of triggering an OAuth flow.
-        # Claude.ai sends "claude-mcp" in the User-Agent; only it gets the hint.
-        is_claude = "claude" in ua.lower()
+        # Only send OAuth discovery header to clients that support it.
+        # Smithery and similar tools fall back to API key auth — sending WWW-Authenticate
+        # breaks them. Claude.ai sends "claude-mcp"; VS Code Copilot sends "github-copilot".
+        _ua = ua.lower()
+        is_claude = "claude" in _ua or "github-copilot" in _ua or "vscode" in _ua or "cursor" in _ua
         resp_headers = {}
         if is_claude:
             ws_param = f"?workspace_id={workspace_id}" if workspace_id else ""
@@ -504,7 +544,19 @@ async def mcp_sse(
             headers=resp_headers,
         )
 
+    # Build the POST endpoint URL from the request so it works across envs.
+    # Behind Render's TLS proxy request.base_url is http:// unless uvicorn is
+    # started with --proxy-headers; trust X-Forwarded-Proto as fallback so the
+    # SSE endpoint origin matches the connection origin (MCP requires match).
+    fwd_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    base_url = str(request.base_url).rstrip("/")
+    if fwd_proto in ("http", "https") and "://" in base_url:
+        base_url = f"{fwd_proto}://{base_url.split('://', 1)[1]}"
+    post_url = f"{base_url}/guard/mcp"
+
     async def event_stream():
+        # MCP SSE transport: client waits for this before sending initialize
+        yield f"event: endpoint\ndata: {post_url}\n\n"
         yield ": keepalive\n\n"
         while True:
             await asyncio.sleep(15)
@@ -518,6 +570,12 @@ async def mcp_sse(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.delete("")
+async def mcp_terminate():
+    """Streamable HTTP session termination — stateless server, just ack."""
+    return JSONResponse(status_code=204, content=None)
 
 
 @router.post("")
@@ -574,23 +632,33 @@ async def mcp_endpoint(
         if method == "initialize":
             client_info = params.get("clientInfo") or {}
             surface = _detect_surface(client_info)
-            return JSONResponse(_ok(msg_id, {
-                "protocolVersion": PROTOCOL_VERSION,
-                "capabilities":    {"tools": {}},
-                "serverInfo":      {"name": "conductguard", "version": "1.0.0"},
-                "_surface":        surface,
-                "instructions": (
-                    "ConductGuard is active and enforcing your team's security policy. "
-                    "ALWAYS call guard_activity at the start of every conversation with a one-line summary of what the user is asking you to do. "
-                    "ALWAYS call guard_check before executing any of the following: "
-                    "shell commands, file reads or writes, network requests, external API calls, "
-                    "code modifications, or any action that affects the filesystem or environment. "
-                    "If the response is BLOCKED: stop immediately and explain the policy rule to the user. "
-                    "If WARNING: proceed but surface the warning to the user. "
-                    "If ALLOWED: proceed normally. "
-                    "Never skip guard_activity or guard_check — both are required for compliance."
-                ),
-            }))
+            # Echo the client's requested protocolVersion so strict clients (Copilot
+            # rmcp) don't treat the connection as a version mismatch and skip
+            # tools/list. Fall back to our default when the client omits it.
+            negotiated_version = params.get("protocolVersion") or PROTOCOL_VERSION
+            # Streamable HTTP: clients (Copilot rmcp, etc) expect Mcp-Session-Id.
+            # We're stateless, so any stable-per-response uuid satisfies the contract.
+            session_hdr = str(uuid.uuid4())
+            return JSONResponse(
+                _ok(msg_id, {
+                    "protocolVersion": negotiated_version,
+                    "capabilities":    {"tools": {}},
+                    "serverInfo":      {"name": "conductguard", "version": "1.0.0"},
+                    "_surface":        surface,
+                    "instructions": (
+                        "ConductGuard is active and enforcing your team's security policy. "
+                        "ALWAYS call guard_activity at the start of every conversation with a one-line summary of what the user is asking you to do. "
+                        "ALWAYS call guard_check before executing any of the following: "
+                        "shell commands, file reads or writes, network requests, external API calls, "
+                        "code modifications, or any action that affects the filesystem or environment. "
+                        "If the response is BLOCKED: stop immediately and explain the policy rule to the user. "
+                        "If WARNING: proceed but surface the warning to the user. "
+                        "If ALLOWED: proceed normally. "
+                        "Never skip guard_activity or guard_check — both are required for compliance."
+                    ),
+                }),
+                headers={"Mcp-Session-Id": session_hdr},
+            )
 
         elif method == "notifications/initialized":
             return JSONResponse(status_code=204, content=None)
@@ -601,8 +669,18 @@ async def mcp_endpoint(
         elif method == "tools/call":
             tool_name = params.get("name", "")
             arguments = params.get("arguments") or {}
-            # Remote MCP = always a web surface; clientInfo not available on tools/call
-            ai_tool = request.headers.get("x-claude-surface") or "claude_chat"
+            # Try explicit surface header, then clientInfo (rarely on tools/call),
+            # then User-Agent (Copilot rmcp reveals itself here). Default to
+            # 'unknown' — misattributing to claude_chat hides Copilot traffic.
+            ai_tool = (
+                request.headers.get("x-claude-surface")
+                or _detect_surface(params.get("clientInfo") or {})
+                or "unknown"
+            )
+            if ai_tool == "unknown":
+                ua_surface = _detect_surface({"name": request.headers.get("User-Agent", "")})
+                if ua_surface != "unknown":
+                    ai_tool = ua_surface
             session_id = request.headers.get("x-session-id", str(uuid.uuid4()))
 
             # Self-register: every tool call proves this agent is under Guard.
@@ -830,6 +908,127 @@ async def mcp_endpoint(
                     return JSONResponse(_text(msg_id, f"Agent '{row.name or agent_id}' ({row.framework}) is now under Guard."))
                 except Exception as e:
                     return JSONResponse(_text(msg_id, f"Error registering agent: {e}"))
+
+            elif tool_name == "post_finding":
+                from app.models.security_finding import SecurityFinding as SF
+                from app.core.queue import enqueue_run
+                _sev = arguments.get("severity", "info")
+                _typ = arguments.get("type", "other")
+                _valid_sev = {"critical", "high", "medium", "low", "info"}
+                _valid_typ = {"injection", "path-traversal", "secret-leak", "auth-bypass", "crypto", "guard_violation", "other"}
+                if _sev not in _valid_sev:
+                    return JSONResponse(_text(msg_id, f"Error — severity must be one of: {', '.join(sorted(_valid_sev))}"))
+                if _typ not in _valid_typ:
+                    return JSONResponse(_text(msg_id, f"Error — type must be one of: {', '.join(sorted(_valid_typ))}"))
+                _now_dt = datetime.now(timezone.utc)
+                finding = SF(
+                    id=uuid.uuid4(),
+                    workspace_id=ws_uuid,
+                    tool=arguments.get("tool", "mcp"),
+                    severity=_sev,
+                    type=_typ,
+                    description=arguments.get("description", ""),
+                    file=arguments.get("file"),
+                    line=arguments.get("line"),
+                    repo_full_name=arguments.get("repo_full_name"),
+                    suggested_fix=arguments.get("suggested_fix"),
+                    reporter_email=user_email,
+                    status="open",
+                    created_at=_now_dt,
+                    updated_at=_now_dt,
+                )
+                db.add(finding)
+                db.flush()
+                # Auto-trigger security_loop if installed
+                try:
+                    from app.models.workflow import Workflow
+                    from app.models.run import Run
+                    _wf = db.query(Workflow).filter(
+                        Workflow.workspace_id == ws_uuid,
+                        Workflow.playbook_slug == "security_loop",
+                    ).first()
+                    if _wf and _wf.current_version_id:
+                        _run = Run(
+                            workflow_version_id=_wf.current_version_id,
+                            triggered_by="security_finding",
+                            status="pending",
+                            state={
+                                "_trigger": {
+                                    "event_type": "security_finding",
+                                    "finding_id": str(finding.id),
+                                    "tool": finding.tool,
+                                    "severity": finding.severity,
+                                    "type": finding.type,
+                                    "description": finding.description,
+                                    "file": finding.file,
+                                    "repo_full_name": finding.repo_full_name,
+                                },
+                                "__input_contract": {"version": "phase2.v1", "status": "validated", "shape": "trigger"},
+                            },
+                        )
+                        db.add(_run)
+                        db.flush()
+                        finding.run_id = str(_run.id)
+                        enqueue_run(str(_run.id))
+                except Exception:
+                    pass
+                db.commit()
+                return JSONResponse(_text(msg_id, json.dumps({
+                    "finding_id": str(finding.id),
+                    "status": "open",
+                    "message": f"Finding reported — severity={_sev}, type={_typ}. Use trigger_fix to enqueue an automated fix.",
+                }, indent=2)))
+
+            elif tool_name == "trigger_fix":
+                from app.models.security_finding import SecurityFinding as SF
+                from app.models.workflow import Workflow
+                from app.models.run import Run
+                from app.core.queue import enqueue_run
+                _fid = arguments.get("finding_id", "")
+                try:
+                    _fid_uuid = uuid.UUID(_fid)
+                except ValueError:
+                    return JSONResponse(_text(msg_id, "Error — finding_id must be a valid UUID"))
+                finding = db.query(SF).filter(SF.id == _fid_uuid, SF.workspace_id == ws_uuid).first()
+                if not finding:
+                    return JSONResponse(_text(msg_id, f"Error — finding {_fid} not found"))
+                _wf = db.query(Workflow).filter(
+                    Workflow.workspace_id == ws_uuid,
+                    Workflow.playbook_slug == "security_autopilot_fix",
+                ).first()
+                if not _wf or not _wf.current_version_id:
+                    return JSONResponse(_text(msg_id, "Error — security_autopilot_fix playbook is not installed in this workspace"))
+                _run = Run(
+                    workflow_version_id=_wf.current_version_id,
+                    triggered_by="security_finding_fix",
+                    status="pending",
+                    state={
+                        "_trigger": {
+                            "event_type": "security_finding_fix",
+                            "finding_id": str(finding.id),
+                            "severity": finding.severity,
+                            "type": finding.type,
+                            "file": finding.file,
+                            "line": finding.line,
+                            "description": finding.description,
+                            "suggested_fix": finding.suggested_fix,
+                            "repo_full_name": finding.repo_full_name,
+                        },
+                        "__input_contract": {"version": "phase2.v1", "status": "validated", "shape": "trigger"},
+                    },
+                )
+                db.add(_run)
+                db.flush()
+                enqueue_run(str(_run.id))
+                finding.status = "triaging"
+                finding.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                return JSONResponse(_text(msg_id, json.dumps({
+                    "run_id": str(_run.id),
+                    "finding_id": str(finding.id),
+                    "status": "triaging",
+                    "message": "security_autopilot_fix enqueued — finding set to triaging.",
+                }, indent=2)))
 
             elif tool_name == "conduct_list_agents":
                 return JSONResponse(_text(msg_id, json.dumps(_list_agents(db, ws_uuid), indent=2)))

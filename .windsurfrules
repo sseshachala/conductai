@@ -1,0 +1,32 @@
+<!-- ConductGuard — managed by conduct guard sync -->
+## ConductGuard Policy
+At the start of every conversation:
+- Call `guard_activity` once with a one-line summary of the user's request.
+
+Before every shell command, file write, network request, API call, or code change:
+- Call `guard_check` with the proposed action and parameters.
+- If BLOCKED: stop and explain the policy rule.
+- If WARNING: proceed and surface the warning.
+- If ALLOWED: proceed normally.
+
+Example:
+1. User asks to fix a bug → call `guard_activity` once.
+2. Before reading files or running tests → call `guard_check`.
+3. Before editing code → call `guard_check` again.
+
+Never write secrets to files or output.
+Never send PII to external endpoints.
+<!-- /ConductGuard -->
+
+
+<!-- booster:start -->
+## Agent Booster — Context-Efficient Reads
+
+Prefer booster MCP tools over native file reads:
+- `search_context` instead of searching files — semantic search across all indexed symbols
+- `smart_read` instead of reading full files — returns only the relevant symbol slices for a task
+- `get_symbols` to survey a file's structure before reading it
+- `route_model` at the start of any non-trivial task to pick the right model tier
+
+Run `booster gain` to see token savings.
+<!-- booster:end -->

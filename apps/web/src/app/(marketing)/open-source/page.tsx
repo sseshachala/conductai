@@ -28,7 +28,7 @@ function HeroSection() {
         Open Source
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed">
-        The tools underneath ConductAI — free to use, inspect, and contribute to.
+        Free for individuals and small teams. Commercial use by companies requires a license — conductai.ai/team-os/license
       </p>
     </section>
   )

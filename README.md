@@ -2,7 +2,7 @@
 
 [![Try Conduct — conductai.ai](https://img.shields.io/badge/Try_Conduct-conductai.ai-6366f1?style=for-the-badge&logoColor=white&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyek0xMSAxN3YtNkg5bDMtNCAzIDRoLTJ2NmgtMnoiLz48L3N2Zz4=)](https://conductai.ai)
 [![Star on GitHub](https://img.shields.io/github/stars/sseshachala/conductai?style=for-the-badge&logo=github&color=gold)](https://github.com/sseshachala/conductai/stargazers)
-[![MIT License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/License-Conduct_AI-blue?style=for-the-badge)](LICENSE)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-D97757?style=for-the-badge&logoColor=white&logo=anthropic)](https://github.com/sseshachala/conductai)
 [![PyPI](https://img.shields.io/pypi/v/conduct-cli?style=for-the-badge&logo=pypi&logoColor=white&color=0073b7)](https://pypi.org/project/conduct-cli/)
 
@@ -531,4 +531,4 @@ docker compose exec api alembic upgrade head
 
 ## License
 
-MIT — use it, fork it, build on it.
+Free for individuals · commercial license for companies · conductai.ai/team-os/license

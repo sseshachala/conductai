@@ -1,7 +1,7 @@
 """Shared primitives for all ConductGuard hook modules.
 
-Everything here is stdlib-only so hooks work from a bare `pip install conduct-cli`
-with no shell rc sourced.
+Depends only on stdlib + psutil (a hard conduct-cli dep), so hooks work from a
+bare `pip install conduct-cli` with no shell rc sourced.
 """
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ import subprocess
 import sys
 import time
 import urllib.request
+
+import psutil as _psutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Optional
@@ -55,6 +57,30 @@ def load_config() -> dict:
 def active_policy_path() -> Path:
     """Return policy path: ~/.conduct/policy.json."""
     return POLICY_PATH
+
+
+def restrict_to_owner(path: Path) -> None:
+    """chmod 600 equivalent — POSIX uses chmod, Windows uses icacls to remove
+    inheritance and grant sole access to the current user."""
+    try:
+        if sys.platform == "win32":
+            # ponytail: icacls is built-in on windows; pywin32 would be a whole
+            # dep for one SetSecurityInfo call. Upgrade only if this breaks on
+            # non-English locales that rename builtin groups.
+            import os as _os
+            user = _os.environ.get("USERNAME") or _os.environ.get("USER") or ""
+            if not user:
+                return
+            subprocess.run(
+                ["icacls", str(path), "/inheritance:r", "/grant:r", f"{user}:F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            path.chmod(0o600)
+    except Exception:
+        pass
 
 
 # ── Repo / tool detection ─────────────────────────────────────────────────────
@@ -148,14 +174,14 @@ def _refresh_policy_from_api() -> None:
     try:
         cfg = load_config()
         workspace_id = cfg.get("workspace_id")
-        api_key = cfg.get("api_key", "")
+        agent_token = cfg.get("agent_token", "")
         api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-        if not api_key:
+        if not agent_token:
             return
         url = f"{api_url}/guard/policies/sync"
         if workspace_id:
             url += f"?workspace_id={workspace_id}"
-        req = urllib.request.Request(url, headers={"X-Api-Key": api_key})
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {agent_token}"})
         with urllib.request.urlopen(req, timeout=8) as resp:
             data = resp.read()
         POLICY_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -168,19 +194,18 @@ def _refresh_policy_from_api() -> None:
 
 def drain_daemon_status() -> tuple[str, int | None]:
     """Return (status, pid) where status is 'running'|'stale'|'dead'."""
-    import os as _os
     if not JOURNAL_PID_PATH.exists():
         return "dead", None
     try:
         pid = int(JOURNAL_PID_PATH.read_text().strip())
-        _os.kill(pid, 0)  # raises if process gone
+        # ponytail: psutil (already a dep) is portable — os.kill(pid, 0) hangs on Windows
+        if not _psutil.pid_exists(pid):
+            return "dead", None
         age = time.time() - JOURNAL_PID_PATH.stat().st_mtime
         if age > _DAEMON_STALE_SECS:
             return "stale", pid
         return "running", pid
-    except (ProcessLookupError, PermissionError, ValueError):
-        return "dead", None
-    except Exception:
+    except (ValueError, Exception):
         return "dead", None
 
 
@@ -197,18 +222,29 @@ def ensure_drain_daemon(hook_module_path: Optional[Path] = None) -> None:
             return
         # Kill stale process before spawning replacement — prevents double-drain race
         if status == "stale" and stale_pid is not None:
-            import os as _os
             try:
-                _os.kill(stale_pid, 15)  # SIGTERM
+                _psutil.Process(stale_pid).terminate()
             except Exception:
                 pass
         if hook_module_path is None:
             return
+        popen_kwargs: dict = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        if sys.platform == "win32":
+            # ponytail: DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP are the
+            # Windows equivalent of POSIX start_new_session — both constants
+            # only exist on Windows Python, so gate the reference behind the
+            # platform check.
+            popen_kwargs["creationflags"] = (
+                subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+        else:
+            popen_kwargs["start_new_session"] = True
         subprocess.Popen(
             [sys.executable, str(hook_module_path), "drain"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
+            **popen_kwargs,
         )
     except Exception:
         pass

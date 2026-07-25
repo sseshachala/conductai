@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { MCP_PROVIDERS, getProvider } from "@/lib/mcpProviders"
@@ -364,7 +366,7 @@ function IntegrationsPageInner({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [globalError, setGlobalError] = useState("")
 
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+  const { authFetch } = useAuthFetch()
 
   async function buildHeaders(contentType = false): Promise<Record<string, string>> {
     const headers: Record<string, string> = {}
@@ -383,8 +385,8 @@ function IntegrationsPageInner({
     const headers = await buildHeaders()
     // Fetch independently so environments always loads even if mcp-servers table is pending migration
     const [serversRes, envsRes] = await Promise.allSettled([
-      fetch(`${base}/mcp-servers${wsId ? `?workspace_id=${wsId}` : ""}`, { headers }),
-      fetch(`${base}/environments${wsId ? `?workspace_id=${wsId}` : ""}`, { headers }),
+      authFetch(`${API}/mcp-servers${wsId ? `?workspace_id=${wsId}` : ""}`),
+      authFetch(`${API}/environments${wsId ? `?workspace_id=${wsId}` : ""}`),
     ])
     if (serversRes.status === "fulfilled" && serversRes.value.ok) {
       const data = await serversRes.value.json().catch(() => [])
@@ -422,9 +424,9 @@ function IntegrationsPageInner({
 
   async function handleTest(body: { url: string; auth_token: string | null; transport: string; environment_id?: string; credential_key?: string }): Promise<{ ok: boolean; msg: string }> {
     const headers = await buildHeaders(true)
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/mcp-servers/test-connection`, {
+    const res = await authFetch(`${API}/mcp-servers/test-connection`, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
     const data = await res.json()
@@ -445,10 +447,10 @@ function IntegrationsPageInner({
     if (form.environment_id)    body.environment_id = form.environment_id
 
     const isEdit = modalMode === "edit" && editTarget
-    const url  = isEdit ? `${base}/mcp-servers/${editTarget.id}` : `${base}/mcp-servers`
+    const url  = isEdit ? `${API}/mcp-servers/${editTarget.id}` : `${API}/mcp-servers`
     const method = isEdit ? "PATCH" : "POST"
 
-    const res = await fetch(url, { method, headers, body: JSON.stringify(body) })
+    const res = await authFetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
     if (!res.ok) {
       const b = await res.json().catch(() => ({}))
       throw new Error(b.detail ?? "Failed to save.")
@@ -463,7 +465,7 @@ function IntegrationsPageInner({
     setGlobalError("")
     try {
       const headers = await buildHeaders()
-      const res = await fetch(`${base}/mcp-servers/${server.id}`, { method: "DELETE", headers })
+      const res = await authFetch(`${API}/mcp-servers/${server.id}`, { method: "DELETE" })
       if (!res.ok) {
         const b = await res.json().catch(() => ({}))
         setGlobalError(b.detail ?? "Failed to delete.")

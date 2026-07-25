@@ -11,6 +11,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,8 @@ from app.modules.guard.embedding import embedding_client_for_workspace as _embed
 from app.modules.guard.models import SessionReport
 
 log = structlog.get_logger(__name__)
+
+_bearer_optional = HTTPBearer(auto_error=False)
 
 router = APIRouter(prefix="/guard/session-reports", tags=["guard"])
 
@@ -526,16 +529,16 @@ async def get_session_report_html(
     report_id: str,
     token: str | None = Query(None),
     workspace_id: str | None = Query(None),
-    x_api_key: str | None = Header(None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_optional),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Return a styled HTML view of a session report.
 
-    Auth: accepts ?token= or X-Api-Key header with a Clerk JWT.
+    Auth: accepts ?token= or Authorization: Bearer with a Clerk JWT.
     Workspace isolation is enforced — the report must belong to the
     authenticated workspace.
     """
-    api_key_val = token or x_api_key
+    api_key_val = token or (credentials.credentials if credentials else None)
     if not api_key_val:
         return _HTML_401
 

@@ -2,15 +2,19 @@
 
 import { useEffect, useState } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { workspaces as workspacesApi, projects as projectsApi } from "@/lib/api"
 
 interface Props {
-  getToken: (() => Promise<string | null>) | null
+  /** @deprecated No longer used — auth is handled by useAuthFetch. Kept for backwards-compat with callers. */
+  getToken?: (() => Promise<string | null>) | null
   onClose: () => void
   onCreate: (projectId: string) => void
 }
 
-export default function NewProjectModal({ getToken, onClose, onCreate }: Props) {
+export default function NewProjectModal({ onClose, onCreate }: Props) {
   const { activeWorkspace } = useWorkspace()
+  const { authFetch } = useAuthFetch()
   const [name, setName] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
@@ -29,21 +33,10 @@ export default function NewProjectModal({ getToken, onClose, onCreate }: Props) 
     setSaving(true)
     setError("")
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
-      }
       const workspaceId = activeWorkspace?.id ?? ""
-      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
-      const endpoint = workspaceId
-        ? `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`
-        : `${process.env.NEXT_PUBLIC_API_URL}/projects`
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ name: name.trim() }),
-      })
+      const res = workspaceId
+        ? await workspacesApi.projects.create(authFetch, workspaceId, { name: name.trim() })
+        : await projectsApi.create(authFetch, { name: name.trim() })
       if (!res.ok) {
         let msg = "Failed to create project — please try again."
         try { const b = await res.json(); if (b.detail) msg = b.detail } catch {}

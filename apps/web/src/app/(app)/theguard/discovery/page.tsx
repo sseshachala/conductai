@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardRole } from "@/hooks/useGuardRole"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 
 interface DiscoveredAgent {
   id: string
@@ -36,7 +37,6 @@ interface Scan {
   completed_at: string | null
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "https://api.conductai.ai"
 
 const FRAMEWORK_LABELS: Record<string, string> = {
   "claude-code":    "Claude Code",
@@ -160,7 +160,7 @@ function GuardBadge({ under, lastSeen }: { under: boolean; lastSeen: string }) {
 }
 
 export default function DiscoveryPage() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: roleLoading } = useGuardRole()
   const canRegister = !roleLoading && permissions.canEditPolicies
@@ -175,30 +175,23 @@ export default function DiscoveryPage() {
   const [scanLimit, setScanLimit]   = useState(10)
 
   const load = useCallback(async () => {
-    const token = await getToken()
-    const hdrs  = { Authorization: `Bearer ${token}`, "x-workspace-id": workspaceId ?? "" }
-
-    const [sumRes, agentRes, scanRes] = await Promise.all([
-      fetch(`${API}/guard/discover/summary`, { headers: hdrs }),
-      fetch(`${API}/guard/discover/agents`,  { headers: hdrs }),
-      fetch(`${API}/guard/discover/scans`,   { headers: hdrs }),
+    const [sumData, agentData, scanData] = await Promise.allSettled([
+      guard.discover.summary(authFetch),
+      guard.discover.agents(authFetch),
+      guard.discover.scans(authFetch),
     ])
 
-    if (sumRes.ok)   setSummary(await sumRes.json())
-    if (agentRes.ok) setAgents(await agentRes.json())
-    if (scanRes.ok)  setScans(await scanRes.json())
+    if (sumData.status === "fulfilled")   setSummary(sumData.value)
+    if (agentData.status === "fulfilled") setAgents(agentData.value)
+    if (scanData.status === "fulfilled")  setScans(scanData.value)
     setLoading(false)
-  }, [getToken, workspaceId])
+  }, [authFetch])
 
   useEffect(() => { load() }, [load])
 
   async function register(agentId: string) {
     setRegistering(agentId)
-    const token = await getToken()
-    await fetch(`${API}/guard/discover/agents/${agentId}/register`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "x-workspace-id": workspaceId ?? "" },
-    })
+    await guard.discover.register(authFetch, agentId)
     await load()
     setRegistering(null)
   }

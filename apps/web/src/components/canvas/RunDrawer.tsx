@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { workflows } from "@/lib/api"
+import type { AuthFetch } from "@/lib/api"
 
 type BlockStatus = "running" | "completed" | "failed" | "skipped"
 
@@ -60,20 +62,17 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
   async function killRun() {
     if (!window.confirm("Stop this run? This cannot be undone.")) return
     setKilling(true)
-    const params = new URLSearchParams()
     const wsId = activeWorkspace?.id ?? null
-    if (wsId) params.set("workspace_id", wsId)
-    const qs = params.toString() ? `?${params.toString()}` : ""
-    try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
+    const authFetch: AuthFetch = async (url, opts) => {
+      const headers: Record<string, string> = {
+        ...(opts?.headers as Record<string, string> | undefined),
       }
-      await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/cancel${qs}`,
-        { method: "POST", headers }
-      )
+      if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+      if (wsId) headers["X-Workspace-ID"] = wsId
+      return fetch(url, { ...opts, headers })
+    }
+    try {
+      await workflows.runs.cancel(authFetch, workflowId, runId)
     } finally {
       setKilling(false)
       setDone(true)

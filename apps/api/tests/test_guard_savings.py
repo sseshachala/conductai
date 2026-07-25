@@ -262,3 +262,143 @@ class TestProjectionMath:
     def test_usd_per_million_tokens_blended_rate(self):
         """Verify the blended rate constant: 3.0×0.8 + 15.0×0.2 = 5.4."""
         assert abs(_USD_PER_MILLION_TOKENS - 5.4) < 1e-9
+
+
+class TestMonthCutoff:
+    """Bug-fix regression: /guard/savings/summary must respect ?month=YYYY-MM
+    so past-month views show cumulative-as-of-end-of-month, not lifetime."""
+
+    def test_month_end_mid_year(self):
+        from app.modules.guard.routers.savings import _month_end
+        assert _month_end("2026-07") == datetime(2026, 8, 1, tzinfo=timezone.utc)
+
+    def test_month_end_december_rolls_year(self):
+        from app.modules.guard.routers.savings import _month_end
+        assert _month_end("2026-12") == datetime(2027, 1, 1, tzinfo=timezone.utc)
+
+    def test_month_end_none_passes_through(self):
+        from app.modules.guard.routers.savings import _month_end
+        assert _month_end(None) is None
+
+    def test_month_end_bad_format_returns_none(self):
+        from app.modules.guard.routers.savings import _month_end
+        assert _month_end("not-a-month") is None
+        assert _month_end("2026-13") is None
+
+    def test_no_month_omits_cutoff_from_query_params(self):
+        """When month is None, the SQL must not carry a :cutoff bind param."""
+        db = _make_db([])
+        _build_summary(db, _WS)
+        args, kwargs = db.execute.call_args
+        params = args[1] if len(args) > 1 else kwargs.get("params", {})
+        assert "cutoff" not in params
+        # And the SQL text must not reference :cutoff either
+        sql_text = str(args[0])
+        assert ":cutoff" not in sql_text
+
+    def test_month_adds_cutoff_bind_and_sql_clause(self):
+        """Passing month=YYYY-MM must inject the end-of-month cutoff into
+        BOTH the outer WHERE and the inner MAX subquery — otherwise the
+        latest snapshot could still leak in from a later month."""
+        db = _make_db([])
+        _build_summary(db, _WS, month="2026-04")
+        args, kwargs = db.execute.call_args
+        params = args[1] if len(args) > 1 else kwargs.get("params", {})
+        assert params.get("cutoff") == datetime(2026, 5, 1, tzinfo=timezone.utc)
+        sql_text = str(args[0])
+        # Cutoff must appear TWICE — once for the MAX(recorded_at) subquery,
+        # once for the outer SELECT — otherwise the outer join can pick up
+        # a later-month snapshot for a member.
+        assert sql_text.count("recorded_at < :cutoff") == 2
+
+    def test_month_december_cutoff_rolls_year(self):
+        db = _make_db([])
+        _build_summary(db, _WS, month="2026-12")
+        args, kwargs = db.execute.call_args
+        params = args[1] if len(args) > 1 else kwargs.get("params", {})
+        assert params.get("cutoff") == datetime(2027, 1, 1, tzinfo=timezone.utc)
+
+
+class TestProjectionMathUsesObservationWindow:
+    """Bug: /guard/savings/team-summary treated cumulative total as per_day
+    and multiplied by 30 / 365 for month/year. Fix: divide cumulative by
+    (now - min(recorded_at) days, min 1) so the daily rate is real."""
+
+    def test_days_observed_min_one_on_first_snapshot(self, monkeypatch):
+        """When the earliest recorded_at is today, days_observed clamps to 1
+        so per_day == total (no div-by-zero, no absurd inflation)."""
+        from datetime import datetime as _dt, timezone as _tz
+        from app.modules.guard.routers import savings as sav
+
+        now = _dt(2026, 7, 24, 12, 0, 0, tzinfo=_tz.utc)
+        monkeypatch.setattr(sav, "_now", lambda: now)
+
+        # Mock DB: _build_summary returns a summary via db.execute; then
+        # get_team_summary calls db.execute again for MIN(recorded_at).
+        # Return the same "now" for the min timestamp — days delta == 0.
+        first_ts_row = MagicMock()
+        first_ts_row.first_ts = now
+        summary_rows = [_make_row("alice@co.com", rtk_saved_tokens=1_000_000)]
+
+        db = MagicMock()
+        exec_iter = iter([MagicMock(fetchall=lambda: summary_rows), MagicMock(fetchone=lambda: first_ts_row)])
+        db.execute.side_effect = lambda *a, **k: next(exec_iter)
+
+        out = sav.get_team_summary(db=db, workspace_id=_WS)
+        # 1M tokens × $5.40/M = $5.40 cumulative. days_observed clamps to 1.
+        assert out.days_observed == 1
+        assert out.per_day_usd == round(_tokens_to_usd(1_000_000), 2)
+        assert out.per_month_usd == round(out.per_day_usd * 30, 2)
+        assert out.per_year_usd == round(out.per_day_usd * 365, 2)
+
+    def test_days_observed_divides_by_actual_window(self, monkeypatch):
+        """A snapshot from 100 days ago must yield per_day = total / 100,
+        not per_day = total (the old cumulative-as-daily bug)."""
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        from app.modules.guard.routers import savings as sav
+
+        now = _dt(2026, 7, 24, 12, 0, 0, tzinfo=_tz.utc)
+        first = now - _td(days=100)
+        monkeypatch.setattr(sav, "_now", lambda: now)
+
+        first_ts_row = MagicMock()
+        first_ts_row.first_ts = first
+        summary_rows = [_make_row("alice@co.com", rtk_saved_tokens=100_000_000)]
+
+        db = MagicMock()
+        exec_iter = iter([MagicMock(fetchall=lambda: summary_rows), MagicMock(fetchone=lambda: first_ts_row)])
+        db.execute.side_effect = lambda *a, **k: next(exec_iter)
+
+        out = sav.get_team_summary(db=db, workspace_id=_WS)
+        total = round(_tokens_to_usd(100_000_000), 6)   # $540 cumulative
+        assert out.days_observed == 100
+        assert out.per_day_usd == round(total / 100, 2)  # $5.40/day, not $540
+        assert out.per_month_usd == round(out.per_day_usd * 30, 2)
+        assert out.first_recorded_at == first.isoformat()
+
+    def test_naive_datetime_from_db_gets_utc_tz(self, monkeypatch):
+        """Some drivers return recorded_at as naive datetime; the fix must
+        attach UTC before subtracting from _now() or Python raises TypeError."""
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        from app.modules.guard.routers import savings as sav
+
+        now = _dt(2026, 7, 24, 12, 0, 0, tzinfo=_tz.utc)
+        first_naive = (now - _td(days=30)).replace(tzinfo=None)
+        monkeypatch.setattr(sav, "_now", lambda: now)
+
+        first_ts_row = MagicMock()
+        first_ts_row.first_ts = first_naive
+        summary_rows = [_make_row("alice@co.com", rtk_saved_tokens=30_000_000)]
+
+        db = MagicMock()
+        exec_iter = iter([MagicMock(fetchall=lambda: summary_rows), MagicMock(fetchone=lambda: first_ts_row)])
+        db.execute.side_effect = lambda *a, **k: next(exec_iter)
+
+        out = sav.get_team_summary(db=db, workspace_id=_WS)  # must not raise
+        assert out.days_observed == 30
+
+
+def _tokens_to_usd(tokens: int) -> float:
+    """Test helper mirroring savings.py's blended rate."""
+    return round(tokens * _USD_PER_MILLION_TOKENS / 1_000_000, 6)
+

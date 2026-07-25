@@ -7,6 +7,9 @@ import {
 } from "recharts"
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
+import { API } from "@/lib/api/client"
 import { timeAgo } from "@/lib/runUtils"
 
 const displayEmail = (v: string | null | undefined): string => {
@@ -156,11 +159,9 @@ type TrendPeriod = "Daily" | "Weekly" | "Monthly"
 interface TrendPoint { date: string; claude: number; codex: number; other: number }
 
 function CostTrendChart({
-  apiBase,
   workspaceId,
   token,
 }: {
-  apiBase: string
   workspaceId: string
   token: string | null
 }) {
@@ -176,14 +177,14 @@ function CostTrendChart({
     if (token) headers["Authorization"] = `Bearer ${token}`
     const tzOffset = new Date().getTimezoneOffset()
     fetch(
-      `${apiBase}/guard/events/cost-trend?period=${periodParam}&workspace_id=${workspaceId}&tz_offset=${tzOffset}`,
+      `${API}/guard/events/cost-trend?period=${periodParam}&workspace_id=${workspaceId}&tz_offset=${tzOffset}`,
       { headers }
     )
       .then(r => r.json())
       .then(setData)
       .catch(() => setData([]))
       .finally(() => setLoading(false))
-  }, [periodParam, apiBase, workspaceId, token])
+  }, [periodParam, workspaceId, token])
 
   const hasData = data.some(d => d.claude > 0 || d.codex > 0 || d.other > 0)
 
@@ -426,6 +427,7 @@ export default function GuardPage() {
 
 function GuardDashboard() {
   const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
@@ -461,13 +463,6 @@ function GuardDashboard() {
 
   // ── API helpers ─────────────────────────────────────────────────────────────
 
-  const buildHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    const token = await getToken()
-    const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (token) h["Authorization"] = `Bearer ${token}`
-    return h
-  }, [getToken])
-
   useEffect(() => {
     if (!teamLoading && !teamId) setLoading(false)
   }, [teamLoading, teamId])
@@ -485,115 +480,84 @@ function GuardDashboard() {
 
   const loadEvents = useCallback(async (decision?: string, dateRange?: string) => {
     if (!teamId) return
-    const headers = await buildHeaders()
-    const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const params  = new URLSearchParams({ limit: String(PAGE_SIZE), offset: "0" })
-    params.set("workspace_id", teamId)
-    if (decision && decision !== "all") params.set("decision", decision)
+    const params: Record<string, string> = { limit: String(PAGE_SIZE), offset: "0", workspace_id: teamId }
+    if (decision && decision !== "all") params.decision = decision
     const since = dateRangeToSince(dateRange ?? filterDateRange)
-    if (since) params.set("since", since)
+    if (since) params.since = since
     try {
-      const res = await fetch(`${base}/guard/events?${params}`, { headers })
-      if (res.ok) {
-        const data: GuardEvent[] = await res.json()
-        setEvents(data)
-        setHasMore(data.length === PAGE_SIZE)
-        setLastUpdated(new Date())
-      }
+      const data: GuardEvent[] = await guard.events.list(authFetch, params)
+      setEvents(data)
+      setHasMore(data.length === PAGE_SIZE)
+      setLastUpdated(new Date())
     } catch {
       // non-fatal
     } finally {
       setLoading(false)
     }
-  }, [buildHeaders, teamId, PAGE_SIZE, filterDateRange, dateRangeToSince])
+  }, [authFetch, teamId, PAGE_SIZE, filterDateRange, dateRangeToSince])
 
   const loadMore = useCallback(async () => {
     if (!teamId || loadingMore) return
     setLoadingMore(true)
-    const headers = await buildHeaders()
-    const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const params  = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(events.length) })
-    params.set("workspace_id", teamId)
-    if (filterDecision !== "all") params.set("decision", filterDecision)
-    if (filterTool !== "all")     params.set("ai_tool", filterTool)
-    if (filterDev !== "all")      params.set("user_email", filterDev)
+    const params: Record<string, string> = { limit: String(PAGE_SIZE), offset: String(events.length), workspace_id: teamId }
+    if (filterDecision !== "all") params.decision = filterDecision
+    if (filterTool !== "all")     params.ai_tool = filterTool
+    if (filterDev !== "all")      params.user_email = filterDev
     const since = dateRangeToSince(filterDateRange)
-    if (since) params.set("since", since)
+    if (since) params.since = since
     try {
-      const res = await fetch(`${base}/guard/events?${params}`, { headers })
-      if (res.ok) {
-        const data: GuardEvent[] = await res.json()
-        setEvents(prev => [...prev, ...data])
-        setHasMore(data.length === PAGE_SIZE)
-      }
+      const data: GuardEvent[] = await guard.events.list(authFetch, params)
+      setEvents(prev => [...prev, ...data])
+      setHasMore(data.length === PAGE_SIZE)
     } catch {
       // non-fatal
     } finally {
       setLoadingMore(false)
     }
-  }, [buildHeaders, teamId, events.length, loadingMore, PAGE_SIZE, filterDecision, filterTool, filterDev, filterDateRange, dateRangeToSince])
+  }, [authFetch, teamId, events.length, loadingMore, PAGE_SIZE, filterDecision, filterTool, filterDev, filterDateRange, dateRangeToSince])
 
   const loadStats = useCallback(async () => {
     if (!teamId) return
-    const headers = await buildHeaders()
-    const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const params  = new URLSearchParams()
-    params.set("workspace_id", teamId)
     try {
-      const res = await fetch(`${base}/guard/spend?${params}`, { headers })
-      if (res.ok) setStats(await res.json())
-    } catch {
-      // non-fatal
-    }
+      const data = await guard.spend.get(authFetch, { workspace_id: teamId })
+      setStats(data)
+    } catch { /* non-fatal */ }
     // Rule counts by persona — non-fatal, best-effort
     try {
-      const sr = await fetch(`${base}/guard/policies?workspace_id=${teamId}`, { headers })
-      if (sr.ok) {
-        const sd = await sr.json()
-        if (Array.isArray(sd)) {
-          const active = sd.filter((r: any) => r.enabled && !r.archived_at)
-          setAgentCount(active.filter((r: any) => r.persona === "agent").length)
-          setProxyCount(active.filter((r: any) => r.persona === "proxy").length)
-        }
+      const sd = await guard.policies.list(authFetch, teamId)
+      if (Array.isArray(sd)) {
+        const active = sd.filter((r: any) => r.enabled && !r.archived_at)
+        setAgentCount(active.filter((r: any) => r.persona === "agent").length)
+        setProxyCount(active.filter((r: any) => r.persona === "proxy").length)
       }
     } catch { /* non-fatal */ }
-  }, [buildHeaders, teamId])
+  }, [authFetch, teamId])
 
   const loadToolCoverage = useCallback(async () => {
     if (!teamId) return
-    const headers = await buildHeaders()
-    const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const params  = new URLSearchParams()
-    params.set("workspace_id", teamId)
     try {
-      const res = await fetch(`${base}/guard/developer-tools?${params}`, { headers })
-      if (res.ok) setToolCoverage(await res.json())
-    } catch {
-      // non-fatal
-    }
-  }, [buildHeaders, teamId])
+      const data = await guard.developerTools.list(authFetch, teamId)
+      setToolCoverage(data)
+    } catch { /* non-fatal */ }
+  }, [authFetch, teamId])
 
   const loadRecentSessions = useCallback(async () => {
     if (!teamId) return
-    const headers = await buildHeaders()
-    const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const params  = new URLSearchParams({ limit: "10", offset: "0", workspace_id: teamId })
     try {
-      const res = await fetch(`${base}/guard/spend/sessions?${params}`, { headers })
-      if (res.ok) setRecentSessions(await res.json())
+      const data = await guard.spend.sessions(authFetch, { limit: "10", offset: "0", workspace_id: teamId })
+      setRecentSessions(data)
     } catch { /* non-fatal */ }
-  }, [buildHeaders, teamId])
+  }, [authFetch, teamId])
 
   const connectSSE = useCallback(async () => {
     if (!teamId) return
     const token  = await getToken()
-    const base   = process.env.NEXT_PUBLIC_API_URL ?? ""
     const params = new URLSearchParams()
     if (token) params.set("token", token)
     params.set("workspace_id", teamId)
 
     if (esRef.current) esRef.current.close()
-    const es = new EventSource(`${base}/guard/events/stream?${params}`)
+    const es = new EventSource(`${API}/guard/events/stream?${params}`)
     esRef.current = es
 
     es.onopen    = () => setLive(true)
@@ -615,14 +579,8 @@ function GuardDashboard() {
 
   const refreshRecent = useCallback(async () => {
     if (!teamId) return
-    const headers = await buildHeaders()
-    const base    = process.env.NEXT_PUBLIC_API_URL ?? ""
-    const params  = new URLSearchParams({ limit: "20", offset: "0" })
-    params.set("workspace_id", teamId)
     try {
-      const res = await fetch(`${base}/guard/events?${params}`, { headers })
-      if (!res.ok) return
-      const fresh: GuardEvent[] = await res.json()
+      const fresh: GuardEvent[] = await guard.events.list(authFetch, { limit: "20", offset: "0", workspace_id: teamId })
       setEvents(prev => {
         const byId = new Map(prev.map(e => [e.id, e]))
         fresh.forEach(e => byId.set(e.id, e))
@@ -630,7 +588,7 @@ function GuardDashboard() {
         return [...fresh, ...prev.filter(e => !freshIds.has(e.id))]
       })
     } catch { /* non-fatal */ }
-  }, [buildHeaders, teamId])
+  }, [authFetch, teamId])
 
   useEffect(() => {
     connectSSE()
@@ -1042,7 +1000,6 @@ function GuardDashboard() {
       {/* Cost trend chart */}
       {!loading && teamId && (
         <CostTrendChart
-          apiBase={process.env.NEXT_PUBLIC_API_URL ?? ""}
           workspaceId={teamId}
           token={chartToken}
         />

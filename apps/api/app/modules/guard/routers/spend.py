@@ -66,6 +66,13 @@ def _parse_period_start(month: str | None) -> datetime:
     return _current_period_start()
 
 
+def _next_period_start(period_start: datetime) -> datetime:
+    """First instant of the calendar month after period_start."""
+    if period_start.month == 12:
+        return period_start.replace(year=period_start.year + 1, month=1)
+    return period_start.replace(month=period_start.month + 1)
+
+
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
 class DeveloperSpend(BaseModel):
@@ -189,6 +196,8 @@ def get_spend_summary(
 def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) -> "SpendSummary":
     now = _now()
     period_start = _parse_period_start(month)
+    period_end = _next_period_start(period_start)
+    is_current_month = period_start == _current_period_start()
     org_ws = _org_ws_subquery(db, workspace_id)
 
     # Aggregate totals
@@ -202,6 +211,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         .filter(
             GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= period_start,
+            GuardAuditEvent.ts < period_end,
         )
         .one()
     )
@@ -227,6 +237,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         .filter(
             GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= period_start,
+            GuardAuditEvent.ts < period_end,
             GuardAuditEvent.user_email.isnot(None),
         )
         .group_by(GuardAuditEvent.user_email)
@@ -241,6 +252,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         .filter(
             GuardSession.workspace_id.in_(org_ws),
             GuardSession.started_at >= period_start,
+            GuardSession.started_at < period_end,
             GuardSession.user_email.isnot(None),
         )
         .group_by(GuardSession.user_email)
@@ -291,6 +303,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         .filter(
             GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= period_start,
+            GuardAuditEvent.ts < period_end,
         )
         .group_by(GuardAuditEvent.ai_tool)
         .order_by(func.sum(GuardAuditEvent.cost_usd_after).desc())
@@ -308,12 +321,18 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         for row in tool_rows
     ]
 
-    # "Today" = rolling 24h window so UTC-midnight cutoff doesn't swallow
-    # events from users in western timezones working late.
-    today_start = now - timedelta(hours=24)
+    # "Today" fields = rolling 24h for the current month; whole selected
+    # month otherwise. Keeps the dashboard "today" meaning intact while making
+    # past-month views internally consistent with the other totals.
+    today_start = now - timedelta(hours=24) if is_current_month else period_start
+    today_end = now if is_current_month else period_end
     events_today = int(
         db.query(func.count(GuardAuditEvent.id))
-        .filter(GuardAuditEvent.workspace_id.in_(org_ws), GuardAuditEvent.ts >= today_start)
+        .filter(
+            GuardAuditEvent.workspace_id.in_(org_ws),
+            GuardAuditEvent.ts >= today_start,
+            GuardAuditEvent.ts < today_end,
+        )
         .scalar() or 0
     )
     blocked_today = int(
@@ -321,6 +340,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         .filter(
             GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= today_start,
+            GuardAuditEvent.ts < today_end,
             GuardAuditEvent.decision == "blocked",
         )
         .scalar() or 0
@@ -332,6 +352,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         .filter(
             GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.ts >= today_start,
+            GuardAuditEvent.ts < today_end,
             GuardAuditEvent.tokens_before.isnot(None),
             GuardAuditEvent.tokens_after.isnot(None),
         )
@@ -346,9 +367,10 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
             FROM guard_sessions
             WHERE workspace_id::text = ANY(:ws_ids)
               AND started_at >= :since
+              AND started_at <  :until
               AND (user_email IS NOT NULL OR clerk_user_id IS NOT NULL)
         """),
-        {"ws_ids": org_ws_ids, "since": period_start},
+        {"ws_ids": org_ws_ids, "since": period_start, "until": period_end},
     ).scalar() or 0)
 
     # Proxy session count (guard_sessions rows)
@@ -357,6 +379,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         .filter(
             GuardSession.workspace_id.in_(org_ws),
             GuardSession.started_at >= period_start,
+            GuardSession.started_at <  period_end,
         )
         .scalar() or 0
     )
@@ -374,6 +397,7 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
             GuardAuditEvent.workspace_id.in_(org_ws),
             GuardAuditEvent.hook_session_id.isnot(None),
             GuardAuditEvent.ts >= today_start,
+            GuardAuditEvent.ts <  today_end,
         )
         .scalar() or 0
     )

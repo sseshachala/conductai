@@ -7,6 +7,8 @@ import {
 } from "lucide-react"
 import { BLOCK_LIBRARY, BLOCK_STYLES, type BlockType } from "@/lib/block-types"
 import { cn } from "@/lib/utils"
+import { credentials } from "@/lib/api"
+import type { AuthFetch } from "@/lib/api"
 
 function BlockIcon({ type, className }: { type: BlockType; className?: string }) {
   const props = { size: 13, className, strokeWidth: 1.75 }
@@ -37,18 +39,17 @@ export default function Sidebar({ getToken }: { getToken?: (() => Promise<string
   useEffect(() => {
     ;(async () => {
       try {
-        const headers: Record<string, string> = {}
-        if (getToken) {
-          const token = await getToken()
-          if (token) headers["Authorization"] = `Bearer ${token}`
+        const wsId = activeWorkspace?.id ?? null
+        const authFetch: AuthFetch = async (url, opts) => {
+          const headers: Record<string, string> = {
+            ...(opts?.headers as Record<string, string> | undefined),
+          }
+          if (getToken) { const t = await getToken(); if (t) headers["Authorization"] = `Bearer ${t}` }
+          if (wsId) headers["X-Workspace-ID"] = wsId
+          return fetch(url, { ...opts, headers })
         }
-        const ws = activeWorkspace?.id ?? ""
-        if (ws) headers["X-Workspace-Id"] = ws
-        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials`, { headers })
-        if (r.ok) {
-          const creds: { handle: string }[] = await r.json()
-          setConnectedHandles(new Set(creds.map(c => c.handle.toLowerCase())))
-        }
+        const creds = await credentials.list(authFetch)
+        setConnectedHandles(new Set(creds.map((c: { handle: string }) => c.handle.toLowerCase())))
       } catch { /* network error — leave as disconnected */ }
     })()
   }, [])

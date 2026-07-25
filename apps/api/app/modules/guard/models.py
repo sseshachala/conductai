@@ -83,6 +83,9 @@ class GuardMemberConfig(Base):
     persona = Column(String(20), nullable=True)
     # 'user' = self-selected via conduct init; 'admin' = locked by admin
     assigned_by = Column(String(10), nullable=False, default="user")
+    # Version string of workspace_instructions last synced by this member's CLI.
+    # Null = never synced. Written by conduct guard sync.
+    instructions_version = Column(String(64), nullable=True)
     joined_at = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -384,6 +387,21 @@ class DiscoveredAgent(Base):
     proxy_routed  = Column(Boolean, nullable=False, default=False)
     first_seen_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     last_seen_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class GuardVerifyRun(Base):
+    """Persisted result of a Guard Verify adversarial test battery execution."""
+
+    __tablename__ = "guard_verify_runs"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    score        = Column(Integer, nullable=False)
+    grade        = Column(String(2), nullable=False)
+    results      = Column(JSONB, nullable=False)   # list of test result dicts
+    total_tests  = Column(Integer, nullable=False)
+    passed_tests = Column(Integer, nullable=False)
+    created_at   = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class GuardKnowledgeIndex(Base):

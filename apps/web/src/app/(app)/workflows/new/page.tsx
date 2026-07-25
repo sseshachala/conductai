@@ -1,8 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
@@ -99,17 +101,9 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   const [generating, setGenerating]       = useState(false)
   const [generatedCreds, setGeneratedCreds] = useState<string[]>([])
 
-  const buildHeaders = useCallback(async (contentType = false): Promise<Record<string, string>> => {
-    const h: Record<string, string> = {}
-    if (contentType) h["Content-Type"] = "application/json"
-    if (getToken) {
-      const t = await getToken()
-      if (t) h["Authorization"] = `Bearer ${t}`
-    }
-    const ws = activeWorkspace?.id ?? ""
-    if (ws) h["X-Workspace-Id"] = ws
-    return h
-  }, [getToken, activeWorkspace])
+  const { authFetch } = useAuthFetch()
+
+
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -124,10 +118,9 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   useEffect(() => {
     async function boot() {
       setBootstrapping(true)
-      const headers = await buildHeaders()
       const workspaceId = activeWorkspace?.id ?? ""
       await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`, { headers }).then(async res => {
+        authFetch(`${API}/workspaces/${workspaceId}/projects`).then(async res => {
           if (res.ok) {
             const raw: Project[] = await res.json()
             const seen = new Set<string>()
@@ -140,7 +133,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
             if (!urlProjectId) setSelectedProjectId(data[0]?.id ?? "")
           }
         }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers }).then(async res => {
+        authFetch(`${API}/environments`).then(async res => {
           if (res.ok) {
             const data: Environment[] = await res.json()
             setEnvironments(data)
@@ -157,11 +150,10 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   // When template changes: load playbook inputs + repos if needed
   useEffect(() => {
     async function loadTemplate(slug: string) {
-      const headers = await buildHeaders()
       setAgentName(FRIENDLY_NAMES[slug] ?? slug)
       setWebhookError(null)
 
-      const pbPromise = fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks/${slug}`).then(async res => {
+      const pbPromise = authFetch(`${API}/workflows/playbooks/${slug}`).then(async res => {
         if (res.ok) {
           const data = await res.json()
           const inputs: Record<string, PlaybookInput> = data.inputs ?? {}
@@ -174,7 +166,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
         setReposLoading(true)
         await Promise.all([
           pbPromise,
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos`, { headers }).then(async res => {
+          authFetch(`${API}/credentials/github/repos`).then(async res => {
             if (res.ok) {
               const data: Repo[] = await res.json()
               setRepos(data)
@@ -198,9 +190,9 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
     setGenerating(true)
     setError(null)
     try {
-      const headers = await buildHeaders(true)
-      const genRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/generate`, {
-        method: "POST", headers,
+      const genRes = await authFetch(`${API}/workflows/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: nlPrompt.trim(), environment_id: selectedEnvId || null }),
       })
       if (!genRes.ok) {
@@ -212,8 +204,9 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
       setGeneratedCreds(required_credentials ?? [])
 
       // Create the workflow with the generated graph
-      const createRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
-        method: "POST", headers,
+      const createRes = await authFetch(`${API}/workflows`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: agentName.trim() || name,
           graph,
@@ -240,7 +233,6 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
     setError(null)
     setWebhookError(null)
     try {
-      const headers = await buildHeaders(true)
       const needsRepo = GITHUB_WEBHOOK_SLUGS.has(template)
       const body: Record<string, unknown> = {
         name: agentName.trim() || (FRIENDLY_NAMES[template] ?? template),
@@ -251,8 +243,10 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
       if (selectedEnvId)     body.environment_id = selectedEnvId
       if (needsRepo && selectedRepo) body.repo = selectedRepo
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
-        method: "POST", headers, body: JSON.stringify(body),
+      const res = await authFetch(`${API}/workflows`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))

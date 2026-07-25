@@ -11,6 +11,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 
 def _git(cmd: list[str]) -> str:
@@ -20,7 +21,7 @@ def _git(cmd: list[str]) -> str:
         return ""
 
 
-def _guard_status() -> dict | None:
+def _guard_status() -> Optional[dict]:
     try:
         out = subprocess.check_output(
             ["conductguard", "status", "--json"],

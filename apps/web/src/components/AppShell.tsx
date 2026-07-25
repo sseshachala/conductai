@@ -9,6 +9,8 @@ import { setActiveGuardWorkspace } from "@/lib/guardStorage"
 import { PreferencesProvider } from "@/lib/PreferencesContext"
 import Toast, { type ToastData } from "@/components/ui/Toast"
 import ErrorBoundary from "@/components/ui/ErrorBoundary"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { workspaces as workspacesApi, projects as projectsApi, organizations, runs, guard, workflows } from "@/lib/api"
 
 interface Project { id: string; name: string; agent_count: number; project_type?: string }
 
@@ -91,6 +93,7 @@ const Icons = {
   Arrow: () => <Icon><path d="M5 12h14M12 5l7 7-7 7" /></Icon>,
   Lock: () => <Icon><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></Icon>,
   Plug: () => <Icon><path d="M18 6L6 18M7 17l-4 4M17 7l4-4M9 3v4M15 3v4M9 7h6M9 7a3 3 0 000 6h6a3 3 0 000-6" /></Icon>,
+  Users: () => <Icon><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /></Icon>,
 }
 
 // ── Breadcrumb logic ──────────────────────────────────────────────────────────
@@ -103,6 +106,8 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/theguard/activity')) return ['Guard', 'Activity']
   if (pathname.startsWith('/theguard/settings')) return ['Guard', 'Settings']
   if (pathname.startsWith('/governance')) return ['Governance']
+  if (pathname.startsWith('/team-os/ai-rollout')) return ['Team OS', 'AI Rollout']
+  if (pathname.startsWith('/theguard/team-os')) return ['Team OS']
   if (pathname.startsWith('/theguard')) return ['Guard', 'Overview']
   if (pathname.startsWith('/settings')) return ['Settings']
   if (pathname.startsWith('/marketplace')) return ['Registry']
@@ -216,6 +221,7 @@ function AppShellInnerContent({
   const deleteConfirmRef = useRef<HTMLInputElement>(null)
 
   const { workspaces, activeWorkspace, setActiveWorkspace, refresh: refreshWorkspaces } = useWorkspace()
+  const { authFetch } = useAuthFetch()
 
   // Guard install state
   const [guardInstalled, setGuardInstalled] = useState(false)
@@ -267,14 +273,6 @@ function AppShellInnerContent({
   useEffect(() => { if (renamingProjectId) renameInputRef.current?.focus() }, [renamingProjectId])
   useEffect(() => { if (creatingProject) newProjectInputRef.current?.focus() }, [creatingProject])
 
-  async function authHeaders(wsId?: string): Promise<Record<string, string>> {
-    const h: Record<string, string> = {}
-    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    const id = wsId ?? activeWorkspace?.id
-    if (id) h["X-Workspace-ID"] = id
-    return h
-  }
-
   const unreadCount = notifications.filter(n => n.unread).length
 
   useEffect(() => {
@@ -283,13 +281,7 @@ function AppShellInnerContent({
       if (!activeWorkspace?.id) return
       setNotificationsLoading(true)
       try {
-        const h = await authHeaders()
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/notifications?limit=8`,
-          { headers: h }
-        )
-        if (!res.ok || cancelled) return
-        const data = await res.json()
+        const data = await workspacesApi.notifications(authFetch, activeWorkspace.id, 8)
         const items = Array.isArray(data?.items) ? data.items : []
         if (!cancelled) setNotifications(items)
       } catch {
@@ -309,10 +301,7 @@ function AppShellInnerContent({
     async function fetchRole() {
       if (!activeWorkspace || !userId) return
       try {
-        const h = await authHeaders()
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${activeWorkspace.id}/members`, { headers: h })
-        if (!res.ok || cancelled) return
-        const members: { clerk_user_id: string; role: string }[] = await res.json()
+        const members: { clerk_user_id: string; role: string }[] = await projectsApi.members.list(authFetch, activeWorkspace.id)
         const myRole = members.find(m => m.clerk_user_id === userId)?.role as UserRole ?? null
         if (!cancelled) setUserRole(myRole ?? "admin")
       } catch {
@@ -328,10 +317,7 @@ function AppShellInnerContent({
     let cancelled = false
     async function fetchOrgName() {
       try {
-        const h = await authHeaders()
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/organizations`, { headers: h })
-        if (!res.ok || cancelled) return
-        const data = await res.json()
+        const data = await organizations.list(authFetch)
         const name = Array.isArray(data) && data.length > 0 ? data[0].name : null
         if (!cancelled) setOrgName(name)
       } catch {}
@@ -354,10 +340,7 @@ function AppShellInnerContent({
     async function fetchRunsCount() {
       if (!activeWorkspace?.id) return
       try {
-        const h = await authHeaders()
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/runs?limit=500&offset=0`, { headers: h })
-        if (!res.ok || cancelled) return
-        const data: { status: string }[] = await res.json()
+        const data: { status: string }[] = await runs.list(authFetch, { limit: 500, offset: 0 })
         const active = data.filter(r => r.status === "running" || r.status === "paused").length
         if (!cancelled) setActiveRunsCount(active > 0 ? active : undefined)
       } catch {}
@@ -371,9 +354,7 @@ function AppShellInnerContent({
     let cancelled = false
     async function fetchPlaybookCount() {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks`)
-        if (!res.ok || cancelled) return
-        const data: unknown[] = await res.json()
+        const data: unknown[] = await workflows.playbooks.list(authFetch)
         if (!cancelled) setPlaybookCount(Array.isArray(data) && data.length > 0 ? data.length : undefined)
       } catch {}
     }
@@ -388,14 +369,8 @@ function AppShellInnerContent({
       const wsId = activeWorkspace?.id
       if (!wsId) return
       try {
-        const h: Record<string, string> = {}
-        if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/guard/config/installed?workspace_id=${wsId}`,
-          { headers: h }
-        )
-        if (!cancelled && res.ok) {
-          const data = await res.json()
+        const data = await guard.config.installed(authFetch, wsId)
+        if (!cancelled) {
           setGuardInstalled(!!data.installed)
           if (data.installed && wsId) setActiveGuardWorkspace(wsId)
         }
@@ -412,18 +387,15 @@ function AppShellInnerContent({
       cancelled = true
       window.removeEventListener("guard-install-changed", onGuardChange)
     }
-  }, [getToken, activeWorkspace])
+  }, [activeWorkspace])
 
   const fetchProjects = useCallback(async () => {
     if (!activeWorkspace) return
     try {
-      const h = await authHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects`, { headers: h })
-      if (!res.ok) return
-      const data = await res.json()
+      const data = await workspacesApi.projects.list(authFetch, activeWorkspace.id)
       setProjects(Array.isArray(data) ? data : [])
     } catch {}
-  }, [activeWorkspace])
+  }, [activeWorkspace, authFetch])
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
 
@@ -432,11 +404,7 @@ function AppShellInnerContent({
     setCreatingTeam(false); setNewTeamValue("")
     if (!name) return
     try {
-      const h = await authHeaders()
-      h["Content-Type"] = "application/json"
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, {
-        method: "POST", headers: h, body: JSON.stringify({ name })
-      })
+      const res = await projectsApi.create(authFetch, { name })
       if (res.ok) { setWsOpen(false); refreshWorkspaces() }
       else showError("Could not create team — please try again.")
     } catch { showError("Could not create team — check your connection.") }
@@ -446,8 +414,7 @@ function AppShellInnerContent({
     if (deleteConfirmValue !== ws.name) return
     setDeletingTeamId(null); setDeleteConfirmValue("")
     try {
-      const h = await authHeaders()
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects/${ws.id}`, { method: "DELETE", headers: h })
+      const res = await projectsApi.remove(authFetch, ws.id)
       if (res.ok) {
         const next = workspaces.find(w => w.id !== ws.id)
         if (activeWorkspace?.id === ws.id && next) setActiveWorkspace(next)
@@ -461,11 +428,7 @@ function AppShellInnerContent({
     setCreatingProject(false); setNewProjectValue("")
     if (!name || !activeWorkspace) return
     try {
-      const h = await authHeaders()
-      h["Content-Type"] = "application/json"
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects`, {
-        method: "POST", headers: h, body: JSON.stringify({ name })
-      })
+      const res = await workspacesApi.projects.create(authFetch, activeWorkspace.id, { name })
       if (res.ok) fetchProjects()
       else showError("Could not create project — please try again.")
     } catch { showError("Could not create project — check your connection.") }
@@ -476,11 +439,7 @@ function AppShellInnerContent({
     setRenamingProjectId(null)
     if (!name || !activeWorkspace) return
     try {
-      const h = await authHeaders()
-      h["Content-Type"] = "application/json"
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${activeWorkspace.id}/projects/${projectId}`, {
-        method: "PATCH", headers: h, body: JSON.stringify({ name })
-      })
+      const res = await workspacesApi.projects.rename(authFetch, activeWorkspace.id, projectId, { name })
       if (res.ok) fetchProjects()
       else showError("Could not rename project — please try again.")
     } catch { showError("Could not rename project — check your connection.") }
@@ -767,7 +726,7 @@ function AppShellInnerContent({
               <SideNavItem
                 href="/governance"
                 label="Governance"
-                icon={<Icons.Shield />}
+                icon={<Icons.Eye />}
                 active={pathname.startsWith("/governance")}
                 collapsed={collapsed}
               />
@@ -778,16 +737,9 @@ function AppShellInnerContent({
                 active={pathname.startsWith("/theguard")}
                 collapsed={collapsed}
               />
-              <SideNavItem
-                href="/secure"
-                label="Secure"
-                icon={<Icons.Shield />}
-                active={pathname.startsWith("/secure")}
-                collapsed={collapsed}
-              />
-              {/* Guard sub-nav — auto-expand when on any /theguard route */}
+              {/* Guard sub-nav */}
               {pathname.startsWith("/theguard") && !collapsed && (
-                <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
                     { label: "Overview",    href: "/theguard" },
                     { label: "Policies",    href: "/theguard/policies" },
@@ -796,6 +748,44 @@ function AppShellInnerContent({
                     { label: "Settings",    href: "/theguard/settings", adminOnly: true },
                   ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
                     const subActive = sub.href === "/theguard" ? pathname === "/theguard" : pathname.startsWith(sub.href)
+                    return (
+                      <Link
+                        key={sub.href}
+                        href={sub.href}
+                        style={{
+                          display: "block",
+                          padding: "5px 10px",
+                          borderRadius: 7,
+                          fontSize: 13,
+                          fontWeight: subActive ? 600 : 400,
+                          color: subActive ? "var(--accent-text)" : "var(--text-3)",
+                          background: subActive ? "var(--accent-weak)" : "transparent",
+                          textDecoration: "none",
+                        }}
+                        onMouseEnter={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
+                        onMouseLeave={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
+                      >
+                        {sub.label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+              <SideNavItem
+                href="/secure"
+                label="Secure"
+                icon={<Icons.Lock />}
+                active={pathname.startsWith("/secure")}
+                collapsed={collapsed}
+              />
+              {/* Secure sub-nav */}
+              {pathname.startsWith("/secure") && !collapsed && (
+                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+                  {[
+                    { label: "Overview",  href: "/secure" },
+                    { label: "Findings",  href: "/secure/activity" },
+                  ].map(sub => {
+                    const subActive = sub.href === "/secure" ? pathname === "/secure" : pathname.startsWith(sub.href)
                     return (
                       <Link
                         key={sub.href}

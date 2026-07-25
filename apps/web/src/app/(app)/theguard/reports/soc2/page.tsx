@@ -1,9 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { governance, guard } from "@/lib/api"
 
 interface FrameworkRow {
   framework: string
@@ -60,7 +61,7 @@ export default function Soc2ReportPage() {
 }
 
 function Soc2Report() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { activeWorkspace } = useWorkspace()
   const workspaceId = activeWorkspace?.id ?? null
 
@@ -77,25 +78,25 @@ function Soc2Report() {
     if (!workspaceId) return
     setLoading(true)
     try {
-      const token = getToken ? await getToken() : null
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
       const fromIso = `${from}T00:00:00Z`
       const toIso = `${to}T23:59:59Z`
 
-      const [nRes, fRes, eRes] = await Promise.all([
-        fetch(`${base}/governance/narrative?workspace_id=${workspaceId}&period=month`, { headers }),
-        fetch(`${base}/governance/frameworks?workspace_id=${workspaceId}`, { headers }),
-        fetch(`${base}/governance/events/recent?workspace_id=${workspaceId}&limit=1000&from_dt=${encodeURIComponent(fromIso)}&to_dt=${encodeURIComponent(toIso)}`, { headers }),
+      const [narrativeData, frameworksData, eventsData] = await Promise.allSettled([
+        governance.narrative(authFetch, workspaceId, "month"),
+        governance.frameworks(authFetch, workspaceId),
+        governance.eventsRecent(authFetch, workspaceId, {
+          limit: 1000,
+          from_dt: fromIso,
+          to_dt: toIso,
+        }),
       ])
-      if (nRes.ok) setNarrative(await nRes.json())
-      if (fRes.ok) setFrameworks(await fRes.json())
-      if (eRes.ok) setEvents(await eRes.json())
+      if (narrativeData.status === "fulfilled") setNarrative(narrativeData.value)
+      if (frameworksData.status === "fulfilled") setFrameworks(frameworksData.value)
+      if (eventsData.status === "fulfilled") setEvents(eventsData.value)
     } finally {
       setLoading(false)
     }
-  }, [workspaceId, getToken, from, to])
+  }, [workspaceId, authFetch, from, to])
 
   useEffect(() => { load() }, [load])
 
@@ -103,16 +104,14 @@ function Soc2Report() {
     if (!workspaceId) return
     setChainLoading(true)
     try {
-      const token = getToken ? await getToken() : null
-      const headers: Record<string, string> = {}
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await fetch(`${base}/guard/verify/chain?workspace_id=${workspaceId}`, { headers })
-      if (res.ok) setChain(await res.json())
+      const data = await guard.verify.chain(authFetch, { workspace_id: workspaceId })
+      setChain(data)
+    } catch {
+      // non-fatal
     } finally {
       setChainLoading(false)
     }
-  }, [workspaceId, getToken])
+  }, [workspaceId, authFetch])
 
   const soc2 = (frameworks?.installed ?? []).concat(frameworks?.bonus ?? []).find(f => f.framework.toUpperCase().startsWith("SOC2"))
 

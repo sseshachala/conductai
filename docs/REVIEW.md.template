@@ -1,0 +1,162 @@
+# REVIEW.md — AI-Assisted Development Quality Gate
+
+**Copy this file into your repo. Customise the checklist for your stack. Commit it.**
+
+This is the file Boris Cherny described as the missing piece: the quality bar a senior engineer holds in their head, written down so agents and non-engineers can apply it consistently.
+
+- `CLAUDE.md` gives agents project memory
+- `REVIEW.md` gives agents the quality bar
+- Skills give agents the repeatable workflows
+
+Without `REVIEW.md`, agents finish tasks to their own standard. With it, they finish to yours.
+
+---
+
+## How to use this
+
+**Agents:** Instruct Claude Code to read `REVIEW.md` before declaring any task complete.
+Add to your `CLAUDE.md`:
+```
+Before marking any task done, check every item in REVIEW.md that applies to your change.
+```
+
+**Humans:** Run through the checklist before opening a PR. If you skip a section, say why in the PR description.
+
+**Teams:** Treat this file like a codebase. It belongs in git, it gets reviewed, it evolves.
+
+---
+
+## The Standard
+
+Done means: the next engineer can read this change in 6 months without needing to ask you anything.
+
+Not done means: it works today but leaves a trap for someone later.
+
+---
+
+## Pre-Ship Checklist
+
+### 1. Auth and access control
+- [ ] Every new API endpoint has an authentication check
+- [ ] New endpoints use the current auth pattern (not a deprecated one)
+- [ ] Intentionally public endpoints are explicitly documented with a reason
+- [ ] The auth coverage script (if you have one) passes clean
+
+### 2. Tests
+- [ ] The test suite passes with no silenced failures (`|| true`, skips, `xfail` without reason)
+- [ ] New logic has at least one test that will fail if the logic breaks
+- [ ] Mocks match the interface they replace — mock drift is a silent bug
+
+### 3. Security
+- [ ] No user input concatenated into SQL — parameterised queries only
+- [ ] File paths from user input are resolved and bounds-checked before reading
+- [ ] No secrets, tokens, or PII in logs, error messages, or API responses
+- [ ] No disabled TLS verification (`verify=False`, `rejectUnauthorized: false`)
+
+### 4. Database / schema
+- [ ] One migration per change — no bundled unrelated schema changes
+- [ ] Migration tested locally before push
+- [ ] Downgrade path defined and tested
+- [ ] Destructive changes (DROP COLUMN) staged: stop writing first, then drop after the deploy
+
+### 5. Impact analysis — all layers, every change
+- [ ] **CLI / SDK** — did this change a command, config key, or output format external tools read?
+- [ ] **Frontend** — did this change a route, field name, or response shape the UI depends on?
+- [ ] **API** — is this a breaking change for existing callers (webhooks, integrations, public API)?
+- [ ] **DB** — does this require a migration, backfill, or coordinated deploy?
+
+### 6. Code quality
+- [ ] Read your diff as if reviewing a stranger's PR — find your own mistakes first
+- [ ] Delete everything added "just in case" — speculative code is future debt
+- [ ] Remove all debugging artifacts: print statements, commented-out blocks, TODOs without tickets
+- [ ] Every name describes what it does — no comment needed to explain it
+- [ ] No abstraction without two concrete use cases that require it
+
+---
+
+## What Machines Should Check (automate these)
+
+The best teams automate the structural checks so humans can focus on judgement calls.
+
+| What | Why automate it |
+|---|---|
+| Auth coverage | Never ship an unauthenticated endpoint by accident |
+| Test suite (no `\|\| true`) | Silenced test failures are production bugs waiting |
+| Schema migrations apply cleanly | Catch drift before prod |
+| Type checking | Catch interface mismatches at build time |
+| Lint | Eliminate style debates from code review |
+
+Set these up in CI so a failing check blocks the PR, not a reviewer's memory.
+
+---
+
+## What Only Humans Can Check
+
+Machines catch structure. These require judgement:
+
+- **Right abstraction?** Did I build for the problem that exists, or a hypothetical one?
+- **Readable?** Will the next engineer understand why, not just what?
+- **Scoped?** Is this change limited to what was asked, or does it touch things it shouldn't?
+- **Reversible?** If this is wrong, can we undo it without a migration or a customer call?
+- **Simpler?** Is there a smaller version that solves 90% of the problem with 20% of the code?
+
+---
+
+## Principles
+
+### The gate is the work
+Agents can write production-ready code. What makes that safe is not the AI — it's the gate. A PR that passes this checklist from a non-engineer is safe to merge. A PR that skips it is unsafe regardless of who wrote it.
+
+The checklist is not bureaucracy. It is the thing that lets everyone ship.
+
+### Write it down, not down-ish
+"Use your judgement" is not a standard. This file is the standard. Ambiguity in a review checklist means the bar drifts lower every PR.
+
+### One source of truth
+If the standard lives in three places (Notion, Slack, someone's head), it lives in zero places. Commit this file to the repo. That makes it reviewable, versioned, and discoverable by agents.
+
+### Allowlists are decisions, not shortcuts
+Every exception (intentionally public endpoint, intentionally skipped test, intentionally no downgrade) should be documented with a reason. Undocumented exceptions are the same as no standard.
+
+---
+
+## How to Customise This
+
+1. **Replace the Auth section** with your framework's actual auth patterns and the command that checks them
+2. **Add framework-specific checks** (e.g., React hook rules, ORM-specific migration patterns)
+3. **Add your automated gates** to the "What Machines Should Check" table with the actual commands
+4. **Remove irrelevant sections** — a CLI tool has no frontend impact analysis
+5. **Add team-specific standards** — your naming conventions, your preferred test patterns, your release process
+
+The best `REVIEW.md` is the one your team actually uses. Start here, then cut it down to what your team will run through every time.
+
+---
+
+## Adoption pattern
+
+**Week 1:** Commit this file. Tell engineers it exists.
+
+**Week 2:** Add to `CLAUDE.md`: agents must check `REVIEW.md` before marking work done.
+
+**Week 3:** Add the first automated gate (auth coverage or test suite strictness). Wire it to CI.
+
+**Week 4:** Run a retro. Which checklist items caught real problems? Which are noise? Trim the noise, add what's missing.
+
+**Ongoing:** When a bug escapes to production, ask: which checklist item would have caught it? Add it.
+
+---
+
+## This file in the wild
+
+Conduct's own `REVIEW.md` is the internal version of this template. Every change to the Conduct codebase — including the changes made by AI agents — goes through this gate.
+
+The auth coverage check (`python scripts/check_auth_coverage.py`) that enforces the auth section was itself written by a Claude Code agent, reviewed against this checklist, and is now a blocking CI step.
+
+Source: [github.com/conductai/](https://conductai.ai) · Licensed under MIT · Contributions welcome
+
+---
+
+## Contribute
+
+Found something missing? Open a PR or issue at conductai.ai/review-md.
+The goal is a checklist that any team can adopt, adapt, and improve — not a checklist that only works for one stack.

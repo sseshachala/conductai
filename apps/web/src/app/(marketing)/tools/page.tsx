@@ -231,7 +231,7 @@ function ToolsSection() {
             <div className="flex items-start justify-between">
               <div>
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-100 px-2.5 py-1 rounded-full mb-3">
-                  Free · MIT
+                  Free for individuals
                 </span>
                 <h2 className="text-2xl font-bold text-stone-900">Claude Code Team Kit</h2>
                 <p className="text-sm text-stone-500 mt-1">Shared Claude Code setup for your whole team</p>

@@ -27,13 +27,10 @@ _bearer = HTTPBearer(auto_error=False)
 
 def _get_optional_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
-    x_api_key: Annotated[str | None, Header()] = None,
 ) -> str | None:
     """Returns user identity string if authenticated, None for anonymous callers."""
     if credentials and credentials.credentials:
         return f"bearer:{credentials.credentials[:16]}"
-    if x_api_key:
-        return f"apikey:{x_api_key[:16]}"
     return None
 
 

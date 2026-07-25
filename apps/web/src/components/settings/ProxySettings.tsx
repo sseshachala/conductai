@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? ""
+import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard, environments as environmentsApi } from "@/lib/api"
 
 interface Props {
   workspaceId: string
-  getToken: (() => Promise<string | null>) | null
+  /** @deprecated No longer used — auth is handled by useAuthFetch. Kept for backwards-compat with callers. */
+  getToken?: (() => Promise<string | null>) | null
 }
 
 interface Env {
@@ -14,7 +15,8 @@ interface Env {
   name: string
 }
 
-export default function ProxySettings({ workspaceId, getToken }: Props) {
+export default function ProxySettings({ workspaceId }: Props) {
+  const { authFetch } = useAuthFetch()
   const [proxyUrl, setProxyUrl]             = useState("")
   const [upstream, setUpstream]             = useState("")
   const [upstreamKey, setUpstreamKey]       = useState("")
@@ -29,50 +31,36 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
   const [pushed, setPushed]   = useState(false)
   const [pushError, setPushError] = useState("")
 
-  async function headers(): Promise<Record<string, string>> {
-    const h: Record<string, string> = { "X-Workspace-ID": workspaceId }
-    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    return h
-  }
-
   // Load workspace-level proxy config
   useEffect(() => {
     if (!workspaceId) return
     ;(async () => {
-      const h = await headers()
-      const r = await fetch(`${API}/guard/proxy-config`, { headers: h })
-      if (r.ok) {
-        const data = await r.json()
+      try {
+        const data = await guard.proxyConfig.get(authFetch)
         setProxyUrl(data.conduct_proxy_url ?? "")
         setUpstream(data.llm_upstream ?? "")
         setHasUpstreamKey(data.has_upstream_key ?? false)
-      }
+      } catch {}
     })()
-  }, [workspaceId])
+  }, [workspaceId, authFetch])
 
   // Load environments for push target
   useEffect(() => {
     if (!workspaceId) return
     ;(async () => {
-      const h = await headers()
-      const r = await fetch(`${API}/environments`, { headers: h })
-      if (r.ok) {
-        const data: Env[] = await r.json()
+      try {
+        const data: Env[] = await environmentsApi.list(authFetch)
         setEnvs(data)
         if (data.length > 0) setPushEnvId(data[0].id)
-      }
+      } catch {}
     })()
-  }, [workspaceId])
+  }, [workspaceId, authFetch])
 
   async function save() {
     setSaving(true)
-    const h = { ...(await headers()), "Content-Type": "application/json" }
-    await fetch(`${API}/guard/proxy-config`, {
-      method: "PUT", headers: h,
-      body: JSON.stringify({
-        llm_upstream: upstream,
-        llm_upstream_api_key: upstreamKey || undefined,
-      }),
+    await guard.proxyConfig.update(authFetch, {
+      llm_upstream: upstream,
+      llm_upstream_api_key: upstreamKey || undefined,
     })
     setSaving(false)
     setSaved(true)
@@ -89,11 +77,7 @@ export default function ProxySettings({ workspaceId, getToken }: Props) {
     }
     setPushError("")
     setPushing(true)
-    const h = { ...(await headers()), "Content-Type": "application/json" }
-    await fetch(`${API}/guard/proxy-config/push`, {
-      method: "POST", headers: h,
-      body: JSON.stringify({ environment_id: pushEnvId }),
-    })
+    await guard.proxyConfig.push(authFetch, { environment_id: pushEnvId })
     setPushing(false)
     setPushed(true)
     setTimeout(() => setPushed(false), 2000)

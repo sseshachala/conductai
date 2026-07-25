@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { setGuardTeamId } from "@/lib/guardStorage"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { guard } from "@/lib/api"
 
 interface GuardConfig {
   workspace_id: string
@@ -26,7 +26,7 @@ function ModuleCard({ children }: { children: React.ReactNode }) {
 }
 
 function ConductGuardModule() {
-  const { getToken } = useAuth()
+  const { authFetch } = useAuthFetch()
   const { workspaces, activeWorkspace } = useWorkspace()
 
   const [config, setConfig] = useState<GuardConfig | null>(null)
@@ -37,38 +37,25 @@ function ConductGuardModule() {
   const [selectedOrg, setSelectedOrg] = useState<OrgOption | null>(null)
 
   const availableOrgs: OrgOption[] = workspaces.map(w => ({ id: w.id, name: w.name }))
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-
-  const buildHeaders = useCallback(async (wsId?: string): Promise<Record<string, string>> => {
-    const h: Record<string, string> = { "Content-Type": "application/json" }
-    if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
-    const id = wsId ?? activeWorkspace?.id
-    if (id) h["X-Guard-Workspace-ID"] = id
-    return h
-  }, [getToken, activeWorkspace])
 
   const fetchInstallStatus = useCallback(async (wsId?: string) => {
     setLoading(true)
     const guardWsId = wsId ?? activeWorkspace?.id
     try {
-      const h = await buildHeaders(guardWsId)
-      const res = await fetch(`${base}/guard/config/installed${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.installed) {
-          if (guardWsId && typeof window !== "undefined") setGuardTeamId(guardWsId, guardWsId)
-          const configRes = await fetch(`${base}/guard/config${guardWsId ? `?workspace_id=${guardWsId}` : ""}`, { headers: h })
-          if (configRes.ok) setConfig(await configRes.json())
-        } else {
-          setConfig(null)
-        }
+      const data = await guard.config.installed(authFetch, guardWsId)
+      if (data.installed) {
+        if (guardWsId && typeof window !== "undefined") setGuardTeamId(guardWsId, guardWsId)
+        const cfg = await guard.config.get(authFetch, guardWsId)
+        setConfig(cfg)
+      } else {
+        setConfig(null)
       }
     } catch {
       setConfig(null)
     } finally {
       setLoading(false)
     }
-  }, [buildHeaders, base, activeWorkspace])
+  }, [authFetch, activeWorkspace])
 
   useEffect(() => { fetchInstallStatus() }, [fetchInstallStatus])
 
@@ -85,9 +72,7 @@ function ConductGuardModule() {
     setInstalling(true)
     setError(null)
     try {
-      const h = await buildHeaders(org.id)
-      const res = await fetch(`${base}/guard/config?workspace_id=${org.id}`, { headers: h })
-      if (!res.ok) { const body = await res.text(); setError(`Installation failed — ${body || res.statusText}`); return }
+      await guard.config.get(authFetch, org.id)
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: true } }))
       await fetchInstallStatus(org.id)
     } catch {
