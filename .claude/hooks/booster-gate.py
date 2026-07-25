@@ -23,6 +23,15 @@ try:
 except ValueError:
     sys.exit(0)
 
+# Booster developing booster: allow raw Read on booster's own source so edits
+# can match exact strings. Smart-read returns symbol slices, not editable content.
+if "tools/booster/booster/" in rel or "tools/booster/tests/" in rel:
+    sys.exit(0)
+# Marketing landing pages: large hand-edited TSX where exact-string Edit needs
+# the unmodified content. Smart-read returns symbol slices that don't help.
+if "(marketing)" in rel and rel.endswith(".tsx"):
+    sys.exit(0)
+
 try:
     conn = sqlite3.connect(str(db_path))
     count = conn.execute("SELECT COUNT(*) FROM symbols WHERE file = ?", (rel,)).fetchone()[0]
