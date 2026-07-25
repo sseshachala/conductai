@@ -34,6 +34,7 @@ interface Policy {
   persona_affinity?: string[]
   persona?: "agent" | "proxy"
   non_overridable?: boolean
+  tag?: string
 }
 
 const PACK_LABELS: { id: string; name: string }[] = [
@@ -866,7 +867,9 @@ function PoliciesContent() {
   // Build tabs: Agent + Proxy + Custom (user-created) + one per installed pack
   const installedPackIds = [...new Set(policies.filter(p => p.pack_id).map(p => p.pack_id!))]
   const customRules = policies.filter(p => !p.builtin)
+  const securityRules = policies.filter(p => p.tag === "security_policy")
   const policyTabs = [
+    { id: "security", label: "Security", count: securityRules.length },
     { id: "agent",  label: "Agent",  count: policies.filter(p => p.builtin && (!p.persona || p.persona === "agent")).length },
     { id: "proxy",  label: "Proxy",  count: policies.filter(p => p.builtin && p.persona === "proxy").length },
     { id: "custom", label: "Custom", count: customRules.length },
@@ -875,8 +878,10 @@ function PoliciesContent() {
       label: PACK_LABELS.find(l => l.id === id)?.name ?? id,
       count: policies.filter(p => p.pack_id === id).length,
     })),
-  ].filter(t => t.count > 0 || t.id === "agent" || t.id === "custom")
-  const visiblePolicies = policyTab === "agent"
+  ].filter(t => t.count > 0 || t.id === "agent" || t.id === "custom" || t.id === "security")
+  const visiblePolicies = policyTab === "security"
+    ? securityRules
+    : policyTab === "agent"
     ? policies.filter(p => p.builtin && (!p.persona || p.persona === "agent"))
     : policyTab === "proxy"
     ? policies.filter(p => p.builtin && p.persona === "proxy")
@@ -940,15 +945,6 @@ function PoliciesContent() {
           </div>
         )}
 
-        {/* Loading */}
-        {loading && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="card" style={{ padding: 18, height: 96 }} />
-            ))}
-          </div>
-        )}
-
         {/* Guard not installed */}
         {!loading && teamError && (
           <div className="card" style={{ padding: "48px 24px", textAlign: "center" }}>
@@ -981,6 +977,9 @@ function PoliciesContent() {
                     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--border)" }}>
                       <ActionBadge action={p.action} />
                       <span className="mono" style={{ fontWeight: 650, fontSize: 12, color: "var(--text-1)", whiteSpace: "nowrap" }}>{p.rule_id}</span>
+                      {p.tag === "security_policy" && (
+                        <span className="sbadge err" style={{ textTransform: "uppercase", fontSize: 9.5, letterSpacing: ".06em" }} title="Security policy — code-security enforcement">SEC</span>
+                      )}
                       {locked && <LockIcon />}
                       <span style={{ flex: 1, fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.description || p.message || "—"}</span>
                       <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>
