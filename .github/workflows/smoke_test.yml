@@ -43,9 +43,9 @@ jobs:
           mkdir -p ~/.conduct
           cat > ~/.conduct/config.json <<EOF
           {
-            "server":       "${{ secrets.CONDUCT_SERVER }}",
+            "api_url":      "${{ secrets.CONDUCT_SERVER }}",
             "workspace_id": "${{ secrets.CONDUCT_WORKSPACE_ID }}",
-            "api_key":      "${{ secrets.CONDUCT_API_KEY }}"
+            "agent_token":  "${{ secrets.CONDUCT_API_KEY }}"
           }
           EOF
 

@@ -1,0 +1,54 @@
+name: Windows CLI live smoke
+
+on:
+  schedule:
+    - cron: '30 6 * * *'   # nightly, 30 min after linux smoke
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install conduct CLI
+        run: pip install -e packages/conduct-cli --quiet
+
+      - name: Write config
+        shell: pwsh
+        env:
+          CONDUCT_SERVER:       ${{ secrets.CONDUCT_SERVER }}
+          CONDUCT_WORKSPACE_ID: ${{ secrets.CONDUCT_WORKSPACE_ID }}
+          CONDUCT_API_KEY:      ${{ secrets.CONDUCT_API_KEY }}
+        run: |
+          $dir = Join-Path $HOME ".conduct"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $cfg = @{
+            api_url      = $env:CONDUCT_SERVER
+            workspace_id = $env:CONDUCT_WORKSPACE_ID
+            agent_token  = $env:CONDUCT_API_KEY
+          } | ConvertTo-Json
+          Set-Content -Path (Join-Path $dir "config.json") -Value $cfg
+
+      - name: whoami
+        run: conduct whoami
+
+      - name: guard status
+        run: conduct guard status
+
+      - name: guard sync
+        run: conduct guard sync
+
+      - name: verify PowerShell env.ps1 was written
+        shell: pwsh
+        run: |
+          $ps1 = Join-Path $HOME ".conduct\env.ps1"
+          if (-not (Test-Path $ps1)) { throw "env.ps1 not written" }
+          $text = Get-Content $ps1 -Raw
+          if ($text -notmatch 'ANTHROPIC_BASE_URL') { throw "ANTHROPIC_BASE_URL missing" }
+          if ($text -notmatch 'OPENAI_BASE_URL')    { throw "OPENAI_BASE_URL missing" }
+          Write-Host "env.ps1 OK"
