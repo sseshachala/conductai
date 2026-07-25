@@ -155,8 +155,11 @@ function HeroSection() {
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
         Your AI agents are taking real actions. Nobody is watching.
       </h1>
-      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
+      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-6">
         One policy. Every AI tool your team uses — Claude Code, Claude.ai, Claude Desktop, Codex, ChatGPT, Cursor, Copilot, Windsurf.
+      </p>
+      <p className="font-mono text-sm sm:text-base text-stone-700 max-w-3xl mx-auto mb-8">
+        What the agent tried. What Guard allowed. What the reviewer signed. What the chain proves.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
         {chips.map(chip => (
