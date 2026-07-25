@@ -358,7 +358,9 @@ def _report_tool_coverage() -> None:
 
         payload = json.dumps({"email": email, "tools": tools}).encode()
         headers = {"Content-Type": "application/json"}
-        if token:
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        elif token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
             f"{server}/guard/developer-tools",
