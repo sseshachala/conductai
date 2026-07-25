@@ -27,4 +27,4 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install -e packages/conduct-cli pytest
       - run: conduct -h
-      - run: pytest packages/conduct-cli/tests -q
+      - run: pytest packages/conduct-cli/tests -v
