@@ -204,11 +204,23 @@ def ensure_drain_daemon(hook_module_path: Optional[Path] = None) -> None:
                 pass
         if hook_module_path is None:
             return
+        popen_kwargs: dict = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        if sys.platform == "win32":
+            # ponytail: DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP are the
+            # Windows equivalent of POSIX start_new_session — both constants
+            # only exist on Windows Python, so gate the reference behind the
+            # platform check.
+            popen_kwargs["creationflags"] = (
+                subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+        else:
+            popen_kwargs["start_new_session"] = True
         subprocess.Popen(
             [sys.executable, str(hook_module_path), "drain"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
+            **popen_kwargs,
         )
     except Exception:
         pass

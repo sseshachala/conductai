@@ -1656,6 +1656,62 @@ def _post_local_findings(cfg: dict, base_url: str, findings: list[dict]) -> None
         print(f"  {YELLOW}Audit upload skipped: {e}{RESET}")
 
 
+def _write_proxy_env_windows(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
+    """Windows equivalent of _write_proxy_env — PowerShell profile + env.ps1."""
+    CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
+    token = agent_token
+    proxy = proxy_url.rstrip("/")
+
+    ps1_file = CONDUCT_DIR / "env.ps1"
+    ps1_file.write_text("\n".join([
+        SHELL_RC_MARKER,
+        "# Edit ~/.conduct/env-override.ps1 to add your own vars — sourced after this file.",
+        "",
+        f'$env:ANTHROPIC_BASE_URL = "{proxy}"',
+        f'$env:ANTHROPIC_API_KEY  = "{token}"',
+        "",
+        f'$env:OPENAI_BASE_URL = "{proxy}/openai"',
+        f'$env:OPENAI_API_KEY  = "{token}"',
+        "",
+        f'$env:PERPLEXITY_BASE_URL = "{proxy}/perplexity"',
+        f'$env:PERPLEXITY_API_KEY  = "{token}"',
+        "",
+        'if (Test-Path "$HOME/.conduct/env-override.ps1") { . "$HOME/.conduct/env-override.ps1" }',
+        "",
+    ]))
+
+    # ponytail: prefer PS7 profile; fall back to WPS5 only if its file already exists
+    ps7_profile = Path.home() / "Documents" / "PowerShell" / "Microsoft.PowerShell_profile.ps1"
+    wps5_profile = Path.home() / "Documents" / "WindowsPowerShell" / "Microsoft.PowerShell_profile.ps1"
+    if ps7_profile.parent.exists() or not wps5_profile.exists():
+        rc = ps7_profile
+    else:
+        rc = wps5_profile
+
+    existing = rc.read_text() if rc.exists() else ""
+    CLAUDE_ALIAS = (
+        "function claude { "
+        "$prev=$env:ANTHROPIC_BASE_URL; $env:ANTHROPIC_BASE_URL=$null; "
+        "try { & claude @args } finally { $env:ANTHROPIC_BASE_URL=$prev } }"
+    )
+    PS_SOURCE_LINE = 'if (Test-Path "$HOME/.conduct/env.ps1") { . "$HOME/.conduct/env.ps1" }'
+
+    if SHELL_RC_MARKER in existing:
+        if CLAUDE_ALIAS not in existing:
+            rc.write_text(existing.rstrip() + f"\n{CLAUDE_ALIAS}\n")
+            return rc, True
+        return rc, False
+
+    rc.parent.mkdir(parents=True, exist_ok=True)
+    addition = (
+        f"\n\n{SHELL_RC_MARKER}\n"
+        f"{PS_SOURCE_LINE}\n"
+        f"{CLAUDE_ALIAS}\n"
+    )
+    rc.write_text(existing.rstrip() + addition if existing else addition.lstrip())
+    return rc, True
+
+
 def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
     """Write ~/.conduct/env with the 3 provider env-var pairs and ensure the
     user's shell rc sources it.
@@ -1668,6 +1724,9 @@ def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
     if not agent_token:
         print(f"  {YELLOW}Proxy env skipped — no agent token in config{RESET}")
         return Path(), False
+
+    if sys.platform == "win32":
+        return _write_proxy_env_windows(agent_token, proxy_url)
 
     CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
     token = agent_token  # cond_agt_* used directly as the API key value
