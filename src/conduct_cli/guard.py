@@ -1478,9 +1478,11 @@ def cmd_guard_sync(args):
     agent_token = cfg.get("agent_token", "")
     rc_path, newly_sourced = _write_proxy_env(agent_token, proxy_url)
     if agent_token:
-        print(f"  {GREEN}Proxy env written:{RESET} ~/.conduct/env → {proxy_url}")
+        env_name = "env.ps1" if sys.platform == "win32" else "env"
+        activate_cmd = f". {rc_path}" if sys.platform == "win32" else f"source {rc_path}"
+        print(f"  {GREEN}Proxy env written:{RESET} ~/.conduct/{env_name} → {proxy_url}")
         if newly_sourced:
-            print(f"  {CYAN}Run `source {rc_path}` (or open a new shell) to activate.{RESET}")
+            print(f"  {CYAN}Run `{activate_cmd}` (or open a new shell) to activate.{RESET}")
 
     _tools = _detect_ai_tools()
     if _tools:
