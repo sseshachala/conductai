@@ -8,6 +8,16 @@
       "env": {
         "BOOSTER_SECRET": "ed5b6d373737b552ef947b881b8860dfcf06ed2954eb89aac557d2bc01ab2aa1"
       }
+    },
+    "conduct-guard": {
+      "type": "http",
+      "url": "https://api.conductai.ai/guard/mcp",
+      "headers": {
+        "Authorization": "Bearer cond_agt_81588e112d885067a66e0f6f06052ee6e6d703401b6272de024c6cedaaab713e"
+      },
+      "tools": [
+        "**"
+      ]
     }
   }
 }
