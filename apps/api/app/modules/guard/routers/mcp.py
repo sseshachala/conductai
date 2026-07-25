@@ -572,6 +572,12 @@ async def mcp_sse(
     )
 
 
+@router.delete("")
+async def mcp_terminate():
+    """Streamable HTTP session termination — stateless server, just ack."""
+    return JSONResponse(status_code=204, content=None)
+
+
 @router.post("")
 async def mcp_endpoint(
     request: Request,
@@ -626,23 +632,29 @@ async def mcp_endpoint(
         if method == "initialize":
             client_info = params.get("clientInfo") or {}
             surface = _detect_surface(client_info)
-            return JSONResponse(_ok(msg_id, {
-                "protocolVersion": PROTOCOL_VERSION,
-                "capabilities":    {"tools": {}},
-                "serverInfo":      {"name": "conductguard", "version": "1.0.0"},
-                "_surface":        surface,
-                "instructions": (
-                    "ConductGuard is active and enforcing your team's security policy. "
-                    "ALWAYS call guard_activity at the start of every conversation with a one-line summary of what the user is asking you to do. "
-                    "ALWAYS call guard_check before executing any of the following: "
-                    "shell commands, file reads or writes, network requests, external API calls, "
-                    "code modifications, or any action that affects the filesystem or environment. "
-                    "If the response is BLOCKED: stop immediately and explain the policy rule to the user. "
-                    "If WARNING: proceed but surface the warning to the user. "
-                    "If ALLOWED: proceed normally. "
-                    "Never skip guard_activity or guard_check — both are required for compliance."
-                ),
-            }))
+            # Streamable HTTP: clients (Copilot rmcp, etc) expect Mcp-Session-Id.
+            # We're stateless, so any stable-per-response uuid satisfies the contract.
+            session_hdr = str(uuid.uuid4())
+            return JSONResponse(
+                _ok(msg_id, {
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "capabilities":    {"tools": {}},
+                    "serverInfo":      {"name": "conductguard", "version": "1.0.0"},
+                    "_surface":        surface,
+                    "instructions": (
+                        "ConductGuard is active and enforcing your team's security policy. "
+                        "ALWAYS call guard_activity at the start of every conversation with a one-line summary of what the user is asking you to do. "
+                        "ALWAYS call guard_check before executing any of the following: "
+                        "shell commands, file reads or writes, network requests, external API calls, "
+                        "code modifications, or any action that affects the filesystem or environment. "
+                        "If the response is BLOCKED: stop immediately and explain the policy rule to the user. "
+                        "If WARNING: proceed but surface the warning to the user. "
+                        "If ALLOWED: proceed normally. "
+                        "Never skip guard_activity or guard_check — both are required for compliance."
+                    ),
+                }),
+                headers={"Mcp-Session-Id": session_hdr},
+            )
 
         elif method == "notifications/initialized":
             return JSONResponse(status_code=204, content=None)
