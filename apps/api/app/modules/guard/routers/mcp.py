@@ -669,8 +669,18 @@ async def mcp_endpoint(
         elif method == "tools/call":
             tool_name = params.get("name", "")
             arguments = params.get("arguments") or {}
-            # Remote MCP = always a web surface; clientInfo not available on tools/call
-            ai_tool = request.headers.get("x-claude-surface") or "claude_chat"
+            # Try explicit surface header, then clientInfo (rarely on tools/call),
+            # then User-Agent (Copilot rmcp reveals itself here). Default to
+            # 'unknown' — misattributing to claude_chat hides Copilot traffic.
+            ai_tool = (
+                request.headers.get("x-claude-surface")
+                or _detect_surface(params.get("clientInfo") or {})
+                or "unknown"
+            )
+            if ai_tool == "unknown":
+                ua_surface = _detect_surface({"name": request.headers.get("User-Agent", "")})
+                if ua_surface != "unknown":
+                    ai_tool = ua_surface
             session_id = request.headers.get("x-session-id", str(uuid.uuid4()))
 
             # Self-register: every tool call proves this agent is under Guard.
