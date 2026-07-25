@@ -11,6 +11,7 @@ jobs:
     timeout-minutes: 10
     env:
       PYTHONIOENCODING: utf-8   # windows console defaults to cp1252, garbles CLI checkmarks
+      PYTHONUTF8: '1'           # forces python-wide utf-8 for file i/o (also cp1252 by default on windows)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
