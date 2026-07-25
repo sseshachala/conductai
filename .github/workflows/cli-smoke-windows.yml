@@ -69,8 +69,8 @@ jobs:
       - name: verify drain daemon round-trip (mock POST server)
         shell: pwsh
         run: |
-          python - <<'PY'
-          import http.server, json, os, socketserver, threading, time
+          $script = @'
+          import http.server, socketserver, threading, time
           from pathlib import Path
           from conduct_cli.hooks import base
 
@@ -86,16 +86,13 @@ jobs:
           port = srv.server_address[1]
           threading.Thread(target=srv.serve_forever, daemon=True).start()
 
-          # Write a fake journal event pointing at the mock server
           base.JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
           base.journal_append('{"kind":"smoke_test"}', f"http://127.0.0.1:{port}/events")
 
-          # Spawn the drain daemon
           hook_py = Path.home() / ".conduct" / "hook.py"
           assert hook_py.exists(), f"hook.py missing at {hook_py}"
           base.ensure_drain_daemon(hook_module_path=hook_py)
 
-          # Wait up to 15s for the round-trip
           for _ in range(30):
               if received:
                   break
@@ -103,8 +100,10 @@ jobs:
           srv.shutdown()
 
           assert received, "drain daemon did not POST within 15s"
-          print(f"OK — mock server received {len(received)} event(s): {received[0][:80]!r}")
-          PY
+          print(f"OK - mock server received {len(received)} event(s)")
+'@
+          Set-Content -Path "$env:RUNNER_TEMP\drain_check.py" -Value $script
+          python "$env:RUNNER_TEMP\drain_check.py"
 
       - name: verify hook.py runs on windows (fake PreToolUse payload)
         shell: pwsh
