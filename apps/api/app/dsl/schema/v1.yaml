@@ -267,6 +267,12 @@ properties:
           - type: 'null'
           default: null
           title: Input
+        config:
+          anyOf:
+          - type: object
+          - type: 'null'
+          default: null
+          title: Config
         credential_key:
           anyOf:
           - type: string
@@ -324,8 +330,10 @@ properties:
             - ip
             title: RunsOn
             type: object
+          - type: string
           - type: 'null'
           default: null
+          title: Runs On
         custom_instructions:
           anyOf:
           - type: string
@@ -521,6 +529,12 @@ properties:
           - type: 'null'
           default: null
           title: Complexity
+        execution_policy:
+          anyOf:
+          - type: object
+          - type: 'null'
+          default: null
+          title: Execution Policy
         is_readonly:
           default: false
           title: Is Readonly
@@ -629,6 +643,12 @@ properties:
           - type: 'null'
           default: null
           title: Input
+        config:
+          anyOf:
+          - type: object
+          - type: 'null'
+          default: null
+          title: Config
         credential_key:
           anyOf:
           - type: string
@@ -686,8 +706,10 @@ properties:
             - ip
             title: RunsOn
             type: object
+          - type: string
           - type: 'null'
           default: null
+          title: Runs On
         custom_instructions:
           anyOf:
           - type: string
@@ -883,6 +905,12 @@ properties:
           - type: 'null'
           default: null
           title: Complexity
+        execution_policy:
+          anyOf:
+          - type: object
+          - type: 'null'
+          default: null
+          title: Execution Policy
         is_readonly:
           default: false
           title: Is Readonly
