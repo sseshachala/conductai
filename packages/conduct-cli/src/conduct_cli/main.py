@@ -1457,8 +1457,8 @@ def cmd_whoami(args):
             match = next((p for p in projects if str(p.get("id", "")) == str(workspace_id)), None)
             if match:
                 workspace_name = match["name"]
-        except Exception:
-            pass
+        except (Exception, SystemExit):
+            pass  # server error on /projects (e.g. agent token → 500) is cosmetic
 
     ws_display = workspace_name if workspace_name else workspace_id
     ws_id_hint = f"  ({workspace_id[:8]})" if workspace_id else ""
