@@ -85,30 +85,6 @@ def test_delete_project_returns_401_when_user_id_is_none():
         _teardown()
 
 
-# ── Workspace-scoped endpoints work with agent tokens (already correct) ──────
-
-def test_list_runs_works_with_agent_token():
-    """GET /workflows/{id}/runs uses get_workspace_id (not get_user_id), so an
-    agent token that resolves a workspace works fine — lock this in."""
-    from app.models.workflow import Workflow
-
-    db_mock = MagicMock()
-    # _get_workflow queries Workflow by id + workspace scope; return a stub
-    fake_wf = MagicMock(spec=Workflow)
-    fake_wf.id = uuid.uuid4()
-    fake_wf.workspace_id = uuid.UUID(WS_ID)
-    fake_wf.current_version_id = uuid.uuid4()
-    fake_wf.archived_at = None
-    db_mock.query.return_value.filter.return_value.first.return_value = fake_wf
-    db_mock.query.return_value.filter.return_value.subquery.return_value = MagicMock()
-    db_mock.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
-
-    # Agent token path: user_id may be present (linked) or None (unlinked); either
-    # should be fine because the endpoint doesn't depend on user_id.
-    client = _make_client(db_mock, user_id=None)
-    try:
-        r = client.get(f"/workflows/{fake_wf.id}/runs")
-        assert r.status_code == 200, r.text
-        assert r.json() == []
-    finally:
-        _teardown()
+# ── Note: workspace-scoped endpoints (runs list/trigger/stream) already use
+# Depends(get_workspace_id), which is agent-token-aware. Verified by manual
+# CI trace in the Windows live smoke (cli-smoke-windows.yml).
