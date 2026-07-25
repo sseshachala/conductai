@@ -4,11 +4,8 @@
       "type": "http",
       "url": "https://api.conductai.ai/guard/mcp",
       "headers": {
-        "Authorization": "Bearer cond_agt_81588e112d885067a66e0f6f06052ee6e6d703401b6272de024c6cedaaab713e"
-      },
-      "tools": [
-        "**"
-      ]
+        "Authorization": "Bearer cond_agt_6a58c27eb140edf3239b9f004e946408fc6605c3e3c38882c89685fb7ae3295d"
+      }
     },
     "agent-booster": {
       "command": "booster",
