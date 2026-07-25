@@ -8,10 +8,18 @@ Validates:
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 from conduct_cli import guard
+
+pytestmark_posix = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="shell rc integration is bash/zsh only; windows uses powershell",
+)
 
 
 def _redirect_home(tmp_path: Path, monkeypatch):
@@ -39,6 +47,7 @@ def test_env_file_written_with_all_three_pairs(tmp_path, monkeypatch):
     assert rc.name == ".zshrc"
 
 
+@pytestmark_posix
 def test_shell_rc_source_line_added_once_across_multiple_syncs(tmp_path, monkeypatch):
     _redirect_home(tmp_path, monkeypatch)
     monkeypatch.setenv("SHELL", "/bin/zsh")
@@ -52,6 +61,7 @@ def test_shell_rc_source_line_added_once_across_multiple_syncs(tmp_path, monkeyp
     assert rc_text.count(guard.SHELL_SOURCE_LINE) == 1
 
 
+@pytestmark_posix
 def test_bash_picks_bashrc(tmp_path, monkeypatch):
     _redirect_home(tmp_path, monkeypatch)
     monkeypatch.setenv("SHELL", "/usr/bin/bash")
