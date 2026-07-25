@@ -344,7 +344,8 @@ def _save_guard_config(data: dict, workspace_id: str | None = None):
             pass
     existing.update(data)
     CONFIG_PATH.write_text(json.dumps(existing, indent=2))
-    CONFIG_PATH.chmod(0o600)
+    from conduct_cli.hooks.base import restrict_to_owner
+    restrict_to_owner(CONFIG_PATH)
 
 
 def _require_guard_config() -> dict:

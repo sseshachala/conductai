@@ -248,3 +248,35 @@ def test_refresh_policy_works_without_workspace_id(tmp_path):
     called_url = mock_open.call_args[0][0].full_url
     assert "workspace_id" not in called_url
     assert policy_path.read_bytes() == fake_policy
+
+
+def test_restrict_to_owner_posix_calls_chmod(tmp_path):
+    """On POSIX, restrict_to_owner delegates to Path.chmod(0o600)."""
+    f = tmp_path / "config.json"
+    f.write_text("{}")
+    with patch.object(base, "sys") as mock_sys:
+        mock_sys.platform = "linux"
+        base.restrict_to_owner(f)
+    # On host that supports mode bits, the file should now be 0o600
+    mode = f.stat().st_mode & 0o777
+    assert mode == 0o600
+
+
+def test_restrict_to_owner_windows_invokes_icacls(tmp_path):
+    """On Windows, restrict_to_owner runs icacls to lock the file to USERNAME."""
+    f = tmp_path / "config.json"
+    f.write_text("{}")
+    with patch.object(base, "sys") as mock_sys, \
+         patch.object(base, "subprocess") as mock_sub, \
+         patch.dict(os.environ, {"USERNAME": "runneradmin"}, clear=False):
+        mock_sys.platform = "win32"
+        mock_sub.DEVNULL = subprocess.DEVNULL
+        base.restrict_to_owner(f)
+    mock_sub.run.assert_called_once()
+    args, _ = mock_sub.run.call_args
+    cmd = args[0]
+    assert cmd[0] == "icacls"
+    assert str(f) in cmd
+    assert "/inheritance:r" in cmd
+    assert "runneradmin:F" in cmd
+
