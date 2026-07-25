@@ -481,7 +481,6 @@ def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
         "type": "http",
         "url": f"{api_url}/guard/mcp",
         "headers": {"Authorization": f"Bearer {agent_token}"},
-        "tools": ["**"],
     }
     booster_entry = {"command": "booster", "args": ["serve"]} if shutil.which("booster") else None
 
