@@ -3,6 +3,8 @@
 
 Official CLI for [Conduct AI](https://conductai.ai) — install AI agents, manage projects, run end-to-end tests, and enforce team AI policies with ConductGuard.
 
+Runs on Linux, macOS, and Windows. Python 3.9–3.12.
+
 ![Conduct CLI demo — whoami, switch workspaces with Guard policy sync, and run an agent](assets/conduct-cli-demo.gif)
 
 ## Install
