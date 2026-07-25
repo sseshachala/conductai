@@ -30,6 +30,7 @@ def _redirect_home(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(guard, "PROXY_ENV_FILE", tmp_path / ".conduct" / "env")
 
 
+@pytestmark_posix
 def test_env_file_written_with_all_three_pairs(tmp_path, monkeypatch):
     _redirect_home(tmp_path, monkeypatch)
     monkeypatch.setenv("SHELL", "/bin/zsh")
@@ -82,6 +83,7 @@ def test_missing_token_returns_empty_path(tmp_path, monkeypatch, capsys):
     assert "no agent token" in capsys.readouterr().out
 
 
+@pytestmark_posix
 def test_override_url_picked_up(tmp_path, monkeypatch):
     _redirect_home(tmp_path, monkeypatch)
     monkeypatch.setenv("SHELL", "/bin/zsh")
@@ -92,6 +94,7 @@ def test_override_url_picked_up(tmp_path, monkeypatch):
     assert 'OPENAI_BASE_URL="https://my-self-hosted.example.com/proxy/openai"' in env
 
 
+@pytestmark_posix
 def test_env_file_strips_trailing_slash(tmp_path, monkeypatch):
     _redirect_home(tmp_path, monkeypatch)
     monkeypatch.setenv("SHELL", "/bin/zsh")
@@ -102,6 +105,7 @@ def test_env_file_strips_trailing_slash(tmp_path, monkeypatch):
     assert 'OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai"' in env
 
 
+@pytestmark_posix
 def test_unknown_shell_skips_rc_write(tmp_path, monkeypatch, capsys):
     _redirect_home(tmp_path, monkeypatch)
     monkeypatch.setenv("SHELL", "/bin/csh")
