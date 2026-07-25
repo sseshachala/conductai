@@ -1254,7 +1254,9 @@ def _report_tools_to_server() -> None:
 
         payload = json.dumps({"email": email, "tools": tools}).encode()
         headers = {"Content-Type": "application/json"}
-        if token:
+        if conduct_agent_token:
+            headers["Authorization"] = f"Bearer {conduct_agent_token}"
+        elif token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
             f"{base_url}/guard/developer-tools",
