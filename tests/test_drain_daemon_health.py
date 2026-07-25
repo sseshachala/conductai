@@ -86,18 +86,17 @@ def test_ensure_kills_stale_and_spawns(tmp_path):
     old = time.time() - base._DAEMON_STALE_SECS - 60
     os.utime(pid_file, (old, old))
 
-    killed = []
-
-    def fake_kill(pid, sig):
-        killed.append((pid, sig))
+    fake_proc = MagicMock()
+    fake_psutil = MagicMock()
+    fake_psutil.pid_exists.return_value = True
+    fake_psutil.Process.return_value = fake_proc
 
     with patch.object(base, "JOURNAL_PID_PATH", pid_file), \
          patch.object(base, "subprocess"), \
-         patch("os.kill", fake_kill):
+         patch.object(base, "_psutil", fake_psutil):
         base.ensure_drain_daemon(hook_module_path=Path("/fake/hook.py"))
 
-    # stale PID (our own process) should have received SIGTERM
-    assert any(sig == 15 for _, sig in killed)
+    fake_proc.terminate.assert_called_once()
 
 
 def test_ensure_no_spawn_without_hook_path(tmp_path):

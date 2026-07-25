@@ -10,6 +10,8 @@ import subprocess
 import sys
 import time
 import urllib.request
+
+import psutil as _psutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Optional
@@ -168,19 +170,18 @@ def _refresh_policy_from_api() -> None:
 
 def drain_daemon_status() -> tuple[str, int | None]:
     """Return (status, pid) where status is 'running'|'stale'|'dead'."""
-    import os as _os
     if not JOURNAL_PID_PATH.exists():
         return "dead", None
     try:
         pid = int(JOURNAL_PID_PATH.read_text().strip())
-        _os.kill(pid, 0)  # raises if process gone
+        # ponytail: psutil (already a dep) is portable — os.kill(pid, 0) hangs on Windows
+        if not _psutil.pid_exists(pid):
+            return "dead", None
         age = time.time() - JOURNAL_PID_PATH.stat().st_mtime
         if age > _DAEMON_STALE_SECS:
             return "stale", pid
         return "running", pid
-    except (ProcessLookupError, PermissionError, ValueError):
-        return "dead", None
-    except Exception:
+    except (ValueError, Exception):
         return "dead", None
 
 
@@ -197,9 +198,8 @@ def ensure_drain_daemon(hook_module_path: Optional[Path] = None) -> None:
             return
         # Kill stale process before spawning replacement — prevents double-drain race
         if status == "stale" and stale_pid is not None:
-            import os as _os
             try:
-                _os.kill(stale_pid, 15)  # SIGTERM
+                _psutil.Process(stale_pid).terminate()
             except Exception:
                 pass
         if hook_module_path is None:
