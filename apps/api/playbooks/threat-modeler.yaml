@@ -221,6 +221,7 @@ blocks:
     action: write
     scope: repo
     key: "{{inputs.target_repo}}:threat_model"
+    summary: "Threat model — {{file_findings.posted}} threats filed for {{inputs.target_repo}}{% if inputs.pr_number %} PR #{{inputs.pr_number}}{% endif %}"
     payload: |
       {
         "pr": {{inputs.pr_number|default:"null"}},
