@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "fix-this-code",
+      title: "Fix this code: three words that changed AI security.",
+      excerpt: "On June 12, the US government shut down two Anthropic models over a three-word prompt. The lesson isn't about the model. It's about who's watching what the AI is allowed to do.",
+      date: "July 25, 2026",
+      tag: "Security",
+      tagColor: "text-red-700 bg-red-50 border-red-200",
+    },
+    {
       slug: "conduct-is-open-today",
       title: "Conduct is open today. Here's the honest version.",
       excerpt: "A quiet launch note from a product-first team. What v1 is, what it isn't, how to onboard in an afternoon, and a standing offer of a 60-day free evaluation.",
