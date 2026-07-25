@@ -1445,8 +1445,9 @@ def cmd_switch(args):
 def cmd_whoami(args):
     cfg = _load_config()
 
-    workspace_id   = cfg.get("workspace", "")
-    server         = cfg.get("server", "—")
+    # cfg key drift: canonical keys are workspace_id / api_url, older configs used workspace / server
+    workspace_id   = cfg.get("workspace_id") or cfg.get("workspace") or ""
+    server         = cfg.get("api_url") or cfg.get("server") or "—"
     api_key        = cfg.get("agent_token", "")
 
     # Try to resolve workspace name from /projects
@@ -1467,7 +1468,7 @@ def cmd_whoami(args):
 
     print(f"\n{BOLD}Workspace:{RESET}  {ws_display}{ws_id_hint}")
     print(f"{BOLD}Server:{RESET}     {server}")
-    print(f"{BOLD}API key:{RESET}    {api_key_display}")
+    print(f"{BOLD}Agent token:{RESET} {api_key_display}")
 
     # Guard section — all under ~/.conduct/
     policy_path = Path.home() / ".conduct" / "policy.json"
