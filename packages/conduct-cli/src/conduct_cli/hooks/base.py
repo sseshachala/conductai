@@ -1,7 +1,7 @@
 """Shared primitives for all ConductGuard hook modules.
 
-Everything here is stdlib-only so hooks work from a bare `pip install conduct-cli`
-with no shell rc sourced.
+Depends only on stdlib + psutil (a hard conduct-cli dep), so hooks work from a
+bare `pip install conduct-cli` with no shell rc sourced.
 """
 from __future__ import annotations
 

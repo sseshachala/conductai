@@ -12,7 +12,7 @@ startCommand:
         description: Conduct AI workspace ID (from Settings → Workspace)
       member_token:
         type: string
-        description: Member API token (from Settings → API Keys)
+        description: Agent token (from Settings → Agents → Issue token)
     required: []
   commandFunction: |-
     (config) => ({

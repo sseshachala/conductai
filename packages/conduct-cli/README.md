@@ -17,7 +17,7 @@ pip install conduct-cli
 # Authenticate (one-time)
 conduct login \
   --server https://api.conductai.ai \
-  --api-key cond_live_xxx \
+  --token cond_agt_xxx \
   --workspace <workspace-id>
 
 # Browse available agents
@@ -53,10 +53,10 @@ conduct test --all
 
 ## Authentication
 
-Generate an API key from **Settings → API Keys** in the Conduct AI dashboard. Keys start with `cond_live_` and are stored as SHA-256 hashes — the plaintext is shown only once.
+Generate an agent token from **Settings → Agents → Issue token** in the Conduct AI dashboard. Tokens start with `cond_agt_` and are stored as SHA-256 hashes — the plaintext is shown only once.
 
 ```bash
-conduct login --server https://api.conductai.ai --api-key cond_live_xxx --workspace <id>
+conduct login --server https://api.conductai.ai --token cond_agt_xxx --workspace <id>
 ```
 
 ## Install all agents
@@ -285,7 +285,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
-Run `conduct login` first — `conduct-mcp` reads credentials from `~/.conduct/config.json`. Get your member token from **Settings → API Keys** in the Conduct AI dashboard.
+Run `conduct login` first — `conduct-mcp` reads credentials from `~/.conduct/config.json`. Get your agent token from **Settings → Agents → Issue token** in the Conduct AI dashboard.
 
 ---
 
