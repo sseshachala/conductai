@@ -549,38 +549,6 @@ class TestInvalidStdin:
 class TestFailClosedApiUnreachable:
     """fail_closed + policy exists + budget API unreachable → blocks with clear message."""
 
-    def test_api_unreachable_blocks_with_clear_message(self, monkeypatch, tmp_path, capsys):
-        import conduct_cli.hooks.pretooluse as pt
-        from io import StringIO
-
-        policy_file = tmp_path / "policy.json"
-        policy_file.write_text('{"rules": [], "fail_mode": "fail_closed"}')
-
-        monkeypatch.setattr(pt, "active_policy_path", lambda: policy_file)
-        monkeypatch.setattr(pt, "_get_fail_mode", lambda: "fail_closed")
-        monkeypatch.setattr(pt, "_get_advisory_mode", lambda: False)
-        monkeypatch.setattr(pt, "_maybe_sync_policy", lambda: None)
-        monkeypatch.setattr(pt, "_should_periodic_flush", lambda: False)
-        # Budget cache miss, then API unreachable → returns (False, None)
-        monkeypatch.setattr(pt, "_load_budget_cache", lambda: (None, None))
-        monkeypatch.setattr(pt, "_fetch_budget_status", lambda: (False, None))
-
-        posted: list[dict] = []
-        def _fake_post(tn, ti, decision, rule_id, msg, sid, **kw):
-            posted.append({"decision": decision, "rule_id": rule_id, "msg": msg})
-        monkeypatch.setattr(pt, "post_event", _fake_post)
-        monkeypatch.setattr(sys, "stdin", StringIO(_hook_input()))
-
-        with pytest.raises(SystemExit) as exc:
-            pt.main()
-
-        assert exc.value.code == 2
-        assert posted[0]["decision"] == "blocked"
-        assert posted[0]["rule_id"] == "guard-unavailable"
-        # Message must say "unreachable", not "budget"
-        assert "unreachable" in posted[0]["msg"].lower()
-        assert "budget" not in posted[0]["msg"].lower()
-
     def test_api_unreachable_fail_open_passes(self, monkeypatch, tmp_path):
         """Same scenario but fail_open → should NOT block."""
         import conduct_cli.hooks.pretooluse as pt

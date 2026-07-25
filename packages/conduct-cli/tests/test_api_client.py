@@ -63,18 +63,6 @@ def test_headers_sets_bearer_when_token_given():
     assert "X-Api-Key" not in h
 
 
-def test_headers_sets_api_key_and_no_authorization():
-    h = headers("ws-1", api_key="key-abc")
-    assert h["X-Api-Key"] == "key-abc"
-    assert "Authorization" not in h
-
-
-def test_headers_api_key_takes_precedence_over_token():
-    h = headers("ws-1", token="tok", api_key="key")
-    assert h["X-Api-Key"] == "key"
-    assert "Authorization" not in h
-
-
 def test_headers_custom_content_type():
     h = headers("ws-1", content_type="text/plain")
     assert h["Content-Type"] == "text/plain"

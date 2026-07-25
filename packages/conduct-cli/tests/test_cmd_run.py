@@ -41,17 +41,6 @@ def test_stream_run_url_with_token(capsys):
     assert result is True
 
 
-def test_stream_run_url_with_api_key(capsys):
-    events = [{"kind": "run_completed", "payload": {}}]
-    with patch("conduct_cli.main.api.stream", return_value=iter(events)) as mock_stream, \
-         patch("conduct_cli.main.api.headers", return_value={}):
-        result = _stream_run("https://srv", "wf-1", "run-1", "ws-1", api_key="apikey-99")
-    url = mock_stream.call_args[0][0]
-    assert "api_key=apikey-99" in url
-    assert "token=" not in url
-    assert result is True
-
-
 # ---------------------------------------------------------------------------
 # _stream_run — block_started
 # ---------------------------------------------------------------------------
@@ -232,7 +221,7 @@ def _make_req_side_effect(workflows, trigger_resp=None, **extras):
 
 
 def test_cmd_run_agent_not_found(capsys):
-    with patch("conduct_cli.main._require_auth", return_value=("https://srv", "ws-1", "key", None)), \
+    with patch("conduct_cli.main._require_auth", return_value=("https://srv", "ws-1", "key")), \
          patch("conduct_cli.main.api.req", side_effect=_make_req_side_effect([])), \
          patch("conduct_cli.main.api.headers", return_value={}):
         with pytest.raises(SystemExit) as exc:
@@ -242,7 +231,7 @@ def test_cmd_run_agent_not_found(capsys):
 
 
 def test_cmd_run_bad_input_format(capsys):
-    with patch("conduct_cli.main._require_auth", return_value=("https://srv", "ws-1", "key", None)), \
+    with patch("conduct_cli.main._require_auth", return_value=("https://srv", "ws-1", "key")), \
          patch("conduct_cli.main.api.req", side_effect=_make_req_side_effect([WF])), \
          patch("conduct_cli.main.api.headers", return_value={}):
         with pytest.raises(SystemExit) as exc:
@@ -253,12 +242,12 @@ def test_cmd_run_bad_input_format(capsys):
 
 
 def test_cmd_run_happy_path():
-    with patch("conduct_cli.main._require_auth", return_value=("https://srv", "ws-1", "key", None)), \
+    with patch("conduct_cli.main._require_auth", return_value=("https://srv", "ws-1", "key")), \
          patch("conduct_cli.main.api.req", side_effect=_make_req_side_effect([WF])), \
          patch("conduct_cli.main.api.headers", return_value={}), \
          patch("conduct_cli.main._stream_run", return_value=True) as mock_stream:
         cmd_run(_args())
-    mock_stream.assert_called_once_with("https://srv", "wf-id", "run-abc", "ws-1", None, "key")
+    mock_stream.assert_called_once_with("https://srv", "wf-id", "run-abc", "ws-1", "key")
 
 
 def test_cmd_run_project_not_found(capsys):
@@ -269,7 +258,7 @@ def test_cmd_run_project_not_found(capsys):
             return [{"id": "p-1", "name": "Proj-A"}]
         return {}
 
-    with patch("conduct_cli.main._require_auth", return_value=("https://srv", "ws-1", "key", None)), \
+    with patch("conduct_cli.main._require_auth", return_value=("https://srv", "ws-1", "key")), \
          patch("conduct_cli.main.api.req", side_effect=_req), \
          patch("conduct_cli.main.api.headers", return_value={}):
         with pytest.raises(SystemExit) as exc:
@@ -280,7 +269,7 @@ def test_cmd_run_project_not_found(capsys):
 
 def test_cmd_run_missing_required_inputs(capsys):
     missing = [{"label": "Issue URL", "key": "issue_url"}]
-    with patch("conduct_cli.main._require_auth", return_value=("https://srv", "ws-1", "key", None)), \
+    with patch("conduct_cli.main._require_auth", return_value=("https://srv", "ws-1", "key")), \
          patch("conduct_cli.main.api.req", side_effect=_make_req_side_effect([WF], validate_inputs={"missing": missing})), \
          patch("conduct_cli.main.api.headers", return_value={}), \
          patch("conduct_cli.main._stream_run", return_value=True):

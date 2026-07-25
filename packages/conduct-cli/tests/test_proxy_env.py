@@ -30,11 +30,11 @@ def test_env_file_written_with_all_three_pairs(tmp_path, monkeypatch):
 
     env = (tmp_path / ".conduct" / "env").read_text()
     assert 'export ANTHROPIC_BASE_URL="https://api.conductai.ai/proxy"' in env
-    assert 'export ANTHROPIC_API_KEY="guard-mt-abc123"' in env
+    assert 'export ANTHROPIC_API_KEY="abc123"' in env
     assert 'export OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai"' in env
-    assert 'export OPENAI_API_KEY="guard-mt-abc123"' in env
+    assert 'export OPENAI_API_KEY="abc123"' in env
     assert 'export PERPLEXITY_BASE_URL="https://api.conductai.ai/proxy/perplexity"' in env
-    assert 'export PERPLEXITY_API_KEY="guard-mt-abc123"' in env
+    assert 'export PERPLEXITY_API_KEY="abc123"' in env
     assert sourced is True
     assert rc.name == ".zshrc"
 
@@ -69,7 +69,7 @@ def test_missing_token_returns_empty_path(tmp_path, monkeypatch, capsys):
     assert rc == Path("")
     assert sourced is False
     assert not (tmp_path / ".conduct" / "env").exists()
-    assert "no member token" in capsys.readouterr().out
+    assert "no agent token" in capsys.readouterr().out
 
 
 def test_override_url_picked_up(tmp_path, monkeypatch):
