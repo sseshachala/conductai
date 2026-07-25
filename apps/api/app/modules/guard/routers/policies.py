@@ -90,6 +90,7 @@ class PolicyOut(BaseModel):
     frameworks: list[str] = []
     severity: str = "medium"
     iso_control: Optional[str] = None
+    tag: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -234,6 +235,7 @@ def _pack_rule_to_out(
         frameworks=rule.get("frameworks") or [],
         severity=rule.get("severity") or "medium",
         iso_control=rule.get("iso_control"),
+        tag=rule.get("tag"),
         created_at=installed_at,
         updated_at=installed_at,
     )
