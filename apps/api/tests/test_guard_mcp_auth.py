@@ -105,12 +105,12 @@ def test_bearer_with_only_whitespace_returns_none_when_no_query():
     assert _extract_token(req, query_token=None) is None
 
 
-def test_non_bearer_auth_scheme_falls_through_to_query():
-    """If a client sends `Authorization: Basic <…>`, we don't treat it as a token.
-    The query string fallback should still apply."""
+def test_non_bearer_auth_scheme_returns_raw_header():
+    """If a client sends `Authorization: Basic <…>` (bare token, no Bearer prefix),
+    the header value is returned directly (Smithery compatibility path)."""
     from app.modules.guard.routers.mcp import _extract_token
     req = _req(authorization="Basic some-basic-auth")
-    assert _extract_token(req, query_token="from-query") == "from-query"
+    assert _extract_token(req, query_token="from-query") == "Basic some-basic-auth"
 
 
 def test_bearer_prefix_extraction_no_extra_whitespace():

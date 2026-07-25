@@ -4,6 +4,7 @@ from app.models.rbac import Role, Permission  # noqa
 from app.models.user import User
 from app.models.workspace_user import WorkspaceUser
 from app.models.project import Project
+from app.models.environment import Environment  # noqa — must be before Workflow to satisfy Workspace.environments relationship
 from app.models.workflow import Workflow, WorkflowVersion
 from app.models.integration import Integration
 from app.models.run import Run, RunEvent
@@ -24,6 +25,7 @@ from app.modules.agent_identity.run_token_model import AgentRunToken  # noqa
 
 __all__ = [
     "Organization", "Workspace", "User", "WorkspaceUser", "Project",
+    "Environment",
     "Workflow", "WorkflowVersion", "Integration", "Run", "RunEvent",
     "RunAnalyticsEvent", "RunTrace", "AuditLog", "EmailTemplate",
     "PlaybookSubmission",
