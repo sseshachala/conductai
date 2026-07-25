@@ -59,6 +59,30 @@ def active_policy_path() -> Path:
     return POLICY_PATH
 
 
+def restrict_to_owner(path: Path) -> None:
+    """chmod 600 equivalent — POSIX uses chmod, Windows uses icacls to remove
+    inheritance and grant sole access to the current user."""
+    try:
+        if sys.platform == "win32":
+            # ponytail: icacls is built-in on windows; pywin32 would be a whole
+            # dep for one SetSecurityInfo call. Upgrade only if this breaks on
+            # non-English locales that rename builtin groups.
+            import os as _os
+            user = _os.environ.get("USERNAME") or _os.environ.get("USER") or ""
+            if not user:
+                return
+            subprocess.run(
+                ["icacls", str(path), "/inheritance:r", "/grant:r", f"{user}:F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            path.chmod(0o600)
+    except Exception:
+        pass
+
+
 # ── Repo / tool detection ─────────────────────────────────────────────────────
 
 def detect_repo() -> Optional[str]:

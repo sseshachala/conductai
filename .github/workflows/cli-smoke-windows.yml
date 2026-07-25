@@ -55,3 +55,73 @@ jobs:
           if ($text -notmatch 'ANTHROPIC_BASE_URL') { throw "ANTHROPIC_BASE_URL missing" }
           if ($text -notmatch 'OPENAI_BASE_URL')    { throw "OPENAI_BASE_URL missing" }
           Write-Host "env.ps1 OK"
+      - name: verify config.json ACL is owner-only
+        shell: pwsh
+        run: |
+          python -c "from conduct_cli.hooks.base import restrict_to_owner; from pathlib import Path; restrict_to_owner(Path.home() / '.conduct' / 'config.json')"
+          $cfg = Join-Path $HOME ".conduct\config.json"
+          $acl = (icacls $cfg) -join "`n"
+          Write-Host $acl
+          if ($acl -notmatch "runneradmin") { throw "ACL does not mention current user (runneradmin)" }
+          if ($acl -match "Everyone|BUILTIN\\Users") { throw "ACL still grants broad access" }
+          Write-Host "ACL OK — restricted to runneradmin"
+
+      - name: verify drain daemon round-trip (mock POST server)
+        shell: pwsh
+        run: |
+          python - <<'PY'
+          import http.server, json, os, socketserver, threading, time
+          from pathlib import Path
+          from conduct_cli.hooks import base
+
+          received = []
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  length = int(self.headers.get("content-length", 0))
+                  received.append(self.rfile.read(length))
+                  self.send_response(200); self.end_headers()
+              def log_message(self, *a, **kw): pass
+
+          srv = socketserver.TCPServer(("127.0.0.1", 0), Handler)
+          port = srv.server_address[1]
+          threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+          # Write a fake journal event pointing at the mock server
+          base.JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
+          base.journal_append('{"kind":"smoke_test"}', f"http://127.0.0.1:{port}/events")
+
+          # Spawn the drain daemon
+          hook_py = Path.home() / ".conduct" / "hook.py"
+          assert hook_py.exists(), f"hook.py missing at {hook_py}"
+          base.ensure_drain_daemon(hook_module_path=hook_py)
+
+          # Wait up to 15s for the round-trip
+          for _ in range(30):
+              if received:
+                  break
+              time.sleep(0.5)
+          srv.shutdown()
+
+          assert received, "drain daemon did not POST within 15s"
+          print(f"OK — mock server received {len(received)} event(s): {received[0][:80]!r}")
+          PY
+
+      - name: verify hook.py runs on windows (fake PreToolUse payload)
+        shell: pwsh
+        run: |
+          $hook = Join-Path $HOME ".conduct\hook.py"
+          if (-not (Test-Path $hook)) { throw "hook.py not written by guard sync" }
+          $payload = @{
+            hook_event_name = "PreToolUse"
+            tool_name       = "Read"
+            tool_input      = @{ file_path = "C:\Windows\System32\drivers\etc\hosts" }
+          } | ConvertTo-Json -Compress
+          $out = $payload | python $hook 2>&1
+          Write-Host "hook stdout:"
+          Write-Host $out
+          # Hook must exit 0 (allow) or 2 (block); anything else is a crash.
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 2) {
+            throw "hook.py crashed with exit code $LASTEXITCODE"
+          }
+          Write-Host "hook.py OK (exit $LASTEXITCODE)"
+
