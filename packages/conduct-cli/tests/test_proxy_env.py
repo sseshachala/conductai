@@ -112,3 +112,57 @@ def test_unknown_shell_skips_rc_write(tmp_path, monkeypatch, capsys):
     # env file IS written even on unknown shell — the user can source manually
     assert (tmp_path / ".conduct" / "env").exists()
     assert "Source manually" in capsys.readouterr().out
+
+
+# ── Windows branch ────────────────────────────────────────────────────────────
+
+def _redirect_home_windows(tmp_path: Path, monkeypatch):
+    """Redirect Path.home() and module-level paths for the Windows branch."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr(guard, "CONDUCT_DIR", tmp_path / ".conduct")
+    monkeypatch.setattr(guard, "PROXY_ENV_FILE", tmp_path / ".conduct" / "env")
+
+
+def test_windows_writes_ps1_env_file(tmp_path, monkeypatch):
+    _redirect_home_windows(tmp_path, monkeypatch)
+
+    guard._write_proxy_env("abc123", "https://api.conductai.ai/proxy")
+
+    ps1 = tmp_path / ".conduct" / "env.ps1"
+    assert ps1.exists()
+    text = ps1.read_text()
+    assert '$env:ANTHROPIC_BASE_URL = "https://api.conductai.ai/proxy"' in text
+    assert '$env:ANTHROPIC_API_KEY  = "abc123"' in text
+    assert '$env:OPENAI_BASE_URL = "https://api.conductai.ai/proxy/openai"' in text
+    assert '$env:OPENAI_API_KEY  = "abc123"' in text
+    assert '$env:PERPLEXITY_BASE_URL = "https://api.conductai.ai/proxy/perplexity"' in text
+    assert '$env:PERPLEXITY_API_KEY  = "abc123"' in text
+
+
+def test_windows_appends_source_line_to_powershell_profile_once(tmp_path, monkeypatch):
+    _redirect_home_windows(tmp_path, monkeypatch)
+
+    guard._write_proxy_env("abc", "https://api.conductai.ai/proxy")
+    guard._write_proxy_env("abc", "https://api.conductai.ai/proxy")
+    guard._write_proxy_env("abc", "https://api.conductai.ai/proxy")
+
+    profile = tmp_path / "Documents" / "PowerShell" / "Microsoft.PowerShell_profile.ps1"
+    assert profile.exists()
+    text = profile.read_text()
+    assert text.count(guard.SHELL_RC_MARKER) == 1
+    assert text.count('. "$HOME/.conduct/env.ps1"') == 1
+
+
+def test_windows_prefers_ps7_profile_when_no_wps5_exists(tmp_path, monkeypatch):
+    _redirect_home_windows(tmp_path, monkeypatch)
+    # no existing profile files at all
+    assert not (tmp_path / "Documents").exists()
+
+    rc, _ = guard._write_proxy_env("abc", "https://api.conductai.ai/proxy")
+
+    ps7 = tmp_path / "Documents" / "PowerShell" / "Microsoft.PowerShell_profile.ps1"
+    wps5 = tmp_path / "Documents" / "WindowsPowerShell" / "Microsoft.PowerShell_profile.ps1"
+    assert rc == ps7
+    assert ps7.exists()
+    assert not wps5.exists()

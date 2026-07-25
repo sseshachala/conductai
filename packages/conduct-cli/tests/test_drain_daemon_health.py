@@ -1,5 +1,7 @@
 """Tests for drain daemon stale-PID detection and ensure_drain_daemon restart logic."""
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -97,6 +99,49 @@ def test_ensure_kills_stale_and_spawns(tmp_path):
         base.ensure_drain_daemon(hook_module_path=Path("/fake/hook.py"))
 
     fake_proc.terminate.assert_called_once()
+
+
+def test_ensure_daemon_uses_creationflags_on_windows(tmp_path):
+    """On Windows, Popen must use creationflags (not start_new_session)."""
+    pid_file = tmp_path / "drain.pid"  # missing → dead
+
+    # POSIX Python won't have these constants; fake them so the branch runs.
+    detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    new_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+
+    with patch.object(base, "JOURNAL_PID_PATH", pid_file), \
+         patch.object(base, "sys") as mock_sys, \
+         patch.object(base, "subprocess") as mock_sub:
+        mock_sys.platform = "win32"
+        mock_sys.executable = sys.executable
+        mock_sub.DEVNULL = subprocess.DEVNULL
+        mock_sub.DETACHED_PROCESS = detached
+        mock_sub.CREATE_NEW_PROCESS_GROUP = new_group
+        base.ensure_drain_daemon(hook_module_path=Path("/fake/hook.py"))
+
+    mock_sub.Popen.assert_called_once()
+    kwargs = mock_sub.Popen.call_args.kwargs
+    assert "creationflags" in kwargs
+    assert kwargs["creationflags"] != 0
+    assert "start_new_session" not in kwargs
+
+
+def test_ensure_daemon_uses_start_new_session_on_posix(tmp_path):
+    """On POSIX, Popen must use start_new_session=True (not creationflags)."""
+    pid_file = tmp_path / "drain.pid"  # missing → dead
+
+    with patch.object(base, "JOURNAL_PID_PATH", pid_file), \
+         patch.object(base, "sys") as mock_sys, \
+         patch.object(base, "subprocess") as mock_sub:
+        mock_sys.platform = "linux"
+        mock_sys.executable = sys.executable
+        mock_sub.DEVNULL = subprocess.DEVNULL
+        base.ensure_drain_daemon(hook_module_path=Path("/fake/hook.py"))
+
+    mock_sub.Popen.assert_called_once()
+    kwargs = mock_sub.Popen.call_args.kwargs
+    assert kwargs.get("start_new_session") is True
+    assert "creationflags" not in kwargs
 
 
 def test_ensure_no_spawn_without_hook_path(tmp_path):
