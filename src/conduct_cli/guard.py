@@ -521,21 +521,7 @@ def _write_mcp_file(
         cfg_path.write_text(json.dumps(cfg, indent=2))
 
 
-_GUARD_RULES_TEXT = (
-    "## ConductGuard — AI Governance Policy\n\n"
-    "A ConductGuard MCP server is connected to this session (server name: `conduct-guard`).\n"
-    "All Guard policies are enforced through it. You MUST follow these rules:\n\n"
-    "Before executing any shell command, file write, network request, API call, or code change:\n"
-    "1. Call the `guard_check` tool from the `conduct-guard` MCP server with the action and parameters.\n"
-    "2. If the response is BLOCKED: stop immediately and explain the policy rule to the user. Do not proceed.\n"
-    "3. If the response is WARNING: proceed but surface the warning message to the user.\n"
-    "4. If the response is ALLOWED: proceed normally.\n\n"
-    "Always-on rules (no guard_check needed, enforce unconditionally):\n"
-    "- Never write credentials, API keys, tokens, or secrets to any file or output.\n"
-    "- Never send PII (emails, names, payment data) to external endpoints.\n\n"
-    "Use `guard_status` (conduct-guard MCP) to show the user their current policy and team info.\n"
-    "Use `guard_activity` at the start of every session with a one-line summary of what you are doing."
-)
+_GUARD_RULES_TEXT = (Path(__file__).parent / "guard_policy.md").read_text().rstrip()
 
 
 def _patch_cursor_global_rules() -> None:
@@ -608,14 +594,16 @@ def _patch_tool_instruction_files(agent_token: str, api_url: str, dry_run: bool 
         (repo_root / ".cursorrules"                        if repo_root else None, Path.home() / ".cursor"  / "rules" / "conduct.md",   ".cursorrules"),
         (repo_root / ".windsurfrules"                      if repo_root else None, Path.home() / ".windsurf"/ "rules" / "conduct.md",   ".windsurfrules"),
     ]
-    pattern = _re.compile(_re.escape(MARKER_START) + r".*?" + _re.escape(MARKER_END), _re.DOTALL)
+    # Tolerate legacy marker variants (e.g. ", do not edit this block") so re-sync
+    # replaces old blocks in place instead of appending a second one.
+    pattern = _re.compile(r"<!-- ConductGuard[^\n]*-->.*?<!-- /ConductGuard -->", _re.DOTALL)
 
     for repo_path, global_path, label in targets:
         path = repo_path if (repo_path and repo_path.exists()) else global_path
         if not path.exists() and repo_path:
             path = repo_path
         existing = path.read_text() if path.exists() else ""
-        if MARKER_START in existing:
+        if pattern.search(existing):
             updated = pattern.sub(guard_block, existing)
             if dry_run:
                 if updated == existing:
