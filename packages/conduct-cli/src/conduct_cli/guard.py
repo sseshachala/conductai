@@ -1254,6 +1254,7 @@ def _report_tools_to_server() -> None:
 
         payload = json.dumps({"email": email, "tools": tools}).encode()
         headers = {"Content-Type": "application/json"}
+        # ponytail: legacy cond_live_* fallback for pre-migration configs; cond_agt_* falls through to elif token below
         if conduct_agent_token and conduct_agent_token.startswith("cond_live_"):
             headers["Authorization"] = f"Bearer {conduct_agent_token}"
         elif token:
@@ -1439,7 +1440,7 @@ def cmd_guard_sync(args):
     _save_policy(policy)
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
 
-    # Refresh member token from server (workspace API key → fresh guard-mt- token).
+    # Refresh agent token from server via refresh_token grant.
     # Never rely on the locally-cached value — it may be stale or missing.
     try:
         installed = _req(
@@ -1732,7 +1733,7 @@ def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
         return _write_proxy_env_windows(agent_token, proxy_url)
 
     CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
-    token = agent_token  # cond_agt_* used directly as the API key value
+    token = agent_token  # cond_agt_* used directly as the bearer value
     proxy = proxy_url.rstrip("/")
 
     PROXY_ENV_FILE.write_text("\n".join([

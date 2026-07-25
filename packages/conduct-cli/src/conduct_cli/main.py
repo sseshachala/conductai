@@ -358,6 +358,7 @@ def _report_tool_coverage() -> None:
 
         payload = json.dumps({"email": email, "tools": tools}).encode()
         headers = {"Content-Type": "application/json"}
+        # ponytail: legacy cond_live_* fallback for pre-migration configs; cond_agt_* falls through to elif token below
         if api_key and api_key.startswith("cond_live_"):
             headers["Authorization"] = f"Bearer {api_key}"
         elif token:
@@ -3196,7 +3197,7 @@ def main():
     sub.add_parser("token", help="Show your agent token (masked by default)")
 
     # conduct whoami
-    sub.add_parser("whoami", help="Show current workspace, server, API key, and Guard/Booster status")
+    sub.add_parser("whoami", help="Show current workspace, server, agent token, and Guard/Booster status")
 
     # conduct guard
     guard_p, _guard_sub = _guard.register_guard_parser(sub)
