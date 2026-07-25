@@ -115,14 +115,15 @@ class TestGetWorkspaceIdRunToken:
         # Stub AgentRunToken before import so the local import inside the function resolves
         art_stub = self._make_art_stub()
         sys.modules["app.modules.agent_identity.run_token_model"] = MagicMock(AgentRunToken=art_stub)
-        from app.core.auth import get_workspace_id
-        return get_workspace_id(
-            credentials=creds,
-            ws_id=explicit_ws,
-            x_workspace_id=None,
-            x_api_key=None,
-            db=db,
-        )
+        from app.core import auth as _auth
+        # ponytail: patch after re-import — evict() above wipes any outer patch on _clerk_enabled
+        with patch.object(_auth, "_clerk_enabled", return_value=True):
+            return _auth.get_workspace_id(
+                credentials=creds,
+                ws_id=explicit_ws,
+                x_workspace_id=None,
+                db=db,
+            )
 
     def _creds(self, token):
         from fastapi.security import HTTPAuthorizationCredentials
@@ -178,7 +179,7 @@ class TestGetWorkspaceIdRunToken:
             from app.core.auth import get_workspace_id
             from fastapi.security import HTTPAuthorizationCredentials
             creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
-            result = get_workspace_id(credentials=creds, ws_id=None, x_workspace_id=None, x_api_key=None, db=db)
+            result = get_workspace_id(credentials=creds, ws_id=None, x_workspace_id=None, db=db)
 
         mock_res.assert_called_once()
         assert result == WS_ID

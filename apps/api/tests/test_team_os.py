@@ -142,7 +142,7 @@ class TestGetInstructionsEmpty:
             r = client.get("/team-os/instructions", headers={"x-workspace-id": WS_ID})
             assert r.status_code == 200, r.text
             data = r.json()
-            assert data["content"] == ""
+            assert data["content"]  # non-empty default instructions
             assert data["version"] == "v1"
             assert data["updated_at"] is None
             assert data["updated_by"] is None

@@ -29,10 +29,10 @@ APPS_API = HERE.parent.parent
 if str(APPS_API) not in sys.path:
     sys.path.insert(0, str(APPS_API))
 
-os.environ["DATABASE_URL"] = "sqlite:///:memory:"
-os.environ["REDIS_URL"] = "redis://localhost:6379"
-os.environ["ANTHROPIC_API_KEY"] = "sk-test"
-os.environ["ENCRYPTION_KEY"] = "test-key-32-bytes-long-xxxxxxxx!"
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test_marshal")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
+os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
+os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
 # ── Stub noisy infrastructure before any app import ─────────────────────────
 
@@ -55,13 +55,16 @@ _cfg_stub.settings = MagicMock(
     log_level="INFO",
 )
 sys.modules["app.core.config"] = _cfg_stub
-sys.modules["app.core.database"] = MagicMock()
+_db_stub = MagicMock()
+sys.modules["app.core.database"] = _db_stub
 
 # Add venv site-packages so SQLAlchemy / cryptography are importable
 _venv_site = APPS_API / ".venv" / "lib"
+_venv_paths_added: list[str] = []
 for _p in _venv_site.glob("python*/site-packages"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
+        _venv_paths_added.append(str(_p))
 
 # Evict any cached module copies so the real source is loaded fresh
 for _mod in list(sys.modules.keys()):
@@ -884,3 +887,66 @@ class TestTokenValid:
             _token_valid("cond_agt_something1234567890abc")
 
         mock_db.close.assert_called_once()
+
+
+# ── Module-level cleanup — restore sys.modules so later test files are not
+# contaminated by the stubs set above. This runs at collection time, after all
+# classes in this file are defined but before other test files are collected.
+# Tests in THIS file use _restore_stubs_fixture (autouse) to re-add stubs at
+# test execution time. ─────────────────────────────────────────────────────────
+
+# Only evict the app modules that were stub-imported during setup, not all app.*
+# (evicting all app.* causes mapper-configuration failures when they're re-imported
+# in a partial order that doesn't include all referenced models).
+# Evict config, database, and ALL app.models/app.modules modules so subsequent
+# test files re-import them with a clean (real) database.Base. We must evict
+# models together with the database module to avoid mapper-registry mismatches.
+_EVICT_PREFIXES = (
+    "app.core.config",
+    "app.core.database",
+    "app.core.auth",
+    "app.core.crypto",
+    "app.models",
+    "app.modules",
+    "app.runtime",
+    "app.routers",
+)
+for _mod in list(sys.modules.keys()):
+    if _mod.startswith(_EVICT_PREFIXES):
+        del sys.modules[_mod]
+
+# Remove the venv paths we added so subsequent tests resolve from normal paths.
+for _venv_p in _venv_paths_added:
+    try:
+        sys.path.remove(_venv_p)
+    except ValueError:
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _restore_stubs_fixture():
+    """Re-inject config/db stubs before each test in this file and evict auth
+    so it re-imports fresh with the stub settings. On teardown, restore the
+    previous values so subsequent test files start clean."""
+    _prev_config = sys.modules.get("app.core.config")
+    _prev_db = sys.modules.get("app.core.database")
+
+    sys.modules["app.core.config"] = _cfg_stub
+    sys.modules["app.core.database"] = _db_stub
+    for _m in list(sys.modules.keys()):
+        if _m.startswith("app.core.auth") or _m.startswith("app.core.crypto"):
+            del sys.modules[_m]
+    yield
+    # Restore original config/db or evict if there was none before.
+    if _prev_config is not None:
+        sys.modules["app.core.config"] = _prev_config
+    else:
+        sys.modules.pop("app.core.config", None)
+    if _prev_db is not None:
+        sys.modules["app.core.database"] = _prev_db
+    else:
+        sys.modules.pop("app.core.database", None)
+    # Evict auth/crypto so next test re-imports fresh.
+    for _m in list(sys.modules.keys()):
+        if _m.startswith("app.core.auth") or _m.startswith("app.core.crypto"):
+            del sys.modules[_m]
