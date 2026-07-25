@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "rules": [
@@ -527,6 +527,28 @@
       "action": "block",
       "message": "GitHub PAT detected in code. Load from environment or secrets manager.",
       "severity": "critical",
+      "tag": "security_policy"
+    },
+    {
+      "id": "proxy-fix-this-code-intent",
+      "persona": "proxy",
+      "non_overridable": false,
+      "description": "Flag prompts using the 'fix this code' framing \u2014 dual-use vector for finding vulnerabilities via patch generation",
+      "match_prompt": "\\b(fix|patch|repair|clean\\s*up|refactor)\\s+(this|the|my|our)?\\s*(code|snippet|function|file|repo(sitory)?|patch)\\b",
+      "action": "warn",
+      "message": "'Fix this code' prompts require the model to find vulnerabilities in order to patch them \u2014 the same capability an attacker uses. Consider explicit intent: 'audit this function for OWASP Top 10 issues.'",
+      "severity": "medium",
+      "tag": "security_policy"
+    },
+    {
+      "id": "proxy-restricted-model-mythos-fable",
+      "persona": "proxy",
+      "non_overridable": false,
+      "description": "Flag calls to Mythos/Fable-class models \u2014 high capability, cybersecurity-restricted per US export controls (2026-06-12)",
+      "match_model": "^(claude-)?(fable|mythos)(-\\d+)?",
+      "action": "warn",
+      "message": "Mythos/Fable-class model in use. Released with restricted cybersecurity capabilities and export-controlled per US directive (2026-06-12). Ensure usage is in scope of your Anthropic partnership and workspace policy.",
+      "severity": "high",
       "tag": "security_policy"
     }
   ]
