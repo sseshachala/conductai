@@ -632,12 +632,16 @@ async def mcp_endpoint(
         if method == "initialize":
             client_info = params.get("clientInfo") or {}
             surface = _detect_surface(client_info)
+            # Echo the client's requested protocolVersion so strict clients (Copilot
+            # rmcp) don't treat the connection as a version mismatch and skip
+            # tools/list. Fall back to our default when the client omits it.
+            negotiated_version = params.get("protocolVersion") or PROTOCOL_VERSION
             # Streamable HTTP: clients (Copilot rmcp, etc) expect Mcp-Session-Id.
             # We're stateless, so any stable-per-response uuid satisfies the contract.
             session_hdr = str(uuid.uuid4())
             return JSONResponse(
                 _ok(msg_id, {
-                    "protocolVersion": PROTOCOL_VERSION,
+                    "protocolVersion": negotiated_version,
                     "capabilities":    {"tools": {}},
                     "serverInfo":      {"name": "conductguard", "version": "1.0.0"},
                     "_surface":        surface,
