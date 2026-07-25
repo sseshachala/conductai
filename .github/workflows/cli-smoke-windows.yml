@@ -67,43 +67,7 @@ jobs:
           Write-Host "ACL OK — restricted to runneradmin"
 
       - name: verify drain daemon round-trip (mock POST server)
-        shell: pwsh
-        run: |
-          $script = @'
-          import http.server, socketserver, threading, time
-          from pathlib import Path
-          from conduct_cli.hooks import base
-
-          received = []
-          class Handler(http.server.BaseHTTPRequestHandler):
-              def do_POST(self):
-                  length = int(self.headers.get("content-length", 0))
-                  received.append(self.rfile.read(length))
-                  self.send_response(200); self.end_headers()
-              def log_message(self, *a, **kw): pass
-
-          srv = socketserver.TCPServer(("127.0.0.1", 0), Handler)
-          port = srv.server_address[1]
-          threading.Thread(target=srv.serve_forever, daemon=True).start()
-
-          base.JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
-          base.journal_append('{"kind":"smoke_test"}', f"http://127.0.0.1:{port}/events")
-
-          hook_py = Path.home() / ".conduct" / "hook.py"
-          assert hook_py.exists(), f"hook.py missing at {hook_py}"
-          base.ensure_drain_daemon(hook_module_path=hook_py)
-
-          for _ in range(30):
-              if received:
-                  break
-              time.sleep(0.5)
-          srv.shutdown()
-
-          assert received, "drain daemon did not POST within 15s"
-          print(f"OK - mock server received {len(received)} event(s)")
-'@
-          Set-Content -Path "$env:RUNNER_TEMP\drain_check.py" -Value $script
-          python "$env:RUNNER_TEMP\drain_check.py"
+        run: python .github/scripts/windows_drain_roundtrip.py
 
       - name: verify hook.py runs on windows (fake PreToolUse payload)
         shell: pwsh
