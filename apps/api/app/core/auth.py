@@ -665,8 +665,13 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
 
     Accepts: cond_agt_*, cond_api_*, guard-mt-* (legacy member tokens).
     Used by proxy, MCP, WebSocket, and any other auth surface.
+
+    Fail-secure: expired tokens return None. Callers that need to distinguish
+    "expired" from "unknown" (e.g. proxy UX copy) can call token_is_expired()
+    on the same token to disambiguate before rendering the error message.
     """
     from sqlalchemy import text as _text
+    from datetime import datetime, timezone as _tz
 
     if token.startswith((_AGENT_PREFIX, _API_PREFIX)):
         from app.core.crypto import decrypt as _decrypt
@@ -679,6 +684,12 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
                     continue
             except Exception:
                 continue
+
+            # Reject expired session tokens (cond_agt_ has 8h TTL). API tokens
+            # (cond_api_) leave expires_at=NULL by design, so this only bites
+            # session tokens.
+            if ai_row.expires_at and ai_row.expires_at < datetime.now(_tz.utc):
+                return None
 
             # Try guard_member_config link first (session tokens always have this)
             member = db.execute(
@@ -715,3 +726,27 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
         {"tok": bare},
     ).fetchone()
     return (row[0], row[1]) if row else None
+
+
+def token_is_expired(token: str, db: Session) -> bool:
+    """True iff token matches a real AgentIdentity row whose expires_at has passed.
+
+    Used by proxy 401 handler to render "session expired — run conduct login"
+    instead of the generic "not recognized" message. Cheap: one indexed lookup
+    on token_prefix, decrypt only the prefix-collision matches.
+    """
+    if not token.startswith((_AGENT_PREFIX, _API_PREFIX)):
+        return False
+    from datetime import datetime, timezone as _tz
+    from app.core.crypto import decrypt as _decrypt
+    from app.modules.agent_identity.models import AgentIdentity
+
+    prefix = token[:_PREFIX_LOOKUP_LEN]
+    for ai_row in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == prefix).all():
+        try:
+            if _decrypt(ai_row.token_encrypted).get("token") != token:
+                continue
+        except Exception:
+            continue
+        return bool(ai_row.expires_at and ai_row.expires_at < datetime.now(_tz.utc))
+    return False
