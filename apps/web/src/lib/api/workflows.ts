@@ -14,7 +14,7 @@ export const workflows = {
     post(f, base(), body),
 
   update: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
-    post(f, `${base()}/${id}`, body),
+    put(f, `${base()}/${id}`, body),
 
   remove: (f: AuthFetch, id: string) => del(f, `${base()}/${id}`),
 
