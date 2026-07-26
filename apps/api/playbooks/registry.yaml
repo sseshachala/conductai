@@ -226,6 +226,15 @@ playbooks:
     bundled_with: security-loop-module
     description: "Security finding → reads affected file → writes targeted patch → opens PR → notifies Slack. Triggered from the Security Loop activity page."
 
+  threat_modeler:
+    file: threat-modeler.yaml
+    icon: "🛡️"
+    category: Security
+    tags: [security, threat-model, stride, github]
+    featured: true
+    description: "PR opens → STRIDE threat model auto-drafted → each threat filed as a security finding → same MTTR clock as scanner output. Compliance evidence for SOC 2 CC7.3, PCI 12.3.1, ISO 27001 A.14.2.1."
+    github_events: [pull_request]
+
   bughunter_active_scan:
     file: bughunter-active-scan.yaml
     icon: "🔍"
