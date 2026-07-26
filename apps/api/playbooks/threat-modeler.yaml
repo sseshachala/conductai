@@ -149,7 +149,8 @@ blocks:
   # ── 4. File each threat as a security_finding ───────────────────────────────
   file_findings:
     type: brain
-    mode: single
+    mode: agentic
+    max_turns: 8
     model: "{{ inputs.model }}"
     next: comment_pr
     description: |
@@ -158,10 +159,11 @@ blocks:
       metrics, chains into security-autopilot-fix on severity >= high.
 
       Environment:
-        CONDUCT_RUN_TOKEN — Bearer for this run
-        CONDUCT_API_URL   — Conduct API base URL
-        CONDUCT_RUN_ID    — Source run ID
+        CONDUCT_RUN_TOKEN — Bearer for this run (auto-injected by executor)
+        CONDUCT_API_URL   — Conduct API base URL (auto-injected)
+        CONDUCT_RUN_ID    — Source run ID (auto-injected)
 
+      Agentic — use run_shell to POST each finding via curl.
       If CONDUCT_RUN_TOKEN or CONDUCT_API_URL is empty, output {"posted": 0} and stop.
     prompt: |
       Threats to file (from draft_stride, JSON array on the last line):
@@ -193,7 +195,8 @@ blocks:
   # ── 5. Comment the human-readable threat model on the PR ────────────────────
   comment_pr:
     type: brain
-    mode: single
+    mode: agentic
+    max_turns: 5
     model: "{{ inputs.model }}"
     next: record
     credentials:
