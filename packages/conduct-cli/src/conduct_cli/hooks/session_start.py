@@ -20,10 +20,12 @@ MAX_AGE_HOURS = 2
 
 
 def _check_proxy_token() -> None:
-    """Warn + alert server if the proxy token is missing or malformed.
+    """Warn + alert server if the proxy token is missing, malformed, or expired.
 
     Reads ~/.conduct/env directly (not shell env) so this works regardless
-    of whether the user sourced their rc file in this session.
+    of whether the user sourced their rc file in this session. Also cross-checks
+    token_expires_at from ~/.conduct/config.json so the hint says `conduct login`
+    (verb that actually refreshes) when the session token has aged out.
     """
     if not CONDUCT_ENV_PATH.exists():
         return
@@ -35,22 +37,42 @@ def _check_proxy_token() -> None:
     )
     if not has_base_url:
         return
-    if has_valid_token:
-        return
 
-    print("## ConductGuard: proxy token missing or malformed")
-    print("Run `conduct guard sync` to refresh your token before making LLM calls.\n")
-
+    # Expired-session check: token present in env but config TTL already past.
+    expired = False
     try:
         cfg = load_config()
-        workspace_id  = cfg.get("workspace_id", "")
-        clerk_user_id = cfg.get("clerk_user_id", "") or cfg.get("user_email", "")
+        exp = cfg.get("token_expires_at", "")
+        if exp:
+            expired = datetime.fromisoformat(exp) < datetime.now(timezone.utc)
+    except Exception:
+        cfg = {}
+
+    if has_valid_token and not expired:
+        return
+
+    if expired:
+        print("## ConductGuard: session token expired")
+        print("Run `conduct login` to start a new session before making LLM calls.\n")
+        note = "token_expires_at in the past"
+        rule = "proxy_token_expired"
+        msg  = "Developer proxy session token expired — run conduct login"
+    else:
+        print("## ConductGuard: proxy token missing or malformed")
+        print("Run `conduct login` to refresh your token before making LLM calls.\n")
+        note = "proxy token not found in ~/.conduct/env"
+        rule = "proxy_token_missing"
+        msg  = "Developer proxy token missing or malformed — run conduct login"
+
+    try:
+        workspace_id  = (cfg or {}).get("workspace_id", "")
+        clerk_user_id = (cfg or {}).get("clerk_user_id", "") or (cfg or {}).get("user_email", "")
         post_event(
             "session_start",
-            {"note": "proxy token not found in ~/.conduct/env"},
+            {"note": note},
             "warned",
-            "proxy_token_missing",
-            "Developer proxy token missing or malformed — run conduct guard sync",
+            rule,
+            msg,
             session_id=None,
         )
     except Exception:
