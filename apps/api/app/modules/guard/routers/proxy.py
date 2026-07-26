@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 
 import re
 
-from app.core.auth import get_workspace_id, require_permission, resolve_agent_token
+from app.core.auth import get_workspace_id, require_permission, resolve_agent_token, token_is_expired
 from app.core.pii import redact_pii, redact_secrets
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
@@ -97,13 +97,15 @@ async def ingest_local_audit(request: Request, body: _LocalAuditIn):
     if raw.lower().startswith("bearer "):
         raw = raw[7:].strip()
     if not raw:
-        return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
+        return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct login`")
 
     db = SessionLocal()
     try:
         ident = resolve_agent_token(raw, db)
         if not ident:
-            return _fail_closed(401, "Conduct member token not recognized — run `conduct guard sync` to refresh")
+            if token_is_expired(raw, db):
+                return _fail_closed(401, "Conduct session expired — run `conduct login`")
+            return _fail_closed(401, "Conduct member token not recognized — run `conduct login`")
         workspace_id, clerk_user_id = ident
         set_workspace_rls(db, workspace_id)
 
@@ -234,7 +236,7 @@ async def _proxy(
     _agent_identity_id: str | None = None
 
     if not token and not _is_internal and not _needs_agent_validation and not _needs_run_token_validation:
-        return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct guard sync` to refresh")
+        return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct login`")
 
     # 2. Resolve workspace + user
     db = SessionLocal()
@@ -296,7 +298,9 @@ async def _proxy(
         else:
             ident = resolve_agent_token(token, db)
             if not ident:
-                return _fail_closed(401, "Conduct member token not recognized — run `conduct guard sync` to refresh")
+                if token_is_expired(token, db):
+                    return _fail_closed(401, "Conduct session expired — run `conduct login`")
+                return _fail_closed(401, "Conduct member token not recognized — run `conduct login`")
             workspace_id, clerk_user_id = ident
             set_workspace_rls(db, workspace_id)
 

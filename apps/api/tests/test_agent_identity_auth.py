@@ -122,8 +122,13 @@ class _AgentIdentityModelStub:
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _make_ai_row(token: str, workspace_id: str | None = None, created_by: str | None = None, token_name: str | None = None):
-    """Return a minimal AgentIdentity-like object."""
+def _make_ai_row(token: str, workspace_id: str | None = None, created_by: str | None = None, token_name: str | None = None, expires_at=None):
+    """Return a minimal AgentIdentity-like object.
+
+    expires_at defaults to None so resolve_agent_token treats the row as
+    non-expiring (matches cond_api_ behaviour). Pass a past datetime to
+    simulate an expired session token.
+    """
     row = MagicMock()
     row.id = str(uuid.uuid4())
     row.token_prefix = token[:_AGT_PREFIX_LEN]
@@ -131,6 +136,7 @@ def _make_ai_row(token: str, workspace_id: str | None = None, created_by: str | 
     row.created_by_clerk_user_id = created_by
     row.token_name = token_name
     row.name = token_name or "test-token"
+    row.expires_at = expires_at
     return row
 
 
@@ -218,6 +224,25 @@ class TestResolveAgentTokenCondAgt:
             result = resolve_agent_token(token, db)
 
         assert result is None
+
+    def test_expired_session_token_row_present_returns_none(self):
+        """Row exists, decrypt matches, but expires_at is past → treat as invalid."""
+        from datetime import datetime, timedelta, timezone
+        from app.core.auth import resolve_agent_token, token_is_expired
+
+        token = _agt_token()
+        past = datetime.now(timezone.utc) - timedelta(minutes=1)
+        ai = _make_ai_row(token, expires_at=past)
+        db = _db_with_ai(ai, member_row=(str(_WS_UUID), _USER_ID))
+
+        with (
+            patch(_AI_PATCH, _AgentIdentityStub),
+            patch("app.core.crypto.decrypt", return_value={"token": token}),
+        ):
+            assert resolve_agent_token(token, db) is None
+            # Same underlying row → helper reports expired so proxy can render
+            # `conduct login` instead of the generic not-recognized message.
+            assert token_is_expired(token, db) is True
 
     def test_decrypt_mismatch_returns_none(self):
         """decrypt returns a different token value → skip row → None."""
