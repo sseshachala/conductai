@@ -395,13 +395,23 @@ def _execute_brain(
 
     # Run-scoped env vars (CONDUCT_RUN_TOKEN, CONDUCT_RUN_ID, CONDUCT_API_URL)
     # need to reach run_shell subprocess so agentic blocks can call the Conduct API.
-    _run_env_vars = _session_creds.get("env_vars") or {}
-    for _k, _v in _run_env_vars.items():
-        if _v and isinstance(_v, str) and _k.startswith("CONDUCT_"):
-            placeholder = f"__CREDENTIAL_{_k}__"
-            cred_env[_k] = placeholder
-            _cred_real[placeholder] = _v
-            cred_names.append(_k)
+    # Source is RunContext state keys (written by executor via apply_to_state), NOT
+    # the credential broker — env_vars mutations on the local credentials object
+    # never round-trip through the broker's HTTP fetch.
+    _run_token_from_state = state.get("__conduct_run_token__", "")
+    _api_url_from_state   = state.get("__cred_api_url__", "")
+    _conduct_env: dict[str, str] = {}
+    if _run_token_from_state:
+        _conduct_env["CONDUCT_RUN_TOKEN"] = _run_token_from_state
+    if run_id:
+        _conduct_env["CONDUCT_RUN_ID"] = str(run_id)
+    if _api_url_from_state:
+        _conduct_env["CONDUCT_API_URL"] = _api_url_from_state
+    for _k, _v in _conduct_env.items():
+        placeholder = f"__CREDENTIAL_{_k}__"
+        cred_env[_k] = placeholder
+        _cred_real[placeholder] = _v
+        cred_names.append(_k)
 
     cred_section = (
         "\n\nCredentials are pre-exported into every run_shell call — use them directly without any setup:\n"
