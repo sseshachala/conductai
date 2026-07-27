@@ -175,24 +175,36 @@ blocks:
       Repo: {{inputs.target_repo}}
       {% if inputs.pr_number %}PR: #{{inputs.pr_number}}{% endif %}
 
-      For each threat, POST to the Conduct API:
+      ALLOWED VALUES (any other value = 422 rejection):
+        severity: critical | high | medium | low | info
+        type:     injection | path-traversal | secret-leak | auth-bypass | crypto | guard_violation | other
+
+      STRIDE → type mapping (use these, not raw STRIDE names):
+        Spoofing               → auth-bypass
+        Tampering              → injection
+        Repudiation            → other
+        Information Disclosure → secret-leak
+        Denial of Service      → guard_violation
+        Elevation of Privilege → auth-bypass
+
+      ALLOWED payload keys (any other key = 422): tool, severity, type, description, file, line,
+      suggested_fix, repo_full_name, commit_sha, source_run_id.
+
+      For each threat, POST exactly this shape (no extra keys, no title, no cwe, no mitigations):
         curl -s -X POST "${CONDUCT_API_URL}/security-findings" \
           -H "Authorization: Bearer ${CONDUCT_RUN_TOKEN}" \
           -H "Content-Type: application/json" \
           -d '{
             "tool": "threat_modeler",
-            "kind": "threat_model",
             "severity": "SEVERITY",
-            "type": "STRIDE_CATEGORY",
+            "type": "MAPPED_TYPE",
             "description": "TITLE — EVIDENCE — Mitigation: MITIGATION",
             "file": "FILE_FROM_EVIDENCE",
             "repo_full_name": "{{inputs.target_repo}}",
             "source_run_id": "'"${CONDUCT_RUN_ID}"'"
           }'
 
-      Replace SEVERITY, STRIDE_CATEGORY, TITLE, EVIDENCE, MITIGATION, FILE per row.
       Count successful posts (HTTP 201 responses).
-
       Output ONLY on the last line: {"posted": <count>}
 
   # ── 5. Comment the human-readable threat model on the PR ────────────────────
