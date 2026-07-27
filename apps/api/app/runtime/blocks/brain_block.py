@@ -392,6 +392,16 @@ def _execute_brain(
                     cred_env[env_name] = placeholder
                     _cred_real[placeholder] = val
                     cred_names.append(env_name)
+
+    # Run-scoped env vars (CONDUCT_RUN_TOKEN, CONDUCT_RUN_ID, CONDUCT_API_URL)
+    # need to reach run_shell subprocess so agentic blocks can call the Conduct API.
+    for _k, _v in _env_vars.items():
+        if _v and isinstance(_v, str) and _k.startswith("CONDUCT_"):
+            placeholder = f"__CREDENTIAL_{_k}__"
+            cred_env[_k] = placeholder
+            _cred_real[placeholder] = _v
+            cred_names.append(_k)
+
     cred_section = (
         "\n\nCredentials are pre-exported into every run_shell call — use them directly without any setup:\n"
         + "\n".join(f"  ${n}" for n in cred_names)
