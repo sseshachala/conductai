@@ -211,7 +211,7 @@ blocks:
   comment_pr:
     type: brain
     mode: agentic
-    max_turns: 3
+    max_turns: 5
     model: "{{ inputs.model }}"
     next: record
     credentials:
@@ -224,6 +224,8 @@ blocks:
       GitHub read endpoints (no /pulls/N, no /files, no /commits). Everything
       you need is already in draft_stride.output. Do NOT re-analyse the diff.
       Do NOT ask GitHub for context. Write body to /tmp then POST.
+      Use exactly ONE POST method (python3 urllib). Do NOT also try curl as
+      a fallback. If the first POST succeeds (HTTP 201), you are done.
     prompt: |
       Repo: {{inputs.target_repo}}
       PR number: {{inputs.pr_number}}
