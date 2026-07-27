@@ -395,7 +395,8 @@ def _execute_brain(
 
     # Run-scoped env vars (CONDUCT_RUN_TOKEN, CONDUCT_RUN_ID, CONDUCT_API_URL)
     # need to reach run_shell subprocess so agentic blocks can call the Conduct API.
-    for _k, _v in _env_vars.items():
+    _run_env_vars = _session_creds.get("env_vars") or {}
+    for _k, _v in _run_env_vars.items():
         if _v and isinstance(_v, str) and _k.startswith("CONDUCT_"):
             placeholder = f"__CREDENTIAL_{_k}__"
             cred_env[_k] = placeholder
