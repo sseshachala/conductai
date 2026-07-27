@@ -159,6 +159,7 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
 
     run = Run(
         workflow_version_id=workflow.current_version_id,
+        workspace_id=workflow.workspace_id,
         triggered_by="security_finding",
         status="pending",
         state=initial_state,
