@@ -13,6 +13,15 @@ def _unwrap_exc(exc: BaseException) -> BaseException:
     excs = getattr(exc, "exceptions", None)
     if excs:
         return _unwrap_exc(excs[0])
+    # SSEError from httpx_sse when the URL returns HTML instead of an event stream —
+    # usually means the configured server_url is not an MCP SSE endpoint.
+    if type(exc).__name__ == "SSEError" and "text/event-stream" in str(exc):
+        return RuntimeError(
+            "This MCP server URL does not expose an SSE endpoint "
+            "(response Content-Type was not text/event-stream). "
+            "Check the URL in your integration — it likely needs a specific path "
+            "(e.g. /sse or /v1/messages/sse) rather than the base host."
+        )
     return exc
 
 
