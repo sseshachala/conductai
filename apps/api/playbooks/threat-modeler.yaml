@@ -199,7 +199,7 @@ blocks:
   comment_pr:
     type: brain
     mode: agentic
-    max_turns: 5
+    max_turns: 3
     model: "{{ inputs.model }}"
     next: record
     credentials:
@@ -207,18 +207,37 @@ blocks:
     description: |
       Post the markdown threat model as a PR comment so reviewers see it
       inline without needing to open Guard.
+
+      Do EXACTLY ONE action: POST to /issues/{PR}/comments. Do NOT call any
+      GitHub read endpoints (no /pulls/N, no /files, no /commits). Everything
+      you need is already in draft_stride.output. Do NOT re-analyse the diff.
+      Do NOT ask GitHub for context. Write body to /tmp then POST.
     prompt: |
       Repo: {{inputs.target_repo}}
-      {% if inputs.pr_number %}PR: #{{inputs.pr_number}}{% endif %}
+      PR number: {{inputs.pr_number}}
+      Findings filed: {{file_findings.posted}}
 
-      Use the GitHub API to post a comment on PR #{{inputs.pr_number}} in
-      {{inputs.target_repo}}. Body: everything from draft_stride.output
-      EXCEPT the trailing JSON line. Prepend a short header:
+      Threat model markdown (use verbatim, everything BEFORE the trailing JSON array line):
+      ---
+      {{draft_stride.output}}
+      ---
 
-        > Threat model auto-drafted by Conduct. {{file_findings.posted}} threats
-        > filed to Guard. View in /secure/findings.
+      Steps (do ONLY these — one turn each):
+      1. Write the body to /tmp/pr_comment.md. Body = the markdown above (strip only
+         the last line if it starts with '['), prepended with:
+           > Threat model auto-drafted by Conduct. {{file_findings.posted}} threats filed to Guard.
 
-      Output ONLY on the last line: {"commented": true|false}
+      2. POST to GitHub:
+           curl -s -X POST \
+             -H "Authorization: token $GIT_TOKEN" \
+             -H "Accept: application/vnd.github.v3+json" \
+             -H "Content-Type: application/json" \
+             -d "$(python3 -c 'import json,sys; print(json.dumps({"body": open("/tmp/pr_comment.md").read()}))')" \
+             "https://api.github.com/repos/{{inputs.target_repo}}/issues/{{inputs.pr_number}}/comments"
+
+      3. If HTTP 201: output {"commented": true}. Otherwise: {"commented": false, "error": "<code>"}.
+
+      Output ONLY on the last line the JSON. No prose.
 
   # ── 6. Record outcome for next PR's recall ──────────────────────────────────
   record:
