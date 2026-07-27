@@ -165,6 +165,9 @@ blocks:
 
       Agentic — use run_shell to POST each finding via curl.
       If CONDUCT_RUN_TOKEN or CONDUCT_API_URL is empty, output {"posted": 0} and stop.
+      If the first POST returns any 4xx or 5xx response, output {"posted": 0, "error": "<status> <body>"}
+      on the last line and STOP. Do NOT probe other endpoints, do NOT try alternate auth headers,
+      do NOT list openapi paths. Fail loud, do not debug.
     prompt: |
       Threats to file (from draft_stride, JSON array on the last line):
       {{draft_stride.output}}
