@@ -200,13 +200,32 @@ _RETRYABLE_STATUSES = {408, 429, 500, 502, 503, 504, 529}
 
 
 def _sanitize_body_snippet(body: str, limit: int = 2000) -> str:
-    """Return bounded plain text suitable for logs and customer-visible events."""
+    """Return bounded plain text suitable for logs and customer-visible events.
+
+    Order matters: fully decode HTML entities BEFORE stripping tags so
+    entity-encoded payloads (`&lt;script&gt;`, `&amp;lt;script&amp;gt;`)
+    can't smuggle real tags past the stripper into an event body that a
+    dashboard might render live.
+
+    Loops the decode step until stable (with a small ceiling) to handle
+    multi-encoded payloads without runaway.
+    """
     import html as _html
     import re as _re
 
-    text = _re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1>", " ", body or "")
+    text = body or ""
+    # 1. Decode entities repeatedly until stable, capped at 5 rounds so a
+    #    pathological input cannot spin.
+    for _ in range(5):
+        decoded = _html.unescape(text)
+        if decoded == text:
+            break
+        text = decoded
+    # 2. Strip script/style bodies (may contain executable content).
+    text = _re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1>", " ", text)
+    # 3. Strip remaining tags.
     text = _re.sub(r"(?s)<[^>]+>", " ", text)
-    text = _html.unescape(text)
+    # 4. Drop non-printable characters, collapse whitespace, bound length.
     text = "".join(ch if ch.isprintable() else " " for ch in text)
     return _re.sub(r"\s+", " ", text).strip()[:limit]
 

@@ -15,6 +15,7 @@ from app.runtime.llm_client import (
     GuardProxyBlocked,
     LLMUpstreamError,
     _extract_upstream_ids,
+    _sanitize_body_snippet,
     _should_retry,
     make_retry_info,
     post_with_retry,
@@ -508,3 +509,115 @@ def test_outer_attempt_caps_internal_retries():
             )
     # With max_attempts=1 (outer_attempt > 1 in adapter maps to this), single call
     assert len(calls) == 1
+
+
+# ── Sanitizer: entity-encoded HTML is neutralized (was XSS bypass) ────────────
+
+def test_sanitizer_neutralizes_single_encoded_html():
+    """`&lt;script&gt;` must not slip through as a live tag."""
+    out = _sanitize_body_snippet("&lt;script&gt;alert(1)&lt;/script&gt; safe")
+    assert "<script>" not in out
+    assert "alert(1)" not in out
+    assert "safe" in out
+
+
+def test_sanitizer_neutralizes_double_encoded_html():
+    """Common pattern: HTML-escaped error page that itself contains encoded tags."""
+    out = _sanitize_body_snippet("&amp;lt;script&amp;gt;alert(2)&amp;lt;/script&amp;gt; safe2")
+    assert "<script>" not in out
+    assert "alert(2)" not in out
+    assert "safe2" in out
+
+
+def test_sanitizer_neutralizes_triple_encoded_html():
+    """Pathological but possible: triple-encoded input still fully decoded before stripping."""
+    out = _sanitize_body_snippet("&amp;amp;lt;script&amp;amp;gt;alert(3)&amp;amp;lt;/script&amp;amp;gt; safe3")
+    assert "<script>" not in out
+    assert "alert(3)" not in out
+
+
+def test_sanitizer_strips_script_and_style_bodies():
+    out = _sanitize_body_snippet("<script>alert(4)</script><style>body{}</style> safe4")
+    assert "<script>" not in out
+    assert "<style>" not in out
+    assert "alert(4)" not in out
+    assert "safe4" in out
+
+
+def test_sanitizer_preserves_normal_entities():
+    """Plain ampersand should decode cleanly — sanitizer isn't over-eager."""
+    out = _sanitize_body_snippet("normal &amp; text")
+    assert "&" in out
+    assert "normal" in out
+    assert "text" in out
+
+
+# ── Events include content_type + is_final + block_attempt ────────────────────
+
+def test_brain_agentic_event_includes_content_type_and_is_final():
+    """llm_upstream_blocked event carries content_type (was missing) + is_final marker."""
+    err = LLMUpstreamError(
+        provider="anthropic", status=403, content_type="text/html; charset=utf-8",
+        body_snippet="Blocked", cf_ray="ray-a", request_id="req-a", attempts=3,
+    )
+    raised, events = _capture_events_and_run_brain(
+        {"label": "t", "isAgentic": True, "description": "sys", "prompt": "do", "max_turns": 3},
+        mock_side_effect=err,
+    )
+    blocked = [e for e in events if e["kind"] == "llm_upstream_blocked"]
+    assert len(blocked) == 1
+    p = blocked[0]["payload"]
+    assert p["content_type"] == "text/html; charset=utf-8"
+    assert p["is_final"] is True
+    assert p["block_attempt"] == 1  # nothing set state["__block_attempt"]
+
+
+def test_brain_single_call_event_includes_content_type_and_is_final():
+    err = LLMUpstreamError(
+        provider="openai", status=502, content_type="text/html",
+        body_snippet="Bad Gateway", cf_ray="ray-b", request_id=None, attempts=3,
+    )
+    raised, events = _capture_events_and_run_brain(
+        {"label": "t", "isAgentic": False, "description": "sys", "prompt": "do"},
+        mock_side_effect=err,
+    )
+    blocked = [e for e in events if e["kind"] == "llm_upstream_blocked"]
+    p = blocked[0]["payload"]
+    assert p["content_type"] == "text/html"
+    assert p["is_final"] is True
+    assert p["block_attempt"] == 1
+
+
+# ── outer_attempt from state is forwarded to adapter ──────────────────────────
+
+def test_state_block_attempt_forwards_to_outer_attempt():
+    """If future dag_runner sets state['__block_attempt']=N, adapter receives it."""
+    captured: dict = {}
+    mock_llm = MagicMock()
+
+    def _capture(**kwargs):
+        captured.update(kwargs)
+        from app.runtime.llm_client import LLMResponse, LLMTextBlock, LLMUsage
+        return LLMResponse(
+            content=[LLMTextBlock(text="ok")], stop_reason="end_turn",
+            usage=LLMUsage(input_tokens=1, output_tokens=1), cost_usd=0.0,
+            _raw_content=[{"type": "text", "text": "ok"}],
+        )
+
+    mock_llm.create.side_effect = _capture
+    block = {"id": "brain-1", "type": "brain",
+             "data": {"isAgentic": True, "description": "sys", "max_turns": 1}}
+    artifacts = {"brain-1": {"system_prompt": "sys", "is_agentic": True}}
+    redis_mock = MagicMock(); redis_mock.get.return_value = None
+
+    with (
+        patch("app.runtime.blocks.brain_block.AnthropicClient", return_value=mock_llm),
+        patch("app.runtime.blocks.brain_block._get_redis", return_value=redis_mock),
+    ):
+        from app.runtime.blocks.brain_block import _execute_brain
+        _execute_brain(
+            block=block, state={"__block_attempt": 2},
+            compiled_artifacts=artifacts,
+            run_id="run-1", block_id="brain-1",
+        )
+    assert captured["outer_attempt"] == 2

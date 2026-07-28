@@ -741,7 +741,14 @@ def _execute_brain(
                         if db and run_id:
                             _emit(db, run_id, block_id, "llm_upstream_retry", {
                                 **info, "turn": turns,
+                                "block_attempt": state.get("__block_attempt", 1),
                             })
+                    # If a future dag_runner block-retry wraps this call, it
+                    # sets state["__block_attempt"] to N. Passing outer_attempt
+                    # caps internal retries at 1 when N>1 so 3×3=9 stacked
+                    # attempts never happen. Silent no-op today (nothing sets
+                    # __block_attempt).
+                    _outer_attempt = int(state.get("__block_attempt", 1))
                     response = llm.create(
                         model=model_id,
                         max_tokens=4096,
@@ -751,21 +758,28 @@ def _execute_brain(
                         cache_system=True,
                         idempotency_key=_idem_key,
                         on_retry=_on_retry_agentic,
+                        outer_attempt=_outer_attempt,
                     )
                 except LLMUpstreamError as _up_err:
                     # CF/Render/WAF intercepted. Emit a structured event with
                     # cf-ray + render request ID BEFORE re-raising — the raise
                     # goes into block_failed via str(exc) which is short and clean.
+                    # is_final marks this as the terminal adapter failure; if a
+                    # future dag_runner block-retry wraps this call and later
+                    # succeeds, consumers can filter for is_final events only.
                     if db and run_id:
                         _emit(db, run_id, block_id, "llm_upstream_blocked", {
                             "provider": _up_err.provider,
                             "status": _up_err.status,
+                            "content_type": _up_err.content_type,
                             "attempts": _up_err.attempts,
                             "cf_ray": _up_err.cf_ray,
                             "render_request_id": _up_err.request_id,
                             "body_snippet": _up_err.body_snippet,
                             "turn": turns,
                             "base_url": _effective_base_url,
+                            "is_final": True,
+                            "block_attempt": state.get("__block_attempt", 1),
                         })
                     log.error("brain.llm_upstream_blocked",
                               provider=_up_err.provider, status=_up_err.status,
@@ -1152,7 +1166,11 @@ def _execute_brain(
             ) if run_id and block_id else None
             def _on_retry_single(info: dict) -> None:
                 if db and run_id:
-                    _emit(db, run_id, block_id, "llm_upstream_retry", {**info, "turn": 0})
+                    _emit(db, run_id, block_id, "llm_upstream_retry", {
+                        **info, "turn": 0,
+                        "block_attempt": state.get("__block_attempt", 1),
+                    })
+            _outer_attempt = int(state.get("__block_attempt", 1))
             try:
                 response = llm.create(
                     model=model_id,
@@ -1162,18 +1180,22 @@ def _execute_brain(
                     cache_system=True,
                     idempotency_key=_idem_key,
                     on_retry=_on_retry_single,
+                    outer_attempt=_outer_attempt,
                 )
             except LLMUpstreamError as _up_err:
                 if db and run_id:
                     _emit(db, run_id, block_id, "llm_upstream_blocked", {
                         "provider": _up_err.provider,
                         "status": _up_err.status,
+                        "content_type": _up_err.content_type,
                         "attempts": _up_err.attempts,
                         "cf_ray": _up_err.cf_ray,
                         "render_request_id": _up_err.request_id,
                         "body_snippet": _up_err.body_snippet,
                         "turn": 0,
                         "base_url": _effective_base_url,
+                        "is_final": True,
+                        "block_attempt": state.get("__block_attempt", 1),
                     })
                 log.error("brain.llm_upstream_blocked",
                           provider=_up_err.provider, status=_up_err.status,
