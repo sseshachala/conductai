@@ -621,3 +621,27 @@ def test_state_block_attempt_forwards_to_outer_attempt():
             run_id="run-1", block_id="brain-1",
         )
     assert captured["outer_attempt"] == 2
+
+
+# ── dag_runner._with_retry never re-invokes on LLMUpstreamError ───────────────
+
+def test_with_retry_does_not_retry_llm_upstream_error():
+    """Adapter already ran its own 3-attempt ladder. Block-level retry would
+    stack (3×N calls) and emit N false-terminal llm_upstream_blocked events.
+    _with_retry must raise LLMUpstreamError on the first hit."""
+    from app.runtime.dag_runner import _with_retry
+
+    calls = {"n": 0}
+    err = LLMUpstreamError(
+        provider="anthropic", status=403, content_type="text/html",
+        body_snippet="Blocked", cf_ray="ray-x", request_id=None, attempts=3,
+    )
+
+    def _boom():
+        calls["n"] += 1
+        raise err
+
+    with pytest.raises(LLMUpstreamError):
+        _with_retry(_boom, {"max": 3, "on": ["tool_error"]})
+
+    assert calls["n"] == 1, "LLMUpstreamError must not be retried at block level"

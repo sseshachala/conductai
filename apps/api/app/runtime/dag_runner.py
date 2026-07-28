@@ -403,6 +403,13 @@ def _with_retry(execute_fn, retry_cfg: dict, *args, **kwargs):
         except RuntimeError as e:
             # Guard blocks and turn/cost budget exhaustion are not retryable
             raise
+        except LLMUpstreamError:
+            # Adapter already ran its own retry ladder (up to 3 attempts with
+            # backoff). Retrying at the block level would multiply calls (3×N)
+            # and emit false-terminal llm_upstream_blocked events per outer
+            # attempt. If it failed 3× at the adapter, the upstream is down —
+            # block-level retry buys nothing except cost + noise.
+            raise
         except TimeoutError as e:
             if "timeout" not in on_categories:
                 raise
