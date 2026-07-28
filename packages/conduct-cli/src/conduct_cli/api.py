@@ -69,17 +69,27 @@ def req_text(method: str, url: str, hdrs: dict, body_text: str, timeout: int = 3
 
 
 def stream(url: str, hdrs=None):
-    """Yield parsed SSE data dicts."""
+    """Yield parsed SSE data dicts.
+
+    Uses a socket read timeout to detect stalled streams. Server sends
+    ': keepalive' pings every 15s, so a 60s timeout is safe.
+    """
     r = urllib.request.Request(url, headers=hdrs or {})
     try:
-        resp = urllib.request.urlopen(r)
+        resp = urllib.request.urlopen(r, timeout=60)
     except urllib.error.HTTPError as e:
         msg = e.read().decode()
         raise RuntimeError(f"Stream {e.code}: {msg}")
 
     buf = b""
     while True:
-        chunk = resp.read(1)
+        try:
+            chunk = resp.read(1)
+        except socket.timeout:
+            raise RuntimeError(
+                "Stream stalled (no data for 60s). The run may still be executing on the server — "
+                "check `conduct runs list` or the UI."
+            )
         if not chunk:
             break
         buf += chunk
