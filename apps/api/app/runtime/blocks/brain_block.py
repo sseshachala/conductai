@@ -182,12 +182,22 @@ def _extract_last_json_object(text: str) -> dict | None:
     return None
 
 
-def _load_workspace_mcp_tools(workspace_id: str, environment_id: str | None, db) -> list[dict]:
+def _load_workspace_mcp_tools(
+    workspace_id: str,
+    environment_id: str | None,
+    db,
+    selected_ids: list[str] | None = None,
+) -> list[dict]:
     """Query registered MCP servers and return their tools in Anthropic tool format.
 
     Tool names are prefixed as ``{server_name}::{tool_name}`` so the dispatcher
     can split on ``::`` to route the call.  Fail-open: server connection errors
     are logged and skipped — they must never kill the brain block.
+
+    ``selected_ids`` filters which registered servers are loaded:
+      - ``None`` or ``["all"]`` or ``[]`` → all workspace servers (back-compat default)
+      - list of UUID strings → only those servers
+    Matches the UI toggle at BlockEditor.tsx that persists ``data["mcp_server_ids"]``.
     """
     import json as _json
 
@@ -196,6 +206,11 @@ def _load_workspace_mcp_tools(workspace_id: str, environment_id: str | None, db)
     from app.core.crypto import decrypt as _decrypt
 
     tools: list[dict] = []
+
+    # Normalise selection sentinel — treat None, [], and ["all"] identically as "all"
+    _selected: set[str] | None = None
+    if selected_ids and not (len(selected_ids) == 1 and selected_ids[0] == "all"):
+        _selected = {str(sid) for sid in selected_ids}
 
     try:
         from app.models.mcp_server import McpServer as _McpServer
@@ -206,6 +221,8 @@ def _load_workspace_mcp_tools(workspace_id: str, environment_id: str | None, db)
                 | (_McpServer.environment_id.is_(None))
             )
         servers = query.all()
+        if _selected is not None:
+            servers = [s for s in servers if str(s.id) in _selected]
     except Exception as exc:
         log.warning("brain.mcp_tools.query_failed", workspace_id=workspace_id, error=str(exc))
         return tools
@@ -427,7 +444,31 @@ def _execute_brain(
     if _cred_api_url:
         _cred_real["CONDUCT_API_URL"] = _cred_api_url
 
-    user_message = f"Workflow context so far:\n{context}{cred_section}\n\nExecute your task."
+    # Honor block.data["prompt"] as the user-message template when present.
+    # Rendered with {{block.field}} refs from state; falls back to a JSON context dump
+    # so playbooks written before prompt: was supported keep working unchanged.
+    # See project_session_july27_runtime_bugs.md — prompt: was half-shipped for 7 weeks.
+    _MAX_PROMPT_CHARS = 32000  # ~8k tokens — bounded blast radius on runaway blobs
+    _prompt_template = (block["data"].get("prompt") or "").strip()
+    if _prompt_template:
+        # __-prefixed state keys are private runtime plumbing (tokens, URLs,
+        # config). Filter them out so a template like `{{__conduct_run_token__}}`
+        # can never resolve to a real secret in the LLM prompt.
+        _safe_state = {k: v for k, v in state.items() if not k.startswith("__")}
+        _rendered_prompt = _resolve_refs(_prompt_template, _safe_state)
+        # PII redaction on the same trigger the fallback path uses.
+        if state.get("__guard_enabled"):
+            from app.core.pii import redact_pii
+            _rendered_prompt = redact_pii(_rendered_prompt)
+        # Cap size — a `{{huge.blob}}` ref shouldn't blow the token budget.
+        if len(_rendered_prompt) > _MAX_PROMPT_CHARS:
+            _rendered_prompt = (
+                _rendered_prompt[:_MAX_PROMPT_CHARS]
+                + f"\n\n[truncated at {_MAX_PROMPT_CHARS} chars]"
+            )
+        user_message = f"{_rendered_prompt}{cred_section}"
+    else:
+        user_message = f"Workflow context so far:\n{context}{cred_section}\n\nExecute your task."
 
 
     # Clarification resume: if a prior run paused this block for clarification,
@@ -610,14 +651,20 @@ def _execute_brain(
 
         # Load MCP tools for this workspace and append them to the active tool list.
         # _load_workspace_mcp_tools is fail-open — always returns a list, never raises.
+        # Honors block.data["mcp_server_ids"] — the UI toggle at BlockEditor.tsx that
+        # lets users pick specific MCP servers instead of all workspace-registered ones.
         if db and workspace_id:
-            _mcp_tools = _load_workspace_mcp_tools(workspace_id, environment_id, db)
+            _mcp_selected = block.get("data", {}).get("mcp_server_ids")
+            _mcp_tools = _load_workspace_mcp_tools(
+                workspace_id, environment_id, db, selected_ids=_mcp_selected,
+            )
             if _mcp_tools:
                 _active_tools = _active_tools + _mcp_tools
                 log.debug(
                     "brain.mcp_tools.loaded",
                     count=len(_mcp_tools),
                     workspace_id=workspace_id,
+                    selected_ids=_mcp_selected,
                 )
 
         # Build a lookup: {server_name -> McpServer row} for MCP dispatch during tool calls.
