@@ -12,7 +12,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.runtime.llm_client import LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage
+from app.runtime.llm_client import (
+    LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage, post_with_retry,
+)
 from app.runtime.pricing import get_model_rates
 
 
@@ -40,9 +42,8 @@ class OpenAIClient:
         tools: list[dict] | None = None,
         max_tokens: int = 4096,
         cache_system: bool = False,
+        idempotency_key: str | None = None,
     ) -> LLMResponse:
-        import httpx
-
         # OpenAI Chat Completions expects the system prompt as a system message.
         # cache_system is Anthropic-specific; ignored here.
         _ = cache_system
@@ -67,15 +68,22 @@ class OpenAIClient:
                 for t in tools
             ]
 
-        r = httpx.post(
-            f"{self._base_url or 'https://api.openai.com'}/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self._api_key}",
-                "Content-Type": "application/json",
-                **self._default_headers,
-            },
-            json=payload,
-            timeout=60,
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+            **self._default_headers,
+        }
+        # OpenAI documents Idempotency-Key as GA — safe to include when caller
+        # supplies a stable key. Retries below reuse the same key so OpenAI
+        # deduplicates a request that was intercepted mid-flight.
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+
+        r = post_with_retry(
+            url=f"{self._base_url or 'https://api.openai.com'}/v1/chat/completions",
+            headers=headers,
+            json_body=payload,
+            provider="openai",
         )
         if r.status_code >= 400:
             raise Exception(f"OpenAI {r.status_code}: {r.text[:500]}")

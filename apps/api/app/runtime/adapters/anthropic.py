@@ -12,7 +12,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.runtime.llm_client import LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage
+from app.runtime.llm_client import (
+    LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage,
+    LLMUpstreamError, _extract_upstream_ids, _should_retry,
+)
 from app.runtime.pricing import get_model_rates
 
 
@@ -29,7 +32,10 @@ def _anthropic_cost(model: str, usage: LLMUsage, pricing_snapshot: dict[str, Any
 class AnthropicClient:
     def __init__(self, api_key: str, pricing_snapshot: dict[str, Any] | None = None, base_url: str | None = None, default_headers: dict | None = None) -> None:
         import anthropic as _anthropic
-        kwargs: dict[str, Any] = {"api_key": api_key}
+        # Disable SDK's internal retries — we manage a single authoritative
+        # retry layer in create() below. Two layers stacked would result in
+        # 3 * 3 = 9 silent attempts on transient failures.
+        kwargs: dict[str, Any] = {"api_key": api_key, "max_retries": 0}
         if base_url is not None:
             kwargs["base_url"] = base_url
         if default_headers:
@@ -46,23 +52,96 @@ class AnthropicClient:
         tools: list[dict] | None = None,
         max_tokens: int = 4096,
         cache_system: bool = False,
+        idempotency_key: str | None = None,
     ) -> LLMResponse:
+        import anthropic as _anthropic
+        import random as _random
+        import time as _time
+
         kwargs: dict = {
             "model": model,
             "max_tokens": max_tokens,
             "messages": messages,
         }
 
+        extra_headers: dict[str, str] = {}
         if cache_system:
             kwargs["system"] = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
-            kwargs["extra_headers"] = {"anthropic-beta": "prompt-caching-2024-07-31"}
+            extra_headers["anthropic-beta"] = "prompt-caching-2024-07-31"
         else:
             kwargs["system"] = system
 
         if tools:
             kwargs["tools"] = tools
 
-        raw = self._client.messages.create(**kwargs)
+        # Idempotency-Key is not documented as GA by Anthropic — accept the
+        # kwarg for interface parity with OpenAI but do not forward it.
+        # If Anthropic later adds official support, switch to extra_headers here.
+        _ = idempotency_key
+
+        if extra_headers:
+            kwargs["extra_headers"] = extra_headers
+
+        # Single retry loop for CF/Render/WAF-intercepted responses. Anthropic's
+        # SDK converts HTTP errors to typed exceptions; we inspect the underlying
+        # response body/status to decide retry.
+        max_attempts = 3
+        raw = None
+        for attempt in range(max_attempts):
+            try:
+                raw = self._client.messages.create(**kwargs)
+                break
+            except _anthropic.APIStatusError as exc:
+                # SDK maps HTTP responses to typed exceptions. Real 4xx errors
+                # (auth, bad request) subclass APIStatusError but ALSO
+                # AuthenticationError/BadRequestError/etc. Retry only when the
+                # response is transport-shaped (retryable status or HTML body).
+                status = getattr(exc, "status_code", None) or 0
+                response = getattr(exc, "response", None)
+                headers = dict(response.headers) if response is not None else {}
+                body = ""
+                if response is not None:
+                    try:
+                        body = response.text or ""
+                    except Exception:
+                        body = ""
+                content_type = headers.get("content-type", "")
+
+                if not _should_retry(status, content_type, body):
+                    raise  # real provider error (auth, invalid request) — surface as-is
+                if attempt == max_attempts - 1:
+                    cf_ray, request_id = _extract_upstream_ids(headers, body)
+                    raise LLMUpstreamError(
+                        provider="anthropic",
+                        status=status,
+                        content_type=content_type,
+                        body_snippet=body,
+                        cf_ray=cf_ray,
+                        request_id=request_id,
+                        attempts=attempt + 1,
+                    ) from exc
+                retry_after = headers.get("retry-after")
+                try:
+                    sleep_sec = float(retry_after) if retry_after else (0.25 * (4 ** attempt))
+                except ValueError:
+                    sleep_sec = 0.25 * (4 ** attempt)
+                sleep_sec += _random.random() * 0.2
+                _time.sleep(min(sleep_sec, 10))
+            except (_anthropic.APIConnectionError, _anthropic.APITimeoutError) as exc:
+                if attempt == max_attempts - 1:
+                    raise LLMUpstreamError(
+                        provider="anthropic",
+                        status=0,
+                        content_type="",
+                        body_snippet=f"network error: {exc!s:.200}",
+                        cf_ray=None,
+                        request_id=None,
+                        attempts=attempt + 1,
+                    ) from exc
+                _time.sleep(min(0.25 * (4 ** attempt) + _random.random() * 0.2, 10))
+
+        if raw is None:
+            raise RuntimeError("anthropic.create: retry loop exhausted without response or exception")
 
         content: list[LLMTextBlock | LLMToolUseBlock] = []
         for block in raw.content:
