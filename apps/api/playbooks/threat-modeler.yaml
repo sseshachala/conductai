@@ -217,44 +217,36 @@ blocks:
     credentials:
       github: github
     description: |
-      Post the markdown threat model as a PR comment so reviewers see it
-      inline without needing to open Guard.
+      Post the markdown threat model from prior block draft_stride as a PR comment on
+      {{inputs.target_repo}} PR #{{inputs.pr_number}}. draft_stride.output is in the
+      workflow-context JSON you receive — it contains the full markdown followed by a
+      trailing JSON array line.
 
-      Idempotency: before POST, GET /issues/{PR}/comments and skip if any comment body
-      contains the marker `<!-- conduct-threat-model -->`. Include that marker in the
-      body when posting so future runs detect it.
+      Idempotency: before POST, GET /issues/{{inputs.pr_number}}/comments and skip if
+      any comment body contains the marker `<!-- conduct-threat-model -->`. Include
+      that marker in the body when posting so future runs detect it.
 
-      Do EXACTLY ONE POST (if the marker check passes). Do NOT call any other
-      GitHub read endpoints (no /pulls/N, no /files, no /commits). Everything
-      you need is already in draft_stride.output.
-      Use exactly ONE POST method (python3 urllib). Do NOT also try curl as
-      a fallback. If the first POST succeeds (HTTP 201), you are done.
-    prompt: |
-      Repo: {{inputs.target_repo}}
-      PR number: {{inputs.pr_number}}
-      Findings filed: {{file_findings.posted}}
+      Steps (one turn each — python3 urllib, not curl):
 
-      Threat model markdown (use verbatim, everything BEFORE the trailing JSON array line):
-      ---
-      {{draft_stride.output}}
-      ---
+      1. GET /repos/{{inputs.target_repo}}/issues/{{inputs.pr_number}}/comments with
+         Authorization: token $GIT_TOKEN. Scan bodies for `<!-- conduct-threat-model -->`.
+         If found → output {"commented": false, "skipped": "already_posted"} and STOP.
 
-      Steps (one turn each — use python3 urllib, not curl):
-      1. GET https://api.github.com/repos/{{inputs.target_repo}}/issues/{{inputs.pr_number}}/comments
-         with Authorization: token $GIT_TOKEN. Scan comment bodies for
-         `<!-- conduct-threat-model -->`. If found → output {"commented": false, "skipped": "already_posted"} and STOP.
-
-      2. Write the body to /tmp/pr_comment.md. Body must include the marker on the FIRST line:
+      2. Extract draft_stride.output from the workflow-context JSON. Strip any trailing
+         JSON array line (a line starting with '['). Write to /tmp/pr_comment.md
+         prepended with:
            <!-- conduct-threat-model -->
            > Threat model auto-drafted by Conduct. {{file_findings.posted}} threats filed to Guard.
 
-           <the markdown from draft_stride.output, stripped of any trailing JSON line>
-
-      3. POST via python3 urllib to /issues/{{inputs.pr_number}}/comments with {"body": <file contents>}.
+      3. POST via python3 urllib to /repos/{{inputs.target_repo}}/issues/{{inputs.pr_number}}/comments
+         with body: {"body": <file contents>}.
 
       4. If HTTP 201: output {"commented": true}. Otherwise: {"commented": false, "error": "<code>"}.
 
-      Output ONLY on the last line the JSON. No prose.
+      Do NOT call any other GitHub read endpoints (no /pulls/N, no /files, no /commits).
+      Do NOT search /tmp for files — draft_stride.output is in your workflow-context JSON,
+      not on disk. Do NOT try curl as a fallback if the first POST succeeds.
+      Output ONLY the JSON on the last line. No prose.
 
   # ── 6. Record outcome for next PR's recall ──────────────────────────────────
   record:
