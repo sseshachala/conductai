@@ -64,6 +64,9 @@ class TogetherClient(OpenAIClient):
             pricing_snapshot=pricing_snapshot,
             base_url=base_url or _TOGETHER_BASE,
         )
+        # Override parent's "openai" so retry / upstream events attribute
+        # correctly to Together (billing, dashboards, WAF diagnosis).
+        self._provider = "together"
 
     def create(self, *, model: str, messages: list[dict], system: str, **kwargs) -> LLMResponse:
         resp = super().create(model=model, messages=messages, system=system, **kwargs)

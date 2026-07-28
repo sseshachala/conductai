@@ -31,6 +31,7 @@ class PerplexityClient:
         self._pricing_snapshot = pricing_snapshot
         self._base_url = base_url
         self._default_headers = default_headers or {}
+        self._provider = "perplexity"
 
     def create(
         self,
@@ -71,11 +72,11 @@ class PerplexityClient:
             url=f"{self._base_url or 'https://api.perplexity.ai'}/chat/completions",
             headers=headers,
             json_body=payload,
-            provider="perplexity",
+            provider=self._provider,
             max_attempts=_max_attempts,
             on_retry=on_retry,
         )
-        raise_if_guard_proxy_blocked(provider="perplexity", response=r)
+        raise_if_guard_proxy_blocked(provider=self._provider, response=r)
         r.raise_for_status()
         raw = r.json()
 

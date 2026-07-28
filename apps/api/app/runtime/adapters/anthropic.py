@@ -43,6 +43,7 @@ class AnthropicClient:
             kwargs["default_headers"] = default_headers
         self._client = _anthropic.Anthropic(**kwargs)
         self._pricing_snapshot = pricing_snapshot
+        self._provider = "anthropic"
 
     def create(
         self,
@@ -119,14 +120,14 @@ class AnthropicClient:
                 # exception before the generic "surface as-is" path so
                 # dag_runner routes it through the Guard UX.
                 if response is not None:
-                    raise_if_guard_proxy_blocked(provider="anthropic", response=response)
+                    raise_if_guard_proxy_blocked(provider=self._provider, response=response)
 
                 if not _should_retry(status, content_type, body):
                     raise  # real provider error (auth, invalid request) — surface as-is
                 if attempt == max_attempts - 1:
                     cf_ray, request_id = _extract_upstream_ids(headers, body)
                     raise LLMUpstreamError(
-                        provider="anthropic",
+                        provider=self._provider,
                         status=status,
                         content_type=content_type,
                         body_snippet=body,
@@ -137,7 +138,7 @@ class AnthropicClient:
                 if on_retry:
                     cf_ray, request_id = _extract_upstream_ids(headers, body)
                     on_retry(make_retry_info(
-                        provider="anthropic", status=status,
+                        provider=self._provider, status=status,
                         content_type=content_type, attempt=attempt + 1,
                         max_attempts=max_attempts, cf_ray=cf_ray,
                         request_id=request_id,
@@ -152,7 +153,7 @@ class AnthropicClient:
             except (_anthropic.APIConnectionError, _anthropic.APITimeoutError) as exc:
                 if attempt == max_attempts - 1:
                     raise LLMUpstreamError(
-                        provider="anthropic",
+                        provider=self._provider,
                         status=0,
                         content_type="",
                         body_snippet=f"network error: {exc!s:.200}",
@@ -162,7 +163,7 @@ class AnthropicClient:
                     ) from exc
                 if on_retry:
                     on_retry(make_retry_info(
-                        provider="anthropic", status=0, content_type="",
+                        provider=self._provider, status=0, content_type="",
                         attempt=attempt + 1, max_attempts=max_attempts,
                     ))
                 _time.sleep(min(0.25 * (4 ** attempt) + _random.random() * 0.2, 10))
