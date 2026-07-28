@@ -17,6 +17,7 @@ from app.runtime.llm_client import (
     AnthropicClient,
     LLMTextBlock,
     LLMToolUseBlock,
+    LLMUpstreamError,
     OpenAIClient,
     PerplexityClient,
 )
@@ -723,6 +724,10 @@ def _execute_brain(
                 log.debug("brain.llm_cache_hit", run_id=run_id, block_id=block_id, turn=turns)
             else:
                 try:
+                    # Stable idempotency key across our retry attempts within
+                    # this turn — lets OpenAI dedupe if a request was
+                    # intercepted mid-flight. Anthropic/Perplexity ignore.
+                    _idem_key = f"conduct-{run_id}-{block_id}-{turns}" if run_id and block_id else None
                     response = llm.create(
                         model=model_id,
                         max_tokens=4096,
@@ -730,7 +735,29 @@ def _execute_brain(
                         tools=_active_tools,
                         messages=messages,
                         cache_system=True,
+                        idempotency_key=_idem_key,
                     )
+                except LLMUpstreamError as _up_err:
+                    # CF/Render/WAF intercepted. Emit a structured event with
+                    # cf-ray + render request ID BEFORE re-raising — the raise
+                    # goes into block_failed via str(exc) which is short and clean.
+                    if db and run_id:
+                        _emit(db, run_id, block_id, "llm_upstream_blocked", {
+                            "provider": _up_err.provider,
+                            "status": _up_err.status,
+                            "attempts": _up_err.attempts,
+                            "cf_ray": _up_err.cf_ray,
+                            "render_request_id": _up_err.request_id,
+                            "body_snippet": _up_err.body_snippet,
+                            "turn": turns,
+                            "base_url": _effective_base_url,
+                        })
+                    log.error("brain.llm_upstream_blocked",
+                              provider=_up_err.provider, status=_up_err.status,
+                              cf_ray=_up_err.cf_ray, render_req=_up_err.request_id,
+                              attempts=_up_err.attempts,
+                              run_id=run_id, block_id=block_id)
+                    raise
                 except Exception as _llm_err:
                     _cause = getattr(_llm_err, "__cause__", None) or getattr(_llm_err, "__context__", None)
                     log.error("brain.llm_call_failed",
@@ -1103,13 +1130,34 @@ def _execute_brain(
             response.cost_usd = 0.0  # ponytail: no charge on replay
             log.debug("brain.llm_cache_hit", run_id=run_id, block_id=block_id, turn=0)
         else:
-            response = llm.create(
-                model=model_id,
-                max_tokens=2048,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-                cache_system=True,
-            )
+            _idem_key = f"conduct-{run_id}-{block_id}-0" if run_id and block_id else None
+            try:
+                response = llm.create(
+                    model=model_id,
+                    max_tokens=2048,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": user_message}],
+                    cache_system=True,
+                    idempotency_key=_idem_key,
+                )
+            except LLMUpstreamError as _up_err:
+                if db and run_id:
+                    _emit(db, run_id, block_id, "llm_upstream_blocked", {
+                        "provider": _up_err.provider,
+                        "status": _up_err.status,
+                        "attempts": _up_err.attempts,
+                        "cf_ray": _up_err.cf_ray,
+                        "render_request_id": _up_err.request_id,
+                        "body_snippet": _up_err.body_snippet,
+                        "turn": 0,
+                        "base_url": _effective_base_url,
+                    })
+                log.error("brain.llm_upstream_blocked",
+                          provider=_up_err.provider, status=_up_err.status,
+                          cf_ray=_up_err.cf_ray, render_req=_up_err.request_id,
+                          attempts=_up_err.attempts,
+                          run_id=run_id, block_id=block_id)
+                raise
             _cache_set(run_id, block_id, 0, response.to_cache_dict())
         text = next((b.text for b in response.content if isinstance(b, LLMTextBlock)), "")
         if db and run_id and block_id:

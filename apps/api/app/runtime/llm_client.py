@@ -17,7 +17,7 @@ Adding a new provider: implement LLMClient, add to adapters/, register in client
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, runtime_checkable
 
 
 # ── Normalized response types ─────────────────────────────────────────────────
@@ -98,6 +98,8 @@ class LLMClient(Protocol):
         tools: list[dict] | None = None,
         max_tokens: int = 4096,
         cache_system: bool = False,
+        idempotency_key: str | None = None,
+        on_retry: Callable[[dict[str, Any]], None] | None = None,
     ) -> LLMResponse:
         """
         Issue one LLM call and return a normalized LLMResponse.
@@ -134,6 +136,230 @@ class LLMClient(Protocol):
         OpenAI:    [{"role": "tool", "tool_call_id": id, "content": result}, ...]      — one message per result
         """
         ...
+
+
+# ── Upstream failure handling ─────────────────────────────────────────────────
+# When an LLM proxy request is intercepted by CF/Render infrastructure (WAF,
+# deploy transition, edge outage) we receive HTML instead of a JSON error. The
+# raw HTML must not leak into customer-visible run events. LLMUpstreamError
+# gives us a bounded, structured failure that stringifies cleanly.
+
+class LLMUpstreamError(Exception):
+    """LLM proxy returned an intercepted/upstream failure (not a real provider error).
+
+    Distinguished from real provider errors (auth, invalid request, model errors)
+    which stay as their normal exception types. This one signals an infra issue:
+    CF WAF, Render edge, transient 5xx from something between us and the provider.
+    """
+
+    def __init__(self, *, provider: str, status: int, content_type: str,
+                 body_snippet: str,
+                 cf_ray: str | None, request_id: str | None,
+                 attempts: int) -> None:
+        self.provider = provider
+        self.status = status
+        self.content_type = content_type
+        self.body_snippet = _sanitize_body_snippet(body_snippet)
+        self.cf_ray = cf_ray
+        self.request_id = request_id
+        self.attempts = attempts
+        super().__init__(
+            f"{provider} upstream blocked: HTTP {status} after {attempts} attempts "
+            f"(cf_ray={cf_ray or 'none'}, render_req={request_id or 'none'})"
+        )
+
+
+_RETRYABLE_STATUSES = {408, 429, 500, 502, 503, 504, 529}
+
+
+def _sanitize_body_snippet(body: str, limit: int = 2000) -> str:
+    """Return bounded plain text suitable for logs and customer-visible events."""
+    import html as _html
+    import re as _re
+
+    text = _re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1>", " ", body or "")
+    text = _re.sub(r"(?s)<[^>]+>", " ", text)
+    text = _html.unescape(text)
+    text = "".join(ch if ch.isprintable() else " " for ch in text)
+    return _re.sub(r"\s+", " ", text).strip()[:limit]
+
+
+def _is_html_response(status: int, content_type: str) -> bool:
+    """HTML on a 4xx/5xx = something upstream (CF, Render, WAF) intercepted us.
+
+    Real provider errors are JSON. HTML at these status codes means the request
+    never reached (or the response never returned from) our FastAPI app.
+    """
+    return status >= 400 and "text/html" in (content_type or "").lower()
+
+
+def _is_permanent_proxy_error(content_type: str, body: str) -> bool:
+    """Conduct proxy configuration/policy errors are structured and non-transient."""
+    if "json" not in (content_type or "").lower() or not body:
+        return False
+    import json as _json
+    try:
+        payload = _json.loads(body)
+    except (TypeError, ValueError):
+        return False
+    error = payload.get("error") if isinstance(payload, dict) else None
+    error_type = error.get("type") if isinstance(error, dict) else None
+    return error_type in {"conduct_guard_proxy", "guard_block"}
+
+
+def _should_retry(status: int, content_type: str, body: str = "") -> bool:
+    """Retry only on transient/infra failures, never on real client errors.
+
+    Retry: 408, 429, 5xx, or HTML 403 (WAF-shaped)
+    NEVER retry: JSON 4xx (auth, bad request, quota) — retries would DoS the
+    provider or spin on a revoked key.
+    """
+    if _is_permanent_proxy_error(content_type, body):
+        return False
+    if status in _RETRYABLE_STATUSES:
+        return True
+    if status == 403 and _is_html_response(status, content_type):
+        return True
+    return False
+
+
+def _extract_upstream_ids(headers: dict, body: str) -> tuple[str | None, str | None]:
+    """Pull cf-ray from headers (authoritative) and Render request ID from HTML body.
+
+    Header-first is safer: headers are set by the CF/Render infra we're
+    diagnosing, HTML format can change. Body regex is fallback.
+    """
+    import re as _re
+    cf_ray = None
+    # httpx headers are case-insensitive dict-like; str() on the dict may
+    # lose that, so try common cases.
+    for key in ("cf-ray", "CF-Ray", "Cf-Ray"):
+        if isinstance(headers, dict):
+            v = headers.get(key)
+            if v:
+                cf_ray = v
+                break
+        else:
+            # httpx.Headers — case-insensitive access
+            v = headers.get(key)  # type: ignore[union-attr]
+            if v:
+                cf_ray = v
+                break
+
+    request_id = None
+    for key in ("x-request-id", "request-id", "rndr-id", "x-render-request-id"):
+        value = headers.get(key)
+        if value:
+            request_id = value
+            break
+    if body:
+        m = _re.search(r"Request ID:\s*<code[^>]*>([a-z0-9-]+)</code>", body, _re.IGNORECASE)
+        if m:
+            request_id = request_id or m.group(1)
+        elif request_id is None:
+            # Also try Render's rndr-id header style embedded in body
+            m2 = _re.search(r"rndr-id[:\s]+([a-f0-9\-]+)", body, _re.IGNORECASE)
+            if m2:
+                request_id = m2.group(1)
+    return cf_ray, request_id
+
+
+def post_with_retry(
+    *,
+    url: str,
+    headers: dict,
+    json_body: dict,
+    provider: str,
+    timeout: float = 60.0,
+    max_attempts: int = 3,
+    on_retry: Callable[[dict[str, Any]], None] | None = None,
+) -> "Any":
+    """POST with retry on transient upstream failures. Returns httpx.Response.
+
+    Raises LLMUpstreamError if all attempts return retryable failures.
+    Non-retryable errors (JSON 4xx, network errors after final attempt) are
+    returned as-is or raised by httpx.
+
+    Retry schedule: honors Retry-After header when present, else exponential
+    backoff (250ms, 1s, 4s) with jitter. Capped at 10s per wait.
+    """
+    import httpx as _httpx
+    import random as _random
+    import time as _time
+
+    last_resp = None
+    for attempt in range(max_attempts):
+        try:
+            resp = _httpx.post(url, headers=headers, json=json_body, timeout=timeout)
+        except (_httpx.ConnectError, _httpx.ReadTimeout, _httpx.RemoteProtocolError) as exc:
+            # Network-level transient failure — retry unless last attempt
+            if attempt == max_attempts - 1:
+                raise LLMUpstreamError(
+                    provider=provider,
+                    status=0,
+                    content_type="",
+                    body_snippet=f"network error: {exc!s:.200}",
+                    cf_ray=None,
+                    request_id=None,
+                    attempts=attempt + 1,
+                )
+            if on_retry:
+                on_retry({
+                    "provider": provider, "status": 0, "content_type": "",
+                    "attempt": attempt + 1, "max_attempts": max_attempts,
+                    "cf_ray": None, "request_id": None,
+                })
+            _time.sleep(min(0.25 * (4 ** attempt) + _random.random() * 0.2, 10))
+            continue
+
+        content_type = resp.headers.get("content-type", "")
+        if not _should_retry(resp.status_code, content_type, resp.text):
+            return resp  # success OR real error — caller decides
+
+        last_resp = resp
+        if attempt == max_attempts - 1:
+            cf_ray, request_id = _extract_upstream_ids(dict(resp.headers), resp.text)
+            raise LLMUpstreamError(
+                provider=provider,
+                status=resp.status_code,
+                content_type=content_type,
+                body_snippet=resp.text,
+                cf_ray=cf_ray,
+                request_id=request_id,
+                attempts=attempt + 1,
+            )
+
+        cf_ray, request_id = _extract_upstream_ids(resp.headers, resp.text)
+        if on_retry:
+            on_retry({
+                "provider": provider, "status": resp.status_code,
+                "content_type": content_type, "attempt": attempt + 1,
+                "max_attempts": max_attempts, "cf_ray": cf_ray,
+                "request_id": request_id,
+            })
+
+        # Honor Retry-After if present, else exponential backoff with jitter
+        retry_after = resp.headers.get("retry-after")
+        try:
+            sleep_sec = float(retry_after) if retry_after else (0.25 * (4 ** attempt))
+        except ValueError:
+            sleep_sec = 0.25 * (4 ** attempt)
+        sleep_sec += _random.random() * 0.2  # jitter
+        _time.sleep(min(sleep_sec, 10))
+
+    # Shouldn't reach here — either returned or raised. But be safe.
+    if last_resp is not None:
+        cf_ray, request_id = _extract_upstream_ids(dict(last_resp.headers), last_resp.text)
+        raise LLMUpstreamError(
+            provider=provider,
+            status=last_resp.status_code,
+            content_type=last_resp.headers.get("content-type", ""),
+            body_snippet=last_resp.text,
+            cf_ray=cf_ray,
+            request_id=request_id,
+            attempts=max_attempts,
+        )
+    raise RuntimeError(f"post_with_retry: exhausted without response, provider={provider}")
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────

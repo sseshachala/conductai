@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.runtime.llm_client import LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage
+from app.runtime.llm_client import (
+    LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage, post_with_retry,
+)
 from app.runtime.pricing import get_model_rates
 
 
@@ -38,10 +40,12 @@ class PerplexityClient:
         tools: list[dict] | None = None,
         max_tokens: int = 4096,
         cache_system: bool = False,
+        idempotency_key: str | None = None,
     ) -> LLMResponse:
-        import httpx
-
         _ = cache_system  # not supported
+        # Perplexity does not document Idempotency-Key support — accepted param
+        # for interface parity; not forwarded to the API.
+        _ = idempotency_key
 
         pplx_messages = [{"role": "system", "content": system}, *messages]
         payload: dict[str, Any] = {
@@ -51,14 +55,15 @@ class PerplexityClient:
         }
         # Perplexity Sonar models don't support tool_calls; skip tools silently.
 
-        r = httpx.post(
-            f"{self._base_url or 'https://api.perplexity.ai'}/chat/completions",
+        r = post_with_retry(
+            url=f"{self._base_url or 'https://api.perplexity.ai'}/chat/completions",
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
+                **self._default_headers,
             },
-            json=payload,
-            timeout=60,
+            json_body=payload,
+            provider="perplexity",
         )
         r.raise_for_status()
         raw = r.json()

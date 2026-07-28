@@ -24,6 +24,7 @@ log = structlog.get_logger(__name__)
 
 # ── flow-control exceptions ───────────────────────────────────────────────────
 from app.runtime.exceptions import ApprovalRequired, ClarificationRequired  # noqa: F401
+from app.runtime.llm_client import LLMUpstreamError
 
 
 def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, Any]:
@@ -45,6 +46,23 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
         category = "governance"
         stop_reason = "policy_block"
         next_action = "Update allowed_hosts for this environment or remove the blocked outbound call."
+    elif isinstance(exc, LLMUpstreamError):
+        # CF/Render/WAF intercepted the LLM proxy request. Not our app's fault.
+        # The exception message is already short and safe (no HTML); the full
+        # diagnostic (cf_ray, render_request_id, body_snippet) is in the
+        # llm_upstream_blocked event emitted by brain_block.
+        code = "LLM_UPSTREAM_BLOCKED"
+        category = "infrastructure"
+        stop_reason = "upstream_blocked"
+        cf_ray = getattr(exc, "cf_ray", None)
+        request_id = getattr(exc, "request_id", None)
+        next_action = (
+            "LLM proxy request was blocked by an upstream layer (CF WAF, Render edge). "
+            + (f"Cloudflare ray: {cf_ray}. " if cf_ray else "")
+            + (f"Render request: {request_id}. " if request_id else "")
+            + "Retry the run; if it fails repeatedly, check /run-events for llm_upstream_blocked entries "
+            + "and share the ray ID with support."
+        )
     elif "[ConductGuard] Blocked by policy" in msg:
         # Guard policy fired — this is a governance decision, not a crash.
         # Surface it as such so the UI shows a clean "blocked" state and
