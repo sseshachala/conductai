@@ -726,8 +726,22 @@ def _execute_brain(
                 try:
                     # Stable idempotency key across our retry attempts within
                     # this turn — lets OpenAI dedupe if a request was
-                    # intercepted mid-flight. Anthropic/Perplexity ignore.
-                    _idem_key = f"conduct-{run_id}-{block_id}-{turns}" if run_id and block_id else None
+                    # intercepted mid-flight. Include __for_each_index so
+                    # iterations of the same block inside for_each don't
+                    # collide on the provider's dedup window.
+                    _fe_idx = state.get("__for_each_index")
+                    _idem_key = (
+                        f"conduct-{run_id}-{block_id}-{turns}"
+                        + (f"-fe{_fe_idx}" if _fe_idx is not None else "")
+                    ) if run_id and block_id else None
+                    # Emit llm_upstream_retry on each retry attempt so ops
+                    # can spot infra degradation. Fires only when retry
+                    # occurs; silent on happy path.
+                    def _on_retry_agentic(info: dict) -> None:
+                        if db and run_id:
+                            _emit(db, run_id, block_id, "llm_upstream_retry", {
+                                **info, "turn": turns,
+                            })
                     response = llm.create(
                         model=model_id,
                         max_tokens=4096,
@@ -736,6 +750,7 @@ def _execute_brain(
                         messages=messages,
                         cache_system=True,
                         idempotency_key=_idem_key,
+                        on_retry=_on_retry_agentic,
                     )
                 except LLMUpstreamError as _up_err:
                     # CF/Render/WAF intercepted. Emit a structured event with
@@ -1130,7 +1145,14 @@ def _execute_brain(
             response.cost_usd = 0.0  # ponytail: no charge on replay
             log.debug("brain.llm_cache_hit", run_id=run_id, block_id=block_id, turn=0)
         else:
-            _idem_key = f"conduct-{run_id}-{block_id}-0" if run_id and block_id else None
+            _fe_idx = state.get("__for_each_index")
+            _idem_key = (
+                f"conduct-{run_id}-{block_id}-0"
+                + (f"-fe{_fe_idx}" if _fe_idx is not None else "")
+            ) if run_id and block_id else None
+            def _on_retry_single(info: dict) -> None:
+                if db and run_id:
+                    _emit(db, run_id, block_id, "llm_upstream_retry", {**info, "turn": 0})
             try:
                 response = llm.create(
                     model=model_id,
@@ -1139,6 +1161,7 @@ def _execute_brain(
                     messages=[{"role": "user", "content": user_message}],
                     cache_system=True,
                     idempotency_key=_idem_key,
+                    on_retry=_on_retry_single,
                 )
             except LLMUpstreamError as _up_err:
                 if db and run_id:

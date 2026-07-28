@@ -12,8 +12,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from typing import Callable
+
 from app.runtime.llm_client import (
-    LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage, post_with_retry,
+    LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage,
+    post_with_retry, raise_if_guard_proxy_blocked,
 )
 from app.runtime.pricing import get_model_rates
 
@@ -43,6 +46,8 @@ class OpenAIClient:
         max_tokens: int = 4096,
         cache_system: bool = False,
         idempotency_key: str | None = None,
+        on_retry: Callable[[dict[str, Any]], None] | None = None,
+        outer_attempt: int = 1,
     ) -> LLMResponse:
         # OpenAI Chat Completions expects the system prompt as a system message.
         # cache_system is Anthropic-specific; ignored here.
@@ -79,12 +84,20 @@ class OpenAIClient:
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
 
+        # Cap internal retries at 1 when called under an outer retry (e.g. a
+        # future dag_runner block-level retry) to avoid 3×3 = 9 silent attempts.
+        _max_attempts = 1 if outer_attempt > 1 else 3
         r = post_with_retry(
             url=f"{self._base_url or 'https://api.openai.com'}/v1/chat/completions",
             headers=headers,
             json_body=payload,
             provider="openai",
+            max_attempts=_max_attempts,
+            on_retry=on_retry,
         )
+        # Conduct proxy structured policy/config blocks: turn JSON error into
+        # a typed exception dag_runner classifies through the Guard UX path.
+        raise_if_guard_proxy_blocked(provider="openai", response=r)
         if r.status_code >= 400:
             raise Exception(f"OpenAI {r.status_code}: {r.text[:500]}")
         raw = r.json()

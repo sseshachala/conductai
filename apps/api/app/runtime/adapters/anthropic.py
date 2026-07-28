@@ -10,11 +10,12 @@ Handles:
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from app.runtime.llm_client import (
     LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage,
-    LLMUpstreamError, _extract_upstream_ids, _should_retry,
+    LLMUpstreamError, _extract_upstream_ids, _should_retry, make_retry_info,
+    raise_if_guard_proxy_blocked,
 )
 from app.runtime.pricing import get_model_rates
 
@@ -53,6 +54,8 @@ class AnthropicClient:
         max_tokens: int = 4096,
         cache_system: bool = False,
         idempotency_key: str | None = None,
+        on_retry: Callable[[dict[str, Any]], None] | None = None,
+        outer_attempt: int = 1,
     ) -> LLMResponse:
         import anthropic as _anthropic
         import random as _random
@@ -74,10 +77,12 @@ class AnthropicClient:
         if tools:
             kwargs["tools"] = tools
 
-        # Idempotency-Key is not documented as GA by Anthropic — accept the
-        # kwarg for interface parity with OpenAI but do not forward it.
-        # If Anthropic later adds official support, switch to extra_headers here.
-        _ = idempotency_key
+        # Forward Idempotency-Key via extra_headers. Anthropic's GA support
+        # for this header is not documented, but sending an unknown header is
+        # safe (ignored) and provides deduplication protection if/when they
+        # honor it. Caller supplies a stable key across our retry attempts.
+        if idempotency_key:
+            extra_headers["Idempotency-Key"] = idempotency_key
 
         if extra_headers:
             kwargs["extra_headers"] = extra_headers
@@ -85,7 +90,10 @@ class AnthropicClient:
         # Single retry loop for CF/Render/WAF-intercepted responses. Anthropic's
         # SDK converts HTTP errors to typed exceptions; we inspect the underlying
         # response body/status to decide retry.
-        max_attempts = 3
+        # outer_attempt > 1 → this call is already under an outer retry (e.g.,
+        # a future dag_runner block-level retry). Cap internal attempts at 1
+        # so 3×3=9 stacked attempts never happen.
+        max_attempts = 1 if outer_attempt > 1 else 3
         raw = None
         for attempt in range(max_attempts):
             try:
@@ -107,6 +115,12 @@ class AnthropicClient:
                         body = ""
                 content_type = headers.get("content-type", "")
 
+                # Conduct proxy structured policy/config block? Raise typed
+                # exception before the generic "surface as-is" path so
+                # dag_runner routes it through the Guard UX.
+                if response is not None:
+                    raise_if_guard_proxy_blocked(provider="anthropic", response=response)
+
                 if not _should_retry(status, content_type, body):
                     raise  # real provider error (auth, invalid request) — surface as-is
                 if attempt == max_attempts - 1:
@@ -120,6 +134,14 @@ class AnthropicClient:
                         request_id=request_id,
                         attempts=attempt + 1,
                     ) from exc
+                if on_retry:
+                    cf_ray, request_id = _extract_upstream_ids(headers, body)
+                    on_retry(make_retry_info(
+                        provider="anthropic", status=status,
+                        content_type=content_type, attempt=attempt + 1,
+                        max_attempts=max_attempts, cf_ray=cf_ray,
+                        request_id=request_id,
+                    ))
                 retry_after = headers.get("retry-after")
                 try:
                     sleep_sec = float(retry_after) if retry_after else (0.25 * (4 ** attempt))
@@ -138,6 +160,11 @@ class AnthropicClient:
                         request_id=None,
                         attempts=attempt + 1,
                     ) from exc
+                if on_retry:
+                    on_retry(make_retry_info(
+                        provider="anthropic", status=0, content_type="",
+                        attempt=attempt + 1, max_attempts=max_attempts,
+                    ))
                 _time.sleep(min(0.25 * (4 ** attempt) + _random.random() * 0.2, 10))
 
         if raw is None:

@@ -24,7 +24,7 @@ log = structlog.get_logger(__name__)
 
 # ── flow-control exceptions ───────────────────────────────────────────────────
 from app.runtime.exceptions import ApprovalRequired, ClarificationRequired  # noqa: F401
-from app.runtime.llm_client import LLMUpstreamError
+from app.runtime.llm_client import GuardProxyBlocked, LLMUpstreamError
 
 
 def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, Any]:
@@ -46,6 +46,19 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
         category = "governance"
         stop_reason = "policy_block"
         next_action = "Update allowed_hosts for this environment or remove the blocked outbound call."
+    elif isinstance(exc, GuardProxyBlocked) and exc.error_type == "conduct_guard_proxy":
+        # Proxy configuration error (BYO LLM key missing, upstream misconfig,
+        # etc.). Not a workflow bug — an operator needs to fix the workspace
+        # proxy settings. Distinct from guard_block, which flows through the
+        # existing Guard string-match branch above.
+        code = "PROXY_CONFIG_ERROR"
+        category = "configuration"
+        stop_reason = "proxy_misconfigured"
+        next_action = (
+            "Conduct proxy returned a configuration error: "
+            + (exc.message if hasattr(exc, "message") else str(exc))
+            + ". Check Settings → Modules → Guard proxy config and BYO LLM keys."
+        )
     elif isinstance(exc, LLMUpstreamError):
         # CF/Render/WAF intercepted the LLM proxy request. Not our app's fault.
         # The exception message is already short and safe (no HTML); the full

@@ -144,6 +144,33 @@ class LLMClient(Protocol):
 # raw HTML must not leak into customer-visible run events. LLMUpstreamError
 # gives us a bounded, structured failure that stringifies cleanly.
 
+class GuardProxyBlocked(Exception):
+    """Conduct proxy issued a structured policy/config block (not transport failure).
+
+    Distinct from LLMUpstreamError (infra hiccup) — this is a deliberate
+    decision by the proxy: Guard policy fired, or a proxy configuration
+    error prevents the request. The str(exc) is shaped to match the
+    "[ConductGuard] Blocked by policy" pattern that dag_runner._classify_failure
+    already recognises, so these surface with the Guard UX path automatically.
+    """
+
+    def __init__(self, *, provider: str, status: int, error_type: str,
+                 message: str, rule_id: str | None = None) -> None:
+        self.provider = provider
+        self.status = status
+        self.error_type = error_type
+        self.rule_id = rule_id
+        self.message = message
+        # Shape the string so _classify_failure's existing Guard branch matches
+        # when error_type is guard_block. For conduct_guard_proxy (config error),
+        # emit a distinguishable message.
+        if error_type == "guard_block":
+            rule_part = f" policy '{rule_id}'" if rule_id else ""
+            super().__init__(f"[ConductGuard] Blocked by{rule_part}: {message}")
+        else:
+            super().__init__(f"[ConductProxy] {error_type}: {message}")
+
+
 class LLMUpstreamError(Exception):
     """LLM proxy returned an intercepted/upstream failure (not a real provider error).
 
@@ -184,6 +211,33 @@ def _sanitize_body_snippet(body: str, limit: int = 2000) -> str:
     return _re.sub(r"\s+", " ", text).strip()[:limit]
 
 
+def make_retry_info(
+    *,
+    provider: str,
+    status: int,
+    content_type: str,
+    attempt: int,
+    max_attempts: int,
+    cf_ray: str | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """One-stop constructor for the retry-info dict passed to on_retry callbacks.
+
+    Adapters and post_with_retry call this so the payload shape stays identical
+    across sites. Brain block's llm_upstream_retry event and any downstream
+    dashboards can rely on a stable schema.
+    """
+    return {
+        "provider": provider,
+        "status": status,
+        "content_type": content_type,
+        "attempt": attempt,
+        "max_attempts": max_attempts,
+        "cf_ray": cf_ray,
+        "request_id": request_id,
+    }
+
+
 def _is_html_response(status: int, content_type: str) -> bool:
     """HTML on a 4xx/5xx = something upstream (CF, Render, WAF) intercepted us.
 
@@ -205,6 +259,39 @@ def _is_permanent_proxy_error(content_type: str, body: str) -> bool:
     error = payload.get("error") if isinstance(payload, dict) else None
     error_type = error.get("type") if isinstance(error, dict) else None
     return error_type in {"conduct_guard_proxy", "guard_block"}
+
+
+def raise_if_guard_proxy_blocked(*, provider: str, response: "Any") -> None:
+    """Inspect a response for a Conduct proxy structured block and raise
+    GuardProxyBlocked if matched. Otherwise return (caller handles response).
+
+    Called by every adapter after post_with_retry returns — turns the JSON
+    error body into a typed exception dag_runner._classify_failure can route
+    through the existing Guard UX path.
+    """
+    try:
+        content_type = response.headers.get("content-type", "")
+        body = response.text
+    except Exception:
+        return
+    if not _is_permanent_proxy_error(content_type, body):
+        return
+    import json as _json
+    try:
+        payload = _json.loads(body)
+    except (TypeError, ValueError):
+        return
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict):
+        return
+    error_type = error.get("type") or ""
+    message = error.get("message") or error.get("detail") or "Blocked by Conduct proxy"
+    rule_id = error.get("rule_id") or error.get("policy_id")
+    status = getattr(response, "status_code", 0) or 0
+    raise GuardProxyBlocked(
+        provider=provider, status=status, error_type=error_type,
+        message=message, rule_id=rule_id,
+    )
 
 
 def _should_retry(status: int, content_type: str, body: str = "") -> bool:
@@ -304,11 +391,10 @@ def post_with_retry(
                     attempts=attempt + 1,
                 )
             if on_retry:
-                on_retry({
-                    "provider": provider, "status": 0, "content_type": "",
-                    "attempt": attempt + 1, "max_attempts": max_attempts,
-                    "cf_ray": None, "request_id": None,
-                })
+                on_retry(make_retry_info(
+                    provider=provider, status=0, content_type="",
+                    attempt=attempt + 1, max_attempts=max_attempts,
+                ))
             _time.sleep(min(0.25 * (4 ** attempt) + _random.random() * 0.2, 10))
             continue
 
@@ -331,12 +417,11 @@ def post_with_retry(
 
         cf_ray, request_id = _extract_upstream_ids(resp.headers, resp.text)
         if on_retry:
-            on_retry({
-                "provider": provider, "status": resp.status_code,
-                "content_type": content_type, "attempt": attempt + 1,
-                "max_attempts": max_attempts, "cf_ray": cf_ray,
-                "request_id": request_id,
-            })
+            on_retry(make_retry_info(
+                provider=provider, status=resp.status_code,
+                content_type=content_type, attempt=attempt + 1,
+                max_attempts=max_attempts, cf_ray=cf_ray, request_id=request_id,
+            ))
 
         # Honor Retry-After if present, else exponential backoff with jitter
         retry_after = resp.headers.get("retry-after")
