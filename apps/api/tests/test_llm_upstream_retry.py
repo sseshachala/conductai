@@ -12,10 +12,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.runtime.llm_client import (
+    GuardProxyBlocked,
     LLMUpstreamError,
     _extract_upstream_ids,
     _should_retry,
+    make_retry_info,
     post_with_retry,
+    raise_if_guard_proxy_blocked,
 )
 
 
@@ -322,3 +325,186 @@ def test_dag_runner_classifies_upstream_error():
     assert "req-xyz" in result["next_action"]
     # message stays short — no HTML dump
     assert len(result["message"]) < 300
+
+
+# ── Fix #1: idempotency key includes __for_each_index ─────────────────────────
+
+def _run_agentic_and_capture_key(state: dict) -> str | None:
+    """Run brain agentic path, capture idempotency_key passed to llm.create()."""
+    captured: dict = {}
+    mock_llm = MagicMock()
+
+    def _capture_create(**kwargs):
+        captured["idempotency_key"] = kwargs.get("idempotency_key")
+        from app.runtime.llm_client import LLMResponse, LLMTextBlock, LLMUsage
+        return LLMResponse(
+            content=[LLMTextBlock(text="ok")],
+            stop_reason="end_turn",
+            usage=LLMUsage(input_tokens=1, output_tokens=1),
+            cost_usd=0.0,
+            _raw_content=[{"type": "text", "text": "ok"}],
+        )
+
+    mock_llm.create.side_effect = _capture_create
+
+    redis_mock = MagicMock()
+    redis_mock.get.return_value = None
+    block = {"id": "brain-1", "type": "brain",
+             "data": {"isAgentic": True, "description": "sys", "max_turns": 1}}
+    artifacts = {"brain-1": {"system_prompt": "sys", "is_agentic": True}}
+
+    with (
+        patch("app.runtime.blocks.brain_block.AnthropicClient", return_value=mock_llm),
+        patch("app.runtime.blocks.brain_block._get_redis", return_value=redis_mock),
+    ):
+        from app.runtime.blocks.brain_block import _execute_brain
+        _execute_brain(block=block, state=state, compiled_artifacts=artifacts,
+                       run_id="run-1", block_id="brain-1")
+    return captured.get("idempotency_key")
+
+
+def test_idempotency_key_no_for_each_index_absent():
+    """No __for_each_index in state → key is base shape."""
+    key = _run_agentic_and_capture_key({})
+    assert key == "conduct-run-1-brain-1-0"
+
+
+def test_idempotency_key_includes_for_each_index():
+    """Iterations of same brain block inside for_each get distinct keys."""
+    k0 = _run_agentic_and_capture_key({"__for_each_index": 0})
+    k1 = _run_agentic_and_capture_key({"__for_each_index": 1})
+    k2 = _run_agentic_and_capture_key({"__for_each_index": 2})
+    assert k0 == "conduct-run-1-brain-1-0-fe0"
+    assert k1 == "conduct-run-1-brain-1-0-fe1"
+    assert k2 == "conduct-run-1-brain-1-0-fe2"
+    assert len({k0, k1, k2}) == 3  # no collisions
+
+
+# ── Fix #3: on_retry callback wired end-to-end ────────────────────────────────
+
+def test_on_retry_called_per_retry_attempt():
+    """post_with_retry calls on_retry once per retry (not on success or final failure)."""
+    responses = [
+        _mock_response(502, "err1", {"content-type": "text/html", "cf-ray": "ray-1"}),
+        _mock_response(502, "err2", {"content-type": "text/html", "cf-ray": "ray-2"}),
+        _mock_response(200, "{}", {"content-type": "application/json"}),
+    ]
+    retry_events: list[dict] = []
+    with patch("httpx.post", side_effect=responses), patch("time.sleep"):
+        post_with_retry(
+            url="https://api.example.com/v1/x",
+            headers={},
+            json_body={"k": "v"},
+            provider="openai",
+            on_retry=retry_events.append,
+        )
+    # Two retries before success → two on_retry calls
+    assert len(retry_events) == 2
+    assert retry_events[0]["attempt"] == 1
+    assert retry_events[1]["attempt"] == 2
+    assert retry_events[0]["cf_ray"] == "ray-1"
+    assert retry_events[1]["cf_ray"] == "ray-2"
+
+
+def test_make_retry_info_shape_is_stable():
+    """Adapters and post_with_retry must produce identical dict shape."""
+    info = make_retry_info(
+        provider="anthropic", status=502, content_type="text/html",
+        attempt=2, max_attempts=3, cf_ray="ray-x", request_id="req-y",
+    )
+    assert set(info.keys()) == {
+        "provider", "status", "content_type", "attempt", "max_attempts",
+        "cf_ray", "request_id",
+    }
+
+
+# ── Fix #4: GuardProxyBlocked routing ─────────────────────────────────────────
+
+def test_raise_if_guard_proxy_blocked_on_guard_block():
+    """guard_block JSON error → GuardProxyBlocked with policy-shaped str()."""
+    resp = _mock_response(
+        403,
+        '{"error":{"type":"guard_block","message":"cost limit","rule_id":"max-spend-daily"}}',
+        {"content-type": "application/json"},
+    )
+    with pytest.raises(GuardProxyBlocked) as excinfo:
+        raise_if_guard_proxy_blocked(provider="openai", response=resp)
+    e = excinfo.value
+    assert e.error_type == "guard_block"
+    assert e.rule_id == "max-spend-daily"
+    assert "[ConductGuard] Blocked by policy 'max-spend-daily'" in str(e)
+
+
+def test_raise_if_guard_proxy_blocked_on_config_error():
+    """conduct_guard_proxy JSON error → GuardProxyBlocked with proxy-shaped str()."""
+    resp = _mock_response(
+        502,
+        '{"error":{"type":"conduct_guard_proxy","message":"upstream missing"}}',
+        {"content-type": "application/json"},
+    )
+    with pytest.raises(GuardProxyBlocked) as excinfo:
+        raise_if_guard_proxy_blocked(provider="anthropic", response=resp)
+    assert excinfo.value.error_type == "conduct_guard_proxy"
+    assert "[ConductProxy]" in str(excinfo.value)
+
+
+def test_raise_if_guard_proxy_blocked_ignores_normal_json_error():
+    """Provider's own JSON errors (auth failure, bad request) are not intercepted."""
+    resp = _mock_response(
+        401,
+        '{"error":{"type":"invalid_request_error","message":"bad key"}}',
+        {"content-type": "application/json"},
+    )
+    # Should NOT raise — caller handles as usual
+    raise_if_guard_proxy_blocked(provider="openai", response=resp)
+
+
+def test_dag_runner_classifies_guard_proxy_config_error():
+    """conduct_guard_proxy → PROXY_CONFIG_ERROR with operator-actionable next_action."""
+    from app.runtime.dag_runner import _classify_failure
+    err = GuardProxyBlocked(
+        provider="anthropic", status=502, error_type="conduct_guard_proxy",
+        message="upstream not configured",
+    )
+    result = _classify_failure(err)
+    assert result["code"] == "PROXY_CONFIG_ERROR"
+    assert result["category"] == "configuration"
+    assert result["stop_reason"] == "proxy_misconfigured"
+    assert "Settings" in result["next_action"] or "proxy" in result["next_action"].lower()
+
+
+def test_dag_runner_classifies_guard_block_as_policy():
+    """guard_block reuses existing Guard UX path via string match."""
+    from app.runtime.dag_runner import _classify_failure
+    err = GuardProxyBlocked(
+        provider="openai", status=403, error_type="guard_block",
+        message="cost limit", rule_id="max-spend-daily",
+    )
+    result = _classify_failure(err)
+    assert result["code"] == "GUARD_POLICY_BLOCKED"
+
+
+# ── Fix #5: outer_attempt caps internal retries ───────────────────────────────
+
+def test_outer_attempt_caps_internal_retries():
+    """When adapter is called with outer_attempt > 1, internal retries drop to 1."""
+    calls: list = []
+    responses = [
+        _mock_response(502, "", {"content-type": "text/html"}),
+        _mock_response(502, "", {"content-type": "text/html"}),
+        _mock_response(502, "", {"content-type": "text/html"}),
+    ]
+
+    def counting_post(*a, **kw):
+        calls.append(True)
+        return responses[len(calls) - 1]
+
+    with patch("httpx.post", side_effect=counting_post), patch("time.sleep"):
+        with pytest.raises(LLMUpstreamError):
+            post_with_retry(
+                url="https://api.example.com/v1/x",
+                headers={}, json_body={"k": "v"},
+                provider="openai", max_attempts=1,
+            )
+    # With max_attempts=1 (outer_attempt > 1 in adapter maps to this), single call
+    assert len(calls) == 1

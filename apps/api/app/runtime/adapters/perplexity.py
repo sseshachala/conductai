@@ -8,10 +8,11 @@ and research tasks only (no agentic loops).
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from app.runtime.llm_client import (
-    LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage, post_with_retry,
+    LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage,
+    post_with_retry, raise_if_guard_proxy_blocked,
 )
 from app.runtime.pricing import get_model_rates
 
@@ -41,11 +42,10 @@ class PerplexityClient:
         max_tokens: int = 4096,
         cache_system: bool = False,
         idempotency_key: str | None = None,
+        on_retry: Callable[[dict[str, Any]], None] | None = None,
+        outer_attempt: int = 1,
     ) -> LLMResponse:
         _ = cache_system  # not supported
-        # Perplexity does not document Idempotency-Key support — accepted param
-        # for interface parity; not forwarded to the API.
-        _ = idempotency_key
 
         pplx_messages = [{"role": "system", "content": system}, *messages]
         payload: dict[str, Any] = {
@@ -55,16 +55,27 @@ class PerplexityClient:
         }
         # Perplexity Sonar models don't support tool_calls; skip tools silently.
 
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+            **self._default_headers,
+        }
+        # Perplexity does not document Idempotency-Key GA support, but the API
+        # is OpenAI-compatible and safe to send. Header will be ignored if
+        # unsupported; protects if they honor it.
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+
+        _max_attempts = 1 if outer_attempt > 1 else 3
         r = post_with_retry(
             url=f"{self._base_url or 'https://api.perplexity.ai'}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self._api_key}",
-                "Content-Type": "application/json",
-                **self._default_headers,
-            },
+            headers=headers,
             json_body=payload,
             provider="perplexity",
+            max_attempts=_max_attempts,
+            on_retry=on_retry,
         )
+        raise_if_guard_proxy_blocked(provider="perplexity", response=r)
         r.raise_for_status()
         raw = r.json()
 
