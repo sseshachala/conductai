@@ -35,6 +35,9 @@ class OpenAIClient:
         self._default_headers = default_headers or {}
         self._pricing_snapshot = pricing_snapshot
         self._base_url = base_url
+        # Subclasses (e.g. TogetherClient) may override to identify themselves
+        # in retry/upstream events without duplicating the whole adapter.
+        self._provider = "openai"
 
     def create(
         self,
@@ -91,13 +94,13 @@ class OpenAIClient:
             url=f"{self._base_url or 'https://api.openai.com'}/v1/chat/completions",
             headers=headers,
             json_body=payload,
-            provider="openai",
+            provider=self._provider,
             max_attempts=_max_attempts,
             on_retry=on_retry,
         )
         # Conduct proxy structured policy/config blocks: turn JSON error into
         # a typed exception dag_runner classifies through the Guard UX path.
-        raise_if_guard_proxy_blocked(provider="openai", response=r)
+        raise_if_guard_proxy_blocked(provider=self._provider, response=r)
         if r.status_code >= 400:
             raise Exception(f"OpenAI {r.status_code}: {r.text[:500]}")
         raw = r.json()
