@@ -85,6 +85,8 @@ class FindingOut(BaseModel):
     run_id: Optional[str]
     created_at: datetime
     updated_at: Optional[datetime]
+    # #1008 lineage — scanner project name (LEFT JOIN via source_project_id)
+    source_project_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -113,6 +115,8 @@ class FindingSummary(BaseModel):
     by_tool: dict
     by_type: dict
     mttr_hours: Optional[float]
+    # #1008 lineage — workspace's Security Automation project name (owner of the loop)
+    owner_project_name: Optional[str] = None
 
 
 class TriggerFixResponse(BaseModel):
@@ -263,6 +267,46 @@ def apply_security_install_guard(
             ),
         )
     return sec_project_id
+
+
+_OWNER_PROJECT_NAME_SQL = text(
+    "SELECT p.name FROM workspaces ws "
+    "LEFT JOIN projects p ON p.id = ws.security_automation_project_id "
+    "WHERE ws.id = :ws"
+)
+
+
+def _load_owner_project_name(db: Session, workspace_id: str) -> Optional[str]:
+    """Return the workspace's Security Automation project name, or None if the
+    pointer isn't set (no security playbook installed). See #1008 for the
+    Guard Activity lineage: Source · Owner · Target.
+    """
+    row = db.execute(_OWNER_PROJECT_NAME_SQL, {"ws": workspace_id}).first()
+    if row is None:
+        return None
+    return row[0]
+
+
+def _attach_source_project_name(db: Session, findings) -> None:
+    """Best-effort: populate SecurityFinding.source_project_name on each row
+    in-place via a single batched SELECT. Silent on any error — lineage is
+    non-critical UI polish (#1008).
+    """
+    ids = list({f.source_project_id for f in findings if f.source_project_id})
+    if not ids:
+        for f in findings:
+            f.source_project_name = None
+        return
+    try:
+        from sqlalchemy import bindparam
+        stmt = text("SELECT id, name FROM projects WHERE id IN :pids").bindparams(
+            bindparam("pids", expanding=True)
+        )
+        name_by_id = {str(row[0]): row[1] for row in db.execute(stmt, {"pids": ids})}
+    except Exception:
+        name_by_id = {}
+    for f in findings:
+        f.source_project_name = name_by_id.get(str(f.source_project_id)) if f.source_project_id else None
 
 
 def _ensure_security_automation_project(db: Session, workspace_id: str) -> str:
@@ -450,7 +494,16 @@ def get_summary(
     if mttr_row is not None:
         mttr_hours = round(float(mttr_row) / 3600, 2)
 
-    return FindingSummary(total=total, by_severity=by_severity, by_status=by_status, by_tool=by_tool, by_type=by_type, mttr_hours=mttr_hours)
+    owner_project_name = _load_owner_project_name(db, workspace_id)
+    return FindingSummary(
+        total=total,
+        by_severity=by_severity,
+        by_status=by_status,
+        by_tool=by_tool,
+        by_type=by_type,
+        mttr_hours=mttr_hours,
+        owner_project_name=owner_project_name,
+    )
 
 
 @router.get("", response_model=list[FindingOut])
@@ -478,7 +531,9 @@ def list_findings(
     if repo:
         q = q.filter(SecurityFinding.repo_full_name == repo)
 
-    return q.order_by(SecurityFinding.created_at.desc()).limit(limit).all()
+    rows = q.order_by(SecurityFinding.created_at.desc()).limit(limit).all()
+    _attach_source_project_name(db, rows)
+    return rows
 
 
 @router.delete("", status_code=200)
@@ -509,6 +564,7 @@ def get_finding(
     finding = db.query(SecurityFinding).filter(SecurityFinding.id == finding_id, SecurityFinding.workspace_id == workspace_id).first()
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+    _attach_source_project_name(db, [finding])
     return finding
 
 
