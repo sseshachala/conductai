@@ -46,6 +46,7 @@ function ActivityContent() {
   const [updating, setUpdating] = useState<Record<string, boolean>>({})
   const [triggering, setTriggering] = useState<Record<string, boolean>>({})
   const [ownerName, setOwnerName] = useState<string | null>(null)  // #1008 lineage — Owner
+  const [expandedId, setExpandedId] = useState<string | null>(null)  // #1009 — one open at a time
 
 
   const load = useCallback(async () => {
@@ -185,76 +186,119 @@ function ActivityContent() {
         ) : filtered.map((f, i, arr) => {
           const filePart = f.file ? (f.line != null ? `${f.file}:${f.line}` : f.file) : "—"
           const session = f.source_run_id ? f.source_run_id.slice(0, 8) : "—"
-          const reporter = f.reporter_email ? f.reporter_email.split("@")[0] : "—"
           const transitions = STATUS_TRANSITIONS[f.status] ?? []
           const busy = !!updating[f.id]
           const fixing = !!triggering[f.id]
           const canFix = (f.status === "open" || f.status === "triaging") && !!f.repo_full_name
+          const isExpanded = expandedId === f.id
+          const toggle = () => setExpandedId(prev => prev === f.id ? null : f.id)
+          const stop = (e: React.MouseEvent) => e.stopPropagation()
 
           return (
-            <div
-              key={f.id}
-              style={{
-                display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 20px",
-                borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
-                alignItems: "center",
-                opacity: busy ? 0.6 : 1,
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "")}
-            >
-              <SeverityPill severity={f.severity} />
-              <div style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}>{f.type || "—"}</div>
-              <div style={{ overflow: "hidden" }}>
-                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filePart}</div>
-                {f.repo_full_name && (
-                  <div className="mono" title={f.repo_full_name} style={{ fontSize: 10.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {f.repo_full_name}
+            <div key={f.id} style={{ borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
+              {/* Compact row — click to expand */}
+              <div
+                onClick={toggle}
+                role="button"
+                aria-expanded={isExpanded}
+                style={{
+                  display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 20px",
+                  alignItems: "center", cursor: "pointer",
+                  opacity: busy ? 0.6 : 1,
+                  background: isExpanded ? "var(--surface-2)" : undefined,
+                }}
+                onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = "var(--surface-2)" }}
+                onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = "" }}
+              >
+                <SeverityPill severity={f.severity} />
+                <div style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}>{f.type || "—"}</div>
+                <div style={{ fontSize: 12.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.description}>
+                  <span style={{ color: "var(--text-muted)", marginRight: 6, fontSize: 10 }}>{isExpanded ? "▾" : "▸"}</span>
+                  {f.description.length > 90 ? f.description.slice(0, 87) + "…" : f.description}
+                </div>
+                <StatusBadge status={f.status} />
+                <div onClick={stop} style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                  {transitions.map(t => (
+                    <button
+                      key={t.next}
+                      disabled={busy || fixing}
+                      onClick={() => updateStatus(f.id, t.next)}
+                      style={{
+                        fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, cursor: (busy || fixing) ? "wait" : "pointer",
+                        border: `1px solid ${t.tone === "ok" ? "var(--ok-bd)" : t.tone === "warn" ? "var(--warn-bd)" : "var(--err-bd)"}`,
+                        background: t.tone === "ok" ? "var(--ok-bg)" : t.tone === "warn" ? "var(--warn-bg)" : "var(--err-bg)",
+                        color: t.tone === "ok" ? "var(--ok)" : t.tone === "warn" ? "var(--warn)" : "var(--err)",
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                  {canFix && (
+                    <button
+                      disabled={fixing || busy}
+                      onClick={() => triggerFix(f.id)}
+                      style={{
+                        fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6,
+                        cursor: (fixing || busy) ? "wait" : "pointer",
+                        border: "1px solid var(--accent-bd, var(--border-2))",
+                        background: "var(--accent-bg, var(--surface-2))",
+                        color: "var(--accent-text)",
+                      }}
+                    >
+                      {fixing ? "…" : "Run fix"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Expanded panel — full lineage + metadata */}
+              {isExpanded && (
+                <div style={{ padding: "6px 20px 18px 20px", background: "var(--surface-2)", fontSize: 12 }}>
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "140px 1fr",
+                    rowGap: 8, columnGap: 16,
+                    color: "var(--text-3)",
+                  }}>
+                    <div className="eyebrow" style={{ fontSize: 10 }}>File</div>
+                    <div className="mono" style={{ color: "var(--text-2)" }}>{filePart}</div>
+
+                    <div className="eyebrow" style={{ fontSize: 10 }}>Target (repo)</div>
+                    <div className="mono" style={{ color: f.repo_full_name ? "var(--text-2)" : "var(--text-muted)" }}>
+                      {f.repo_full_name || "—"}
+                    </div>
+
+                    <div className="eyebrow" style={{ fontSize: 10 }}>Source (scanner)</div>
+                    <div style={{ color: f.source_project_name ? "var(--text-2)" : "var(--text-muted)" }}>
+                      {f.source_project_name || "—"}
+                    </div>
+
+                    <div className="eyebrow" style={{ fontSize: 10 }}>Tool</div>
+                    <div style={{ color: "var(--text-2)" }}>{f.tool || "—"}</div>
+
+                    <div className="eyebrow" style={{ fontSize: 10 }}>Reporter</div>
+                    <div className="mono" style={{ color: "var(--text-muted)" }}>{f.reporter_email || "—"}</div>
+
+                    <div className="eyebrow" style={{ fontSize: 10 }}>Source run</div>
+                    <div className="mono" style={{ color: "var(--text-muted)" }}>{session}</div>
+
+                    <div className="eyebrow" style={{ fontSize: 10 }}>Age</div>
+                    <div style={{ color: "var(--text-2)" }}>
+                      {timeAgo(f.created_at)}
+                      <span style={{ color: "var(--text-muted)", marginLeft: 8, fontSize: 11 }}>
+                        {new Date(f.created_at).toLocaleString()}
+                      </span>
+                    </div>
+
+                    {f.description.length > 90 && (
+                      <>
+                        <div className="eyebrow" style={{ fontSize: 10 }}>Full description</div>
+                        <div style={{ color: "var(--text-2)", whiteSpace: "pre-wrap" }}>{f.description}</div>
+                      </>
+                    )}
                   </div>
-                )}
-              </div>
-              <div style={{ fontSize: 12.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.description}>
-                {f.description.length > 72 ? f.description.slice(0, 69) + "…" : f.description}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--text-3)" }}>{f.tool || "—"}</div>
-              <div style={{ fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.source_project_name ?? undefined}>{f.source_project_name || "—"}</div>
-              <div className="mono" title={f.reporter_email ?? undefined} style={{ fontSize: 11.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{reporter}</div>
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{session}</div>
-              <div style={{ fontSize: 12, color: "var(--text-3)" }}>{timeAgo(f.created_at)}</div>
-              <StatusBadge status={f.status} />
-              {/* Inline actions */}
-              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                {transitions.map(t => (
-                  <button
-                    key={t.next}
-                    disabled={busy || fixing}
-                    onClick={() => updateStatus(f.id, t.next)}
-                    style={{
-                      fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, cursor: (busy || fixing) ? "wait" : "pointer",
-                      border: `1px solid ${t.tone === "ok" ? "var(--ok-bd)" : t.tone === "warn" ? "var(--warn-bd)" : "var(--err-bd)"}`,
-                      background: t.tone === "ok" ? "var(--ok-bg)" : t.tone === "warn" ? "var(--warn-bg)" : "var(--err-bg)",
-                      color: t.tone === "ok" ? "var(--ok)" : t.tone === "warn" ? "var(--warn)" : "var(--err)",
-                    }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-                {canFix && (
-                  <button
-                    disabled={fixing || busy}
-                    onClick={() => triggerFix(f.id)}
-                    style={{
-                      fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6,
-                      cursor: (fixing || busy) ? "wait" : "pointer",
-                      border: "1px solid var(--accent-bd, var(--border-2))",
-                      background: "var(--accent-bg, var(--surface-2))",
-                      color: "var(--accent-text)",
-                    }}
-                  >
-                    {fixing ? "…" : "Run fix"}
-                  </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )
         })}
