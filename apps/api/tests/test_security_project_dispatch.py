@@ -14,9 +14,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+from fastapi import HTTPException
+
 from app.routers.security import (
     _ensure_security_automation_project,
     _find_security_workflow,
+    apply_security_install_guard,
 )
 
 
@@ -129,3 +133,60 @@ def test_returns_none_when_workspace_missing():
     result = _find_security_workflow(db, "ws-1", "security_loop")
 
     assert result is None
+
+
+# ── apply_security_install_guard (#1005 step 4) ──────────────────────────────
+
+def _mk_provision_db(project_id):
+    """Mock db.execute that mimics _ensure_security_automation_project succeeding."""
+    db = MagicMock()
+    # First execute: INSERT ... RETURNING (project_id,)
+    db.execute.return_value.first.return_value = (project_id,)
+    return db
+
+
+def test_install_guard_passthrough_for_non_security_templates():
+    """Non-security template → return None so caller passes body.project_id through."""
+    db = MagicMock()
+    assert apply_security_install_guard(db, "ws-1", "autopilot", "some-proj") is None
+    assert apply_security_install_guard(db, "ws-1", None, None) is None
+    db.execute.assert_not_called()  # short-circuit, no DB touched
+
+
+def test_install_guard_auto_provisions_for_security_loop_when_no_project_supplied():
+    """security_loop install without project_id → return the auto-provisioned id."""
+    db = _mk_provision_db("proj-sec-1")
+
+    result = apply_security_install_guard(db, "ws-1", "security_loop", None)
+
+    assert result == "proj-sec-1"
+
+
+def test_install_guard_auto_provisions_for_security_autopilot_fix():
+    """security_autopilot_fix install → same auto-provision path."""
+    db = _mk_provision_db("proj-sec-1")
+
+    result = apply_security_install_guard(db, "ws-1", "security_autopilot_fix", None)
+
+    assert result == "proj-sec-1"
+
+
+def test_install_guard_accepts_correct_project_id():
+    """If caller supplies the same project_id we would auto-provision → accept."""
+    db = _mk_provision_db("proj-sec-1")
+
+    result = apply_security_install_guard(db, "ws-1", "security_loop", "proj-sec-1")
+
+    assert result == "proj-sec-1"
+
+
+def test_install_guard_rejects_wrong_project_id():
+    """security_loop install into a non-security project → 400."""
+    db = _mk_provision_db("proj-sec-1")
+
+    with pytest.raises(HTTPException) as exc:
+        apply_security_install_guard(db, "ws-1", "security_loop", "proj-user")
+
+    assert exc.value.status_code == 400
+    assert "security_loop" in exc.value.detail
+    assert "Security Automation project" in exc.value.detail

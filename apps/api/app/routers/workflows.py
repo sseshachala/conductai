@@ -462,6 +462,15 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
         if row:
             project_id = row.id
 
+    # #1005 step 4 — force security playbook installs under the workspace's
+    # Security Automation project. Returns None for non-security templates.
+    from app.routers.security import apply_security_install_guard
+    _sec_project_id = apply_security_install_guard(
+        db, workspace_id, body.template, body.project_id
+    )
+    if _sec_project_id is not None:
+        project_id = _sec_project_id
+
     workflow = Workflow(
         workspace_id=workspace_id,
         project_id=project_id,

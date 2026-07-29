@@ -941,12 +941,12 @@ async def mcp_endpoint(
                 db.flush()
                 # Auto-trigger security_loop if installed
                 try:
-                    from app.models.workflow import Workflow
                     from app.models.run import Run
-                    _wf = db.query(Workflow).filter(
-                        Workflow.workspace_id == ws_uuid,
-                        Workflow.playbook_slug == "security_loop",
-                    ).first()
+                    from app.routers.security import (
+                        _SECURITY_LOOP_SLUG,
+                        _find_security_workflow,
+                    )
+                    _wf = _find_security_workflow(db, ws_uuid, _SECURITY_LOOP_SLUG)
                     if _wf and _wf.current_version_id:
                         _run = Run(
                             workflow_version_id=_wf.current_version_id,
@@ -992,10 +992,11 @@ async def mcp_endpoint(
                 finding = db.query(SF).filter(SF.id == _fid_uuid, SF.workspace_id == ws_uuid).first()
                 if not finding:
                     return JSONResponse(_text(msg_id, f"Error — finding {_fid} not found"))
-                _wf = db.query(Workflow).filter(
-                    Workflow.workspace_id == ws_uuid,
-                    Workflow.playbook_slug == "security_autopilot_fix",
-                ).first()
+                from app.routers.security import (
+                    _SECURITY_AUTOPILOT_FIX_SLUG,
+                    _find_security_workflow,
+                )
+                _wf = _find_security_workflow(db, ws_uuid, _SECURITY_AUTOPILOT_FIX_SLUG)
                 if not _wf or not _wf.current_version_id:
                     return JSONResponse(_text(msg_id, "Error — security_autopilot_fix playbook is not installed in this workspace"))
                 _run = Run(
