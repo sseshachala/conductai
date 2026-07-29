@@ -225,7 +225,17 @@ blocks:
           }'
 
       Count successful posts (HTTP 201 responses).
-      Output ONLY on the last line: {"posted": <count>}
+
+      FINAL OUTPUT — critical, do not skip:
+        After the last curl completes, output exactly ONE more assistant
+        message containing ONLY this compact JSON on a single line — no
+        shell output, no prose, no markdown fence, nothing after it:
+          {"posted": <N>}
+        where <N> is the integer count of HTTP 201 responses.
+
+        The workflow uses this line to populate {{file_findings.posted}} in
+        downstream blocks. If you output anything else after it, the value
+        will not resolve.
 
   # ── 5. Comment the human-readable threat model on the PR ────────────────────
   comment_pr:
@@ -256,7 +266,7 @@ blocks:
          JSON array line (a line starting with '['). Write to /tmp/pr_comment.md
          prepended with:
            <!-- conduct-threat-model -->
-           > Threat model auto-drafted by Conduct. {{file_findings.posted|default:"multiple"}} threats filed to Guard.
+           > Threat model auto-drafted by Conduct. {{file_findings.posted}} threats filed to Guard.
 
       3. POST via python3 urllib to /repos/{{inputs.target_repo}}/issues/{{inputs.pr_number}}/comments
          with body: {"body": <file contents>}.
@@ -275,11 +285,11 @@ blocks:
     action: write
     scope: repo
     key: "{{inputs.target_repo}}:threat_model"
-    summary: "Threat model — {{file_findings.posted|default:"multiple"}} threats filed for {{inputs.target_repo}}{% if inputs.pr_number %} PR #{{inputs.pr_number}}{% endif %}"
+    summary: "Threat model — {{file_findings.posted}} threats filed for {{inputs.target_repo}}{% if inputs.pr_number %} PR #{{inputs.pr_number}}{% endif %}"
     payload: |
       {
         "pr": {{inputs.pr_number|default:"null"}},
-        "threats_filed": {{file_findings.posted|default:"0"}},
+        "threats_filed": {{file_findings.posted}},
         "categories_covered": {{plan.stride_categories_in_scope|tojson}},
         "run_id": "{{_run_id}}"
       }
