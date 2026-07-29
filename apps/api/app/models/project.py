@@ -17,5 +17,5 @@ class Project(Base):
     security_finding_id = Column(String(36), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
-    workspace = relationship("Workspace", back_populates="projects")
+    workspace = relationship("Workspace", back_populates="projects", foreign_keys=[workspace_id])
     workflows = relationship("Workflow", back_populates="project")
