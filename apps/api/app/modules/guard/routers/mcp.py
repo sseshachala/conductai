@@ -944,27 +944,18 @@ async def mcp_endpoint(
                     from app.models.run import Run
                     from app.routers.security import (
                         _SECURITY_LOOP_SLUG,
+                        _build_finding_trigger_state,
                         _find_security_workflow,
+                        _load_security_config_defaults,
                     )
                     _wf = _find_security_workflow(db, ws_uuid, _SECURITY_LOOP_SLUG)
                     if _wf and _wf.current_version_id:
+                        _cfg = _load_security_config_defaults(db, ws_uuid)
                         _run = Run(
                             workflow_version_id=_wf.current_version_id,
                             triggered_by="security_finding",
                             status="pending",
-                            state={
-                                "_trigger": {
-                                    "event_type": "security_finding",
-                                    "finding_id": str(finding.id),
-                                    "tool": finding.tool,
-                                    "severity": finding.severity,
-                                    "type": finding.type,
-                                    "description": finding.description,
-                                    "file": finding.file,
-                                    "repo_full_name": finding.repo_full_name,
-                                },
-                                "__input_contract": {"version": "phase2.v1", "status": "validated", "shape": "trigger"},
-                            },
+                            state=_build_finding_trigger_state(finding, _cfg, "security_finding"),
                         )
                         db.add(_run)
                         db.flush()
@@ -994,29 +985,19 @@ async def mcp_endpoint(
                     return JSONResponse(_text(msg_id, f"Error — finding {_fid} not found"))
                 from app.routers.security import (
                     _SECURITY_AUTOPILOT_FIX_SLUG,
+                    _build_finding_trigger_state,
                     _find_security_workflow,
+                    _load_security_config_defaults,
                 )
                 _wf = _find_security_workflow(db, ws_uuid, _SECURITY_AUTOPILOT_FIX_SLUG)
                 if not _wf or not _wf.current_version_id:
                     return JSONResponse(_text(msg_id, "Error — security_autopilot_fix playbook is not installed in this workspace"))
+                _cfg = _load_security_config_defaults(db, ws_uuid)
                 _run = Run(
                     workflow_version_id=_wf.current_version_id,
                     triggered_by="security_finding_fix",
                     status="pending",
-                    state={
-                        "_trigger": {
-                            "event_type": "security_finding_fix",
-                            "finding_id": str(finding.id),
-                            "severity": finding.severity,
-                            "type": finding.type,
-                            "file": finding.file,
-                            "line": finding.line,
-                            "description": finding.description,
-                            "suggested_fix": finding.suggested_fix,
-                            "repo_full_name": finding.repo_full_name,
-                        },
-                        "__input_contract": {"version": "phase2.v1", "status": "validated", "shape": "trigger"},
-                    },
+                    state=_build_finding_trigger_state(finding, _cfg, "security_finding_fix"),
                 )
                 db.add(_run)
                 db.flush()
