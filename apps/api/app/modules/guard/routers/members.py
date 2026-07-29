@@ -48,15 +48,17 @@ def list_members(
         text("""
             SELECT
                 wu.clerk_user_id,
-                wu.email,
+                u.email,
                 wu.role,
                 COALESCE(gmc.active, true) AS active
             FROM workspace_users wu
+            LEFT JOIN users u
+                   ON u.clerk_id = wu.clerk_user_id
             LEFT JOIN guard_member_config gmc
                    ON gmc.workspace_id = wu.workspace_id
                   AND gmc.clerk_user_id = wu.clerk_user_id
             WHERE wu.workspace_id = :ws
-            ORDER BY wu.email ASC
+            ORDER BY u.email ASC
         """),
         {"ws": workspace_id},
     ).fetchall()
