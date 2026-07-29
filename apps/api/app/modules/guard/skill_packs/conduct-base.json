@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "rules": [
@@ -10,7 +10,7 @@
       "persona": "proxy",
       "non_overridable": true,
       "description": "Block LLM calls containing credentials in the prompt",
-      "match_pattern": "(DATABASE_URL|postgres(?:ql)?://|mysql://|DB_PASSWORD|STRIPE_SECRET|sk_live_[0-9a-zA-Z]{20,}|sk-ant-[a-zA-Z0-9\\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|AWS_SECRET_ACCESS_KEY)",
+      "match_pattern": "(postgres(?:ql)?://\\S+|mysql://\\S+|sk_live_[0-9a-zA-Z]{20,}|sk-ant-[a-zA-Z0-9\\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|(DATABASE_URL|DB_PASSWORD|STRIPE_SECRET|AWS_SECRET_ACCESS_KEY)\\s*=\\s*['\"]?[^\\s'\"]{6,})",
       "action": "block",
       "message": "Credential detected in prompt \u2014 request blocked before reaching LLM provider.",
       "severity": "critical",
