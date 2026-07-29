@@ -258,7 +258,7 @@ def get_adoption(
     rows = db.execute(
         text("""
             SELECT
-                wu.email,
+                u.email,
                 gmc.instructions_version,
                 MAX(gae.ts)                                    AS last_synced,
                 COALESCE(
@@ -267,16 +267,18 @@ def get_adoption(
                     ARRAY[]::text[]
                 )                                              AS tools
             FROM workspace_users wu
+            LEFT JOIN users u
+                   ON u.clerk_id = wu.clerk_user_id
             LEFT JOIN guard_member_config gmc
                    ON gmc.workspace_id = wu.workspace_id
                   AND gmc.clerk_user_id = wu.clerk_user_id
             LEFT JOIN guard_audit_events gae
                    ON gae.workspace_id = wu.workspace_id
-                  AND gae.user_email   = wu.email
+                  AND gae.user_email   = u.email
                   AND gae.ts          >= :cutoff
             WHERE wu.workspace_id = :ws
-            GROUP BY wu.email, gmc.instructions_version
-            ORDER BY wu.email ASC
+            GROUP BY u.email, gmc.instructions_version
+            ORDER BY u.email ASC
         """),
         {"ws": ws_uuid, "cutoff": cutoff},
     ).fetchall()
