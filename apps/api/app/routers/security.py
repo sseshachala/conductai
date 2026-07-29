@@ -205,6 +205,66 @@ _SET_POINTER_SQL = text(
 )
 
 
+_RESOLVE_SOURCE_PROJECT_SQL = text(
+    "SELECT wf.project_id FROM runs r "
+    "JOIN workflow_versions wv ON wv.id = r.workflow_version_id "
+    "JOIN workflows wf ON wf.id = wv.workflow_id "
+    "WHERE r.id = :run_id"
+)
+
+
+def _resolve_source_project_id(db: Session, source_run_id: str | None) -> str | None:
+    """Resolve the scanner project that produced a finding by walking
+    Run → WorkflowVersion → Workflow.project_id. Returns None when
+    ``source_run_id`` is unset, invalid, or the chain has a null project_id.
+
+    Lineage only — fix routing still uses ``repo_full_name``. See #1005.
+    """
+    if not source_run_id:
+        return None
+    try:
+        row = db.execute(
+            _RESOLVE_SOURCE_PROJECT_SQL, {"run_id": source_run_id}
+        ).first()
+    except Exception:
+        return None  # invalid UUID or DB hiccup — lineage is best-effort
+    if row is None or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def apply_security_install_guard(
+    db: Session,
+    workspace_id: str,
+    template: str | None,
+    body_project_id: str | None,
+) -> str | None:
+    """Enforce that security_loop / security_autopilot_fix installs land under
+    the workspace's Security Automation project. Returns the project_id the
+    caller should use, or None to pass ``body_project_id`` through unchanged.
+
+    Raises ``HTTPException(400)`` if the caller supplied a project_id that
+    isn't the Security Automation project.
+
+    Idempotent: repeat installs get the same project id via
+    ``_ensure_security_automation_project``. See conductai#1005 step 4.
+    """
+    if template not in (_SECURITY_LOOP_SLUG, _SECURITY_AUTOPILOT_FIX_SLUG):
+        return None
+    from fastapi import HTTPException as _HTTPException
+
+    sec_project_id = _ensure_security_automation_project(db, workspace_id)
+    if body_project_id and str(body_project_id) != str(sec_project_id):
+        raise _HTTPException(
+            status_code=400,
+            detail=(
+                f"{template} can only be installed under the workspace's "
+                "Security Automation project. Omit project_id to auto-provision."
+            ),
+        )
+    return sec_project_id
+
+
 def _ensure_security_automation_project(db: Session, workspace_id: str) -> str:
     """Get-or-create the workspace's Security Automation project and set the
     ``workspace.security_automation_project_id`` pointer if it wasn't already.
@@ -343,6 +403,7 @@ def ingest_finding(
         repo_full_name=body.repo_full_name,
         commit_sha=body.commit_sha,
         source_run_id=body.source_run_id,
+        source_project_id=_resolve_source_project_id(db, body.source_run_id),
         reporter_email=body.reporter_email,
         status="open",
         created_at=now,
