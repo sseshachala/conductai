@@ -62,7 +62,7 @@ def _rewrite_pattern(conn, old: str, new: str) -> None:
                SET rules = (
                  SELECT jsonb_agg(
                    CASE WHEN r->>'id' = 'proxy-no-credential-leak'
-                        THEN jsonb_set(r, '{match_pattern}', to_jsonb(:new::text))
+                        THEN jsonb_set(r, '{match_pattern}', to_jsonb(CAST(:new AS text)))
                         ELSE r
                    END
                  )
