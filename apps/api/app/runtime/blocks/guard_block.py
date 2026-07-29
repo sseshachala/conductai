@@ -142,17 +142,47 @@ def _execute_guard(
 
         if action == "block":
             _record_event(v, "blocked")
+            # Diagnostic breadcrumb: find the exact substring that matched so the
+            # user can see WHICH content triggered the block, not just the rule id.
+            matched_snippet = ""
+            _mpp = v.get("match_path_pattern")
+            if _mpp:
+                try:
+                    _m = _re.search(_mpp, path_text, _re.IGNORECASE)
+                    if _m:
+                        _s = max(0, _m.start() - 30)
+                        _e = min(len(path_text), _m.end() + 30)
+                        matched_snippet = path_text[_s:_e].strip()
+                except _re.error:
+                    pass
+            if not matched_snippet:
+                _mp = v.get("match_pattern")
+                if _mp:
+                    try:
+                        _m = _re.search(_mp, context_json, _re.IGNORECASE)
+                        if _m:
+                            _s = max(0, _m.start() - 30)
+                            _e = min(len(context_json), _m.end() + 30)
+                            matched_snippet = context_json[_s:_e].strip()
+                    except _re.error:
+                        pass
+            non_overridable = bool(v.get("non_overridable"))
             try:
                 state["__governance"] = {
-                    "blocked":      True,
-                    "rule_id":      v_rule_id,
-                    "rule_message": message,
-                    "reason_code":  "GUARD_POLICY_BLOCKED",
+                    "blocked":         True,
+                    "rule_id":         v_rule_id,
+                    "rule_message":    message,
+                    "reason_code":     "GUARD_POLICY_BLOCKED",
+                    "non_overridable": non_overridable,
+                    "matched_snippet": matched_snippet,
                 }
             except Exception:
                 pass
             db.commit()
-            raise RuntimeError(f"[ConductGuard] Blocked by policy '{v_rule_id}': {message}")
+            _detail = f" [matched near: '…{matched_snippet}…']" if matched_snippet else ""
+            raise RuntimeError(
+                f"[ConductGuard] Blocked by policy '{v_rule_id}': {message}{_detail}"
+            )
 
         elif action in ("warn", "approval"):
             _record_event(v, "warned")

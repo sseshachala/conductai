@@ -27,8 +27,17 @@ from app.runtime.exceptions import ApprovalRequired, ClarificationRequired  # no
 from app.runtime.llm_client import GuardProxyBlocked, LLMUpstreamError
 
 
-def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, Any]:
-    """Normalize runtime failures into a structured, user-actionable summary."""
+def _classify_failure(
+    exc: Exception,
+    block_id: str | None = None,
+    state: dict | None = None,
+) -> dict[str, Any]:
+    """Normalize runtime failures into a structured, user-actionable summary.
+
+    `state` is optional so existing call sites keep working. When provided, we
+    read state["__governance"] to enrich Guard-block hints with the matched
+    snippet + non_overridable-aware next_action text.
+    """
     msg = str(exc)
 
     code = "EXECUTION_ERROR"
@@ -86,10 +95,29 @@ def _classify_failure(exc: Exception, block_id: str | None = None) -> dict[str, 
         # Pull the rule_id out of the message for a more actionable hint
         m = re.search(r"policy '([^']+)'", msg)
         rule_id = m.group(1) if m else None
+        # State carries governance metadata from guard_block — includes
+        # non_overridable flag and the matched snippet so we can shape a
+        # useful next_action instead of the generic "disable Guard" hint.
+        _gov = {}
+        if isinstance(state, dict):
+            _gov = state.get("__governance") or {}
+        _non_overridable = bool(_gov.get("non_overridable"))
+        _snippet = (_gov.get("matched_snippet") or "").strip()
+        if _non_overridable:
+            _hint = (
+                "This rule cannot be disabled (compliance-critical). "
+                "Adjust the agent's tool call to comply, or contact your Guard admin "
+                "for an exception request."
+            )
+        else:
+            _hint = (
+                "Disable Guard for this workflow in Settings → ConductGuard, "
+                "or change the rule action at /guard/policies."
+            )
         next_action = (
-            (f"Guard rule '{rule_id}' blocked this step. " if rule_id else "Guard blocked this step. ") +
-            "Disable Guard for this workflow in Settings → ConductGuard, "
-            "or change the rule action at /guard/policies."
+            (f"Guard rule '{rule_id}' blocked this step. " if rule_id else "Guard blocked this step. ")
+            + (f"Matched near: '…{_snippet}…'. " if _snippet else "")
+            + _hint
         )
     elif isinstance(exc, RuntimeError) and "Turn budget exhausted" in msg:
         code = "RETRY_BUDGET_EXHAUSTED"
@@ -1134,7 +1162,7 @@ def _execute_dag(
                     scope.set_tag("blocked_host", blocked_host)
                     sentry_sdk.capture_exception(e)
             failed = True
-            fail_summary = _classify_failure(e, block_id)
+            fail_summary = _classify_failure(e, block_id, state)
             fail_error = fail_summary["message"]
             _emit(db, run_id, block_id, "block_failed", {
                 "error": fail_summary["message"],
@@ -1154,7 +1182,7 @@ def _execute_dag(
                     scope.set_tag("workspace_id", str(workspace_id_str))
                     sentry_sdk.capture_exception(e)
             failed = True
-            fail_summary = _classify_failure(e, block_id)
+            fail_summary = _classify_failure(e, block_id, state)
             fail_error = fail_summary["message"]
             _emit(db, run_id, block_id, "block_failed", {
                 "error": fail_summary["message"],
@@ -1179,7 +1207,7 @@ def _execute_dag(
             result = _execute_tool(block, state, credentials, allowed_hosts=allowed_hosts, db=db, workspace_id=workspace_id_str)
             _emit(db, run_id, block["id"], "block_completed", {"output": result})
         except Exception as e:
-            cleanup_summary = _classify_failure(e, block["id"])
+            cleanup_summary = _classify_failure(e, block["id"], state)
             _emit(db, run_id, block["id"], "block_failed", {
                 "error": str(e),
                 "failure": cleanup_summary,
