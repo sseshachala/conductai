@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "rules": [
@@ -406,7 +406,7 @@
       "non_overridable": false,
       "description": "Block destructive workflows (delete, drop, purge, destroy, wipe) triggered by AI agents",
       "match_tool": "workflow",
-      "match_pattern": "delete|drop[_\\-]|purge|destroy|wipe[_\\-]|nuke|teardown",
+      "match_pattern": "(?:\\bDELETE\\s+FROM\\b|\\bDROP\\s+(?:TABLE|DATABASE|SCHEMA|INDEX)\\b|\\bTRUNCATE\\s+TABLE\\b|-X\\s+DELETE\\b|method\\s*[:=]\\s*['\\\"]DELETE|\\brm\\s+-rf\\b|\\bgit\\s+push\\s+--force\\b|\\bgit\\s+branch\\s+-D\\b|\\bnuke[_\\-]?\\w*|\\bteardown[_\\-]\\w+|\\bpurge[_\\-]\\w+|\\bdestroy[_\\-]\\w+|\\bwipe[_\\-]\\w+|\\bdelete[_\\-]\\w+)",
       "action": "block",
       "message": "Destructive workflow blocked. Trigger manually after review.",
       "severity": "critical",
