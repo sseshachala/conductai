@@ -168,6 +168,16 @@ blocks:
       If the first POST returns any 4xx or 5xx response, output {"posted": 0, "error": "<status> <body>"}
       on the last line and STOP. Do NOT probe other endpoints, do NOT try alternate auth headers,
       do NOT list openapi paths. Fail loud, do not debug.
+
+      HARD RULES — Guard will block violations with "no-path-traversal":
+        - Do NOT read, write, list, find, cat, tail, head, stat, or grep any file.
+        - Do NOT use cd, ls, find, cat, tail, head, tee, mv, cp, touch, or mkdir.
+        - Do NOT reference /etc, /proc, /sys, /root, /app, /repo, or any absolute path
+          that isn't ${CONDUCT_API_URL}.
+        - Do NOT include ../ or ./ in any shell argument.
+        - The ONLY shell command allowed is: curl -s -X POST "${CONDUCT_API_URL}/security-findings" ...
+        - Everything you need is already in draft_stride.output (available in your workflow-context JSON).
+          Extract the JSON array from its last line — do not search for it on disk.
     prompt: |
       Threats to file (from draft_stride, JSON array on the last line):
       {{draft_stride.output}}
