@@ -282,41 +282,27 @@ def _ensure_security_automation_project(db: Session, workspace_id: str) -> str:
 
 
 def _find_security_workflow(db: Session, workspace_id: str, playbook_slug: str):
-    """Return the workflow for ``playbook_slug`` in this workspace.
+    """Return the workflow for ``playbook_slug`` in this workspace, or None.
 
-    Preferred path: look up via ``workspace.security_automation_project_id``. The
-    schema (migration 0087) guarantees at most one workflow-per-slug-per-project.
+    The pointer ``workspace.security_automation_project_id`` is authoritative:
+    every install of ``security_loop`` / ``security_autopilot_fix`` goes through
+    ``apply_security_install_guard`` which auto-provisions the project + sets
+    the pointer. Migration 0087's ``workflows_project_playbook_uniq`` partial
+    index guarantees at most one workflow-per-slug under the project.
 
-    Fallback path: legacy workspace-wide ``.first()`` — retained until backfill
-    populates the pointer for existing workspaces. Removed after that lands.
+    Returns None when the workspace has no pointer (no security playbook ever
+    installed) or when no matching workflow lives under the project.
     """
     from app.models.workflow import Workflow
     from app.models.workspace import Workspace
 
     ws = db.query(Workspace).filter(Workspace.id == workspace_id).first()
-    if ws and ws.security_automation_project_id:
-        wf = (
-            db.query(Workflow)
-            .filter(
-                Workflow.project_id == ws.security_automation_project_id,
-                Workflow.playbook_slug == playbook_slug,
-            )
-            .first()
-        )
-        if wf:
-            return wf
-        # Pointer exists but the workflow has not been moved under the project yet.
-        # This will resolve when backfill migrates existing workflows.
-        log.warning(
-            "security.dispatcher_pointer_stale",
-            workspace_id=str(workspace_id),
-            playbook_slug=playbook_slug,
-            hint="workflow not under security_automation project — run backfill",
-        )
+    if not ws or not ws.security_automation_project_id:
+        return None
     return (
         db.query(Workflow)
         .filter(
-            Workflow.workspace_id == workspace_id,
+            Workflow.project_id == ws.security_automation_project_id,
             Workflow.playbook_slug == playbook_slug,
         )
         .first()

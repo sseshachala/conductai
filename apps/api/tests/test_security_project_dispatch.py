@@ -77,8 +77,8 @@ def _mk_db(first_returns: list):
     return db
 
 
-def test_pointer_path_used_when_workspace_has_pointer_and_workflow_matches():
-    """Pointer set + workflow under project → return via pointer path (2 .first() calls)."""
+def test_returns_workflow_when_pointer_set_and_workflow_under_project():
+    """Pointer set + workflow under that project → return it."""
     ws = _mk_workspace(pointer_project_id="proj-1")
     wf = _mk_workflow()
     db = _mk_db([ws, wf])
@@ -86,53 +86,40 @@ def test_pointer_path_used_when_workspace_has_pointer_and_workflow_matches():
     result = _find_security_workflow(db, "ws-1", "security_loop")
 
     assert result is wf
-    # 2 first() calls: workspace + workflow. Legacy fallback NOT invoked.
+    # 2 first() calls: workspace + workflow. No legacy path.
     assert db.query.return_value.first.call_count == 2
 
 
-def test_falls_back_when_workspace_pointer_is_null():
-    """No pointer → skip pointer branch entirely, use legacy .first() (2 calls)."""
+def test_returns_none_when_workspace_pointer_is_null():
+    """No pointer (never installed a security playbook) → None. Only 1 first() call."""
     ws = _mk_workspace(pointer_project_id=None)
-    wf = _mk_workflow()
-    db = _mk_db([ws, wf])
+    db = _mk_db([ws])
 
     result = _find_security_workflow(db, "ws-1", "security_loop")
 
-    assert result is wf
-    # 2 first() calls: workspace lookup + legacy workflow lookup (pointer branch skipped).
-    assert db.query.return_value.first.call_count == 2
+    assert result is None
+    assert db.query.return_value.first.call_count == 1
 
 
-def test_falls_back_when_pointer_set_but_workflow_not_under_project():
-    """Pointer set but workflow not moved under the project → fallback returns it."""
+def test_returns_none_when_workflow_not_under_project():
+    """Pointer set but no matching workflow → None (unlike the legacy behavior)."""
     ws = _mk_workspace(pointer_project_id="proj-1")
-    legacy_wf = _mk_workflow()
-    # Order: workspace lookup, pointer-path workflow (None), legacy fallback
-    db = _mk_db([ws, None, legacy_wf])
-
-    result = _find_security_workflow(db, "ws-1", "security_loop")
-
-    assert result is legacy_wf
-    assert db.query.return_value.first.call_count == 3
-
-
-def test_returns_none_when_no_workflow_anywhere():
-    """No pointer, no legacy workflow → None (uninstalled)."""
-    ws = _mk_workspace(pointer_project_id=None)
     db = _mk_db([ws, None])
 
     result = _find_security_workflow(db, "ws-1", "security_loop")
 
     assert result is None
+    assert db.query.return_value.first.call_count == 2
 
 
 def test_returns_none_when_workspace_missing():
-    """Non-existent workspace + no legacy workflow → None (defensive)."""
-    db = _mk_db([None, None])
+    """Non-existent workspace → None (defensive). One first() call."""
+    db = _mk_db([None])
 
     result = _find_security_workflow(db, "ws-1", "security_loop")
 
     assert result is None
+    assert db.query.return_value.first.call_count == 1
 
 
 # ── apply_security_install_guard (#1005 step 4) ──────────────────────────────
