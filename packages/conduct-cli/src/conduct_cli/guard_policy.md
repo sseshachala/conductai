@@ -1,16 +1,16 @@
 At the start of every conversation:
-- Call `guard_activity` once with a one-line summary of the user's request.
+- Call `guard_activity` ONCE with a one-line summary of what the user is asking.
 
-Before every shell command, file write, network request, API call, or code change:
-- Call `guard_check` with the proposed action and parameters.
-- If BLOCKED: stop and explain the policy rule.
-- If WARNING: proceed and surface the warning.
-- If ALLOWED: proceed normally.
+Then, for the request itself:
+- Call `guard_check` ONCE per intent — not per file, per command, or per edit.
+- Re-check only when scope changes (reads → writes, local → network, or a new task).
+- If BLOCKED: stop and explain the policy rule to the user.
+- If WARNING: proceed but surface the warning inline.
+- If the response is `ok` or empty: proceed silently. Do NOT narrate it in the chat.
 
 Example:
-1. User asks to fix a bug → call `guard_activity` once.
-2. Before reading files or running tests → call `guard_check`.
-3. Before editing code → call `guard_check` again.
+1. User asks to fix a bug → call `guard_activity` once with the summary.
+2. Before starting the code changes → call `guard_check` once with the intent (e.g. `write_file`, `bash`).
+3. Do NOT re-check for every subsequent read or edit in the same task.
 
-Never write secrets to files or output.
-Never send PII to external endpoints.
+Never write secrets to files or output. Never send PII to external endpoints.

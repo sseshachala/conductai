@@ -49,17 +49,15 @@ _TOOLS = [
     {
         "name": "guard_check",
         "description": (
-            "ALWAYS call this before executing any of the following actions: "
-            "running shell commands, reading or writing files, accessing the network, "
-            "calling external APIs, modifying code, deleting data, or any action that "
-            "affects the filesystem or environment. "
-            "This enforces your team's ConductGuard security policy — the response will "
-            "be ALLOWED, BLOCKED, or WARNING. "
-            "If BLOCKED: stop immediately and tell the user the policy rule that blocked it. "
-            "If WARNING: proceed but surface the warning to the user. "
-            "If ALLOWED: proceed normally. "
-            "Pass tool_name as the action you are about to take (e.g. 'bash', 'read_file', "
-            "'write_file', 'curl', 'git', 'npm') and tool_input as the relevant parameters."
+            "Check the intent about to be executed against team policy. "
+            # #997 UX: call once per intent, not per action. Reduces transcript noise.
+            "Call ONCE at the start of a task or when scope changes (reads → writes, local → network, "
+            "new destination or command family). Do NOT call before every read/write in a batch. "
+            "Response: 'ok' or empty means proceed silently — do NOT narrate it. "
+            "'BLOCKED — <reason>' means stop and tell the user the rule. "
+            "'WARNING — <reason>' means proceed but surface the warning inline. "
+            "Pass tool_name as the ACTION FAMILY (e.g. 'bash', 'write_file', 'curl', 'git') "
+            "and tool_input as the specific parameters."
         ),
         "inputSchema": {
             "type": "object",
@@ -647,14 +645,14 @@ async def mcp_endpoint(
                     "_surface":        surface,
                     "instructions": (
                         "ConductGuard is active and enforcing your team's security policy. "
-                        "ALWAYS call guard_activity at the start of every conversation with a one-line summary of what the user is asking you to do. "
-                        "ALWAYS call guard_check before executing any of the following: "
-                        "shell commands, file reads or writes, network requests, external API calls, "
-                        "code modifications, or any action that affects the filesystem or environment. "
-                        "If the response is BLOCKED: stop immediately and explain the policy rule to the user. "
-                        "If WARNING: proceed but surface the warning to the user. "
-                        "If ALLOWED: proceed normally. "
-                        "Never skip guard_activity or guard_check — both are required for compliance."
+                        # #997: once per intent, not per action — protects the transcript.
+                        "Call guard_activity ONCE at the start of a user request with a one-line summary. "
+                        "Call guard_check ONCE per intent (not per file/command). Re-check only when scope changes "
+                        "— e.g. moving from reads to writes, from local files to network, or entering a new task. "
+                        "If the response is BLOCKED: stop and explain the policy rule to the user. "
+                        "If WARNING: proceed but surface the warning inline. "
+                        "If the response is empty or 'ok': proceed silently — do not narrate it in the chat. "
+                        "Do not repeat guard_check for the same intent within a single response."
                     ),
                 }),
                 headers={"Mcp-Session-Id": session_hdr},
@@ -726,7 +724,8 @@ async def mcp_endpoint(
                 except Exception as _eval_err:
                     _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
                     if _cfg and not _cfg.deny_on_error:
-                        return JSONResponse(_text(msg_id, f"ALLOWED — policy eval error (fail-open): {_eval_err}"))
+                        # #997: keep detail on eval errors — operator needs it — but tag as advisory not ALLOWED to distinguish from clean allow.
+                        return JSONResponse(_text(msg_id, f"advisory: policy eval error (fail-open): {_eval_err}"))
                     _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "policy_eval_error", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                     return JSONResponse(_text(msg_id, f"BLOCKED — policy evaluation failed. Request denied by fail-closed default."))
 
@@ -737,7 +736,8 @@ async def mcp_endpoint(
 
                 if rule is None:
                     _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-                    return JSONResponse(_text(msg_id, f"ALLOWED — no policy rule matches '{inner_tool}'."))
+                    # #997 UX: minimal payload so if the host renders the tool call it doesn't drown the transcript.
+                    return JSONResponse(_text(msg_id, "ok"))
 
                 action  = rule.get("action", "audit")
                 rule_id = rule.get("rule_id", "unknown")
@@ -745,7 +745,8 @@ async def mcp_endpoint(
 
                 if _advisory:
                     _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-                    return JSONResponse(_text(msg_id, f"ALLOWED (advisory) — {message}  [rule: {rule_id}]"))
+                    # #997: advisory is between "ok" and "warning" — still tell the user, but tersely.
+                    return JSONResponse(_text(msg_id, f"advisory: {message} [rule: {rule_id}]"))
 
                 if action == "block":
                     _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
@@ -758,7 +759,7 @@ async def mcp_endpoint(
                         GuardAuditEvent.decision == "warned",
                     ).first()
                     if already_warned:
-                        return JSONResponse(_text(msg_id, f"ALLOWED — warning already issued this session [rule: {rule_id}]"))
+                        return JSONResponse(_text(msg_id, "ok"))
                     _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                     return JSONResponse(_text(msg_id, f"WARNING — {message}  [rule: {rule_id}]"))
 
@@ -775,11 +776,12 @@ async def mcp_endpoint(
                 _record_event(db, ws_uuid, "guard_enable", {}, "allowed", None, ai_tool, user_email, session_id)
                 snippet = (
                     "You have ConductGuard active. "
-                    "ALWAYS call guard_activity at the start of every conversation with a one-line summary of what the user is asking. "
-                    "ALWAYS call guard_check before running shell commands, reading or writing files, "
-                    "calling external APIs, or any action that affects the filesystem or environment. "
-                    "If the response is BLOCKED, stop immediately and explain the policy rule to the user. "
-                    "If WARNING, proceed but surface the warning."
+                    "Call guard_activity ONCE at the start of a user request with a one-line summary. "
+                    "Call guard_check ONCE per intent (not per file/command). Re-check only when scope changes "
+                    "— e.g. reads → writes, local → network, or entering a new task. "
+                    "If the response is BLOCKED, stop and explain the policy rule. "
+                    "If WARNING, proceed but surface the warning inline. "
+                    "If the response is empty or 'ok', proceed silently — do NOT narrate the check in chat."
                 )
                 mcp_url = "https://api.conductai.ai/guard/mcp"
                 desktop_config = (
