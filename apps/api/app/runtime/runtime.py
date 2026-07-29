@@ -101,27 +101,37 @@ def _emit(db, run_id, block_id: str | None, kind: str, payload: dict):
 # ── DAG state ref resolution ──────────────────────────────────────────────────
 
 def _resolve_refs(value: Any, state: dict) -> Any:
-    """Replace {{block_id.field}} references with values from run state."""
-    import structlog
+    """Replace {{block_id.field}} references with values from run state.
+
+    Grammar: matches `{{ident.dot.path}}` only — no filters (|default:), no
+    conditionals ({% if %}). If you see a `|` or `%` inside `{{}}`, the whole
+    match falls through and the literal template leaks into output. Track
+    unresolved refs on state so callers can surface them as a run_event.
+    """
     import re as _re
-    log = structlog.get_logger(__name__)
 
     if isinstance(value, str):
         _MISSING = object()
+        unresolved = state.setdefault("__unresolved_template_refs", [])
 
         def replace(m):
             parts = m.group(1).split(".")
             obj = state.get(parts[0], _MISSING)
             if obj is _MISSING:
-                log.debug("unresolved_template_ref", ref=m.group(1), top_key=parts[0])
+                unresolved.append(m.group(1))
                 return m.group(0)
             for p in parts[1:]:
                 if isinstance(obj, dict):
                     nxt = obj.get(p, _MISSING)
                     if nxt is _MISSING:
-                        log.debug("unresolved_template_ref", ref=m.group(1), missing_key=p)
+                        unresolved.append(m.group(1))
                         return m.group(0)
                     obj = nxt
+                else:
+                    # {{a.b.c}} where `a.b` is a non-dict (string, list, int).
+                    # Can't walk further — record + leak literal.
+                    unresolved.append(m.group(1))
+                    return m.group(0)
             return str(obj)
 
         return _re.sub(r"\{\{([\w.]+)\}\}", replace, value)

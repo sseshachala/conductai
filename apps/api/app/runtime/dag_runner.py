@@ -1120,6 +1120,20 @@ def _execute_dag(
                 "attempt_id": _attempt_id,
             })
 
+            # Visibility: if any {{block.field}} refs in this block's inputs
+            # failed to resolve, surface them so users don't only find out
+            # by seeing literal {{...}} in prod output. state accumulates
+            # per block, drain after emitting so downstream blocks start clean.
+            _unresolved = state.pop("__unresolved_template_refs", None)
+            if _unresolved:
+                _dedup = sorted(set(_unresolved))
+                _emit(db, run_id, block_id, "template_refs_unresolved", {
+                    "refs": _dedup,
+                    "count": len(_unresolved),
+                })
+                log.warning("template.unresolved_refs",
+                            block_id=block_id, refs=_dedup)
+
         except ClarificationRequired as cr:
             run.status = "paused_for_clarification"
             run.paused_at = _now()
