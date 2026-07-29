@@ -15,7 +15,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, field_validator
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
@@ -123,6 +123,66 @@ class TriggerFixResponse(BaseModel):
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
+# ponytail: raw text() because security_config has no ORM model; add a model when we
+# need more than 3 fields.
+_SECURITY_CFG_SQL = text(
+    "SELECT autopilot_enabled, security_slack_alerts_enabled, security_slack_channel "
+    "FROM security_config WHERE workspace_id = :ws"
+)
+_SECURITY_CFG_SAFE_DEFAULTS = {
+    "autopilot_enabled": False,
+    "slack_alerts_enabled": False,
+    "slack_channel": "",
+}
+
+
+def _load_security_config_defaults(db: Session, workspace_id: str) -> dict:
+    """Load workspace security_config row; return safe defaults if missing.
+
+    Playbook conditions reference these fields on ``_trigger``; without them the
+    template renderer leaves ``{{...}}`` literals which crash logic-block eval
+    or leak into Slack channel names. See conductai#998.
+    """
+    row = db.execute(_SECURITY_CFG_SQL, {"ws": workspace_id}).first()
+    if row is None:
+        return dict(_SECURITY_CFG_SAFE_DEFAULTS)
+    return {
+        "autopilot_enabled": bool(row[0]),
+        "slack_alerts_enabled": bool(row[1]),
+        "slack_channel": row[2] or "",
+    }
+
+
+def _build_finding_trigger_state(
+    finding: SecurityFinding, cfg: dict, event_type: str
+) -> dict:
+    """Build the initial ``state`` dict for a run enqueued from a security finding.
+
+    Shared by ``_trigger_security_loop`` (auto-triage) and ``trigger_fix``
+    (autopilot fix). Both playbooks reference the same ``_trigger.*`` keys.
+    """
+    return {
+        "_trigger": {
+            "event_type": event_type,
+            "finding_id": str(finding.id),
+            "tool": finding.tool,
+            "severity": finding.severity,
+            "type": finding.type,
+            "description": finding.description,
+            "file": finding.file,
+            "line": finding.line,
+            "suggested_fix": finding.suggested_fix,
+            "repo_full_name": finding.repo_full_name,
+            "commit_sha": finding.commit_sha,
+            "source_run_id": finding.source_run_id,
+            "autopilot_enabled": cfg["autopilot_enabled"],
+            "slack_alerts_enabled": cfg["slack_alerts_enabled"],
+            "slack_channel": cfg["slack_channel"],
+        },
+        "__input_contract": {"version": "phase2.v1", "status": "validated", "shape": "trigger"},
+    }
+
+
 def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Session) -> None:
     """Find the security_loop workflow in the workspace and enqueue a run."""
     from app.models.workflow import Workflow
@@ -139,23 +199,8 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
     if not workflow or not workflow.current_version_id:
         return
 
-    initial_state = {
-        "_trigger": {
-            "event_type": "security_finding",
-            "finding_id": str(finding.id),
-            "tool": finding.tool,
-            "severity": finding.severity,
-            "type": finding.type,
-            "description": finding.description,
-            "file": finding.file,
-            "line": finding.line,
-            "suggested_fix": finding.suggested_fix,
-            "repo_full_name": finding.repo_full_name,
-            "commit_sha": finding.commit_sha,
-            "source_run_id": finding.source_run_id,
-        },
-        "__input_contract": {"version": "phase2.v1", "status": "validated", "shape": "trigger"},
-    }
+    cfg = _load_security_config_defaults(db, workspace_id)
+    initial_state = _build_finding_trigger_state(finding, cfg, "security_finding")
 
     run = Run(
         workflow_version_id=workflow.current_version_id,
@@ -367,24 +412,12 @@ def trigger_fix(
     if not workflow or not workflow.current_version_id:
         return TriggerFixResponse(triggered=False, reason="security_autopilot_fix playbook not installed")
 
+    cfg = _load_security_config_defaults(db, workspace_id)
     run = Run(
         workflow_version_id=workflow.current_version_id,
         triggered_by="security_finding_fix",
         status="pending",
-        state={
-            "_trigger": {
-                "event_type": "security_finding_fix",
-                "finding_id": str(finding.id),
-                "severity": finding.severity,
-                "type": finding.type,
-                "file": finding.file,
-                "line": finding.line,
-                "description": finding.description,
-                "suggested_fix": finding.suggested_fix,
-                "repo_full_name": finding.repo_full_name,
-            },
-            "__input_contract": {"version": "phase2.v1", "status": "validated", "shape": "trigger"},
-        },
+        state=_build_finding_trigger_state(finding, cfg, "security_finding_fix"),
     )
     db.add(run)
     db.flush()
