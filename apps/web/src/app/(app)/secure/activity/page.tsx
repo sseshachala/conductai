@@ -122,8 +122,9 @@ function ActivityContent() {
     padding: "6px 12px", background: "var(--surface)", color: "var(--text-2)", cursor: "pointer",
   }
 
-  const cols = "100px 120px 1.4fr 1.6fr 90px 110px 100px 80px 65px 110px 140px"
-  const headers = ["Severity", "Type", "File", "Description", "Tool", "Source", "Reporter", "Session", "Age", "Status", "Actions"]
+  // #1009 — collapsible essentials: 5 cols. Everything else in the expanded panel.
+  const cols = "100px 130px 1fr 110px 160px"
+  const headers = ["Severity", "Type", "Description", "Status", "Actions"]
 
   return (
     <SecureShell>
