@@ -12,6 +12,9 @@ class SecurityFinding(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    # Scanner project that produced this finding — lineage only.
+    # Fix routing still uses ``repo_full_name``. See conductai#1005.
+    source_project_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     tool = Column(String, nullable=False)           # claude-code | codex | cursor | copilot | manual
     severity = Column(String, nullable=False)       # critical | high | medium | low | info
     type = Column(String, nullable=False)           # injection | path-traversal | secret-leak | auth-bypass | crypto | other
