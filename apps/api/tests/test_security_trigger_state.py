@@ -104,14 +104,15 @@ def test_null_channel_becomes_empty_string():
 def _mk_db_with_finding_and_workflow(finding, workflow, config_row, workspace=None):
     """Build a db mock that answers .query().filter().first() calls in order:
     (1) SecurityFinding lookup (trigger_fix)
-    (2) Workspace lookup (_find_security_workflow pointer check)
-    (3) Workflow lookup — pointer path or legacy .first() fallback
+    (2) Workspace lookup (_find_security_workflow reads workspace pointer)
+    (3) Workflow lookup — pointer-driven, must find under project
     Then execute() → security_config row."""
     db = MagicMock()
     q = db.query.return_value
     q.filter.return_value = q
     if workspace is None:
-        workspace = MagicMock(security_automation_project_id=None)
+        # Pointer must be set — no more legacy fallback (#1005 closed).
+        workspace = MagicMock(security_automation_project_id="proj-sec")
     q.first.side_effect = [finding, workspace, workflow]
     db.execute.return_value.first.return_value = config_row
     return db
