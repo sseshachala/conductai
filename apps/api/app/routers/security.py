@@ -183,19 +183,91 @@ def _build_finding_trigger_state(
     }
 
 
-def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Session) -> None:
-    """Find the security_loop workflow in the workspace and enqueue a run."""
-    from app.models.workflow import Workflow
-    from app.models.run import Run
+# ── Security Automation project — authoritative dispatch pointer (#1005) ─────
 
-    workflow = (
+_SECURITY_LOOP_SLUG = "security_loop"
+_SECURITY_AUTOPILOT_FIX_SLUG = "security_autopilot_fix"
+
+_ENSURE_PROJECT_SQL = text(
+    "INSERT INTO projects (id, workspace_id, name, slug, project_type) "
+    "VALUES (gen_random_uuid(), :ws, 'Security Automation', "
+    "'security-automation', 'security_automation') "
+    "ON CONFLICT (workspace_id) WHERE project_type = 'security_automation' "
+    "DO NOTHING RETURNING id"
+)
+_LOOKUP_PROJECT_SQL = text(
+    "SELECT id FROM projects "
+    "WHERE workspace_id = :ws AND project_type = 'security_automation' LIMIT 1"
+)
+_SET_POINTER_SQL = text(
+    "UPDATE workspaces SET security_automation_project_id = :pid "
+    "WHERE id = :ws AND security_automation_project_id IS NULL"
+)
+
+
+def _ensure_security_automation_project(db: Session, workspace_id: str) -> str:
+    """Get-or-create the workspace's Security Automation project and set the
+    ``workspace.security_automation_project_id`` pointer if it wasn't already.
+
+    Race-safe via the partial unique index ``projects_workspace_security_automation_uniq``
+    (migration 0087). Returns the project id as a string.
+    """
+    row = db.execute(_ENSURE_PROJECT_SQL, {"ws": workspace_id}).first()
+    if row is not None:
+        project_id = str(row[0])
+    else:
+        project_id = str(db.execute(_LOOKUP_PROJECT_SQL, {"ws": workspace_id}).scalar())
+    db.execute(_SET_POINTER_SQL, {"pid": project_id, "ws": workspace_id})
+    return project_id
+
+
+def _find_security_workflow(db: Session, workspace_id: str, playbook_slug: str):
+    """Return the workflow for ``playbook_slug`` in this workspace.
+
+    Preferred path: look up via ``workspace.security_automation_project_id``. The
+    schema (migration 0087) guarantees at most one workflow-per-slug-per-project.
+
+    Fallback path: legacy workspace-wide ``.first()`` — retained until backfill
+    populates the pointer for existing workspaces. Removed after that lands.
+    """
+    from app.models.workflow import Workflow
+    from app.models.workspace import Workspace
+
+    ws = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    if ws and ws.security_automation_project_id:
+        wf = (
+            db.query(Workflow)
+            .filter(
+                Workflow.project_id == ws.security_automation_project_id,
+                Workflow.playbook_slug == playbook_slug,
+            )
+            .first()
+        )
+        if wf:
+            return wf
+        # Pointer exists but the workflow has not been moved under the project yet.
+        # This will resolve when backfill migrates existing workflows.
+        log.warning(
+            "security.dispatcher_pointer_stale",
+            workspace_id=str(workspace_id),
+            playbook_slug=playbook_slug,
+            hint="workflow not under security_automation project — run backfill",
+        )
+    return (
         db.query(Workflow)
         .filter(
             Workflow.workspace_id == workspace_id,
-            Workflow.playbook_slug == "security_loop",
+            Workflow.playbook_slug == playbook_slug,
         )
         .first()
     )
+
+
+def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Session) -> None:
+    """Find the security_loop workflow in the workspace and enqueue a run."""
+    from app.models.run import Run
+
+    workflow = _find_security_workflow(db, workspace_id, _SECURITY_LOOP_SLUG)
     if not workflow or not workflow.current_version_id:
         return
 
@@ -401,14 +473,13 @@ def trigger_fix(
     _: str = Depends(require_permission("guard.activity.view_all")),
 ) -> TriggerFixResponse:
     """Trigger security-autopilot-fix for a finding. Sets status → triaging."""
-    from app.models.workflow import Workflow
     from app.models.run import Run
 
     finding = db.query(SecurityFinding).filter(SecurityFinding.id == finding_id, SecurityFinding.workspace_id == workspace_id).first()
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
 
-    workflow = db.query(Workflow).filter(Workflow.workspace_id == workspace_id, Workflow.playbook_slug == "security_autopilot_fix").first()
+    workflow = _find_security_workflow(db, workspace_id, _SECURITY_AUTOPILOT_FIX_SLUG)
     if not workflow or not workflow.current_version_id:
         return TriggerFixResponse(triggered=False, reason="security_autopilot_fix playbook not installed")
 
