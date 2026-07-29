@@ -13,7 +13,7 @@ from typing import Optional
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -173,14 +173,46 @@ def _trigger_security_loop(finding: SecurityFinding, workspace_id: str, db: Sess
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("", response_model=FindingOut, status_code=201)
+@router.post("", response_model=FindingOut)
 def ingest_finding(
+    response: Response,
     body: FindingIn,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ) -> FindingOut:
-    """Ingest a security finding. Triggers security_loop workflow if installed."""
+    """Ingest a security finding. Triggers security_loop workflow if installed.
+
+    Idempotent on (workspace_id, repo_full_name, type, file, description[:200])
+    when an active finding (status in {open, triaging}) already exists — returns
+    the existing row with HTTP 200 instead of creating a duplicate. Prevents
+    rerun-of-scanner and rerun-of-threat-modeler from filing the same issue N
+    times and cascading N duplicate security_loop runs.
+    """
     now = _now()
+
+    # Dedupe check — active findings only. Dismissed/fixed findings intentionally
+    # don't dedupe: user resolved them, a new occurrence should track again.
+    _desc_key = (body.description or "")[:200]
+    existing = (
+        db.query(SecurityFinding)
+        .filter(
+            SecurityFinding.workspace_id == workspace_id,
+            SecurityFinding.repo_full_name == body.repo_full_name,
+            SecurityFinding.type == body.type,
+            SecurityFinding.file == body.file,
+            func.left(SecurityFinding.description, 200) == _desc_key,
+            SecurityFinding.status.in_(("open", "triaging")),
+        )
+        .order_by(SecurityFinding.created_at.desc())
+        .first()
+    )
+    if existing:
+        log.info("security_finding.dedupe_hit",
+                 existing_id=str(existing.id), repo=body.repo_full_name,
+                 type=body.type, file=body.file)
+        response.status_code = 200
+        return existing
+
     finding = SecurityFinding(
         id=uuid.uuid4(),
         workspace_id=workspace_id,
