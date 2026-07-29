@@ -110,7 +110,7 @@ blocks:
     type: brain
     mode: agentic
     model: "{{ inputs.model }}"
-    max_turns: 30
+    max_turns: 45
     next: file_findings
     credentials:
       github: github
@@ -139,6 +139,16 @@ blocks:
 
       Read the PR diff and any relevant architecture docs, then produce a
       STRIDE threat model.
+
+      EXPLORATION BUDGET — enforced, do not exceed:
+        - MAX 3 broad grep/find commands total
+        - MAX 6 targeted file reads (cat/head/tail) total
+        - By turn 12 you MUST have drafted at least ONE complete threat
+        - By turn 25 you MUST start producing the final output
+        - Never re-read a file you have already read. The transcript is your memory.
+        - Prioritize the PR diff (small, focused) over full-repo archaeology.
+        - If you find yourself running "cat" a 5th time, STOP and draft with what
+          you have — partial coverage beats budget exhaustion.
 
       Output a markdown block for the PR comment first (headers + table), then
       on the very last line output ONLY this JSON array — one row per threat:
