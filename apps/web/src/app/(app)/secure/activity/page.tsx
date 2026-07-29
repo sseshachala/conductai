@@ -24,6 +24,7 @@ interface SecurityFinding {
   status: FindingStatus
   created_at: string
   source_run_id: string | null
+  source_project_name: string | null  // #1008 lineage — scanner project
 }
 
 
@@ -44,13 +45,21 @@ function ActivityContent() {
   const [sortBy, setSortBy] = useState<"newest" | "severity">("newest")
   const [updating, setUpdating] = useState<Record<string, boolean>>({})
   const [triggering, setTriggering] = useState<Record<string, boolean>>({})
+  const [ownerName, setOwnerName] = useState<string | null>(null)  // #1008 lineage — Owner
 
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await authFetch(`${API}/security-findings?workspace_id=${wsId}&days=${filterDays}&limit=500`)
+      const [res, summaryRes] = await Promise.all([
+        authFetch(`${API}/security-findings?workspace_id=${wsId}&days=${filterDays}&limit=500`),
+        authFetch(`${API}/security-findings/summary?workspace_id=${wsId}&days=${filterDays}`),
+      ])
       if (res.ok) setFindings(await res.json())
+      if (summaryRes.ok) {
+        const s = await summaryRes.json()
+        setOwnerName(s.owner_project_name ?? null)
+      }
     } catch {}
     finally { setLoading(false) }
   }, [authFetch, wsId, filterDays])
@@ -112,8 +121,8 @@ function ActivityContent() {
     padding: "6px 12px", background: "var(--surface)", color: "var(--text-2)", cursor: "pointer",
   }
 
-  const cols = "100px 120px 1.4fr 1.8fr 100px 110px 90px 70px 120px 140px"
-  const headers = ["Severity", "Type", "File", "Description", "Tool", "Reporter", "Session", "Age", "Status", "Actions"]
+  const cols = "100px 120px 1.4fr 1.6fr 90px 110px 100px 80px 65px 110px 140px"
+  const headers = ["Severity", "Type", "File", "Description", "Tool", "Source", "Reporter", "Session", "Age", "Status", "Actions"]
 
   return (
     <SecureShell>
@@ -121,6 +130,12 @@ function ActivityContent() {
         Activity log{" "}
         <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--text-muted)", fontWeight: 500 }}>
           · last {filterDays} days
+          {ownerName && (
+            <>
+              {" "}· owner:{" "}
+              <span style={{ color: "var(--text-2)" }}>{ownerName}</span>
+            </>
+          )}
         </span>
       </div>
 
@@ -190,11 +205,19 @@ function ActivityContent() {
             >
               <SeverityPill severity={f.severity} />
               <div style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}>{f.type || "—"}</div>
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filePart}</div>
+              <div style={{ overflow: "hidden" }}>
+                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filePart}</div>
+                {f.repo_full_name && (
+                  <div className="mono" title={f.repo_full_name} style={{ fontSize: 10.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {f.repo_full_name}
+                  </div>
+                )}
+              </div>
               <div style={{ fontSize: 12.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.description}>
                 {f.description.length > 72 ? f.description.slice(0, 69) + "…" : f.description}
               </div>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>{f.tool || "—"}</div>
+              <div style={{ fontSize: 12, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.source_project_name ?? undefined}>{f.source_project_name || "—"}</div>
               <div className="mono" title={f.reporter_email ?? undefined} style={{ fontSize: 11.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{reporter}</div>
               <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{session}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>{timeAgo(f.created_at)}</div>
