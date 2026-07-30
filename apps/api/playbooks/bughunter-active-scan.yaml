@@ -5,11 +5,12 @@
 # update needed when new skills are added. Works with public or private repos.
 # ──────────────────────────────────────────────────────────────────────────────
 name: BugHunter Active Scan
-version: 3
+version: 4
 description: >
-  Dynamically discovers and runs all hunt-* skills from a configurable GitHub
-  repo. Point it at the public Claude-BugHunter repo or your own private fork.
-  New skills are picked up automatically — no playbook update required.
+  Dynamically discovers and runs skills from a configurable GitHub repo
+  (default: elementalsouls/Claude-BugHunter). skill_scope selects hunt-* only,
+  all skills (enterprise chains, redteam, mobile, reporting), or a custom
+  list. New skills are picked up automatically — no playbook update required.
 
 inputs:
   target_repo:
@@ -44,13 +45,25 @@ inputs:
       - low
     description: Only emit findings at or above this severity into the pipeline.
 
-  skill_filter:
-    label: Skill filter (optional)
-    type: string
-    placeholder: "hunt-llm-injection, hunt-jwt-confusion"
+  skill_scope:
+    label: Skill scope
+    type: select
+    default: hunt-only
+    options:
+      - hunt-only
+      - all
+      - custom
     description: >
-      Comma-separated list of skill names to run. Leave blank to run all
-      discovered skills automatically.
+      hunt-only = classic hunt-* web/app vuln skills. all = every skill in the
+      bundle (adds enterprise chains, redteam, mobile pipelines, reporting).
+      custom = use skill_filter list below.
+
+  skill_filter:
+    label: Skill filter (custom scope only)
+    type: string
+    placeholder: "hunt-llm-ai, okta-attack, m365-entra-attack"
+    description: >
+      Comma-separated skill names. Only applied when skill_scope = custom.
     required: false
 
   label_filter:
@@ -82,35 +95,38 @@ blocks:
     next: discover_skills
 
   # ── 1. Discover skills from upstream repo ───────────────────────────────────
+  # ponytail: single GitHub REST call for a deterministic skill list. If the
+  # repo layout ever changes (skills/ moves), swap the URL below.
   discover_skills:
     type: brain
-    mode: agentic
-    model: "{{ inputs.model }}"
+    model: claude-haiku-4-5-20251001
     next: recon
     credentials:
       github: github
     system: |
-      You are discovering the available hunt skills from a GitHub repository.
-      Use the GitHub credential to access the repo if it is private.
-      Fetch the repository index and return the full list of hunt-* skill names
-      and their descriptions.
+      You are turning a GitHub directory listing into a skill catalog.
+      Do not invent skills — only report what the API returns.
+      Use the GitHub credential if the repo is private.
     prompt: |
-      Fetch the README and file listing from:
-      https://github.com/{{ inputs.skills_repo }}
+      Fetch: https://api.github.com/repos/{{ inputs.skills_repo }}/contents/skills
 
-      Use the GitHub API or raw.githubusercontent.com to read file contents.
-      Find every file or section named hunt-*.md or describing a hunt-* skill.
-      For each skill extract:
-        - name (e.g. hunt-llm-injection)
-        - description (one line summary of what it hunts for)
-        - key_patterns (list of vulnerability patterns it covers)
+      Every entry with "type": "dir" is a skill. For each skill dir:
+        - name = entry.name
+        - description = ""       (recon will prioritize by name)
+        - key_patterns = []
 
-      {% if inputs.skill_filter %}
-      Filter to only these skills: {{ inputs.skill_filter }}
+      Apply scope filter ({{ inputs.skill_scope }}):
+      {% if inputs.skill_scope == 'hunt-only' %}
+      Keep only skills whose name starts with "hunt-".
+      {% elif inputs.skill_scope == 'custom' %}
+      Keep only these skill names: {{ inputs.skill_filter | default('') }}
+      If skill_filter is empty, return [].
+      {% else %}
+      Keep every skill dir (all scope).
       {% endif %}
 
       Return ONLY a JSON array on the last line:
-      [{"name":"hunt-llm-injection","description":"...","key_patterns":["prompt injection","RAG poisoning"]}]
+      [{"name":"hunt-llm-ai","description":"","key_patterns":[]}]
 
   # ── 2. Recon ─────────────────────────────────────────────────────────────────
   recon:
@@ -302,5 +318,6 @@ test_trigger:
     target_url: ""
     skills_repo: "elementalsouls/Claude-BugHunter"
     severity_threshold: high
+    skill_scope: hunt-only
     skill_filter: ""
     model: claude-sonnet-4-6
