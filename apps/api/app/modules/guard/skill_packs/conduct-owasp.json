@@ -11,12 +11,36 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "SELECT\\s+.*\\+|execute\\(.*f['\"]",
       "action": "block",
-      "message": "Possible SQL injection \u2014 use parameterised queries.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP:A03", "SOC2:CC6.1", "ISO_42001:8.4", "PCI_DSS:6.5.1"],
+      "message": "Possible SQL injection — use parameterised queries.",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP:A03",
+        "SOC2:CC6.1",
+        "ISO_42001:8.4",
+        "PCI_DSS:6.5.1"
+      ],
       "severity": "high",
       "recommendation": "Use parameterised queries. Never concatenate or f-string user input into SQL or shell commands.",
-      "iso_control": "A.8.28"
+      "iso_control": "A.8.28",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "owasp_crypto_guard",
@@ -24,12 +48,36 @@
       "match_tool": "edit,write",
       "match_pattern": "md5|sha1",
       "action": "warn",
-      "message": "MD5/SHA1 is weak for password hashing \u2014 use bcrypt or argon2.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP:A02", "SOC2:CC6.1", "PCI_DSS:3.6", "ISO_42001:8.24"],
+      "message": "MD5/SHA1 is weak for password hashing — use bcrypt or argon2.",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP:A02",
+        "SOC2:CC6.1",
+        "PCI_DSS:3.6",
+        "ISO_42001:8.24"
+      ],
       "severity": "medium",
       "recommendation": "Use SHA-256 or stronger for general hashing, bcrypt/argon2 for passwords, AES-GCM for symmetric encryption.",
-      "iso_control": "A.8.24"
+      "iso_control": "A.8.24",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "owasp_weak_session_guard",
@@ -37,12 +85,35 @@
       "match_tool": "edit,write",
       "match_pattern": "random\\.random\\(\\).*session|Math\\.random\\(\\).*token",
       "action": "block",
-      "message": "Weak randomness for session/token \u2014 use secrets.token_hex().",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP:A07", "SOC2:CC6.1", "ISO_42001:8.5"],
+      "message": "Weak randomness for session/token — use secrets.token_hex().",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP:A07",
+        "SOC2:CC6.1",
+        "ISO_42001:8.5"
+      ],
       "severity": "high",
       "recommendation": "Use a cryptographically secure session secret (>=32 bytes). Rotate session secrets regularly.",
-      "iso_control": "A.8.5"
+      "iso_control": "A.8.5",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "owasp_ssrf_guard",
@@ -50,12 +121,35 @@
       "match_tool": "edit,write",
       "match_pattern": "requests\\.get\\(.*request\\.|fetch\\(.*req\\.(query|body|params)",
       "action": "warn",
-      "message": "Possible SSRF \u2014 validate and allowlist URLs before outbound requests.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP:A10", "SOC2:CC6.1", "ISO_42001:8.4"],
+      "message": "Possible SSRF — validate and allowlist URLs before outbound requests.",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP:A10",
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
       "severity": "high",
       "recommendation": "Allowlist outbound destinations. Block requests to internal IP ranges (RFC1918, link-local, metadata endpoints).",
-      "iso_control": "A.8.28"
+      "iso_control": "A.8.28",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "owasp_eval_guard",
@@ -63,12 +157,35 @@
       "match_tool": "edit,write",
       "match_pattern": "\\beval\\s*\\(",
       "action": "block",
-      "message": "eval() enables code injection \u2014 avoid it.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP:A03", "SOC2:CC6.1", "ISO_42001:8.4"],
+      "message": "eval() enables code injection — avoid it.",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP:A03",
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
       "severity": "critical",
       "recommendation": "Never use eval() or exec() with untrusted input. Parse explicit data formats (JSON/YAML) instead.",
-      "iso_control": "A.8.28"
+      "iso_control": "A.8.28",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "owasp_xss_guard",
@@ -76,25 +193,70 @@
       "match_tool": "edit,write",
       "match_pattern": "innerHTML\\s*=",
       "action": "warn",
-      "message": "innerHTML assignment can introduce XSS \u2014 use textContent or DOMPurify.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP:A03", "SOC2:CC6.1", "ISO_42001:8.4"],
+      "message": "innerHTML assignment can introduce XSS — use textContent or DOMPurify.",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP:A03",
+        "SOC2:CC6.1",
+        "ISO_42001:8.4"
+      ],
       "severity": "medium",
       "recommendation": "Escape user-controlled content before rendering. Use framework-native templating instead of innerHTML.",
-      "iso_control": "A.8.28"
+      "iso_control": "A.8.28",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
-
     {
       "id": "no_prompt_inject",
       "description": "Block prompt injection attempts that try to override agent instructions (OWASP Agentic A01)",
       "match_tool": "bash,edit,write",
       "match_pattern": "ignore (previous|prior|above) instructions|disregard (your|all) (instructions|rules)|you are now (a|an) (unrestricted|free)|DAN |jailbreak",
       "action": "block",
-      "message": "Prompt injection pattern detected \u2014 content appears to override agent instructions (OWASP Agentic A01).",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["OWASP_AGENTIC:A01"],
+      "message": "Prompt injection pattern detected — content appears to override agent instructions (OWASP Agentic A01).",
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A01"
+      ],
       "severity": "critical",
-      "recommendation": "Never embed text that overrides system instructions. Validate all external content before passing to an agent."
+      "recommendation": "Never embed text that overrides system instructions. Validate all external content before passing to an agent.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_sensitive_data_exfil",
@@ -102,11 +264,33 @@
       "match_tool": "bash",
       "match_pattern": "curl.*(sk-|Bearer |api_key|secret_key|AWS_SECRET|ANTHROPIC_API_KEY|OPENAI_API_KEY)",
       "action": "block",
-      "message": "Possible credential exfiltration \u2014 sensitive data must not be transmitted externally (OWASP Agentic A02).",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP_AGENTIC:A02", "SOC2:CC6.1"],
+      "message": "Possible credential exfiltration — sensitive data must not be transmitted externally (OWASP Agentic A02).",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A02",
+        "SOC2:CC6.1"
+      ],
       "severity": "critical",
-      "recommendation": "Never pass API keys or secrets as curl data. Use a secret manager or environment variable injection."
+      "recommendation": "Never pass API keys or secrets as curl data. Use a secret manager or environment variable injection.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_unsigned_package",
@@ -114,11 +298,32 @@
       "match_tool": "bash",
       "match_pattern": "pip install.*(git\\+http://|--index-url http:|--extra-index-url http:)|npm install.*(--registry http:)",
       "action": "warn",
-      "message": "Installing package from an unverified source \u2014 confirm the package is trusted (OWASP Agentic A03).",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP_AGENTIC:A03"],
+      "message": "Installing package from an unverified source — confirm the package is trusted (OWASP Agentic A03).",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A03"
+      ],
       "severity": "high",
-      "recommendation": "Use HTTPS registries only. Pin dependency versions and verify checksums."
+      "recommendation": "Use HTTPS registries only. Pin dependency versions and verify checksums.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_overreach_shell",
@@ -126,11 +331,32 @@
       "match_tool": "bash",
       "match_pattern": "rm -rf /[a-z]|chmod -R 777|chown -R root|dd if=.*of=/dev|mkfs\\.|shred /dev",
       "action": "block",
-      "message": "Destructive system-wide command blocked \u2014 scope exceeds project boundaries (OWASP Agentic A04).",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP_AGENTIC:A04"],
+      "message": "Destructive system-wide command blocked — scope exceeds project boundaries (OWASP Agentic A04).",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A04"
+      ],
       "severity": "critical",
-      "recommendation": "Scope all file operations to the project directory. Use targeted rm, not recursive root deletes."
+      "recommendation": "Scope all file operations to the project directory. Use targeted rm, not recursive root deletes.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_model_extract",
@@ -138,11 +364,32 @@
       "match_tool": "bash",
       "match_pattern": "(cp|scp|rsync|curl -o).*(safetensors|gguf|\\.bin|\\.pt|\\.ckpt)|(safetensors|gguf|\\.pt|\\.ckpt).*(cp |scp |rsync |upload)",
       "action": "block",
-      "message": "Model weight extraction blocked \u2014 copying model files externally is not permitted (OWASP Agentic A05).",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP_AGENTIC:A05"],
+      "message": "Model weight extraction blocked — copying model files externally is not permitted (OWASP Agentic A05).",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A05"
+      ],
       "severity": "high",
-      "recommendation": "Model files must not leave the secure compute environment. Use the model registry API for distribution."
+      "recommendation": "Model files must not leave the secure compute environment. Use the model registry API for distribution.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_covert_channel",
@@ -150,11 +397,32 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "ngrok\\.io|requestbin\\.com|hookbin\\.com|pipedream\\.net|webhook\\.site|burpcollaborator",
       "action": "warn",
-      "message": "Possible covert callback channel detected \u2014 verify this outbound destination is intentional (OWASP Agentic A06).",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP_AGENTIC:A06"],
+      "message": "Possible covert callback channel detected — verify this outbound destination is intentional (OWASP Agentic A06).",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A06"
+      ],
       "severity": "high",
-      "recommendation": "All outbound webhook destinations must be allowlisted. Never use public request inspection services in production."
+      "recommendation": "All outbound webhook destinations must be allowlisted. Never use public request inspection services in production.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_audit_bypass",
@@ -162,11 +430,33 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "AUDIT_LOG.*=.*(false|0|null|none)|logging\\.disable\\(|audit.*enabled.*=.*false",
       "action": "block",
-      "message": "Audit logging must remain enabled \u2014 disabling it is not permitted (OWASP Agentic A07).",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP_AGENTIC:A07", "SOC2:CC7.2"],
+      "message": "Audit logging must remain enabled — disabling it is not permitted (OWASP Agentic A07).",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A07",
+        "SOC2:CC7.2"
+      ],
       "severity": "critical",
-      "recommendation": "Audit logs are a compliance requirement. Use log level adjustment, not log disabling."
+      "recommendation": "Audit logs are a compliance requirement. Use log level adjustment, not log disabling.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_unverified_deploy",
@@ -174,11 +464,32 @@
       "match_tool": "bash",
       "match_pattern": "git push.*--force.*(main|master|prod)|deploy.*--skip.?tests|kubectl apply.*--validate=false",
       "action": "warn",
-      "message": "Deploying without validation \u2014 AI-generated code should be verified before production push (OWASP Agentic A08).",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP_AGENTIC:A08"],
+      "message": "Deploying without validation — AI-generated code should be verified before production push (OWASP Agentic A08).",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A08"
+      ],
       "severity": "medium",
-      "recommendation": "Always run tests before deploying AI-generated code. Use CI gates, not --force pushes."
+      "recommendation": "Always run tests before deploying AI-generated code. Use CI gates, not --force pushes.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_privilege_escalat",
@@ -186,11 +497,32 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "chmod [0-9]*[4-7][0-9][0-9] .*|setuid|setgid|visudo|echo.*>>.*/etc/sudoers|pkexec",
       "action": "block",
-      "message": "Privilege escalation pattern blocked \u2014 modifying system permissions is not permitted (OWASP Agentic A09).",
-      "persona_affinity": ["agent"],
-      "frameworks": ["OWASP_AGENTIC:A09"],
+      "message": "Privilege escalation pattern blocked — modifying system permissions is not permitted (OWASP Agentic A09).",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A09"
+      ],
       "severity": "critical",
-      "recommendation": "Use role-based access control. Never modify sudoers or set SUID bits programmatically."
+      "recommendation": "Use role-based access control. Never modify sudoers or set SUID bits programmatically.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_budget_bypass",
@@ -198,11 +530,34 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "budget.*=.*-1|rate_limit.*=.*0|max_tokens.*[=:].*[0-9]{5,}|spend_limit.*=.*(null|none|-1)",
       "action": "block",
-      "message": "Budget or rate-limit bypass blocked \u2014 spend controls must remain active (OWASP Agentic A10).",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["OWASP_AGENTIC:A10"],
+      "message": "Budget or rate-limit bypass blocked — spend controls must remain active (OWASP Agentic A10).",
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A10"
+      ],
       "severity": "high",
-      "recommendation": "Set explicit token budgets per agent. Never set unlimited or negative spend limits."
+      "recommendation": "Set explicit token budgets per agent. Never set unlimited or negative spend limits.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_recon_fs",
@@ -210,11 +565,35 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "(~/.ssh|/etc/passwd|/etc/shadow|/proc/self|id_rsa|\\.aws/credentials|~/.netrc|/etc/hosts\\.allow)",
       "action": "block",
-      "message": "Filesystem reconnaissance blocked \u2014 access to credential and system paths is not permitted.",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["OWASP_AGENTIC:A01", "SOC2:CC6.1"],
+      "message": "Filesystem reconnaissance blocked — access to credential and system paths is not permitted.",
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A01",
+        "SOC2:CC6.1"
+      ],
       "severity": "critical",
-      "recommendation": "Scope all file reads to the project directory. Never read system credential or identity files."
+      "recommendation": "Scope all file reads to the project directory. Never read system credential or identity files.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_shell_persist",
@@ -222,11 +601,35 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "(>>.*/\\.bashrc|>>.*/\\.zshrc|>>.*/\\.profile|/etc/cron\\.d|/etc/crontab|systemctl enable|/etc/systemd/system/)",
       "action": "block",
-      "message": "Shell persistence attempt blocked \u2014 writing to RC files, cron, or systemd units is not permitted.",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["OWASP_AGENTIC:A04", "SOC2:CC6.1"],
+      "message": "Shell persistence attempt blocked — writing to RC files, cron, or systemd units is not permitted.",
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A04",
+        "SOC2:CC6.1"
+      ],
       "severity": "critical",
-      "recommendation": "Never append to shell init files or register system services programmatically."
+      "recommendation": "Never append to shell init files or register system services programmatically.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_dns_exfil",
@@ -234,11 +637,35 @@
       "match_tool": "bash",
       "match_pattern": "(nslookup|dig\\s+.*\\$|host\\s+.*\\$|curl.*burpcollaborator|xxd.*\\|.*curl|base64.*\\|.*curl|ping.*-c.*\\$)",
       "action": "warn",
-      "message": "Possible DNS exfiltration or encoded outbound data detected \u2014 verify this command is intentional.",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["OWASP_AGENTIC:A06", "SOC2:CC6.7"],
+      "message": "Possible DNS exfiltration or encoded outbound data detected — verify this command is intentional.",
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A06",
+        "SOC2:CC6.7"
+      ],
       "severity": "high",
-      "recommendation": "Never use DNS lookups or encoded pipes to transmit data externally. Use approved outbound channels only."
+      "recommendation": "Never use DNS lookups or encoded pipes to transmit data externally. Use approved outbound channels only.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no_agent_pivot",
@@ -246,11 +673,35 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "(use_mcp_tool.*server_name|mcp_call.*tool_name|call_tool.*agent|invoke_agent|agent_executor\\.run)",
       "action": "warn",
-      "message": "Cross-agent tool invocation detected \u2014 verify this agent pivot is authorised.",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["OWASP_AGENTIC:A04", "OWASP_AGENTIC:A09"],
+      "message": "Cross-agent tool invocation detected — verify this agent pivot is authorised.",
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "OWASP_AGENTIC:A04",
+        "OWASP_AGENTIC:A09"
+      ],
       "severity": "high",
-      "recommendation": "Agent-to-agent calls must be explicitly authorised. Scope each agent's tool access to its designated surface."
+      "recommendation": "Agent-to-agent calls must be explicitly authorised. Scope each agent's tool access to its designated surface.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     }
   ]
 }

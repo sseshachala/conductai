@@ -8,6 +8,7 @@ import os
 import sys
 import types
 import uuid
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
@@ -50,6 +51,7 @@ sys.modules.setdefault("app.core.database", _db_mod)
 from app.modules.guard.policy_engine import (  # noqa: E402
     PERSONAS,
     _build_rules,
+    is_action_relaxing,
     _resolve_canonical_workspace,
     canonical_workspace_id,
     compute_policy,
@@ -150,6 +152,7 @@ def test_compute_policy_returns_cached_payload():
 
     db = _mock_db()
     db.get.return_value = cached  # GuardPolicyCache hit
+    db.query.return_value.filter.return_value.first.return_value = None
 
     result = compute_policy(db, ws_uuid, "agent")
     assert result == [{"id": "rule_1", "action": "block"}]
@@ -170,6 +173,24 @@ def test_compute_policy_builds_on_cache_miss():
         result = compute_policy(db, ws_uuid, "agent")
 
     assert result == [{"id": "r1"}]
+
+
+def test_compute_policy_rebuilds_cache_after_exception_expiry():
+    ws_uuid = _ws_uuid()
+    cached = MagicMock(
+        payload=[{"id": "r1", "action": "warn"}],
+        computed_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+    db = _mock_db()
+    db.get.return_value = cached
+    db.query.return_value.filter.return_value.first.return_value = MagicMock()
+
+    with patch("app.modules.guard.policy_engine._write_cache"), \
+         patch("app.modules.guard.policy_engine._build_rules", return_value=[{"id": "r1", "action": "block"}]):
+        result = compute_policy(db, ws_uuid, "agent")
+
+    assert result == [{"id": "r1", "action": "block"}]
+    db.delete.assert_called_once_with(cached)
 
 
 def test_compute_policy_empty_rules():
@@ -220,6 +241,30 @@ def test_build_rules_filters_by_persona():
     assert "r_proxy_only" not in ids
 
 
+def test_build_rules_supports_list_valued_persona():
+    """Compliance packs can declare one rule for both agent and proxy personas."""
+    ws_uuid = _ws_uuid()
+    db = _mock_db()
+    pack = MagicMock()
+    pack.rules = [
+        {"id": "r_both", "action": "warn", "persona": ["agent", "proxy"]},
+    ]
+    ws_pack = MagicMock(pack_slug="compliance", pinned_version=None)
+    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+        ws_pack
+    ]
+    db.query.return_value.filter.return_value.all.return_value = []
+
+    with patch("app.modules.guard.policy_engine._get_pack", return_value=pack):
+        agent_rules = _build_rules(db, ws_uuid, "agent")
+    db.query.return_value.filter.return_value.all.return_value = []
+    with patch("app.modules.guard.policy_engine._get_pack", return_value=pack):
+        proxy_rules = _build_rules(db, ws_uuid, "proxy")
+
+    assert [rule["id"] for rule in agent_rules] == ["r_both"]
+    assert [rule["id"] for rule in proxy_rules] == ["r_both"]
+
+
 def test_build_rules_override_disables_rule():
     """A GuardRuleOverride with disabled=True removes the rule from the result."""
     ws_uuid = _ws_uuid()
@@ -237,6 +282,8 @@ def test_build_rules_override_disables_rule():
     override.disabled = True
     override.action = None
     override.custom_message = None
+    override.reason = "Temporary exception"
+    override.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
 
     db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
         ws_pack
@@ -269,6 +316,8 @@ def test_build_rules_override_changes_action():
     override.disabled = False
     override.action = "warn"
     override.custom_message = None
+    override.reason = "Temporary exception"
+    override.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
 
     db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
         ws_pack
@@ -282,6 +331,101 @@ def test_build_rules_override_changes_action():
         rules = _build_rules(db, ws_uuid, "agent")
 
     assert rules[0]["action"] == "warn"
+
+
+def test_build_rules_expired_disable_restores_rule():
+    ws_uuid = _ws_uuid()
+    db = _mock_db()
+    pack = MagicMock()
+    pack.rules = [{"id": "r_danger", "action": "block", "persona_affinity": PERSONAS}]
+    ws_pack = MagicMock(pack_slug="base", pinned_version=None)
+    override = MagicMock(
+        rule_id="r_danger",
+        disabled=True,
+        action=None,
+        custom_message=None,
+        reason="Temporary exception",
+        expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ws_pack]
+    db.query.return_value.filter.return_value.all.side_effect = [[], [override]]
+
+    with patch("app.modules.guard.policy_engine._get_pack", return_value=pack):
+        rules = _build_rules(db, ws_uuid, "agent")
+
+    assert rules == pack.rules
+
+
+def test_build_rules_expired_action_restores_base_but_keeps_message():
+    ws_uuid = _ws_uuid()
+    db = _mock_db()
+    pack = MagicMock()
+    pack.rules = [{"id": "r_strict", "action": "block", "message": "Base", "persona_affinity": PERSONAS}]
+    ws_pack = MagicMock(pack_slug="base", pinned_version=None)
+    override = MagicMock(
+        rule_id="r_strict",
+        disabled=False,
+        action="warn",
+        custom_message="Workspace wording",
+        reason="Temporary exception",
+        expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ws_pack]
+    db.query.return_value.filter.return_value.all.side_effect = [[], [override]]
+
+    with patch("app.modules.guard.policy_engine._get_pack", return_value=pack):
+        rules = _build_rules(db, ws_uuid, "agent")
+
+    assert rules[0]["action"] == "block"
+    assert rules[0]["message"] == "Workspace wording"
+
+
+def test_build_rules_stronger_action_needs_no_expiry():
+    ws_uuid = _ws_uuid()
+    db = _mock_db()
+    pack = MagicMock()
+    pack.rules = [{"id": "r_warn", "action": "warn", "persona_affinity": PERSONAS}]
+    ws_pack = MagicMock(pack_slug="base", pinned_version=None)
+    override = MagicMock(
+        rule_id="r_warn",
+        disabled=False,
+        action="block",
+        custom_message=None,
+        reason=None,
+        expires_at=None,
+    )
+    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ws_pack]
+    db.query.return_value.filter.return_value.all.side_effect = [[], [override]]
+
+    with patch("app.modules.guard.policy_engine._get_pack", return_value=pack):
+        rules = _build_rules(db, ws_uuid, "agent")
+
+    assert rules[0]["action"] == "block"
+
+
+def test_unknown_action_is_conservative_and_never_applied():
+    assert is_action_relaxing("block", "permit") is True
+
+    ws_uuid = _ws_uuid()
+    db = _mock_db()
+    pack = MagicMock()
+    pack.rules = [{"id": "r_strict", "action": "block", "persona_affinity": PERSONAS}]
+    ws_pack = MagicMock(pack_slug="base", pinned_version=None)
+    override = MagicMock(
+        rule_id="r_strict",
+        disabled=False,
+        action="permit",
+        custom_message=None,
+        reason="Should not make unknown actions valid",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ws_pack]
+    db.query.return_value.filter.return_value.all.side_effect = [[], [override]]
+
+    with patch("app.modules.guard.policy_engine._get_pack", return_value=pack):
+        rules = _build_rules(db, ws_uuid, "agent")
+
+    assert rules[0]["action"] == "block"
 
 
 # ---------------------------------------------------------------------------

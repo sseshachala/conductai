@@ -2,6 +2,71 @@ import { API, AuthFetch, json, patch, post, put } from "./client"
 
 const base = () => `${API}/guard`
 
+export type GuardPolicyAction = "block" | "approval" | "warn" | "inject" | "audit"
+
+export interface GuardPolicy {
+  id: string
+  workspace_id: string
+  rule_id: string
+  description: string | null
+  match_tool: string | null
+  match_pattern: string | null
+  match_path_pattern: string | null
+  action: GuardPolicyAction
+  message: string | null
+  enabled: boolean
+  builtin: boolean
+  pack_id: string | null
+  persona: "agent" | "proxy"
+  non_overridable: boolean
+  persona_affinity: string[]
+  tag: string | null
+  exception_reason: string | null
+  exception_expires_at: string | null
+  exception_active: boolean
+  exception_expired: boolean
+  last_triggered: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface GuardPolicyPatch {
+  enabled?: boolean
+  description?: string
+  match_pattern?: string
+  match_path_pattern?: string
+  action?: GuardPolicyAction
+  message?: string
+  reason?: string
+  expires_at?: string
+}
+
+export type EnforcementStatus = "hard" | "conditional" | "advisory" | "not_supported"
+
+export interface GuardEnforcementCoverage {
+  rule_id: string
+  name: string
+  pack: string | null
+  pack_version: string | null
+  builtin: boolean
+  personas: string[]
+  action: string
+  base_action: string
+  enabled: boolean
+  proxy: EnforcementStatus
+  hook: EnforcementStatus
+  mcp: EnforcementStatus
+  runtime: EnforcementStatus
+  guarantee: string
+  requires: string[]
+  known_limitations: string[]
+  enforcement_version: 1
+  exception_reason: string | null
+  exception_expires_at: string | null
+  exception_active: boolean
+  exception_expired: boolean
+}
+
 export const guard = {
   config: {
     get: (f: AuthFetch, workspaceId?: string) => {
@@ -40,21 +105,33 @@ export const guard = {
   policies: {
     list: (f: AuthFetch, workspaceId?: string) => {
       const q = workspaceId ? `?workspace_id=${workspaceId}` : ""
-      return json<any[]>(f, `${base()}/policies${q}`)
+      return json<GuardPolicy[]>(f, `${base()}/policies${q}`)
     },
-    get: (f: AuthFetch, id: string) => json<any>(f, `${base()}/policies/${id}`),
+    get: (f: AuthFetch, id: string) => json<GuardPolicy>(f, `${base()}/policies/${id}`),
     create: (f: AuthFetch, body: Record<string, unknown>) =>
       post(f, `${base()}/policies`, body),
     update: (f: AuthFetch, id: string, body: Record<string, unknown>) =>
       put(f, `${base()}/policies/${id}`, body),
-    patch: (f: AuthFetch, id: string, workspaceId: string, body: Record<string, unknown>) =>
-      patch(f, `${base()}/policies/${id}?workspace_id=${encodeURIComponent(workspaceId)}`, body),
+    patch: (f: AuthFetch, id: string, workspaceId: string, body: GuardPolicyPatch) =>
+      json<GuardPolicy>(
+        f,
+        `${base()}/policies/${id}?workspace_id=${encodeURIComponent(workspaceId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      ),
     delete: (f: AuthFetch, id: string, workspaceId: string) =>
       f(`${base()}/policies/${id}?workspace_id=${encodeURIComponent(workspaceId)}`, { method: "DELETE" }),
     reinstallBase: (f: AuthFetch, workspaceId: string) =>
       post(f, `${base()}/policies/reinstall-base?workspace_id=${encodeURIComponent(workspaceId)}`, {}),
     lint: (f: AuthFetch, workspaceId: string, body: Record<string, unknown>) =>
       post(f, `${base()}/policies/lint?workspace_id=${encodeURIComponent(workspaceId)}`, body),
+    coverage: (f: AuthFetch, workspaceId?: string) => {
+      const q = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : ""
+      return json<GuardEnforcementCoverage[]>(f, `${base()}/policies/coverage${q}`)
+    },
   },
 
   spend: {

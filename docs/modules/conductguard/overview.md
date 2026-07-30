@@ -13,7 +13,7 @@ The security or team lead configures policies, budgets, and governance rules onc
 | No visibility into AI tool usage | Real-time activity dashboard, per-developer |
 | No spend controls | Hard caps + alert thresholds per team and per developer |
 | No audit trail | Every tool call logged: who, what, when, decision |
-| No policy enforcement | Block / warn / audit rules enforced at the hook layer |
+| No policy enforcement | Generated, evidence-backed coverage across proxy, hook, MCP, and runtime surfaces |
 | Ad-hoc security | Security team sets rules; developers can't override them |
 
 ---
@@ -66,6 +66,10 @@ ConductGuard works by registering a **PreToolUse hook** and **PostToolUse hook**
 - **Budget** — a monthly USD spend limit. Can be set at workspace level (hard cap) and per-developer. Stored in `guard_spend_budgets`.
 - **Session** — a single Claude Code or Codex session. A session groups all tool calls from one invocation.
 - **Audit event** — a single tool call record: tool name, input summary, decision, tokens, cost.
+- **Enforcement coverage** — a versioned rule-level contract describing whether
+  each proxy, hook, MCP, and runtime surface is hard, conditional, advisory, or
+  not supported. Installed/pinned packs, custom rules, overrides, and exception
+  state are resolved by `GET /guard/policies/coverage`.
 
 ---
 
@@ -73,6 +77,7 @@ ConductGuard works by registering a **PreToolUse hook** and **PostToolUse hook**
 
 - [Developer Setup](developer_setup.md)
 - [Hook & Tool Coverage](hook_coverage.md)
+- [Generated Enforcement Evidence Matrix](enforcement_coverage.generated.md)
 - [conductguard-mcp](conductguard_mcp.md)
 - [Spend Controls](spend_controls.md)
 - [Roles & Permissions](roles_permissions.md)

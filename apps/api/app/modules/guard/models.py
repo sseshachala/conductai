@@ -311,6 +311,10 @@ class GuardRuleOverride(Base):
     match_pattern   = Column(Text, nullable=True)           # null = use pack default
     overridden_by   = Column(Text, nullable=True)           # clerk_user_id
     overridden_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    reason           = Column(Text, nullable=True)           # required for security-relaxing exceptions
+    expires_at       = Column(DateTime(timezone=True), nullable=True)
+    use_audited_at    = Column(DateTime(timezone=True), nullable=True)
+    expiry_audited_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class GuardPolicyCache(Base):

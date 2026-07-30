@@ -22,7 +22,24 @@
       ],
       "severity": "high",
       "recommendation": "De-identify PHI per Safe Harbor or Expert Determination methods before processing. Document the de-identification approach.",
-      "iso_control": "A.8.11"
+      "iso_control": "A.8.11",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "hipaa_http_phi",
@@ -41,7 +58,24 @@
       ],
       "severity": "critical",
       "recommendation": "All PHI transmission must use TLS 1.2 or higher. Verify certificate validation is not disabled.",
-      "iso_control": "A.8.24"
+      "iso_control": "A.8.24",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "hipaa_ssn_pattern",
@@ -60,7 +94,24 @@
       ],
       "severity": "critical",
       "recommendation": "Never store or transmit SSNs in plain text. Tokenise or hash with a per-record salt if a unique identifier is required.",
-      "iso_control": "A.8.11"
+      "iso_control": "A.8.11",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     }
   ]
 }

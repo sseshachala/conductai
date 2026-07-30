@@ -16,8 +16,9 @@ Evaluates security rules per workspace + persona. Assembles rules from skill pac
    → optional packs: conduct-soc2, conduct-hipaa, etc.
 
 2. Workspace overrides (GuardRuleOverride)
-   → disable a pack rule
-   → change action (BLOCK → WARN)
+   → temporarily disable a pack rule
+   → temporarily weaken an action (BLOCK → WARN)
+   → strengthen an action without an exception deadline
    → add custom message
 
 3. Workspace custom rules (WorkspaceCustomRule)
@@ -29,8 +30,8 @@ Evaluates security rules per workspace + persona. Assembles rules from skill pac
 
 | Persona | Used by | Enforcement |
 |---|---|---|
-| `proxy` | Guard proxy (LLM gateway) | Pre-call BLOCK only; all traffic |
-| `agent` | Runtime executor | Strict; fail-closed on error |
+| `proxy` | Guard proxy (LLM gateway) | Only proxy-routed request text with proxy-compatible matchers |
+| `agent` | Hooks, MCP guard checks, and workflow runtime | Capability varies by surface and matcher |
 
 ## Rule shape
 
@@ -43,11 +44,34 @@ Evaluates security rules per workspace + persona. Assembles rules from skill pac
   "match_prompt": "(SSN|social security|credit card)",
   "action": "block",
   "message": "PII detected in prompt",
-  "severity": "high"
+  "severity": "high",
+  "enforcement": {
+    "version": 1,
+    "proxy": "hard",
+    "hook": "not_supported",
+    "mcp": "not_supported",
+    "runtime": "not_supported",
+    "guarantee": "Blocks matching proxy-routed request text before provider forwarding.",
+    "requires": ["LLM traffic is routed through the Conduct Guard Proxy"],
+    "known_limitations": ["Image content and text absent from the request body are not inspected"]
+  }
 }
 ```
 
 Match fields are optional. Missing field = match all. All present fields must match (AND logic). First rule match wins.
+
+The `enforcement` object is the versioned capability contract consumed by the
+API, CI validation, and generated evidence documentation. `hard` means the
+surface prevents a match once traffic reaches that surface; `conditional`
+names an installation/invocation dependency; `advisory` warns or audits; and
+`not_supported` means the current enforcer cannot evaluate the required
+content or semantics. Workspace action overrides and exceptions change the
+effective policy, not the underlying surface capability claim.
+
+The workspace matrix is available from authenticated
+`GET /guard/policies/coverage` (`guard.policies.view`). The checked-in evidence
+document is generated at
+`docs/modules/conductguard/enforcement_coverage.generated.md`.
 
 ## Policy cache
 
@@ -63,6 +87,23 @@ Invalidated on:
 ```
 
 Cache miss → recompute from DB → cache result. Cache hit → return immediately (no DB query per LLM call).
+
+### Time-bounded policy exceptions
+
+Disabling a pack rule or changing it to a less restrictive action requires
+both a non-empty `reason` and a future, timezone-aware `expires_at`. Action
+restrictiveness is ordered:
+
+```
+allow < audit < inject < warn < approval < block
+```
+
+Unknown actions are rejected. When an exception expires, `compute_policy()`
+automatically stops applying it and restores the pack rule; no cleanup job is
+required. Message-only customization and equal or stronger action changes are
+not security exceptions and may remain indefinite. Policy list responses keep
+the exception metadata and expose `exception_active` / `exception_expired` so
+an expired exception remains visible even though it no longer affects policy.
 
 ## Decision flow
 

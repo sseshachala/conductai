@@ -3,7 +3,7 @@
   "name": "Conduct Base",
   "version": "2.10.0",
   "tier": "free",
-  "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
+  "description": "Core AI governance rules — proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "rules": [
     {
       "id": "proxy-no-credential-leak",
@@ -12,13 +12,27 @@
       "description": "Block LLM calls containing credentials in the prompt",
       "match_pattern": "(postgres(?:ql)?://\\S+|mysql://\\S+|sk_live_[0-9a-zA-Z]{20,}|sk-ant-[a-zA-Z0-9\\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36,}|(DATABASE_URL|DB_PASSWORD|STRIPE_SECRET|AWS_SECRET_ACCESS_KEY)\\s*=\\s*['\"]?[^\\s'\"]{6,})",
       "action": "block",
-      "message": "Credential detected in prompt \u2014 request blocked before reaching LLM provider.",
+      "message": "Credential detected in prompt — request blocked before reaching LLM provider.",
       "severity": "critical",
       "frameworks": [
         "SOC2:CC6.1",
         "ISO_42001:6.1"
       ],
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "hard",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "LLM traffic is routed through the Conduct Guard Proxy"
+        ],
+        "known_limitations": [
+          "Only request text exposed to the proxy matcher is inspected"
+        ]
+      }
     },
     {
       "id": "proxy-no-prompt-injection",
@@ -27,12 +41,26 @@
       "description": "Block prompt injection attempts",
       "match_pattern": "(ignore (all |previous |prior |your )instructions|disregard (your |the )system prompt|you are now|jailbreak|act as (an? )?(unrestricted|DAN|evil))",
       "action": "block",
-      "message": "Prompt injection pattern detected \u2014 request blocked.",
+      "message": "Prompt injection pattern detected — request blocked.",
       "severity": "critical",
       "frameworks": [
         "OWASP:LLM01",
         "ISO_42001:6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "hard",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "LLM traffic is routed through the Conduct Guard Proxy"
+        ],
+        "known_limitations": [
+          "Only request text exposed to the proxy matcher is inspected"
+        ]
+      }
     },
     {
       "id": "proxy-no-pii-prompt",
@@ -46,35 +74,75 @@
       "frameworks": [
         "GDPR:Art32",
         "HIPAA:164.514"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "advisory",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "LLM traffic is routed through the Conduct Guard Proxy"
+        ],
+        "known_limitations": [
+          "Only request text exposed to the proxy matcher is inspected"
+        ]
+      }
     },
     {
       "id": "proxy-audit-vision-input",
       "persona": "proxy",
       "non_overridable": false,
-      "description": "Audit LLM calls that include inline image data \u2014 text-based policy rules cannot inspect image contents",
+      "description": "Audit LLM calls that include inline image data — text-based policy rules cannot inspect image contents",
       "match_pattern": "data:image/(png|jpeg|gif|webp|bmp|tiff)",
       "action": "audit",
-      "message": "Vision/image content detected in LLM prompt. Text policies cannot inspect image contents \u2014 OCR or handwritten data may bypass scanning.",
+      "message": "Vision/image content detected in LLM prompt. Text policies cannot inspect image contents — OCR or handwritten data may bypass scanning.",
       "severity": "medium",
       "frameworks": [
         "ISO_42001:6.1",
         "NIST_AI_RMF:GOVERN-1.2"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records an audit signal when detectable image or document metadata matches; it does not inspect visual content.",
+        "requires": [],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Image, scanned-document, OCR, and handwritten content are not inspected"
+        ]
+      }
     },
     {
       "id": "audit-image-file-read",
       "persona": "agent",
       "non_overridable": false,
-      "description": "Audit when agent reads image or scanned document files \u2014 content is not inspectable by text-based policy rules",
+      "description": "Audit when agent reads image or scanned document files — content is not inspectable by text-based policy rules",
       "match_tool": "filesystem-read",
       "match_path_pattern": "\\.(png|jpe?g|gif|webp|bmp|tiff?|pdf)$",
       "action": "audit",
-      "message": "Image or PDF file read detected. Text policies cannot inspect image contents \u2014 OCR or handwritten data may bypass scanning.",
+      "message": "Image or PDF file read detected. Text policies cannot inspect image contents — OCR or handwritten data may bypass scanning.",
       "severity": "low",
       "frameworks": [
         "ISO_42001:6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records an audit signal when detectable image or document metadata matches; it does not inspect visual content.",
+        "requires": [],
+        "known_limitations": [
+          "Workflow runtime skips rules restricted to non-workflow tool families",
+          "Image, scanned-document, OCR, and handwritten content are not inspected"
+        ]
+      }
     },
     {
       "id": "no-path-traversal",
@@ -90,7 +158,25 @@
         "SOC2:CC6.1",
         "OWASP:A01"
       ],
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-rm-rf",
@@ -104,7 +190,25 @@
       "severity": "critical",
       "frameworks": [
         "SOC2:CC6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-sudo",
@@ -118,7 +222,25 @@
       "severity": "critical",
       "frameworks": [
         "SOC2:CC6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-env-read",
@@ -132,7 +254,25 @@
       "severity": "high",
       "frameworks": [
         "SOC2:CC6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-env-commits",
@@ -147,7 +287,25 @@
       "frameworks": [
         "SOC2:CC6.1",
         "GDPR:Art32"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-force-push",
@@ -161,7 +319,25 @@
       "severity": "high",
       "frameworks": [
         "SOC2:CC6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "approve-prod-deploy",
@@ -175,7 +351,25 @@
       "severity": "high",
       "frameworks": [
         "SOC2:CC8.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "approve-db-migration-prod",
@@ -189,7 +383,25 @@
       "severity": "high",
       "frameworks": [
         "SOC2:CC8.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-hardcoded-secrets",
@@ -204,7 +416,25 @@
       "frameworks": [
         "SOC2:CC6.1"
       ],
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-aws-keys",
@@ -219,7 +449,25 @@
       "frameworks": [
         "SOC2:CC6.1"
       ],
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "secret-stripe",
@@ -234,7 +482,25 @@
       "frameworks": [
         "PCI_DSS:3.5"
       ],
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "cmd-injection",
@@ -249,7 +515,25 @@
       "frameworks": [
         "OWASP:A03"
       ],
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "sql-injection",
@@ -264,7 +548,25 @@
       "frameworks": [
         "OWASP:A03"
       ],
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-secret-in-commit-msg",
@@ -279,13 +581,31 @@
       "frameworks": [
         "SOC2:CC6.1"
       ],
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "surface-chat-no-bash",
       "persona": "agent",
       "non_overridable": false,
-      "description": "Block shell execution from chat surfaces \u2014 Claude.ai, Claude Desktop, ChatGPT",
+      "description": "Block shell execution from chat surfaces — Claude.ai, Claude Desktop, ChatGPT",
       "match_tool": "shell",
       "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt",
       "action": "block",
@@ -295,7 +615,23 @@
         "SOC2:CC6.1",
         "ISO_42001:6.1",
         "NIST_AI_RMF:GOVERN-1.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "surface-chat-no-write",
@@ -310,7 +646,23 @@
       "frameworks": [
         "SOC2:CC6.1",
         "ISO_42001:6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "surface-chat-no-network",
@@ -324,21 +676,53 @@
       "severity": "medium",
       "frameworks": [
         "SOC2:CC6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "surface-codex-desktop-warn-exec",
       "persona": "agent",
       "non_overridable": false,
-      "description": "Warn on shell execution from Codex Desktop \u2014 hybrid surface",
+      "description": "Warn on shell execution from Codex Desktop — hybrid surface",
       "match_tool": "shell",
       "match_ai_tool": "codex-desktop",
       "action": "warn",
-      "message": "Shell command via Codex Desktop \u2014 logged for audit. Destructive commands are blocked by separate rules.",
+      "message": "Shell command via Codex Desktop — logged for audit. Destructive commands are blocked by separate rules.",
       "severity": "medium",
       "frameworks": [
         "SOC2:CC6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "surface-codex-desktop-no-delete",
@@ -353,7 +737,23 @@
       "severity": "high",
       "frameworks": [
         "SOC2:CC6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "surface-dev-audit-prod-write",
@@ -364,18 +764,34 @@
       "match_ai_tool": "claude-code,codex-cli,cursor,windsurf",
       "match_path_pattern": "(/prod/|/production/|\\.env\\.prod|render\\.yaml|vercel\\.json|Dockerfile)",
       "action": "audit",
-      "message": "Write to production configuration detected \u2014 logged for audit trail.",
+      "message": "Write to production configuration detected — logged for audit trail.",
       "severity": "medium",
       "frameworks": [
         "SOC2:CC7.2",
         "ISO_42001:9.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "workflow-audit-all",
       "persona": "agent",
       "non_overridable": false,
-      "description": "Audit every workflow trigger \u2014 no pattern required, fires on all workflow tool calls",
+      "description": "Audit every workflow trigger — no pattern required, fires on all workflow tool calls",
       "match_tool": "workflow",
       "action": "audit",
       "message": "Workflow trigger logged for audit trail.",
@@ -383,7 +799,25 @@
       "frameworks": [
         "SOC2:CC7.2",
         "ISO_42001:9.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "workflow-warn-prod",
@@ -398,7 +832,25 @@
       "frameworks": [
         "SOC2:CC8.1",
         "ISO_42001:6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "workflow-block-destructive",
@@ -413,7 +865,25 @@
       "frameworks": [
         "SOC2:CC6.1",
         "ISO_42001:6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "workflow-block-secret-in-payload",
@@ -423,12 +893,30 @@
       "match_tool": "workflow",
       "match_pattern": "(API_KEY|SECRET|PASSWORD|TOKEN)\\s*[=:]\\s*['\"]?[A-Za-z0-9+/]{16,}|AKIA[0-9A-Z]{16}|sk_live_[0-9a-zA-Z]{24,}|ghp_[A-Za-z0-9]{36,}",
       "action": "block",
-      "message": "Credential detected in workflow payload \u2014 request blocked. Use your secrets manager.",
+      "message": "Credential detected in workflow payload — request blocked. Use your secrets manager.",
       "severity": "critical",
       "frameworks": [
         "SOC2:CC6.1",
         "OWASP:LLM02"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "surface-unknown-block-exec",
@@ -438,12 +926,28 @@
       "match_tool": "shell",
       "match_ai_tool": "unknown",
       "action": "block",
-      "message": "Shell execution blocked \u2014 surface not recognized by ConductGuard. Run `conduct guard sync` to register this tool.",
+      "message": "Shell execution blocked — surface not recognized by ConductGuard. Run `conduct guard sync` to register this tool.",
       "severity": "high",
       "frameworks": [
         "SOC2:CC6.1",
         "ISO_42001:6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "mcp-audit-all-tool-calls",
@@ -457,7 +961,23 @@
       "frameworks": [
         "SOC2:CC7.2",
         "ISO_42001:9.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook policy sync does not preserve match_mcp_server semantics",
+          "MCP guard_check does not evaluate match_mcp_server",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "mcp-block-destructive-tools",
@@ -472,7 +992,21 @@
       "frameworks": [
         "SOC2:CC6.1",
         "ISO_42001:6.1"
-      ]
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [],
+        "known_limitations": [
+          "Hook policy sync does not preserve match_mcp_server semantics",
+          "MCP guard_check does not evaluate match_mcp_server",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "no-slack-token",
@@ -483,7 +1017,25 @@
       "action": "block",
       "message": "Slack token detected in code. Load from environment or secrets manager instead.",
       "severity": "high",
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-private-key",
@@ -492,31 +1044,85 @@
       "description": "Block private key material in agent-written code",
       "match_pattern": "-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
       "action": "block",
-      "message": "Private key material detected. Never commit keys to code \u2014 use a secrets manager.",
+      "message": "Private key material detected. Never commit keys to code — use a secrets manager.",
       "severity": "critical",
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-eval",
       "persona": "agent",
       "non_overridable": false,
-      "description": "Block use of eval() \u2014 arbitrary code execution risk",
+      "description": "Block use of eval() — arbitrary code execution risk",
       "match_pattern": "\\beval\\s*\\(",
       "action": "block",
       "message": "eval() enables arbitrary code execution. Use ast.literal_eval or a parser.",
       "severity": "high",
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-weak-crypto",
       "persona": "agent",
       "non_overridable": false,
-      "description": "Warn on MD5 or SHA-1 use \u2014 broken for security purposes",
+      "description": "Warn on MD5 or SHA-1 use — broken for security purposes",
       "match_pattern": "(hashlib\\.(md5|sha1)\\s*\\(|\\b(MD5|SHA1)\\s*\\()",
       "action": "warn",
       "message": "MD5 and SHA-1 are broken for security. Use SHA-256 or better.",
       "severity": "medium",
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "advisory",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "no-gh-pat-in-code",
@@ -527,29 +1133,75 @@
       "action": "block",
       "message": "GitHub PAT detected in code. Load from environment or secrets manager.",
       "severity": "critical",
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
     },
     {
       "id": "proxy-fix-this-code-intent",
       "persona": "proxy",
       "non_overridable": false,
-      "description": "Flag prompts using the 'fix this code' framing \u2014 dual-use vector for finding vulnerabilities via patch generation",
+      "description": "Flag prompts using the 'fix this code' framing — dual-use vector for finding vulnerabilities via patch generation",
       "match_prompt": "\\b(fix|patch|repair|clean\\s*up|refactor)\\s+(this|the|my|our)?\\s*(code|snippet|function|file|repo(sitory)?|patch)\\b",
       "action": "warn",
-      "message": "'Fix this code' prompts require the model to find vulnerabilities in order to patch them \u2014 the same capability an attacker uses. Consider explicit intent: 'audit this function for OWASP Top 10 issues.'",
+      "message": "'Fix this code' prompts require the model to find vulnerabilities in order to patch them — the same capability an attacker uses. Consider explicit intent: 'audit this function for OWASP Top 10 issues.'",
       "severity": "medium",
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "advisory",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "LLM traffic is routed through the Conduct Guard Proxy"
+        ],
+        "known_limitations": [
+          "Only request text exposed to the proxy matcher is inspected"
+        ]
+      }
     },
     {
       "id": "proxy-restricted-model-mythos-fable",
       "persona": "proxy",
       "non_overridable": false,
-      "description": "Flag calls to Mythos/Fable-class models \u2014 high capability, cybersecurity-restricted per US export controls (2026-06-12)",
+      "description": "Flag calls to Mythos/Fable-class models — high capability, cybersecurity-restricted per US export controls (2026-06-12)",
       "match_model": "^(claude-)?(fable|mythos)(-\\d+)?",
       "action": "warn",
       "message": "Mythos/Fable-class model in use. Released with restricted cybersecurity capabilities and export-controlled per US directive (2026-06-12). Ensure usage is in scope of your Anthropic partnership and workspace policy.",
       "severity": "high",
-      "tag": "security_policy"
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "advisory",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "LLM traffic is routed through the Conduct Guard Proxy"
+        ],
+        "known_limitations": [
+          "Only request text exposed to the proxy matcher is inspected"
+        ]
+      }
     }
   ]
 }

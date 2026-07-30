@@ -16,14 +16,19 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, get_guard_hook_auth
+from app.core.auth import (
+    get_guard_hook_auth,
+    get_user_id,
+    get_workspace_id,
+    require_permission,
+)
 from app.core.database import get_db
 from app.models.workspace import Workspace
 from app.modules.guard.models import (
@@ -34,11 +39,19 @@ from app.modules.guard.models import (
     WorkspaceCustomRule,
     WorkspaceSkillPack,
 )
-from app.modules.guard.policy_engine import compute_policy, invalidate_policy_cache
+from app.modules.guard.policy_engine import (
+    VALID_ACTIONS,
+    _get_pack,
+    compute_policy,
+    invalidate_policy_cache,
+    is_action_relaxing,
+    is_exception_active,
+)
+from app.modules.guard.coverage import workspace_coverage_matrix
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
-_VALID_ACTIONS = {"block", "warn", "audit", "approval", "inject"}
+_VALID_ACTIONS = set(VALID_ACTIONS)
 
 
 def _bg_project_rule(workspace_id: str, rule_id: str) -> None:
@@ -92,6 +105,10 @@ class PolicyOut(BaseModel):
     severity: str = "medium"
     iso_control: Optional[str] = None
     tag: Optional[str] = None
+    exception_reason: Optional[str] = None
+    exception_expires_at: Optional[datetime] = None
+    exception_active: bool = False
+    exception_expired: bool = False
     last_triggered: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
@@ -121,6 +138,8 @@ class PolicyPatch(BaseModel):
     match_path_pattern: Optional[str] = None
     action: Optional[str] = None
     message: Optional[str] = None
+    reason: Optional[str] = None
+    expires_at: Optional[datetime] = None
 
 
 class PolicySyncRule(BaseModel):
@@ -158,6 +177,30 @@ class PolicyGenerateOut(BaseModel):
     match_path_pattern: Optional[str] = None
     action: str
     message: str
+
+
+class EnforcementCoverageOut(BaseModel):
+    rule_id: str
+    name: str
+    pack: Optional[str] = None
+    pack_version: Optional[str] = None
+    builtin: bool
+    personas: list[str]
+    action: str
+    base_action: str
+    enabled: bool
+    proxy: Literal["hard", "conditional", "advisory", "not_supported"]
+    hook: Literal["hard", "conditional", "advisory", "not_supported"]
+    mcp: Literal["hard", "conditional", "advisory", "not_supported"]
+    runtime: Literal["hard", "conditional", "advisory", "not_supported"]
+    guarantee: str
+    requires: list[str]
+    known_limitations: list[str]
+    enforcement_version: Literal[1]
+    exception_reason: Optional[str] = None
+    exception_expires_at: Optional[datetime] = None
+    exception_active: bool = False
+    exception_expired: bool = False
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -217,6 +260,26 @@ def _pack_rule_to_out(
     workspace_id: uuid.UUID,
     override: Optional[GuardRuleOverride],
 ) -> PolicyOut:
+    base_action = rule.get("action", "block")
+    relaxing = bool(
+        override
+        and (override.disabled or is_action_relaxing(base_action, override.action))
+    )
+    active = bool(override and is_exception_active(override, base_action))
+    expired = bool(
+        relaxing
+        and override
+        and override.expires_at is not None
+        and override.expires_at <= datetime.now(timezone.utc)
+    )
+    effective_action = base_action
+    effective_enabled = True
+    if override:
+        if override.action in VALID_ACTIONS and (not relaxing or active):
+            effective_action = override.action
+        if override.disabled and active:
+            effective_enabled = False
+
     return PolicyOut(
         id=rule["id"],
         workspace_id=str(workspace_id),
@@ -225,9 +288,9 @@ def _pack_rule_to_out(
         match_tool=rule.get("match_tool"),
         match_pattern=(override.match_pattern if override and override.match_pattern else rule.get("match_pattern")),
         match_path_pattern=rule.get("match_path_pattern"),
-        action=(override.action if override and override.action else rule.get("action", "block")),
+        action=effective_action,
         message=(override.custom_message if override and override.custom_message else rule.get("message")),
-        enabled=not (override and override.disabled),
+        enabled=effective_enabled,
         builtin=True,
         pack_id=pack_slug,
         persona=rule.get("persona") or "agent",
@@ -238,6 +301,10 @@ def _pack_rule_to_out(
         severity=rule.get("severity") or "medium",
         iso_control=rule.get("iso_control"),
         tag=rule.get("tag"),
+        exception_reason=override.reason if override and relaxing else None,
+        exception_expires_at=override.expires_at if override and relaxing else None,
+        exception_active=active,
+        exception_expired=expired,
         created_at=installed_at,
         updated_at=installed_at,
     )
@@ -252,7 +319,12 @@ def _upsert_override(
     action: Optional[str] = None,
     message: Optional[str] = None,
     match_pattern: Optional[str] = None,
-) -> None:
+    reason: Optional[str] = None,
+    expires_at: Optional[datetime] = None,
+    overridden_by: Optional[str] = None,
+    clear_exception: bool = False,
+    reset_use_audit: bool = False,
+) -> GuardRuleOverride:
     """Create or update a GuardRuleOverride. Fields with `None` are not touched."""
     existing = db.get(GuardRuleOverride, (workspace_id, rule_id))
     now = datetime.now(timezone.utc)
@@ -265,20 +337,49 @@ def _upsert_override(
             existing.custom_message = message
         if match_pattern is not None:
             existing.match_pattern = match_pattern
+        if clear_exception:
+            existing.reason = None
+            existing.expires_at = None
+            existing.use_audited_at = None
+            existing.expiry_audited_at = None
+        else:
+            if reason is not None:
+                existing.reason = reason
+            if expires_at is not None:
+                existing.expires_at = expires_at
+        if reset_use_audit:
+            existing.use_audited_at = None
+            existing.expiry_audited_at = None
+        existing.overridden_by = overridden_by
         existing.overridden_at = now
+        return existing
     else:
-        db.add(GuardRuleOverride(
+        row = GuardRuleOverride(
             workspace_id=workspace_id,
             rule_id=rule_id,
             disabled=bool(disabled) if disabled is not None else False,
             action=action,
             custom_message=message,
             match_pattern=match_pattern,
+            reason=None if clear_exception else reason,
+            expires_at=None if clear_exception else expires_at,
+            overridden_by=overridden_by,
             overridden_at=now,
-        ))
+        )
+        db.add(row)
+        return row
 
 
-def _write_audit(db: Session, workspace_id: uuid.UUID, tool_call: str, rule_id: str, action: str) -> None:
+def _write_audit(
+    db: Session,
+    workspace_id: uuid.UUID,
+    tool_call: str,
+    rule_id: str,
+    action: str,
+    *,
+    actor_id: Optional[str] = None,
+    details: Optional[str] = None,
+) -> None:
     """Non-fatal audit row for policy mutations."""
     try:
         from app.modules.guard.models import chain_hash_for_insert
@@ -286,12 +387,12 @@ def _write_audit(db: Session, workspace_id: uuid.UUID, tool_call: str, rule_id: 
         prev_h, entry_h = chain_hash_for_insert(db, workspace_id, ts, tool_call, "allowed")
         db.add(GuardAuditEvent(
             workspace_id=workspace_id,
-            clerk_user_id=None,
+            clerk_user_id=actor_id,
             ai_tool="platform",
             tool_call=tool_call,
             decision="allowed",
             rule_id=rule_id,
-            input_summary=f"rule_id={rule_id} action={action}"[:500],
+            input_summary=(details or f"rule_id={rule_id} action={action}")[:500],
             ts=ts,
             previous_hash=prev_h,
             entry_hash=entry_h,
@@ -299,6 +400,129 @@ def _write_audit(db: Session, workspace_id: uuid.UUID, tool_call: str, rule_id: 
         db.commit()
     except Exception:
         db.rollback()
+
+
+def _find_pack_rule(
+    db: Session,
+    workspace_id: uuid.UUID,
+    rule_id: str,
+) -> tuple[dict, WorkspaceSkillPack] | None:
+    installed = (
+        db.query(WorkspaceSkillPack)
+        .filter(WorkspaceSkillPack.workspace_id == workspace_id)
+        .order_by(WorkspaceSkillPack.installed_at)
+        .all()
+    )
+    for wp in installed:
+        pack = _resolve_workspace_pack(db, wp)
+        if not pack:
+            continue
+        for rule in pack.rules or []:
+            if rule["id"] == rule_id:
+                return rule, wp
+    return None
+
+
+def _resolve_workspace_pack(
+    db: Session,
+    workspace_pack: WorkspaceSkillPack,
+) -> Optional[SkillPack]:
+    """Resolve the exact pack version enforced for a workspace installation."""
+    return _get_pack(
+        db,
+        workspace_pack.pack_slug,
+        workspace_pack.pinned_version,
+    )
+
+
+def _validate_exception_metadata(
+    *,
+    relaxing: bool,
+    fields_touched: bool,
+    reason: Optional[str],
+    expires_at: Optional[datetime],
+) -> tuple[Optional[str], Optional[datetime]]:
+    if relaxing and fields_touched:
+        if not reason or not reason.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="A non-empty reason is required for a relaxing policy exception",
+            )
+        if expires_at is None or expires_at.tzinfo is None:
+            raise HTTPException(
+                status_code=422,
+                detail="expires_at must include a timezone and be in the future",
+            )
+        if expires_at <= datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=422,
+                detail="expires_at must be a future timestamp for a relaxing policy exception",
+            )
+        return reason.strip(), expires_at
+    if not relaxing and (reason is not None or expires_at is not None):
+        raise HTTPException(
+            status_code=422,
+            detail="reason and expires_at are only valid for relaxing policy exceptions",
+        )
+    return reason, expires_at
+
+
+def _audit_exception_transitions(
+    db: Session,
+    workspace_id: uuid.UUID,
+    *,
+    audit_use: bool,
+) -> None:
+    """Write at-most-once use/expiry events for the current exception version."""
+    now = datetime.now(timezone.utc)
+    overrides = (
+        db.query(GuardRuleOverride)
+        .filter(GuardRuleOverride.workspace_id == workspace_id)
+        .all()
+    )
+    for override in overrides:
+        found = _find_pack_rule(db, workspace_id, override.rule_id)
+        if not found:
+            continue
+        rule, _ = found
+        base_action = rule.get("action", "block")
+        relaxing = bool(
+            override.disabled or is_action_relaxing(base_action, override.action)
+        )
+        if not relaxing:
+            continue
+        active = is_exception_active(override, base_action, now=now)
+        if active and audit_use and override.use_audited_at is None:
+            override.use_audited_at = now
+            _write_audit(
+                db,
+                workspace_id,
+                "policy_exception_used",
+                override.rule_id,
+                override.action or "disabled",
+                details=(
+                    f"rule_id={override.rule_id} reason={override.reason} "
+                    f"expires_at={override.expires_at.isoformat()}"
+                ),
+            )
+        elif (
+            not active
+            and override.expires_at is not None
+            and override.expires_at <= now
+            and override.expiry_audited_at is None
+        ):
+            override.expiry_audited_at = now
+            _write_audit(
+                db,
+                workspace_id,
+                "policy_exception_expired",
+                override.rule_id,
+                override.action or "disabled",
+                details=(
+                    f"rule_id={override.rule_id} reason={override.reason} "
+                    f"expired_at={override.expires_at.isoformat()}"
+                ),
+            )
 
 
 def _get_anthropic_key(db: Session, workspace_id: Optional[str]) -> str:
@@ -324,6 +548,7 @@ def generate_policy(
     body: PolicyGenerateRequest,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.policies.edit")),
 ):
     """LLM-generate a rule from a plain-English description."""
     import anthropic
@@ -400,6 +625,7 @@ def sync_policies(
     gc = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     # ponytail: sync always uses surface="agent" — GuardConfig.persona is developer type, not surface
     active_rules = compute_policy(db, ws_uuid, "agent")
+    _audit_exception_transitions(db, ws_uuid, audit_use=True)
     version_hash = hashlib.sha256(json.dumps(active_rules, sort_keys=True).encode()).hexdigest()[:16]
     version = f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}-{version_hash}"
 
@@ -441,9 +667,11 @@ def sync_policies(
 def list_policies(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.policies.view")),
 ):
     """List all policies for a workspace — custom rules + active pack rules."""
     ws_uuid = _ws_uuid(workspace_id)
+    _audit_exception_transitions(db, ws_uuid, audit_use=False)
     org_ws = _org_ws_subquery(db, workspace_id)
 
     out: list[PolicyOut] = []
@@ -481,12 +709,7 @@ def list_policies(
     }
     seen: set[str] = set()
     for wp in installed:
-        pack = (
-            db.query(SkillPack)
-            .filter(SkillPack.slug == wp.pack_slug)
-            .order_by(SkillPack.version.desc())
-            .first()
-        )
+        pack = _resolve_workspace_pack(db, wp)
         if not pack:
             continue
         for rule in pack.rules or []:
@@ -501,12 +724,24 @@ def list_policies(
     return out
 
 
+@router.get("/coverage", response_model=list[EnforcementCoverageOut])
+def get_enforcement_coverage(
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.policies.view")),
+):
+    """Generated enforcement matrix for the workspace's resolved policy sources."""
+    return workspace_coverage_matrix(db, _ws_uuid(workspace_id))
+
+
 @router.post("", response_model=PolicyOut, status_code=201)
 def create_policy(
     body: PolicyCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    _: str = Depends(require_permission("guard.policies.edit")),
 ):
     """Create a custom (non-pack) policy rule."""
     if body.action not in _VALID_ACTIONS:
@@ -550,7 +785,9 @@ def create_policy(
     db.refresh(row)
     invalidate_policy_cache(db, ws_uuid)
 
-    _write_audit(db, ws_uuid, "policy_created", body.rule_id, body.action)
+    _write_audit(
+        db, ws_uuid, "policy_created", body.rule_id, body.action, actor_id=user_id
+    )
     background_tasks.add_task(_bg_project_rule, resolved_ws, body.rule_id)
     return _custom_to_out(row)
 
@@ -562,6 +799,8 @@ def patch_policy(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    _: str = Depends(require_permission("guard.policies.edit")),
 ):
     """Edit a rule. Custom rules update workspace_custom_rules; pack rules write
     an entry in guard_rule_overrides."""
@@ -589,43 +828,121 @@ def patch_policy(
         db.commit()
         db.refresh(custom)
         invalidate_policy_cache(db, ws_uuid)
-        _write_audit(db, ws_uuid, "policy_updated", rule_id, b.get("action", "block"))
+        _write_audit(
+            db,
+            ws_uuid,
+            "policy_updated",
+            rule_id,
+            b.get("action", "block"),
+            actor_id=user_id,
+        )
         background_tasks.add_task(_bg_project_rule, workspace_id, rule_id)
         return _custom_to_out(custom)
 
-    # Pack rule -> write override
-    touched_override = False
-    if body.enabled is not None:
-        _upsert_override(db, ws_uuid, rule_id, disabled=not body.enabled)
-        touched_override = True
-    if body.action is not None or body.message is not None or body.match_pattern is not None:
-        _upsert_override(db, ws_uuid, rule_id, action=body.action, message=body.message, match_pattern=body.match_pattern)
-        touched_override = True
+    found = _find_pack_rule(db, ws_uuid, rule_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    rule, wp = found
+    base_action = rule.get("action", "block")
+    if base_action not in VALID_ACTIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Pack rule has unsupported action '{base_action}'",
+        )
+
+    existing = db.get(GuardRuleOverride, (ws_uuid, rule_id))
+    target_disabled = (
+        not body.enabled
+        if body.enabled is not None
+        else bool(existing.disabled) if existing else False
+    )
+    target_action = (
+        body.action
+        if body.action is not None
+        else existing.action if existing else None
+    )
+    relaxing = bool(
+        target_disabled or is_action_relaxing(base_action, target_action)
+    )
+    exception_fields_touched = (
+        body.enabled is not None
+        or body.action is not None
+        or body.reason is not None
+        or body.expires_at is not None
+    )
+
+    reason = body.reason if body.reason is not None else existing.reason if existing else None
+    expires_at = (
+        body.expires_at
+        if body.expires_at is not None
+        else existing.expires_at if existing else None
+    )
+    validation_reason = reason if relaxing else body.reason
+    validation_expiry = expires_at if relaxing else body.expires_at
+    reason, expires_at = _validate_exception_metadata(
+        relaxing=relaxing,
+        fields_touched=exception_fields_touched,
+        reason=validation_reason,
+        expires_at=validation_expiry,
+    )
+
+    touched_override = any(
+        value is not None
+        for value in (
+            body.enabled,
+            body.action,
+            body.message,
+            body.match_pattern,
+            body.reason,
+            body.expires_at,
+        )
+    )
     if touched_override:
+        created = existing is None
+        override = _upsert_override(
+            db,
+            ws_uuid,
+            rule_id,
+            disabled=not body.enabled if body.enabled is not None else None,
+            action=body.action,
+            message=body.message,
+            match_pattern=body.match_pattern,
+            reason=reason if relaxing else None,
+            expires_at=expires_at if relaxing else None,
+            overridden_by=user_id,
+            clear_exception=not relaxing,
+            reset_use_audit=relaxing and exception_fields_touched,
+        )
         db.commit()
         invalidate_policy_cache(db, ws_uuid)
-        _write_audit(db, ws_uuid, "policy_override_set", rule_id, body.action or "")
-
-    # Re-synthesize PolicyOut from the pack rule + the (possibly new) override
-    override = db.get(GuardRuleOverride, (ws_uuid, rule_id))
-    installed = (
-        db.query(WorkspaceSkillPack)
-        .filter(WorkspaceSkillPack.workspace_id == ws_uuid)
-        .order_by(WorkspaceSkillPack.installed_at)
-        .all()
-    )
-    for wp in installed:
-        pack = (
-            db.query(SkillPack).filter(SkillPack.slug == wp.pack_slug)
-            .order_by(SkillPack.version.desc()).first()
+        event_name = (
+            "policy_exception_created"
+            if relaxing and created
+            else "policy_exception_updated"
+            if relaxing
+            else "policy_override_set"
         )
-        if not pack:
-            continue
-        for rule in pack.rules or []:
-            if rule["id"] == rule_id:
-                return _pack_rule_to_out(rule, wp.pack_slug, wp.installed_at, ws_uuid, override)
+        details = (
+            f"rule_id={rule_id} action={target_action or base_action} "
+            f"disabled={target_disabled}"
+        )
+        if relaxing:
+            details += f" reason={reason} expires_at={expires_at.isoformat()}"
+        _write_audit(
+            db,
+            ws_uuid,
+            event_name,
+            rule_id,
+            target_action or ("disabled" if target_disabled else base_action),
+            actor_id=user_id,
+            details=details,
+        )
+    else:
+        override = existing
 
-    raise HTTPException(status_code=404, detail="Policy not found")
+    return _pack_rule_to_out(
+        rule, wp.pack_slug, wp.installed_at, ws_uuid, override
+    )
 
 
 @router.delete("/{rule_id}", status_code=204)
@@ -633,6 +950,8 @@ def delete_policy(
     rule_id: str,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    _: str = Depends(require_permission("guard.policies.edit")),
 ):
     """Delete a custom rule. Pack rules cannot be deleted — uninstall the pack
     or disable the rule via PATCH /guard/policies/{rule_id} (enabled=False)."""
@@ -647,13 +966,14 @@ def delete_policy(
     db.delete(custom)
     db.commit()
     invalidate_policy_cache(db, ws_uuid)
-    _write_audit(db, ws_uuid, "policy_deleted", rule_id, "")
+    _write_audit(db, ws_uuid, "policy_deleted", rule_id, "", actor_id=user_id)
 
 
 @router.post("/reinstall-base")
 def reinstall_base(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.policies.edit")),
 ):
     """Re-install the conduct-base skill pack if missing, then invalidate cache."""
     ws_uuid = _ws_uuid(workspace_id)
@@ -685,7 +1005,7 @@ class LintResponse(BaseModel):
     errors: list[LintIssue] = []
     warnings: list[LintIssue] = []
 
-_VALID_ACTIONS = {"block", "warn", "audit", "approval", "inject"}
+_VALID_ACTIONS = set(VALID_ACTIONS)
 _VALID_FAIL_MODES = {"fail_open", "fail_closed"}
 _MATCH_FIELDS = {"match_tool", "match_pattern", "match_path_pattern", "match_command_word", "match_tokens_before_gt"}
 
@@ -742,6 +1062,7 @@ def _lint_rules(rules: list[dict], fail_mode: Optional[str]) -> tuple[list[LintI
 def lint_policy(
     body: LintRequest,
     workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.policies.view")),
 ):
     """Validate a policy (rules list) and return errors + warnings. No DB writes."""
     errors, warnings = _lint_rules(body.rules, body.fail_mode)

@@ -37,16 +37,20 @@ if _env.exists():
 
 from sqlalchemy import text as _text
 from app.core.database import engine
+from app.modules.guard.enforcement import validate_pack
 
 NOW = datetime.now(timezone.utc)
 
 # ── Pack definitions (loaded from JSON files) ─────────────────────────────────
 
-PACK_SLUGS = ["conduct-base", "conduct-owasp", "conduct-soc2", "conduct-hipaa", "conduct-pci-dss", "conduct-eu-ai-act", "conduct-nist-ai-rmf", "conduct-iso-42001", "conduct-irs-1075"]
+PACK_SLUGS = ["conduct-base", "conduct-owasp", "conduct-soc2", "conduct-hipaa", "conduct-pci-dss", "conduct-eu-ai-act", "conduct-nist-ai-rmf", "conduct-iso-42001", "conduct-irs-1075", "surface-aware"]
 
 
 def _load_pack(slug: str) -> dict:
-    return json.loads((SKILL_PACKS_DIR / f"{slug}.json").read_text())
+    path = SKILL_PACKS_DIR / f"{slug}.json"
+    pack = json.loads(path.read_text())
+    validate_pack(pack, source=str(path))
+    return pack
 
 # legacy pack_id → new slug
 LEGACY_PACK_MAP = {
@@ -70,10 +74,19 @@ def run(dry_run: bool, force: bool = False) -> None:
             for slug in PACK_SLUGS:
                 pack = _load_pack(slug)
                 version = pack["version"]
-                exists = conn.execute(_text(
-                    "SELECT 1 FROM skill_packs WHERE slug=:s AND version=:v"
+                existing = conn.execute(_text(
+                    "SELECT rules FROM skill_packs WHERE slug=:s AND version=:v"
                 ), {"s": slug, "v": version}).fetchone()
-                if exists and not force:
+                has_current_contract = bool(
+                    existing
+                    and existing[0]
+                    and all(
+                        isinstance(rule.get("enforcement"), dict)
+                        and rule["enforcement"].get("version") == 1
+                        for rule in (existing[0] or [])
+                    )
+                )
+                if existing and has_current_contract and not force:
                     print(f"  skill_pack {slug} {version} already exists — skipping")
                     continue
                 if not dry_run:

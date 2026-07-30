@@ -12,10 +12,35 @@
       "match_pattern": "\\b[0-9]{2}-[0-9]{7}\\b",
       "action": "block",
       "message": "EIN detected in AI prompt — Federal Tax Information must not be passed to AI models without explicit authorisation under IRS 1075 Section 4 and IRC Section 6103.",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["IRS_1075:Sec4", "IRS_1075:IRC6103", "SOC2:CC6.1"],
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "IRS_1075:Sec4",
+        "IRS_1075:IRC6103",
+        "SOC2:CC6.1"
+      ],
       "severity": "critical",
-      "recommendation": "Remove EINs from AI prompts. Substitute with anonymised identifiers or aggregate values. FTI must not leave the authorised boundary."
+      "recommendation": "Remove EINs from AI prompts. Substitute with anonymised identifiers or aggregate values. FTI must not leave the authorised boundary.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "irs1075-no-tax-return-data",
@@ -24,10 +49,35 @@
       "match_pattern": "(adjusted.?gross.?income|agi|taxable.?income|federal.?tax.?withheld|form.?1040|w.?2.?wages|1099.?(int|div|misc|nec|r|g)|refund.?amount|tax.?liability).*(\\$|[0-9]{3,}|=|:)",
       "action": "block",
       "message": "Tax return data (FTI) detected in AI context — IRS 1075 Section 4 prohibits passing Federal Tax Information to AI systems without documented authorisation.",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["IRS_1075:Sec4", "IRS_1075:IRC6103", "HIPAA:164.514"],
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "IRS_1075:Sec4",
+        "IRS_1075:IRC6103",
+        "HIPAA:164.514"
+      ],
       "severity": "critical",
-      "recommendation": "Aggregate or anonymise tax return values before passing to AI. Never include raw FTI fields (AGI, W-2, 1099 data) in model prompts."
+      "recommendation": "Aggregate or anonymise tax return values before passing to AI. Never include raw FTI fields (AGI, W-2, 1099 data) in model prompts.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "irs1075-no-fti-external-endpoint",
@@ -36,10 +86,35 @@
       "match_pattern": "(curl|fetch|requests\\.post|axios\\.post|http\\.post).*(openai\\.com|anthropic\\.com|api\\.together|groq\\.com|replicate\\.com|cohere\\.com).*(ssn|ein|tax|fti|1040|w.?2|1099|agi)",
       "action": "block",
       "message": "FTI transmission to external AI endpoint blocked — IRS 1075 requires all third-party processors of FTI to have a signed Data Services Agreement and IRS approval.",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["IRS_1075:Sec4", "IRS_1075:IRC6103", "NIST_AI_RMF:MANAGE-4.1"],
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "IRS_1075:Sec4",
+        "IRS_1075:IRC6103",
+        "NIST_AI_RMF:MANAGE-4.1"
+      ],
       "severity": "critical",
-      "recommendation": "External AI providers must be approved by the IRS and have a signed Data Services Agreement before receiving any FTI. Use only IRS-approved processing environments."
+      "recommendation": "External AI providers must be approved by the IRS and have a signed Data Services Agreement before receiving any FTI. Use only IRS-approved processing environments.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "irs1075-no-fti-training-data",
@@ -48,10 +123,33 @@
       "match_pattern": "(train|training.?data|fine.?tune|dataset|corpus).*(ssn|ein|tax.?return|fti|1040|w.?2|1099|adjusted.?gross)|append.*(tax|fti|ein|ssn).*(csv|json|parquet|jsonl|tfrecord)",
       "action": "block",
       "message": "FTI detected in AI training data write — IRS 1075 prohibits using Federal Tax Information to train, fine-tune, or build AI models.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["IRS_1075:Sec4", "IRS_1075:IRC6103", "EU_AI_ACT:Art10"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "IRS_1075:Sec4",
+        "IRS_1075:IRC6103",
+        "EU_AI_ACT:Art10"
+      ],
       "severity": "critical",
-      "recommendation": "FTI must never be used as training data for AI models. Use fully synthetic or anonymised data for AI development involving tax-adjacent domains."
+      "recommendation": "FTI must never be used as training data for AI models. Use fully synthetic or anonymised data for AI development involving tax-adjacent domains.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "irs1075-no-fti-unencrypted-write",
@@ -60,10 +158,33 @@
       "match_pattern": "open\\(['\"].*\\.(txt|csv|log|json)['\"],\\s*['\"]w['\"]\\).*\\n.*(ssn|ein|tax|fti|1040|agi)|write.*(ssn|ein|tax_return|fti).*(file|disk|storage)(?!.*(encrypt|cipher|kms|aes|vault))",
       "action": "block",
       "message": "FTI written to unencrypted storage — IRS 1075 Section 9 requires AES-256 encryption for all FTI at rest.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["IRS_1075:Sec9", "PCI_DSS:3.4", "SOC2:CC6.1"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "IRS_1075:Sec9",
+        "PCI_DSS:3.4",
+        "SOC2:CC6.1"
+      ],
       "severity": "critical",
-      "recommendation": "All FTI must be encrypted at rest using AES-256. Use a managed KMS for key management. Never write FTI to plain-text files or unencrypted storage."
+      "recommendation": "All FTI must be encrypted at rest using AES-256. Use a managed KMS for key management. Never write FTI to plain-text files or unencrypted storage.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "irs1075-no-fti-plain-log",
@@ -72,10 +193,34 @@
       "match_pattern": "(console\\.log|print|logger\\.(info|debug|warn|error)|logging\\.(info|debug|warning|error))\\(.*( ssn| ein| agi|tax_return|fti|1040|w2_wage|1099)",
       "action": "block",
       "message": "FTI in application log — IRS 1075 requires all FTI to be redacted before logging. Plain-text FTI in logs is a reportable breach.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["IRS_1075:Sec4", "IRS_1075:Sec10", "SOC2:CC7.2", "GDPR:Art32"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "IRS_1075:Sec4",
+        "IRS_1075:Sec10",
+        "SOC2:CC7.2",
+        "GDPR:Art32"
+      ],
       "severity": "critical",
-      "recommendation": "Redact or mask all FTI fields before writing to logs. Treat any FTI in logs as a potential reportable incident under IRS 1075 Section 10."
+      "recommendation": "Redact or mask all FTI fields before writing to logs. Treat any FTI in logs as a potential reportable incident under IRS 1075 Section 10.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "irs1075-third-party-fti-processor",
@@ -84,10 +229,33 @@
       "match_pattern": "import (openai|anthropic|cohere|replicate|together|groq|mistral)|from (openai|anthropic|cohere|replicate|together_ai|groq) import|(OPENAI_API_KEY|ANTHROPIC_API_KEY|COHERE_API_KEY|REPLICATE_API_TOKEN)",
       "action": "warn",
       "message": "Third-party AI provider integrated in FTI-handling system — IRS 1075 requires a signed Data Services Agreement and IRS approval before any contractor processes FTI.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["IRS_1075:Sec4", "NIST_AI_RMF:MANAGE-4.1", "SOC2:CC9.2"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "IRS_1075:Sec4",
+        "NIST_AI_RMF:MANAGE-4.1",
+        "SOC2:CC9.2"
+      ],
       "severity": "high",
-      "recommendation": "Verify this AI provider has a signed Data Services Agreement approved by the IRS before using it in any system that touches FTI. Maintain a contractor registry per IRS 1075 Section 4."
+      "recommendation": "Verify this AI provider has a signed Data Services Agreement approved by the IRS before using it in any system that touches FTI. Maintain a contractor registry per IRS 1075 Section 4.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "irs1075-fti-purpose-limitation",
@@ -96,10 +264,35 @@
       "match_pattern": "(repurpose|reuse|share|export|transfer).*(fti|tax.?return|tax.?data|federal.?tax).*(marketing|analytics|model.?train|research|third.?party|external)|fti.*(outside|beyond).*(authoris|authoriz|approved|permitted).*(use|purpose|scope)",
       "action": "block",
       "message": "FTI use outside authorised purpose blocked — IRC Section 6103 restricts FTI use strictly to the purpose for which it was disclosed. Unauthorised use is a federal criminal offence.",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["IRS_1075:IRC6103", "IRS_1075:Sec4", "EU_AI_ACT:Art10"],
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "IRS_1075:IRC6103",
+        "IRS_1075:Sec4",
+        "EU_AI_ACT:Art10"
+      ],
       "severity": "critical",
-      "recommendation": "FTI may only be used for the specific purpose authorised under IRC Section 6103. Any secondary use — including AI analytics, model training, or sharing — requires separate IRS authorisation."
+      "recommendation": "FTI may only be used for the specific purpose authorised under IRC Section 6103. Any secondary use — including AI analytics, model training, or sharing — requires separate IRS authorisation.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     }
   ]
 }
