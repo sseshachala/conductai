@@ -14,7 +14,7 @@ from scripts.backfill_security_automation_project import (
 def test_group_by_slug_partitions_by_playbook():
     rows = [
         ("wf-1", "proj-a", "security_loop"),
-        ("wf-2", "proj-a", "security_autopilot_fix"),
+        ("wf-2", "proj-a", "security-autopilot-fix"),
         ("wf-3", None, "some_other_slug"),  # ignored
     ]
     loop, fix = group_by_slug(rows)
@@ -25,7 +25,7 @@ def test_group_by_slug_partitions_by_playbook():
 def test_analyze_workspace_no_duplicates_when_one_of_each():
     rows = [
         ("wf-1", "proj-a", "security_loop"),
-        ("wf-2", "proj-a", "security_autopilot_fix"),
+        ("wf-2", "proj-a", "security-autopilot-fix"),
     ]
     plan = analyze_workspace("ws-1", rows)
     assert plan.has_duplicates is False
@@ -38,7 +38,7 @@ def test_analyze_workspace_flags_duplicate_security_loop():
     rows = [
         ("wf-1", "proj-a", "security_loop"),
         ("wf-2", "proj-b", "security_loop"),  # duplicate slug
-        ("wf-3", "proj-a", "security_autopilot_fix"),
+        ("wf-3", "proj-a", "security-autopilot-fix"),
     ]
     plan = analyze_workspace("ws-1", rows)
     assert plan.has_duplicates is True
@@ -51,8 +51,8 @@ def test_analyze_workspace_flags_duplicate_security_loop():
 
 def test_analyze_workspace_flags_duplicate_autopilot_fix():
     rows = [
-        ("wf-1", "proj-a", "security_autopilot_fix"),
-        ("wf-2", "proj-b", "security_autopilot_fix"),
+        ("wf-1", "proj-a", "security-autopilot-fix"),
+        ("wf-2", "proj-b", "security-autopilot-fix"),
     ]
     plan = analyze_workspace("ws-1", rows)
     assert plan.has_duplicates is True
@@ -74,7 +74,7 @@ def test_analyze_workspace_workflow_with_null_project_id():
     """Workflow never installed under a project → project_id is None in the row."""
     rows = [
         ("wf-1", None, "security_loop"),
-        ("wf-2", None, "security_autopilot_fix"),
+        ("wf-2", None, "security-autopilot-fix"),
     ]
     plan = analyze_workspace("ws-1", rows)
     assert plan.has_duplicates is False

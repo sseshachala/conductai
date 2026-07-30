@@ -153,7 +153,7 @@ def test_install_guard_auto_provisions_for_security_autopilot_fix():
     """security_autopilot_fix install → same auto-provision path."""
     db = _mk_provision_db("proj-sec-1")
 
-    result = apply_security_install_guard(db, "ws-1", "security_autopilot_fix", None)
+    result = apply_security_install_guard(db, "ws-1", "security-autopilot-fix", None)
 
     assert result == "proj-sec-1"
 

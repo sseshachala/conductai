@@ -10,7 +10,7 @@ Schema half of the epic (see conductai#1005). Four changes, all additive:
 
 2. ``workspaces`` — ``security_automation_project_id`` FK (nullable, ON DELETE
    SET NULL). This is the authoritative pointer: dispatchers look up the
-   security_loop / security_autopilot_fix workflow via this project, killing
+   security_loop / security-autopilot-fix workflow via this project, killing
    ``.first()`` roulette (conductai#998).
 
 3. ``workflows`` — partial unique index on ``(project_id, playbook_slug)`` so

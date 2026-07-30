@@ -161,7 +161,7 @@ _TOOLS = [
             "Report a security vulnerability or finding directly to Conduct's Security Loop. "
             "Use this when you detect a secret leak, injection risk, path traversal, auth bypass, "
             "or any other security issue in the code you're reviewing. "
-            "Conduct will auto-triage it and can trigger an automated fix via the security_autopilot_fix playbook."
+            "Conduct will auto-triage it and can trigger an automated fix via the security-autopilot-fix playbook."
         ),
         "inputSchema": {
             "type": "object",
@@ -181,7 +181,7 @@ _TOOLS = [
     {
         "name": "trigger_fix",
         "description": (
-            "Trigger the security_autopilot_fix playbook for a finding that was previously reported via post_finding. "
+            "Trigger the security-autopilot-fix playbook for a finding that was previously reported via post_finding. "
             "Conduct will open a PR with an automated fix. The finding must have a repo_full_name set."
         ),
         "inputSchema": {
@@ -993,7 +993,7 @@ async def mcp_endpoint(
                 )
                 _wf = _find_security_workflow(db, ws_uuid, _SECURITY_AUTOPILOT_FIX_SLUG)
                 if not _wf or not _wf.current_version_id:
-                    return JSONResponse(_text(msg_id, "Error — security_autopilot_fix playbook is not installed in this workspace"))
+                    return JSONResponse(_text(msg_id, "Error — security-autopilot-fix playbook is not installed in this workspace"))
                 _cfg = _load_security_config_defaults(db, ws_uuid)
                 _run = Run(
                     workflow_version_id=_wf.current_version_id,
@@ -1011,7 +1011,7 @@ async def mcp_endpoint(
                     "run_id": str(_run.id),
                     "finding_id": str(finding.id),
                     "status": "triaging",
-                    "message": "security_autopilot_fix enqueued — finding set to triaging.",
+                    "message": "security-autopilot-fix enqueued — finding set to triaging.",
                 }, indent=2)))
 
             elif tool_name == "conduct_list_agents":

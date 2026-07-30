@@ -26,7 +26,8 @@ def main():
     )
     changed = [f for f in result.stdout.splitlines()
                if f.startswith("apps/api/playbooks/") and f.endswith(".yaml")
-               and not f.endswith("base-autopilot.yaml")]  # base is not standalone
+               and not f.endswith("base-autopilot.yaml")   # base is not standalone
+               and not f.endswith("registry.yaml")]        # catalog, not a workflow
 
     if not changed:
         sys.exit(0)
