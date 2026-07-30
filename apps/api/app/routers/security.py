@@ -190,7 +190,7 @@ def _build_finding_trigger_state(
 # ── Security Automation project — authoritative dispatch pointer (#1005) ─────
 
 _SECURITY_LOOP_SLUG = "security_loop"
-_SECURITY_AUTOPILOT_FIX_SLUG = "security_autopilot_fix"
+_SECURITY_AUTOPILOT_FIX_SLUG = "security-autopilot-fix"
 
 _ENSURE_PROJECT_SQL = text(
     "INSERT INTO projects (id, workspace_id, name, slug, project_type) "
@@ -243,7 +243,7 @@ def apply_security_install_guard(
     template: str | None,
     body_project_id: str | None,
 ) -> str | None:
-    """Enforce that security_loop / security_autopilot_fix installs land under
+    """Enforce that security_loop / security-autopilot-fix installs land under
     the workspace's Security Automation project. Returns the project_id the
     caller should use, or None to pass ``body_project_id`` through unchanged.
 
@@ -329,7 +329,7 @@ def _find_security_workflow(db: Session, workspace_id: str, playbook_slug: str):
     """Return the workflow for ``playbook_slug`` in this workspace, or None.
 
     The pointer ``workspace.security_automation_project_id`` is authoritative:
-    every install of ``security_loop`` / ``security_autopilot_fix`` goes through
+    every install of ``security_loop`` / ``security-autopilot-fix`` goes through
     ``apply_security_install_guard`` which auto-provisions the project + sets
     the pointer. Migration 0087's ``workflows_project_playbook_uniq`` partial
     index guarantees at most one workflow-per-slug under the project.
@@ -584,7 +584,7 @@ def trigger_fix(
 
     workflow = _find_security_workflow(db, workspace_id, _SECURITY_AUTOPILOT_FIX_SLUG)
     if not workflow or not workflow.current_version_id:
-        return TriggerFixResponse(triggered=False, reason="security_autopilot_fix playbook not installed")
+        return TriggerFixResponse(triggered=False, reason="security-autopilot-fix playbook not installed")
 
     cfg = _load_security_config_defaults(db, workspace_id)
     run = Run(

@@ -24,7 +24,7 @@ class Workspace(Base):
 
     # Authoritative pointer to the Security Automation project for this workspace.
     # See conductai#1005 — replaces .first() dispatch roulette for security_loop /
-    # security_autopilot_fix.
+    # security-autopilot-fix.
     security_automation_project_id = Column(
         UUID(as_uuid=True),
         ForeignKey("projects.id", ondelete="SET NULL"),

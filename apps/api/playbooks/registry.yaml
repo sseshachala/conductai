@@ -217,7 +217,7 @@ playbooks:
     bundled_with: security-loop-module
     description: "Security Loop Automation — AI agent triages every finding from Security Loop for Claude. Dismisses false positives instantly, escalates real threats, and with Agentic Autopilot opens fix PRs autonomously."
 
-  security_autopilot_fix:
+  security-autopilot-fix:
     file: security-autopilot-fix.yaml
     icon: "🔧"
     category: Security
