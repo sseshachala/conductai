@@ -23,7 +23,24 @@
       ],
       "severity": "critical",
       "recommendation": "Read secrets from environment variables or a secrets manager. Never embed them in source code.",
-      "iso_control": "A.8.4"
+      "iso_control": "A.8.4",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "soc2_log_pii",
@@ -43,7 +60,24 @@
       ],
       "severity": "high",
       "recommendation": "Redact or hash PII before logging. Use structured logging with field-level redaction.",
-      "iso_control": "A.8.11"
+      "iso_control": "A.8.11",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "soc2_debug_mode",
@@ -63,7 +97,24 @@
       ],
       "severity": "high",
       "recommendation": "Set DEBUG=False in production. Use feature flags or env-gated config for verbose logging.",
-      "iso_control": "A.8.32"
+      "iso_control": "A.8.32",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "soc2_unencrypted_storage",
@@ -83,7 +134,24 @@
       ],
       "severity": "high",
       "recommendation": "Enable storage encryption (AES-256 at rest, TLS 1.2+ in transit). Use managed KMS for key rotation.",
-      "iso_control": "A.8.24"
+      "iso_control": "A.8.24",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     }
   ]
 }

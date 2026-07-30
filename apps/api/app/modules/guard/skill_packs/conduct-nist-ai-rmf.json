@@ -12,10 +12,35 @@
       "match_pattern": "(disable.*policy|bypass.*guard|skip.*governance|no.?policy|governance.*=.*false|policy_enabled.*=.*(false|0|null))",
       "action": "block",
       "message": "AI governance policy bypass blocked — NIST AI RMF GOVERN 2.2 requires organisational AI policies to remain active.",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["NIST_AI_RMF:GOVERN-2.2", "EU_AI_ACT:Art9", "ISO_42001:8.1"],
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "NIST_AI_RMF:GOVERN-2.2",
+        "EU_AI_ACT:Art9",
+        "ISO_42001:8.1"
+      ],
       "severity": "critical",
-      "recommendation": "AI governance policies must remain active and enforced. Never disable policy checks programmatically."
+      "recommendation": "AI governance policies must remain active and enforced. Never disable policy checks programmatically.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "nist-govern-least-privilege",
@@ -24,10 +49,33 @@
       "match_pattern": "chmod -R 777|chown -R root|sudo su|sudo -i|usermod.*sudo|visudo|pkexec",
       "action": "block",
       "message": "Privilege escalation beyond agent scope blocked — NIST AI RMF GOVERN 1.2 requires least-privilege access for AI systems.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["NIST_AI_RMF:GOVERN-1.2", "OWASP_AGENTIC:A09", "ISO_42001:8.1"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "NIST_AI_RMF:GOVERN-1.2",
+        "OWASP_AGENTIC:A09",
+        "ISO_42001:8.1"
+      ],
       "severity": "critical",
-      "recommendation": "AI agents must operate under least-privilege. Define explicit, minimal permission scopes and never escalate to system-wide access."
+      "recommendation": "AI agents must operate under least-privilege. Define explicit, minimal permission scopes and never escalate to system-wide access.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "nist-govern-human-oversight",
@@ -36,10 +84,35 @@
       "match_pattern": "(autonomous|auto_decide|no.?human).*(terminate|approve|reject|grant|deny|hire|fire|sentence|evict|block.?access|revoke)",
       "action": "block",
       "message": "Autonomous consequential decision blocked — NIST AI RMF GOVERN 6.1 requires human oversight for high-stakes AI decisions.",
-      "persona_affinity": ["agent", "proxy"],
-      "frameworks": ["NIST_AI_RMF:GOVERN-6.1", "EU_AI_ACT:Art14", "ISO_42001:8.1"],
+      "persona_affinity": [
+        "agent",
+        "proxy"
+      ],
+      "frameworks": [
+        "NIST_AI_RMF:GOVERN-6.1",
+        "EU_AI_ACT:Art14",
+        "ISO_42001:8.1"
+      ],
       "severity": "critical",
-      "recommendation": "Consequential AI decisions must include a human review gate. Implement an approval step before any irreversible automated action."
+      "recommendation": "Consequential AI decisions must include a human review gate. Implement an approval step before any irreversible automated action.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "nist-map-high-risk-domain",
@@ -48,10 +121,33 @@
       "match_pattern": "(deploy|release|launch|push.?to.?prod).*(medical|clinical|diagnos|legal|judicial|criminal|hiring|credit.?scor|insurance.?underwrite|welfare.?benefit).*(ai|model|agent|assistant)",
       "action": "warn",
       "message": "AI deployment in high-risk domain — NIST AI RMF MAP 5.1 requires documented risk assessment before deploying AI in consequential contexts.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["NIST_AI_RMF:MAP-5.1", "EU_AI_ACT:Art9", "ISO_42001:8.2"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "NIST_AI_RMF:MAP-5.1",
+        "EU_AI_ACT:Art9",
+        "ISO_42001:8.2"
+      ],
       "severity": "high",
-      "recommendation": "Complete a risk assessment documenting the AI context, potential harms, affected populations, and mitigation controls before deploying in high-risk domains."
+      "recommendation": "Complete a risk assessment documenting the AI context, potential harms, affected populations, and mitigation controls before deploying in high-risk domains.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "nist-map-unverified-data-source",
@@ -60,10 +156,33 @@
       "match_pattern": "(raw_user_input|external_data|untrusted_source|user_provided).*(model|llm|prompt|context|embed|train)|fetch\\(.*\\).*model\\.predict|requests\\.get.*\\).*llm",
       "action": "warn",
       "message": "Unverified external data passed to AI model — NIST AI RMF MAP 1.5 requires validating data sources before use in AI systems.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["NIST_AI_RMF:MAP-1.5", "OWASP_AGENTIC:A01", "ISO_42001:8.4"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "NIST_AI_RMF:MAP-1.5",
+        "OWASP_AGENTIC:A01",
+        "ISO_42001:8.4"
+      ],
       "severity": "high",
-      "recommendation": "Validate, sanitise, and document the provenance of all data before passing it to an AI model. Never pipe raw external input directly into model context."
+      "recommendation": "Validate, sanitise, and document the provenance of all data before passing it to an AI model. Never pipe raw external input directly into model context.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "nist-measure-audit-disable",
@@ -72,10 +191,33 @@
       "match_pattern": "(telemetry|monitoring|observability|tracing).*(disabled|=\\s*false|=\\s*off|=\\s*0)|OTEL_SDK_DISABLED.*true|DD_TRACE_ENABLED.*false",
       "action": "block",
       "message": "AI system monitoring disabled — NIST AI RMF MEASURE 2.5 requires continuous monitoring of AI system behaviour.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["NIST_AI_RMF:MEASURE-2.5", "SOC2:CC7.2", "ISO_42001:9.1"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "NIST_AI_RMF:MEASURE-2.5",
+        "SOC2:CC7.2",
+        "ISO_42001:9.1"
+      ],
       "severity": "critical",
-      "recommendation": "Monitoring and telemetry must remain active on AI systems. Adjust log levels rather than disabling tracing infrastructure."
+      "recommendation": "Monitoring and telemetry must remain active on AI systems. Adjust log levels rather than disabling tracing infrastructure.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "nist-measure-error-swallow",
@@ -84,10 +226,33 @@
       "match_pattern": "except.*:\\s*(pass|\\.\\.\\.|continue)|catch\\s*\\(.*\\)\\s*\\{\\s*\\}|rescue\\s*=>.*nil",
       "action": "warn",
       "message": "Swallowed exception in AI pipeline — NIST AI RMF MEASURE 2.2 requires AI failures to be captured and logged for incident analysis.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["NIST_AI_RMF:MEASURE-2.2", "NIST_AI_RMF:MANAGE-1.3", "ISO_42001:10.2"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "NIST_AI_RMF:MEASURE-2.2",
+        "NIST_AI_RMF:MANAGE-1.3",
+        "ISO_42001:10.2"
+      ],
       "severity": "medium",
-      "recommendation": "Never swallow exceptions in AI processing pipelines. Log errors with context so failures can be analysed and trigger incident response."
+      "recommendation": "Never swallow exceptions in AI processing pipelines. Log errors with context so failures can be analysed and trigger incident response.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "nist-manage-third-party-ai",
@@ -96,10 +261,33 @@
       "match_pattern": "(api_key|access_token|bearer).*(replicate\\.com|together\\.ai|groq\\.com|anyscale|perplexity\\.ai|fireworks\\.ai)|import (replicate|together|groq)",
       "action": "warn",
       "message": "Third-party AI provider detected — NIST AI RMF MANAGE 4.1 requires vendor risk assessment before using external AI services.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["NIST_AI_RMF:MANAGE-4.1", "ISO_42001:8.1", "EU_AI_ACT:Art53"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "NIST_AI_RMF:MANAGE-4.1",
+        "ISO_42001:8.1",
+        "EU_AI_ACT:Art53"
+      ],
       "severity": "medium",
-      "recommendation": "Document third-party AI providers in your vendor registry. Ensure DPA, security review, and liability terms are in place before production use."
+      "recommendation": "Document third-party AI providers in your vendor registry. Ensure DPA, security review, and liability terms are in place before production use.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "nist-manage-data-retention",
@@ -108,10 +296,33 @@
       "match_pattern": "(permanent|indefinite|no.?expiry|ttl.*=.*-1|retention.*=.*null).*(store|save|log|cache).*(conversation|prompt|inference|user.?data|chat.?history)",
       "action": "warn",
       "message": "Indefinite AI data retention detected — NIST AI RMF MANAGE 2.4 requires data retention limits aligned with stated AI purpose.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["NIST_AI_RMF:MANAGE-2.4", "GDPR:Art5.1e", "ISO_42001:8.4"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "NIST_AI_RMF:MANAGE-2.4",
+        "GDPR:Art5.1e",
+        "ISO_42001:8.4"
+      ],
       "severity": "medium",
-      "recommendation": "Define and enforce retention limits for AI inference data. Conversation and prompt logs should expire after the period necessary for the stated purpose."
+      "recommendation": "Define and enforce retention limits for AI inference data. Conversation and prompt logs should expire after the period necessary for the stated purpose.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
     {
       "id": "nist-govern-accountability",
@@ -120,10 +331,32 @@
       "match_pattern": "(docker run|kubectl apply|helm install|terraform apply).*(ai|model|agent|llm|embedding)(?!.*(owner|team|responsible|contact))",
       "action": "warn",
       "message": "AI system deployment without accountability tag — NIST AI RMF GOVERN 1.7 requires clear ownership for every AI system in production.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["NIST_AI_RMF:GOVERN-1.7", "ISO_42001:8.5"],
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "NIST_AI_RMF:GOVERN-1.7",
+        "ISO_42001:8.5"
+      ],
       "severity": "medium",
-      "recommendation": "Tag every AI deployment with owner, team, and responsible-contact metadata. Unowned AI systems cannot be managed or responded to in an incident."
+      "recommendation": "Tag every AI deployment with owner, team, and responsible-contact metadata. Unowned AI systems cannot be managed or responded to in an incident.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     }
   ]
 }

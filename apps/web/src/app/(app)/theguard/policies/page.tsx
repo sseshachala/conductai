@@ -5,36 +5,25 @@ import { useSearchParams } from "next/navigation"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
+import type { GuardPolicy, GuardPolicyAction, GuardPolicyPatch } from "@/lib/api/guard"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
+import { EnforcementCoverageMatrix } from "@/components/guard/EnforcementCoverageMatrix"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PolicyAction = "block" | "warn" | "audit" | "approval"
+type PolicyAction = GuardPolicyAction
+type Policy = GuardPolicy
 type MatchTool = "shell" | "filesystem-write" | "filesystem-read" | "network" | "*"
 
-interface Policy {
-  id: string
-  team_id: string
-  rule_id: string
-  description: string
-  match_tool: MatchTool
-  match_pattern: string
-  match_path_pattern?: string
-  action: PolicyAction
-  message?: string
-  enabled: boolean
-  builtin: boolean
-  category?: string
-  pack_id?: string | null
-  last_triggered?: string | null
-  updated_at?: string
-  persona_affinity?: string[]
-  persona?: "agent" | "proxy"
-  non_overridable?: boolean
-  tag?: string
+const ACTION_RESTRICTIVENESS: Record<PolicyAction, number> = {
+  audit: 1,
+  inject: 2,
+  warn: 3,
+  approval: 4,
+  block: 5,
 }
 
 const PACK_LABELS: { id: string; name: string }[] = [
@@ -74,6 +63,7 @@ function ActionAvatar({ action }: { action: PolicyAction }) {
   const styles: Record<PolicyAction, { bg: string; color: string }> = {
     block:    { bg: "var(--err-bg)",  color: "var(--err)"  },
     warn:     { bg: "var(--warn-bg)", color: "var(--warn)" },
+    inject:   { bg: "var(--info-bg)", color: "var(--info)" },
     audit:    { bg: "var(--info-bg)", color: "var(--info)" },
     approval: { bg: "var(--info-bg)", color: "var(--info)" },
   }
@@ -128,6 +118,7 @@ function ActionAvatar({ action }: { action: PolicyAction }) {
 const ACTION_BADGE_TONE: Record<PolicyAction, string> = {
   block:    "err",
   warn:     "warn",
+  inject:   "info",
   audit:    "info",
   approval: "info",
 }
@@ -210,6 +201,138 @@ function formatUpdatedAt(iso: string | undefined): string {
   } catch {
     return "—"
   }
+}
+
+function formatExceptionExpiry(iso: string | null | undefined): string {
+  if (!iso) return "No expiry recorded"
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(iso))
+  } catch {
+    return iso
+  }
+}
+
+function defaultExpiryValue(): string {
+  const date = new Date(Date.now() + 24 * 60 * 60 * 1000)
+  const offset = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
+}
+
+function minimumExpiryValue(): string {
+  const date = new Date(Date.now() + 60_000)
+  const offset = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
+}
+
+interface PolicyExceptionRequest {
+  policyId: string
+  patch: GuardPolicyPatch
+  title: string
+  description: string
+  closeEditor?: boolean
+}
+
+function PolicyExceptionModal({
+  request,
+  submitting,
+  onClose,
+  onSubmit,
+}: {
+  request: PolicyExceptionRequest
+  submitting: boolean
+  onClose: () => void
+  onSubmit: (reason: string, expiresAt: string) => Promise<void>
+}) {
+  const [reason, setReason] = useState("")
+  const [expiry, setExpiry] = useState(defaultExpiryValue)
+  const [minimumExpiry] = useState(minimumExpiryValue)
+  const [errors, setErrors] = useState<{ reason?: string; expiry?: string; submit?: string }>({})
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const next: typeof errors = {}
+    const trimmedReason = reason.trim()
+    const expiryDate = new Date(expiry)
+    if (!trimmedReason) next.reason = "Explain why this temporary exception is needed."
+    if (!expiry || Number.isNaN(expiryDate.getTime())) {
+      next.expiry = "Choose a valid expiry date and time."
+    } else if (expiryDate.getTime() <= Date.now()) {
+      next.expiry = "Expiry must be in the future."
+    }
+    if (next.reason || next.expiry) {
+      setErrors(next)
+      return
+    }
+
+    setErrors({})
+    try {
+      await onSubmit(trimmedReason, expiryDate.toISOString())
+    } catch (err) {
+      setErrors({ submit: err instanceof Error ? err.message : "Failed to save the exception." })
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 210,
+        background: "rgba(0,0,0,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <form
+        className="card"
+        onSubmit={handleSubmit}
+        onClick={e => e.stopPropagation()}
+        style={{ width: 440, maxWidth: "100%", padding: 24, display: "flex", flexDirection: "column", gap: 16 }}
+      >
+        <div>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>{request.title}</h2>
+          <p style={{ fontSize: 13, lineHeight: 1.5, color: "var(--text-3)", margin: "6px 0 0" }}>
+            {request.description}
+          </p>
+        </div>
+        <div>
+          <label style={labelStyle}>Reason <span style={{ color: "var(--err)" }}>*</span></label>
+          <textarea
+            autoFocus
+            value={reason}
+            onChange={e => { setReason(e.target.value); setErrors(prev => ({ ...prev, reason: undefined, submit: undefined })) }}
+            placeholder="Why is this exception required?"
+            rows={3}
+            style={{ ...(errors.reason ? fieldErrStyle : fieldStyle), resize: "vertical" }}
+          />
+          {errors.reason && <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--err)" }}>{errors.reason}</p>}
+        </div>
+        <div>
+          <label style={labelStyle}>Expires <span style={{ color: "var(--err)" }}>*</span></label>
+          <input
+            type="datetime-local"
+            value={expiry}
+            min={minimumExpiry}
+            onChange={e => { setExpiry(e.target.value); setErrors(prev => ({ ...prev, expiry: undefined, submit: undefined })) }}
+            style={errors.expiry ? fieldErrStyle : fieldStyle}
+          />
+          <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--text-muted)" }}>
+            Entered in your local timezone; it will be stored with timezone information.
+          </p>
+          {errors.expiry && <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--err)" }}>{errors.expiry}</p>}
+        </div>
+        {errors.submit && <p style={{ margin: 0, fontSize: 11.5, color: "var(--err)" }}>{errors.submit}</p>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" onClick={onClose} disabled={submitting} className="btn btn-ghost btn-sm">Cancel</button>
+          <button type="submit" disabled={submitting} className="btn btn-primary btn-sm">
+            {submitting ? "Saving…" : "Save temporary exception"}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
 }
 
 // ─── Add rule modal ───────────────────────────────────────────────────────────
@@ -581,9 +704,10 @@ function AddRuleModal({
           <label style={labelStyle}>What to do</label>
           <select value={form.action} onChange={e => set("action", e.target.value as PolicyAction)} style={fieldStyle}>
             <option value="block">Block</option>
-            <option value="warn">Warn</option>
-            <option value="audit">Audit</option>
             <option value="approval">Require approval</option>
+            <option value="warn">Warn</option>
+            <option value="inject">Inject guidance</option>
+            <option value="audit">Audit</option>
           </select>
         </div>
       </div>
@@ -717,6 +841,7 @@ function PoliciesContent() {
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [pageView, setPageView] = useState<"policies" | "coverage">("policies")
   const [policyTab, setPolicyTab] = useState<string>("agent")
   const [showModal, setShowModal] = useState(false)
   const [modalPersona, setModalPersona] = useState<"agent" | "proxy">("agent")
@@ -729,6 +854,8 @@ function PoliciesContent() {
   const [editAction, setEditAction] = useState<PolicyAction>("block")
   const [editMessage, setEditMessage] = useState("")
   const [editSaving, setEditSaving] = useState(false)
+  const [exceptionRequest, setExceptionRequest] = useState<PolicyExceptionRequest | null>(null)
+  const [exceptionSaving, setExceptionSaving] = useState(false)
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
 
   const canWrite = !permissionsLoading && permissions.canEditPolicies
@@ -781,9 +908,22 @@ function PoliciesContent() {
   async function handleToggle(id: string) {
     const prev = policies.find(p => p.id === id)
     if (!prev || !teamId) return
-    setPolicies(ps => ps.map(p => p.id === id ? { ...p, enabled: !p.enabled } : p))
+
+    if (prev.builtin && prev.enabled) {
+      setExceptionRequest({
+        policyId: id,
+        patch: { enabled: false },
+        title: `Disable ${prev.rule_id}?`,
+        description: "Built-in and pack rules can only be disabled temporarily. Add a reason and expiry for this policy exception.",
+      })
+      return
+    }
+
+    const nextEnabled = !prev.enabled
+    setPolicies(ps => ps.map(p => p.id === id ? { ...p, enabled: nextEnabled } : p))
     try {
-      await guard.policies.patch(authFetch, id, teamId, { enabled: !prev.enabled })
+      const updated = await guard.policies.patch(authFetch, id, teamId, { enabled: nextEnabled })
+      setPolicies(ps => ps.map(p => p.id === id ? updated : p))
     } catch (e) {
       setPolicies(ps => ps.map(p => p.id === id ? { ...p, enabled: prev.enabled } : p))
       setError(e instanceof Error ? e.message : "Failed to update rule. Please try again.")
@@ -792,15 +932,59 @@ function PoliciesContent() {
 
   async function handleEditSave(id: string) {
     if (!teamId) return
+    const policy = policies.find(p => p.id === id)
+    if (!policy) return
+
+    const patch: GuardPolicyPatch = {}
+    if (editAction !== policy.action) patch.action = editAction
+    if (editMessage !== (policy.message ?? "")) patch.message = editMessage
+    if (Object.keys(patch).length === 0) {
+      setEditId(null)
+      return
+    }
+
+    if (
+      policy.builtin
+      && patch.action
+      && ACTION_RESTRICTIVENESS[patch.action] < ACTION_RESTRICTIVENESS[policy.action]
+    ) {
+      setExceptionRequest({
+        policyId: id,
+        patch,
+        title: `Weaken ${policy.rule_id}?`,
+        description: `Changing this rule from ${policy.action} to ${patch.action} requires a temporary policy exception.`,
+        closeEditor: true,
+      })
+      return
+    }
+
     setEditSaving(true)
     try {
-      await guard.policies.patch(authFetch, id, teamId, { action: editAction, message: editMessage || undefined })
-      setPolicies(ps => ps.map(p => p.id === id ? { ...p, action: editAction, message: editMessage || p.message } : p))
+      const updated = await guard.policies.patch(authFetch, id, teamId, patch)
+      setPolicies(ps => ps.map(p => p.id === id ? updated : p))
       setEditId(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save")
     } finally {
       setEditSaving(false)
+    }
+  }
+
+  async function handleExceptionSubmit(reason: string, expiresAt: string) {
+    if (!teamId || !exceptionRequest) return
+    setExceptionSaving(true)
+    try {
+      const updated = await guard.policies.patch(
+        authFetch,
+        exceptionRequest.policyId,
+        teamId,
+        { ...exceptionRequest.patch, reason, expires_at: expiresAt },
+      )
+      setPolicies(ps => ps.map(p => p.id === updated.id ? updated : p))
+      if (exceptionRequest.closeEditor) setEditId(null)
+      setExceptionRequest(null)
+    } finally {
+      setExceptionSaving(false)
     }
   }
 
@@ -906,6 +1090,42 @@ function PoliciesContent() {
   return (
     <>
       <GuardShell>
+        <div
+          role="tablist"
+          aria-label="Policy views"
+          style={{ display: "flex", gap: 4, marginBottom: 18, borderBottom: "1px solid var(--border)" }}
+        >
+          {([
+            { id: "policies", label: "Policies" },
+            { id: "coverage", label: "Enforcement coverage" },
+          ] as const).map(view => (
+            <button
+              key={view.id}
+              type="button"
+              role="tab"
+              aria-selected={pageView === view.id}
+              onClick={() => setPageView(view.id)}
+              style={{
+                marginBottom: -1,
+                padding: "8px 12px",
+                border: 0,
+                borderBottom: pageView === view.id ? "2px solid var(--accent)" : "2px solid transparent",
+                background: "transparent",
+                color: pageView === view.id ? "var(--text)" : "var(--text-muted)",
+                fontSize: 12.5,
+                fontWeight: pageView === view.id ? 650 : 500,
+                cursor: "pointer",
+              }}
+            >
+              {view.label}
+            </button>
+          ))}
+        </div>
+
+        {pageView === "coverage" ? (
+          <EnforcementCoverageMatrix workspaceId={teamId} />
+        ) : (
+          <>
         {/* Sub-header row */}
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
           <span style={{ fontSize: 13.5, color: "var(--text-3)" }}>
@@ -969,7 +1189,8 @@ function PoliciesContent() {
             {(() => {
               function renderCard(p: Policy) {
                 const expanded = expandedIds.has(p.id)
-                const hasDetails = !!(p.match_pattern || p.match_path_pattern || p.message)
+                const hasException = p.exception_active || p.exception_expired
+                const hasDetails = !!(p.match_pattern || p.match_path_pattern || p.message || hasException)
                 const locked = !!p.non_overridable
                 return (
                   <div key={p.id} style={{ opacity: p.enabled ? 1 : 0.55 }}>
@@ -977,6 +1198,16 @@ function PoliciesContent() {
                     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--border)" }}>
                       <ActionBadge action={p.action} />
                       <span className="mono" style={{ fontWeight: 650, fontSize: 12, color: "var(--text-1)", whiteSpace: "nowrap" }}>{p.rule_id}</span>
+                      {p.exception_active && (
+                        <span className="sbadge warn" style={{ textTransform: "uppercase", fontSize: 9.5, letterSpacing: ".06em" }}>
+                          Exception active
+                        </span>
+                      )}
+                      {p.exception_expired && (
+                        <span className="sbadge err" style={{ textTransform: "uppercase", fontSize: 9.5, letterSpacing: ".06em" }}>
+                          Exception expired
+                        </span>
+                      )}
                       {p.tag === "security_policy" && (
                         <span className="sbadge err" style={{ textTransform: "uppercase", fontSize: 9.5, letterSpacing: ".06em" }} title="Security policy — code-security enforcement">SEC</span>
                       )}
@@ -1015,7 +1246,9 @@ function PoliciesContent() {
                           <label style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 500, whiteSpace: "nowrap" }}>Action</label>
                           <select value={editAction} onChange={e => setEditAction(e.target.value as PolicyAction)} style={{ ...fieldStyle, width: "auto", fontSize: 12 }}>
                             <option value="block">Block</option>
+                            <option value="approval">Require approval</option>
                             <option value="warn">Warn</option>
+                            <option value="inject">Inject guidance</option>
                             <option value="audit">Audit</option>
                           </select>
                         </div>
@@ -1037,6 +1270,26 @@ function PoliciesContent() {
                         {p.match_pattern && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Pattern </span><span className="mono" style={{ fontSize: 11, color: "var(--err)", background: "var(--err-bg)", borderRadius: 4, padding: "1px 6px" }}>{p.match_pattern}</span></div>}
                         {p.match_path_pattern && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Path </span><span className="mono" style={{ fontSize: 11, color: "var(--warn)", background: "var(--warn-bg)", borderRadius: 4, padding: "1px 6px" }}>{p.match_path_pattern}</span></div>}
                         {p.message && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Message </span><span style={{ fontSize: 11.5, color: "var(--text-2)", fontStyle: "italic" }}>&ldquo;{p.message}&rdquo;</span></div>}
+                        {hasException && (
+                          <div style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", gap: 12, paddingTop: 4, borderTop: "1px solid var(--border)" }}>
+                            <div>
+                              <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Exception </span>
+                              <span style={{ fontSize: 11.5, color: p.exception_active ? "var(--warn)" : "var(--err)", fontWeight: 600 }}>
+                                {p.exception_active ? "Active" : "Expired"}
+                              </span>
+                            </div>
+                            {p.exception_reason && (
+                              <div>
+                                <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Reason </span>
+                                <span style={{ fontSize: 11.5, color: "var(--text-2)" }}>{p.exception_reason}</span>
+                              </div>
+                            )}
+                            <div>
+                              <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Expiry </span>
+                              <span style={{ fontSize: 11.5, color: "var(--text-2)" }}>{formatExceptionExpiry(p.exception_expires_at)}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1118,6 +1371,8 @@ function PoliciesContent() {
             </div>{/* end main col */}
           </>
         )}
+          </>
+        )}
       </GuardShell>
 
       {showModal && (
@@ -1126,6 +1381,18 @@ function PoliciesContent() {
           onSubmit={handleAddRule}
           submitting={submitting}
           initialPersona={modalPersona}
+        />
+      )}
+
+      {exceptionRequest && (
+        <PolicyExceptionModal
+          key={`${exceptionRequest.policyId}-${JSON.stringify(exceptionRequest.patch)}`}
+          request={exceptionRequest}
+          submitting={exceptionSaving}
+          onClose={() => {
+            if (!exceptionSaving) setExceptionRequest(null)
+          }}
+          onSubmit={handleExceptionSubmit}
         />
       )}
 

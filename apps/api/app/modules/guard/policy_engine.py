@@ -30,8 +30,55 @@ from app.modules.guard.models import (
     WorkspaceCustomRule,
     WorkspaceSkillPack,
 )
+from app.modules.guard.enforcement import rule_personas
 
 PERSONAS = ["agent", "proxy"]
+
+ACTION_RESTRICTIVENESS = {
+    "allow": 0,
+    "audit": 1,
+    "inject": 2,
+    "warn": 3,
+    "approval": 4,
+    "block": 5,
+}
+VALID_ACTIONS = frozenset({"audit", "inject", "warn", "approval", "block"})
+
+
+def _skill_pack_version_key(version: str) -> tuple[tuple[int, int | str], ...]:
+    """Sort dotted versions numerically while retaining deterministic fallback."""
+    parts: list[tuple[int, int | str]] = []
+    for part in version.split("."):
+        parts.append((1, int(part)) if part.isdigit() else (0, part))
+    return tuple(parts)
+
+
+def is_action_relaxing(base_action: str | None, override_action: str | None) -> bool:
+    """Return whether a known override action weakens a known base action."""
+    if not override_action or override_action == base_action:
+        return False
+    if base_action not in ACTION_RESTRICTIVENESS or override_action not in ACTION_RESTRICTIVENESS:
+        return True
+    return ACTION_RESTRICTIVENESS[override_action] < ACTION_RESTRICTIVENESS[base_action]
+
+
+def is_exception_active(
+    override: GuardRuleOverride,
+    base_action: str | None,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Security-relaxing overrides are active only with reason + future expiry."""
+    relaxing = bool(override.disabled or is_action_relaxing(base_action, override.action))
+    if not relaxing:
+        return False
+    current_time = now or datetime.now(timezone.utc)
+    return bool(
+        override.reason
+        and override.reason.strip()
+        and override.expires_at is not None
+        and override.expires_at > current_time
+    )
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -40,7 +87,21 @@ def compute_policy(db: Session, workspace_id: uuid.UUID, persona: str) -> list[d
     """Return active rules for workspace+persona. Served from cache when fresh."""
     cached = db.get(GuardPolicyCache, (workspace_id, persona))
     if cached:
-        return cached.payload
+        now = datetime.now(timezone.utc)
+        crossed_expiry = (
+            db.query(GuardRuleOverride)
+            .filter(
+                GuardRuleOverride.workspace_id == workspace_id,
+                GuardRuleOverride.expires_at.isnot(None),
+                GuardRuleOverride.expires_at <= now,
+                GuardRuleOverride.expires_at > cached.computed_at,
+            )
+            .first()
+        )
+        if not crossed_expiry:
+            return cached.payload
+        db.delete(cached)
+        db.flush()
 
     rules = _build_rules(db, workspace_id, persona)
     _write_cache(db, workspace_id, persona, rules)
@@ -81,15 +142,8 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
         if not pack:
             continue
         for rule in pack.rules:
-            # v2.0.0 packs use "persona" field; v1.x packs use "persona_affinity" — support both
-            rule_persona = rule.get("persona")
-            if rule_persona:
-                if rule_persona != persona:
-                    continue
-            else:
-                affinity = rule.get("persona_affinity", PERSONAS)
-                if persona not in affinity:
-                    continue
+            if persona not in rule_personas(rule):
+                continue
             rules[rule["id"]] = dict(rule)
 
     # 1b. merge workspace custom rules on top (workspace-defined wins on rule_id collision)
@@ -116,13 +170,22 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
         .filter(GuardRuleOverride.workspace_id == workspace_id)
         .all()
     )
+    now = datetime.now(timezone.utc)
     for o in overrides:
         if o.rule_id not in rules:
             continue
-        if o.disabled:
+        base_action = rules[o.rule_id].get("action", "block")
+        relaxing_action = is_action_relaxing(base_action, o.action)
+        requires_expiry = bool(o.disabled or relaxing_action)
+        exception_active = is_exception_active(o, base_action, now=now)
+
+        if o.disabled and exception_active:
             del rules[o.rule_id]
         else:
-            if o.action:
+            if (
+                o.action in VALID_ACTIONS
+                and (not requires_expiry or exception_active)
+            ):
                 rules[o.rule_id]["action"] = o.action
             if o.custom_message:
                 rules[o.rule_id]["message"] = o.custom_message
@@ -133,13 +196,12 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
 def _get_pack(db: Session, slug: str, pinned_version: str | None) -> SkillPack | None:
     if pinned_version:
         return db.get(SkillPack, (slug, pinned_version))
-    # latest = highest version string (semver sort via PG string sort is good enough for x.y.z)
-    return (
+    packs = (
         db.query(SkillPack)
         .filter(SkillPack.slug == slug)
-        .order_by(SkillPack.version.desc())
-        .first()
+        .all()
     )
+    return max(packs, key=lambda pack: _skill_pack_version_key(pack.version), default=None)
 
 
 def _write_cache(

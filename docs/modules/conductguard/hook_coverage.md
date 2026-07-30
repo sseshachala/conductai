@@ -2,6 +2,11 @@
 
 ConductGuard intercepts AI tool calls by registering hooks into Claude Code's hook system. This document explains how the hooks work, which events fire, and what each decision type means.
 
+This page describes the hook mechanism. Rule-by-rule capability claims are not
+maintained here: they are generated from the same machine-readable pack
+metadata used by CI and the API. See the
+[Generated Enforcement Evidence Matrix](enforcement_coverage.generated.md).
+
 ---
 
 ## Hook Architecture
@@ -86,10 +91,10 @@ After a tool call completes, the hook sends an audit event to `/guard/events` wi
 
 | Tool | Hook mechanism | Notes |
 |---|---|---|
-| **Claude Code** | Native PreToolUse/PostToolUse | Full coverage, all tool calls |
-| **Codex CLI** | Native PreToolUse/PostToolUse | Same hook format |
-| **Cursor** | `conductguard-mcp` MCP server | See [conductguard-mcp](conductguard_mcp.md) |
-| **Gemini CLI** | `conductguard-mcp` MCP server | Experimental |
+| **Claude Code** | Native PreToolUse/PostToolUse | Conditional on hook installation, sync, and supported event fields |
+| **Codex CLI** | Native PreToolUse/PostToolUse | Conditional on compatible hook registration and event fields |
+| **Cursor** | `conductguard-mcp` MCP server | Agent-invoked checks; see [conductguard-mcp](conductguard_mcp.md) |
+| **Gemini CLI** | `conductguard-mcp` MCP server | Experimental, agent-invoked checks |
 
 ---
 

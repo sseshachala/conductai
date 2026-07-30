@@ -5,6 +5,7 @@ PATCH /guard/token-guardrails                   — update manual flags and/or s
 import json
 import urllib.request
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 import structlog
@@ -135,6 +136,9 @@ def _build_guardrail_state(db: Session, workspace_id: str) -> dict:
             GuardRuleOverride.workspace_id == ws_uuid,
             GuardRuleOverride.rule_id == "warn-deterministic-compute",
             GuardRuleOverride.disabled.is_(True),
+            GuardRuleOverride.reason.isnot(None),
+            GuardRuleOverride.expires_at.isnot(None),
+            GuardRuleOverride.expires_at > datetime.now(timezone.utc),
         )
         .first()
     ) is not None

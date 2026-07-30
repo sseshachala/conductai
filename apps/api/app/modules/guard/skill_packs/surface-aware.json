@@ -1,105 +1,236 @@
 {
-    "slug": "surface-aware",
-    "name": "Surface-Aware Policies",
-    "version": "1.0.0",
-    "tier": "pro",
-    "description": "Per-surface policies for every AI tool. Chat surfaces (Claude.ai, Claude Desktop, ChatGPT) cannot exec or write. Dev tools (Claude Code, Codex CLI, Cursor, Windsurf) get full access. Codex Desktop gets a warning tier.",
-    "surfaces": {
-        "claude-code":     "Claude Code CLI — developer terminal, full access",
-        "claude-ai":       "Claude.ai web — chat surface, no exec or write",
-        "claude-desktop":  "Claude Desktop app (Chat / Work / Teams) — no exec or write",
-        "codex-cli":       "OpenAI Codex CLI — developer terminal, full access",
-        "codex-desktop":   "OpenAI Codex Desktop app — warn on exec, no raw deletes",
-        "openai-chatgpt":  "ChatGPT (web / desktop) — chat surface, no exec or write",
-        "cursor":          "Cursor IDE — developer tool, full access",
-        "windsurf":        "Windsurf IDE — developer tool, full access"
+  "slug": "surface-aware",
+  "name": "Surface-Aware Policies",
+  "version": "1.0.0",
+  "tier": "pro",
+  "description": "Per-surface policies for every AI tool. Chat surfaces (Claude.ai, Claude Desktop, ChatGPT) cannot exec or write. Dev tools (Claude Code, Codex CLI, Cursor, Windsurf) get full access. Codex Desktop gets a warning tier.",
+  "surfaces": {
+    "claude-code": "Claude Code CLI — developer terminal, full access",
+    "claude-ai": "Claude.ai web — chat surface, no exec or write",
+    "claude-desktop": "Claude Desktop app (Chat / Work / Teams) — no exec or write",
+    "codex-cli": "OpenAI Codex CLI — developer terminal, full access",
+    "codex-desktop": "OpenAI Codex Desktop app — warn on exec, no raw deletes",
+    "openai-chatgpt": "ChatGPT (web / desktop) — chat surface, no exec or write",
+    "cursor": "Cursor IDE — developer tool, full access",
+    "windsurf": "Windsurf IDE — developer tool, full access"
+  },
+  "rules": [
+    {
+      "id": "surface-chat-no-bash",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block shell execution from chat surfaces — Claude.ai, Claude Desktop, ChatGPT",
+      "match_tool": "bash",
+      "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt",
+      "action": "block",
+      "message": "Shell commands are not permitted from chat surfaces. Use Claude Code, Codex CLI, Cursor, or Windsurf for terminal access.",
+      "severity": "high",
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:6.1",
+        "NIST_AI_RMF:GOVERN-1.1"
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
     },
-    "rules": [
-        {
-            "id": "surface-chat-no-bash",
-            "persona": "agent",
-            "non_overridable": false,
-            "description": "Block shell execution from chat surfaces — Claude.ai, Claude Desktop, ChatGPT",
-            "match_tool": "bash",
-            "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt",
-            "action": "block",
-            "message": "Shell commands are not permitted from chat surfaces. Use Claude Code, Codex CLI, Cursor, or Windsurf for terminal access.",
-            "severity": "high",
-            "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1", "NIST_AI_RMF:GOVERN-1.1"]
-        },
-        {
-            "id": "surface-chat-no-write",
-            "persona": "agent",
-            "non_overridable": false,
-            "description": "Block filesystem writes from chat surfaces",
-            "match_tool": "write_file,edit_file,str_replace_editor",
-            "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt",
-            "action": "block",
-            "message": "File writes are not permitted from chat surfaces. Use a dev tool for filesystem access.",
-            "severity": "high",
-            "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1"]
-        },
-        {
-            "id": "surface-chat-no-network",
-            "persona": "agent",
-            "non_overridable": false,
-            "description": "Warn on outbound network calls from chat surfaces",
-            "match_tool": "web_fetch,curl,http_request",
-            "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt",
-            "action": "warn",
-            "message": "Outbound network call from a chat surface. Verify this request is intentional.",
-            "severity": "medium",
-            "frameworks": ["SOC2:CC6.1"]
-        },
-        {
-            "id": "surface-codex-desktop-warn-exec",
-            "persona": "agent",
-            "non_overridable": false,
-            "description": "Warn on shell execution from Codex Desktop — hybrid surface",
-            "match_tool": "bash",
-            "match_ai_tool": "codex-desktop",
-            "action": "warn",
-            "message": "Shell command via Codex Desktop — logged for audit. Destructive commands are blocked by separate rules.",
-            "severity": "medium",
-            "frameworks": ["SOC2:CC6.1"]
-        },
-        {
-            "id": "surface-codex-desktop-no-delete",
-            "persona": "agent",
-            "non_overridable": false,
-            "description": "Block destructive deletes from Codex Desktop",
-            "match_tool": "bash",
-            "match_ai_tool": "codex-desktop",
-            "match_pattern": "rm\\s+-(rf|fr|r)\\b|rmdir|del\\s+/s",
-            "action": "block",
-            "message": "Destructive delete blocked from Codex Desktop. Use Claude Code or Codex CLI for filesystem operations.",
-            "severity": "high",
-            "frameworks": ["SOC2:CC6.1"]
-        },
-        {
-            "id": "surface-dev-audit-prod-write",
-            "persona": "agent",
-            "non_overridable": false,
-            "description": "Audit writes to production paths from any dev tool",
-            "match_tool": "write_file,edit_file,str_replace_editor",
-            "match_ai_tool": "claude-code,codex-cli,cursor,windsurf",
-            "match_path_pattern": "(/prod/|/production/|\\.env\\.prod|render\\.yaml|vercel\\.json|Dockerfile)",
-            "action": "audited",
-            "message": "Write to production configuration detected — logged for audit trail.",
-            "severity": "medium",
-            "frameworks": ["SOC2:CC7.2", "ISO_42001:9.1"]
-        },
-        {
-            "id": "surface-unknown-block-exec",
-            "persona": "agent",
-            "non_overridable": false,
-            "description": "Block shell execution from unrecognized surfaces",
-            "match_tool": "bash",
-            "match_ai_tool": "unknown",
-            "action": "block",
-            "message": "Shell execution blocked — surface not recognized by ConductGuard. Run `conduct guard sync` to register this tool.",
-            "severity": "high",
-            "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1"]
-        }
-    ]
+    {
+      "id": "surface-chat-no-write",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block filesystem writes from chat surfaces",
+      "match_tool": "write_file,edit_file,str_replace_editor",
+      "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt",
+      "action": "block",
+      "message": "File writes are not permitted from chat surfaces. Use a dev tool for filesystem access.",
+      "severity": "high",
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:6.1"
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "surface-chat-no-network",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Warn on outbound network calls from chat surfaces",
+      "match_tool": "web_fetch,curl,http_request",
+      "match_ai_tool": "claude-ai,claude-desktop,openai-chatgpt",
+      "action": "warn",
+      "message": "Outbound network call from a chat surface. Verify this request is intentional.",
+      "severity": "medium",
+      "frameworks": [
+        "SOC2:CC6.1"
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "surface-codex-desktop-warn-exec",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Warn on shell execution from Codex Desktop — hybrid surface",
+      "match_tool": "bash",
+      "match_ai_tool": "codex-desktop",
+      "action": "warn",
+      "message": "Shell command via Codex Desktop — logged for audit. Destructive commands are blocked by separate rules.",
+      "severity": "medium",
+      "frameworks": [
+        "SOC2:CC6.1"
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "surface-codex-desktop-no-delete",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block destructive deletes from Codex Desktop",
+      "match_tool": "bash",
+      "match_ai_tool": "codex-desktop",
+      "match_pattern": "rm\\s+-(rf|fr|r)\\b|rmdir|del\\s+/s",
+      "action": "block",
+      "message": "Destructive delete blocked from Codex Desktop. Use Claude Code or Codex CLI for filesystem operations.",
+      "severity": "high",
+      "frameworks": [
+        "SOC2:CC6.1"
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "surface-dev-audit-prod-write",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Audit writes to production paths from any dev tool",
+      "match_tool": "write_file,edit_file,str_replace_editor",
+      "match_ai_tool": "claude-code,codex-cli,cursor,windsurf",
+      "match_path_pattern": "(/prod/|/production/|\\.env\\.prod|render\\.yaml|vercel\\.json|Dockerfile)",
+      "action": "audit",
+      "message": "Write to production configuration detected — logged for audit trail.",
+      "severity": "medium",
+      "frameworks": [
+        "SOC2:CC7.2",
+        "ISO_42001:9.1"
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "surface-unknown-block-exec",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block shell execution from unrecognized surfaces",
+      "match_tool": "bash",
+      "match_ai_tool": "unknown",
+      "action": "block",
+      "message": "Shell execution blocked — surface not recognized by ConductGuard. Run `conduct guard sync` to register this tool.",
+      "severity": "high",
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:6.1"
+      ],
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP guard_check does not evaluate match_ai_tool",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    }
+  ]
 }

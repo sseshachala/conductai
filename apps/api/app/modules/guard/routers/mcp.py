@@ -32,6 +32,7 @@ from app.core.pii import redact_secrets
 from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardMemberConfig, chain_hash_for_insert, get_policy_hash
 from app.modules.guard.policy_engine import compute_policy
+from app.modules.guard.tool_groups import expand_match_tool
 
 router = APIRouter(prefix="/guard/mcp", tags=["guard-mcp"])
 
@@ -334,7 +335,7 @@ def _match_policy(tool_name: str, tool_input: dict, rules: list) -> dict | None:
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
-            allowed = [t.strip() for t in match_tool.split(",")]
+            allowed = expand_match_tool(match_tool)
             if tool_name.lower() not in allowed:
                 continue
 
