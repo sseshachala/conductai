@@ -329,6 +329,12 @@ def _execute_brain(
     custom = block["data"].get("custom_instructions", "") or ""
     if custom.strip():
         system_prompt = f"{system_prompt}\n\nAdditional instructions:\n{custom.strip()}"
+    # Resolve {{block.field}} refs in system_prompt so descriptions can reference
+    # prior block outputs (e.g. {{file_findings.posted}} in comment_pr). Same __-prefix
+    # filter as the prompt path (line 458) so runtime secrets never leak into the LLM.
+    if system_prompt and "{{" in system_prompt:
+        _sp_safe_state = {k: v for k, v in state.items() if not k.startswith("__")}
+        system_prompt = _resolve_refs(system_prompt, _sp_safe_state)
     is_agentic = block["data"].get("isAgentic", False)
 
     # Model selection via router
