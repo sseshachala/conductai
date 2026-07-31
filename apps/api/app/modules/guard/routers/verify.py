@@ -323,8 +323,8 @@ def run_verify_battery(
 ):
     """Execute the adversarial test battery against the workspace's compiled policy.
 
-    Runs 10 simulated hook-level tool calls covering ASI-01 through ASI-10 and
-    measures how many the current Guard configuration correctly intercepts.
+    Runs 10 representative simulated hook-level tool calls against the current
+    agent policy and measures how many produce the expected decision.
     Persists the result as a GuardVerifyRun row and writes an audit event so
     the run appears in the Guard activity trail.
 

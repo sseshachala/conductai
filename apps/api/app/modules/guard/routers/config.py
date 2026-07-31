@@ -564,6 +564,7 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
 
     # Active ruleset comes from skill_packs JSONB via compute_policy().
     # Persona is read from guard_config above (config.persona, defaults to 'standard').
+    from app.modules.guard.enforcement import is_hook_applicable_rule
     from app.modules.guard.policy_engine import compute_policy
     persona = (config.persona or "agent")
     computed = compute_policy(db, config.workspace_id, persona)
@@ -571,12 +572,14 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
         {
             "rule_id":           r.get("id") or r.get("rule_id"),
             "match_tool":        r.get("match_tool") or "*",
+            "match_ai_tool":     r.get("match_ai_tool"),
             "match_pattern":     r.get("match_pattern"),
             "match_path_pattern": r.get("match_path_pattern"),
             "action":            r.get("action"),
             "message":           r.get("message"),
         }
         for r in computed
+        if is_hook_applicable_rule(r)
     ]
     policy = {"workspace_id": workspace_id, "version": "1", "rules": rules}
 
