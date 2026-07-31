@@ -6,7 +6,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-data = json.load(sys.stdin)
+_raw = sys.stdin.read()
+if not _raw.strip():
+    sys.exit(0)
+data = json.loads(_raw)
 file_path = data.get("tool_input", {}).get("file_path", "")
 if not file_path:
     sys.exit(0)
@@ -21,15 +24,6 @@ if not db_path.exists():
 try:
     rel = str(Path(file_path).relative_to(root))
 except ValueError:
-    sys.exit(0)
-
-# Booster developing booster: allow raw Read on booster's own source so edits
-# can match exact strings. Smart-read returns symbol slices, not editable content.
-if "tools/booster/booster/" in rel or "tools/booster/tests/" in rel:
-    sys.exit(0)
-# Marketing landing pages: large hand-edited TSX where exact-string Edit needs
-# the unmodified content. Smart-read returns symbol slices that don't help.
-if "(marketing)" in rel and rel.endswith(".tsx"):
     sys.exit(0)
 
 try:

@@ -5,7 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-data = json.load(sys.stdin)
+_raw = sys.stdin.read()
+if not _raw.strip():
+    sys.exit(0)
+data = json.loads(_raw)
 pattern = data.get("tool_input", {}).get("pattern", "")
 if not pattern:
     sys.exit(0)
