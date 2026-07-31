@@ -25,16 +25,21 @@ def _unwrap_exc(exc: BaseException) -> BaseException:
     return exc
 
 
-def _run(coro):
+def _run(coro, timeout: float = 30.0):
+    # ponytail: asyncio.wait_for actually cancels the underlying I/O.
+    # ThreadPoolExecutor.result(timeout=...) alone doesn't — its `with` __exit__
+    # waits for the thread to finish, so a hung socket blocked the whole run (#1013).
+    async def _bounded():
+        return await asyncio.wait_for(coro, timeout=timeout)
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, coro).result(timeout=30)
-        return loop.run_until_complete(coro)
+                return pool.submit(asyncio.run, _bounded()).result(timeout=timeout + 5)
+        return loop.run_until_complete(_bounded())
     except RuntimeError:
-        return asyncio.run(coro)
+        return asyncio.run(_bounded())
 
 
 async def _list_tools_http(server_url: str, token: str | None) -> list[dict]:

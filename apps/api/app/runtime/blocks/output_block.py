@@ -10,6 +10,7 @@ import json
 import os
 
 import structlog
+import asyncio
 
 log = structlog.get_logger(__name__)
 
@@ -185,9 +186,12 @@ def _execute_output(
                     # Route through Slack MCP server — no separate credential needed
                     from app.runtime.integrations.mcp_client import call_tool
                     mcp_url, mcp_transport, mcp_token = mcp_slack
-                    r = call_tool(mcp_url, mcp_token or None, "post_message",
-                                  {"channel": channel, "text": body}, transport=mcp_transport)
-                    results["slack"] = r if isinstance(r, dict) else {"output": str(r)}
+                    try:
+                        r = call_tool(mcp_url, mcp_token or None, "post_message",
+                                      {"channel": channel, "text": body}, transport=mcp_transport)
+                        results["slack"] = r if isinstance(r, dict) else {"output": str(r)}
+                    except (asyncio.TimeoutError, TimeoutError):
+                        results["slack"] = {"sent": False, "error": f"Slack MCP timeout — server at {mcp_url} did not respond within 30s"}
                 elif use_approval:
                     if not slack_creds:
                         results["slack"] = {"sent": False, "reason": "No Slack credentials configured"}
