@@ -14,6 +14,21 @@ class EnforcementMetadataError(ValueError):
     """Raised when a rule makes an invalid enforcement claim."""
 
 
+def is_hook_applicable_rule(rule: dict[str, Any]) -> bool:
+    """Return whether hook clients can preserve and evaluate this rule."""
+    if rule.get("match_mcp_server") is not None:
+        return False
+    return any(
+        rule.get(field) is not None
+        for field in (
+            "match_tool",
+            "match_ai_tool",
+            "match_pattern",
+            "match_path_pattern",
+        )
+    )
+
+
 def rule_personas(rule: dict[str, Any]) -> set[str]:
     """Normalize legacy persona/persona_affinity fields."""
     value = rule.get("persona")

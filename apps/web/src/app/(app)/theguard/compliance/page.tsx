@@ -86,7 +86,7 @@ function VerifyRunPanel({ wsId, authFetch }: { wsId: string; authFetch: any }) {
   return (
     <div className="card" style={{ overflow: "hidden" }}>
       <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontWeight: 650, fontSize: 14 }}>Live Adversarial Verification</span>
+        <span style={{ fontWeight: 650, fontSize: 14 }}>Hook Policy Simulation</span>
         <button
           onClick={handleRun}
           disabled={running}
@@ -103,7 +103,7 @@ function VerifyRunPanel({ wsId, authFetch }: { wsId: string; authFetch: any }) {
 
       {!result && !runError && (
         <div style={{ padding: "24px 20px", fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
-          Click &apos;Run Verification&apos; to fire 10 adversarial test cases against your Guard policy
+          Simulate 10 representative tool calls against the compiled hook policy. No commands are executed; workspace advisory mode is respected.
         </div>
       )}
 
@@ -111,7 +111,7 @@ function VerifyRunPanel({ wsId, authFetch }: { wsId: string; authFetch: any }) {
         <div>
           <div style={{ padding: "12px 20px", display: "flex", alignItems: "center", gap: 12, borderBottom: "1px solid var(--border)", fontSize: 13 }}>
             <span style={{ color: "var(--text-2)" }}>
-              Live Score: {result.score}/100 · {result.passed_tests}/{result.total_tests} held
+              Simulation Score: {result.score}/100 · {result.passed_tests}/{result.total_tests} held
             </span>
             <span style={{ fontWeight: 600, color: "var(--text-2)" }}>· Grade</span>
             <span style={{

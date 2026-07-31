@@ -48,6 +48,7 @@ from app.modules.guard.policy_engine import (
     is_exception_active,
 )
 from app.modules.guard.coverage import workspace_coverage_matrix
+from app.modules.guard.enforcement import is_hook_applicable_rule
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
@@ -625,8 +626,9 @@ def sync_policies(
     gc = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     # ponytail: sync always uses surface="agent" — GuardConfig.persona is developer type, not surface
     active_rules = compute_policy(db, ws_uuid, "agent")
+    hook_rules = [rule for rule in active_rules if is_hook_applicable_rule(rule)]
     _audit_exception_transitions(db, ws_uuid, audit_use=True)
-    version_hash = hashlib.sha256(json.dumps(active_rules, sort_keys=True).encode()).hexdigest()[:16]
+    version_hash = hashlib.sha256(json.dumps(hook_rules, sort_keys=True).encode()).hexdigest()[:16]
     version = f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}-{version_hash}"
 
     out = PolicySyncOut(
@@ -645,7 +647,7 @@ def sync_policies(
                 action=r["action"],
                 message=r.get("message"),
             )
-            for r in active_rules
+            for r in hook_rules
         ],
     )
 
