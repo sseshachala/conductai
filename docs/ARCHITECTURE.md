@@ -225,6 +225,11 @@ MCP tools are transport, not auth. If a Conduct API is exposed via MCP, the unde
 
 ## Architecture Backlog (known gaps)
 
+Load-bearing architecture decisions are recorded in
+[`docs/adr/`](adr/README.md). New trust boundaries, persistent contracts,
+cross-component failure semantics, and runtime architecture choices should add
+or supersede an ADR in the same change.
+
 - **Local CLI policy cache** — currently every tool call makes an API round trip. A local `~/.conductguard/policy_cache.json` with 60s TTL would make Guard invisible when the API is slow or unreachable.
 - **Webhook delivery** — violations trigger Slack alerts but there's no generic webhook for enterprise customers to integrate into their own systems.
 - **Alembic timestamp IDs** — sequential integer revision IDs require coordination between developers. Timestamp-based IDs are conflict-free.
