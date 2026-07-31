@@ -4,10 +4,10 @@ import json
 import sys
 from pathlib import Path
 
-try:
-    data = json.load(sys.stdin)
-except (json.JSONDecodeError, ValueError):
-    sys.exit(0)  # no event data — nothing to record
+_raw = sys.stdin.read()
+if not _raw.strip():
+    sys.exit(0)
+data = json.loads(_raw)
 
 # Claude Code stop event schema: {"session_id": "...", "stop_hook_active": bool, "usage": {...}}
 usage = data.get("usage", {})

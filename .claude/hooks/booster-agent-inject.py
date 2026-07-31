@@ -4,7 +4,10 @@ mcp__agent-booster__search_context instead of Grep/Bash for searches."""
 import json
 import sys
 
-data = json.load(sys.stdin)
+_raw = sys.stdin.read()
+if not _raw.strip():
+    sys.exit(0)
+data = json.loads(_raw)
 prompt = data.get("tool_input", {}).get("prompt", "")
 
 if not prompt:
