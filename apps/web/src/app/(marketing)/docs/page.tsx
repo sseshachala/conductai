@@ -129,11 +129,14 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#mcp-overview",     label: "Overview" },
     { href: "#mcp-workspace-url",label: "Workspace URL" },
     { href: "#mcp-claude-web",   label: "Claude.ai (web)" },
+    { href: "#mcp-claude-code",  label: "Claude Code (CLI)" },
     { href: "#mcp-claude-desktop", label: "Claude Desktop" },
     { href: "#mcp-claude-work",  label: "Claude for Work" },
+    { href: "#mcp-chatgpt",      label: "ChatGPT / Codex" },
     { href: "#mcp-codex",        label: "Codex CLI" },
     { href: "#mcp-cursor",       label: "Cursor" },
     { href: "#mcp-vscode",       label: "VS Code + Copilot" },
+    { href: "#mcp-copilot-cli",  label: "Copilot CLI" },
     { href: "#mcp-devin",        label: "Devin" },
     { href: "#mcp-windsurf",     label: "Windsurf" },
     { href: "#mcp-other",        label: "Other clients" },
@@ -1951,8 +1954,9 @@ function TabMcpTools() {
           </p>
           <Pre>conduct guard sync</Pre>
           <p className="text-xs text-indigo-700 mt-3">
-            Covers Claude Code, Claude Desktop, Cursor, Codex CLI, Windsurf, and VS Code + Copilot.
-            Devin is cloud-only — see its section below for the URL-paste flow.
+            Covers Claude Code, Claude Desktop, Cursor, Codex CLI, Windsurf, VS Code + Copilot, and
+            Copilot CLI. Claude.ai, Claude for Work, ChatGPT, and Devin are cloud-only — paste the
+            workspace URL into each per the sections below.
           </p>
         </div>
       </section>
@@ -1978,6 +1982,29 @@ Authorization: Bearer &lt;your-token&gt;</Pre>
           <Step n={2}>Click <strong>Add server</strong> and paste your workspace URL.</Step>
           <Step n={3}>Save. Then in any chat, type <Code>load mcp</Code> or <Code>enable guard</Code> to activate it for that conversation.</Step>
         </ol>
+      </section>
+
+      <section id="mcp-claude-code" className="scroll-mt-8">
+        <h3 className="text-2xl font-semibold text-stone-900 mb-3">Claude Code (CLI)</h3>
+        <p className="text-stone-600 mb-3">
+          Fastest path — <Code>conduct guard sync</Code> writes to <Code>~/.claude/settings.json</Code>{" "}
+          automatically. Or add the server yourself with the built-in command:
+        </p>
+        <Pre>{`claude mcp add conduct-guard \\
+  --transport http \\
+  --url https://api.conductai.ai/guard/mcp \\
+  --header "Authorization: Bearer <your-token>"`}</Pre>
+        <p className="text-stone-600 mt-4 mb-2">Or edit <Code>~/.claude/settings.json</Code> directly:</p>
+        <Pre>{`{
+  "mcpServers": {
+    "conduct-guard": {
+      "type": "http",
+      "url": "https://api.conductai.ai/guard/mcp",
+      "headers": { "Authorization": "Bearer <your-token>" }
+    }
+  }
+}`}</Pre>
+        <p className="text-stone-600 mt-3">Restart your Claude Code session or run <Code>/mcp</Code> to confirm the server is listed.</p>
       </section>
 
       <section id="mcp-claude-desktop" className="scroll-mt-8">
@@ -2009,16 +2036,42 @@ Authorization: Bearer &lt;your-token&gt;</Pre>
         </p>
       </section>
 
+      <section id="mcp-chatgpt" className="scroll-mt-8">
+        <h3 className="text-2xl font-semibold text-stone-900 mb-3">ChatGPT (Team / Enterprise) &amp; Codex-in-ChatGPT</h3>
+        <p className="text-stone-600 mb-3">
+          ChatGPT connects to remote MCP servers via the Admin console&apos;s Connector program.
+          The endpoint is the same URL every other client uses; the difference is that a workspace
+          admin registers it once, then every seat gets it automatically.
+        </p>
+        <ol className="list-none p-0">
+          <Step n={1}>Open <strong>ChatGPT Admin Console</strong> → <strong>Connectors</strong> → <strong>Add custom connector</strong>.</Step>
+          <Step n={2}>Paste the workspace URL and select <strong>OAuth</strong> as the auth type — ChatGPT will discover the flow from the endpoint metadata.</Step>
+          <Step n={3}>Approve the connector for the seats and workspaces that should use it. Users then enable it in any chat via the connector menu.</Step>
+        </ol>
+        <Pre>{`URL:  https://api.conductai.ai/guard/mcp
+Auth: OAuth  (discovered from /.well-known/oauth-protected-resource/guard/mcp)`}</Pre>
+        <p className="text-sm text-stone-500 mt-3">
+          The same connector serves both ChatGPT chat and Codex-in-ChatGPT — one registration, both
+          surfaces enforced. For open-source Codex CLI (<Code>codex</Code> package), see the section below.
+        </p>
+      </section>
+
       <section id="mcp-codex" className="scroll-mt-8">
         <h3 className="text-2xl font-semibold text-stone-900 mb-3">Codex CLI</h3>
         <p className="text-stone-600 mb-3">
-          Run <Code>conduct guard sync</Code> — it writes the config to <Code>~/.codex/config.toml</Code>.
-          Or add the block manually:
+          <Code>conduct guard sync</Code> writes to <Code>~/.codex/mcp.json</Code> automatically. Or
+          add the block manually:
         </p>
-        <Pre>{`# ~/.codex/config.toml
-[mcp_servers.conduct-guard]
-url = "https://api.conductai.ai/guard/mcp"
-bearer_token = "<your-token>"`}</Pre>
+        <Pre>{`# ~/.codex/mcp.json
+{
+  "mcpServers": {
+    "conduct-guard": {
+      "type": "http",
+      "url": "https://api.conductai.ai/guard/mcp",
+      "headers": { "Authorization": "Bearer <your-token>" }
+    }
+  }
+}`}</Pre>
         <p className="text-stone-600 mt-3">Restart your Codex session to pick up the new server.</p>
       </section>
 
@@ -2048,6 +2101,28 @@ bearer_token = "<your-token>"`}</Pre>
   }
 }`}</Pre>
         <p className="text-stone-600 mt-3">Reload the VS Code window to pick up the new server.</p>
+      </section>
+
+      <section id="mcp-copilot-cli" className="scroll-mt-8">
+        <h3 className="text-2xl font-semibold text-stone-900 mb-3">GitHub Copilot CLI</h3>
+        <p className="text-stone-600 mb-3">
+          <Code>conduct guard sync</Code> writes to <Code>~/.copilot/mcp-config.json</Code> if the
+          Copilot CLI is installed. Or add the block manually:
+        </p>
+        <Pre>{`# ~/.copilot/mcp-config.json
+{
+  "mcpServers": {
+    "conduct-guard": {
+      "type": "http",
+      "url": "https://api.conductai.ai/guard/mcp",
+      "headers": { "Authorization": "Bearer <your-token>" }
+    }
+  }
+}`}</Pre>
+        <p className="text-stone-600 mt-3">
+          For project-scoped access, put the same block in <Code>.mcp.json</Code> at the repo root —
+          Copilot picks it up per-project.
+        </p>
       </section>
 
       <section id="mcp-devin" className="scroll-mt-8">
