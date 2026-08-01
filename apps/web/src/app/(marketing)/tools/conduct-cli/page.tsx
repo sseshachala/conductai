@@ -652,20 +652,12 @@ function WorksWithSection() {
             <div className="w-full">
               <p className="font-semibold text-stone-900 text-sm mb-1">GitHub Copilot — no install required</p>
               <p className="text-stone-600 text-xs mb-4">
-                Copilot supports HTTP MCP servers. Add either URL in VS Code MCP settings — every developer in your org gets Guard enforcement and platform access with zero local setup.
+                Copilot supports HTTP MCP servers. Add the URL below in VS Code MCP settings — one endpoint serves both Guard enforcement and Conduct agents/workflows/runs, with zero local setup.
               </p>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wide mb-1">Guard — policy enforcement</p>
-                  <div className="bg-white rounded-lg px-4 py-2.5 font-mono text-xs text-stone-700 break-all">
-                    https://api.conductai.ai/guard/mcp
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide mb-1">Conduct — agents, workflows, runs</p>
-                  <div className="bg-white rounded-lg px-4 py-2.5 font-mono text-xs text-stone-700 break-all">
-                    https://api.conductai.ai/conduct/mcp
-                  </div>
+              <div>
+                <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wide mb-1">Guard + Conduct — one MCP</p>
+                <div className="bg-white rounded-lg px-4 py-2.5 font-mono text-xs text-stone-700 break-all">
+                  https://api.conductai.ai/guard/mcp
                 </div>
               </div>
               <p className="text-stone-400 text-xs mt-3">

@@ -488,23 +488,14 @@ def _text(msg_id, text: str) -> dict:
 
 # ── Main endpoint ─────────────────────────────────────────────────────────────
 
-def _extract_token(request: Request, query_token: str | None) -> str | None:
-    """Authorization: Bearer header first, ?token= fallback for legacy MCP clients.
-
-    URL fallback emits a deprecation warning — once Claude.ai web ships header
-    support, the query param path is removed (issue #810).
-    """
+def _extract_token(request: Request) -> str | None:
+    """Authorization header only. Header may be `Bearer <token>` or a bare token
+    (Smithery-style). ?token= query param was retired with issue #800."""
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         return auth[7:].strip() or None
-    if auth:  # bare token (e.g. Smithery sends Authorization: <token> without Bearer prefix)
+    if auth:
         return auth.strip() or None
-    if query_token:
-        # Deprecation signal — every URL-token request is logged so we can track
-        # when it's safe to drop the fallback.
-        from structlog import get_logger
-        get_logger(__name__).warning("guard.mcp.token_in_query_deprecated")
-        return query_token
     return None
 
 
@@ -512,18 +503,17 @@ def _extract_token(request: Request, query_token: str | None) -> str | None:
 async def mcp_sse(
     request: Request,
     workspace_id: str | None = Query(None),
-    token: str | None = Query(None),
 ):
     """SSE endpoint required by MCP Streamable HTTP transport (GET establishes the stream).
     For stateless policy checks we don't push server-initiated messages, so this just
     holds the connection open with keepalive pings until the client disconnects.
 
-    Auth: Authorization: Bearer <token> header preferred. ?token= legacy fallback.
+    Auth: Authorization: Bearer <token> header required.
     workspace_id is optional — when omitted, the Bearer token identifies the workspace.
     """
     import asyncio
 
-    if not _extract_token(request, token):
+    if not _extract_token(request):
         ua = request.headers.get("User-Agent", "")
         # Only send OAuth discovery header to clients that support it.
         # Smithery and similar tools fall back to API key auth — sending WWW-Authenticate
@@ -581,7 +571,6 @@ async def mcp_terminate():
 async def mcp_endpoint(
     request: Request,
     workspace_id: str | None = Query(None, description="Guard workspace UUID — optional when using OAuth Bearer token"),
-    token: str | None = Query(None, description="Legacy fallback; prefer Authorization: Bearer header"),
 ):
     """Stateless MCP JSON-RPC endpoint for Claude.ai / Claude Desktop / Claude for Work."""
     try:
@@ -593,8 +582,7 @@ async def mcp_endpoint(
     method = body.get("method", "")
     params = body.get("params") or {}
 
-    # Header-first, query-fallback per issue #800
-    resolved_token = _extract_token(request, token)
+    resolved_token = _extract_token(request)
     if not resolved_token:
         return JSONResponse(status_code=401, content=_err(msg_id, -32600, "missing token (use Authorization: Bearer)"))
 
