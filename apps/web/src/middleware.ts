@@ -8,6 +8,7 @@ const isAppSubdomain = (req: NextRequest) =>
 
 const MARKETING_TO_APP: Record<string, string> = {
   "/guard": "/theguard",
+  "/registry": "/packs",
 }
 
 const clerkHandler = clerkMiddleware(async (auth, req) => {

@@ -478,7 +478,7 @@ export default function GovernancePage() {
             tone = "info"
             title = "No compliance frameworks active"
             sub = "Install a pack from the registry to start coverage"
-            action = { label: "Browse Registry →", href: "/registry" }
+            action = { label: "Browse Registry →", href: "/packs" }
           } else if (blocksMtd > 0) {
             tone = "warn"
             title = `${blocksMtd.toLocaleString()} risk event${blocksMtd === 1 ? "" : "s"} intercepted this month`
@@ -915,7 +915,7 @@ export default function GovernancePage() {
                         <div key={r.rule_id} style={{ background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 12px" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                              <Link href={`/registry/${r.pack_slug}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)", textDecoration: "none" }}>
+                              <Link href={`/packs/${r.pack_slug}`} style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)", textDecoration: "none" }}>
                                 {r.rule_id}
                               </Link>
                               <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "var(--surface-2)", color: "var(--text-2)", textTransform: "uppercase", fontWeight: 600 }}>
@@ -943,7 +943,7 @@ export default function GovernancePage() {
                             </div>
                           )}
                           <div style={{ marginTop: 4, fontSize: 10, color: "var(--text-muted)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span>from <Link href={`/registry/${r.pack_slug}`} style={{ color: "var(--accent-text)", textDecoration: "none" }}>{r.pack_slug}</Link></span>
+                            <span>from <Link href={`/packs/${r.pack_slug}`} style={{ color: "var(--accent-text)", textDecoration: "none" }}>{r.pack_slug}</Link></span>
                             <button
                               type="button"
                               onClick={() => setExpandedRule(expandedRule === r.rule_id ? null : r.rule_id)}
@@ -990,7 +990,7 @@ export default function GovernancePage() {
                 return (
                   <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-2)" }}>
                     Want dedicated {label} controls?{" "}
-                    <Link href={`/registry/${rec}`} style={{ color: "var(--accent-text)", textDecoration: "underline" }}>
+                    <Link href={`/packs/${rec}`} style={{ color: "var(--accent-text)", textDecoration: "underline" }}>
                       Install {rec}
                     </Link>
                   </div>

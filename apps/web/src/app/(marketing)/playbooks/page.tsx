@@ -49,7 +49,7 @@ const MODULES = [
     icon: "🛡️",
     name: "ConductGuard",
     description: "Real-time AI activity monitoring. Tracks tool usage, enforces policies, and surfaces spend across your team's AI coding tools.",
-    href: "/registry?tab=modules",
+    href: "/packs?tab=modules",
     badge: "Governance",
     badgeColor: "bg-teal-100 text-teal-700",
   },
@@ -224,7 +224,7 @@ export default function AutomationsPage() {
             {COMPLIANCE_PACKS.map(pack => (
               <Link
                 key={pack.id}
-                href="/registry?tab=compliance"
+                href="/packs?tab=compliance"
                 className="flex items-start gap-4 bg-white border border-stone-200 rounded-xl px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all group"
               >
                 <div className="w-11 h-11 rounded-xl bg-stone-100 flex items-center justify-center text-xl shrink-0">
