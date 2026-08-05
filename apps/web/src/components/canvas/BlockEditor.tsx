@@ -819,7 +819,7 @@ function GuardBlockPanel({
               This block enforces spend caps, tool blocks, and audit policies — but Guard is not set up for your organization.
             </p>
             <a
-              href="/registry?tab=modules"
+              href="/packs?tab=modules"
               className="inline-block text-[10px] font-semibold text-red-700 border border-red-300 rounded px-2 py-1 hover:bg-red-100 transition-colors"
             >
               Install Guard →

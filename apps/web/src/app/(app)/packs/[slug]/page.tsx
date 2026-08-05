@@ -165,7 +165,7 @@ export default function PackDetailPage() {
     return (
       <AppShell>
         <div style={{ padding: "24px 28px", maxWidth: 1200, margin: "0 auto" }}>
-          <Link href="/registry" style={{ fontSize: 12, color: "var(--accent-text)" }}>← Back to registry</Link>
+          <Link href="/packs" style={{ fontSize: 12, color: "var(--accent-text)" }}>← Back to registry</Link>
           <div style={{ marginTop: 16, fontSize: 14, color: "var(--err)" }}>{error ?? "Pack not found"}</div>
         </div>
       </AppShell>
@@ -175,7 +175,7 @@ export default function PackDetailPage() {
   return (
     <AppShell>
       <div style={{ padding: "24px 28px", maxWidth: 1200, margin: "0 auto" }}>
-        <Link href="/registry" style={{ fontSize: 12, color: "var(--accent-text)" }}>← Back to registry</Link>
+        <Link href="/packs" style={{ fontSize: 12, color: "var(--accent-text)" }}>← Back to registry</Link>
 
         <header style={{ marginTop: 12, marginBottom: 20, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
           <div>

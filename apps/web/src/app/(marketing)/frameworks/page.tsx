@@ -275,7 +275,7 @@ function FrameworkGrid() {
               <p className="text-stone-500 text-sm leading-relaxed">{fw.description}</p>
             </div>
             <a
-              href={`/registry?tab=compliance`}
+              href={`/packs?tab=compliance`}
               className="flex-shrink-0 rounded-xl bg-stone-900 text-white px-5 py-2.5 text-sm font-semibold hover:bg-stone-700 transition-colors text-center"
             >
               Install pack →
