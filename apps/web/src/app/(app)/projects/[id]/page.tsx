@@ -362,7 +362,7 @@ function ProjectContent({ getToken, currentUserId }: {
                 <p style={{ fontSize: 13.5, color: "var(--text-3)", marginBottom: 20 }}>Create a new agent or start from an agent template.</p>
                 <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
                   <Link href={`/workflows/new?project_id=${projectId}`} className="btn btn-primary" style={{ textDecoration: "none" }}>+ New agent</Link>
-                  <Link href="/marketplace" className="btn btn-ghost" style={{ textDecoration: "none" }}>Agent templates</Link>
+                  <Link href="/registry" className="btn btn-ghost" style={{ textDecoration: "none" }}>Agent templates</Link>
                 </div>
               </div>
             ) : view === "list" ? (

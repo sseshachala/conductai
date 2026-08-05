@@ -150,13 +150,13 @@ function HeroSection() {
       <BootSequence />
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
-        Governing AI systems is as important as deploying them
+        Capability ≠ Authority
       </div>
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
         Your AI agents are taking real actions. Nobody is watching.
       </h1>
-      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-6">
-        One policy. Every AI tool your team uses — Claude Code, Claude.ai, Claude Desktop, Codex, ChatGPT, Cursor, Copilot, Windsurf.
+      <p className="text-xl text-stone-500 max-w-3xl mx-auto leading-relaxed mb-6">
+        Capability is what your agent can do. Authority is what it’s allowed to make real. Conduct governs the second — across Claude Code, Claude.ai, Codex, ChatGPT, Cursor, Copilot, Windsurf.
       </p>
       <p className="font-mono text-sm sm:text-base text-stone-700 max-w-3xl mx-auto mb-8">
         What the agent tried. What Guard allowed. What the reviewer signed. What the chain proves.

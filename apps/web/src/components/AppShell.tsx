@@ -110,7 +110,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/theguard/team-os')) return ['Team OS']
   if (pathname.startsWith('/theguard')) return ['Guard', 'Overview']
   if (pathname.startsWith('/settings')) return ['Settings']
-  if (pathname.startsWith('/marketplace')) return ['Registry']
+  if (pathname.startsWith('/registry')) return ['Registry']
   if (pathname.startsWith('/playbooks')) return ['Automations']
   if (pathname.startsWith('/logs/guard')) return ['Logs', 'Guard']
   if (pathname.startsWith('/logs/runs')) return ['Logs', 'Runs']
@@ -139,7 +139,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
 const PALETTE_COMMANDS = [
   { group: "BUILD", label: "Projects", href: "/projects", icon: "Grid" as const },
   { group: "BUILD", label: "Canvas", href: "/workflows/new", icon: "Flow" as const },
-  { group: "BUILD", label: "Registry", href: "/marketplace", icon: "Store" as const },
+  { group: "BUILD", label: "Registry", href: "/registry", icon: "Store" as const },
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
   { group: "GOVERN", label: "Governance", href: "/governance", icon: "Shield" as const },
@@ -229,7 +229,7 @@ function AppShellInnerContent({
   // Active runs count (for sidebar badge)
   const [activeRunsCount, setActiveRunsCount] = useState<number | undefined>(undefined)
 
-  // Marketplace playbook count (for sidebar badge)
+  // Registry playbook count (for sidebar badge)
   const [playbookCount, setPlaybookCount] = useState<number | undefined>(undefined)
 
   // Projects state
@@ -349,7 +349,7 @@ function AppShellInnerContent({
     return () => { cancelled = true }
   }, [activeWorkspace?.id])
 
-  // Fetch marketplace playbook count for sidebar badge
+  // Fetch registry playbook count for sidebar badge
   useEffect(() => {
     let cancelled = false
     async function fetchPlaybookCount() {
@@ -929,10 +929,10 @@ function AppShellInnerContent({
               collapsed={collapsed}
             />
             <SideNavItem
-              href="/marketplace"
+              href="/registry"
               label="Registry"
               icon={<Icons.Store />}
-              active={pathname.startsWith("/marketplace")}
+              active={pathname.startsWith("/registry")}
               collapsed={collapsed}
               badge={playbookCount}
             />

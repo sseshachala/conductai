@@ -823,7 +823,7 @@ function AutomationEmpty() {
     <div style={{ padding: "60px 20px", textAlign: "center" }}>
       <p style={{ fontWeight: 650, fontSize: 16, color: "var(--text)", marginBottom: 8 }}>No automation project yet</p>
       <p style={{ fontSize: 13.5, color: "var(--text-3)", maxWidth: 400, margin: "0 auto", lineHeight: 1.6 }}>
-        Install Security Loop from the marketplace. A Security Automation project will be created automatically — all triage and fix runs live here.
+        Install Security Loop from the registry. A Security Automation project will be created automatically — all triage and fix runs live here.
       </p>
     </div>
   )

@@ -58,7 +58,7 @@ export function getEdition(slug: string): BenchmarkEdition | undefined {
   return EDITIONS.find(e => e.slug === slug)
 }
 
-// Canonical display names — keep in sync with marketplace FRIENDLY_NAMES.
+// Canonical display names — keep in sync with registry FRIENDLY_NAMES.
 // Slugs not found here fall back to title-casing the slug.
 export const PLAYBOOK_NAMES: Record<string, string> = {
   ai_ready:                 "AI Ready",
