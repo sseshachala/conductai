@@ -41,6 +41,8 @@ function Nav() {
       <nav className="hidden md:flex items-center gap-6">
         <ProductsDropdown />
         <SolutionsDropdown />
+        {/* ponytail: home page has its own inlined nav; keep in sync with (marketing)/layout.tsx until we extract shared components */}
+        <a href="/use-cases" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Use cases</a>
         <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
         <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
       </nav>
@@ -110,19 +112,45 @@ function SolutionsDropdown() {
         Solutions
         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
       </a>
-      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
+      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[260px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <a href="/solutions/engineering-leaders" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+          <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-stone-400">By role</p>
+          <a href="/solutions/engineering-leaders" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <div>
               <p className="font-semibold">Engineering leaders</p>
             </div>
           </a>
-          <a href="/solutions/security-compliance" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+          <a href="/solutions/security-compliance" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <div>
               <p className="font-semibold">Security &amp; compliance</p>
             </div>
           </a>
-          <a href="/deployment" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+
+          <div className="my-1 border-t border-stone-100" />
+
+          <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-stone-400">By outcome</p>
+          <a href="/solutions/security-loop" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div>
+              <p className="font-semibold">Security Loop</p>
+              <p className="text-xs text-stone-400">Scan to fix, closed</p>
+            </div>
+          </a>
+          <a href="/solutions/action-governance" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div>
+              <p className="font-semibold">Action governance</p>
+              <p className="text-xs text-stone-400">Policy in front of every action</p>
+            </div>
+          </a>
+
+          <div className="my-1 border-t border-stone-100" />
+
+          <a href="/use-cases" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div>
+              <p className="font-semibold">All use cases</p>
+              <p className="text-xs text-stone-400">Nine surfaces we operate in</p>
+            </div>
+          </a>
+          <a href="/deployment" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <div>
               <p className="font-semibold">Deployment options</p>
               <p className="text-xs text-stone-400">SaaS · Cloud · On-premise</p>
@@ -820,8 +848,8 @@ function PageFooter() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
-              { heading: "Product", links: [["Guard", "/guard"], ["Registry", "/registry"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
-              { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Deployment options", "/deployment"]] as [string, string][] },
+              { heading: "Product", links: [["Guard", "/guard"], ["Use cases", "/use-cases"], ["Registry", "/registry"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
+              { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Security Loop", "/solutions/security-loop"], ["Action governance", "/solutions/action-governance"], ["All use cases", "/use-cases"], ["Deployment options", "/deployment"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], /* ["Partners", "/partners"], */ ["Blog", "/blog"]] as [string, string][] },
               { heading: "Resources", links: [["Docs", "/docs"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
               { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
