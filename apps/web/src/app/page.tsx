@@ -240,7 +240,7 @@ function ControlPlaneSection() {
           </div>
         </div>
         <p className="text-sm text-stone-500 mt-8 max-w-md mx-auto">
-          Conduct makes compliance structural — not documented after the fact, enforced before execution.
+          Conduct makes compliance structural. Not documented after the fact. Enforced before execution.
         </p>
       </div>
     </section>
@@ -360,7 +360,7 @@ function ProblemSection() {
       num: "03",
       icon: "📄",
       headline: "You have an AI usage policy. It didn't stop anything.",
-      detail: "It exists in a doc. It wasn't running at the moment the agent acted. That's the only moment that matters. Without runtime enforcement, agents experience permission drift — accumulating authority across tool calls that no single approval authorised.",
+      detail: "It exists in a doc. It wasn't running at the moment the agent acted. That's the only moment that matters. Without runtime enforcement, agents experience permission drift, accumulating authority across tool calls that no single approval authorised.",
     },
     {
       num: "04",
@@ -405,10 +405,10 @@ function TwoLanesSection() {
         <div className="text-center mb-14">
           <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-3">The solution</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
-            Two problems. One platform.
+            One platform. Every AI action, governed.
           </h2>
           <p className="text-stone-500 max-w-xl mx-auto leading-relaxed">
-            Conduct ships both layers: automate the work, govern the risk. Your team moves fast with a safety net under every agent.
+            Guard covers both surfaces you need. A registry of ready-to-run agents, and wire enforcement that makes every call a policy decision. Same platform, same audit chain.
           </p>
         </div>
         <div className="grid md:grid-cols-2 gap-5">
@@ -454,7 +454,7 @@ function TwoLanesSection() {
             <div>
               <h3 className="text-2xl font-bold text-white tracking-tight mb-2">Every agent action is structurally governed</h3>
               <p className="text-stone-400 leading-relaxed text-sm">
-                One env var routes every LLM call through Guard — regardless of framework, language, or developer discipline. Actions Guard denies are not unlikely. They are structurally impossible. Guard enforces policy at the execution boundary — one layer below the agent, one layer above the enterprise system.
+                One env var routes every LLM call through Guard, regardless of framework, language, or developer discipline. Actions Guard denies are not unlikely. They are structurally impossible. Guard enforces policy at the execution boundary: one layer below the agent, one layer above the enterprise system.
               </p>
             </div>
             <ul className="space-y-2.5 flex-1">
@@ -527,7 +527,7 @@ function StackStripSection() {
         <div className="text-center mb-10">
           <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-3">The full stack</p>
           <h2 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
-            From standards to enforcement — three layers, one platform.
+            From standards to enforcement: three layers, one platform.
           </h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -614,7 +614,7 @@ function GovernanceNarrativeSection() {
               See the full Insights tab →
             </a>
             <p className="mt-6 text-xs text-stone-400 leading-relaxed border-t border-stone-100 pt-4">
-              Whatever your team runs in Claude — a diligence desk, a security audit OS, an engineering autopilot — ConductGuard is the enforcement layer that makes it safe to hand to an executive.
+              Whatever your team runs in Claude, whether a diligence desk, a security audit OS, or an engineering autopilot, ConductGuard is the enforcement layer that makes it safe to hand to an executive.
             </p>
           </div>
 
@@ -702,7 +702,7 @@ const personas = [
     title: "Your AI usage policy exists in a doc. It has never once stopped an agent.",
     desc: "Conduct enforces policy at the layer where agents actually run. Not in a review meeting, not in a Notion page. At the moment the tool call happens.",
     outcomes: [
-      "One policy layer across Claude, Codex, ChatGPT, Cursor, Copilot, Windsurf — every surface your team uses",
+      "One policy layer across Claude, Codex, ChatGPT, Cursor, Copilot, Windsurf. Every surface your team uses.",
       "No infrastructure changes. Works with your existing stack",
       "Role-based policies for different teams and access levels",
       "Spend budgets per developer, per tool, per project",
