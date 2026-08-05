@@ -43,6 +43,9 @@ function Nav() {
         <SolutionsDropdown />
         {/* ponytail: home page has its own inlined nav; keep in sync with (marketing)/layout.tsx until we extract shared components */}
         <a href="/use-cases" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Use cases</a>
+        <a href="/team-os" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+          Team OS <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest">Free</span>
+        </a>
         <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
         <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
       </nav>
@@ -69,6 +72,14 @@ function ProductsDropdown() {
       </a>
       <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
+          <a href="/team-os" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>📄</span>
+            <div>
+              <p className="font-semibold">Team OS <span className="text-[10px] text-emerald-600 font-bold ml-1 uppercase tracking-widest">Free</span></p>
+              <p className="text-xs text-stone-400">CLAUDE.md · REVIEW.md · Standards</p>
+            </div>
+          </a>
+          <div className="border-t border-stone-100 my-1" />
           <a href="/guard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span>🛡️</span>
             <div>
@@ -848,7 +859,7 @@ function PageFooter() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
-              { heading: "Product", links: [["Guard", "/guard"], ["Use cases", "/use-cases"], ["Registry", "/registry"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
+              { heading: "Product", links: [["Team OS", "/team-os"], ["Guard", "/guard"], ["Use cases", "/use-cases"], ["Registry", "/registry"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
               { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Security Loop", "/solutions/security-loop"], ["Action governance", "/solutions/action-governance"], ["All use cases", "/use-cases"], ["Deployment options", "/deployment"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], /* ["Partners", "/partners"], */ ["Blog", "/blog"]] as [string, string][] },
               { heading: "Resources", links: [["Docs", "/docs"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
