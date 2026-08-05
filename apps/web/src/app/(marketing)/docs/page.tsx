@@ -89,6 +89,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
   "overview": [
     { href: "#how-it-works", label: "Architecture" },
     { href: "#threat-model", label: "Security & threat model" },
+    { href: "#action-tools", label: "Gating agent actions" },
   ],
   "getting-started": [
     { href: "#overview",     label: "Overview" },
@@ -245,6 +246,42 @@ function TabOverview() {
         <div className="rounded-xl bg-stone-100 border border-stone-200 px-4 py-3 text-sm text-stone-600">
           <strong>Questions or concerns?</strong> Email <a href="mailto:security@conductai.ai" className="text-indigo-600 hover:underline">security@conductai.ai</a>.
         </div>
+      </section>
+
+      <section id="action-tools" className="scroll-mt-8">
+        <SectionHeading id="action-tools">Gating agent actions</SectionHeading>
+        <p className="text-stone-600 leading-relaxed mb-4">
+          When an agent calls a tool that takes a real action (refund, cancel, update, send, delete), Guard
+          evaluates the call against the current policy before the action runs. Warn hands off to a human.
+          Block returns a clean refusal. Every decision lands in the same hash-chained audit as your model calls.
+        </p>
+        <p className="text-stone-600 leading-relaxed mb-4">
+          Rules are declarative YAML. Ship a rule without a deploy. Below is a minimal example that caps a
+          support agent&apos;s refunds and requires supervisor review above a threshold.
+        </p>
+        <Pre>{`# ~/.conductguard/policies/refund-cap.yaml
+name: refund-cap
+applies_to:
+  - "tool:issue_refund"
+rules:
+  - id: block-over-1000
+    when:
+      arg.amount_usd: { gt: 1000 }
+    action: block
+    reason: "Refund exceeds hard cap. Route to finance."
+
+  - id: warn-over-2x-dispute
+    when:
+      arg.amount_usd: { gt: "\${arg.disputed_amount_usd} * 2" }
+    action: warn
+    handoff: supervisor
+    reason: "Refund is more than twice the disputed amount. Supervisor review required."`}</Pre>
+        <p className="text-stone-500 text-sm mt-4">
+          The same pattern applies to any action tool: cancellation reason lists, pricing commitments, DB writes,
+          outbound sends. See{" "}
+          <a href="?tab=guard#guard-policy-reference" className="text-indigo-600 hover:underline">Policy reference</a>{" "}
+          for the full rule grammar.
+        </p>
       </section>
     </div>
   )
