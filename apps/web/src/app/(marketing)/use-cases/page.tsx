@@ -196,7 +196,7 @@ const CASES: UseCase[] = [
     n: "09",
     slug: "action-governance",
     title: "Business agents that take real actions",
-    oneLiner: "Capability is not authority.",
+    oneLiner: "What your agent does. Not just what it can.",
     persona: "Heads of CX, ops leaders, and CISOs deploying customer-facing or ops-facing AI agents.",
     situation:
       "An agent that answers questions is a search box with a hallucination risk. An agent that issues refunds, cancels subscriptions, updates accounts, or commits pricing is a financial actor with the same risk. Air Canada honored the bereavement fare its chatbot invented. Klarna reversed thousands of automated CX actions when a rules change misfired. The failure is not that the agent could talk. The failure is that the agent could act without a policy in front of the action.",
