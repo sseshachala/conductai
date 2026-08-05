@@ -114,7 +114,7 @@ export default function BlogPost() {
         <p className="text-stone-700 leading-relaxed mb-6">
           If you want threat modeling that stays current, isn&apos;t a separate
           product, and files into your existing security loop, the playbook is in
-          the marketplace under <code className="text-xs bg-stone-100 px-1 py-0.5 rounded">threat-modeler</code>.
+          the registry under <code className="text-xs bg-stone-100 px-1 py-0.5 rounded">threat-modeler</code>.
           Install it, point it at a repo, watch STRIDE run on your next PR.
         </p>
 

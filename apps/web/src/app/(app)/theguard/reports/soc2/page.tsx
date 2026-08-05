@@ -194,7 +194,7 @@ function Soc2Report() {
             </tbody>
           </table>
         ) : (
-          <p style={{ fontSize: 12, color: "#777" }}>No SOC 2 pack installed. Install a pack with SOC 2-tagged rules from the marketplace to populate this section.</p>
+          <p style={{ fontSize: 12, color: "#777" }}>No SOC 2 pack installed. Install a pack with SOC 2-tagged rules from the registry to populate this section.</p>
         )}
 
         <h2>Event log</h2>

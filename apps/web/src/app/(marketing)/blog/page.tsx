@@ -3,7 +3,7 @@ export default function BlogIndex() {
     {
       slug: "guard-and-security-loop",
       title: "Two things, one product: Guard and the Security Loop.",
-      excerpt: "We've been telling too many stories at once. Conduct is two things: Guard on the wire in front of every AI call, and the Security Loop that closes scan-to-fix. Everything else is a playbook in the marketplace.",
+      excerpt: "We've been telling too many stories at once. Conduct is two things: Guard on the wire in front of every AI call, and the Security Loop that closes scan-to-fix. Everything else is a playbook in the registry.",
       date: "July 25, 2026",
       tag: "Positioning",
       tagColor: "text-emerald-700 bg-emerald-50 border-emerald-200",

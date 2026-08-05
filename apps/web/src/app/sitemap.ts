@@ -11,7 +11,6 @@ const staticRoutes: Array<{ path: string; priority: number; changeFrequency: "da
   { path: "/registry", priority: 0.8, changeFrequency: "weekly" },
   { path: "/open-source", priority: 0.7, changeFrequency: "monthly" },
   { path: "/playbooks", priority: 0.8, changeFrequency: "weekly" },
-  { path: "/marketplace", priority: 0.7, changeFrequency: "weekly" },
   { path: "/sdd", priority: 0.7, changeFrequency: "monthly" },
   { path: "/compare", priority: 0.7, changeFrequency: "monthly" },
   { path: "/benchmark", priority: 0.6, changeFrequency: "monthly" },

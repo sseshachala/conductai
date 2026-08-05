@@ -220,6 +220,15 @@ const PACK_CATALOG = [
     guardRules: 10,
   },
   {
+    id: "meridian-dispatch",
+    icon: "📦",
+    name: "Meridian Dispatch (Demo)",
+    subtitle: "E1 demo pack — entitlement-aware RMA dispatch. Blocks $140 truck rolls for depot-tier tenants; suggests mail-in.",
+    description: "Fictional Meridian Devices support org. 2 rules: depot-tier tenants get mail-in RMA instead of on-site dispatch (avoids $135.50/ticket); self-serve tenants get remote-only (avoids $105/ticket). Backs docs/demo-scripts/E1-the-140-dollar-ticket.md.",
+    tags: ["Demo", "Cost", "Entitlement"],
+    guardRules: 2,
+  },
+  {
     id: "conduct-base",
     icon: "🚀",
     name: "Startup Baseline",
@@ -609,7 +618,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
               const active = marketTab === "templates" && activeCategory === cat
               return (
                 <button key={cat}
-                  onClick={() => { setMarketTab("templates"); setActiveCategory(cat); router.replace("/marketplace") }}
+                  onClick={() => { setMarketTab("templates"); setActiveCategory(cat); router.replace("/registry") }}
                   style={{
                     display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 7,
                     background: active ? "var(--surface-2)" : "transparent",
@@ -625,7 +634,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
 
             <div style={{ height: 1, background: "var(--border)", margin: "12px 10px" }} />
 
-            <button onClick={() => { setMarketTab("modules"); router.replace("/marketplace?tab=modules") }}
+            <button onClick={() => { setMarketTab("modules"); router.replace("/registry?tab=modules") }}
               style={{
                 display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 7,
                 background: marketTab === "modules" ? "var(--surface-2)" : "transparent",
@@ -640,7 +649,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
             <div style={{ height: 1, background: "var(--border)", margin: "12px 10px" }} />
 
             <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "0 10px 6px" }}>Compliance</div>
-            <button onClick={() => { setMarketTab("compliance"); router.replace("/marketplace?tab=compliance") }}
+            <button onClick={() => { setMarketTab("compliance"); router.replace("/registry?tab=compliance") }}
               style={{
                 display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 7,
                 background: marketTab === "compliance" ? "var(--surface-2)" : "transparent",
@@ -655,7 +664,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
             <div style={{ height: 1, background: "var(--border)", margin: "12px 10px" }} />
 
             <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", padding: "0 10px 6px" }}>Connect</div>
-            <button onClick={() => { setMarketTab("mcp"); router.replace("/marketplace?tab=mcp") }}
+            <button onClick={() => { setMarketTab("mcp"); router.replace("/registry?tab=mcp") }}
               style={{
                 display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: 7,
                 background: marketTab === "mcp" ? "var(--surface-2)" : "transparent",
@@ -693,10 +702,10 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
                       </span>
                       <div>
                         <h3 style={{ fontSize: 15, fontWeight: 650, color: "var(--text)", margin: 0 }}>
-                          <a href={`/marketplace/${pack.id}`} style={{ color: "inherit", textDecoration: "none" }}>{pack.name}</a>
+                          <a href={`/registry/${pack.id}`} style={{ color: "inherit", textDecoration: "none" }}>{pack.name}</a>
                         </h3>
                         <p style={{ fontSize: 12.5, color: "var(--text-3)", margin: "3px 0 0" }}>{pack.subtitle}</p>
-                        <a href={`/marketplace/${pack.id}`} style={{ display: "inline-block", marginTop: 4, fontSize: 11, color: "var(--accent-text)" }}>View rules →</a>
+                        <a href={`/registry/${pack.id}`} style={{ display: "inline-block", marginTop: 4, fontSize: 11, color: "var(--accent-text)" }}>View rules →</a>
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>

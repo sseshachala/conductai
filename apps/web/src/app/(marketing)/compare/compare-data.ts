@@ -81,7 +81,7 @@ export const TOOLS = [
       "Expensive, priced for enterprise and power users",
       "Black box, limited visibility into what the agent is doing step-by-step",
       "No visual workflow editor, you describe tasks in natural language only",
-      "No playbook marketplace or pre-built agent library",
+      "No playbook registry or pre-built agent library",
       "Autonomy without guardrails can be risky on production repos",
       "No multi-agent orchestration or approval gate primitives",
     ],
@@ -220,7 +220,7 @@ export const TOOLS = [
     tradeoffs: [
       "Runtime layer only, no workflow orchestration, playbooks, or trigger logic",
       "No event-driven automation, sessions are user-initiated, not triggered by GitHub labels or webhooks",
-      "No pre-built playbooks or agent logic marketplace",
+      "No pre-built playbooks or agent logic registry",
       "No multi-block DAG orchestration, logic gates, or approval flow builder",
       "No Slack-native output or incident response features",
       "Primarily a CLI and browser product, no visual workflow canvas",

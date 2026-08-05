@@ -1012,7 +1012,7 @@ function FooterCTASection() {
           Sign in to Conduct →
         </a>
         <a
-          href="/marketplace"
+          href="/registry"
           className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-6 py-3 text-sm font-semibold text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all"
         >
           Browse playbooks →

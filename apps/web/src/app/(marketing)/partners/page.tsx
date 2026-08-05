@@ -188,7 +188,7 @@ function WhyPartnerSection() {
 
 function WhatYouGetSection() {
   const items = [
-    { icon: "🚀", title: "Full platform access", desc: "Every feature. Guard, Secure, Workflows, the marketplace, and the canvas, available to you and your team for delivery and demo." },
+    { icon: "🚀", title: "Full platform access", desc: "Every feature. Guard, Secure, Workflows, the registry, and the canvas, available to you and your team for delivery and demo." },
     { icon: "📚", title: "Implementation playbooks", desc: "The same runbooks we use internally to deploy governance across engineering teams. Adapted for partner delivery." },
     { icon: "🤝", title: "Joint go-to-market", desc: "Co-marketing, case studies, speaking opportunities, and introductions to our network. We build pipeline together." },
     { icon: "🛠️", title: "Technical support", desc: "Direct line to the Conduct engineering team. For technical questions, custom integrations, and edge cases in client deployments." },
