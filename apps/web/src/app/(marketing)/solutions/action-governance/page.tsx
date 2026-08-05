@@ -3,7 +3,7 @@ import { CtaLink } from "@/components/marketing/CtaLink"
 export const metadata = {
   title: "Action Governance for business agents | Conduct",
   description:
-    "Capability is not authority. Guard sits between your agent and its action tools, checking every refund, cancellation, account update, and commitment against the current policy before the action runs.",
+    "Your agents call the tool. Conduct decides if the tool runs. Guard sits between the agent and every refund, cancellation, account update, and commitment, checking each call against the current policy before the action commits.",
 }
 
 export default function ActionGovernancePage() {
@@ -27,8 +27,8 @@ function HeroSection() {
         For CX, ops, and platform teams shipping business agents
       </div>
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-        Capability is not{" "}
-        <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">authority.</span>
+        What your agent does.{" "}
+        <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Not just what it can.</span>
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
         An agent that answers questions is a search box with a hallucination risk. An agent that issues
