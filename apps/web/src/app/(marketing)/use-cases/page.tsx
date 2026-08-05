@@ -87,8 +87,7 @@ const CASES: UseCase[] = [
     integrations:
       "Semgrep, Trivy, Snyk, Gitleaks, GitHub Advanced Security. Any scanner that produces SARIF or JSON.",
     ctaLabel: "Install Security Loop",
-    ctaHref: "/secure",
-    note: "Direct-to-app link today. A dedicated /solutions/security-loop landing is on the roadmap.",
+    ctaHref: "/solutions/security-loop",
   },
   {
     n: "04",
@@ -211,7 +210,7 @@ const CASES: UseCase[] = [
     metrics: "Actions above threshold. Human handoffs per week. Out-of-policy attempts. Median handoff time.",
     integrations: "Any agent framework (Sierra, LangChain, custom). Any action API (Stripe, Zendesk, Salesforce, internal tools).",
     ctaLabel: "Gate an action tool",
-    ctaHref: "/docs#action-tools",
+    ctaHref: "/solutions/action-governance",
   },
 ]
 
