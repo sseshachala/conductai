@@ -18,9 +18,9 @@ export default function BlogIndex() {
     },
     {
       slug: "fix-this-code",
-      title: "Fix this code: three words that changed AI security.",
-      excerpt: "On June 12, the US government shut down two Anthropic models over a three-word prompt. The lesson isn't about the model. It's about who's watching what the AI is allowed to do.",
-      date: "July 25, 2026",
+      title: "Fix this code: the framing gap behind an 18-day model shutdown.",
+      excerpt: "Fable 5 returned after an 18-day shutdown. The lasting lesson is how ordinary coding prompts can cross a safeguard boundary—and why enterprises need model and intent governance.",
+      date: "Updated August 7, 2026",
       tag: "Security",
       tagColor: "text-red-700 bg-red-50 border-red-200",
     },
