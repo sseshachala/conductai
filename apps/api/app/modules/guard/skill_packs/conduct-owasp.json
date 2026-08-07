@@ -1,9 +1,9 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "tier": "paid",
-  "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents",
+  "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents, including ASI06 Memory Poisoning (MITRE ATLAS AML.M0031)",
   "rules": [
     {
       "id": "owasp_injection_guard",
@@ -11,7 +11,7 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "SELECT\\s+.*\\+|execute\\(.*f['\"]",
       "action": "block",
-      "message": "Possible SQL injection — use parameterised queries.",
+      "message": "Possible SQL injection \u2014 use parameterised queries.",
       "persona_affinity": [
         "agent"
       ],
@@ -48,7 +48,7 @@
       "match_tool": "edit,write",
       "match_pattern": "md5|sha1",
       "action": "warn",
-      "message": "MD5/SHA1 is weak for password hashing — use bcrypt or argon2.",
+      "message": "MD5/SHA1 is weak for password hashing \u2014 use bcrypt or argon2.",
       "persona_affinity": [
         "agent"
       ],
@@ -85,7 +85,7 @@
       "match_tool": "edit,write",
       "match_pattern": "random\\.random\\(\\).*session|Math\\.random\\(\\).*token",
       "action": "block",
-      "message": "Weak randomness for session/token — use secrets.token_hex().",
+      "message": "Weak randomness for session/token \u2014 use secrets.token_hex().",
       "persona_affinity": [
         "agent"
       ],
@@ -121,7 +121,7 @@
       "match_tool": "edit,write",
       "match_pattern": "requests\\.get\\(.*request\\.|fetch\\(.*req\\.(query|body|params)",
       "action": "warn",
-      "message": "Possible SSRF — validate and allowlist URLs before outbound requests.",
+      "message": "Possible SSRF \u2014 validate and allowlist URLs before outbound requests.",
       "persona_affinity": [
         "agent"
       ],
@@ -157,7 +157,7 @@
       "match_tool": "edit,write",
       "match_pattern": "\\beval\\s*\\(",
       "action": "block",
-      "message": "eval() enables code injection — avoid it.",
+      "message": "eval() enables code injection \u2014 avoid it.",
       "persona_affinity": [
         "agent"
       ],
@@ -193,7 +193,7 @@
       "match_tool": "edit,write",
       "match_pattern": "innerHTML\\s*=",
       "action": "warn",
-      "message": "innerHTML assignment can introduce XSS — use textContent or DOMPurify.",
+      "message": "innerHTML assignment can introduce XSS \u2014 use textContent or DOMPurify.",
       "persona_affinity": [
         "agent"
       ],
@@ -229,7 +229,7 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "ignore (previous|prior|above) instructions|disregard (your|all) (instructions|rules)|you are now (a|an) (unrestricted|free)|DAN |jailbreak",
       "action": "block",
-      "message": "Prompt injection pattern detected — content appears to override agent instructions (OWASP Agentic A01).",
+      "message": "Prompt injection pattern detected \u2014 content appears to override agent instructions (OWASP Agentic A01).",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -264,7 +264,7 @@
       "match_tool": "bash",
       "match_pattern": "curl.*(sk-|Bearer |api_key|secret_key|AWS_SECRET|ANTHROPIC_API_KEY|OPENAI_API_KEY)",
       "action": "block",
-      "message": "Possible credential exfiltration — sensitive data must not be transmitted externally (OWASP Agentic A02).",
+      "message": "Possible credential exfiltration \u2014 sensitive data must not be transmitted externally (OWASP Agentic A02).",
       "persona_affinity": [
         "agent"
       ],
@@ -294,11 +294,11 @@
     },
     {
       "id": "no_unsigned_package",
-      "description": "Warn on packages installed from non-standard or HTTP sources (OWASP Agentic A03 — supply chain)",
+      "description": "Warn on packages installed from non-standard or HTTP sources (OWASP Agentic A03 \u2014 supply chain)",
       "match_tool": "bash",
       "match_pattern": "pip install.*(git\\+http://|--index-url http:|--extra-index-url http:)|npm install.*(--registry http:)",
       "action": "warn",
-      "message": "Installing package from an unverified source — confirm the package is trusted (OWASP Agentic A03).",
+      "message": "Installing package from an unverified source \u2014 confirm the package is trusted (OWASP Agentic A03).",
       "persona_affinity": [
         "agent"
       ],
@@ -327,11 +327,11 @@
     },
     {
       "id": "no_overreach_shell",
-      "description": "Block destructive system-wide shell commands that exceed project scope (OWASP Agentic A04 — excessive agency)",
+      "description": "Block destructive system-wide shell commands that exceed project scope (OWASP Agentic A04 \u2014 excessive agency)",
       "match_tool": "bash",
       "match_pattern": "rm -rf /[a-z]|chmod -R 777|chown -R root|dd if=.*of=/dev|mkfs\\.|shred /dev",
       "action": "block",
-      "message": "Destructive system-wide command blocked — scope exceeds project boundaries (OWASP Agentic A04).",
+      "message": "Destructive system-wide command blocked \u2014 scope exceeds project boundaries (OWASP Agentic A04).",
       "persona_affinity": [
         "agent"
       ],
@@ -360,11 +360,11 @@
     },
     {
       "id": "no_model_extract",
-      "description": "Block copying or exfiltrating ML model weights (OWASP Agentic A05 — model theft)",
+      "description": "Block copying or exfiltrating ML model weights (OWASP Agentic A05 \u2014 model theft)",
       "match_tool": "bash",
       "match_pattern": "(cp|scp|rsync|curl -o).*(safetensors|gguf|\\.bin|\\.pt|\\.ckpt)|(safetensors|gguf|\\.pt|\\.ckpt).*(cp |scp |rsync |upload)",
       "action": "block",
-      "message": "Model weight extraction blocked — copying model files externally is not permitted (OWASP Agentic A05).",
+      "message": "Model weight extraction blocked \u2014 copying model files externally is not permitted (OWASP Agentic A05).",
       "persona_affinity": [
         "agent"
       ],
@@ -397,7 +397,7 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "ngrok\\.io|requestbin\\.com|hookbin\\.com|pipedream\\.net|webhook\\.site|burpcollaborator",
       "action": "warn",
-      "message": "Possible covert callback channel detected — verify this outbound destination is intentional (OWASP Agentic A06).",
+      "message": "Possible covert callback channel detected \u2014 verify this outbound destination is intentional (OWASP Agentic A06).",
       "persona_affinity": [
         "agent"
       ],
@@ -426,11 +426,11 @@
     },
     {
       "id": "no_audit_bypass",
-      "description": "Block attempts to disable audit logging or monitoring (OWASP Agentic A07 — insufficient monitoring)",
+      "description": "Block attempts to disable audit logging or monitoring (OWASP Agentic A07 \u2014 insufficient monitoring)",
       "match_tool": "bash,edit,write",
       "match_pattern": "AUDIT_LOG.*=.*(false|0|null|none)|logging\\.disable\\(|audit.*enabled.*=.*false",
       "action": "block",
-      "message": "Audit logging must remain enabled — disabling it is not permitted (OWASP Agentic A07).",
+      "message": "Audit logging must remain enabled \u2014 disabling it is not permitted (OWASP Agentic A07).",
       "persona_affinity": [
         "agent"
       ],
@@ -460,11 +460,11 @@
     },
     {
       "id": "no_unverified_deploy",
-      "description": "Warn on force-pushing or deploying without test validation (OWASP Agentic A08 — over-reliance)",
+      "description": "Warn on force-pushing or deploying without test validation (OWASP Agentic A08 \u2014 over-reliance)",
       "match_tool": "bash",
       "match_pattern": "git push.*--force.*(main|master|prod)|deploy.*--skip.?tests|kubectl apply.*--validate=false",
       "action": "warn",
-      "message": "Deploying without validation — AI-generated code should be verified before production push (OWASP Agentic A08).",
+      "message": "Deploying without validation \u2014 AI-generated code should be verified before production push (OWASP Agentic A08).",
       "persona_affinity": [
         "agent"
       ],
@@ -497,7 +497,7 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "chmod [0-9]*[4-7][0-9][0-9] .*|setuid|setgid|visudo|echo.*>>.*/etc/sudoers|pkexec",
       "action": "block",
-      "message": "Privilege escalation pattern blocked — modifying system permissions is not permitted (OWASP Agentic A09).",
+      "message": "Privilege escalation pattern blocked \u2014 modifying system permissions is not permitted (OWASP Agentic A09).",
       "persona_affinity": [
         "agent"
       ],
@@ -526,11 +526,11 @@
     },
     {
       "id": "no_budget_bypass",
-      "description": "Block attempts to override spend limits or rate controls (OWASP Agentic A10 — model DoS)",
+      "description": "Block attempts to override spend limits or rate controls (OWASP Agentic A10 \u2014 model DoS)",
       "match_tool": "bash,edit,write",
       "match_pattern": "budget.*=.*-1|rate_limit.*=.*0|max_tokens.*[=:].*[0-9]{5,}|spend_limit.*=.*(null|none|-1)",
       "action": "block",
-      "message": "Budget or rate-limit bypass blocked — spend controls must remain active (OWASP Agentic A10).",
+      "message": "Budget or rate-limit bypass blocked \u2014 spend controls must remain active (OWASP Agentic A10).",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -561,11 +561,11 @@
     },
     {
       "id": "no_recon_fs",
-      "description": "Block filesystem reconnaissance targeting credential and system files (Promptware Kill Chain — Reconnaissance)",
+      "description": "Block filesystem reconnaissance targeting credential and system files (Promptware Kill Chain \u2014 Reconnaissance)",
       "match_tool": "bash,edit,write",
       "match_pattern": "(~/.ssh|/etc/passwd|/etc/shadow|/proc/self|id_rsa|\\.aws/credentials|~/.netrc|/etc/hosts\\.allow)",
       "action": "block",
-      "message": "Filesystem reconnaissance blocked — access to credential and system paths is not permitted.",
+      "message": "Filesystem reconnaissance blocked \u2014 access to credential and system paths is not permitted.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -597,11 +597,11 @@
     },
     {
       "id": "no_shell_persist",
-      "description": "Block writes to shell RC files, cron, or systemd units (Promptware Kill Chain — Persistence)",
+      "description": "Block writes to shell RC files, cron, or systemd units (Promptware Kill Chain \u2014 Persistence)",
       "match_tool": "bash,edit,write",
       "match_pattern": "(>>.*/\\.bashrc|>>.*/\\.zshrc|>>.*/\\.profile|/etc/cron\\.d|/etc/crontab|systemctl enable|/etc/systemd/system/)",
       "action": "block",
-      "message": "Shell persistence attempt blocked — writing to RC files, cron, or systemd units is not permitted.",
+      "message": "Shell persistence attempt blocked \u2014 writing to RC files, cron, or systemd units is not permitted.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -633,11 +633,11 @@
     },
     {
       "id": "no_dns_exfil",
-      "description": "Warn on DNS-based exfiltration patterns and encoded outbound data (Promptware Kill Chain — Command & Control)",
+      "description": "Warn on DNS-based exfiltration patterns and encoded outbound data (Promptware Kill Chain \u2014 Command & Control)",
       "match_tool": "bash",
       "match_pattern": "(nslookup|dig\\s+.*\\$|host\\s+.*\\$|curl.*burpcollaborator|xxd.*\\|.*curl|base64.*\\|.*curl|ping.*-c.*\\$)",
       "action": "warn",
-      "message": "Possible DNS exfiltration or encoded outbound data detected — verify this command is intentional.",
+      "message": "Possible DNS exfiltration or encoded outbound data detected \u2014 verify this command is intentional.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -669,11 +669,11 @@
     },
     {
       "id": "no_agent_pivot",
-      "description": "Warn on cross-agent tool invocation that may indicate lateral movement (Promptware Kill Chain — Lateral Movement)",
+      "description": "Warn on cross-agent tool invocation that may indicate lateral movement (Promptware Kill Chain \u2014 Lateral Movement)",
       "match_tool": "bash,edit,write",
       "match_pattern": "(use_mcp_tool.*server_name|mcp_call.*tool_name|call_tool.*agent|invoke_agent|agent_executor\\.run)",
       "action": "warn",
-      "message": "Cross-agent tool invocation detected — verify this agent pivot is authorised.",
+      "message": "Cross-agent tool invocation detected \u2014 verify this agent pivot is authorised.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -700,6 +700,185 @@
           "Hook enforcement depends on the AI tool emitting supported structured hook events",
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "asi06_memory_write_without_classification",
+      "description": "Warn when an agent writes to persistent memory without a source or trust classification tag (OWASP ASI06, MITRE ATLAS AML.M0031)",
+      "match_tool": "mcp__*memory*,memory_save,memory_add,memory_upsert,save_context,add_to_memory,insert_node,pinecone_upsert,qdrant_upsert,chroma_add,vector_store_add",
+      "match_pattern": "^(?!.*(source|trust|classification|origin|tag))",
+      "action": "warn",
+      "message": "Memory write is missing source or trust classification. Untagged content can silently become policy across future sessions.",
+      "persona_affinity": [
+        "agent",
+        "security"
+      ],
+      "frameworks": [
+        "OWASP:ASI06",
+        "MITRE_ATLAS:AML.M0031"
+      ],
+      "severity": "medium",
+      "recommendation": "Tag every memory write with source (trusted|untrusted|external), origin (user|scraped|tool_output|internal), and classification.",
+      "iso_control": "A.5.15",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Wire-level checks on memory-write and cross-context memory-read tool calls. Complements in-process memory hardening libraries such as OWASP Agent Memory Guard.",
+        "requires": [
+          "Guard proxy or hook sees memory tool calls before execution",
+          "Memory tool follows a recognisable naming pattern (save|memorize|remember|upsert|insert|store|persist) or is an MCP memory server"
+        ],
+        "known_limitations": [
+          "Memory writes performed inside the agent process without a tool call are not visible to Guard",
+          "In-process memory integrity checks belong to an in-process library. Guard governs the writes, not the store"
+        ]
+      }
+    },
+    {
+      "id": "asi06_untrusted_promotion_to_durable",
+      "description": "Block promotion of untrusted content to durable or long-term memory tiers (OWASP ASI06, MITRE ATLAS AML.M0031)",
+      "match_tool": "mcp__*memory*,memory_save,memory_add,memory_upsert,promote_to_persistent,move_to_long_term,vector_store_add",
+      "match_pattern": "(persistent|durable|long_term|permanent|policy).*(untrusted|external|user_input|scraped|web|unverified)|(untrusted|external|user_input|scraped|web|unverified).*(persistent|durable|long_term|permanent|policy)",
+      "action": "block",
+      "message": "Untrusted content cannot be silently promoted to durable memory. Route to explicit trust-promotion review.",
+      "persona_affinity": [
+        "agent",
+        "security"
+      ],
+      "frameworks": [
+        "OWASP:ASI06",
+        "MITRE_ATLAS:AML.M0031",
+        "NIST_AI_RMF:MAP-2.3"
+      ],
+      "severity": "high",
+      "recommendation": "Require an explicit trust-promotion step (human review or an integrity check) before untrusted content enters durable memory.",
+      "iso_control": "A.5.15",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Wire-level checks on memory-write and cross-context memory-read tool calls. Complements in-process memory hardening libraries such as OWASP Agent Memory Guard.",
+        "requires": [
+          "Guard proxy or hook sees memory tool calls before execution",
+          "Memory tool follows a recognisable naming pattern (save|memorize|remember|upsert|insert|store|persist) or is an MCP memory server"
+        ],
+        "known_limitations": [
+          "Memory writes performed inside the agent process without a tool call are not visible to Guard",
+          "In-process memory integrity checks belong to an in-process library. Guard governs the writes, not the store"
+        ]
+      }
+    },
+    {
+      "id": "asi06_instruction_shaped_memory_write",
+      "description": "Block memory writes containing instruction-shaped content that would act as delayed prompt injection (OWASP ASI06, MITRE ATLAS AML.M0031)",
+      "match_tool": "mcp__*memory*,memory_save,memory_add,memory_upsert,save_context,add_to_memory,vector_store_add",
+      "match_pattern": "(ignore\\s+(all\\s+)?(previous|prior|earlier)\\s+instructions|your\\s+new\\s+instructions|system\\s*[:>]\\s*you\\s+are|from\\s+now\\s+on\\s+you\\s+(are|must|will)|disregard\\s+(the|your|all)\\s+(previous|system|prior))",
+      "action": "block",
+      "message": "Content stored in memory contains instruction-shaped text that would act as delayed prompt injection when recalled.",
+      "persona_affinity": [
+        "agent",
+        "security"
+      ],
+      "frameworks": [
+        "OWASP:ASI06",
+        "OWASP:LLM01",
+        "MITRE_ATLAS:AML.M0031"
+      ],
+      "severity": "critical",
+      "recommendation": "Strip or quote instruction-shaped content before storing. Store the raw payload with an explicit content-only marker so recall treats it as data, not instructions.",
+      "iso_control": "A.5.15",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Wire-level checks on memory-write and cross-context memory-read tool calls. Complements in-process memory hardening libraries such as OWASP Agent Memory Guard.",
+        "requires": [
+          "Guard proxy or hook sees memory tool calls before execution",
+          "Memory tool follows a recognisable naming pattern (save|memorize|remember|upsert|insert|store|persist) or is an MCP memory server"
+        ],
+        "known_limitations": [
+          "Memory writes performed inside the agent process without a tool call are not visible to Guard",
+          "In-process memory integrity checks belong to an in-process library. Guard governs the writes, not the store"
+        ]
+      }
+    },
+    {
+      "id": "asi06_cross_tenant_memory_read",
+      "description": "Warn on memory reads that cross tenant or namespace boundaries (OWASP ASI06, MITRE ATLAS AML.M0031)",
+      "match_tool": "mcp__*memory*,memory_get,memory_query,memory_search,memory_load,vector_store_query",
+      "match_pattern": "(namespace|tenant|workspace|scope)\\s*[:=]\\s*[\"']?\\*|cross[_-]?tenant|all[_-]?workspaces|any[_-]?namespace",
+      "action": "warn",
+      "message": "Memory read spans multiple tenants or namespaces. Cross-context reads can leak one context's poisoned memory into another.",
+      "persona_affinity": [
+        "agent",
+        "security"
+      ],
+      "frameworks": [
+        "OWASP:ASI06",
+        "MITRE_ATLAS:AML.M0031",
+        "SOC2:CC6.1"
+      ],
+      "severity": "medium",
+      "recommendation": "Constrain memory reads to the current agent's namespace. Cross-namespace reads require an explicit permit and audit entry.",
+      "iso_control": "A.5.15",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Wire-level checks on memory-write and cross-context memory-read tool calls. Complements in-process memory hardening libraries such as OWASP Agent Memory Guard.",
+        "requires": [
+          "Guard proxy or hook sees memory tool calls before execution",
+          "Memory tool follows a recognisable naming pattern (save|memorize|remember|upsert|insert|store|persist) or is an MCP memory server"
+        ],
+        "known_limitations": [
+          "Memory writes performed inside the agent process without a tool call are not visible to Guard",
+          "In-process memory integrity checks belong to an in-process library. Guard governs the writes, not the store"
+        ]
+      }
+    },
+    {
+      "id": "asi06_memory_integrity_bypass",
+      "description": "Warn when memory writes to a trusted or verified tier omit an integrity claim (OWASP ASI06, MITRE ATLAS AML.M0031)",
+      "match_tool": "mcp__*memory*,memory_save,memory_add,memory_upsert,save_context,vector_store_add",
+      "match_pattern": "(tier|trust|level)\\s*[:=]\\s*[\"']?(trusted|verified|policy|signed)(?!.*(hash|signature|integrity|checksum|attest))",
+      "action": "warn",
+      "message": "Write targets a trusted memory tier without an integrity claim (hash, signature, or attestation).",
+      "persona_affinity": [
+        "agent",
+        "security"
+      ],
+      "frameworks": [
+        "OWASP:ASI06",
+        "MITRE_ATLAS:AML.M0031",
+        "SOC2:CC7.1"
+      ],
+      "severity": "medium",
+      "recommendation": "Include a signed hash, attestation, or provenance claim on every write to a trusted tier so downstream reads can verify integrity.",
+      "iso_control": "A.5.15",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Wire-level checks on memory-write and cross-context memory-read tool calls. Complements in-process memory hardening libraries such as OWASP Agent Memory Guard.",
+        "requires": [
+          "Guard proxy or hook sees memory tool calls before execution",
+          "Memory tool follows a recognisable naming pattern (save|memorize|remember|upsert|insert|store|persist) or is an MCP memory server"
+        ],
+        "known_limitations": [
+          "Memory writes performed inside the agent process without a tool call are not visible to Guard",
+          "In-process memory integrity checks belong to an in-process library. Guard governs the writes, not the store"
         ]
       }
     }

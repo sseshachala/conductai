@@ -152,6 +152,12 @@ function SolutionsDropdown() {
               <p className="text-xs text-stone-400">Policy in front of every action</p>
             </div>
           </a>
+          <a href="/solutions/memory-hardening" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div>
+              <p className="font-semibold">Memory hardening</p>
+              <p className="text-xs text-stone-400">OWASP ASI06 at the wire</p>
+            </div>
+          </a>
 
           <div className="my-1 border-t border-stone-100" />
 
@@ -863,7 +869,7 @@ function PageFooter() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
               { heading: "Product", links: [["Team OS", "/team-os"], ["Guard", "/guard"], ["Use cases", "/use-cases"], ["Registry", "/registry"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
-              { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Security Loop", "/solutions/security-loop"], ["Action governance", "/solutions/action-governance"], ["All use cases", "/use-cases"], ["Deployment options", "/deployment"]] as [string, string][] },
+              { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Security Loop", "/solutions/security-loop"], ["Action governance", "/solutions/action-governance"], ["Memory hardening", "/solutions/memory-hardening"], ["All use cases", "/use-cases"], ["Deployment options", "/deployment"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], /* ["Partners", "/partners"], */ ["Blog", "/blog"]] as [string, string][] },
               { heading: "Resources", links: [["Docs", "/docs"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
               { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
