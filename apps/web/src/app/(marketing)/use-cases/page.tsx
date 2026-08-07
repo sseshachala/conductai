@@ -237,10 +237,13 @@ function Hero() {
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
         Where Guard already runs, in production.
       </h1>
-      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed">
+      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-4">
         Nine use cases. Every one is a shipped surface. Where a surface is partial, we say so on the card.
         Where a link goes straight to the app, it will route anonymous visitors through sign-in and drop them
         back where they were headed.
+      </p>
+      <p className="text-base text-stone-500 max-w-2xl mx-auto leading-relaxed italic">
+        Your identity provider tells you who your agents are. Guard governs what they do.
       </p>
     </section>
   )

@@ -197,6 +197,9 @@ function HeroSection() {
       <p className="text-xl text-stone-500 max-w-3xl mx-auto leading-relaxed mb-6">
         Your agent can call any tool. Conduct decides which calls actually run. Across Claude Code, Claude.ai, Codex, ChatGPT, Cursor, Copilot, Windsurf.
       </p>
+      <p className="text-base text-stone-500 max-w-3xl mx-auto leading-relaxed mb-8 italic">
+        Your identity provider tells you who your agents are. Guard governs what they do.
+      </p>
       <p className="font-mono text-sm sm:text-base text-stone-700 max-w-3xl mx-auto mb-8">
         What the agent tried. What Guard allowed. What the reviewer signed. What the chain proves.
       </p>
