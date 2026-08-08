@@ -17,6 +17,10 @@ from app.modules.guard.cedar_adapter.mapper import (
     cedar_json_to_rule,
     cedar_json_bundle_to_pack,
 )
+from app.modules.guard.cedar_adapter.exporter import (
+    rule_to_cedar_text,
+    pack_to_cedar_text,
+)
 
 __all__ = [
     "CedarAdapterError",
@@ -25,4 +29,6 @@ __all__ = [
     "CedarMappingAmbiguity",
     "cedar_json_to_rule",
     "cedar_json_bundle_to_pack",
+    "rule_to_cedar_text",
+    "pack_to_cedar_text",
 ]

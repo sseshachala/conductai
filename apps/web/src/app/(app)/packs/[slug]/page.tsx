@@ -6,6 +6,7 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { API } from "@/lib/api/client"
 
 interface PackRule {
   id: string
@@ -189,23 +190,44 @@ export default function PackDetailPage() {
               </p>
             )}
           </div>
-          <button
-            onClick={togglePack}
-            disabled={busy}
-            style={{
-              padding: "10px 18px",
-              borderRadius: 8,
-              border: "none",
-              background: pack.installed ? "var(--surface-2)" : "var(--text-1)",
-              color: pack.installed ? "var(--text-1)" : "white",
-              cursor: busy ? "not-allowed" : "pointer",
-              fontSize: 13,
-              fontWeight: 600,
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            {busy ? "…" : pack.installed ? "Uninstall" : "Install"}
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <a
+              href={`${API}/guard/registry/packs/${pack.slug}/cedar`}
+              target="_blank"
+              rel="noopener"
+              title="Render this pack as Cedar text syntax"
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--text-1)",
+                textDecoration: "none",
+                fontSize: 12.5,
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+              }}
+            >
+              View as Cedar
+            </a>
+            <button
+              onClick={togglePack}
+              disabled={busy}
+              style={{
+                padding: "10px 18px",
+                borderRadius: 8,
+                border: "none",
+                background: pack.installed ? "var(--surface-2)" : "var(--text-1)",
+                color: pack.installed ? "var(--text-1)" : "white",
+                cursor: busy ? "not-allowed" : "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              {busy ? "…" : pack.installed ? "Uninstall" : "Install"}
+            </button>
+          </div>
         </header>
 
         <section style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", background: "var(--surface-1)" }}>
