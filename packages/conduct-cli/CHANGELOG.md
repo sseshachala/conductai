@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.8.8] - 2026-08-08
+
+### Fixed (#1048)
+- Pretouse hook: doc-sensitive rules (IRS 1075, ISO 42001 responsible-use, NIST measure/govern-doc, EU AI PII) no longer false-fire on developer source paths (`apps/api/`, `packages/conduct-cli/`, `docs/`, etc.)
+- Pretouse hook reads a rule's `except_paths` field for declarative per-rule exclusions
+- ISO 42001 `responsible-use` pattern narrowed to require LLM invocation proximity (`anthropic.messages.create`, `openai.chat.completions.create`, etc.) instead of matching any occurrence of the word "model"
+- Block/warn messages now prepend `[rule_id]` so users know which rule fired
+- Guard sync propagates `except_paths` and `source_pack` fields to the client policy
+
+### Added
+- `conduct import-cedar <file>` — import a Cedar policy bundle as a Guard pack; `--install` flag installs the pack in one step
+
+---
+
 ## [0.7.3] - 2026-07-06
 
 ### Fixed
