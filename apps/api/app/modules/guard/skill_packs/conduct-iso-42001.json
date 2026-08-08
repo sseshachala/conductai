@@ -42,11 +42,18 @@
     },
     {
       "id": "iso42001-responsible-use",
-      "description": "Block use of AI model for purposes inconsistent with its declared intended use (ISO 42001 Clause 8.6)",
+      "description": "Block agent calling an LLM API with an explicit purpose override intent (ISO 42001 Clause 8.6)",
       "match_tool": "edit,write",
-      "match_pattern": "(repurpose|off.?label|override.?purpose|change.?intended.?use).*(model|ai|agent|assistant)|use.*model.*(outside|beyond).*(scope|intended|approved|documented)",
+      "match_pattern": "(anthropic\\.(messages|completions)\\.create|openai\\.(chat|completions)\\.create|client\\.(chat|messages)\\.create|litellm\\.completion|ai_sdk\\.generateText).*(system.*(?:repurpose|off.?label|override.?purpose)|repurpose|off.?label|override.?purpose)",
       "action": "block",
-      "message": "AI system used outside declared intended purpose — ISO 42001 Clause 8.6 requires responsible AI use within documented scope.",
+      "message": "LLM invocation appears to override the model's declared intended purpose. ISO 42001 Clause 8.6 requires responsible use within documented scope.",
+      "except_paths": [
+        "/docs/",
+        "/apps/api/app/modules/guard/",
+        "/packages/conduct-cli/src/conduct_cli/hooks/",
+        "/apps/api/tests/",
+        "/apps/api/app/modules/agent_identity/"
+      ],
       "persona_affinity": [
         "agent",
         "proxy"
