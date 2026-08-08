@@ -1,0 +1,60 @@
+[
+  {
+    "effect": "permit",
+    "principal": { "op": "is", "entity_type": "SecurityAdmin" },
+    "action": { "op": "in", "entities": [{ "id": "Read" }, { "id": "Grep" }] },
+    "conditions": [],
+    "annotations": {
+      "id": "audit-security-reads",
+      "description": "Audit all security reviewer read operations",
+      "advice": "audit"
+    }
+  },
+  {
+    "effect": "forbid",
+    "principal": { "op": "is", "entity_type": "Developer" },
+    "action": { "op": "==", "entity": { "id": "Bash" } },
+    "conditions": [
+      {
+        "kind": "when",
+        "body": {
+          "matches": [
+            { ".": { "left": { "Var": "context" }, "attr": "prompt" } },
+            { "Value": "delete\\s+from|drop\\s+table" }
+          ]
+        }
+      }
+    ],
+    "annotations": {
+      "id": "block-destructive-sql",
+      "description": "Block destructive SQL through the shell",
+      "message": "Destructive SQL detected. Route through migration review, not shell.",
+      "severity": "critical",
+      "compliance": ["SOC2:CC7.1", "PCI_DSS:6.5.1"]
+    }
+  },
+  {
+    "effect": "permit",
+    "principal": {},
+    "action": {},
+    "conditions": [
+      {
+        "kind": "when",
+        "body": {
+          ">": [
+            { ".": { "left": { "Var": "context" }, "attr": "tokens_before" } },
+            { "Value": 8000 }
+          ]
+        }
+      }
+    ],
+    "annotations": {
+      "id": "warn-large-context",
+      "description": "Warn on calls with unusually large prior context (potential context pollution)",
+      "message": "Prior context exceeds 8000 tokens. Verify the agent is not accumulating stale state.",
+      "severity": "low",
+      "compliance": "OWASP:ASI06",
+      "advice": "warn"
+    }
+  }
+]
