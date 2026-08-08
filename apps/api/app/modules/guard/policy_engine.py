@@ -144,7 +144,11 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
         for rule in pack.rules:
             if persona not in rule_personas(rule):
                 continue
-            rules[rule["id"]] = dict(rule)
+            body = dict(rule)
+            # #1048: stamp source_pack so downstream (sync response, audit,
+            # debugging) can trace 'which pack put this rule into my cache'.
+            body["source_pack"] = wp.pack_slug
+            rules[rule["id"]] = body
 
     # 1b. merge workspace custom rules on top (workspace-defined wins on rule_id collision)
     customs = (
