@@ -429,7 +429,7 @@ export default function GovernancePage() {
         <header style={{ marginBottom: 24, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: "var(--text-1)" }}>
-              Governance
+              Runtime Governance
             </h1>
             <p style={{ fontSize: 13, color: "var(--text-3)", margin: "4px 0 0" }}>
               Certify your delegation policies, not just individual events. Who authorised this agent to act. Under what rules. What it did. Runtime admissibility states are logged at the execution boundary — every decision is custody proof, not a reconstruction.
