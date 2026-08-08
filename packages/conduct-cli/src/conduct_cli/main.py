@@ -3001,6 +3001,91 @@ def _check_guard_setup(command: str) -> None:
 
 
 
+def cmd_import_cedar(args):
+    """conduct import-cedar <file> --pack-slug X --pack-name Y [--install] [--yes]"""
+    server, workspace, token = _require_auth(args)
+    if not token:
+        print(f"{RED}Not authenticated. Run `conduct login` first.{RESET}")
+        return
+
+    path = Path(args.file)
+    if not path.exists():
+        print(f"{RED}File not found: {path}{RESET}")
+        return
+
+    try:
+        content = json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        print(f"{RED}Invalid JSON in {path}: {e}{RESET}")
+        return
+
+    # Accept either a single policy or a list
+    if isinstance(content, dict):
+        policies = [content]
+    elif isinstance(content, list):
+        policies = content
+    else:
+        print(f"{RED}Expected a Cedar policy object or a list of them; got {type(content).__name__}.{RESET}")
+        return
+
+    body = json.dumps({
+        "format": "cedar_json",
+        "policies": policies,
+        "pack_slug": args.pack_slug,
+        "pack_name": args.pack_name,
+        "pack_version": args.pack_version,
+        "pack_description": args.pack_description,
+        "preview_only": not args.install,
+    }).encode()
+
+    req = urllib.request.Request(
+        f"{server}/guard/registry/import-cedar",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+            "X-Workspace-Id": workspace or "",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            result = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode(errors="replace")
+        try:
+            detail = json.loads(body_text).get("detail", body_text)
+        except Exception:
+            detail = body_text[:400]
+        print(f"{RED}Import failed ({e.code}): {detail}{RESET}")
+        return
+    except Exception as e:
+        print(f"{RED}Request failed: {e}{RESET}")
+        return
+
+    imported = result.get("rules_imported", 0)
+    rejected = result.get("rules_rejected", 0)
+
+    print(f"{BOLD}Cedar policy import{RESET}")
+    print(f"  {GREEN}Rules imported:{RESET} {imported}")
+    if rejected:
+        print(f"  {YELLOW}Rules rejected:{RESET} {rejected}")
+        for rej in result.get("rejections") or []:
+            err = rej.get("error", {}) or {}
+            print(f"    [{rej.get('index')}] {err.get('error', 'Error')}: {err.get('message', '')}")
+            if err.get("hint"):
+                print(f"        hint: {err['hint']}")
+
+    if args.install:
+        if result.get("installed"):
+            print(f"\n{GREEN}Installed:{RESET} {args.pack_slug}@{args.pack_version} ({imported} rule(s))")
+        else:
+            print(f"\n{YELLOW}Not installed{RESET} (no rules survived conversion)")
+    else:
+        print(f"\nThis was a preview. Re-run with --install to create the pack in your workspace.")
+
+
 def cmd_skill(args):
     """conduct skill list | install <slug> | uninstall <slug>"""
     skill_command = getattr(args, "skill_command", None)
@@ -3219,6 +3304,19 @@ def main():
     skill_uninstall_p = skill_sub.add_parser("uninstall", help="Uninstall a skill pack")
     skill_uninstall_p.add_argument("slug", help="Pack slug, e.g. conduct-owasp")
 
+    # conduct import-cedar
+    ic_p = sub.add_parser(
+        "import-cedar",
+        help="Import Cedar policies (Cedar JSON format) as a Guard pack",
+    )
+    ic_p.add_argument("file", help="Path to a .json file containing a Cedar policy or a list of Cedar policies")
+    ic_p.add_argument("--pack-slug", required=True, help="Slug for the new pack (e.g. my-cedar-import)")
+    ic_p.add_argument("--pack-name", required=True, help="Human-readable pack name")
+    ic_p.add_argument("--pack-version", default="1.0.0", help="Pack version (default: 1.0.0)")
+    ic_p.add_argument("--pack-description", default=None, help="Optional description")
+    ic_p.add_argument("--install", action="store_true", help="Install immediately (default is preview only)")
+    ic_p.add_argument("--yes", action="store_true", help="Skip confirmation prompt when installing")
+
     # conduct sync
     sub.add_parser("sync", help="Sync Guard policies (and Security Loop policies if installed)")
 
@@ -3332,6 +3430,8 @@ def main():
             mcp_p.print_help()
     elif args.command == "skill":
         cmd_skill(args)
+    elif args.command == "import-cedar":
+        cmd_import_cedar(args)
     elif args.command == "sync":
         cmd_sync(args)
     elif args.command == "verify":

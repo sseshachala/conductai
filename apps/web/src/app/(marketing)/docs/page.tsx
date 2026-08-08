@@ -90,6 +90,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#how-it-works", label: "Architecture" },
     { href: "#threat-model", label: "Security & threat model" },
     { href: "#action-tools", label: "Gating agent actions" },
+    { href: "#cedar-import", label: "Cedar policy import" },
   ],
   "getting-started": [
     { href: "#overview",     label: "Overview" },
@@ -281,6 +282,41 @@ rules:
           outbound sends. See{" "}
           <a href="?tab=guard#guard-policy-reference" className="text-indigo-600 hover:underline">Policy reference</a>{" "}
           for the full rule grammar.
+        </p>
+      </section>
+      <section id="cedar-import" className="scroll-mt-8">
+        <SectionHeading id="cedar-import">Cedar policy import</SectionHeading>
+        <p className="text-stone-600 leading-relaxed mb-4">
+          Guard accepts policies in <a href="https://www.cedarpolicy.com/" target="_blank" rel="noopener" className="text-indigo-600 hover:underline">Cedar</a>,
+          the AWS-blessed open standard used by AWS Verified Permissions and (via Dogwood)
+          Amazon Bedrock AgentCore. Import Cedar policies from your existing IAM stack, and
+          Guard converts them to its native pack format. Runtime evaluation is unchanged.
+        </p>
+        <SubHeading>CLI import</SubHeading>
+        <Pre>{`# Preview
+conduct import-cedar my-policy.json \
+  --pack-slug my-cedar-import \
+  --pack-name "My Cedar Import"
+
+# Install
+conduct import-cedar my-policy.json \
+  --pack-slug my-cedar-import \
+  --pack-name "My Cedar Import" \
+  --install`}</Pre>
+        <SubHeading>Cedar text export</SubHeading>
+        <p className="text-stone-500 text-sm mb-3">
+          Every installed pack renders as Cedar text syntax for readability. Click{" "}
+          <strong>View as Cedar</strong> on any pack detail page in the Registry, or fetch
+          it via the API:
+        </p>
+        <Pre>{`GET /guard/registry/packs/{slug}/cedar
+GET /guard/registry/packs/{slug}/cedar?version=2.2.0`}</Pre>
+        <p className="text-stone-500 text-sm mt-3">
+          See the{" "}
+          <a href="https://github.com/sseshachala/conductai/blob/main/docs/cedar-adapter-usage.md" className="text-indigo-600 hover:underline">
+            full Cedar adapter user guide
+          </a>{" "}
+          for the mapping table, error taxonomy, and runnable examples.
         </p>
       </section>
     </div>

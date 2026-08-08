@@ -308,7 +308,7 @@ DOC_SENSITIVE_RULE_PREFIXES = (
     "nist-measure-error",
     "nist-govern-doc",
     "eu-ai-pii-",
-    "no-" + "env" + "-read",
+    "no-" + "env" + "-read",  # split literal to avoid triggering the pattern itself
 )
 
 # IRS regulatory pack rules also skip on dev paths since our own code names
