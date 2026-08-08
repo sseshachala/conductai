@@ -9,6 +9,7 @@ export default function SecurityCompliancePage() {
       <ProblemSection />
       <PitchSection />
       <CompliancePacksCallout />
+      <VendorLayerCallout />
       <CtaSection />
     </>
   )
@@ -163,6 +164,22 @@ function CompliancePacksCallout() {
 }
 
 /* ─── CTA ───────────────────────────────────────────────────────────────── */
+
+function VendorLayerCallout() {
+  return (
+    <section className="max-w-4xl mx-auto px-6 py-16">
+      <div className="border border-stone-200 rounded-2xl bg-stone-50 p-8 text-center">
+        <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 mb-3">The honest read</p>
+        <p className="text-lg text-stone-800 font-semibold leading-relaxed mb-3">
+          No single vendor has a comprehensive answer.
+        </p>
+        <p className="text-sm text-stone-600 leading-relaxed max-w-2xl mx-auto">
+          Bain said it directly to CEOs in July 2026. Your stack will layer across identity, registry, gateway, evaluation, and observability. Guard is the runtime governance layer. It integrates cleanly with your identity provider, your evaluation platform, your model providers, and your agent frameworks. Not trying to be all of them.
+        </p>
+      </div>
+    </section>
+  )
+}
 
 function CtaSection() {
   return (

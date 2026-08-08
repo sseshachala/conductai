@@ -242,8 +242,11 @@ function Hero() {
         Where a link goes straight to the app, it will route anonymous visitors through sign-in and drop them
         back where they were headed.
       </p>
-      <p className="text-base text-stone-500 max-w-2xl mx-auto leading-relaxed italic">
+      <p className="text-base text-stone-500 max-w-2xl mx-auto leading-relaxed italic mb-4">
         Your identity provider tells you who your agents are. Guard governs what they do.
+      </p>
+      <p className="text-base text-stone-500 max-w-2xl mx-auto leading-relaxed italic">
+        Governance is not a brake. It is the scaffolding that lets you expand agent autonomy safely.
       </p>
     </section>
   )
