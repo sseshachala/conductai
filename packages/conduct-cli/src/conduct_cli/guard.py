@@ -1437,7 +1437,7 @@ def cmd_guard_sync(args):
         return
 
     _save_policy(policy)
-    print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} rule(s)")
+    print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} hook rule(s). Proxy and non-hook rules run server-side.")
 
     # Refresh agent token from server via refresh_token grant.
     # Never rely on the locally-cached value — it may be stale or missing.
@@ -1556,7 +1556,7 @@ def cmd_guard_sync(args):
     except Exception:
         pass
 
-    print(f"\n{BOLD}Policy refreshed ({rule_count} rule(s)).{RESET}")
+    print(f"\n{BOLD}Policy refreshed: {rule_count} hook rule(s). Proxy and non-hook rules run server-side.{RESET}")
 
     # Print remote MCP URL for any MCP-compatible client
     agent_token = cfg.get("agent_token", "")
