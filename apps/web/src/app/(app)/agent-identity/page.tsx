@@ -28,6 +28,39 @@ interface ApiToken {
   created_at: string | null
 }
 
+interface Identity {
+  id: string
+  name: string
+  provider: string
+  token_prefix: string
+  created_at: string
+  last_used_at: string | null
+  environment_id: string | null
+  source: string | null
+  source_id: string | null
+  platform_of_origin: string | null
+  owner_user_id: string | null
+  agent_role_id: string | null
+  lifecycle_state: string | null
+  last_certified_at: string | null
+  certification_cadence_days: number | null
+  risk_tier: string | null
+  deactivated_at: string | null
+}
+
+const TIER_STYLE: Record<string, { bg: string; fg: string }> = {
+  tier_1: { bg: "#dcfce7", fg: "#166534" },
+  tier_2: { bg: "#fef3c7", fg: "#92400e" },
+  tier_3: { bg: "#fee2e2", fg: "#991b1b" },
+}
+
+const LIFECYCLE_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
+  active:         { bg: "#dcfce7", fg: "#166534", label: "Active" },
+  pending_review: { bg: "#fef3c7", fg: "#92400e", label: "Pending review" },
+  deactivated:    { bg: "#f3f4f6", fg: "#4b5563", label: "Deactivated" },
+  expired:        { bg: "#fee2e2", fg: "#991b1b", label: "Expired" },
+}
+
 export default function AgentIdentityPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (clerkEnabled) return <WithAuth />
@@ -62,16 +95,20 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const [revoking, setRevoking] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
 
+  const [identities, setIdentities] = useState<Identity[]>([])
+  const [identitiesLoading, setIdentitiesLoading] = useState(true)
+  const [savingIdentity, setSavingIdentity] = useState<string | null>(null)
 
 
   const load = useCallback(async () => {
     if (!workspaceId) return
     try {
-      const [tokensRes, installedRes, apiTokensRes, roleRes] = await Promise.all([
+      const [tokensRes, installedRes, apiTokensRes, roleRes, identitiesRes] = await Promise.all([
         authFetch(`${API}/workspaces/${workspaceId}/agent-run-tokens`),
         authFetch(`${API}/guard/config/installed?workspace_id=${workspaceId}`),
         authFetch(`${API}/workspaces/${workspaceId}/api-tokens`),
         authFetch(`${API}/projects/${workspaceId}/my-role`),
+        authFetch(`${API}/workspaces/${workspaceId}/agent-identities?workspace_id=${workspaceId}`),
       ])
       if (tokensRes.ok) setTokens(await tokensRes.json())
       if (installedRes.ok) {
@@ -83,6 +120,8 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         const data = await roleRes.json()
         setIsAdmin(data.role === "admin")
       }
+      if (identitiesRes.ok) setIdentities(await identitiesRes.json())
+      setIdentitiesLoading(false)
     } catch {}
     setLoading(false)
     setApiLoading(false)
@@ -134,6 +173,38 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
     setApiTokens(prev => prev.filter(t => t.id !== id))
     setRevokeId(null)
     setRevoking(null)
+  }
+
+  async function patchIdentity(id: string, changes: Partial<Identity>) {
+    setSavingIdentity(id)
+    try {
+      const res = await authFetch(`${API}/workspaces/${workspaceId}/agent-identities/${id}?workspace_id=${workspaceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes),
+      })
+      if (res.ok) {
+        const updated: Identity = await res.json()
+        setIdentities(prev => prev.map(i => i.id === id ? updated : i))
+      }
+    } finally {
+      setSavingIdentity(null)
+    }
+  }
+
+  async function certifyIdentity(id: string) {
+    setSavingIdentity(id)
+    try {
+      const res = await authFetch(`${API}/workspaces/${workspaceId}/agent-identities/${id}/certify?workspace_id=${workspaceId}`, {
+        method: "POST",
+      })
+      if (res.ok) {
+        const updated: Identity = await res.json()
+        setIdentities(prev => prev.map(i => i.id === id ? updated : i))
+      }
+    } finally {
+      setSavingIdentity(null)
+    }
   }
 
   return (
@@ -376,6 +447,101 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
           Run tokens are single-use and workspace-scoped. They are invalidated automatically when their run completes. Every run mints fresh credentials — authority validation happens at the execution boundary on every action.
         </p>
+
+        {/* Agent identities — Phase 3 of #1037 */}
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Agent identities</div>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
+            Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Tier drives what the agent is allowed to do; lifecycle drives whether it can act at all. Deactivating an identity revokes its tokens on the next check.
+          </p>
+          <div className="card" style={{ overflow: "hidden" }}>
+            {identitiesLoading ? (
+              <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)" }}>Loading identities…</div>
+            ) : identities.length === 0 ? (
+              <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)" }}>No agent identities yet.</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Name</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Source</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Owner</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Tier</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Lifecycle</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Last certified</th>
+                    <th style={{ padding: "8px 12px" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {identities.map(id => {
+                    const tier = TIER_STYLE[id.risk_tier ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)" }
+                    const lc   = LIFECYCLE_STYLE[id.lifecycle_state ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)", label: id.lifecycle_state ?? "—" }
+                    const busy = savingIdentity === id.id
+                    return (
+                      <tr key={id.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "8px 12px" }}>
+                          <div style={{ fontWeight: 500, color: "var(--text)" }}>{id.name}</div>
+                          <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{id.token_prefix}</div>
+                        </td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-2)" }}>
+                          {id.source ?? "conduct"}
+                          {id.platform_of_origin && <span style={{ color: "var(--text-muted)" }}> · {id.platform_of_origin}</span>}
+                        </td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-2)" }}>
+                          {id.owner_user_id ?? <span style={{ color: "var(--text-muted)" }}>unassigned</span>}
+                        </td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <select
+                            value={id.risk_tier ?? "tier_1"}
+                            disabled={busy || !isAdmin}
+                            onChange={e => patchIdentity(id.id, { risk_tier: e.target.value })}
+                            style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)", background: tier.bg, color: tier.fg }}
+                          >
+                            <option value="tier_1">Tier 1</option>
+                            <option value="tier_2">Tier 2</option>
+                            <option value="tier_3">Tier 3</option>
+                          </select>
+                        </td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <select
+                            value={id.lifecycle_state ?? "active"}
+                            disabled={busy || !isAdmin}
+                            onChange={e => patchIdentity(id.id, { lifecycle_state: e.target.value })}
+                            style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)", background: lc.bg, color: lc.fg }}
+                          >
+                            <option value="active">Active</option>
+                            <option value="pending_review">Pending review</option>
+                            <option value="deactivated">Deactivated</option>
+                            <option value="expired">Expired</option>
+                          </select>
+                        </td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }}>
+                          {id.last_certified_at
+                            ? new Date(id.last_certified_at).toLocaleDateString()
+                            : <span>never</span>}
+                        </td>
+                        <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                          {isAdmin && (
+                            <button
+                              onClick={() => certifyIdentity(id.id)}
+                              disabled={busy}
+                              style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-2)", cursor: busy ? "not-allowed" : "pointer" }}
+                            >
+                              {busy ? "…" : "Certify"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0" }}>
+            Tier 3 agents are the strictest (regulated decisions, requires human oversight); Tier 1 is drafting-adjacent (reversible, low blast radius). Only workspace admins can change tier, lifecycle, or certify.
+          </p>
+        </div>
       </div>
     </AppShell>
   )
