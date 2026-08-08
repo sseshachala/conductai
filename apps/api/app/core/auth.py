@@ -691,6 +691,13 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
             if ai_row.expires_at and ai_row.expires_at < datetime.now(_tz.utc):
                 return None
 
+            # Fail-secure on identity lifecycle state (#1037).
+            # deactivated or expired identities cannot authenticate regardless
+            # of token freshness. pending_review is a signal, not a stop.
+            _lifecycle = getattr(ai_row, "lifecycle_state", None)
+            if _lifecycle in ("deactivated", "expired"):
+                return None
+
             # Try guard_member_config link first (session tokens always have this)
             member = db.execute(
                 _text("""

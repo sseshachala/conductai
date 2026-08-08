@@ -243,7 +243,9 @@ def resolve_token(token: str, db) -> dict | None:
             _sql("""
                 SELECT art.run_id, art.workspace_id, art.agent_identity_id,
                        art.created_at, art.first_used_at, art.invalidated_at,
-                       ai.name as identity_name
+                       ai.name as identity_name,
+                       ai.owner_user_id, ai.source, ai.platform_of_origin,
+                       ai.lifecycle_state, ai.risk_tier, ai.agent_role_id
                 FROM agent_run_tokens art
                 LEFT JOIN agent_identities ai ON ai.id = art.agent_identity_id::uuid
                 WHERE art.token_hash = :hash
@@ -252,12 +254,23 @@ def resolve_token(token: str, db) -> dict | None:
         ).fetchone()
         if not row:
             return None
+        # Fail-secure on identity lifecycle state (#1037).
+        # deactivated or expired identities cannot authenticate regardless of token freshness.
+        # pending_review is a signal, not a stop.
+        if row.lifecycle_state in ("deactivated", "expired"):
+            return None
         return {
             "type": "run",
             "run_id": row.run_id,
             "workspace_id": str(row.workspace_id),
             "agent_identity_id": row.agent_identity_id,
             "identity_name": row.identity_name,
+            "owner_user_id": row.owner_user_id,
+            "source": row.source,
+            "platform_of_origin": row.platform_of_origin,
+            "lifecycle_state": row.lifecycle_state,
+            "risk_tier": row.risk_tier,
+            "agent_role_id": row.agent_role_id,
             "created_at": row.created_at,
             "first_used_at": row.first_used_at,
             "invalidated": row.invalidated_at is not None,
