@@ -13,6 +13,7 @@ const staticRoutes: Array<{ path: string; priority: number; changeFrequency: "da
   { path: "/solutions/security-loop", priority: 0.7, changeFrequency: "monthly" },
   { path: "/solutions/action-governance", priority: 0.7, changeFrequency: "monthly" },
   { path: "/solutions/memory-hardening", priority: 0.7, changeFrequency: "monthly" },
+  { path: "/solutions/okta-plus-conduct", priority: 0.7, changeFrequency: "monthly" },
   { path: "/open-source", priority: 0.7, changeFrequency: "monthly" },
   { path: "/playbooks", priority: 0.8, changeFrequency: "weekly" },
   { path: "/sdd", priority: 0.7, changeFrequency: "monthly" },
