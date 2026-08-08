@@ -6,22 +6,27 @@ import { ClerkProvider } from "@clerk/nextjs"
 export const metadata: Metadata = {
   metadataBase: new URL("https://conductai.ai"),
   title: {
-    default: "ConductAI: Runtime AI Governance for Engineering Teams",
+    default: "ConductAI: Runtime Governance for AI Agents",
     template: "%s | ConductAI",
   },
   description:
-    "Govern every AI tool your team uses: Claude Code, Cursor, Copilot, Codex. Inline enforcement, audit trail, SOC 2 ready. Install in 10 minutes.",
+    "Runtime governance for AI agents. Allow, warn, or block every model and tool call before it commits. Hash-chained audit for every decision. Compliance packs for SOC 2, HIPAA, PCI DSS, EU AI Act, SR 11-7, FDA CSA, and more.",
   keywords: [
-    "runtime AI governance",
+    "runtime governance",
+    "AI agent governance",
+    "agentic AI governance",
     "AI governance platform",
-    "AI security",
+    "runtime AI governance",
+    "AI agent identity",
+    "agent policy enforcement",
+    "AI audit trail",
+    "AI compliance SOC 2",
+    "EU AI Act compliance",
+    "SR 11-7 agents",
+    "FDA CSA agents",
     "Claude Code governance",
     "Cursor governance",
     "Copilot governance",
-    "AI audit trail",
-    "AI compliance SOC 2",
-    "AI usage policy",
-    "inline AI enforcement",
   ],
   authors: [{ name: "ConductAI" }],
   alternates: {
@@ -33,9 +38,9 @@ export const metadata: Metadata = {
     apple: "/icon.png",
   },
   openGraph: {
-    title: "ConductAI: Runtime AI Governance for Engineering Teams",
+    title: "ConductAI: Runtime Governance for AI Agents",
     description:
-      "Policy is a PDF. Runtime is a hook. One identity, one policy, one audit trail across every AI tool your team uses.",
+      "Policy is a document. Runtime is a hook. One identity, one policy, one hash-chained audit trail across every AI agent and every tool call.",
     url: "https://conductai.ai",
     siteName: "ConductAI",
     type: "website",
@@ -45,15 +50,15 @@ export const metadata: Metadata = {
         url: "https://conductai.ai/og.png",
         width: 1200,
         height: 630,
-        alt: "ConductAI: Runtime AI Governance for Engineering Teams",
+        alt: "ConductAI: Runtime Governance for AI Agents",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "ConductAI: Runtime AI Governance",
+    title: "ConductAI: Runtime Governance for AI Agents",
     description:
-      "Govern every AI tool your team uses: inline enforcement, audit trail, SOC 2 ready. Install in 10 minutes.",
+      "Allow, warn, or block every model and tool call before it commits. Hash-chained audit. Compliance packs for SOC 2, HIPAA, EU AI Act, SR 11-7, FDA CSA.",
     images: ["https://conductai.ai/og.png"],
   },
   robots: {
