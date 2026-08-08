@@ -222,7 +222,7 @@ const PACK_CATALOG = [
   {
     id: "meridian-dispatch",
     icon: "📦",
-    name: "Meridian Dispatch (Demo)",
+    name: "PH Dispatch (Demo)",
     subtitle: "E1 demo pack — entitlement-aware RMA dispatch. Blocks $140 truck rolls for depot-tier tenants; suggests mail-in.",
     description: "Fictional Meridian Devices support org. 2 rules: depot-tier tenants get mail-in RMA instead of on-site dispatch (avoids $135.50/ticket); self-serve tenants get remote-only (avoids $105/ticket). Backs docs/demo-scripts/E1-the-140-dollar-ticket.md.",
     tags: ["Demo", "Cost", "Entitlement"],
