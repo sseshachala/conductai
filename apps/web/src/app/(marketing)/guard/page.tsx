@@ -35,7 +35,7 @@ function HeroSection() {
     <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
-        AI Governance that compounds
+        Runtime AI Governance that compounds
       </div>
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
         Your team is already using AI agents.<br />
@@ -45,7 +45,7 @@ function HeroSection() {
         Most governance stops at day one. Guard gets smarter every session. It learns your codebase, your team&apos;s patterns, and your risk profile over time.
       </p>
       <p className="text-base text-stone-600 max-w-2xl mx-auto leading-relaxed mb-3">
-        Other AI governance tools want you to import an SDK and wrap every model call. Guard installs in 10 minutes. One policy enforces across every AI tool your team already uses — Claude Code, Claude.ai, Claude Desktop, Codex CLI, Codex Desktop, ChatGPT, Cursor, Copilot, and Windsurf.
+        Other runtime AI governance tools want you to import an SDK and wrap every model call. Guard installs in 10 minutes. One policy enforces across every AI tool your team already uses — Claude Code, Claude.ai, Claude Desktop, Codex CLI, Codex Desktop, ChatGPT, Cursor, Copilot, and Windsurf.
       </p>
       <p className="text-base text-indigo-600 italic max-w-2xl mx-auto leading-relaxed mb-3">
         GitHub gives the CISO a setting. ConductGuard gives them enforcement.
@@ -203,7 +203,7 @@ function EnforcementLayerSection() {
               ConductGuard is structural enforcement. Policies are evaluated against real rules, not prompt instructions. A block exits with code 2 — Claude stops. The audit trail is in your dashboard, not the chat history.
             </p>
             <p className="text-stone-400 leading-relaxed mb-8">
-              Segregation of duties only holds at the moment an agent acts. ConductGuard is the only governance layer that enforces it at runtime — not in a quarterly review, not in a policy doc.
+              Segregation of duties only holds at the moment an agent acts. ConductGuard is the only runtime governance layer that enforces it at the commit boundary — not in a quarterly review, not in a policy doc.
             </p>
             <a href="/guard" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors">
               See how Guard enforces →

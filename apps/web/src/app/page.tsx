@@ -84,7 +84,7 @@ function ProductsDropdown() {
             <span>🛡️</span>
             <div>
               <p className="font-semibold">Conduct Guard</p>
-              <p className="text-xs text-stone-400">AI session governance</p>
+              <p className="text-xs text-stone-400">Runtime AI governance</p>
             </div>
           </a>
           <a href="/registry" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
@@ -870,7 +870,7 @@ function PageFooter() {
         <div className="flex flex-col md:flex-row justify-between gap-8 mb-10">
           <div>
             <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto mb-3" />
-            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">AI Governance for Engineering Teams. Platform or partnership. You choose how.</p>
+            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">Runtime AI Governance for Engineering Teams. Platform or partnership. You choose how.</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
