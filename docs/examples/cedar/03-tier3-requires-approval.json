@@ -1,0 +1,24 @@
+{
+  "effect": "permit",
+  "principal": { "op": "is", "entity_type": "Agent" },
+  "action": {},
+  "conditions": [
+    {
+      "kind": "when",
+      "body": {
+        "==": [
+          { ".": { "left": { "Var": "context" }, "attr": "risk_tier" } },
+          { "Value": "tier_3" }
+        ]
+      }
+    }
+  ],
+  "annotations": {
+    "id": "tier3-agents-require-approval",
+    "description": "Route every tier-3 agent action to a human approver before commit",
+    "message": "Tier-3 agent action requires supervisor approval before it commits.",
+    "severity": "critical",
+    "compliance": ["SR_11_7:governance", "EU_AI_ACT:Article_26", "NIST_AI_RMF:MAP-2.3"],
+    "advice": "approval"
+  }
+}
