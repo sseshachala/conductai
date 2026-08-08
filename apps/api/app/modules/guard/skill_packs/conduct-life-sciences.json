@@ -1,0 +1,253 @@
+{
+  "slug": "conduct-life-sciences",
+  "name": "Conduct Life Sciences",
+  "version": "1.0.0",
+  "tier": "paid",
+  "description": "Guard controls aligned to life sciences regulatory frameworks for agentic AI. Covers FDA Computer Software Assurance principles, FDA/EMA Good Machine Learning Practice, ICH quality risk management, GAMP AI guidance, and EU AI Act high-risk obligations.",
+  "rules": [
+    {
+      "id": "ls_clinical_adjacent_requires_human_review",
+      "description": "Block agent action on clinical decision-adjacent workflows without a recorded human review event (FDA position: AI informs, human decides)",
+      "match_tool": "*",
+      "match_pattern": "(clinical_decision|patient_recommendation|treatment_option|diagnosis_support|dosing_recommendation)",
+      "action": "block",
+      "message": "Clinical decision-adjacent agent action requires recorded human review. Agent may inform, human must decide.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["FDA_CSA:human_oversight", "FDA_EMA_GMLP:P4", "EU_AI_ACT:Article_26", "ISO_42001:8.5"],
+      "severity": "critical",
+      "recommendation": "Every clinical-adjacent agent proposal requires a recorded human review event before commit. Human is the accountable decision-maker.",
+      "iso_control": "A.5.1",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching tool calls without a linked human review event in the audit chain.",
+        "requires": [
+          "Clinical tool categories tagged in tool descriptions or MCP metadata",
+          "Human review events recorded in the hash-chained audit"
+        ],
+        "known_limitations": [
+          "Custom clinical tool names must be added per deployment"
+        ]
+      }
+    },
+    {
+      "id": "ls_groundedness_required_for_authoritative_source",
+      "description": "Warn on agent proposal lacking provenance chain back to an authoritative source (groundedness gate)",
+      "match_tool": "*",
+      "match_pattern": "^(?!.*(source|provenance|citation|reference_id|study_id|monograph|guideline))",
+      "action": "warn",
+      "message": "Agent proposal lacks provenance to an authoritative source. Add citation or study reference before commit.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["FDA_CSA:documentation", "FDA_EMA_GMLP:P8", "ICH_Q9:risk_evidence"],
+      "severity": "high",
+      "recommendation": "Every agent proposal touching a regulated pathway must carry provenance back to an authoritative source (protocol, monograph, published study, internal SOP).",
+      "iso_control": "A.5.28",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Warns on agent proposals that do not carry a source or provenance field.",
+        "requires": [
+          "Agent output includes a provenance or source field when acting in regulated pathways"
+        ],
+        "known_limitations": [
+          "Depends on agent framework surfacing provenance fields"
+        ]
+      }
+    },
+    {
+      "id": "ls_regulated_system_write_requires_two_person",
+      "description": "Block agent write to LIMS, EDC, MES, or other GxP systems without two-person integrity check",
+      "match_tool": "*",
+      "match_pattern": "(lims|edc|mes|erp_gxp|electronic_batch_record|ebr|clinical_trial_management|ctms)",
+      "action": "block",
+      "message": "Agent write to GxP system requires two-person integrity check. Route to reviewer before commit.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["FDA_CSA:integrity", "GAMP_5:data_integrity", "ICH_Q9:controls", "ISO_42001:8.4"],
+      "severity": "critical",
+      "recommendation": "Route agent-proposed writes to GxP systems through a two-person integrity check. Agent proposes, human confirms, both recorded with time and identity.",
+      "iso_control": "A.5.3",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks agent-initiated writes to matching GxP tools without integrity-check event in context.",
+        "requires": [
+          "GxP tools use identifiable names or MCP servers"
+        ],
+        "known_limitations": [
+          "Custom GxP tool names must be added per deployment"
+        ]
+      }
+    },
+    {
+      "id": "ls_intended_use_scope_check",
+      "description": "Warn on agent action outside the validated intended-use scope (FDA CSA intended-use principle)",
+      "match_tool": "*",
+      "match_pattern": "(intended_use|scope|use_case)\\s*[:=]\\s*[\"']?(off_label|out_of_scope|unvalidated|research_only)",
+      "action": "warn",
+      "message": "Agent action appears outside validated intended-use scope. Confirm scope and revalidate if needed.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["FDA_CSA:intended_use", "FDA_EMA_GMLP:P1", "GAMP_5:validation"],
+      "severity": "high",
+      "recommendation": "Every agent must have a documented intended-use scope. Actions outside that scope require revalidation before commit.",
+      "iso_control": "A.8.29",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Warns when action markers indicate out-of-scope operation.",
+        "requires": [
+          "Intended-use scope declared in agent_identity or run context"
+        ],
+        "known_limitations": [
+          "Scope declarations must be surfaced to Guard context"
+        ]
+      }
+    },
+    {
+      "id": "ls_credibility_assessment_freshness",
+      "description": "Block agent action if credibility assessment is expired (FDA 2025 draft guidance on AI credibility)",
+      "match_tool": "*",
+      "match_pattern": "(credibility_assessment|model_assessment|validation_status)\\s*[:=]\\s*[\"']?(expired|stale|missing)",
+      "action": "block",
+      "message": "Agent action blocked. Credibility assessment is expired or missing. Refresh before proceeding.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["FDA_AI_CREDIBILITY:continuous_assessment", "FDA_EMA_GMLP:P5", "GAMP_5:periodic_review"],
+      "severity": "critical",
+      "recommendation": "Every agent operating in a regulated pathway must have a current credibility assessment. Set cadence proportional to risk tier.",
+      "iso_control": "A.8.29",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks agent actions when credibility assessment freshness cannot be confirmed.",
+        "requires": [
+          "Credibility assessment events recorded in the audit chain"
+        ],
+        "known_limitations": [
+          "Depends on assessment events being surfaced to Guard context"
+        ]
+      }
+    },
+    {
+      "id": "ls_lifecycle_traceability_log",
+      "description": "Audit every agent-touched artifact for CSA lifecycle traceability (records event even without intervention)",
+      "match_tool": "*",
+      "match_pattern": "(artifact|document|record|dataset|report)\\s*[:=]\\s*[\"'][^\"']+[\"']",
+      "action": "audit",
+      "message": "Artifact-touching action recorded for lifecycle traceability.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["FDA_CSA:traceability", "GAMP_5:lifecycle", "ISO_42001:9.2"],
+      "severity": "low",
+      "recommendation": "Every agent-touched artifact should be recorded with agent identity, action type, and target for full lifecycle traceability.",
+      "iso_control": "A.5.28",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Records every matching artifact-touching action to the audit chain.",
+        "requires": [
+          "Artifact identifiers visible in tool inputs"
+        ],
+        "known_limitations": [
+          "Custom artifact schema names may need to be added"
+        ]
+      }
+    },
+    {
+      "id": "ls_model_swap_requires_revalidation",
+      "description": "Warn on model swap in regulated pathway without accompanying revalidation event",
+      "match_tool": "*",
+      "match_pattern": "(model|llm|provider)\\s*[:=]\\s*[\"'][^\"']+[\"'].*(swap|change|switch)",
+      "action": "warn",
+      "message": "Model swap in regulated pathway requires revalidation. Silent model changes break FDA CSA validation status.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["FDA_CSA:change_control", "FDA_EMA_GMLP:P6", "GAMP_5:change_mgmt"],
+      "severity": "high",
+      "recommendation": "Record every model swap in a regulated pathway as a change control event. Revalidate against intended use before resuming.",
+      "iso_control": "A.8.32",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Warns when a model swap event lacks a corresponding revalidation record.",
+        "requires": [
+          "Model identity is visible in tool_input or proxy context"
+        ],
+        "known_limitations": [
+          "Model swaps inside third-party gateways may not surface as observable events"
+        ]
+      }
+    },
+    {
+      "id": "ls_patient_safety_action_requires_hitl",
+      "description": "Block agent decision on patient-safety-adjacent actions without human-in-the-loop attestation",
+      "match_tool": "*",
+      "match_pattern": "(adverse_event|safety_signal|patient_safety|serious_incident|reportable_event)",
+      "action": "block",
+      "message": "Patient-safety-adjacent action requires human-in-the-loop attestation. Agent may recommend but cannot commit.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["FDA_CSA:patient_safety", "FDA_EMA_GMLP:P4", "ICH_Q9:risk_management", "EU_AI_ACT:Article_26"],
+      "severity": "critical",
+      "recommendation": "Every patient-safety-adjacent agent proposal requires a recorded human attestation from a qualified reviewer.",
+      "iso_control": "A.5.15",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching tool calls without a linked human attestation event.",
+        "requires": [
+          "Safety-adjacent tool categories tagged in tool descriptions or MCP metadata"
+        ],
+        "known_limitations": [
+          "New tool categories may need to be added to the match pattern"
+        ]
+      }
+    },
+    {
+      "id": "ls_phi_scope_check_required",
+      "description": "Block agent action on PHI-classified data without documented HIPAA scope check",
+      "match_tool": "*",
+      "match_pattern": "(data_class|classification)\\s*[:=]\\s*[\"']?(phi|protected_health|hipaa_scope|clinical_pii)",
+      "action": "block",
+      "message": "Agent action on PHI-classified data requires documented HIPAA scope check.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["HIPAA:Privacy_Rule", "HIPAA:Security_Rule", "FDA_CSA:data_governance", "ISO_42001:8.4"],
+      "severity": "critical",
+      "recommendation": "Every agent touching PHI must have a documented HIPAA scope check tied to the specific data class and access basis.",
+      "iso_control": "A.5.12",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks agent actions on PHI-classified data when scope check evidence is missing.",
+        "requires": [
+          "Tool inputs or context carry data classification tags"
+        ],
+        "known_limitations": [
+          "PHI classification depends on upstream tagging discipline"
+        ]
+      }
+    }
+  ]
+}

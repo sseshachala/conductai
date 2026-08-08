@@ -1,0 +1,226 @@
+{
+  "slug": "conduct-financial-services",
+  "name": "Conduct Financial Services",
+  "version": "1.0.0",
+  "tier": "paid",
+  "description": "Guard controls aligned to US banking model risk management for agentic AI. Interim controls covering SR 11-7 principles while agent-specific guidance is pending.",
+  "rules": [
+    {
+      "id": "fs_tier3_requires_human_oversight",
+      "description": "Block tier-3 agent action without a recorded human oversight event within the last 24 hours",
+      "match_tool": "*",
+      "match_pattern": "(agent_risk_tier|risk_tier|tier)\\s*[:=]\\s*[\"']?(tier_3|3|high)",
+      "action": "block",
+      "message": "Tier-3 agent action requires a recorded human oversight event. Route to review before commit.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["SR_11_7:governance", "OCC_2021_19", "NIST_AI_RMF:MAP-2.3", "EU_AI_ACT:Article_26"],
+      "severity": "critical",
+      "recommendation": "Require an explicit human review event, recorded in the audit chain, before any tier-3 agent action commits.",
+      "iso_control": "A.5.1",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks the tier-3 agent action when human oversight evidence is missing from the run context.",
+        "requires": [
+          "agent_identity has risk_tier field set",
+          "Human review events are recorded in the hash-chained audit"
+        ],
+        "known_limitations": [
+          "Depends on agent_identity risk_tier being set correctly at agent registration"
+        ]
+      }
+    },
+    {
+      "id": "fs_model_swap_requires_change_record",
+      "description": "Warn on model swap mid-workflow without a change control event",
+      "match_tool": "*",
+      "match_pattern": "(model|llm|provider)\\s*[:=]\\s*[\"'][^\"']+[\"'].*(swap|change|switch|route_to)",
+      "action": "warn",
+      "message": "Model swap during a workflow requires a change control event. Silent model changes break validation.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["SR_11_7:change_management", "FFIEC:change_mgmt", "NIST_AI_RMF:GOVERN-1.5"],
+      "severity": "high",
+      "recommendation": "Record every model swap as a change control event with reason and approver.",
+      "iso_control": "A.8.32",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Warns on model swap without accompanying change control event.",
+        "requires": [
+          "Model identity is visible in tool_input or proxy context"
+        ],
+        "known_limitations": [
+          "Model swaps inside third-party gateways may not surface as observable events"
+        ]
+      }
+    },
+    {
+      "id": "fs_lifecycle_promotion_requires_attestation",
+      "description": "Block agent lifecycle promotion to production without documented owner attestation",
+      "match_tool": "*",
+      "match_pattern": "(lifecycle|environment|promote_to)\\s*[:=]\\s*[\"']?(prod|production|live)",
+      "action": "block",
+      "message": "Agent promotion to production requires documented owner attestation. Route to change control.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["SR_11_7:governance", "SR_11_7:change_management", "OCC_2021_19", "FFIEC:change_mgmt"],
+      "severity": "critical",
+      "recommendation": "Require owner attestation as an approval event before promoting any agent to production.",
+      "iso_control": "A.5.15",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks lifecycle promotion actions when attestation event is missing from context.",
+        "requires": [
+          "Attestation events recorded in the audit chain"
+        ],
+        "known_limitations": [
+          "Depends on lifecycle promotion being surfaced as a tool call"
+        ]
+      }
+    },
+    {
+      "id": "fs_ledger_write_requires_sod",
+      "description": "Block agent write to core banking or ledger systems without segregation-of-duties check",
+      "match_tool": "*",
+      "match_pattern": "(core_banking|ledger|gl_post|payment_rail|swift|ach|book_entry)",
+      "action": "block",
+      "message": "Agent action on core banking system requires segregation-of-duties evidence. Two-person integrity check required.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["SR_11_7:controls", "OCC_2021_19", "FFIEC:sod", "PCI_DSS:7.1"],
+      "severity": "critical",
+      "recommendation": "Route core banking writes through a two-person integrity check.",
+      "iso_control": "A.5.3",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks agent-initiated writes to matching core banking tools without SoD event in context.",
+        "requires": [
+          "Core banking tools use identifiable names or MCP servers"
+        ],
+        "known_limitations": [
+          "Custom tool names not in the match pattern must be added per deployment"
+        ]
+      }
+    },
+    {
+      "id": "fs_regulated_decisions_require_hitl",
+      "description": "Block agent decision on credit or lending determinations without human-in-the-loop attestation",
+      "match_tool": "*",
+      "match_pattern": "(credit_decision|lending_decision|loan_approval|underwriting_decision)",
+      "action": "block",
+      "message": "Regulated financial decisions require human-in-the-loop attestation. Agent may recommend but cannot commit.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["SR_11_7:high_risk_models", "OCC_2021_19", "ECOA", "FCRA"],
+      "severity": "critical",
+      "recommendation": "Agents may generate recommendations but a human must be the accountable decision-maker.",
+      "iso_control": "A.5.15",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks agent decisions on regulated determinations without human attestation event.",
+        "requires": [
+          "Regulated tool categories tagged in tool descriptions or MCP metadata"
+        ],
+        "known_limitations": [
+          "New tool categories may need to be added to the match pattern"
+        ]
+      }
+    },
+    {
+      "id": "fs_customer_data_class_requires_control_mapping",
+      "description": "Block agent action on customer PII or account data without documented control mapping",
+      "match_tool": "*",
+      "match_pattern": "(data_class|classification)\\s*[:=]\\s*[\"']?(customer_pii|account_data|financial_pii|pci_scope)",
+      "action": "block",
+      "message": "Agent action on regulated data class requires documented control mapping.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["SR_11_7:data_governance", "GLBA", "PCI_DSS:7.1", "NYDFS_500", "SOC2:CC6.1"],
+      "severity": "high",
+      "recommendation": "Every agent touching regulated data classes must have a documented control mapping.",
+      "iso_control": "A.5.12",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks agent actions when data class is regulated and control mapping evidence is missing.",
+        "requires": [
+          "Tool inputs or context carry data classification tags"
+        ],
+        "known_limitations": [
+          "Data classification depends on upstream tagging discipline"
+        ]
+      }
+    },
+    {
+      "id": "fs_cross_tenant_customer_data_blocked",
+      "description": "Block agent read across customer tenants or portfolio boundaries without explicit permit",
+      "match_tool": "*",
+      "match_pattern": "(customer_id|tenant|portfolio|book)\\s*[:=]\\s*[\"']?\\*|cross[_-]?(tenant|customer|portfolio)|all[_-](customers|tenants|portfolios)",
+      "action": "block",
+      "message": "Cross-tenant or cross-portfolio customer data access blocked. Requires explicit permit and audit entry.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["SR_11_7:access_controls", "GLBA", "NYDFS_500", "SOC2:CC6.1"],
+      "severity": "critical",
+      "recommendation": "Constrain agents to a single tenant or portfolio scope.",
+      "iso_control": "A.5.15",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Blocks agent reads matching cross-tenant or wildcard scope patterns.",
+        "requires": [
+          "Tool inputs include tenant or customer scope"
+        ],
+        "known_limitations": [
+          "Custom scope field names may need to be added to the pattern"
+        ]
+      }
+    },
+    {
+      "id": "fs_cost_approaching_committee_cap",
+      "description": "Warn on cost accrual approaching per-agent monthly cap set by model risk committee",
+      "match_tool": "*",
+      "match_pattern": "(monthly_spend|month_to_date|mtd_cost|budget_utilization)\\s*[:=]\\s*[\"']?(0\\.[89]|9[0-9])",
+      "action": "warn",
+      "message": "Agent monthly spend has reached 80 percent of committee cap. Notify model risk committee owner.",
+      "persona_affinity": ["agent", "security", "compliance"],
+      "frameworks": ["SR_11_7:monitoring", "OCC_2021_19"],
+      "severity": "medium",
+      "recommendation": "Set per-agent monthly caps at the model risk committee level.",
+      "iso_control": "A.5.8",
+      "enforcement": {
+        "version": 1,
+        "proxy": "conditional",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "not_supported",
+        "guarantee": "Warns when the spend cache indicates approaching a defined cap.",
+        "requires": [
+          "Per-agent spend caps configured in Guard settings"
+        ],
+        "known_limitations": [
+          "Cost measurement latency depends on provider billing feed frequency"
+        ]
+      }
+    }
+  ]
+}
