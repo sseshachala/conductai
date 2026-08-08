@@ -119,6 +119,22 @@ function SolutionsDropdown() {
 
           <div className="my-1 border-t border-stone-100" />
 
+          <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-stone-400">By industry</p>
+          <a href="/solutions/financial-services" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div>
+              <p className="font-semibold">Financial services</p>
+              <p className="text-xs text-stone-400">SR 11-7 interim controls</p>
+            </div>
+          </a>
+          <a href="/solutions/life-sciences" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div>
+              <p className="font-semibold">Life sciences</p>
+              <p className="text-xs text-stone-400">FDA CSA + GMLP + GAMP 5</p>
+            </div>
+          </a>
+
+          <div className="my-1 border-t border-stone-100" />
+
           <a href="/use-cases" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <div>
               <p className="font-semibold">All use cases</p>
@@ -180,7 +196,7 @@ function MarketingFooter() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
               { heading: "Product", links: [["Guard", "/guard"], ["Use cases", "/use-cases"], ["Registry", "/registry"], ["SDD Scanner", "/sdd"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
-              { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Security Loop", "/solutions/security-loop"], ["Action governance", "/solutions/action-governance"], ["Memory hardening", "/solutions/memory-hardening"], ["Okta + Conduct", "/solutions/okta-plus-conduct"], ["All use cases", "/use-cases"], ["Deployment options", "/deployment"]] as [string, string][] },
+              { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Security Loop", "/solutions/security-loop"], ["Action governance", "/solutions/action-governance"], ["Memory hardening", "/solutions/memory-hardening"], ["Okta + Conduct", "/solutions/okta-plus-conduct"], ["Financial services", "/solutions/financial-services"], ["Life sciences", "/solutions/life-sciences"], ["All use cases", "/use-cases"], ["Deployment options", "/deployment"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], ["Blog", "/blog"]] as [string, string][] },
               { heading: "Resources", links: [["Team OS", "/team-os"], ["Docs", "/docs"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
               { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },

@@ -209,6 +209,7 @@ export default function FrameworksPage() {
     <>
       <HeroSection />
       <FrameworkGrid />
+      <RegulatoryGapSection />
       <CTASection />
     </>
   )
@@ -295,6 +296,55 @@ function FrameworkGrid() {
           </div>
         </div>
       ))}
+    </section>
+  )
+}
+
+function RegulatoryGapSection() {
+  const gaps = [
+    {
+      title: "US banking",
+      body: "SR 26-2 (April 2026) explicitly scoped agentic AI out as novel and rapidly evolving. Agent-specific guidance is signaled but not yet issued. 42 percent of financial firms are already using or assessing agents. Guard aligns to SR 11-7 pillars via the conduct-financial-services pack.",
+      cta: "See the financial services solution",
+      href: "/solutions/financial-services",
+    },
+    {
+      title: "Life sciences",
+      body: "FDA has not yet issued agent-specific guidance. Validation teams reconcile FDA CSA, FDA/EMA GMLP, ICH Q9, GAMP 5, and ISO 42001. Guard applies the underlying principles at the runtime layer via the conduct-life-sciences pack.",
+      cta: "See the life sciences solution",
+      href: "/solutions/life-sciences",
+    },
+    {
+      title: "EU AI Act (Article 26)",
+      body: "High-risk obligations are phasing in through 2026. Article 26 requires human oversight logs. Guard produces the decision-log evidence continuously and automatically, mapped to Article 26 across every applicable pack.",
+      cta: "See the EU AI Act pack",
+      href: "/registry?tab=compliance&pack=conduct-eu-ai-act",
+    },
+  ]
+  return (
+    <section className="bg-stone-50 border-y border-stone-200 px-6 py-20">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-10">
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-3">Where regulators have not caught up yet</p>
+          <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight mb-4">
+            Interim controls, aligned to the underlying principles.
+          </h2>
+          <p className="text-stone-500 max-w-2xl mx-auto">
+            Where regulators have not yet published agent-specific guidance, Guard provides interim controls aligned to the underlying principles. Ready when the eventual guidance arrives.
+          </p>
+        </div>
+        <div className="grid md:grid-cols-3 gap-5">
+          {gaps.map((g) => (
+            <div key={g.title} className="border border-stone-200 rounded-xl bg-white p-6 flex flex-col">
+              <h3 className="text-lg font-bold text-stone-900 mb-3">{g.title}</h3>
+              <p className="text-sm text-stone-600 leading-relaxed mb-6 flex-1">{g.body}</p>
+              <a href={g.href} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
+                {g.cta} →
+              </a>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   )
 }
