@@ -1,0 +1,24 @@
+{
+  "effect": "forbid",
+  "principal": { "op": "is", "entity_type": "Developer" },
+  "action": { "op": "==", "entity": { "id": "Bash" } },
+  "conditions": [
+    {
+      "kind": "when",
+      "body": {
+        "matches": [
+          { ".": { "left": { "Var": "context" }, "attr": "prompt" } },
+          { "Value": "chmod\\s+777|curl\\s+.*\\|\\s*sh|wget\\s+.*\\|\\s*bash" }
+        ]
+      }
+    }
+  ],
+  "annotations": {
+    "id": "block-dangerous-bash",
+    "description": "Block obviously dangerous shell commands proposed by developer agents",
+    "message": "Dangerous shell pattern detected. Route to human review.",
+    "severity": "critical",
+    "compliance": "OWASP:LLM06",
+    "iso_control": "A.8.28"
+  }
+}
