@@ -1,8 +1,11 @@
 """Cedar policy import - converts Cedar JSON policies into Guard packs.
+Also provides Cedar text export of any Guard pack for readability.
 
-POST /guard/registry/import-cedar  - preview or install a pack from Cedar policies
+POST /guard/registry/import-cedar        - preview or install a pack from Cedar policies
+GET  /guard/registry/packs/{slug}/cedar  - render an installed pack as Cedar text
 
-Runtime evaluation stays on the JSON pack format. This endpoint is one-way import.
+Runtime evaluation stays on the JSON pack format. Import is one-way.
+Export renders the JSON pack in Cedar syntax for readers who prefer it.
 See docs/cedar-adapter-spec.md for the full mapping table.
 """
 from __future__ import annotations
@@ -12,12 +15,13 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
-from app.modules.guard.cedar_adapter import cedar_json_bundle_to_pack
+from app.modules.guard.cedar_adapter import cedar_json_bundle_to_pack, pack_to_cedar_text
 from app.modules.guard.models import SkillPack, WorkspaceSkillPack
 from app.modules.guard.policy_engine import invalidate_policy_cache
 
@@ -137,3 +141,36 @@ def import_cedar(
         pack=pack if body.preview_only else None,
         installed=installed,
     )
+
+
+@router.get("/packs/{slug}/cedar", response_class=PlainTextResponse)
+def export_pack_as_cedar(
+    slug: str,
+    version: str | None = None,
+    _: str = Depends(require_permission("platform.marketplace.browse")),
+    db: Session = Depends(get_db),
+) -> PlainTextResponse:
+    """Render a Guard pack as Cedar text syntax.
+
+    Returns the latest version of the pack unless ?version=X.Y.Z is supplied.
+    Runtime evaluation still uses the JSON representation; this endpoint is
+    for human readability only.
+    """
+    query = db.query(SkillPack).filter(SkillPack.slug == slug)
+    if version:
+        query = query.filter(SkillPack.version == version)
+    else:
+        query = query.order_by(SkillPack.version.desc())
+    pack = query.first()
+    if not pack:
+        raise HTTPException(status_code=404, detail=f"Pack {slug!r} not found")
+
+    pack_dict = {
+        "slug": pack.slug,
+        "name": pack.name,
+        "version": pack.version,
+        "tier": pack.tier,
+        "description": pack.description,
+        "rules": pack.rules or [],
+    }
+    return PlainTextResponse(pack_to_cedar_text(pack_dict), media_type="text/plain; charset=utf-8")
