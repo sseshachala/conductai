@@ -19,7 +19,7 @@
       "iso_control": "A.5.1",
       "enforcement": {
         "version": 1,
-        "proxy": "conditional",
+        "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
         "runtime": "not_supported",
@@ -47,7 +47,7 @@
       "iso_control": "A.5.28",
       "enforcement": {
         "version": 1,
-        "proxy": "conditional",
+        "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
         "runtime": "not_supported",
@@ -74,7 +74,7 @@
       "iso_control": "A.5.3",
       "enforcement": {
         "version": 1,
-        "proxy": "conditional",
+        "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
         "runtime": "not_supported",
@@ -101,7 +101,7 @@
       "iso_control": "A.8.29",
       "enforcement": {
         "version": 1,
-        "proxy": "conditional",
+        "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
         "runtime": "not_supported",
@@ -128,7 +128,7 @@
       "iso_control": "A.8.29",
       "enforcement": {
         "version": 1,
-        "proxy": "conditional",
+        "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
         "runtime": "not_supported",
@@ -155,7 +155,7 @@
       "iso_control": "A.5.28",
       "enforcement": {
         "version": 1,
-        "proxy": "conditional",
+        "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
         "runtime": "not_supported",
@@ -182,7 +182,7 @@
       "iso_control": "A.8.32",
       "enforcement": {
         "version": 1,
-        "proxy": "conditional",
+        "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
         "runtime": "not_supported",
@@ -209,7 +209,7 @@
       "iso_control": "A.5.15",
       "enforcement": {
         "version": 1,
-        "proxy": "conditional",
+        "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
         "runtime": "not_supported",
@@ -236,7 +236,7 @@
       "iso_control": "A.5.12",
       "enforcement": {
         "version": 1,
-        "proxy": "conditional",
+        "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
         "runtime": "not_supported",

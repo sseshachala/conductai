@@ -179,7 +179,7 @@ def _startup() -> None:
             seed_skill_packs(dry_run=False)
             log.info("guard.skill_packs_seeded")
         except Exception as exc:
-            log.warning("guard.skill_packs_seed_failed", error=str(exc))
+            log.error("guard.skill_packs_seed_failed", error=str(exc), exc_info=exc)
 
     threading.Thread(target=_warm, daemon=True, name="eval-cache-warmer").start()
     threading.Thread(target=_seed, daemon=True, name="skill-pack-seeder").start()

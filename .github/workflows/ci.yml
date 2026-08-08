@@ -54,6 +54,9 @@ jobs:
       - name: Auth coverage
         run: python scripts/check_auth_coverage.py
         working-directory: apps/api
+      - name: Skill pack validation
+        run: python scripts/validate_all_skill_packs.py
+        working-directory: apps/api
 
   web:
     name: Web — typecheck + lint
