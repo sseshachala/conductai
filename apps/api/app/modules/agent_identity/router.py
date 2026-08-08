@@ -17,6 +17,7 @@ from app.modules.agent_identity.schemas import (
     AgentIdentityCreate,
     AgentIdentityCreated,
     AgentIdentityOut,
+    AgentIdentityPatch,
     ApiTokenCreate,
     ApiTokenCreated,
     ApiTokenOut,
@@ -127,6 +128,12 @@ def create_agent_identity(
         id=row.id, name=row.name, provider=row.provider,
         token_prefix=row.token_prefix, created_at=row.created_at,
         last_used_at=row.last_used_at, environment_id=row.environment_id,
+        source=row.source, source_id=row.source_id,
+        platform_of_origin=row.platform_of_origin,
+        owner_user_id=row.owner_user_id, agent_role_id=row.agent_role_id,
+        lifecycle_state=row.lifecycle_state, last_certified_at=row.last_certified_at,
+        certification_cadence_days=row.certification_cadence_days,
+        risk_tier=row.risk_tier, deactivated_at=row.deactivated_at,
         token=plaintext,
     )
 
@@ -147,6 +154,12 @@ def list_agent_identities(
     return [AgentIdentityOut(
         id=r.id, name=r.name, provider=r.provider, token_prefix=r.token_prefix,
         created_at=r.created_at, last_used_at=r.last_used_at, environment_id=r.environment_id,
+        source=r.source, source_id=r.source_id,
+        platform_of_origin=r.platform_of_origin,
+        owner_user_id=r.owner_user_id, agent_role_id=r.agent_role_id,
+        lifecycle_state=r.lifecycle_state, last_certified_at=r.last_certified_at,
+        certification_cadence_days=r.certification_cadence_days,
+        risk_tier=r.risk_tier, deactivated_at=r.deactivated_at,
     ) for r in rows]
 
 
@@ -166,6 +179,119 @@ def delete_agent_identity(
         raise HTTPException(status_code=404, detail="Agent identity not found")
     db.delete(row)
     db.commit()
+
+
+@router.patch("/agent-identities/{identity_id}", response_model=AgentIdentityOut)
+def patch_agent_identity(
+    workspace_id: str,
+    identity_id: str,
+    body: AgentIdentityPatch,
+    _ws: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+):
+    """Update identity metadata: owner, risk_tier, lifecycle_state, certification cadence, platform_of_origin.
+
+    Token/credential fields are immutable via this endpoint. Regenerate uses a
+    separate endpoint. Setting lifecycle_state to deactivated is a soft-delete
+    and also stamps deactivated_at.
+    """
+    VALID_LIFECYCLE = {"active", "pending_review", "deactivated", "expired"}
+    VALID_TIERS = {"tier_1", "tier_2", "tier_3"}
+
+    row = db.query(AgentIdentity).filter(
+        AgentIdentity.id == identity_id,
+        AgentIdentity.workspace_id == workspace_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Agent identity not found")
+
+    updated = False
+
+    if body.owner_user_id is not None:
+        row.owner_user_id = body.owner_user_id.strip() or None
+        updated = True
+
+    if body.risk_tier is not None:
+        if body.risk_tier not in VALID_TIERS:
+            raise HTTPException(status_code=422, detail=f"risk_tier must be one of {sorted(VALID_TIERS)}")
+        row.risk_tier = body.risk_tier
+        updated = True
+
+    if body.lifecycle_state is not None:
+        if body.lifecycle_state not in VALID_LIFECYCLE:
+            raise HTTPException(status_code=422, detail=f"lifecycle_state must be one of {sorted(VALID_LIFECYCLE)}")
+        row.lifecycle_state = body.lifecycle_state
+        if body.lifecycle_state == "deactivated" and not row.deactivated_at:
+            row.deactivated_at = datetime.now(timezone.utc)
+        if body.lifecycle_state == "active":
+            row.deactivated_at = None
+        updated = True
+
+    if body.certification_cadence_days is not None:
+        if body.certification_cadence_days < 1:
+            raise HTTPException(status_code=422, detail="certification_cadence_days must be >= 1")
+        row.certification_cadence_days = body.certification_cadence_days
+        updated = True
+
+    if body.platform_of_origin is not None:
+        row.platform_of_origin = body.platform_of_origin.strip() or "registry"
+        updated = True
+
+    if body.metadata is not None:
+        row.metadata_json = body.metadata
+        updated = True
+
+    if updated:
+        db.commit()
+        db.refresh(row)
+
+    return AgentIdentityOut(
+        id=row.id, name=row.name, provider=row.provider, token_prefix=row.token_prefix,
+        created_at=row.created_at, last_used_at=row.last_used_at, environment_id=row.environment_id,
+        source=row.source, source_id=row.source_id,
+        platform_of_origin=row.platform_of_origin,
+        owner_user_id=row.owner_user_id, agent_role_id=row.agent_role_id,
+        lifecycle_state=row.lifecycle_state, last_certified_at=row.last_certified_at,
+        certification_cadence_days=row.certification_cadence_days,
+        risk_tier=row.risk_tier, deactivated_at=row.deactivated_at,
+    )
+
+
+@router.post("/agent-identities/{identity_id}/certify", response_model=AgentIdentityOut)
+def certify_agent_identity(
+    workspace_id: str,
+    identity_id: str,
+    _ws: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+):
+    """Owner attestation. Records the current time as last_certified_at and
+    transitions the identity back to active if it was in pending_review.
+    """
+    row = db.query(AgentIdentity).filter(
+        AgentIdentity.id == identity_id,
+        AgentIdentity.workspace_id == workspace_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Agent identity not found")
+
+    row.last_certified_at = datetime.now(timezone.utc)
+    if row.lifecycle_state == "pending_review":
+        row.lifecycle_state = "active"
+    db.commit()
+    db.refresh(row)
+
+    return AgentIdentityOut(
+        id=row.id, name=row.name, provider=row.provider, token_prefix=row.token_prefix,
+        created_at=row.created_at, last_used_at=row.last_used_at, environment_id=row.environment_id,
+        source=row.source, source_id=row.source_id,
+        platform_of_origin=row.platform_of_origin,
+        owner_user_id=row.owner_user_id, agent_role_id=row.agent_role_id,
+        lifecycle_state=row.lifecycle_state, last_certified_at=row.last_certified_at,
+        certification_cadence_days=row.certification_cadence_days,
+        risk_tier=row.risk_tier, deactivated_at=row.deactivated_at,
+    )
 
 
 @router.post("/agent-identities/{identity_id}/regenerate", response_model=AgentIdentityCreated)

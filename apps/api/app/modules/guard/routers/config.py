@@ -564,6 +564,8 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
 
     # Active ruleset comes from skill_packs JSONB via compute_policy().
     # Persona is read from guard_config above (config.persona, defaults to 'standard').
+    # compute_policy already filters to enabled packs per WorkspaceSkillPack — a rule
+    # from a pack that is not installed will not appear here.
     from app.modules.guard.enforcement import is_hook_applicable_rule
     from app.modules.guard.policy_engine import compute_policy
     persona = (config.persona or "agent")
@@ -577,6 +579,12 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
             "match_path_pattern": r.get("match_path_pattern"),
             "action":            r.get("action"),
             "message":           r.get("message"),
+            # #1048: propagate except_paths so pack authors can declaratively
+            # exclude paths without editing hook code.
+            "except_paths":      r.get("except_paths"),
+            # #1048: source_pack lets operators trace 'which pack put this rule
+            # in my local cache' when diagnosing stale-cache issues.
+            "source_pack":       r.get("source_pack") or r.get("_pack_slug"),
         }
         for r in computed
         if is_hook_applicable_rule(r)
