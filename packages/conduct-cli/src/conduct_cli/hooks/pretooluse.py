@@ -379,6 +379,7 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
     path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
 
     is_dev_path = _is_developer_source_path(tool_input)
+    target_paths_lower = [str(tool_input.get(f, "") or "").lower() for f in ("file_path", "path")]
 
     current_ai_tool = detect_ai_tool()
     for rule in rules:
@@ -389,6 +390,21 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
         # engineering writes to hook code, migrations, tests, and docs.
         if is_dev_path and _rule_is_doc_sensitive(rid):
             continue
+
+        # #1048: declarative per-rule path exclusion. Pack authors add
+        # 'except_paths' (list of path substrings) to a rule to skip it on
+        # writes targeting those paths. Runs after the hardcoded skip above
+        # so packs can add their own exclusions without editing the hook.
+        except_paths = rule.get("except_paths") or []
+        if except_paths and target_paths_lower:
+            skip = False
+            for ex in except_paths:
+                ex_lower = str(ex).lower()
+                if any(ex_lower in p for p in target_paths_lower if p):
+                    skip = True
+                    break
+            if skip:
+                continue
 
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
