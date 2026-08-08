@@ -712,6 +712,7 @@
       "message": "Memory write is missing source or trust classification. Untagged content can silently become policy across future sessions.",
       "persona_affinity": [
         "agent",
+        "proxy",
         "security"
       ],
       "frameworks": [
@@ -747,6 +748,7 @@
       "message": "Untrusted content cannot be silently promoted to durable memory. Route to explicit trust-promotion review.",
       "persona_affinity": [
         "agent",
+        "proxy",
         "security"
       ],
       "frameworks": [
@@ -783,6 +785,7 @@
       "message": "Content stored in memory contains instruction-shaped text that would act as delayed prompt injection when recalled.",
       "persona_affinity": [
         "agent",
+        "proxy",
         "security"
       ],
       "frameworks": [
@@ -819,6 +822,7 @@
       "message": "Memory read spans multiple tenants or namespaces. Cross-context reads can leak one context's poisoned memory into another.",
       "persona_affinity": [
         "agent",
+        "proxy",
         "security"
       ],
       "frameworks": [
@@ -855,6 +859,7 @@
       "message": "Write targets a trusted memory tier without an integrity claim (hash, signature, or attestation).",
       "persona_affinity": [
         "agent",
+        "proxy",
         "security"
       ],
       "frameworks": [
