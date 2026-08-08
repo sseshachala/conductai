@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, get_user_id, require_permission
+from app.core.auth import get_workspace_id, get_user_id, get_user_workspace_role, require_permission
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration
@@ -97,7 +97,7 @@ def create_agent_identity(
     workspace_id: str,
     body: AgentIdentityCreate,
     _ws: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.workspace.edit")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
     if not body.name.strip():
@@ -142,7 +142,7 @@ def create_agent_identity(
 def list_agent_identities(
     workspace_id: str,
     _ws: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.workspace.edit")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
     rows = (
@@ -168,7 +168,7 @@ def delete_agent_identity(
     workspace_id: str,
     identity_id: str,
     _ws: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.workspace.edit")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
     row = db.query(AgentIdentity).filter(
@@ -187,7 +187,8 @@ def patch_agent_identity(
     identity_id: str,
     body: AgentIdentityPatch,
     _ws: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.workspace.edit")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
+    role: str = Depends(get_user_workspace_role),
     db: Session = Depends(get_db),
 ):
     """Update identity metadata: owner, risk_tier, lifecycle_state, certification cadence, platform_of_origin.
@@ -195,7 +196,15 @@ def patch_agent_identity(
     Token/credential fields are immutable via this endpoint. Regenerate uses a
     separate endpoint. Setting lifecycle_state to deactivated is a soft-delete
     and also stamps deactivated_at.
+
+    Field-level auth: developer+ can update owner/cadence/platform/metadata.
+    Only admins can change risk_tier or lifecycle_state.
     """
+    if (body.risk_tier is not None or body.lifecycle_state is not None) and role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only admins can change risk_tier or lifecycle_state",
+        )
     VALID_LIFECYCLE = {"active", "pending_review", "deactivated", "expired"}
     VALID_TIERS = {"tier_1", "tier_2", "tier_3"}
 
@@ -299,7 +308,7 @@ def regenerate_agent_identity(
     workspace_id: str,
     identity_id: str,
     _ws: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.workspace.edit")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
     row = db.query(AgentIdentity).filter(
@@ -331,7 +340,7 @@ def list_run_tokens(
     workspace_id: str,
     identity_id: str,
     _ws: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.workspace.edit")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
     from app.modules.agent_identity.run_token_model import AgentRunToken
@@ -381,7 +390,7 @@ def list_run_tokens(
 def list_workspace_run_tokens(
     workspace_id: str,
     _ws: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.workspace.edit")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
     from app.modules.agent_identity.run_token_model import AgentRunToken
@@ -436,7 +445,7 @@ def create_api_token(
     body: "ApiTokenCreate",
     _ws: str = Depends(get_workspace_id),
     creator_id: str = Depends(get_user_id),
-    _: str = Depends(require_permission("platform.workspace.edit")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
     """Create a long-lived machine token (cond_api_*). Returned once — store it securely."""
@@ -484,7 +493,7 @@ def create_api_token(
 def list_api_tokens(
     workspace_id: str,
     _ws: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.workspace.edit")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
     """List all long-lived API tokens for the workspace. Token values are never returned."""
@@ -516,7 +525,7 @@ def delete_api_token(
     workspace_id: str,
     token_id: str,
     _ws: str = Depends(get_workspace_id),
-    _: str = Depends(require_permission("platform.workspace.edit")),
+    _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
     """Delete a long-lived API token. Immediately revokes access."""
