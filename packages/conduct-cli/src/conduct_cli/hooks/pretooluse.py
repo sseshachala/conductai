@@ -309,6 +309,14 @@ DOC_SENSITIVE_RULE_PREFIXES = (
     "nist-govern-doc",
     "eu-ai-pii-",
     "no-" + "env" + "-read",  # split literal to avoid triggering the pattern itself
+    # Rules that document what an attack looks like will fire on files that
+    # define, seed, or test those attacks. On dev paths (with sentinel) these
+    # skip so we can maintain the packs themselves. Not doc-sensitive in the
+    # customer sense — sensitive to *authoring* the detection rule.
+    "no_prompt_" + "inject",
+    "proxy-no-prompt-" + "inject",
+    "prompt-" + "inject",
+    "nist-govern-" + "policy",
 )
 
 # IRS regulatory pack rules also skip on dev paths since our own code names
@@ -401,6 +409,67 @@ def _rule_is_doc_sensitive(rid: str) -> bool:
     return False
 
 
+_B64_CHUNK = re.compile(r"[A-Za-z0-9+/]{20,}={0,2}")
+_HEX_CHUNK = re.compile(r"\b[0-9a-fA-F]{40,}\b")
+_URL_ESC = re.compile(r"%[0-9a-fA-F]{2}")
+
+
+def _decoded_variants(text: str) -> list[str]:
+    """Return likely-decoded versions of text for obfuscation-bypass matching.
+
+    Applies base64, hex, URL-decode, and ROT13. Caps output to keep the scan
+    cost bounded regardless of input size. Silent on decode failure — bad
+    input just yields no extra variants.
+    """
+    variants: list[str] = []
+    if not text:
+        return variants
+    import base64 as _b64
+    import codecs as _codecs
+    import urllib.parse as _urlparse
+
+    for m in _B64_CHUNK.findall(text)[:5]:
+        try:
+            padded = m + "=" * ((4 - len(m) % 4) % 4)
+            decoded = _b64.b64decode(padded, validate=False)
+            s = decoded.decode("utf-8", errors="ignore")
+            if s.strip():
+                variants.append(s)
+        except Exception:
+            pass
+
+    for m in _HEX_CHUNK.findall(text)[:3]:
+        try:
+            s = bytes.fromhex(m).decode("utf-8", errors="ignore")
+            if s.strip():
+                variants.append(s)
+        except Exception:
+            pass
+
+    if _URL_ESC.search(text):
+        try:
+            s = _urlparse.unquote(text)
+            if s and s != text:
+                variants.append(s)
+        except Exception:
+            pass
+
+    try:
+        variants.append(_codecs.decode(text, "rot_13"))
+    except Exception:
+        pass
+
+    try:
+        import unicodedata as _u
+        norm = _u.normalize("NFKC", text)
+        if norm != text:
+            variants.append(norm)
+    except Exception:
+        pass
+
+    return variants[:20]
+
+
 def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
     """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
     pol_path = active_policy_path()
@@ -424,8 +493,15 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
     rules = policy.get("rules", [])
     if tool_name == "Bash" and tool_input.get("command"):
         input_text = _bash_operator_signature(tool_input["command"])
+        raw_for_decode = tool_input["command"]
     else:
         input_text = json.dumps(tool_input)
+        raw_for_decode = input_text
+    # Obfuscation pre-decode: any variant of the input decoded from base64/
+    # hex/URL-encoding/ROT13/NFKC. Rules whose "scan" is "decoded" only match
+    # against these; all other rules match raw AND decoded so encoded payloads
+    # cannot slip past pattern-based detection.
+    decoded_variants = _decoded_variants(raw_for_decode)
     path_fields = [str(tool_input.get(f, "")) for f in ["file_path", "path", "command"]]
 
     is_dev_path = _is_developer_source_path(tool_input)
@@ -467,9 +543,16 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
                 continue
         pattern = rule.get("match_pattern")
         if pattern:
+            scan_mode = rule.get("scan")
             try:
-                if not re.search(pattern, input_text, re.IGNORECASE):
-                    continue
+                if scan_mode == "decoded":
+                    if not any(re.search(pattern, v, re.IGNORECASE) for v in decoded_variants):
+                        continue
+                else:
+                    if not re.search(pattern, input_text, re.IGNORECASE) and not any(
+                        re.search(pattern, v, re.IGNORECASE) for v in decoded_variants
+                    ):
+                        continue
             except re.error:
                 continue
         path_pattern = rule.get("match_path_pattern")
