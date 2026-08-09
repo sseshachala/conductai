@@ -841,7 +841,7 @@ function HonestySection() {
         <p className="text-stone-500 leading-relaxed mb-4">
           Credentials are decrypted in the executor process. There&apos;s no per-environment egress allowlist. We don&apos;t statically analyse third-party playbooks before install. All of it is documented, with our plan for each.
         </p>
-        <a href="/docs" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
+        <a href="/security" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
           Read the threat model →
         </a>
       </div>
