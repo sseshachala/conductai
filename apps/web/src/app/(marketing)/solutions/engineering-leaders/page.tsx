@@ -122,52 +122,23 @@ function PitchSection() {
 
 /* ─── Proof arc ─────────────────────────────────────────────────────────── */
 
-const PROOF_MILESTONES = [
-  {
-    period: "Month 1",
-    headline: "Every AI coding session is visible.",
-    body: "You know which tools are running, who's using them, and what they're doing.",
-  },
-  {
-    period: "Month 3",
-    headline: "Policy violations drop 60%.",
-    body: "Developers self-correct when they see the audit trail.",
-  },
-  {
-    period: "Month 6",
-    headline: "Security can generate SOC 2 evidence in minutes.",
-    body: "No manual log review.",
-  },
-]
-
 function ProofArcSection() {
   return (
     <section className="bg-stone-950 px-6 py-20">
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-12">
-          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3">What changes</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3">What changes on day one</p>
           <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-            Month by month, the control compounds.
+            Every AI coding session is visible.
           </h2>
         </div>
-        <div className="grid md:grid-cols-3 gap-5">
-          {PROOF_MILESTONES.map((m, i) => (
-            <div key={m.period} className="border border-stone-700 rounded-xl bg-stone-900 p-6">
-              <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-3">{m.period}</p>
-              <h3 className="text-sm font-bold text-white mb-2 leading-snug">{m.headline}</h3>
-              <p className="text-xs text-stone-400 leading-relaxed">{m.body}</p>
-              <div className="mt-4 flex items-center gap-1">
-                {PROOF_MILESTONES.map((_, j) => (
-                  <span
-                    key={j}
-                    className={`h-1 rounded-full transition-all ${
-                      j <= i ? "bg-indigo-500 flex-1" : "bg-stone-700 w-4"
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className="max-w-2xl mx-auto">
+          <div className="border border-stone-700 rounded-xl bg-stone-900 p-8">
+            <h3 className="text-base font-bold text-white mb-3 leading-snug">Full session visibility from install</h3>
+            <p className="text-sm text-stone-400 leading-relaxed">
+              Within ten minutes you know which AI tools your team is running, who is using them, and what they are doing. Spend is visible by developer and by day. Policy violations surface in the activity feed as they happen.
+            </p>
+          </div>
         </div>
       </div>
     </section>
