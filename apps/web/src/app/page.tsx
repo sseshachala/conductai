@@ -16,8 +16,11 @@ export default function HomePage() {
         <ProofStripSection />
         <ProblemSection />
         <TwoLanesSection />
+        <CopilotPromoSection />
         <StackStripSection />
         <GovernanceNarrativeSection />
+        <GatewaySection />
+        <HonestySection />
         <GuardLearnsTeaser />
         <PersonasSection />
         <DemoVideoSection />
@@ -42,18 +45,11 @@ function Nav() {
         <ProductsDropdown />
         <SolutionsDropdown />
         {/* ponytail: home page has its own inlined nav; keep in sync with (marketing)/layout.tsx until we extract shared components */}
-        <a href="/use-cases" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Use cases</a>
-        <a href="/team-os" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-          Team OS <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest">Free</span>
-        </a>
+        <a href="/pricing" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Pricing</a>
         <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
         <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
       </nav>
       <div className="flex items-center gap-3">
-        <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener"
-          className="rounded-lg border border-stone-300 text-stone-700 px-4 py-2 text-sm font-semibold hover:border-stone-400 transition-colors hidden sm:block">
-          Book Demo
-        </a>
         <CtaLink className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors" />
       </div>
       </div>
@@ -72,19 +68,11 @@ function ProductsDropdown() {
       </a>
       <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <a href="/team-os" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>📄</span>
-            <div>
-              <p className="font-semibold">Team OS <span className="text-[10px] text-emerald-600 font-bold ml-1 uppercase tracking-widest">Free</span></p>
-              <p className="text-xs text-stone-400">CLAUDE.md · REVIEW.md · Standards</p>
-            </div>
-          </a>
-          <div className="border-t border-stone-100 my-1" />
           <a href="/guard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span>🛡️</span>
             <div>
-              <p className="font-semibold">Conduct Guard</p>
-              <p className="text-xs text-stone-400">Runtime AI governance</p>
+              <p className="font-semibold">Guard</p>
+              <p className="text-xs text-stone-400">Guard — see and control every AI coding session</p>
             </div>
           </a>
           <a href="/registry" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
@@ -97,16 +85,15 @@ function ProductsDropdown() {
           <a href="/tools/conduct-cli" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span className="text-indigo-600 font-bold text-base">◈</span>
             <div>
-              <p className="font-semibold">Conduct CLI</p>
+              <p className="font-semibold">CLI</p>
               <p className="text-xs text-stone-400">Terminal governance + token savings</p>
             </div>
           </a>
-          <div className="border-t border-stone-100 my-1" />
-          <a href="/frameworks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>📐</span>
+          <a href="/team-os" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>📔</span>
             <div>
-              <p className="font-semibold">Compliance frameworks</p>
-              <p className="text-xs text-stone-400">EU AI Act · NIST · ISO 42001 · OWASP</p>
+              <p className="font-semibold">Team OS</p>
+              <p className="text-xs text-stone-400">CLAUDE.md · REVIEW.md · Standards</p>
             </div>
           </a>
         </div>
@@ -123,77 +110,31 @@ function SolutionsDropdown() {
         Solutions
         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
       </a>
-      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[260px]">
+      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-stone-400">By role</p>
           <a href="/solutions/engineering-leaders" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Engineering leaders</p>
-            </div>
+            <div><p className="font-semibold">Engineering leaders</p></div>
           </a>
           <a href="/solutions/security-compliance" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Security &amp; compliance</p>
-            </div>
-          </a>
-
-          <div className="my-1 border-t border-stone-100" />
-
-          <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-stone-400">By outcome</p>
-          <a href="/solutions/security-loop" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Security Loop</p>
-              <p className="text-xs text-stone-400">Scan to fix, closed</p>
-            </div>
+            <div><p className="font-semibold">Security &amp; compliance</p></div>
           </a>
           <a href="/solutions/action-governance" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Action governance</p>
-              <p className="text-xs text-stone-400">Policy in front of every action</p>
-            </div>
+            <div><p className="font-semibold">Action governance</p></div>
           </a>
-          <a href="/solutions/memory-hardening" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Memory hardening</p>
-              <p className="text-xs text-stone-400">OWASP ASI06 at the wire</p>
-            </div>
-          </a>
-          <a href="/solutions/okta-plus-conduct" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Okta + Conduct</p>
-              <p className="text-xs text-stone-400">Identity plus runtime governance</p>
-            </div>
-          </a>
-
-          <div className="my-1 border-t border-stone-100" />
-
-          <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-stone-400">By industry</p>
           <a href="/solutions/financial-services" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Financial services</p>
-              <p className="text-xs text-stone-400">SR 11-7 interim controls</p>
-            </div>
+            <div><p className="font-semibold">Financial services</p></div>
           </a>
           <a href="/solutions/life-sciences" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Life sciences</p>
-              <p className="text-xs text-stone-400">FDA CSA + GMLP + GAMP 5</p>
-            </div>
+            <div><p className="font-semibold">Life sciences</p></div>
           </a>
-
-          <div className="my-1 border-t border-stone-100" />
-
-          <a href="/use-cases" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">All use cases</p>
-              <p className="text-xs text-stone-400">Nine surfaces we operate in</p>
-            </div>
+          <a href="/solutions/memory-hardening" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div><p className="font-semibold">Memory hardening</p></div>
           </a>
-          <a href="/deployment" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Deployment options</p>
-              <p className="text-xs text-stone-400">SaaS · Cloud · On-premise</p>
-            </div>
+          <a href="/solutions/okta-plus-conduct" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div><p className="font-semibold">Okta + Conduct</p></div>
+          </a>
+          <a href="/solutions/security-loop" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div><p className="font-semibold">Security Loop</p></div>
           </a>
         </div>
       </div>
@@ -201,50 +142,29 @@ function SolutionsDropdown() {
   )
 }
 
+
 /* ─── Hero ─────────────────────────────────────────────────────────────── */
 
 function HeroSection() {
-  const chips = [
-    "22 agent templates",
-    "4 AI providers",
-    "Shadow AI discovery",
-    "Real-time spend limits",
-    "Full audit trail",
-    "Zero infrastructure changes",
-  ]
   return (
     <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
       <BootSequence />
-      <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
-        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
-        What your agent does. Not just what it can.
-      </div>
-      <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-        Your AI agents are taking real actions. Nobody is watching.
+      <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-4">
+        Your developers are running AI agents right now.
       </h1>
-      <p className="text-xl text-stone-500 max-w-3xl mx-auto leading-relaxed mb-6">
-        Your agent can call any tool. Conduct decides which calls actually run. Across Claude Code, Claude.ai, Codex, ChatGPT, Cursor, Copilot, Windsurf.
+      <p className="text-2xl sm:text-3xl font-bold text-stone-500 max-w-3xl mx-auto leading-tight mb-6">
+        You can&apos;t see what they&apos;re doing, and you can&apos;t stop them.
       </p>
-      <p className="text-base text-stone-500 max-w-3xl mx-auto leading-relaxed mb-8 italic">
-        Your identity provider tells you who your agents are. Guard governs what they do.
+      <p className="text-lg text-stone-500 max-w-3xl mx-auto leading-relaxed mb-8">
+        Conduct sits between your team&apos;s AI coding tools and everything they touch. Every tool call is visible. Every dangerous one can be blocked. Works with Claude Code, Cursor, Copilot, Codex, ChatGPT, and Windsurf.
       </p>
-      <p className="font-mono text-sm sm:text-base text-stone-700 max-w-3xl mx-auto mb-8">
-        What the agent tried. What Guard allowed. What the reviewer signed. What the chain proves.
-      </p>
-      <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
-        {chips.map(chip => (
-          <span key={chip} className="bg-stone-100 text-stone-700 rounded-full px-3 py-1 text-xs font-semibold">
-            {chip}
-          </span>
-        ))}
-      </div>
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
         <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />
-        <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener" className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-base font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center">
-          Book a Demo
+        <a href="/pricing" className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-base font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center">
+          See pricing
         </a>
       </div>
-      <p className="text-xs text-stone-400 mt-4">Free tier · No infrastructure changes · Works in minutes</p>
+      <p className="text-xs text-stone-400">Free tier · Installs in 10 minutes · No infrastructure changes</p>
     </section>
   )
 }
@@ -325,40 +245,42 @@ function ProofStripSection() {
     <section className="bg-stone-950 border-y border-stone-800 py-6 px-6">
       <div className="max-w-5xl mx-auto">
         <p className="text-center text-[10px] font-semibold uppercase tracking-widest text-stone-500 mb-5">
-          Real data · 1 developer · 18 days · annualized
+          From 18 days of production use, one developer
         </p>
         <div className="flex flex-wrap items-start justify-center gap-x-12 gap-y-5">
 
-          {/* AI Spend */}
+          {/* Production deploys blocked */}
           <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl font-black text-white tracking-tight">$84K/year</span>
-            <span className="text-xs text-stone-400">projected AI spend</span>
-            <span className="text-[10px] text-stone-600">from $4,170 in 18 days</span>
+            <span className="text-2xl font-black text-red-400 tracking-tight">6</span>
+            <span className="text-xs text-stone-400">production deploys blocked</span>
+            <span className="text-[10px] text-stone-600">before execution</span>
           </div>
 
-          {/* Prod deploy gates — expanded treatment */}
+          {/* PII spike */}
           <div className="flex flex-col items-center gap-1 border border-stone-700 rounded-xl px-5 py-3 bg-stone-900">
-            <span className="text-2xl font-black text-red-400 tracking-tight">$50K+</span>
-            <span className="text-xs text-stone-300 font-semibold">potential cost per unreviewed deploy</span>
-            <span className="text-[10px] text-stone-500 mt-1">6 intercepted · 18 days · 1 developer</span>
-            <span className="text-[10px] text-indigo-400 mt-1">→ 1,200/year across a 10-person team</span>
+            <span className="text-2xl font-black text-white tracking-tight">971</span>
+            <span className="text-xs text-stone-300 font-semibold">PII events screened in a single day</span>
+            <span className="text-[10px] text-stone-500 mt-1">30x the normal baseline</span>
           </div>
 
-          {/* PII */}
+          {/* Credential leaks */}
           <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl font-black text-white tracking-tight">12,000/year</span>
-            <span className="text-xs text-stone-400">PII events screened</span>
-            <span className="text-[10px] text-stone-600">from 589 in 18 days</span>
+            <span className="text-2xl font-black text-white tracking-tight">2</span>
+            <span className="text-xs text-stone-400">credential leaks caught</span>
+            <span className="text-[10px] text-stone-600">in commit messages, same session</span>
           </div>
 
-          {/* Savings */}
+          {/* Spend visibility */}
           <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl font-black text-white tracking-tight">$4,700/year</span>
-            <span className="text-xs text-stone-400">tooling savings</span>
-            <span className="text-[10px] text-stone-600">from $235 in 18 days</span>
+            <span className="text-2xl font-black text-white tracking-tight">$4,170</span>
+            <span className="text-xs text-stone-400">AI spend made visible</span>
+            <span className="text-[10px] text-stone-600">by tool and by day</span>
           </div>
 
         </div>
+        <p className="text-center text-[10px] text-stone-600 mt-5">
+          Small sample, real system. We&apos;ll publish team-scale numbers when we have them.
+        </p>
       </div>
     </section>
   )
@@ -427,87 +349,56 @@ function ProblemSection() {
   )
 }
 
-/* ─── Two Lanes ────────────────────────────────────────────────────────── */
+/* ─── What It Does ────────────────────────────────────────── */
 
 function TwoLanesSection() {
   return (
     <section className="py-24 px-6 bg-white">
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14">
-          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-3">The solution</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-3">What it does</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
-            One platform. Every AI action, governed.
+            Three things, all of them enforced.
           </h2>
-          <p className="text-stone-500 max-w-xl mx-auto leading-relaxed">
-            Guard covers both surfaces you need. A registry of ready-to-run agents, and wire enforcement that makes every call a policy decision. Same platform, same audit chain.
-          </p>
         </div>
-        <div className="grid md:grid-cols-2 gap-5">
+        <div className="grid md:grid-cols-3 gap-5">
 
-          {/* Automate — indigo/light */}
-          <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-8 flex flex-col gap-5">
-            <span className="inline-flex px-3 py-1 rounded-full bg-indigo-600 text-white text-xs font-bold uppercase tracking-wider w-fit">
-              ⚡ Automate
-            </span>
-            <a href="/sdd" className="flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
-              <span>📐</span> Start with a spec →
-            </a>
-            <div>
-              <h3 className="text-2xl font-bold text-stone-900 tracking-tight mb-2">Ship faster with agent templates</h3>
-              <p className="text-stone-600 leading-relaxed text-sm">
-                The PR review that used to wait for a senior engineer now runs in 90 seconds. The security scan that lived in one person&apos;s terminal now runs on every push. 22 templates, ready to install.
-              </p>
-            </div>
-            <ul className="space-y-2.5 flex-1">
-              {[
-                "PR review · autopilot fix · security scan",
-                "CI failure triage · flaky test detection",
-                "Release notes · postmortem drafter · docs drift",
-                "YAML you own, no vendor lock-in",
-                "Runs on Claude, GPT, or Gemini",
-              ].map(f => (
-                <li key={f} className="flex items-center gap-2.5 text-sm text-stone-700">
-                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">✓</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <a href="/registry" className="mt-auto rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors text-center">
-              Browse the Registry →
-            </a>
+          <div className="rounded-2xl bg-stone-900 border border-stone-800 p-8 flex flex-col gap-4">
+            <h3 className="text-xl font-bold text-white tracking-tight">See every session.</h3>
+            <p className="text-stone-400 leading-relaxed text-sm flex-1">
+              Within ten minutes of install you know which AI tools your team is running, who&apos;s using them, what they&apos;re calling, and what it costs, by developer, by day, by tool.
+            </p>
           </div>
 
-          {/* Guard — dark */}
-          <div className="rounded-2xl bg-stone-900 border border-stone-800 p-8 flex flex-col gap-5">
-            <span className="inline-flex px-3 py-1 rounded-full bg-white/10 text-stone-300 text-xs font-bold uppercase tracking-wider w-fit">
-              🛡️ Guard
-            </span>
-            <div>
-              <h3 className="text-2xl font-bold text-white tracking-tight mb-2">Every agent action is structurally governed</h3>
-              <p className="text-stone-400 leading-relaxed text-sm">
-                One env var routes every LLM call through Guard, regardless of framework, language, or developer discipline. Actions Guard denies are not unlikely. They are structurally impossible. Guard enforces policy at the execution boundary: one layer below the agent, one layer above the enterprise system.
-              </p>
-            </div>
-            <ul className="space-y-2.5 flex-1">
-              {[
-                "Per-user monthly spend limits with auto-block",
-                "OWASP Top 10 policy pack, enabled by default",
-                "Full audit log: who ran what, when, and why",
-                "Slack alerts on policy violations or budget spikes",
-                "DORA metrics · cost analytics · agent scorecards",
-              ].map(f => (
-                <li key={f} className="flex items-center gap-2.5 text-sm text-stone-300">
-                  <span className="w-5 h-5 rounded-full bg-white/15 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">✓</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <a href="/guard" className="mt-auto rounded-xl border border-white/20 text-white px-6 py-3 text-sm font-semibold hover:bg-white/10 transition-colors text-center">
-              Explore Guard →
-            </a>
+          <div className="rounded-2xl bg-stone-900 border border-stone-800 p-8 flex flex-col gap-4">
+            <h3 className="text-xl font-bold text-white tracking-tight">Block what shouldn&apos;t run.</h3>
+            <p className="text-stone-400 leading-relaxed text-sm flex-1">
+              Policies are YAML rules evaluated at the moment the agent acts. A blocked call exits with code 2 and the agent stops. Not a prompt instruction the model can talk itself out of.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-stone-900 border border-stone-800 p-8 flex flex-col gap-4">
+            <h3 className="text-xl font-bold text-white tracking-tight">Prove it afterward.</h3>
+            <p className="text-stone-400 leading-relaxed text-sm flex-1">
+              Every decision is written to a SHA-256 hash-chained log. One click confirms the record is intact. Export for compliance review in 30 seconds.
+            </p>
           </div>
 
         </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Copilot MCP Promo ───────────────────────────────────── */
+
+function CopilotPromoSection() {
+  return (
+    <section className="bg-stone-900 border-y border-stone-800 px-6 py-10">
+      <div className="max-w-3xl mx-auto">
+        <p className="text-stone-400 text-sm leading-relaxed">
+          Covering a whole org takes one URL. GitHub Copilot for Business supports hosted MCP servers. An admin pastes the ConductGuard URL into org settings once and every developer is covered on their next session. No per-developer install.
+        </p>
       </div>
     </section>
   )
@@ -703,7 +594,7 @@ function GovernanceNarrativeSection() {
           <div className="flex-1">
             <p className="text-sm font-semibold text-stone-900 mb-1">What would have happened without Guard?</p>
             <p className="text-sm text-stone-500 leading-relaxed">
-              The production deploy would have executed. Average cost of a prod incident at a mid-market company: $15K–$50K. $235 saved on tooling is nice. $50K in a prevented outage is a different conversation.
+              The production deploy would have executed. Six times in 18 days, on one developer&apos;s machine.
             </p>
           </div>
           <CtaLink className="flex-shrink-0 rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-bold hover:bg-indigo-700 transition-colors whitespace-nowrap" />
@@ -877,6 +768,87 @@ function FinalCTASection() {
   )
 }
 
+/* ─── Gateway Comparison ─────────────────────────────────────── */
+
+function GatewaySection() {
+  return (
+    <section className="bg-white border-t border-stone-100 px-6 py-20">
+      <div className="max-w-3xl mx-auto">
+        <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-4">How ConductGuard is different</p>
+        <h2 className="text-3xl font-bold text-stone-900 mb-4 leading-tight">
+          A gateway governs what the model costs. Conduct governs what the agent does.
+        </h2>
+        <p className="text-stone-500 mb-10 text-lg">
+          Provider gateways sit between your team and the LLM. They cap spend, enforce SSO, and log model requests. That&apos;s the right layer for cost control.
+        </p>
+        <div className="grid md:grid-cols-2 gap-6 mb-10">
+          <div className="border border-stone-200 rounded-xl p-6">
+            <p className="text-sm font-semibold text-stone-400 uppercase tracking-widest mb-4">Provider gateway</p>
+            <ul className="space-y-3 text-sm text-stone-600">
+              {([
+                ["yes", "Caps LLM spend per user"],
+                ["yes", "SSO sign-in"],
+                ["yes", "Model selection controls"],
+                ["no",  "Sees tool calls (Bash, Write, Read)"],
+                ["no",  "Blocks destructive commands before they run"],
+                ["no",  "Detects credential leaks in tool input"],
+                ["no",  "One policy across Claude, Codex, ChatGPT, Cursor, Copilot"],
+                ["no",  "Custody proof log"],
+              ] as [string, string][]).map(([state, label]) => (
+                <li key={label} className="flex items-start gap-2">
+                  <span className={state === "yes" ? "text-green-500 font-bold mt-0.5" : "text-stone-300 font-bold mt-0.5"}>{state === "yes" ? "✓" : "✗"}</span>
+                  <span className={state === "no" ? "text-stone-400" : ""}>{label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="border border-indigo-200 bg-indigo-50 rounded-xl p-6">
+            <p className="text-sm font-semibold text-indigo-500 uppercase tracking-widest mb-4">ConductGuard</p>
+            <ul className="space-y-3 text-sm text-stone-700">
+              {[
+                "Caps LLM spend per user",
+                "SSO sign-in",
+                "Model selection controls",
+                "Sees tool calls (Bash, Write, Read)",
+                "Blocks destructive commands before they run",
+                "Detects credential leaks in tool input",
+                "One policy across Claude, Codex, ChatGPT, Cursor, Copilot",
+                "Custody proof log",
+              ].map((label) => (
+                <li key={label} className="flex items-start gap-2">
+                  <span className="text-indigo-500 font-bold mt-0.5">✓</span>
+                  <span>{label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <p className="text-stone-400 text-sm">
+          Use a provider gateway for spend control. Use ConductGuard for everything the model touches after it decides what to do.
+        </p>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Honesty Block ────────────────────────────────────────────── */
+
+function HonestySection() {
+  return (
+    <section className="bg-stone-50 border-y border-stone-100 px-6 py-16">
+      <div className="max-w-3xl mx-auto">
+        <h2 className="text-2xl font-bold text-stone-900 mb-4">What we don&apos;t protect yet.</h2>
+        <p className="text-stone-500 leading-relaxed mb-4">
+          Credentials are decrypted in the executor process. There&apos;s no per-environment egress allowlist. We don&apos;t statically analyse third-party playbooks before install. All of it is documented, with our plan for each.
+        </p>
+        <a href="/docs" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
+          Read the threat model →
+        </a>
+      </div>
+    </section>
+  )
+}
+
 /* ─── Footer ───────────────────────────────────────────────────────────── */
 
 function PageFooter() {
@@ -886,7 +858,7 @@ function PageFooter() {
         <div className="flex flex-col md:flex-row justify-between gap-8 mb-10">
           <div>
             <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto mb-3" />
-            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">Runtime AI Governance for Engineering Teams. Platform or partnership. You choose how.</p>
+            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">AI agent governance for engineering teams.</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
@@ -910,7 +882,7 @@ function PageFooter() {
           </div>
         </div>
         <div className="border-t border-stone-100 pt-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-stone-400">
-          <span>© {new Date().getFullYear()} Conduct AI. All rights reserved. · Patent Pending (US 64/109,502)</span>
+          <span>© {new Date().getFullYear()} Conduct AI. All rights reserved.</span>
           <div className="flex items-center gap-4">
             <a href="https://www.linkedin.com/company/conductai/" target="_blank" rel="noopener noreferrer" className="hover:text-stone-700 transition-colors" aria-label="LinkedIn">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>

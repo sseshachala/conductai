@@ -74,40 +74,42 @@ function ProofStripSection() {
     <section className="bg-stone-950 border-y border-stone-800 py-6 px-6">
       <div className="max-w-5xl mx-auto">
         <p className="text-center text-[10px] font-semibold uppercase tracking-widest text-stone-500 mb-5">
-          Real data · 1 developer · 18 days · annualized
+          From 18 days of production use, one developer
         </p>
         <div className="flex flex-wrap items-start justify-center gap-x-12 gap-y-5">
 
-          {/* AI Spend */}
+          {/* Production deploys blocked */}
           <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl font-black text-white tracking-tight">$84K/year</span>
-            <span className="text-xs text-stone-400">projected AI spend</span>
-            <span className="text-[10px] text-stone-600">from $4,170 in 18 days</span>
+            <span className="text-2xl font-black text-red-400 tracking-tight">6</span>
+            <span className="text-xs text-stone-400">production deploys blocked</span>
+            <span className="text-[10px] text-stone-600">before execution</span>
           </div>
 
-          {/* Prod deploy gates — expanded treatment */}
+          {/* PII spike */}
           <div className="flex flex-col items-center gap-1 border border-stone-700 rounded-xl px-5 py-3 bg-stone-900">
-            <span className="text-2xl font-black text-red-400 tracking-tight">$50K+</span>
-            <span className="text-xs text-stone-300 font-semibold">potential cost per unreviewed deploy</span>
-            <span className="text-[10px] text-stone-500 mt-1">6 intercepted · 18 days · 1 developer</span>
-            <span className="text-[10px] text-indigo-400 mt-1">→ 1,200/year across a 10-person team</span>
+            <span className="text-2xl font-black text-white tracking-tight">971</span>
+            <span className="text-xs text-stone-300 font-semibold">PII events screened in a single day</span>
+            <span className="text-[10px] text-stone-500 mt-1">30x the normal baseline</span>
           </div>
 
-          {/* PII */}
+          {/* Credential leaks */}
           <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl font-black text-white tracking-tight">12,000/year</span>
-            <span className="text-xs text-stone-400">PII events screened</span>
-            <span className="text-[10px] text-stone-600">from 589 in 18 days</span>
+            <span className="text-2xl font-black text-white tracking-tight">2</span>
+            <span className="text-xs text-stone-400">credential leaks caught</span>
+            <span className="text-[10px] text-stone-600">in commit messages, same session</span>
           </div>
 
-          {/* Savings */}
+          {/* Spend visibility */}
           <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl font-black text-white tracking-tight">$4,700/year</span>
-            <span className="text-xs text-stone-400">tooling savings</span>
-            <span className="text-[10px] text-stone-600">from $235 in 18 days</span>
+            <span className="text-2xl font-black text-white tracking-tight">$4,170</span>
+            <span className="text-xs text-stone-400">AI spend made visible</span>
+            <span className="text-[10px] text-stone-600">by tool and by day</span>
           </div>
 
         </div>
+        <p className="text-center text-[10px] text-stone-600 mt-5">
+          Small sample, real system. We&apos;ll publish team-scale numbers when we have them.
+        </p>
       </div>
     </section>
   )
@@ -203,7 +205,7 @@ function EnforcementLayerSection() {
               ConductGuard is structural enforcement. Policies are evaluated against real rules, not prompt instructions. A block exits with code 2 — Claude stops. The audit trail is in your dashboard, not the chat history.
             </p>
             <p className="text-stone-400 leading-relaxed mb-8">
-              Segregation of duties only holds at the moment an agent acts. ConductGuard is the only runtime governance layer that enforces it at the commit boundary — not in a quarterly review, not in a policy doc.
+              Segregation of duties only holds at the moment an agent acts. ConductGuard evaluates policy at the commit boundary, not in a quarterly review or a policy doc.
             </p>
             <a href="/guard" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors">
               See how Guard enforces →
@@ -542,7 +544,7 @@ function Phase2Section() {
           <div className="flex-1">
             <p className="text-sm font-semibold text-stone-900 mb-1">What would&apos;ve happened without Guard?</p>
             <p className="text-sm text-stone-500 leading-relaxed">
-              The production deploy would have executed. Average cost of a prod incident at a mid-market company: $15K–$50K. $235 saved on tooling is nice. $50K in a prevented outage is a different conversation.
+              The production deploy would have executed. Six times in 18 days, on one developer's machine.
             </p>
           </div>
           <CtaLink className="flex-shrink-0 rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-bold hover:bg-indigo-700 transition-colors whitespace-nowrap" />
@@ -564,7 +566,7 @@ function Phase3Section() {
             Guard learns as it runs. Every session makes the next one more accurate for your team.
           </h2>
           <p className="text-xl text-stone-500 max-w-2xl leading-relaxed">
-            Two memory systems work together. One knows your codebase. One knows your team. No other governance tool has either.
+            Two memory systems work together. One knows your codebase. One knows your team.
           </p>
         </div>
 
@@ -667,7 +669,7 @@ function Phase3Section() {
             An agent that knows your codebase and your team.
           </h3>
           <p className="text-[15px] leading-relaxed mb-6 max-w-lg mx-auto" style={{ color: "rgba(255,255,255,0.7)" }}>
-            No other automation tool has either. GitHub Actions has zero memory. Copilot has no team context. Conduct compounds both: silently, continuously, from day one.
+            GitHub Actions has zero memory. Copilot has no team context. Conduct compounds both: silently, continuously, from day one.
           </p>
           <CtaLink className="inline-flex items-center rounded-xl bg-white text-violet-700 px-7 py-3.5 text-base font-bold hover:bg-violet-50 transition-colors" />
         </div>
@@ -1061,9 +1063,6 @@ function EnterpriseGradeSection() {
           ))}
         </div>
 
-        <p className="text-center text-stone-600 text-xs mt-10">
-          All six shipped in the same week. None were on a roadmap — they came from asking what a CISO would ask during a board demo.
-        </p>
       </div>
     </section>
   )
@@ -1155,7 +1154,7 @@ function FoundationLayerSection() {
           <a href="/sdd" className="group rounded-2xl border border-stone-200 bg-white p-6 hover:border-stone-400 hover:shadow-md transition-all flex gap-4">
             <div className="text-2xl shrink-0">📐</div>
             <div>
-              <p className="font-bold text-stone-900 text-sm mb-1">Spec-Driven Development</p>
+              <p className="font-bold text-stone-900 text-sm mb-1">SDD Scanner</p>
               <p className="text-xs text-stone-500 leading-relaxed">
                 Generate a SPEC.md before agents touch code. Guard enforces spec compliance at runtime — blocking actions that diverge from approved architecture.
               </p>

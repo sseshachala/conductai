@@ -25,19 +25,11 @@ function ProductsDropdown() {
       </a>
       <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <a href="/team-os" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>📄</span>
-            <div>
-              <p className="font-semibold">Team OS <span className="text-[10px] text-emerald-600 font-bold ml-1 uppercase tracking-widest">Free</span></p>
-              <p className="text-xs text-stone-400">CLAUDE.md · REVIEW.md · Standards</p>
-            </div>
-          </a>
-          <div className="border-t border-stone-100 my-1" />
           <a href="/guard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span>🛡️</span>
             <div>
-              <p className="font-semibold">Conduct Guard</p>
-              <p className="text-xs text-stone-400">AI session governance</p>
+              <p className="font-semibold">Guard</p>
+              <p className="text-xs text-stone-400">Guard — see and control every AI coding session</p>
             </div>
           </a>
           <a href="/registry" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
@@ -50,16 +42,15 @@ function ProductsDropdown() {
           <a href="/tools/conduct-cli" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span className="text-indigo-600 font-bold text-base">◈</span>
             <div>
-              <p className="font-semibold">Conduct CLI</p>
+              <p className="font-semibold">CLI</p>
               <p className="text-xs text-stone-400">Terminal governance + token savings</p>
             </div>
           </a>
-          <div className="border-t border-stone-100 my-1" />
-          <a href="/frameworks" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>📐</span>
+          <a href="/team-os" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>📔</span>
             <div>
-              <p className="font-semibold">Compliance frameworks</p>
-              <p className="text-xs text-stone-400">EU AI Act · NIST · ISO 42001 · OWASP</p>
+              <p className="font-semibold">Team OS</p>
+              <p className="text-xs text-stone-400">CLAUDE.md · REVIEW.md · Standards</p>
             </div>
           </a>
         </div>
@@ -75,77 +66,31 @@ function SolutionsDropdown() {
         Solutions
         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
       </a>
-      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[260px]">
+      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-stone-400">By role</p>
           <a href="/solutions/engineering-leaders" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Engineering leaders</p>
-            </div>
+            <div><p className="font-semibold">Engineering leaders</p></div>
           </a>
           <a href="/solutions/security-compliance" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Security &amp; compliance</p>
-            </div>
-          </a>
-
-          <div className="my-1 border-t border-stone-100" />
-
-          <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-stone-400">By outcome</p>
-          <a href="/solutions/security-loop" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Security Loop</p>
-              <p className="text-xs text-stone-400">Scan to fix, closed</p>
-            </div>
+            <div><p className="font-semibold">Security &amp; compliance</p></div>
           </a>
           <a href="/solutions/action-governance" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Action governance</p>
-              <p className="text-xs text-stone-400">Policy in front of every action</p>
-            </div>
+            <div><p className="font-semibold">Action governance</p></div>
           </a>
-          <a href="/solutions/memory-hardening" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Memory hardening</p>
-              <p className="text-xs text-stone-400">OWASP ASI06 at the wire</p>
-            </div>
-          </a>
-          <a href="/solutions/okta-plus-conduct" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Okta + Conduct</p>
-              <p className="text-xs text-stone-400">Identity plus runtime governance</p>
-            </div>
-          </a>
-
-          <div className="my-1 border-t border-stone-100" />
-
-          <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-stone-400">By industry</p>
           <a href="/solutions/financial-services" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Financial services</p>
-              <p className="text-xs text-stone-400">SR 11-7 interim controls</p>
-            </div>
+            <div><p className="font-semibold">Financial services</p></div>
           </a>
           <a href="/solutions/life-sciences" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Life sciences</p>
-              <p className="text-xs text-stone-400">FDA CSA + GMLP + GAMP 5</p>
-            </div>
+            <div><p className="font-semibold">Life sciences</p></div>
           </a>
-
-          <div className="my-1 border-t border-stone-100" />
-
-          <a href="/use-cases" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">All use cases</p>
-              <p className="text-xs text-stone-400">Nine surfaces we operate in</p>
-            </div>
+          <a href="/solutions/memory-hardening" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div><p className="font-semibold">Memory hardening</p></div>
           </a>
-          <a href="/deployment" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div>
-              <p className="font-semibold">Deployment options</p>
-              <p className="text-xs text-stone-400">SaaS · Cloud · On-premise</p>
-            </div>
+          <a href="/solutions/okta-plus-conduct" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div><p className="font-semibold">Okta + Conduct</p></div>
+          </a>
+          <a href="/solutions/security-loop" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <div><p className="font-semibold">Security Loop</p></div>
           </a>
         </div>
       </div>
@@ -163,20 +108,11 @@ function MarketingNav() {
         <nav className="hidden md:flex items-center gap-6">
           <ProductsDropdown />
           <SolutionsDropdown />
-          <a href="/use-cases" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-            Use cases
-          </a>
-          <a href="/team-os" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-            Team OS <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest">Free</span>
-          </a>
+          <a href="/pricing" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Pricing</a>
           <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
           <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
         </nav>
         <div className="flex items-center gap-3">
-          <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener"
-            className="rounded-lg border border-stone-300 text-stone-700 px-4 py-2 text-sm font-semibold hover:border-stone-400 transition-colors hidden sm:block">
-            Book Demo
-          </a>
           <CtaLink className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors" />
         </div>
       </div>
@@ -191,7 +127,7 @@ function MarketingFooter() {
         <div className="flex flex-col md:flex-row justify-between gap-8 mb-10">
           <div>
             <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto mb-3" />
-            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">AI Governance for Engineering Teams. Platform or partnership, you choose how.</p>
+            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">AI agent governance for engineering teams.</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
@@ -215,7 +151,7 @@ function MarketingFooter() {
           </div>
         </div>
         <div className="border-t border-stone-100 pt-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-stone-400">
-          <span>© {new Date().getFullYear()} Conduct AI. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} Conduct AI. All rights reserved. · Patent pending (US 64/109,502)</span>
           <div className="flex items-center gap-4">
             <a href="https://www.linkedin.com/company/conductai/" target="_blank" rel="noopener noreferrer" className="hover:text-stone-700 transition-colors" aria-label="LinkedIn">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
