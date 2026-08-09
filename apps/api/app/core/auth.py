@@ -207,6 +207,12 @@ def _resolve_agent_token(token: str, db: Session):
             if decrypt(ai.token_encrypted).get("token") == token:
                 if ai.expires_at and ai.expires_at < datetime.now(_tz.utc):
                     raise HTTPException(status_code=401, detail="Agent token expired — run `conduct login`")
+                # Fail-secure lifecycle guard (#1037). Deactivated/expired
+                # identities cannot authenticate even if their token has not
+                # expired. Applies to cond_agt_*, cond_api_*, and legacy paths.
+                _lifecycle = getattr(ai, "lifecycle_state", None)
+                if _lifecycle in ("deactivated", "expired"):
+                    raise HTTPException(status_code=401, detail=f"Agent identity is {_lifecycle}")
                 # api tokens have no guard_member_config row by design
                 if getattr(ai, 'token_type', 'cli') == 'api':
                     return ai, None

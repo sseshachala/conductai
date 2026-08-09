@@ -321,25 +321,72 @@ DEV_PATH_MARKERS = (
     "/apps/api/alembic/versions/",
     "/apps/api/tests/",
     "/apps/api/app/modules/agent_identity/",
-    "/apps/api/app/routers/",
-    "/apps/web/src/",
-    "/docs/",
+    "/apps/api/app/modules/guard/cedar_adapter/",
+    # Removed /apps/web/src/ and /docs/ — too generic; those substrings appear
+    # in ordinary Next.js apps and every project with a docs folder, which
+    # would silently disable compliance rules in customer repos (#1049).
 )
+
+# Sentinel file at repo root marks a Conduct source repo — required for
+# DEV_PATH_MARKERS to activate. Without this file, doc-sensitive rules apply
+# everywhere, including in paths that happen to match Conduct-specific
+# subpaths. Prevents cross-project bypass of compliance rules.
+DEV_SENTINEL_FILENAME = ".conduct-dev-repo"
+
+_DEV_SENTINEL_CACHE: dict[str, bool] = {}
+
+
+def _find_dev_sentinel(start_path: str) -> bool:
+    """Walk up from start_path looking for the DEV_SENTINEL_FILENAME marker.
+
+    Cached per starting directory. Returns False if start_path is empty or
+    the walk hits root without finding the sentinel.
+    """
+    if not start_path:
+        return False
+    try:
+        p = Path(start_path).resolve()
+    except Exception:
+        return False
+    d = str(p.parent if not p.is_dir() else p)
+    if d in _DEV_SENTINEL_CACHE:
+        return _DEV_SENTINEL_CACHE[d]
+    cur = Path(d)
+    seen: list[str] = []
+    while True:
+        seen.append(str(cur))
+        try:
+            if (cur / DEV_SENTINEL_FILENAME).is_file():
+                for s in seen:
+                    _DEV_SENTINEL_CACHE[s] = True
+                return True
+        except Exception:
+            break
+        parent = cur.parent
+        if parent == cur:
+            break
+        cur = parent
+    for s in seen:
+        _DEV_SENTINEL_CACHE[s] = False
+    return False
 
 
 def _is_developer_source_path(tool_input: dict) -> bool:
-    """True if the tool_input targets a path where we DEFINE/DOCUMENT rules.
+    """True if the tool_input targets a path in a Conduct source-repo AND
+    matches a Conduct-specific dev marker.
 
-    Doc-sensitive rules skip these paths to prevent false positives on our own
-    source that describes security concepts by name.
+    Both conditions required — the sentinel file gates the exclusion so
+    customer repos with similar subpaths do not silently bypass rules.
     """
     for field in ("file_path", "path"):
         p = tool_input.get(field, "") or ""
         if not p:
             continue
-        for marker in DEV_PATH_MARKERS:
-            if marker in p:
-                return True
+        matched_marker = any(marker in p for marker in DEV_PATH_MARKERS)
+        if not matched_marker:
+            continue
+        if _find_dev_sentinel(p):
+            return True
     return False
 
 
