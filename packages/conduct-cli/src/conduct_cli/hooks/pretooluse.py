@@ -317,6 +317,14 @@ DOC_SENSITIVE_RULE_PREFIXES = (
     "proxy-no-prompt-" + "inject",
     "prompt-" + "inject",
     "nist-govern-" + "policy",
+    # Endpoint-attack pack (mirrors Numbat coverage). Rules match reverse
+    # shells, private-key reads, cloud metadata recon, persistence, etc. —
+    # patterns that would fire on the pack file itself when authoring it.
+    "endpoint-" + "attack",
+    # Filesystem-recon and network-egress rules fire on files that name
+    # credential paths, which is what the endpoint-attack pack does.
+    "no_" + "recon_fs",
+    "no_" + "network_egress",
 )
 
 # IRS regulatory pack rules also skip on dev paths since our own code names

@@ -230,6 +230,15 @@ const PACK_CATALOG = [
     guardRules: 30,
   },
   {
+    id: "conduct-endpoint-attacks",
+    icon: "🛡️",
+    name: "Endpoint Attacks",
+    subtitle: "10 rules for reverse shells, credential file reads, cloud metadata recon, persistence, download-pipe-shell, and exfil chains.",
+    description: "Detects the same attack techniques an agent-EDR (like Perplexity's Numbat) surfaces, but blocks at the pre-execution layer instead of just logging. Covers MITRE ATT&CK T1059.004, T1552.001/004/005, T1053.003, T1543.002/004, T1546.004, T1105, T1027, and T1041. Ships as blocks (critical/high) plus an audit rule for shell profile writes.",
+    tags: ["Security", "MITRE ATT&CK", "Endpoint"],
+    guardRules: 10,
+  },
+  {
     id: "meridian-dispatch",
     icon: "📦",
     name: "PH Dispatch (Demo)",
