@@ -72,7 +72,7 @@ function ProductsDropdown() {
             <span>🛡️</span>
             <div>
               <p className="font-semibold">Guard</p>
-              <p className="text-xs text-stone-400">Guard — see and control every AI coding session</p>
+              <p className="text-xs text-stone-400">Guard — see and control every AI session</p>
             </div>
           </a>
           <a href="/registry" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
@@ -150,13 +150,13 @@ function HeroSection() {
     <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
       <BootSequence />
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-4">
-        Your developers are running AI agents right now.
+        Your team is running AI agents right now.
       </h1>
       <p className="text-2xl sm:text-3xl font-bold text-stone-500 max-w-3xl mx-auto leading-tight mb-6">
-        You can&apos;t see what they&apos;re doing, and you can&apos;t stop them.
+        Your compliance team can&apos;t see or stop them.
       </p>
       <p className="text-lg text-stone-500 max-w-3xl mx-auto leading-relaxed mb-8">
-        Conduct sits between your team&apos;s AI coding tools and everything they touch. Every tool call is visible. Every dangerous one can be blocked. Works with Claude Code, Cursor, Copilot, Codex, ChatGPT, and Windsurf.
+        Copilot, ChatGPT, Cursor, Claude, Sierra. Every AI tool your team uses supports MCP. That&apos;s the integration surface, and it&apos;s where Conduct enforces. Every tool call is visible. Every dangerous one can be blocked. Every decision lands in a signed audit trail you can prove.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
         <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />

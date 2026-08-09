@@ -29,7 +29,7 @@ function ProductsDropdown() {
             <span>🛡️</span>
             <div>
               <p className="font-semibold">Guard</p>
-              <p className="text-xs text-stone-400">Guard — see and control every AI coding session</p>
+              <p className="text-xs text-stone-400">Guard — see and control every AI session</p>
             </div>
           </a>
           <a href="/registry" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">

@@ -138,7 +138,7 @@ function ToolsSection() {
           Works where your team already codes.
         </h2>
         <p className="text-stone-500 text-lg max-w-xl mx-auto">
-          Install once. ConductGuard enforces the same policy across every AI coding tool — no per-tool config, no gaps.
+          Install once. ConductGuard enforces the same policy across every AI tool — no per-tool config, no gaps.
         </p>
       </div>
 
