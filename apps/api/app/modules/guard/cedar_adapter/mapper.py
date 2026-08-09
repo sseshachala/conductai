@@ -1,6 +1,7 @@
 """Cedar JSON to Guard JSON pack rule mapper."""
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from app.modules.guard.cedar_adapter.errors import (
@@ -50,6 +51,16 @@ def cedar_json_to_rule(policy: dict[str, Any]) -> dict[str, Any]:
         if key in annotations:
             rule[key] = annotations[key]
 
+    # Auto-generate a stable id if the Cedar policy omits @id. Downstream
+    # policy resolution requires rule["id"]; a missing id would KeyError and
+    # break Guard evaluation for the whole workspace.
+    if not rule.get("id"):
+        import hashlib as _h
+        digest = _h.sha256(
+            json.dumps(policy, sort_keys=True, default=str).encode()
+        ).hexdigest()[:12]
+        rule["id"] = f"cedar-{digest}"
+
     advice = annotations.get("advice")
     if effect == "forbid":
         rule["action"] = ADVICE_ACTION_MAP.get(advice, "block")
@@ -79,6 +90,14 @@ def _apply_principal(principal: dict[str, Any], rule: dict[str, Any]) -> None:
     if not principal:
         return
     op = principal.get("op")
+    if op not in ("==", "is", "in"):
+        raise UnsupportedCedarFeature(
+            f"principal op {op!r} not recognized. Silently falling through would "
+            "produce a wildcard rule.",
+            feature="unknown_principal_op",
+            snippet=str(principal)[:200],
+            hint="Supported principal ops: ==, is, in.",
+        )
     if op == "==":
         entity = principal.get("entity") or {}
         etype = entity.get("type", "")
@@ -114,6 +133,14 @@ def _apply_action(action: dict[str, Any], rule: dict[str, Any]) -> None:
     if not action:
         return
     op = action.get("op")
+    if op not in ("==", "in"):
+        raise UnsupportedCedarFeature(
+            f"action op {op!r} not recognized. Silently falling through would "
+            "produce a wildcard rule blocking every tool.",
+            feature="unknown_action_op",
+            snippet=str(action)[:200],
+            hint="Supported action ops: ==, in.",
+        )
     if op == "==":
         entity = action.get("entity") or {}
         tool_name = entity.get("id")

@@ -1,0 +1,10 @@
+This file marks the Conduct source repository. Presence of this file at a
+repo root enables the pretouse hook's DEV_PATH_MARKERS exclusions, so
+doc-sensitive framework rules (IRS 1075, ISO 42001 responsible-use, NIST
+docs, etc.) do not false-fire on writes to Conduct's own guard/hooks/tests
+code that names those concepts by name.
+
+Do not add this file to customer repositories. It is Conduct-internal only.
+
+See packages/conduct-cli/src/conduct_cli/hooks/pretouse.py for the marker
+list and the walk-up-to-find logic.

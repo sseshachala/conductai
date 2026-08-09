@@ -84,8 +84,15 @@ def import_cedar(
     if not isinstance(body.policies, list) or not body.policies:
         raise HTTPException(status_code=400, detail="policies must be a non-empty list of Cedar policy objects")
 
+    # Multi-tenant scoping: user-supplied slug is namespaced under the
+    # workspace so two workspaces can independently import the same slug
+    # without collision. skill_packs is a global table; namespacing is the
+    # only way to avoid cross-tenant slug conflicts without a schema change.
+    ws_uuid = uuid.UUID(workspace_id)
+    internal_slug = f"custom.{str(ws_uuid).split('-')[0]}.{body.pack_slug}"
+
     pack_metadata = {
-        "slug": body.pack_slug,
+        "slug": internal_slug,
         "name": body.pack_name,
         "version": body.pack_version,
         "tier": "paid",
@@ -99,17 +106,15 @@ def import_cedar(
 
     installed = False
     if not body.preview_only and rules_imported > 0:
-        ws_uuid = uuid.UUID(workspace_id)
-
-        existing = db.query(SkillPack).filter(SkillPack.slug == body.pack_slug, SkillPack.version == body.pack_version).first()
+        existing = db.query(SkillPack).filter(SkillPack.slug == internal_slug, SkillPack.version == body.pack_version).first()
         if existing:
             raise HTTPException(
                 status_code=409,
-                detail=f"SkillPack {body.pack_slug}@{body.pack_version} already exists. Bump pack_version to create a new revision.",
+                detail=f"SkillPack {body.pack_slug}@{body.pack_version} already exists in this workspace. Bump pack_version to create a new revision.",
             )
 
         new_pack = SkillPack(
-            slug=body.pack_slug,
+            slug=internal_slug,
             name=body.pack_name,
             version=body.pack_version,
             tier="paid",
@@ -120,11 +125,11 @@ def import_cedar(
         db.add(new_pack)
         db.flush()
 
-        existing_install = db.get(WorkspaceSkillPack, (ws_uuid, body.pack_slug))
+        existing_install = db.get(WorkspaceSkillPack, (ws_uuid, internal_slug))
         if not existing_install:
             db.add(WorkspaceSkillPack(
                 workspace_id=ws_uuid,
-                pack_slug=body.pack_slug,
+                pack_slug=internal_slug,
                 pinned_version=body.pack_version,
                 installed_at=datetime.now(timezone.utc),
             ))
@@ -134,7 +139,7 @@ def import_cedar(
         installed = True
 
     return CedarImportResponse(
-        pack_slug=body.pack_slug,
+        pack_slug=internal_slug,
         rules_imported=rules_imported,
         rules_rejected=rules_rejected,
         rejections=[RejectionOut(**r) for r in rejections],
@@ -147,6 +152,7 @@ def import_cedar(
 def export_pack_as_cedar(
     slug: str,
     version: str | None = None,
+    workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.marketplace.browse")),
     db: Session = Depends(get_db),
 ) -> PlainTextResponse:
@@ -155,7 +161,18 @@ def export_pack_as_cedar(
     Returns the latest version of the pack unless ?version=X.Y.Z is supplied.
     Runtime evaluation still uses the JSON representation; this endpoint is
     for human readability only.
+
+    Custom (imported) packs are workspace-scoped: the caller's workspace must
+    have the pack installed via WorkspaceSkillPack. Platform packs
+    (slug not starting with 'custom.') are readable by any authenticated
+    workspace member — they ship with the product.
     """
+    if slug.startswith("custom."):
+        ws_uuid = uuid.UUID(workspace_id)
+        installed = db.get(WorkspaceSkillPack, (ws_uuid, slug))
+        if not installed:
+            raise HTTPException(status_code=404, detail=f"Pack {slug!r} not found")
+
     query = db.query(SkillPack).filter(SkillPack.slug == slug)
     if version:
         query = query.filter(SkillPack.version == version)
