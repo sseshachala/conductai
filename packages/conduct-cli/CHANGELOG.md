@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.9.0] - 2026-08-09
+
+### Added
+- Pretouse hook: obfuscation pre-decode. Every input is also scanned in base64-, hex-, URL-decoded, ROT13, and NFKC-normalized variants before rule matching. Encoded override payloads can no longer bypass pattern rules.
+- Rules can opt in to decoded-only matching by setting `"scan": "decoded"`. Otherwise every pattern rule now scans both raw and decoded variants automatically.
+
+### Notes
+- Ship the new `conduct-prompt-injection` skill pack (30 rules covering override, role hijack, delimiter escape, system-prompt disclosure, encoded canaries, unicode tag smuggling, credential exfiltration, and more) via `conduct sync` after upgrading.
+
+---
+
 ## [0.8.9] - 2026-08-09
 
 ### Security (#1049)
