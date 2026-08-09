@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.8.9] - 2026-08-09
+
+### Security (#1049)
+- Pretouse hook: removed `/docs/` and `/apps/web/src/` from DEV_PATH_MARKERS — those substrings appear in most Next.js/documentation projects and previously caused doc-sensitive framework rules (IRS 1075, ISO 42001 responsible-use, NIST/EU AI docs) to silently skip in customer repos.
+- Remaining Conduct-specific dev markers now require a `.conduct-dev-repo` sentinel file at the repo root to activate. Without the sentinel, all framework rules apply on every path.
+
+---
+
 ## [0.8.8] - 2026-08-08
 
 ### Fixed (#1048)
