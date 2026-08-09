@@ -1,0 +1,299 @@
+{
+  "slug": "conduct-endpoint-attacks",
+  "name": "Conduct Endpoint Attacks",
+  "version": "1.0.0",
+  "tier": "free",
+  "description": "10 pattern rules for the endpoint-attack techniques Numbat and other agent EDRs surface: reverse shells, SSH/cloud credential file reads, cloud instance metadata recon, persistence via cron/systemd/launchd/shell profiles, encoded-payload shell chains, and secret-read-then-egress chains. Every rule maps to a MITRE ATT&CK sub-technique. Hook and MCP surfaces are covered; the runtime and proxy surfaces are not (these are tool_input-level patterns).",
+  "rules": [
+    {
+      "id": "endpoint-attack-reverse-shell",
+      "action": "block",
+      "severity": "critical",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(bash\\s+-[il]?\\s*>&\\s*/dev/tcp/|/dev/tcp/[0-9.]+/[0-9]+|nc(\\.openbsd)?\\s+[-.].*-e\\s*(/bin/(ba)?sh|/bin/sh)|python(3?)?\\s+-c\\s+.import\\s+socket.*fork|mkfifo\\s+/tmp/[^\\s]+\\s*;\\s*cat\\s+/tmp/[^\\s]+\\s*\\|\\s*/bin/sh|socat\\s+.+\\s+EXEC:)",
+      "message": "Reverse shell pattern matched — remote-execution primitive detected.",
+      "recommendation": "Reverse-shell strings have no legitimate use in agent-authored code. Reject.",
+      "frameworks": ["MITRE_ATT&CK:T1059.004", "OWASP:A04", "NIST_AI_RMF:MANAGE-2.3"],
+      "persona_affinity": ["agent"],
+      "enforcement": {
+        "version": 1,
+        "hook": "conditional",
+        "mcp": "conditional",
+        "proxy": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching Bash commands and file writes on hook and MCP surfaces when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Pattern-based detection can miss custom stagers not covered here",
+          "Proxy surface is not covered because these are tool-invocation patterns, not outbound LLM prompt content",
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "endpoint-attack-private-key-read",
+      "action": "block",
+      "severity": "critical",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(cat|less|more|head|tail|xxd|hexdump|base64|scp|rsync|curl.*--data-binary\\s*@)\\s+[^\\s]*(\\.ssh/id_[a-z0-9_]+(?!\\.pub)|\\.ssh/id_rsa\\b|\\.ssh/id_ed25519\\b|\\.ssh/authorized_keys|/\\.pem\\b|\\.p12\\b|\\.pfx\\b|\\.jks\\b|/private_key)",
+      "message": "Private-key or credential-file access detected.",
+      "recommendation": "SSH keys, PKCS12 bundles, and JKS stores should never be read by an agent tool. Route through your secrets manager.",
+      "frameworks": ["MITRE_ATT&CK:T1552.004", "OWASP:A02", "SOC2:CC6.1", "PCI_DSS:3.5"],
+      "persona_affinity": ["agent"],
+      "enforcement": {
+        "version": 1,
+        "hook": "conditional",
+        "mcp": "conditional",
+        "proxy": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching Bash commands and file writes on hook and MCP surfaces when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Direct file reads bypass this rule if the tool_input does not surface the target path",
+          "Proxy surface is not covered because these are tool-invocation patterns, not outbound LLM prompt content",
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "endpoint-attack-cloud-cred-read",
+      "action": "block",
+      "severity": "critical",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(cat|less|more|head|tail|scp|rsync|curl.*--data-binary\\s*@)\\s+[^\\s]*(\\.aws/(credentials|config)|\\.config/gcloud/(credentials|application_default_credentials|access_tokens)|\\.azure/(accessTokens|azureProfile)|\\.docker/config\\.json|\\.kube/config\\b)",
+      "message": "Cloud provider credential file read detected.",
+      "recommendation": "AWS/GCP/Azure/Docker/Kubeconfig credential files must not be read by agent tools. Use short-lived tokens via a broker.",
+      "frameworks": ["MITRE_ATT&CK:T1552.001", "OWASP:A02", "SOC2:CC6.1"],
+      "persona_affinity": ["agent"],
+      "enforcement": {
+        "version": 1,
+        "hook": "conditional",
+        "mcp": "conditional",
+        "proxy": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching Bash commands and file writes on hook and MCP surfaces when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Direct file reads bypass this rule if the tool_input does not surface the target path",
+          "Proxy surface is not covered because these are tool-invocation patterns, not outbound LLM prompt content",
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "endpoint-attack-cloud-metadata-recon",
+      "action": "block",
+      "severity": "high",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(169\\.254\\.169\\.254|metadata\\.google\\.internal|metadata\\.azure\\.com|100\\.100\\.100\\.200)|Metadata-Flavor:\\s*Google|X-aws-ec2-metadata-token",
+      "message": "Cloud instance metadata service (IMDS) recon detected.",
+      "recommendation": "Requests to IMDS endpoints from agent code are a known credential-theft pattern. Block and log.",
+      "frameworks": ["MITRE_ATT&CK:T1552.005", "OWASP:A05"],
+      "persona_affinity": ["agent"],
+      "enforcement": {
+        "version": 1,
+        "hook": "conditional",
+        "mcp": "conditional",
+        "proxy": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching Bash commands and file writes on hook and MCP surfaces when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Pattern-based detection can miss non-standard IMDS proxies",
+          "Proxy surface is not covered because these are tool-invocation patterns, not outbound LLM prompt content",
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "endpoint-attack-persistence-cron",
+      "action": "block",
+      "severity": "high",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(crontab\\s+-e|crontab\\s+[^\\s]+|>>\\s*/etc/cron|>\\s*/etc/cron|>>\\s*/var/spool/cron|>\\s*/var/spool/cron|echo\\s+.*\\|\\s*crontab)",
+      "message": "Cron persistence write detected.",
+      "recommendation": "Writes to cron directories or crontab modifications by an agent are persistence attempts. Human review required.",
+      "frameworks": ["MITRE_ATT&CK:T1053.003", "OWASP:A04"],
+      "persona_affinity": ["agent"],
+      "enforcement": {
+        "version": 1,
+        "hook": "conditional",
+        "mcp": "conditional",
+        "proxy": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching Bash commands and file writes on hook and MCP surfaces when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Direct file writes to cron paths via editor tools bypass this rule if the tool_input does not surface the target path",
+          "Proxy surface is not covered because these are tool-invocation patterns, not outbound LLM prompt content",
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "endpoint-attack-persistence-systemd",
+      "action": "block",
+      "severity": "high",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(>\\s*/etc/systemd/|>>\\s*/etc/systemd/|>\\s*/lib/systemd/|>>\\s*/lib/systemd/|>\\s*/etc/init\\.d/|systemctl\\s+(enable|link)\\s+[^\\s]+\\.service|(\\.config/systemd/user/[^\\s]+\\.service))",
+      "message": "Systemd persistence write detected.",
+      "recommendation": "Systemd unit installation by an agent is a persistence attempt. Human review required.",
+      "frameworks": ["MITRE_ATT&CK:T1543.002", "OWASP:A04"],
+      "persona_affinity": ["agent"],
+      "enforcement": {
+        "version": 1,
+        "hook": "conditional",
+        "mcp": "conditional",
+        "proxy": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching Bash commands and file writes on hook and MCP surfaces when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Direct file writes to systemd paths via editor tools bypass this rule if the tool_input does not surface the target path",
+          "Proxy surface is not covered because these are tool-invocation patterns, not outbound LLM prompt content",
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "endpoint-attack-persistence-launchd",
+      "action": "block",
+      "severity": "high",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(Library/LaunchAgents/[^\\s]+\\.plist|Library/LaunchDaemons/[^\\s]+\\.plist|launchctl\\s+(load|bootstrap|enable)\\s+[^\\s]+)",
+      "message": "macOS launchd persistence write detected.",
+      "recommendation": "LaunchAgent/LaunchDaemon plist installation by an agent is a persistence attempt. Human review required.",
+      "frameworks": ["MITRE_ATT&CK:T1543.004", "OWASP:A04"],
+      "persona_affinity": ["agent"],
+      "enforcement": {
+        "version": 1,
+        "hook": "conditional",
+        "mcp": "conditional",
+        "proxy": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching Bash commands and file writes on hook and MCP surfaces when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Pattern-based detection may miss plists installed outside standard paths",
+          "Proxy surface is not covered because these are tool-invocation patterns, not outbound LLM prompt content",
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "endpoint-attack-persistence-shell-profile",
+      "action": "audit",
+      "severity": "medium",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(>>?\\s*[~$][^\\s]*/(\\.bashrc|\\.zshrc|\\.bash_profile|\\.zprofile|\\.profile|\\.zshenv|\\.bash_login)|echo\\s+[^|]+\\|\\s*tee\\s+[^\\s]*/(\\.bashrc|\\.zshrc))",
+      "message": "Shell profile write detected — possible persistence via login script.",
+      "recommendation": "Writes to shell rc files by an agent may install persistence. Review the change.",
+      "frameworks": ["MITRE_ATT&CK:T1546.004", "OWASP:A04"],
+      "persona_affinity": ["agent"],
+      "enforcement": {
+        "version": 1,
+        "hook": "conditional",
+        "mcp": "conditional",
+        "proxy": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Audits matching Bash commands and file writes on hook and MCP surfaces when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Direct file writes via editor tools may not surface the target path in tool_input",
+          "Proxy surface is not covered because these are tool-invocation patterns, not outbound LLM prompt content",
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "endpoint-attack-download-pipe-shell",
+      "action": "block",
+      "severity": "critical",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(curl|wget|fetch)\\s+[^|]*\\|\\s*(/bin/)?(bash|sh|zsh|python[23]?|perl|ruby|node|npx)\\b|base64\\s+-d[^|]*\\|\\s*(/bin/)?(bash|sh)",
+      "message": "Download-and-execute or encoded-payload-to-shell chain detected.",
+      "recommendation": "Never pipe network output directly into a shell interpreter. Download, review, then execute.",
+      "frameworks": ["MITRE_ATT&CK:T1105", "MITRE_ATT&CK:T1027", "OWASP:A03", "OWASP:A08"],
+      "persona_affinity": ["agent"],
+      "enforcement": {
+        "version": 1,
+        "hook": "conditional",
+        "mcp": "conditional",
+        "proxy": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching Bash commands and file writes on hook and MCP surfaces when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Pattern-based detection can miss stagers that split the download and execution steps",
+          "Proxy surface is not covered because these are tool-invocation patterns, not outbound LLM prompt content",
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "endpoint-attack-secret-read-egress-chain",
+      "action": "block",
+      "severity": "critical",
+      "match_tool": "bash,edit,write",
+      "match_pattern": "(cat|less|xxd|base64)\\s+[^|]*(\\.ssh/|\\.aws/credentials|\\.config/gcloud|\\.azure/|/etc/shadow|/root/\\.ssh/)[^|]*\\|\\s*(curl|wget|nc|socat|scp|python[23]?\\s+-m\\s+http)",
+      "message": "Secret-read-then-egress chain detected — credential exfiltration pattern.",
+      "recommendation": "A read of a credential file piped to a network client is a classic exfiltration chain. Reject.",
+      "frameworks": ["MITRE_ATT&CK:T1041", "MITRE_ATT&CK:T1552", "OWASP:A02", "OWASP:A10"],
+      "persona_affinity": ["agent"],
+      "enforcement": {
+        "version": 1,
+        "hook": "conditional",
+        "mcp": "conditional",
+        "proxy": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Blocks matching Bash commands and file writes on hook and MCP surfaces when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Pattern-based chain detection is stateless — split into read then egress across separate calls will not match",
+          "Proxy surface is not covered because these are tool-invocation patterns, not outbound LLM prompt content",
+          "The proxy skips tool-semantic rules and cannot inspect this matcher shape",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    }
+  ]
+}
