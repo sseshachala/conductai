@@ -104,6 +104,10 @@ export default function PackDetailPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cedarText, setCedarText] = useState<string | null>(null)
+  const [cedarLoading, setCedarLoading] = useState(false)
+  const [cedarError, setCedarError] = useState<string | null>(null)
+  const [cedarCopied, setCedarCopied] = useState(false)
 
   useEffect(() => {
     if (!slug || !workspaceId) return
@@ -130,6 +134,40 @@ export default function PackDetailPage() {
     load()
     return () => { cancelled = true }
   }, [slug, workspaceId, getToken])
+
+  const toggleCedar = async () => {
+    if (cedarText !== null) {
+      setCedarText(null)
+      setCedarError(null)
+      return
+    }
+    if (!workspaceId) return
+    setCedarLoading(true)
+    setCedarError(null)
+    try {
+      const token = await getToken()
+      const headers: Record<string, string> = {}
+      if (token) headers["Authorization"] = `Bearer ${token}`
+      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const res = await fetch(`${base}/guard/registry/packs/${slug}/cedar?workspace_id=${workspaceId}`, { headers })
+      if (res.ok) setCedarText(await res.text())
+      else if (res.status === 404) setCedarError("Cedar rendering not available for this pack.")
+      else setCedarError(`Failed to load Cedar (HTTP ${res.status})`)
+    } catch {
+      setCedarError("Network error loading Cedar.")
+    } finally {
+      setCedarLoading(false)
+    }
+  }
+
+  const copyCedar = async () => {
+    if (!cedarText) return
+    try {
+      await navigator.clipboard.writeText(cedarText)
+      setCedarCopied(true)
+      setTimeout(() => setCedarCopied(false), 1500)
+    } catch {}
+  }
 
   const togglePack = async () => {
     if (!pack || !workspaceId) return
@@ -191,25 +229,24 @@ export default function PackDetailPage() {
             )}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <a
-              href={`${API}/guard/registry/packs/${pack.slug}/cedar`}
-              target="_blank"
-              rel="noopener"
+            <button
+              onClick={toggleCedar}
+              disabled={cedarLoading}
               title="Render this pack as Cedar text syntax"
               style={{
                 padding: "10px 14px",
                 borderRadius: 8,
                 border: "1px solid var(--border)",
-                background: "transparent",
+                background: cedarText !== null ? "var(--surface-2)" : "transparent",
                 color: "var(--text-1)",
-                textDecoration: "none",
                 fontSize: 12.5,
                 fontWeight: 500,
                 whiteSpace: "nowrap",
+                cursor: cedarLoading ? "wait" : "pointer",
               }}
             >
-              View as Cedar
-            </a>
+              {cedarLoading ? "Loading…" : cedarText !== null ? "Hide Cedar" : "View as Cedar"}
+            </button>
             <button
               onClick={togglePack}
               disabled={busy}
@@ -229,6 +266,52 @@ export default function PackDetailPage() {
             </button>
           </div>
         </header>
+
+        {(cedarText !== null || cedarError) && (
+          <section style={{ border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface-1)", marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>
+                Cedar rendering
+                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, color: "var(--text-3)" }}>
+                  human-readable syntax · runtime still evaluates JSON
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {cedarText && (
+                  <button
+                    onClick={copyCedar}
+                    style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", fontSize: 11, cursor: "pointer" }}
+                  >
+                    {cedarCopied ? "✓ Copied" : "Copy"}
+                  </button>
+                )}
+                <button
+                  onClick={toggleCedar}
+                  style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", fontSize: 11, cursor: "pointer" }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            {cedarError ? (
+              <div style={{ padding: 16, fontSize: 13, color: "var(--err)" }}>{cedarError}</div>
+            ) : (
+              <pre style={{
+                margin: 0,
+                padding: 16,
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: "var(--text-1)",
+                background: "var(--surface-0, var(--surface-1))",
+                overflowX: "auto",
+                fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                whiteSpace: "pre",
+                maxHeight: 500,
+                overflowY: "auto",
+              }}>{cedarText}</pre>
+            )}
+          </section>
+        )}
 
         <section style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", background: "var(--surface-1)" }}>
           <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>

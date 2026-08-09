@@ -248,7 +248,7 @@
       "non_overridable": false,
       "description": "Block reading .env files",
       "match_tool": "*",
-      "match_pattern": "\\.env(\\b|$)",
+      "match_pattern": "(?<![A-Za-z0-9_])\\.env(\\.[a-z]+)?(?![.A-Za-z0-9_])",
       "action": "block",
       "message": ".env files contain secrets. Use your secrets manager instead.",
       "severity": "high",
