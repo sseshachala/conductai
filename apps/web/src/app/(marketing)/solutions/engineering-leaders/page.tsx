@@ -155,11 +155,12 @@ function CtaSection() {
           Ready to put a control plane on your AI agents?
         </h2>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8">
+          <CtaLink className="rounded-xl bg-white text-indigo-600 px-8 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center" />
           <a
             href="https://cal.com/sudhi-seshachala-pks7pd"
             target="_blank"
             rel="noopener"
-            className="rounded-xl bg-white text-indigo-600 px-8 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center"
+            className="rounded-xl border border-white/40 text-white px-8 py-3.5 text-base font-semibold hover:bg-white/10 transition-colors w-full sm:w-auto text-center"
           >
             Book a demo
           </a>

@@ -8,18 +8,20 @@ export default function GuardLandingPage() {
     <>
       <HeroSection />
       <ProofStripSection />
+      <FailClosedSection />
       <ToolsSection />
-      <EnforcementLayerSection />
-      <ProxySection />
       <ProxyCompareSection />
       <GitHubEnterpriseSection />
       <Phase1Section />
       <Phase2Section />
-      <Phase3Section />
+      <EnforcementLayerSection />
+      <ProxySection />
       <MCPSection />
       <AgentIdentitySection />
+      <CedarImportSection />
       <EnterpriseGradeSection />
       <GatewayVsGuardSection />
+      <Phase3Section />
       <FoundationLayerSection />
       <FinalCTASection />
     </>
@@ -129,6 +131,47 @@ const TOOLS = [
   { name: "Windsurf",         icon: "⬡", install: "conduct guard sync --windsurf" },
 ]
 
+
+
+/* ─── Fail-closed ──────────────────────────────────────────────────────── */
+
+function FailClosedSection() {
+  return (
+    <section className="bg-stone-950 border-y border-stone-800 px-6 py-16">
+      <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-start md:items-center gap-10">
+        <div className="flex-1">
+          <p className="text-xs font-semibold uppercase tracking-widest text-red-400 mb-3">Architectural commitment</p>
+          <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight mb-4">
+            Fail-closed by default.
+          </h2>
+          <p className="text-stone-400 leading-relaxed mb-4">
+            If the Guard API is unreachable, tool calls block. Not silently allowed. Every new workspace starts fail-closed. Fail-open is available but you have to choose it explicitly.
+          </p>
+          <p className="text-stone-500 text-sm leading-relaxed">
+            Most governance tools default to fail-open because it avoids support tickets. We default to fail-closed because that&apos;s the only default that means your policy actually enforces when infrastructure degrades. The inconvenience is intentional.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-stone-700 bg-stone-900 px-8 py-6 min-w-[240px]">
+          <p className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-4">What happens on outage</p>
+          <ul className="space-y-3">
+            {[
+              ["Guard API unreachable", "Tool calls block", "text-red-400"],
+              ["Guard API degraded", "Cached policy applies", "text-amber-400"],
+              ["Guard API restored", "Full enforcement resumes", "text-emerald-400"],
+            ].map(([state, outcome, color]) => (
+              <li key={state} className="flex flex-col gap-0.5">
+                <span className="text-xs text-stone-500">{state}</span>
+                <span className={`text-sm font-semibold ${color}`}>{outcome}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+
 function ToolsSection() {
   return (
     <section className="max-w-5xl mx-auto px-6 py-16">
@@ -207,9 +250,7 @@ function EnforcementLayerSection() {
             <p className="text-stone-400 leading-relaxed mb-8">
               Segregation of duties only holds at the moment an agent acts. ConductGuard evaluates policy at the commit boundary, not in a quarterly review or a policy doc.
             </p>
-            <a href="/guard" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors">
-              See how Guard enforces →
-            </a>
+
           </div>
 
           <div className="space-y-3">
@@ -297,11 +338,7 @@ function ProxySection() {
               </div>
             ))}
 
-            <div className="pt-2">
-              <a href="/guard" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors">
-                Set up Guard Proxy →
-              </a>
-            </div>
+
           </div>
 
         </div>
@@ -1004,15 +1041,72 @@ function AgentIdentitySection() {
   )
 }
 
+
+/* ─── Cedar Import ─────────────────────────────────────────────────────── */
+
+function CedarImportSection() {
+  return (
+    <section className="bg-stone-50 border-y border-stone-200 px-6 py-20">
+      <div className="max-w-4xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-3">IAM policy import</p>
+            <h2 className="text-3xl font-black text-stone-900 tracking-tight leading-tight mb-4">
+              Already have IAM policies? Import them.
+            </h2>
+            <p className="text-stone-500 leading-relaxed mb-4">
+              If your org already runs Cedar policies with AWS Verified Permissions or Bedrock AgentCore, Guard imports them directly. Same policy language, same authoring workflow, evaluated at the tool call. Your IAM team owns the policy. Your engineering team enforces it.
+            </p>
+            <p className="text-stone-500 text-sm leading-relaxed mb-6">
+              Cedar policies get compiled into Guard&apos;s evaluation engine on install. Import once, enforce everywhere.
+            </p>
+            <div className="rounded-xl bg-stone-950 p-5 font-mono text-sm leading-relaxed mb-4">
+              <p className="text-stone-500 text-xs mb-2"># Import your Cedar policy file</p>
+              <p className="text-indigo-300">$ conduct import-cedar ./your-policy.cedar</p>
+              <p className="text-stone-500 text-xs mt-2">↳ Compiled 12 rules · Guard pack created · Policy active</p>
+            </div>
+            <p className="text-xs text-stone-400">
+              Cedar is the policy language used by AWS Verified Permissions and Amazon Bedrock AgentCore. If you author policies in Cedar today, they import without modification.
+            </p>
+          </div>
+          <div className="space-y-5">
+            {[
+              {
+                icon: "📋",
+                title: "Same authoring workflow",
+                desc: "Write policies in Cedar. Your IAM team keeps ownership. Guard evaluates them at runtime without a rewrite.",
+              },
+              {
+                icon: "⚡",
+                title: "Evaluated at the tool call",
+                desc: "Cedar conditions run at the execution boundary — before the agent acts, not in a post-hoc audit.",
+              },
+              {
+                icon: "🔄",
+                title: "One import, all agents covered",
+                desc: "A Cedar pack installs across every agent your team runs — Claude Code, Cursor, Copilot, CI pipelines — via the same policy sync that applies to native Guard rules.",
+              },
+            ].map((item) => (
+              <div key={item.title} className="flex gap-4">
+                <span className="text-2xl mt-0.5">{item.icon}</span>
+                <div>
+                  <p className="font-semibold text-stone-900 mb-1">{item.title}</p>
+                  <p className="text-stone-500 text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+
 /* ─── Enterprise grade ─────────────────────────────────────────────────── */
 
 function EnterpriseGradeSection() {
   const decisions = [
-    {
-      label: "Fail-closed by default",
-      body: "If the Guard API is unreachable, tool calls are blocked — not silently allowed. Every new workspace starts fail-closed. Fail-open is available but you have to choose it.",
-      tag: "Incident response",
-    },
     {
       label: "30-second policy propagation",
       body: "When you revoke a rule, every developer's machine picks it up within 30 seconds — automatically, with no manual sync. The background drain daemon refreshes policy on every active session.",
@@ -1046,7 +1140,7 @@ function EnterpriseGradeSection() {
         <div className="text-center mb-14">
           <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3">Built for enterprise security</p>
           <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-5">
-            Six decisions that separate<br />governance from compliance theater.
+            Five decisions that separate<br />governance from compliance theater.
           </h2>
           <p className="text-stone-400 text-lg leading-relaxed max-w-2xl mx-auto">
             Every tool claims to govern AI. These are the choices that show we actually thought about what happens when things go wrong.
