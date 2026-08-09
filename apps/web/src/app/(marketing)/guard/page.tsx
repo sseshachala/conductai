@@ -1061,9 +1061,10 @@ function CedarImportSection() {
               Cedar policies get compiled into Guard&apos;s evaluation engine on install. Import once, enforce everywhere.
             </p>
             <div className="rounded-xl bg-stone-950 p-5 font-mono text-sm leading-relaxed mb-4">
-              <p className="text-stone-500 text-xs mb-2"># Import your Cedar policy file</p>
-              <p className="text-indigo-300">$ conduct import-cedar ./your-policy.cedar</p>
-              <p className="text-stone-500 text-xs mt-2">↳ Compiled 12 rules · Guard pack created · Policy active</p>
+              <p className="text-stone-500 text-xs mb-2"># Import your Cedar policies (JSON) as a Guard pack</p>
+              <p className="text-indigo-300">$ conduct import-cedar ./cedar-policies.json \</p>
+              <p className="text-indigo-300 pl-4">--pack-slug my-iam --pack-name "My IAM" --install</p>
+              <p className="text-stone-500 text-xs mt-2">↳ Compiled to Guard rules · Pack installed · Policy active</p>
             </div>
             <p className="text-xs text-stone-400">
               Cedar is the policy language used by AWS Verified Permissions and Amazon Bedrock AgentCore. If you author policies in Cedar today, they import without modification.
