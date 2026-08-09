@@ -45,7 +45,6 @@ function Nav() {
         <ProductsDropdown />
         <SolutionsDropdown />
         {/* ponytail: home page has its own inlined nav; keep in sync with (marketing)/layout.tsx until we extract shared components */}
-        <a href="/pricing" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Pricing</a>
         <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
         <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
       </nav>
@@ -160,9 +159,6 @@ function HeroSection() {
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
         <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />
-        <a href="/pricing" className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-base font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center">
-          See pricing
-        </a>
       </div>
       <p className="text-xs text-stone-400">Free tier · Installs in 10 minutes · No infrastructure changes</p>
     </section>

@@ -108,7 +108,6 @@ function MarketingNav() {
         <nav className="hidden md:flex items-center gap-6">
           <ProductsDropdown />
           <a href="/solutions" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Solutions</a>
-          <a href="/pricing" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Pricing</a>
           <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
           <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
         </nav>
