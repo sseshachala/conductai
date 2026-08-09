@@ -221,6 +221,15 @@ const PACK_CATALOG = [
     guardRules: 10,
   },
   {
+    id: "conduct-prompt-injection",
+    icon: "🧱",
+    name: "Prompt Injection Defense",
+    subtitle: "30 patterns for override, role-hijack, delimiter-escape, encoded-payload, tool-call-spoof, and system-prompt disclosure attempts.",
+    description: "Dedicated pack covering OWASP LLM01, MITRE ATLAS AML.M0031, and ASI06. Includes decoded canaries so base64/hex/ROT13/URL-encoded payloads cannot slip past pattern rules. Rules fire on Bash, Edit, and Write across the hook and MCP surfaces. ML classifier upgrade tracked in #1049.",
+    tags: ["Security", "AI", "OWASP LLM"],
+    guardRules: 30,
+  },
+  {
     id: "meridian-dispatch",
     icon: "📦",
     name: "PH Dispatch (Demo)",
