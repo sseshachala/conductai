@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.9.1] - 2026-08-09
+
+### Added
+- Pretouse hook: `endpoint-attack`, `no_recon_fs`, and `no_network_egress` rule prefixes added to DOC_SENSITIVE_RULE_PREFIXES so pack authoring in a Conduct source repo (with the `.conduct-dev-repo` sentinel) does not self-trigger.
+
+### Notes
+- Ship the new `conduct-endpoint-attacks` skill pack (10 rules covering reverse shells, SSH/cloud credential file reads, cloud metadata recon, cron/systemd/launchd persistence, download-pipe-shell, and secret-read-then-egress chains — MITRE ATT&CK mapped) via `conduct sync` after upgrading.
+
+---
+
 ## [0.9.0] - 2026-08-09
 
 ### Added
