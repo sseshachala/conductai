@@ -114,9 +114,14 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const searchParams = useSearchParams()
   const initialTab = (searchParams?.get("tab") as Tab) || "tokens"
   const [activeTab, setActiveTab] = useState<Tab>(TABS.includes(initialTab) ? initialTab : "tokens")
-  const selectTab = (t: Tab) => {
+  const sourceFilter = searchParams?.get("source") || null
+  const selectTab = (t: Tab, extraQuery: Record<string, string> = {}) => {
     setActiveTab(t)
-    router.replace(`/agent-identity?tab=${t}`, { scroll: false })
+    const params = new URLSearchParams({ tab: t, ...extraQuery })
+    router.replace(`/agent-identity?${params.toString()}`, { scroll: false })
+  }
+  const clearSourceFilter = () => {
+    router.replace(`/agent-identity?tab=${activeTab}`, { scroll: false })
   }
 
   // Okta integration (#1036 Phase 2 — Sync UI)
@@ -583,16 +588,16 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                       <div style={{ marginTop: 6, fontSize: 11 }}>
                         <span style={{ color: "var(--text-muted)" }}>Last sync:</span> {new Date(okta.last_synced_at).toLocaleString()} ·{" "}
                         <button
-                          onClick={() => selectTab("identities")}
-                          title="View imported identities"
+                          onClick={() => selectTab("identities", { source: "okta" })}
+                          title="View Okta-sourced identities"
                           style={{ background: "none", border: "none", padding: 0, color: "var(--accent-text)", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
                         >
                           imported {okta.last_import ?? 0}
                         </button>
                         {" · "}
                         <button
-                          onClick={() => selectTab("identities")}
-                          title="View updated identities"
+                          onClick={() => selectTab("identities", { source: "okta" })}
+                          title="View Okta-sourced identities"
                           style={{ background: "none", border: "none", padding: 0, color: "var(--accent-text)", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
                         >
                           updated {okta.last_update ?? 0}
@@ -698,12 +703,31 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
             Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Tier drives what the agent is allowed to do; lifecycle drives whether it can act at all. Deactivating an identity revokes its tokens on the next check.
           </p>
+          {sourceFilter && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12, color: "var(--text-2)" }}>
+              <span style={{ color: "var(--text-muted)" }}>Filter:</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 8px", borderRadius: 4, background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                Source: {sourceFilter}
+                <button
+                  onClick={clearSourceFilter}
+                  aria-label="Clear filter"
+                  style={{ background: "none", border: "none", padding: 0, color: "var(--text-muted)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}
+                >
+                  ×
+                </button>
+              </span>
+              <span style={{ color: "var(--text-muted)" }}>({identities.filter(i => i.source === sourceFilter).length} of {identities.length})</span>
+            </div>
+          )}
           <div className="card" style={{ overflow: "hidden" }}>
             {identitiesLoading ? (
               <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)" }}>Loading identities…</div>
-            ) : identities.length === 0 ? (
-              <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)" }}>No agent identities yet.</div>
-            ) : (
+            ) : (() => {
+              const visibleIdentities = sourceFilter ? identities.filter(i => i.source === sourceFilter) : identities
+              if (visibleIdentities.length === 0) {
+                return <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)" }}>{sourceFilter ? `No identities with source “${sourceFilter}”.` : "No agent identities yet."}</div>
+              }
+              return (
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
@@ -717,7 +741,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                   </tr>
                 </thead>
                 <tbody>
-                  {identities.map(id => {
+                  {visibleIdentities.map(id => {
                     const tier = TIER_STYLE[id.risk_tier ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)" }
                     const lc   = LIFECYCLE_STYLE[id.lifecycle_state ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)", label: id.lifecycle_state ?? "—" }
                     const busy = savingIdentity === id.id
@@ -780,7 +804,8 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                   })}
                 </tbody>
               </table>
-            )}
+              )
+            })()}
           </div>
           <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0" }}>
             Tier 3 agents are the strictest (regulated decisions, requires human oversight); Tier 1 is drafting-adjacent (reversible, low blast radius). Only workspace admins can change tier, lifecycle, or certify.
