@@ -2310,6 +2310,11 @@ def register_guard_parser(sub):
     # conduct guard savings --team
     guard_sub.add_parser("savings", help="Show org-level token savings across all developers")
 
+    # conduct guard simulate --as-okta-agent <jwt-or-file>  (#1057)
+    sim_p = guard_sub.add_parser("simulate", help="Simulate a Guard-authenticated request without executing anything")
+    sim_p.add_argument("--as-okta-agent", dest="as_okta_agent", metavar="JWT-OR-FILE",
+                       help="Okta-issued JWT string, or a path to a file containing one")
+
     # conduct guard audit [--since 7d]
     audit_p = guard_sub.add_parser("audit", help="Show recent guard events")
     audit_p.add_argument(
@@ -3102,6 +3107,77 @@ def cmd_verify(args) -> None:
         sys.exit(1)
 
 
+
+def cmd_guard_simulate(args):
+    """conduct guard simulate --as-okta-agent <jwt-or-file>
+
+    Runs an *authenticated* GET /auth/whoami against the configured API,
+    using the supplied JWT as the Bearer token. Prints what auth resolved
+    to — identity name, source, source_id, lifecycle_state — so an
+    operator can verify their Okta setup end-to-end before wiring a real
+    agent. Purely a read-only probe; nothing is executed on the server.
+
+    Explicitly labelled a *simulation* — do not use this as a production
+    auth path.
+    """
+    import json as _json
+    import urllib.error as _uerr
+    import urllib.request as _ureq
+    from pathlib import Path as _Path
+
+    raw = getattr(args, "as_okta_agent", None)
+    if not raw:
+        print("Missing --as-okta-agent <jwt-or-file>", file=sys.stderr)
+        sys.exit(2)
+
+    _p = _Path(raw)
+    if _p.exists() and _p.is_file():
+        jwt = _p.read_text().strip()
+    else:
+        jwt = raw.strip()
+
+    if jwt.count(".") != 2:
+        print("Value does not look like a JWT (expected three dot-separated segments).", file=sys.stderr)
+        sys.exit(2)
+
+    cfg = _require_guard_config()
+    api = _api_url(cfg)
+    ws = cfg.get("workspace_id") or cfg.get("workspace")
+    if not ws:
+        print("No workspace configured — run `conduct login` first.", file=sys.stderr)
+        sys.exit(2)
+
+    url = f"{api.rstrip('/')}/auth/whoami?workspace_id={ws}"
+    req = _ureq.Request(url, headers={
+        "Authorization": f"Bearer {jwt}",
+        "Accept": "application/json",
+        "User-Agent": "Conduct-Guard-Simulate/1.0",
+    })
+    print(f"[simulation] GET {url}")
+    try:
+        with _ureq.urlopen(req, timeout=15) as resp:
+            body = _json.loads(resp.read().decode("utf-8"))
+    except _uerr.HTTPError as e:
+        try:
+            detail = _json.loads(e.read().decode("utf-8"))
+        except Exception:
+            detail = {"detail": e.reason}
+        print(f"[simulation] HTTP {e.code}: {detail.get('detail', detail)}")
+        sys.exit(1)
+    except _uerr.URLError as e:
+        print(f"[simulation] connection failed: {e.reason}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"[simulation] workspace: {body.get('workspace_id')}")
+    print(f"[simulation] token kind: {body.get('token_kind')}")
+    ident = body.get("identity")
+    if ident:
+        print(f"[simulation] identity   : {ident.get('name')} ({ident.get('source')}:{ident.get('source_id')})")
+        print(f"[simulation] lifecycle  : {ident.get('lifecycle_state')}")
+    else:
+        print("[simulation] identity   : (none — token did not resolve to an AgentIdentity)")
+
+
 def dispatch_guard(args, guard_p):
     """Dispatch to the correct guard handler. Called from main()."""
     guard_command = getattr(args, "guard_command", None)
@@ -3127,6 +3203,8 @@ def dispatch_guard(args, guard_p):
         cmd_guard_debug_hook(args)
     elif guard_command == "session":
         cmd_guard_session(args)
+    elif guard_command == "simulate":
+        cmd_guard_simulate(args)
     else:
         guard_p.print_help()
         sys.exit(1)
