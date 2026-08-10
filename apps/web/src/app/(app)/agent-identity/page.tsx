@@ -1,11 +1,21 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
+
+type Tab = "tokens" | "run_tokens" | "identities" | "integrations"
+const TAB_LABELS: Record<Tab, string> = {
+  tokens: "Tokens",
+  run_tokens: "Run tokens",
+  identities: "Identities",
+  integrations: "Integrations",
+}
+const TABS: Tab[] = ["tokens", "run_tokens", "identities", "integrations"]
 
 interface RunToken {
   id: string
@@ -98,6 +108,15 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const [identities, setIdentities] = useState<Identity[]>([])
   const [identitiesLoading, setIdentitiesLoading] = useState(true)
   const [savingIdentity, setSavingIdentity] = useState<string | null>(null)
+
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialTab = (searchParams?.get("tab") as Tab) || "tokens"
+  const [activeTab, setActiveTab] = useState<Tab>(TABS.includes(initialTab) ? initialTab : "tokens")
+  const selectTab = (t: Tab) => {
+    setActiveTab(t)
+    router.replace(`/agent-identity?tab=${t}`, { scroll: false })
+  }
 
   // Okta integration (#1036 Phase 2 — Sync UI)
   const [okta, setOkta] = useState<{ configured: boolean; domain?: string; token_prefix?: string; last_synced_at?: string | null; last_import?: number | null; last_update?: number | null; last_error?: string | null }>({ configured: false })
@@ -306,7 +325,34 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
           </p>
         </div>
 
+        <div role="tablist" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: -8 }}>
+          {TABS.map(tab => (
+            <button
+              key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
+              aria-controls={`tabpanel-${tab}`}
+              id={`tab-${tab}`}
+              onClick={() => selectTab(tab)}
+              style={{
+                background: "none",
+                border: "none",
+                padding: "9px 14px",
+                fontSize: 13.5,
+                fontWeight: 600,
+                cursor: "pointer",
+                marginBottom: -1,
+                color: activeTab === tab ? "var(--text)" : "var(--text-3)",
+                borderBottom: activeTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
+              }}
+            >
+              {TAB_LABELS[tab]}
+            </button>
+          ))}
+        </div>
+
         {/* CLI Developer Token */}
+        <div role="tabpanel" id="tabpanel-tokens" aria-labelledby="tab-tokens" hidden={activeTab !== "tokens"} style={{ display: activeTab === "tokens" ? "flex" : "none", flexDirection: "column", gap: 20 }}>
         <div className="card" style={{ padding: "16px 20px" }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>CLI Token</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
@@ -474,8 +520,10 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
           </div>
         </div>
 
+        </div>{/* end tabpanel tokens */}
+
         {/* Run Tokens */}
-        <div>
+        <div role="tabpanel" id="tabpanel-run_tokens" aria-labelledby="tab-run_tokens" hidden={activeTab !== "run_tokens"} style={{ display: activeTab === "run_tokens" ? "block" : "none" }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>Run Tokens</div>
           <div className="card" style={{ overflow: "hidden" }}>
             {loading ? (
@@ -538,7 +586,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         </p>
 
         {/* Okta integration — #1036 Phase 2 */}
-        <div>
+        <div role="tabpanel" id="tabpanel-integrations" aria-labelledby="tab-integrations" hidden={activeTab !== "integrations"} style={{ display: activeTab === "integrations" ? "block" : "none" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Okta integration</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
             Pull agent identities from your Okta tenant into Conduct as Guard principals. Okta owns auth; Conduct governs what each identity is allowed to do.
@@ -651,7 +699,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         </div>
 
         {/* Agent identities — Phase 3 of #1037 */}
-        <div>
+        <div role="tabpanel" id="tabpanel-identities" aria-labelledby="tab-identities" hidden={activeTab !== "identities"} style={{ display: activeTab === "identities" ? "block" : "none" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Agent identities</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
             Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Tier drives what the agent is allowed to do; lifecycle drives whether it can act at all. Deactivating an identity revokes its tokens on the next check.
