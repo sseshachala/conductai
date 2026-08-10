@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
+import { TabBar } from "@/components/TabBar"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
@@ -210,30 +211,8 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
 
         {isAdmin && <OrgNameEditor getToken={getToken} />}
 
-        <div role="tablist" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 24 }}>
-          {tabs.map(tab => (
-            <button
-              key={tab}
-              role="tab"
-              aria-selected={activeTab === tab}
-              aria-controls={`tabpanel-${tab}`}
-              id={`tab-${tab}`}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                background: "none",
-                border: "none",
-                padding: "9px 14px",
-                fontSize: 13.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                marginBottom: -1,
-                color: activeTab === tab ? "var(--text)" : "var(--text-3)",
-                borderBottom: activeTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
-              }}
-            >
-              {TAB_LABELS[tab]}
-            </button>
-          ))}
+        <div style={{ marginBottom: 24 }}>
+          <TabBar tabs={tabs} labels={TAB_LABELS} activeTab={activeTab} onSelect={setActiveTab} />
         </div>
 
         <div role="tabpanel" id="tabpanel-credentials" aria-labelledby="tab-credentials" hidden={activeTab !== "credentials"}>

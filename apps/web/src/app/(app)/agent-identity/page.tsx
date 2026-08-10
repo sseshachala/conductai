@@ -7,6 +7,7 @@ import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
+import { TabBar } from "@/components/TabBar"
 
 type Tab = "tokens" | "run_tokens" | "identities" | "integrations"
 const TAB_LABELS: Record<Tab, string> = {
@@ -325,30 +326,8 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
           </p>
         </div>
 
-        <div role="tablist" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: -8 }}>
-          {TABS.map(tab => (
-            <button
-              key={tab}
-              role="tab"
-              aria-selected={activeTab === tab}
-              aria-controls={`tabpanel-${tab}`}
-              id={`tab-${tab}`}
-              onClick={() => selectTab(tab)}
-              style={{
-                background: "none",
-                border: "none",
-                padding: "9px 14px",
-                fontSize: 13.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                marginBottom: -1,
-                color: activeTab === tab ? "var(--text)" : "var(--text-3)",
-                borderBottom: activeTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
-              }}
-            >
-              {TAB_LABELS[tab]}
-            </button>
-          ))}
+        <div style={{ marginBottom: -8 }}>
+          <TabBar tabs={TABS} labels={TAB_LABELS} activeTab={activeTab} onSelect={selectTab} />
         </div>
 
         {/* CLI Developer Token */}
