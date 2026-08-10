@@ -118,6 +118,32 @@ def _okta_app_to_row(app: dict) -> dict:
     }
 
 
+def _fetch_first_owner(domain: str, token: str, app_id: str) -> Optional[str]:
+    """Fetch /api/v1/apps/{id}/users?limit=1 and return the first user's
+    login (email) as the owner. Returns None on any failure — owner
+    enrichment is best-effort, never fails the sync."""
+    url = f"https://{domain}/api/v1/apps/{app_id}/users?limit=1"
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"SSWS {token}",
+        "Accept": "application/json",
+        "User-Agent": "Conduct-Guard-OktaSync/1.0",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, list) or not data:
+        return None
+    first = data[0] or {}
+    # Prefer credentials.userName (Okta login/email), fall back to the user id.
+    login = ((first.get("credentials") or {}).get("userName") or "").strip()
+    if login:
+        return login[:100]
+    uid = (first.get("id") or "").strip()
+    return uid[:100] or None
+
+
 def _extract_next_link(link_header: str) -> Optional[str]:
     """Okta returns RFC 5988 Link headers for pagination."""
     if not link_header:
@@ -186,6 +212,8 @@ def sync_okta(
                 continue
             try:
                 row_data = _okta_app_to_row(app)
+                # Best-effort owner enrichment. Never fails the sync.
+                owner = _fetch_first_owner(domain, body.token, row_data["source_id"])
                 existing = db.query(AgentIdentity).filter(
                     AgentIdentity.workspace_id == ws_uuid,
                     AgentIdentity.source == "okta",
@@ -196,6 +224,10 @@ def sync_okta(
                         if k == "created_at":
                             continue  # never mutate the original discovery timestamp
                         setattr(existing, k, v)
+                    # Only overwrite owner_user_id if we found one AND the
+                    # existing owner was unassigned or was itself Okta-derived.
+                    if owner and not existing.owner_user_id:
+                        existing.owner_user_id = owner
                     updated += 1
                 else:
                     new_row = AgentIdentity(
@@ -204,6 +236,7 @@ def sync_okta(
                         token_prefix=_PLACEHOLDER[:30],
                         token_encrypted=placeholder_encrypted,
                         token_type="external",
+                        owner_user_id=owner,
                         **row_data,
                     )
                     db.add(new_row)
