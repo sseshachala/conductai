@@ -124,14 +124,19 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
     router.replace(`/agent-identity?tab=${activeTab}`, { scroll: false })
   }
 
-  // Okta integration (#1036 Phase 2 — Sync UI)
-  const [okta, setOkta] = useState<{ configured: boolean; domain?: string; token_prefix?: string; last_synced_at?: string | null; last_import?: number | null; last_update?: number | null; last_error?: string | null }>({ configured: false })
+  // Okta integration (#1036 Phase 2 — Sync UI, #1056 Phase 3b — JWT auth)
+  const [okta, setOkta] = useState<{ configured: boolean; domain?: string; token_prefix?: string; last_synced_at?: string | null; last_import?: number | null; last_update?: number | null; last_error?: string | null; issuer?: string | null; audience?: string | null; jwt_auth_enabled?: boolean }>({ configured: false })
   const [oktaLoading, setOktaLoading] = useState(true)
   const [oktaDomainInput, setOktaDomainInput] = useState("")
   const [oktaTokenInput, setOktaTokenInput] = useState("")
   const [oktaSaving, setOktaSaving] = useState(false)
   const [oktaSyncing, setOktaSyncing] = useState(false)
   const [oktaFeedback, setOktaFeedback] = useState<string | null>(null)
+  // #1056 — JWT auth config
+  const [oktaIssuerInput, setOktaIssuerInput] = useState("")
+  const [oktaAudienceInput, setOktaAudienceInput] = useState("")
+  const [oktaJwtEnabled, setOktaJwtEnabled] = useState(false)
+  const [oktaJwtSaving, setOktaJwtSaving] = useState(false)
 
 
   const load = useCallback(async () => {
@@ -251,6 +256,9 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         const data = await res.json()
         setOkta(data)
         if (data.domain) setOktaDomainInput(data.domain)
+        setOktaIssuerInput(data.issuer ?? "")
+        setOktaAudienceInput(data.audience ?? "")
+        setOktaJwtEnabled(!!data.jwt_auth_enabled)
       }
     } finally {
       setOktaLoading(false)
@@ -277,6 +285,31 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
       }
     } finally {
       setOktaSaving(false)
+    }
+  }
+
+  async function saveOktaJwt() {
+    if (!workspaceId) return
+    setOktaJwtSaving(true); setOktaFeedback(null)
+    try {
+      const res = await authFetch(`${API}/workspaces/${workspaceId}/integrations/okta/config?workspace_id=${workspaceId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          issuer: oktaIssuerInput.trim() || null,
+          audience: oktaAudienceInput.trim() || null,
+          jwt_auth_enabled: oktaJwtEnabled,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setOkta(data)
+        setOktaFeedback(oktaJwtEnabled ? "JWT auth saved (enabled)." : "JWT auth saved (disabled).")
+      } else {
+        setOktaFeedback(`JWT save failed (HTTP ${res.status})`)
+      }
+    } finally {
+      setOktaJwtSaving(false)
     }
   }
 
@@ -651,6 +684,50 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                     >
                       {oktaSaving ? "Saving…" : "Save"}
                     </button>
+                  </div>
+                </div>
+                {/* JWT authentication (#1056) — Phase 3b runtime enforcement */}
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      JWT authentication — accept Okta-signed tokens as Guard principals
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-2)", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={oktaJwtEnabled}
+                        onChange={e => setOktaJwtEnabled(e.target.checked)}
+                        disabled={oktaJwtSaving}
+                      />
+                      Enabled
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input
+                      type="text"
+                      value={oktaIssuerInput}
+                      onChange={e => setOktaIssuerInput(e.target.value)}
+                      placeholder={okta.domain ? `https://${okta.domain}/oauth2/default` : "https://{domain}/oauth2/default"}
+                      style={{ flex: "1 1 260px", padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)" }}
+                    />
+                    <input
+                      type="text"
+                      value={oktaAudienceInput}
+                      onChange={e => setOktaAudienceInput(e.target.value)}
+                      placeholder="api://default"
+                      style={{ flex: "1 1 160px", padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)" }}
+                    />
+                    <button
+                      onClick={saveOktaJwt}
+                      disabled={oktaJwtSaving}
+                      className="btn btn-sm"
+                      style={{ padding: "6px 12px", fontSize: 12 }}
+                    >
+                      {oktaJwtSaving ? "Saving…" : "Save JWT config"}
+                    </button>
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}>
+                    Configure the OAuth authorization server in your Okta admin, then set the issuer + audience here and toggle Enabled.
                   </div>
                 </div>
               </>
