@@ -29,9 +29,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
-from app.core.crypto import encrypt
+from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
+from app.models.integration import Integration
 from app.modules.agent_identity.models import AgentIdentity
+
+
+_OKTA_HANDLE = "okta"  # single Integration row per workspace (see #1051 for multi-tenant)
 
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/integrations/okta", tags=["okta-sync"])
@@ -40,8 +44,8 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/integrations/okta", tags=[
 # ─── Schemas ────────────────────────────────────────────────────────────────
 
 class OktaSyncRequest(BaseModel):
-    domain: str = Field(..., description="Okta domain like dev-XXXXXX.okta.com. No scheme, no trailing slash — the endpoint sanitizes both.")
-    token: str = Field(..., description="Okta API token (SSWS). Never returned in the response.")
+    domain: Optional[str] = Field(None, description="Okta domain like dev-XXXXXX.okta.com. Omit to use stored config.")
+    token: Optional[str] = Field(None, description="Okta API token (SSWS). Omit to use stored config.")
     limit: int = Field(100, ge=1, le=200, description="Page size for Okta /api/v1/apps.")
 
 
@@ -50,6 +54,21 @@ class OktaSyncResponse(BaseModel):
     updated: int
     skipped: int
     errors: list[str]
+
+
+class OktaConfigPut(BaseModel):
+    domain: str = Field(..., description="Okta domain like dev-XXXXXX.okta.com.")
+    token: str = Field(..., description="Okta API token (SSWS). Stored encrypted; never returned.")
+
+
+class OktaConfigOut(BaseModel):
+    configured: bool
+    domain: Optional[str] = None
+    token_prefix: Optional[str] = None  # first 4 chars, for the user to recognize
+    last_synced_at: Optional[datetime] = None
+    last_import: Optional[int] = None
+    last_update: Optional[int] = None
+    last_error: Optional[str] = None
 
 
 # ─── Mapping ────────────────────────────────────────────────────────────────
@@ -157,7 +176,108 @@ def _extract_next_link(link_header: str) -> Optional[str]:
     return None
 
 
-# ─── Endpoint ───────────────────────────────────────────────────────────────
+# ─── Config storage (credential vault via Integration row) ──────────────────
+
+def _load_config(db: Session, workspace_id: str) -> Optional[dict]:
+    """Read stored Okta config from the Integration row for this workspace."""
+    row = db.query(Integration).filter(
+        Integration.workspace_id == uuid.UUID(workspace_id),
+        Integration.handle == _OKTA_HANDLE,
+    ).first()
+    if not row or not row.encrypted_credentials:
+        return None
+    try:
+        return decrypt(row.encrypted_credentials)
+    except Exception:
+        return None
+
+
+def _save_config(db: Session, workspace_id: str, payload: dict) -> None:
+    ws_uuid = uuid.UUID(workspace_id)
+    row = db.query(Integration).filter(
+        Integration.workspace_id == ws_uuid,
+        Integration.handle == _OKTA_HANDLE,
+    ).first()
+    encrypted = encrypt(payload)
+    if row:
+        row.encrypted_credentials = encrypted
+    else:
+        db.add(Integration(
+            workspace_id=ws_uuid,
+            service=_OKTA_HANDLE,
+            handle=_OKTA_HANDLE,
+            auth_method="api_key",
+            encrypted_credentials=encrypted,
+        ))
+    db.commit()
+
+
+# ─── Config endpoints ───────────────────────────────────────────────────────
+
+@router.get("/config", response_model=OktaConfigOut)
+def get_okta_config(
+    workspace_id: str,
+    _ws: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+) -> OktaConfigOut:
+    cfg = _load_config(db, workspace_id)
+    if not cfg:
+        return OktaConfigOut(configured=False)
+    tok = cfg.get("token") or ""
+    return OktaConfigOut(
+        configured=True,
+        domain=cfg.get("domain"),
+        token_prefix=(tok[:4] + "…") if tok else None,
+        last_synced_at=_parse_iso(cfg.get("last_synced_at")),
+        last_import=cfg.get("last_import"),
+        last_update=cfg.get("last_update"),
+        last_error=cfg.get("last_error"),
+    )
+
+
+@router.put("/config", response_model=OktaConfigOut)
+def put_okta_config(
+    workspace_id: str,
+    body: OktaConfigPut,
+    _ws: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+) -> OktaConfigOut:
+    domain = _sanitize_domain(body.domain)
+    if not domain:
+        raise HTTPException(status_code=422, detail="Okta domain required")
+    existing = _load_config(db, workspace_id) or {}
+    existing.update({"domain": domain, "token": body.token})
+    _save_config(db, workspace_id, existing)
+    return OktaConfigOut(
+        configured=True,
+        domain=domain,
+        token_prefix=body.token[:4] + "…",
+        last_synced_at=_parse_iso(existing.get("last_synced_at")),
+        last_import=existing.get("last_import"),
+        last_update=existing.get("last_update"),
+        last_error=existing.get("last_error"),
+    )
+
+
+@router.delete("/config", status_code=204)
+def delete_okta_config(
+    workspace_id: str,
+    _ws: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+):
+    row = db.query(Integration).filter(
+        Integration.workspace_id == uuid.UUID(workspace_id),
+        Integration.handle == _OKTA_HANDLE,
+    ).first()
+    if row:
+        db.delete(row)
+        db.commit()
+
+
+# ─── Sync endpoint ──────────────────────────────────────────────────────────
 
 @router.post("/sync", response_model=OktaSyncResponse)
 def sync_okta(
@@ -167,10 +287,17 @@ def sync_okta(
     _: str = Depends(require_permission("platform.workspace.edit")),
     db: Session = Depends(get_db),
 ) -> OktaSyncResponse:
-    """Pull Okta apps into agent_identities. Idempotent — reruns update in place."""
-    domain = _sanitize_domain(body.domain)
+    """Pull Okta apps into agent_identities. Idempotent — reruns update in place.
+    domain and token may be omitted; falls back to stored config from PUT /config."""
+    stored = _load_config(db, workspace_id) or {}
+    domain = _sanitize_domain(body.domain or stored.get("domain") or "")
+    token = body.token or stored.get("token") or ""
     if not domain:
-        raise HTTPException(status_code=422, detail="Okta domain required")
+        raise HTTPException(status_code=422, detail="Okta domain required (in request body or via /config)")
+    if not token:
+        raise HTTPException(status_code=422, detail="Okta API token required (in request body or via /config)")
+    # rebind body.token so the loop below (which uses body.token for owner enrichment) works either way
+    body.token = token
 
     imported = 0
     updated = 0
@@ -248,6 +375,17 @@ def sync_okta(
         url = _extract_next_link(link_header)
 
     db.commit()
+
+    # Record the sync outcome in the stored config so the UI can show
+    # last-run stats. Only touches config if one already exists — an
+    # ad-hoc sync with body-supplied creds should not create config.
+    if stored:
+        stored["last_synced_at"] = datetime.now(timezone.utc).isoformat()
+        stored["last_import"] = imported
+        stored["last_update"] = updated
+        stored["last_error"] = "; ".join(errors[:3]) if errors else None
+        _save_config(db, workspace_id, stored)
+
     return OktaSyncResponse(imported=imported, updated=updated, skipped=skipped, errors=errors)
 
 
