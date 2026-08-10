@@ -581,7 +581,22 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                     <div style={{ marginTop: 2 }}><span style={{ color: "var(--text-muted)" }}>Token:</span> <code>{okta.token_prefix}</code> (stored encrypted)</div>
                     {okta.last_synced_at ? (
                       <div style={{ marginTop: 6, fontSize: 11 }}>
-                        <span style={{ color: "var(--text-muted)" }}>Last sync:</span> {new Date(okta.last_synced_at).toLocaleString()} · imported {okta.last_import ?? 0} · updated {okta.last_update ?? 0}
+                        <span style={{ color: "var(--text-muted)" }}>Last sync:</span> {new Date(okta.last_synced_at).toLocaleString()} ·{" "}
+                        <button
+                          onClick={() => selectTab("identities")}
+                          title="View imported identities"
+                          style={{ background: "none", border: "none", padding: 0, color: "var(--accent-text)", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+                        >
+                          imported {okta.last_import ?? 0}
+                        </button>
+                        {" · "}
+                        <button
+                          onClick={() => selectTab("identities")}
+                          title="View updated identities"
+                          style={{ background: "none", border: "none", padding: 0, color: "var(--accent-text)", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+                        >
+                          updated {okta.last_update ?? 0}
+                        </button>
                       </div>
                     ) : (
                       <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}>Never synced.</div>
