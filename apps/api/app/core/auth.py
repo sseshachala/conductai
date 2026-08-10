@@ -579,8 +579,9 @@ def require_permission(permission: str):
     from sqlalchemy import text as _text
 
     def _check(
-        user_id: Annotated[str, Depends(get_user_id)],
+        user_id: Annotated[str | None, Depends(get_user_id)],
         workspace_id: Annotated[str, Depends(get_workspace_id)],
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
         db: Session = Depends(get_db),
     ) -> str:
         if not _clerk_enabled():
@@ -589,6 +590,16 @@ def require_permission(permission: str):
         import re as _re
         if not _re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", workspace_id, _re.I):
             raise HTTPException(status_code=403, detail="Invalid workspace ID")
+
+        # Machine tokens (cond_api_*) are workspace-scoped credentials with no
+        # user session. Treat as admin for the workspace they were minted for.
+        # Same model as AWS access keys, GitHub PATs, Stripe secret keys —
+        # the token IS the authorization.
+        if user_id is None and credentials and credentials.credentials.startswith("cond_api_"):
+            ai, _ = _resolve_agent_token(credentials.credentials, db)
+            if ai and str(getattr(ai, "workspace_id", "")) == workspace_id:
+                return "admin"
+            raise HTTPException(status_code=403, detail="API token workspace does not match request")
 
         row = db.execute(
             _text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
