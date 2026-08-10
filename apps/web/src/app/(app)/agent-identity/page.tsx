@@ -563,11 +563,10 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
               </table>
             )}
           </div>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
+            Run tokens are single-use and workspace-scoped. They are invalidated automatically when their run completes. Every run mints fresh credentials — authority validation happens at the execution boundary on every action.
+          </p>
         </div>
-
-        <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          Run tokens are single-use and workspace-scoped. They are invalidated automatically when their run completes. Every run mints fresh credentials — authority validation happens at the execution boundary on every action.
-        </p>
 
         {/* Okta integration — #1036 Phase 2 */}
         <div role="tabpanel" id="tabpanel-integrations" aria-labelledby="tab-integrations" hidden={activeTab !== "integrations"} style={{ display: activeTab === "integrations" ? "block" : "none" }}>
