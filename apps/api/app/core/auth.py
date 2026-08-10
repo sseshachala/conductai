@@ -281,6 +281,42 @@ def _resolve_okta_jwt(token: str, db: Session):
     if not rows:
         return None  # unconfigured issuer — fall through to Clerk
 
+    # #1057 — hash-chained audit event for every verify attempt. Wrapped in
+    # try/except so audit failures never break auth.
+    import time as _time
+    _t0 = _time.perf_counter()
+    unverified_sub = unverified.get("sub", "")
+
+    def _emit_audit(*, workspace_id, decision: str, sub: str, reason: str | None = None):
+        try:
+            from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert
+            from datetime import datetime, timezone as _tz
+            _now = datetime.now(_tz.utc)
+            _tool = "auth.okta_jwt.verify"
+            prev_hash, entry_hash = chain_hash_for_insert(db, workspace_id, _now, _tool, decision)
+            db.add(GuardAuditEvent(
+                workspace_id=workspace_id,
+                user_email=sub or "unknown",
+                ai_tool="okta_jwt",
+                tool_call=_tool,
+                source="okta_jwt",
+                input_summary=f"iss={iss}",
+                decision=decision,
+                rule_id="okta_jwt",
+                rule_message=reason,
+                ts=_now,
+                duration_ms=int((_time.perf_counter() - _t0) * 1000),
+                previous_hash=prev_hash,
+                entry_hash=entry_hash,
+            ))
+            db.commit()
+        except Exception as _e:  # never let audit break auth
+            log.warning("okta.audit.emit_failed", error=str(_e))
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
     last_error: Exception | None = None
     for row in rows:
         aud = row.okta_audience or ""
@@ -291,6 +327,7 @@ def _resolve_okta_jwt(token: str, db: Session):
             continue
         sub = claims.get("sub")
         if not sub:
+            _emit_audit(workspace_id=row.workspace_id, decision="blocked", sub=unverified_sub, reason="missing sub claim")
             raise HTTPException(status_code=401, detail="Okta JWT missing sub claim")
         ai = (
             db.query(AgentIdentity)
@@ -302,12 +339,17 @@ def _resolve_okta_jwt(token: str, db: Session):
             .first()
         )
         if not ai:
+            _emit_audit(workspace_id=row.workspace_id, decision="blocked", sub=sub, reason="identity not synced")
             raise HTTPException(status_code=401, detail="Okta identity not synced — run Okta sync in Conduct")
         lifecycle = getattr(ai, "lifecycle_state", None)
         if lifecycle in ("deactivated", "expired"):
+            _emit_audit(workspace_id=row.workspace_id, decision="blocked", sub=sub, reason=f"lifecycle={lifecycle}")
             raise HTTPException(status_code=401, detail=f"Agent identity is {lifecycle}")
+        _emit_audit(workspace_id=row.workspace_id, decision="allowed", sub=sub)
         return ai, None
 
+    # All configured workspaces rejected the token
+    _emit_audit(workspace_id=rows[0].workspace_id, decision="blocked", sub=unverified_sub, reason=str(last_error))
     raise HTTPException(status_code=401, detail=f"Okta JWT verification failed: {last_error}")
 
 
