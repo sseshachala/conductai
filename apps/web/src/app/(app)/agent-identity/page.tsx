@@ -481,7 +481,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                       <tr key={id.id} style={{ borderBottom: "1px solid var(--border)" }}>
                         <td style={{ padding: "8px 12px" }}>
                           <div style={{ fontWeight: 500, color: "var(--text)" }}>{id.name}</div>
-                          <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{id.token_prefix}</div>
+                          <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{id.token_prefix?.startsWith("okta_import") ? "external identity" : id.token_prefix}</div>
                         </td>
                         <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-2)" }}>
                           {id.source ?? "conduct"}
