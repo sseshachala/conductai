@@ -234,6 +234,83 @@ def _resolve_agent_token(token: str, db: Session):
     raise HTTPException(status_code=401, detail="Invalid agent token")
 
 
+def _resolve_okta_jwt(token: str, db: Session):
+    """Try to resolve `token` as an Okta-signed JWT (#1056).
+
+    Returns (AgentIdentity, None) on success, matching the shape of
+    `_resolve_agent_token(cond_api_*, ...)`. Returns None if the token is not
+    a JWT or its `iss` is not configured for any workspace with
+    `okta_auth_enabled=true` — the caller falls through to the next auth path
+    (Clerk). Any real verification failure raises HTTPException(401).
+    """
+    if token.count(".") != 2:
+        return None
+
+    from app.core.okta_jwt import OktaJWTError, verify_okta_jwt
+    from app.models.integration import Integration
+    from app.modules.agent_identity.models import AgentIdentity
+    import jwt as _pyjwt
+
+    try:
+        unverified = _pyjwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_exp": False,
+                "verify_aud": False,
+                "verify_iss": False,
+            },
+        )
+    except Exception:
+        return None
+    iss = unverified.get("iss")
+    if not iss:
+        return None
+
+    # ponytail: one indexed lookup per non-cond_ request. Add a global
+    # "any-okta-enabled" cache if this shows up in flame graphs.
+    rows = (
+        db.query(Integration)
+        .filter(
+            Integration.handle == "okta",
+            Integration.okta_issuer == iss,
+            Integration.okta_auth_enabled.is_(True),
+        )
+        .all()
+    )
+    if not rows:
+        return None  # unconfigured issuer — fall through to Clerk
+
+    last_error: Exception | None = None
+    for row in rows:
+        aud = row.okta_audience or ""
+        try:
+            claims = verify_okta_jwt(token, issuer=iss, audience=aud)
+        except OktaJWTError as e:
+            last_error = e
+            continue
+        sub = claims.get("sub")
+        if not sub:
+            raise HTTPException(status_code=401, detail="Okta JWT missing sub claim")
+        ai = (
+            db.query(AgentIdentity)
+            .filter(
+                AgentIdentity.workspace_id == row.workspace_id,
+                AgentIdentity.source == "okta",
+                AgentIdentity.source_id == sub,
+            )
+            .first()
+        )
+        if not ai:
+            raise HTTPException(status_code=401, detail="Okta identity not synced — run Okta sync in Conduct")
+        lifecycle = getattr(ai, "lifecycle_state", None)
+        if lifecycle in ("deactivated", "expired"):
+            raise HTTPException(status_code=401, detail=f"Agent identity is {lifecycle}")
+        return ai, None
+
+    raise HTTPException(status_code=401, detail=f"Okta JWT verification failed: {last_error}")
+
+
 def get_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
     db: Session = Depends(get_db),
@@ -253,6 +330,10 @@ def get_user_id(
                 return None  # machine identity — no user session
             raise HTTPException(status_code=401, detail="Agent token not linked to a user — re-run `conduct login`")
         return clerk_user_id
+
+    # Okta JWT (#1056) — machine identities, no user session (like cond_api_*)
+    if _resolve_okta_jwt(credentials.credentials, db) is not None:
+        return None
 
     claims = _verify_clerk_token(credentials.credentials)
     if not claims:
@@ -327,6 +408,16 @@ def get_workspace_id(
         token_ws = str(ai.workspace_id)
         if explicit_ws and explicit_ws != token_ws:
             raise HTTPException(status_code=403, detail="Agent token does not belong to the requested workspace")
+        return explicit_ws or token_ws
+
+    # Okta JWT (#1056) — resolves before Clerk. Returns None for tokens whose
+    # issuer isn't configured, so Clerk JWTs still work.
+    okta = _resolve_okta_jwt(credentials.credentials, db)
+    if okta is not None:
+        ai, _ = okta
+        token_ws = str(ai.workspace_id)
+        if explicit_ws and explicit_ws != token_ws:
+            raise HTTPException(status_code=403, detail="Okta JWT does not belong to the requested workspace")
         return explicit_ws or token_ws
 
     claims = _verify_clerk_token(credentials.credentials)
@@ -490,6 +581,13 @@ def get_guard_hook_auth(
         ai, _ = _resolve_agent_token(token, db)
         return str(ai.workspace_id)
 
+    # Okta JWT (#1056) — resolves before Clerk. Returns None for tokens whose
+    # issuer isn't configured, so Clerk JWTs still work.
+    okta = _resolve_okta_jwt(token, db)
+    if okta is not None:
+        ai, _ = okta
+        return str(ai.workspace_id)
+
     # Clerk JWT
     claims = _verify_clerk_token(token)
     if claims:
@@ -600,6 +698,16 @@ def require_permission(permission: str):
             if ai and str(getattr(ai, "workspace_id", "")) == workspace_id:
                 return "admin"
             raise HTTPException(status_code=403, detail="API token workspace does not match request")
+
+        # Okta JWTs (#1056) are also workspace-scoped machine credentials —
+        # user_id is None because get_user_id returned None for the JWT above.
+        if user_id is None and credentials:
+            okta = _resolve_okta_jwt(credentials.credentials, db)
+            if okta is not None:
+                ai, _ = okta
+                if str(getattr(ai, "workspace_id", "")) == workspace_id:
+                    return "admin"
+                raise HTTPException(status_code=403, detail="Okta JWT workspace does not match request")
 
         row = db.execute(
             _text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),

@@ -57,8 +57,15 @@ class OktaSyncResponse(BaseModel):
 
 
 class OktaConfigPut(BaseModel):
-    domain: str = Field(..., description="Okta domain like dev-XXXXXX.okta.com.")
-    token: str = Field(..., description="Okta API token (SSWS). Stored encrypted; never returned.")
+    # All fields optional so callers can update just the credentials, just
+    # the JWT auth config, or both. Handler validates that the caller isn't
+    # sending an empty body.
+    domain: Optional[str] = Field(None, description="Okta domain like dev-XXXXXX.okta.com.")
+    token: Optional[str] = Field(None, description="Okta API token (SSWS). Stored encrypted; never returned.")
+    # JWT auth (#1056) — ships disabled until the operator flips the toggle.
+    issuer: Optional[str] = Field(None, description="OAuth authorization server issuer, e.g. https://{domain}/oauth2/default")
+    audience: Optional[str] = Field(None, description="Expected `aud` claim on Okta-issued JWTs, e.g. api://default")
+    jwt_auth_enabled: Optional[bool] = Field(None, description="Enable Okta JWT authentication for this workspace")
 
 
 class OktaConfigOut(BaseModel):
@@ -69,6 +76,10 @@ class OktaConfigOut(BaseModel):
     last_import: Optional[int] = None
     last_update: Optional[int] = None
     last_error: Optional[str] = None
+    # JWT auth (#1056)
+    issuer: Optional[str] = None
+    audience: Optional[str] = None
+    jwt_auth_enabled: bool = False
 
 
 # ─── Mapping ────────────────────────────────────────────────────────────────
@@ -222,8 +233,13 @@ def get_okta_config(
     db: Session = Depends(get_db),
 ) -> OktaConfigOut:
     cfg = _load_config(db, workspace_id)
-    if not cfg:
+    row = db.query(Integration).filter(
+        Integration.workspace_id == uuid.UUID(workspace_id),
+        Integration.handle == _OKTA_HANDLE,
+    ).first()
+    if not cfg and not row:
         return OktaConfigOut(configured=False)
+    cfg = cfg or {}
     tok = cfg.get("token") or ""
     return OktaConfigOut(
         configured=True,
@@ -233,6 +249,9 @@ def get_okta_config(
         last_import=cfg.get("last_import"),
         last_update=cfg.get("last_update"),
         last_error=cfg.get("last_error"),
+        issuer=(row.okta_issuer if row else None),
+        audience=(row.okta_audience if row else None),
+        jwt_auth_enabled=bool(row.okta_auth_enabled) if row else False,
     )
 
 
@@ -244,20 +263,49 @@ def put_okta_config(
     _: str = Depends(require_permission("platform.workspace.edit")),
     db: Session = Depends(get_db),
 ) -> OktaConfigOut:
-    domain = _sanitize_domain(body.domain)
-    if not domain:
-        raise HTTPException(status_code=422, detail="Okta domain required")
+    # Empty-body guard — reject requests that would be a no-op.
+    if body.domain is None and body.token is None and body.issuer is None and body.audience is None and body.jwt_auth_enabled is None:
+        raise HTTPException(status_code=422, detail="At least one field required")
+
     existing = _load_config(db, workspace_id) or {}
-    existing.update({"domain": domain, "token": body.token})
-    _save_config(db, workspace_id, existing)
+
+    # Credential update — both domain and token must be provided together
+    if body.domain is not None or body.token is not None:
+        if not body.domain or not body.token:
+            raise HTTPException(status_code=422, detail="Domain and token must be provided together")
+        domain = _sanitize_domain(body.domain)
+        if not domain:
+            raise HTTPException(status_code=422, detail="Okta domain required")
+        existing.update({"domain": domain, "token": body.token})
+        _save_config(db, workspace_id, existing)
+
+    # #1056 — update JWT auth columns on the Integration row.
+    row = db.query(Integration).filter(
+        Integration.workspace_id == uuid.UUID(workspace_id),
+        Integration.handle == _OKTA_HANDLE,
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Okta integration not configured — save credentials first")
+    if body.issuer is not None:
+        row.okta_issuer = body.issuer.strip() or None
+    if body.audience is not None:
+        row.okta_audience = body.audience.strip() or None
+    if body.jwt_auth_enabled is not None:
+        row.okta_auth_enabled = bool(body.jwt_auth_enabled)
+    db.commit()
+
+    tok = existing.get("token") or ""
     return OktaConfigOut(
         configured=True,
-        domain=domain,
-        token_prefix=body.token[:4] + "…",
+        domain=existing.get("domain"),
+        token_prefix=(tok[:4] + "…") if tok else None,
         last_synced_at=_parse_iso(existing.get("last_synced_at")),
         last_import=existing.get("last_import"),
         last_update=existing.get("last_update"),
         last_error=existing.get("last_error"),
+        issuer=row.okta_issuer,
+        audience=row.okta_audience,
+        jwt_auth_enabled=bool(row.okta_auth_enabled),
     )
 
 
