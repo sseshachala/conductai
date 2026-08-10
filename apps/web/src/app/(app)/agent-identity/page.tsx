@@ -99,6 +99,15 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const [identitiesLoading, setIdentitiesLoading] = useState(true)
   const [savingIdentity, setSavingIdentity] = useState<string | null>(null)
 
+  // Okta integration (#1036 Phase 2 — Sync UI)
+  const [okta, setOkta] = useState<{ configured: boolean; domain?: string; token_prefix?: string; last_synced_at?: string | null; last_import?: number | null; last_update?: number | null; last_error?: string | null }>({ configured: false })
+  const [oktaLoading, setOktaLoading] = useState(true)
+  const [oktaDomainInput, setOktaDomainInput] = useState("")
+  const [oktaTokenInput, setOktaTokenInput] = useState("")
+  const [oktaSaving, setOktaSaving] = useState(false)
+  const [oktaSyncing, setOktaSyncing] = useState(false)
+  const [oktaFeedback, setOktaFeedback] = useState<string | null>(null)
+
 
   const load = useCallback(async () => {
     if (!workspaceId) return
@@ -204,6 +213,86 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
       }
     } finally {
       setSavingIdentity(null)
+    }
+  }
+
+  // Okta integration handlers (#1036 Phase 2)
+  const loadOktaConfig = useCallback(async () => {
+    if (!workspaceId) return
+    setOktaLoading(true)
+    try {
+      const res = await authFetch(`${API}/workspaces/${workspaceId}/integrations/okta/config?workspace_id=${workspaceId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setOkta(data)
+        if (data.domain) setOktaDomainInput(data.domain)
+      }
+    } finally {
+      setOktaLoading(false)
+    }
+  }, [workspaceId])
+  useEffect(() => { loadOktaConfig() }, [loadOktaConfig])
+
+  async function saveOktaConfig() {
+    if (!workspaceId || !oktaDomainInput.trim() || !oktaTokenInput.trim()) return
+    setOktaSaving(true); setOktaFeedback(null)
+    try {
+      const res = await authFetch(`${API}/workspaces/${workspaceId}/integrations/okta/config?workspace_id=${workspaceId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain: oktaDomainInput.trim(), token: oktaTokenInput.trim() }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setOkta(data)
+        setOktaTokenInput("")
+        setOktaFeedback("Saved.")
+      } else {
+        setOktaFeedback(`Save failed (HTTP ${res.status})`)
+      }
+    } finally {
+      setOktaSaving(false)
+    }
+  }
+
+  async function syncOktaNow() {
+    if (!workspaceId) return
+    setOktaSyncing(true); setOktaFeedback(null)
+    try {
+      const res = await authFetch(`${API}/workspaces/${workspaceId}/integrations/okta/sync?workspace_id=${workspaceId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),  // omit domain+token to use stored config
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setOktaFeedback(`Imported ${data.imported}, updated ${data.updated}${data.errors.length ? `, ${data.errors.length} errors` : ""}.`)
+        await loadOktaConfig()
+        // also refresh identities so the table updates
+        const identitiesRes = await authFetch(`${API}/workspaces/${workspaceId}/agent-identities?workspace_id=${workspaceId}`)
+        if (identitiesRes.ok) setIdentities(await identitiesRes.json())
+      } else {
+        setOktaFeedback(`Sync failed (HTTP ${res.status})`)
+      }
+    } finally {
+      setOktaSyncing(false)
+    }
+  }
+
+  async function disconnectOkta() {
+    if (!workspaceId) return
+    if (!confirm("Disconnect Okta? Stored credentials will be deleted. Existing imported identities are kept.")) return
+    setOktaSaving(true); setOktaFeedback(null)
+    try {
+      const res = await authFetch(`${API}/workspaces/${workspaceId}/integrations/okta/config?workspace_id=${workspaceId}`, { method: "DELETE" })
+      if (res.ok || res.status === 204) {
+        setOkta({ configured: false })
+        setOktaDomainInput("")
+        setOktaTokenInput("")
+        setOktaFeedback("Disconnected.")
+      }
+    } finally {
+      setOktaSaving(false)
     }
   }
 
@@ -447,6 +536,119 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
           Run tokens are single-use and workspace-scoped. They are invalidated automatically when their run completes. Every run mints fresh credentials — authority validation happens at the execution boundary on every action.
         </p>
+
+        {/* Okta integration — #1036 Phase 2 */}
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Okta integration</div>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
+            Pull agent identities from your Okta tenant into Conduct as Guard principals. Okta owns auth; Conduct governs what each identity is allowed to do.
+          </p>
+          <div className="card" style={{ padding: "16px 20px" }}>
+            {oktaLoading ? (
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Loading…</div>
+            ) : okta.configured ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 12, color: "var(--text-2)" }}>
+                    <div><span style={{ color: "var(--text-muted)" }}>Domain:</span> <code>{okta.domain}</code></div>
+                    <div style={{ marginTop: 2 }}><span style={{ color: "var(--text-muted)" }}>Token:</span> <code>{okta.token_prefix}</code> (stored encrypted)</div>
+                    {okta.last_synced_at ? (
+                      <div style={{ marginTop: 6, fontSize: 11 }}>
+                        <span style={{ color: "var(--text-muted)" }}>Last sync:</span> {new Date(okta.last_synced_at).toLocaleString()} · imported {okta.last_import ?? 0} · updated {okta.last_update ?? 0}
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}>Never synced.</div>
+                    )}
+                    {okta.last_error && (
+                      <div style={{ marginTop: 6, fontSize: 11, color: "var(--err)" }}>Last error: {okta.last_error}</div>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={syncOktaNow}
+                      disabled={oktaSyncing || oktaSaving}
+                      className="btn btn-primary btn-sm"
+                    >
+                      {oktaSyncing ? "Syncing…" : "Sync now"}
+                    </button>
+                    <button
+                      onClick={disconnectOkta}
+                      disabled={oktaSyncing || oktaSaving}
+                      style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", fontSize: 12, cursor: "pointer" }}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>Update stored credentials:</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input
+                      type="text"
+                      value={oktaDomainInput}
+                      onChange={e => setOktaDomainInput(e.target.value)}
+                      placeholder="dev-XXXXXX.okta.com"
+                      style={{ flex: "1 1 220px", padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)" }}
+                    />
+                    <input
+                      type="password"
+                      value={oktaTokenInput}
+                      onChange={e => setOktaTokenInput(e.target.value)}
+                      placeholder="New Okta API token (SSWS)"
+                      style={{ flex: "2 1 260px", padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)" }}
+                    />
+                    <button
+                      onClick={saveOktaConfig}
+                      disabled={oktaSaving || !oktaDomainInput.trim() || !oktaTokenInput.trim()}
+                      className="btn btn-sm"
+                      style={{ padding: "6px 12px", fontSize: 12 }}
+                    >
+                      {oktaSaving ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+                  Not configured. Enter your Okta domain and an admin API token to start pulling apps into Guard as agent identities.
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    value={oktaDomainInput}
+                    onChange={e => setOktaDomainInput(e.target.value)}
+                    placeholder="dev-XXXXXX.okta.com"
+                    style={{ flex: "1 1 220px", padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)" }}
+                  />
+                  <input
+                    type="password"
+                    value={oktaTokenInput}
+                    onChange={e => setOktaTokenInput(e.target.value)}
+                    placeholder="Okta API token (SSWS)"
+                    style={{ flex: "2 1 260px", padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)" }}
+                  />
+                  <button
+                    onClick={saveOktaConfig}
+                    disabled={oktaSaving || !oktaDomainInput.trim() || !oktaTokenInput.trim()}
+                    className="btn btn-primary btn-sm"
+                    style={{ padding: "6px 12px", fontSize: 12 }}
+                  >
+                    {oktaSaving ? "Saving…" : "Save & Connect"}
+                  </button>
+                </div>
+                <p style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "8px 0 0" }}>
+                  Create a token in Okta admin: Security → API → Tokens → Create Token. The token is stored encrypted and never returned by the API.
+                </p>
+              </div>
+            )}
+            {oktaFeedback && (
+              <div style={{ marginTop: 10, fontSize: 11, color: oktaFeedback.toLowerCase().includes("fail") ? "var(--err)" : "var(--ok)" }}>
+                {oktaFeedback}
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Agent identities — Phase 3 of #1037 */}
         <div>
