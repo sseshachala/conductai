@@ -338,9 +338,12 @@ DEV_PATH_MARKERS = (
     "/apps/api/tests/",
     "/apps/api/app/modules/agent_identity/",
     "/apps/api/app/modules/guard/cedar_adapter/",
+    "/apps/api/app/routers/",  # Conduct's own integration routers; still gated by sentinel
     # Removed /apps/web/src/ and /docs/ — too generic; those substrings appear
     # in ordinary Next.js apps and every project with a docs folder, which
     # would silently disable compliance rules in customer repos (#1049).
+    # /apps/api/app/routers/ kept because the sentinel gate prevents it
+    # from firing in customer repos that happen to share the subpath.
 )
 
 # Sentinel file at repo root marks a Conduct source repo — required for

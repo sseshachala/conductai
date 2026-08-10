@@ -213,6 +213,11 @@ def _resolve_agent_token(token: str, db: Session):
                 _lifecycle = getattr(ai, "lifecycle_state", None)
                 if _lifecycle in ("deactivated", "expired"):
                     raise HTTPException(status_code=401, detail=f"Agent identity is {_lifecycle}")
+                # External identities (Okta-imported, etc.) authenticate via
+                # their source system, never through Conduct's token path.
+                # #1036 defense-in-depth against auth confusion.
+                if getattr(ai, "token_type", "cli") == "external":
+                    raise HTTPException(status_code=401, detail="External agent identity cannot authenticate via Conduct token path")
                 # api tokens have no guard_member_config row by design
                 if getattr(ai, 'token_type', 'cli') == 'api':
                     return ai, None
