@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint, Boolean
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -19,6 +19,11 @@ class Integration(Base):
     last_used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     environment_id = Column(UUID(as_uuid=True), ForeignKey("environments.id"), nullable=True)
+    # Okta JWT auth (#1056). okta_issuer indexed — reverse lookup from an
+    # unverified JWT `iss` to the workspace that trusts it. NULL on non-Okta rows.
+    okta_issuer = Column(String(500), nullable=True, index=True)
+    okta_audience = Column(String(500), nullable=True)
+    okta_auth_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
 
     workspace = relationship("Workspace", back_populates="integrations")
     environment = relationship("Environment", back_populates="integrations")
