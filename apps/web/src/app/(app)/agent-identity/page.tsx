@@ -170,7 +170,9 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
 
   function fmt(d: string | null) {
     if (!d) return "—"
-    return new Date(d).toLocaleDateString("en-GB", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    // Hydration-safe: deterministic UTC. Server TZ vs client TZ would otherwise
+    // trigger React error #418 (text mismatch) on every render.
+    return d.slice(0, 16).replace("T", " ") + " UTC"
   }
 
   function maskToken(t: string) {
@@ -500,11 +502,11 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                             {t.token_prefix ? `${t.token_prefix}...` : "\u2014"}
                           </code>
                         </td>
-                        <td style={{ padding: "8px 16px", color: expired ? "var(--err)" : "var(--text-muted)" }}>
+                        <td style={{ padding: "8px 16px", color: expired ? "var(--err)" : "var(--text-muted)" }} suppressHydrationWarning>
                           {t.expires_at ? fmt(t.expires_at) : "Never"}
                         </td>
                         <td style={{ padding: "8px 16px", color: "var(--text-muted)" }}>{fmt(t.last_used_at)}</td>
-                        <td style={{ padding: "8px 16px" }}>
+                        <td style={{ padding: "8px 16px" }} suppressHydrationWarning>
                           {expired
                             ? <span style={{ color: "var(--err)", fontSize: 11.5 }}>Expired</span>
                             : <span style={{ color: "var(--ok)", fontWeight: 600, fontSize: 11.5 }}>Active</span>
@@ -618,7 +620,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                     <div style={{ marginTop: 2 }}><span style={{ color: "var(--text-muted)" }}>Token:</span> <code>{okta.token_prefix}</code> (stored encrypted)</div>
                     {okta.last_synced_at ? (
                       <div style={{ marginTop: 6, fontSize: 11 }}>
-                        <span style={{ color: "var(--text-muted)" }}>Last sync:</span> {new Date(okta.last_synced_at).toLocaleString()} ·{" "}
+                        <span style={{ color: "var(--text-muted)" }}>Last sync:</span> {okta.last_synced_at?.slice(0, 16).replace("T", " ")} UTC ·{" "}
                         <button
                           onClick={() => selectTab("identities", { source: "okta" })}
                           title="View Okta-sourced identities"
@@ -862,7 +864,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                         </td>
                         <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }}>
                           {id.last_certified_at
-                            ? new Date(id.last_certified_at).toLocaleDateString()
+                            ? id.last_certified_at.slice(0, 10)
                             : <span>never</span>}
                         </td>
                         <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }} title={id.last_used_at ?? undefined}>
