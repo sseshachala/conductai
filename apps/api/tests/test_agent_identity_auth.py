@@ -538,7 +538,7 @@ class TestMcpEndpointAuth:
             mock_db.query.return_value.filter.return_value.first.return_value = _mock_guard_config()
             mock_sl.return_value = mock_db
 
-            response = asyncio.run(mcp_endpoint(request=req, workspace_id=None, token=None))
+            response = asyncio.run(mcp_endpoint(request=req, workspace_id=None))
 
         assert response.status_code == 200
         body = json.loads(response.body)
@@ -562,7 +562,7 @@ class TestMcpEndpointAuth:
             mock_db.query.return_value.filter.return_value.first.return_value = _mock_guard_config()
             mock_sl.return_value = mock_db
 
-            response = asyncio.run(mcp_endpoint(request=req, workspace_id=None, token=None))
+            response = asyncio.run(mcp_endpoint(request=req, workspace_id=None))
 
         assert response.status_code == 200
 
@@ -571,7 +571,7 @@ class TestMcpEndpointAuth:
         from app.modules.guard.routers.mcp import mcp_endpoint
 
         req = _make_mcp_request(bearer=None)
-        response = asyncio.run(mcp_endpoint(request=req, workspace_id=None, token=None))
+        response = asyncio.run(mcp_endpoint(request=req, workspace_id=None))
         assert response.status_code == 401
 
     def test_invalid_token_returns_401(self):
@@ -586,7 +586,7 @@ class TestMcpEndpointAuth:
         ):
             mock_db = MagicMock()
             mock_sl.return_value = mock_db
-            response = asyncio.run(mcp_endpoint(request=req, workspace_id=None, token=None))
+            response = asyncio.run(mcp_endpoint(request=req, workspace_id=None))
 
         assert response.status_code == 401
 
@@ -606,7 +606,7 @@ class TestMcpEndpointAuth:
             mock_db = MagicMock()
             mock_db.query.return_value.filter.return_value.first.return_value = None
             mock_sl.return_value = mock_db
-            response = asyncio.run(mcp_endpoint(request=req, workspace_id=None, token=None))
+            response = asyncio.run(mcp_endpoint(request=req, workspace_id=None))
 
         assert response.status_code == 401
         assert "WWW-Authenticate" in response.headers
