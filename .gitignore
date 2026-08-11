@@ -76,3 +76,4 @@ apps/web/CLAUDE.md
 # Internal-only docs — never publish
 docs/internal/
 .env*.local
+.env*
