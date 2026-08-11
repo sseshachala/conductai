@@ -95,6 +95,12 @@ Conduct answers "what is this actor allowed to do, right now, in this workspace?
 
 The two planes are separable on purpose. Defense in depth — a permissive ruleset can't grant access to an unknown Okta identity, and a revoked Okta identity can't reach a permissive ruleset.
 
+## Tracking Okta-identified agents in Conduct
+
+Once synced, Okta agents are tracked as first-class `AgentIdentity` rows — fields, timestamps (`last_used_at`, `last_certified_at`, `deactivated_at`), audit trail (`tool_call='auth.okta_jwt.verify'`), and the "how do I find X" mapping are documented separately.
+
+**See:** [okta-tracking.md](./okta-tracking.md) — full reference for what gets tracked and how to query it.
+
 ## Related
 
 - Phase 1 (identity sync) — #1036, shipped

@@ -1,6 +1,9 @@
 "use client"
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { marked } from "marked"
+// @ts-expect-error - .md imported as raw string via webpack asset/source
+import oktaTrackingMd from "../../../../../../docs/reference/okta-tracking.md"
 
 const VALID_TABS = ["overview", "guard", "mcp-tools", "getting-started", "blocks", "api", "integrations"] as const
 
@@ -119,6 +122,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#guard-sync",        label: "Sync & re-sync" },
     { href: "#guard-mcp",         label: "conductguard-mcp" },
     { href: "#guard-tokens",      label: "Agent tokens" },
+    { href: "#guard-okta-tracking", label: "Okta agent tracking" },
     { href: "#guard-spend",       label: "Spend controls" },
     { href: "#guard-savings",     label: "Maximize savings" },
     { href: "#guard-roles",       label: "Roles & permissions" },
@@ -1270,6 +1274,10 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 }`}</Pre>
         <p className="text-stone-500 text-xs mt-3">conduct login calls this endpoint automatically after browser auth. Use it directly from any RFC 8693-compatible OAuth client.</p>
       </section>
+
+      <section id="guard-okta-tracking" className="[&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:text-sm [&_p]:text-stone-500 [&_p]:leading-relaxed [&_p]:mb-3 [&_ul]:text-sm [&_ul]:text-stone-500 [&_ul]:list-disc [&_ul]:ml-5 [&_ul]:mb-3 [&_li]:mb-1 [&_code]:font-mono [&_code]:text-xs [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_table]:text-xs [&_table]:mb-4 [&_table]:border [&_table]:border-stone-200 [&_table]:w-full [&_th]:bg-stone-50 [&_th]:text-left [&_th]:font-semibold [&_th]:p-2 [&_th]:border-b [&_th]:border-stone-200 [&_td]:p-2 [&_td]:border-b [&_td]:border-stone-100 [&_td]:align-top [&_a]:text-indigo-600 [&_a:hover]:underline [&_strong]:font-semibold [&_strong]:text-stone-700"
+        dangerouslySetInnerHTML={{ __html: marked.parse(oktaTrackingMd, { async: false }) as string }}
+      />
 
       <section id="guard-spend">
         <SectionHeading id="guard-spend">Spend controls</SectionHeading>

@@ -2,6 +2,12 @@
 const nextConfig = {
   output: "standalone",
   serverExternalPackages: [],
+  webpack: (config) => {
+    // .md imports return raw string contents, inlined at build time.
+    // Used by /docs to render docs/reference/*.md as the single source of truth.
+    config.module.rules.push({ test: /\.md$/, type: "asset/source" })
+    return config
+  },
   async redirects() {
     return [
       {
