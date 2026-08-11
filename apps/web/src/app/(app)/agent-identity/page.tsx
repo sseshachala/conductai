@@ -867,7 +867,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                         </td>
                         <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }} title={id.last_used_at ?? undefined}>
                           {id.last_used_at
-                            ? new Date(id.last_used_at).toLocaleString()
+                            ? id.last_used_at.slice(0, 16).replace("T", " ") + " UTC"
                             : <span>never</span>}
                         </td>
                         <td style={{ padding: "8px 12px", textAlign: "right" }}>
