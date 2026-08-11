@@ -11,6 +11,7 @@ Usage in routes:
     # role-gated:
     _: str = Depends(require_workspace_role("admin"))
 """
+import contextvars
 import structlog
 import threading
 from functools import lru_cache
@@ -33,6 +34,14 @@ _bearer = HTTPBearer(auto_error=False)
 
 _jwks_cache: dict | None = None
 _jwks_lock = threading.Lock()
+
+# Per-request dedupe for Okta audit emissions. FastAPI runs each request in a
+# fresh async context, so this ContextVar naturally resets between requests.
+# Same token resolved twice in one request → one audit row, not two (fixes
+# the /auth/whoami double-emit).
+_okta_audit_emitted: contextvars.ContextVar[set[str] | None] = contextvars.ContextVar(
+    "okta_audit_emitted", default=None,
+)
 
 # ponytail: shared client — connection pooling, avoids per-call TLS handshake
 _clerk_http = httpx.Client(timeout=5)
@@ -288,6 +297,16 @@ def _resolve_okta_jwt(token: str, db: Session):
     unverified_sub = unverified.get("sub", "")
 
     def _emit_audit(*, workspace_id, decision: str, sub: str, reason: str | None = None):
+        # Per-request dedupe: if the same (workspace, decision, sub) was already
+        # audited in this request, skip. See _okta_audit_emitted.
+        _seen = _okta_audit_emitted.get()
+        if _seen is None:
+            _seen = set()
+            _okta_audit_emitted.set(_seen)
+        _key = f"{workspace_id}|{decision}|{sub}"
+        if _key in _seen:
+            return
+        _seen.add(_key)
         try:
             from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert
             from datetime import datetime, timezone as _tz

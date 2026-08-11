@@ -270,3 +270,56 @@ def test_missing_sub_raises_401(monkeypatch):
         auth_mod._resolve_okta_jwt(_fake_jwt(), db)
     assert ei.value.status_code == 401
     assert "sub" in ei.value.detail
+
+def test_audit_deduped_within_same_request(monkeypatch):
+    """/auth/whoami calls _resolve_okta_jwt twice per request (once via the
+    get_workspace_id dep, once explicitly). Both calls should share the same
+    ContextVar and emit only ONE audit event, not two."""
+    import contextvars
+
+    import app.core.auth as auth_mod
+
+    ws_id = uuid.uuid4()
+    integration = _integration_row(
+        issuer="https://example.okta.com/oauth2/default",
+        audience="api://default",
+        enabled=True,
+        workspace_id=ws_id,
+    )
+    ai = _ai_row(workspace_id=ws_id, source_id="0oaSUB")
+
+    # Two db instances (each _resolve_okta_jwt call gets a fresh Session via
+    # Depends(get_db) in prod). Both must see identical query results.
+    def _make_db():
+        return _db_with(integration_rows=[integration], ai_row=ai)
+
+    monkeypatch.setattr(
+        "app.core.okta_jwt.verify_okta_jwt",
+        lambda token, issuer, audience, **kw: {"sub": "0oaSUB", "iss": issuer, "aud": audience},
+    )
+    # Stub the hash-chain helper — MagicMock db cannot satisfy its ORM chain.
+    monkeypatch.setattr(
+        "app.modules.guard.models.chain_hash_for_insert",
+        lambda *a, **k: ("prev", "entry"),
+    )
+
+    # Run both calls inside a shared ContextVar copy so they see the same
+    # _okta_audit_emitted set — this is what FastAPI does per-request.
+    add_calls = {"n": 0}
+
+    def _run():
+        # Reset the contextvar to empty; a real request starts with default=None
+        auth_mod._okta_audit_emitted.set(None)
+        db1 = _make_db()
+        db1.add.side_effect = lambda *_a, **_kw: add_calls.__setitem__("n", add_calls["n"] + 1)
+        auth_mod._resolve_okta_jwt(_fake_jwt(sub="0oaSUB"), db1)
+        db2 = _make_db()
+        db2.add.side_effect = lambda *_a, **_kw: add_calls.__setitem__("n", add_calls["n"] + 1)
+        auth_mod._resolve_okta_jwt(_fake_jwt(sub="0oaSUB"), db2)
+
+    ctx = contextvars.copy_context()
+    ctx.run(_run)
+
+    # One request → one audit row for the same allowed decision on the same identity
+    assert add_calls["n"] == 1, f"expected 1 audit event, got {add_calls['n']}"
+
