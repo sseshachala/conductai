@@ -119,6 +119,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#guard-sync",        label: "Sync & re-sync" },
     { href: "#guard-mcp",         label: "conductguard-mcp" },
     { href: "#guard-tokens",      label: "Agent tokens" },
+    { href: "#guard-okta-tracking", label: "Okta agent tracking" },
     { href: "#guard-spend",       label: "Spend controls" },
     { href: "#guard-savings",     label: "Maximize savings" },
     { href: "#guard-roles",       label: "Roles & permissions" },
@@ -1269,6 +1270,41 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
   "workspace_id": "<uuid>"
 }`}</Pre>
         <p className="text-stone-500 text-xs mt-3">conduct login calls this endpoint automatically after browser auth. Use it directly from any RFC 8693-compatible OAuth client.</p>
+      </section>
+
+      <section id="guard-okta-tracking">
+        <SectionHeading id="guard-okta-tracking">Okta agent tracking</SectionHeading>
+        <p className="text-stone-500 text-sm mb-5 leading-relaxed">
+          Okta-provisioned agents show up in Conduct as first-class <code className="font-mono text-xs bg-stone-100 px-1.5 py-0.5 rounded">AgentIdentity</code> rows with <code className="font-mono text-xs bg-stone-100 px-1.5 py-0.5 rounded">source=&apos;okta&apos;</code>. Every field, timestamp, and audit event that lets you answer &quot;is this agent still allowed to act?&quot; or &quot;when did it last call us?&quot; is documented here.
+        </p>
+        <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-5">
+          {[
+            ["Registry", "/agent-identity?tab=identities", "Every Okta agent as a row: name, source_id (Okta client_id), platform_of_origin, owner, tier, lifecycle."],
+            ["last_used_at", "Timestamp column", "Bumped on every successful Guard-proxy, MCP, or CLI auth. Sort ascending to find abandoned agents."],
+            ["Audit trail", "Guard Activity — filter tool_call:auth.okta_jwt.verify", "One hash-chained event per JWT verify (ok / expired / bad_signature / identity_deactivated / wrong_iss / wrong_aud / unknown_kid)."],
+            ["Introspection", "GET /auth/whoami", "Echoes the resolved identity — the same view Conduct uses internally."],
+            ["Enforcement", "lifecycle_state, risk_tier, agent_identity_id", "Not just observability — deactivate a row and the next auth check fails closed. risk_tier is exposed to Cedar as context.risk_tier."],
+          ].map(([what, where, why]) => (
+            <div key={what} className="px-4 py-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] font-semibold text-stone-500 bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded">{what}</span>
+                <code className="font-mono text-xs text-stone-800 bg-stone-100 px-1.5 py-0.5 rounded">{where}</code>
+              </div>
+              <p className="text-xs text-stone-500 leading-relaxed">{why}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-stone-500 text-xs">
+          Full field reference, timestamp semantics, and the &quot;how do I find X&quot; mapping:{" "}
+          <a
+            href="https://github.com/sseshachala/conductai/blob/main/docs/reference/okta-tracking.md"
+            className="text-indigo-600 hover:text-indigo-500 underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            docs/reference/okta-tracking.md →
+          </a>
+        </p>
       </section>
 
       <section id="guard-spend">
