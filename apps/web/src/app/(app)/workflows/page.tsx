@@ -107,6 +107,11 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   const { authFetch } = useAuthFetch()
 
   useEffect(() => {
+    // ponytail: wait for WorkspaceContext to hydrate before fetching.
+    // Without this guard the first render fires /workflows with no
+    // X-Workspace-ID header → backend falls back to Clerk org_XXX claim,
+    // which fails the UUID regex → 403 "Invalid workspace ID".
+    if (clerkEnabled && !activeWorkspace) return
     const p = activeWorkspace ? { id: activeWorkspace.id, name: activeWorkspace.name } : null
     setProject(p)
     // Fire both fetches in parallel — role resolves independently, does not block grid
