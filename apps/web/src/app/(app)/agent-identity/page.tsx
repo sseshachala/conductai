@@ -797,7 +797,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
               <span style={{ color: "var(--text-muted)" }}>({identities.filter(i => i.source === sourceFilter).length} of {identities.length})</span>
             </div>
           )}
-          <div className="card" style={{ overflow: "hidden" }}>
+          <div className="card" style={{ overflowX: "auto" }}>
             {identitiesLoading ? (
               <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)" }}>Loading identities…</div>
             ) : (() => {
