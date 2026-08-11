@@ -618,7 +618,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                     <div style={{ marginTop: 2 }}><span style={{ color: "var(--text-muted)" }}>Token:</span> <code>{okta.token_prefix}</code> (stored encrypted)</div>
                     {okta.last_synced_at ? (
                       <div style={{ marginTop: 6, fontSize: 11 }}>
-                        <span style={{ color: "var(--text-muted)" }}>Last sync:</span> {new Date(okta.last_synced_at).toLocaleString()} ·{" "}
+                        <span style={{ color: "var(--text-muted)" }}>Last sync:</span> {okta.last_synced_at?.slice(0, 16).replace("T", " ")} UTC ·{" "}
                         <button
                           onClick={() => selectTab("identities", { source: "okta" })}
                           title="View Okta-sourced identities"
