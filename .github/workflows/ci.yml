@@ -46,7 +46,10 @@ jobs:
         run: make schema-check
         working-directory: apps/api
       - name: Test
-        run: python -m pytest tests/ -q --ignore=tests/test_guard.py
+        # `-m 'not matrix'` skips the full endpoint×role runtime probe
+        # (~600 tests). Static layers of test_endpoint_matrix still run here.
+        # Full matrix runs nightly — see .github/workflows/nightly.yml.
+        run: python -m pytest tests/ -q --ignore=tests/test_guard.py -m 'not matrix'
         working-directory: apps/api
         env:
           DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test

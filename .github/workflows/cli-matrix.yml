@@ -27,4 +27,6 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install -e packages/conduct-cli pytest
       - run: conduct -h
-      - run: pytest packages/conduct-cli/tests -q
+      # `-m 'not matrix'` skips the auth-boundary probe (nightly-only —
+      # see .github/workflows/nightly.yml). --help matrix still runs.
+      - run: pytest packages/conduct-cli/tests -q -m 'not matrix'
