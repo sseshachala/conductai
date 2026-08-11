@@ -1,6 +1,9 @@
 "use client"
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { marked } from "marked"
+// @ts-expect-error - .md imported as raw string via webpack asset/source
+import oktaTrackingMd from "../../../../../../docs/reference/okta-tracking.md"
 
 const VALID_TABS = ["overview", "guard", "mcp-tools", "getting-started", "blocks", "api", "integrations"] as const
 
@@ -1272,40 +1275,9 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
         <p className="text-stone-500 text-xs mt-3">conduct login calls this endpoint automatically after browser auth. Use it directly from any RFC 8693-compatible OAuth client.</p>
       </section>
 
-      <section id="guard-okta-tracking">
-        <SectionHeading id="guard-okta-tracking">Okta agent tracking</SectionHeading>
-        <p className="text-stone-500 text-sm mb-5 leading-relaxed">
-          Okta-provisioned agents show up in Conduct as first-class <code className="font-mono text-xs bg-stone-100 px-1.5 py-0.5 rounded">AgentIdentity</code> rows with <code className="font-mono text-xs bg-stone-100 px-1.5 py-0.5 rounded">source=&apos;okta&apos;</code>. Every field, timestamp, and audit event that lets you answer &quot;is this agent still allowed to act?&quot; or &quot;when did it last call us?&quot; is documented here.
-        </p>
-        <div className="rounded-xl border border-stone-200 divide-y divide-stone-100 text-sm mb-5">
-          {[
-            ["Registry", "/agent-identity?tab=identities", "Every Okta agent as a row: name, source_id (Okta client_id), platform_of_origin, owner, tier, lifecycle."],
-            ["last_used_at", "Timestamp column", "Bumped on every successful Guard-proxy, MCP, or CLI auth. Sort ascending to find abandoned agents."],
-            ["Audit trail", "Guard Activity — filter tool_call:auth.okta_jwt.verify", "One hash-chained event per JWT verify (ok / expired / bad_signature / identity_deactivated / wrong_iss / wrong_aud / unknown_kid)."],
-            ["Introspection", "GET /auth/whoami", "Echoes the resolved identity — the same view Conduct uses internally."],
-            ["Enforcement", "lifecycle_state, risk_tier, agent_identity_id", "Not just observability — deactivate a row and the next auth check fails closed. risk_tier is exposed to Cedar as context.risk_tier."],
-          ].map(([what, where, why]) => (
-            <div key={what} className="px-4 py-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] font-semibold text-stone-500 bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded">{what}</span>
-                <code className="font-mono text-xs text-stone-800 bg-stone-100 px-1.5 py-0.5 rounded">{where}</code>
-              </div>
-              <p className="text-xs text-stone-500 leading-relaxed">{why}</p>
-            </div>
-          ))}
-        </div>
-        <p className="text-stone-500 text-xs">
-          Full field reference, timestamp semantics, and the &quot;how do I find X&quot; mapping:{" "}
-          <a
-            href="https://github.com/sseshachala/conductai/blob/main/docs/reference/okta-tracking.md"
-            className="text-indigo-600 hover:text-indigo-500 underline"
-            target="_blank"
-            rel="noreferrer"
-          >
-            docs/reference/okta-tracking.md →
-          </a>
-        </p>
-      </section>
+      <section id="guard-okta-tracking" className="[&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:text-sm [&_p]:text-stone-500 [&_p]:leading-relaxed [&_p]:mb-3 [&_ul]:text-sm [&_ul]:text-stone-500 [&_ul]:list-disc [&_ul]:ml-5 [&_ul]:mb-3 [&_li]:mb-1 [&_code]:font-mono [&_code]:text-xs [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_table]:text-xs [&_table]:mb-4 [&_table]:border [&_table]:border-stone-200 [&_table]:w-full [&_th]:bg-stone-50 [&_th]:text-left [&_th]:font-semibold [&_th]:p-2 [&_th]:border-b [&_th]:border-stone-200 [&_td]:p-2 [&_td]:border-b [&_td]:border-stone-100 [&_td]:align-top [&_a]:text-indigo-600 [&_a:hover]:underline [&_strong]:font-semibold [&_strong]:text-stone-700"
+        dangerouslySetInnerHTML={{ __html: marked.parse(oktaTrackingMd, { async: false }) as string }}
+      />
 
       <section id="guard-spend">
         <SectionHeading id="guard-spend">Spend controls</SectionHeading>

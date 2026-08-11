@@ -39,6 +39,9 @@ _ORIG_REQUIRE_PERMISSION = _auth_mod.require_permission
 def _permissive_permission(permission: str):
     async def _check() -> str:
         return "admin"
+    # Tag so test_endpoint_matrix can find each route's declared permission at
+    # runtime by walking route.dependant.dependencies.
+    _check.__conduct_permission__ = permission  # type: ignore[attr-defined]
     return _check
 
 
