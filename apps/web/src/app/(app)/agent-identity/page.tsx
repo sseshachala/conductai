@@ -813,6 +813,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                     <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Tier</th>
                     <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Lifecycle</th>
                     <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Last certified</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Last used</th>
                     <th style={{ padding: "8px 12px" }}></th>
                   </tr>
                 </thead>
@@ -862,6 +863,11 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                         <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }}>
                           {id.last_certified_at
                             ? new Date(id.last_certified_at).toLocaleDateString()
+                            : <span>never</span>}
+                        </td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }} title={id.last_used_at ?? undefined}>
+                          {id.last_used_at
+                            ? new Date(id.last_used_at).toLocaleString()
                             : <span>never</span>}
                         </td>
                         <td style={{ padding: "8px 12px", textAlign: "right" }}>
