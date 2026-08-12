@@ -59,8 +59,19 @@ class OktaJWKSCache:
         self._ttl = ttl_s
         self._data: dict[str, _CachedJWKS] = {}
         self._lock = threading.Lock()
+        # Per-issuer lock: serializes concurrent refreshes for the same issuer
+        # so N racing verifiers trigger exactly one JWKS fetch, not N.
+        self._issuer_locks: dict[str, threading.Lock] = {}
         # ponytail: shared client — connection pooling, matches auth.py pattern
         self._http = httpx.Client(timeout=http_timeout_s)
+
+    def _lock_for(self, issuer: str) -> threading.Lock:
+        with self._lock:
+            lk = self._issuer_locks.get(issuer)
+            if lk is None:
+                lk = threading.Lock()
+                self._issuer_locks[issuer] = lk
+            return lk
 
     def _fetch(self, issuer: str) -> dict:
         # ponytail: Okta convention — {issuer}/v1/keys. Non-Okta OIDC would fetch
@@ -95,8 +106,18 @@ class OktaJWKSCache:
             fresh = entry is not None and (time.time() - entry.fetched_at) <= self._ttl
             if fresh and kid in entry.keys:
                 return entry.keys[kid]
-        # miss: unknown issuer, expired, or unknown kid → single fetch, then decide
-        keys = self._load(issuer)
+        # Miss: unknown issuer, expired, or unknown kid. Serialize per-issuer so
+        # concurrent verifiers under a rotation trigger exactly one JWKS fetch.
+        iss_lock = self._lock_for(issuer)
+        with iss_lock:
+            # Re-check after acquiring the per-issuer lock — another thread may
+            # have refreshed while we were waiting.
+            with self._lock:
+                entry = self._data.get(issuer)
+                fresh = entry is not None and (time.time() - entry.fetched_at) <= self._ttl
+                if fresh and kid in entry.keys:
+                    return entry.keys[kid]
+            keys = self._load(issuer)
         if kid not in keys:
             raise OktaJWTInvalid(f"unknown kid: {kid}")
         return keys[kid]
