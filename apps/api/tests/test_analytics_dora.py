@@ -79,6 +79,13 @@ class _ModelStub:
     def __getattr__(self, name):
         return _Col()
 
+    # Callable so downstream tests treating the stub as a class don't hit
+    # TypeError. Returns SimpleNamespace so kwargs become real attributes,
+    # letting caller-side assertions like `added.judge_used is False` work.
+    def __call__(self, *a, **kw):
+        from types import SimpleNamespace
+        return SimpleNamespace(**kw)
+
 
 # Stub ORM model modules
 _rae_cls = _ModelStub()
@@ -89,6 +96,8 @@ sys.modules["app.models.run_analytics_event"] = _rae_mod
 _ros_cls = _ModelStub()
 _ros_mod = MagicMock()
 _ros_mod.RunOnlineScore = _ros_cls
+# Stub sibling class needed by online_scorer via polluted sys.modules.
+_ros_mod.RunFixtureCandidate = _ModelStub()
 sys.modules["app.models.run_online_score"] = _ros_mod
 
 # Stub app.core.auth — analytics.py imports get_user_id, require_permission etc.
