@@ -491,7 +491,7 @@ def _run_execute_run(run, version, *, dag_mock=None, dag_raises=None):
     # RunContext is imported locally: `from app.runtime.run_contract import RunContext as _RunContext`
     mock_ctx_cls = MagicMock()
     mock_ctx_cls.return_value = MagicMock()
-    sys.modules["app.runtime.run_contract"].RunContext = mock_ctx_cls
+    sys.modules.setdefault("app.runtime.run_contract", MagicMock()).RunContext = mock_ctx_cls
 
     # mint_cred_token is imported locally: `from app.core.credentials import mint_cred_token`
     sys.modules["app.core.credentials"].mint_cred_token = MagicMock(return_value="")
