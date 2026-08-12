@@ -2,8 +2,9 @@
 // exist in the Clerk instance (dashboard → Users) and the same emails must
 // have workspace_users rows seeded by apps/api/scripts/seed_e2e_workspace.py.
 //
-// The Clerk user IDs are surfaced to the API via CLERK_TEST_USER_* env vars
-// so the seed script can build the mapping (see the CLI job in web-smoke.yml).
+// Passwords are per-role, loaded from env (from .env.test locally, from GH
+// secrets in CI). Env var name is just the role name so it matches the
+// user-visible .env.test format.
 
 export type Role = "admin" | "security" | "developer" | "viewer"
 
@@ -14,16 +15,24 @@ export interface RoleAccount {
   password: string
 }
 
-// One password across the board keeps the config boring. Override via env
-// if you rotate — CLERK_TEST_PASSWORD wins if set.
 const { env } = process
-const DEFAULT_PASSWORD = env.CLERK_TEST_PASSWORD || "E2eTests!2026"
+
+function passwordFor(role: Role): string {
+  const pw = env[role]
+  if (!pw) {
+    throw new Error(
+      `Missing Clerk sandbox password for role '${role}'. Set env var '${role}' ` +
+      `in .env.test (local) or GH secret CLERK_TEST_PASSWORD_${role.toUpperCase()} (CI).`
+    )
+  }
+  return pw
+}
 
 export const ROLE_ACCOUNTS: Record<Role, RoleAccount> = {
-  admin:     { email: "admin@example.com",     password: DEFAULT_PASSWORD },
-  security:  { email: "security@example.com",  password: DEFAULT_PASSWORD },
-  developer: { email: "developer@example.com", password: DEFAULT_PASSWORD },
-  viewer:    { email: "viewer@example.com",    password: DEFAULT_PASSWORD },
+  admin:     { email: "admin@example.com",     password: passwordFor("admin") },
+  security:  { email: "security@example.com",  password: passwordFor("security") },
+  developer: { email: "developer@example.com", password: passwordFor("developer") },
+  viewer:    { email: "viewer@example.com",    password: passwordFor("viewer") },
 }
 
 export function storageStatePath(role: Role): string {
