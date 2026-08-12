@@ -1,9 +1,11 @@
 // Playwright global setup — signs in as each Clerk sandbox test user via
-// @clerk/testing and saves storage state per role so the per-role project
-// matrix can reuse the session without hitting Clerk on every test.
+// the ACTUAL Clerk sign-in form on our app (SDK-bypass approach kept
+// silently no-op'ing). Saves storage state per role so the per-role
+// project matrix can reuse the session without hitting Clerk on every
+// test.
 
 import { chromium, expect, FullConfig } from "@playwright/test"
-import { clerk, clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright"
+import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright"
 import { mkdirSync } from "fs"
 import { dirname } from "path"
 
@@ -34,18 +36,24 @@ export default async function globalSetup(config: FullConfig) {
     const context = await browser.newContext()
     const page = await context.newPage()
 
-    // REQUIRED per-page — attaches the Clerk testing token to this browser
-    // context so Clerk's sign-in endpoint accepts programmatic auth. Skipping
-    // this call makes clerk.signIn() silently no-op (the exact bug we hit).
     await setupClerkTestingToken({ page })
 
-    await page.goto(baseURL)
-    await dumpState(page, role, "01-before-signin")
+    // Go straight to the Clerk-mounted sign-in page and drive the real form.
+    // The SDK bypass (`clerk.signIn`) silently failed for our setup —
+    // form-based is closer to how a real user signs in and is the pattern
+    // @clerk/testing docs recommend when SDK bypass misbehaves.
+    await page.goto(`${baseURL}/sign-in`)
+    await dumpState(page, role, "01-signin-page")
 
-    await clerk.signIn({
-      page,
-      signInParams: { strategy: "password", identifier: account.email, password: account.password },
-    })
+    // Clerk's ClerkJS component uses <input name=identifier> then transitions
+    // to <input name=password>. Field labels are stable across versions.
+    await page.getByLabel(/email address/i).fill(account.email)
+    await page.getByRole("button", { name: /continue/i }).click()
+    await page.getByLabel(/password/i).fill(account.password)
+    await page.getByRole("button", { name: /continue/i }).click()
+
+    // App should redirect us past /sign-in after successful auth.
+    await page.waitForURL(url => !/\/sign-in/.test(url.pathname), { timeout: 20_000 }).catch(() => {})
     await dumpState(page, role, "02-after-signin")
 
     await page.goto(`${baseURL}/dashboard`)
