@@ -46,6 +46,12 @@ jobs:
       CLERK_TEST_USER_SECURITY: user_3Hn67p1ETwiglYtpaHMbxeWORvI
       CLERK_TEST_USER_DEVELOPER: user_3Hn6OmfvjbKikrH9kZpGKi71FIU
       CLERK_TEST_USER_VIEWER: user_3Hn6TKhuWBpYG0IOAim5ufTqYpe
+      # Per-role Clerk passwords. Env var names match .env.test — apps/web/e2e/roles.ts
+      # reads process.env[role]. Add these four as GH repository secrets.
+      admin:     ${{ secrets.CLERK_TEST_PASSWORD_ADMIN }}
+      security:  ${{ secrets.CLERK_TEST_PASSWORD_SECURITY }}
+      developer: ${{ secrets.CLERK_TEST_PASSWORD_DEVELOPER }}
+      viewer:    ${{ secrets.CLERK_TEST_PASSWORD_VIEWER }}
     steps:
       - uses: actions/checkout@v4
 
