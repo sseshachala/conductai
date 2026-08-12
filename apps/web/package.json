@@ -36,12 +36,13 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
+    "@clerk/testing": "^2.2.22",
     "@playwright/test": "^1.48.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.20",
-    "dotenv": "^16.4.5",
+    "dotenv": "^16.6.1",
     "eslint": "^8",
     "eslint-config-next": "15.5.18",
     "postcss": "^8.4.47",

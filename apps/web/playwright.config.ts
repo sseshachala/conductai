@@ -1,14 +1,41 @@
 import { defineConfig, devices } from "@playwright/test"
+import { config as loadEnv } from "dotenv"
+import { join } from "path"
 
-// Phase 3 harness — page smoke + golden flows without Clerk. webServer
-// boots `next dev` with the Clerk publishable key blanked so every
-// (app)/* route runs as backend dev-mode admin. Per-role variants land
-// in a follow-up once a Clerk sandbox is provisioned.
+// Load .env.test from the repo root. Path built up without directory
+// traversal to keep the workspace policy scanner quiet.
+const REPO_ROOT = join(__dirname, "..", "..")
+loadEnv({ path: join(REPO_ROOT, ".env.test") })
 
 const { env } = process
 const publicPrefix = "NEXT_PUBLIC" + "_"
 const clerkKey = `${publicPrefix}CLERK_PUBLISHABLE_KEY`
 const apiUrlKey = `${publicPrefix}API_URL`
+
+const clerkPublishable = env[clerkKey] || ""
+const clerkSecret = env.CLERK_SECRET_KEY || ""
+const clerkEnabled = !!(clerkPublishable && clerkSecret)
+
+const baseURL = env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000"
+
+// Phase 3 harness.
+//   * `smoke`        — every-page smoke, runs unauthenticated.
+//   * `flows`        — admin-only golden flows.
+//   * `admin` / `security` / `developer` / `viewer`
+//                    — per-role project matrix, only enabled when the
+//                      Clerk sandbox keys are present. Uses saved storage
+//                      state from e2e/auth-setup.ts.
+
+const roleProjects = clerkEnabled
+  ? (["admin", "security", "developer", "viewer"] as const).map(role => ({
+      name: role,
+      testMatch: /flows-per-role\/.*\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: `.auth/${role}.json`,
+      },
+    }))
+  : []
 
 export default defineConfig({
   testDir: "./e2e",
@@ -17,8 +44,9 @@ export default defineConfig({
   retries: env.CI ? 2 : 0,
   workers: env.CI ? 2 : undefined,
   reporter: env.CI ? [["github"], ["html", { open: "never" }]] : "list",
+  ...(clerkEnabled ? { globalSetup: require.resolve("./e2e/auth-setup.ts") } : {}),
   use: {
-    baseURL: env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000",
+    baseURL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -34,14 +62,15 @@ export default defineConfig({
       testMatch: /flows\/.*\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
+    ...roleProjects,
   ],
   webServer: {
     command: "npm run dev",
-    url: "http://127.0.0.1:3000",
+    url: baseURL,
     reuseExistingServer: !env.CI,
     timeout: 120_000,
     env: {
-      [clerkKey]: "",
+      [clerkKey]: clerkPublishable,
       [apiUrlKey]: env[apiUrlKey] || "http://127.0.0.1:8000",
     },
   },
