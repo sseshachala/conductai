@@ -96,7 +96,7 @@ sys.modules["app.runtime.runtime"]._agent_config = MagicMock()
 sys.modules["app.runtime.dag_runner"].ApprovalRequired = type("ApprovalRequired", (Exception,), {})
 sys.modules["app.runtime.dag_runner"].ClarificationRequired = type("ClarificationRequired", (Exception,), {})
 sys.modules["app.runtime.dag_runner"]._classify_failure = MagicMock()
-sys.modules["app.models.run_analytics_event"].RunAnalyticsEvent = MagicMock()
+sys.modules.setdefault("app.models.run_analytics_event", MagicMock()).RunAnalyticsEvent = MagicMock()
 sys.modules["app.core.credentials"].CredentialStore = MagicMock()
 sys.modules["app.core.credentials"].get_all_credentials = MagicMock(return_value=MagicMock(_data={}, keys=lambda: []))
 sys.modules["app.core.credentials"].mint_cred_token = MagicMock(return_value="")
@@ -254,7 +254,7 @@ def test_emit_run_analytics_calls_db_add():
 
     # _emit_run_analytics does `from app.models.run_analytics_event import RunAnalyticsEvent`
     # at call time. Set the attribute directly on the already-stubbed module.
-    sys.modules["app.models.run_analytics_event"].RunAnalyticsEvent = MagicMock()
+    sys.modules.setdefault("app.models.run_analytics_event", MagicMock()).RunAnalyticsEvent = MagicMock()
     _emit_run_analytics(run, version, {}, db, outcome="succeeded")
 
     db.add.assert_called_once()
@@ -283,7 +283,7 @@ def test_emit_run_analytics_aggregates_tokens():
     }
 
     CapturingEvent, captured = _capturing_event_class()
-    sys.modules["app.models.run_analytics_event"].RunAnalyticsEvent = CapturingEvent
+    sys.modules.setdefault("app.models.run_analytics_event", MagicMock()).RunAnalyticsEvent = CapturingEvent
     _emit_run_analytics(run, version, state, db, outcome="succeeded")
 
     assert captured["input_tokens"] == 300
@@ -300,7 +300,7 @@ def test_emit_run_analytics_trigger_type_webhook():
     db = MagicMock()
 
     CapturingEvent, captured = _capturing_event_class()
-    sys.modules["app.models.run_analytics_event"].RunAnalyticsEvent = CapturingEvent
+    sys.modules.setdefault("app.models.run_analytics_event", MagicMock()).RunAnalyticsEvent = CapturingEvent
     _emit_run_analytics(run, version, {}, db, outcome="succeeded")
 
     assert captured["trigger_type"] == "webhook"
@@ -315,7 +315,7 @@ def test_emit_run_analytics_trigger_type_cron():
     db = MagicMock()
 
     CapturingEvent, captured = _capturing_event_class()
-    sys.modules["app.models.run_analytics_event"].RunAnalyticsEvent = CapturingEvent
+    sys.modules.setdefault("app.models.run_analytics_event", MagicMock()).RunAnalyticsEvent = CapturingEvent
     _emit_run_analytics(run, version, {}, db, outcome="succeeded")
 
     assert captured["trigger_type"] == "cron"
@@ -330,7 +330,7 @@ def test_emit_run_analytics_trigger_type_manual():
     db = MagicMock()
 
     CapturingEvent, captured = _capturing_event_class()
-    sys.modules["app.models.run_analytics_event"].RunAnalyticsEvent = CapturingEvent
+    sys.modules.setdefault("app.models.run_analytics_event", MagicMock()).RunAnalyticsEvent = CapturingEvent
     _emit_run_analytics(run, version, {}, db, outcome="succeeded")
 
     assert captured["trigger_type"] == "manual"
@@ -345,7 +345,7 @@ def test_emit_run_analytics_hashes_workspace_id():
     db = MagicMock()
 
     CapturingEvent, captured = _capturing_event_class()
-    sys.modules["app.models.run_analytics_event"].RunAnalyticsEvent = CapturingEvent
+    sys.modules.setdefault("app.models.run_analytics_event", MagicMock()).RunAnalyticsEvent = CapturingEvent
     _emit_run_analytics(run, version, {}, db, outcome="succeeded")
 
     stored = captured["workspace_id"]
@@ -374,7 +374,7 @@ def test_emit_run_analytics_records_outcome():
     db = MagicMock()
 
     CapturingEvent, captured = _capturing_event_class()
-    sys.modules["app.models.run_analytics_event"].RunAnalyticsEvent = CapturingEvent
+    sys.modules.setdefault("app.models.run_analytics_event", MagicMock()).RunAnalyticsEvent = CapturingEvent
     _emit_run_analytics(run, version, {}, db, outcome="failed", error="boom")
 
     assert captured["outcome"] == "failed"

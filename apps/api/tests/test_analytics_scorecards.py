@@ -72,6 +72,15 @@ class _ModelStub:
     def __getattr__(self, name):
         return _Col()
 
+    # Callable so downstream tests that instantiate the stub as if it were the
+    # real model class (RunOnlineScore(...)) don't hit TypeError. Test order
+    # in CI can leave this stub in sys.modules for later tests to consume.
+    # Returns a plain SimpleNamespace so kwargs become real attributes and
+    # `.judge_used` reads back as False (not another _Col instance).
+    def __call__(self, *a, **kw):
+        from types import SimpleNamespace
+        return SimpleNamespace(**kw)
+
 
 # Stub ORM model modules
 _rae_cls = _ModelStub()
@@ -82,6 +91,9 @@ sys.modules["app.models.run_analytics_event"] = _rae_mod
 _ros_cls = _ModelStub()
 _ros_mod = MagicMock()
 _ros_mod.RunOnlineScore = _ros_cls
+# Also stub RunFixtureCandidate — same module, consumed by online_scorer
+# tests that share the polluted sys.modules entry.
+_ros_mod.RunFixtureCandidate = _ModelStub()
 sys.modules["app.models.run_online_score"] = _ros_mod
 
 sys.modules.setdefault("app.core.auth", MagicMock())
