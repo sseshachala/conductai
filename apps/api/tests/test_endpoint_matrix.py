@@ -210,13 +210,25 @@ def test_every_seeded_permission_is_used_or_allowlisted():
     )
 
 
+# POST endpoints that only read/simulate but use POST because the input is a
+# body. Legit; excluded from the write-verb heuristic.
+WRITE_VERB_ALLOWLIST: set[tuple[str, str]] = {
+    ("POST", "/workflows/{workflow_id}/validate"),   # dry validation of YAML
+    ("POST", "/eval/run/{slug}"),                    # eval simulation
+    ("POST", "/eval/run"),                           # eval simulation
+    ("POST", "/guard/policies/lint"),                # static lint
+}
+
+
 @requires_db
 def test_write_verbs_do_not_use_view_permission():
     write_verbs = {"POST", "PUT", "PATCH", "DELETE"}
     offenders = [
         f'{r["method"]} {r["path"]} → {r["permission"]}'
         for r in ROUTES
-        if r["method"] in write_verbs and r["permission"].endswith(".view")
+        if r["method"] in write_verbs
+        and r["permission"].endswith(".view")
+        and (r["method"], r["path"]) not in WRITE_VERB_ALLOWLIST
     ]
     assert not offenders, f"Mutating routes gated only by a .view permission: {offenders}"
 
