@@ -95,7 +95,9 @@ jobs:
         working-directory: apps/web
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        # chromium for smoke + admin + per-role flows; firefox + webkit
+        # for the cross-browser golden-flow projects.
+        run: npx playwright install --with-deps chromium firefox webkit
         working-directory: apps/web
 
       - name: Run Playwright (smoke + flows)
