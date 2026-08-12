@@ -115,3 +115,14 @@ jobs:
           name: playwright-traces
           path: apps/web/test-results
           retention-days: 7
+
+      - name: Upload auth-setup diagnostics on failure
+        # auth-setup.ts writes URL/body dumps + screenshots under .auth/*.png
+        # when globalSetup fails. Grab them so we can see what the browser
+        # actually landed on.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-setup-diagnostics
+          path: apps/web/.auth
+          retention-days: 7
