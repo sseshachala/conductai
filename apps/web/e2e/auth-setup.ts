@@ -50,7 +50,9 @@ export default async function globalSetup(config: FullConfig) {
     await page.getByLabel(/email address/i).fill(account.email)
     // { exact: true } dodges the "Sign in with Google Continue" OAuth button.
     await page.getByRole("button", { name: "Continue", exact: true }).click()
-    await page.getByLabel(/password/i).fill(account.password)
+    // getByLabel(/password/i) also matches the "Show password" toggle button.
+    // Pin to the actual input.
+    await page.locator('input[name="password"]').fill(account.password)
     // { exact: true } dodges the "Sign in with Google Continue" OAuth button.
     await page.getByRole("button", { name: "Continue", exact: true }).click()
 
