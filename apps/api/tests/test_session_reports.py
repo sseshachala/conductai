@@ -48,9 +48,13 @@ for _m in _STUBS:
 # poison sys.modules["app.core.database"] with a MagicMock. Force a fresh
 # import so we get the real SessionLocal.
 import importlib
-for _dead in ("app.core.database", "app.models"):
+# Some prior tests replace app.core.config or app.core.database with MagicMocks.
+# Evict them all so the reload gets real modules bound to real DATABASE_URL.
+for _dead in ("app.core.config", "app.core.database", "app.models"):
     if hasattr(sys.modules.get(_dead), "_mock_name"):
         del sys.modules[_dead]
+import app.core.config as _real_cfg
+importlib.reload(_real_cfg)
 import app.core.database as _real_db
 importlib.reload(_real_db)
 SessionLocal = _real_db.SessionLocal
