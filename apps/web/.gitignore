@@ -1,2 +1,7 @@
 .vercel
 .env*
+
+# Playwright — auth storage state, traces, reports
+.auth/
+playwright-report/
+test-results/
