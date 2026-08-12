@@ -49,7 +49,11 @@ jobs:
         # `-m 'not matrix'` skips the full endpoint×role runtime probe
         # (~600 tests). Static layers of test_endpoint_matrix still run here.
         # Full matrix runs nightly — see .github/workflows/nightly.yml.
-        run: python -m pytest tests/ -q --ignore=tests/test_guard.py -m 'not matrix'
+        #
+        # `--dist=loadfile -n 2` runs each test file in its own worker
+        # process. Necessary because ~10 tests stub sys.modules with
+        # MagicMocks that would otherwise leak into unrelated files.
+        run: python -m pytest tests/ -q --ignore=tests/test_guard.py -m 'not matrix' --dist=loadfile -n 2
         working-directory: apps/api
         env:
           DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
