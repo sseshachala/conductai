@@ -65,15 +65,16 @@ _pg_dialect.JSONB = _SQLiteJSON
 _pg_dialect.JSON = _SQLiteJSON
 _pg_dialect.ARRAY = _sa_types.JSON
 
-# ── Stub app.core.database before models import it ────────────────────────────
+# ── Use the app's real Base + SQLite engine ───────────────────────────────────
+# The old approach stubbed sys.modules["app.core.database"] with a fresh Base,
+# but that only worked when models hadn't been imported yet. In CI, conftest
+# imports app.core.auth (which chains to app.core.database) first, so models
+# register on the real Base — the stub Base then has no tables at create_all.
+# Bind the real Base's metadata to a SQLite engine instead.
 _engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-_Base = declarative_base()
-_db_mod = MagicMock()
-_db_mod.Base = _Base
-_db_mod.get_db = MagicMock()
-sys.modules["app.core.database"] = _db_mod
 
 import app.models  # noqa — registers all ORM tables
+from app.core.database import Base as _Base
 from app.models.environment import Environment  # noqa — needed for workflows FK
 from app.models.workspace import Workspace
 from app.modules.guard.models import SessionReport
