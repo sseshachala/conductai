@@ -208,7 +208,14 @@ def load_fixtures(playbooks_dir: Path = PLAYBOOKS_DIR) -> list[PlaybookFixture]:
     """
     fixtures: list[PlaybookFixture] = []
 
-    for path in sorted(p for p in playbooks_dir.glob("*.yaml") if p.name != "registry.yaml"):
+    # Skip:
+    #   * registry.yaml (index file, not a playbook)
+    #   * base_*.yaml (extended by other playbooks, not run standalone —
+    #     scoring them fails on structural checks by design)
+    def _is_playbook(p: Path) -> bool:
+        return p.name != "registry.yaml" and not p.name.startswith(("base_", "base-"))
+
+    for path in sorted(p for p in playbooks_dir.glob("*.yaml") if _is_playbook(p)):
         slug = _slug_from_path(path)
         raw = yaml.safe_load(path.read_text()) or {}
 
