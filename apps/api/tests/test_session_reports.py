@@ -65,25 +65,29 @@ _pg_dialect.JSONB = _SQLiteJSON
 _pg_dialect.JSON = _SQLiteJSON
 _pg_dialect.ARRAY = _sa_types.JSON
 
-# ── Use the app's real Base + SQLite engine ───────────────────────────────────
-# The old approach stubbed sys.modules["app.core.database"] with a fresh Base,
-# but that only worked when models hadn't been imported yet. In CI, conftest
-# imports app.core.auth (which chains to app.core.database) first, so models
-# register on the real Base — the stub Base then has no tables at create_all.
-# Bind the real Base's metadata to a SQLite engine instead.
-_engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-
+# ── Use the real Postgres via app.core.database ───────────────────────────────
+# Previous SQLite shim approach broke when models were imported before the
+# shim took effect (CI test order). Real Postgres is available in CI via
+# alembic; locally the fixture below skips if it isn't reachable.
 import app.models  # noqa — registers all ORM tables
-from app.core.database import Base as _Base
 from app.models.environment import Environment  # noqa — needed for workflows FK
 from app.models.workspace import Workspace
 from app.modules.guard.models import SessionReport
+from app.core.database import SessionLocal
 
-SessionLocal = sessionmaker(bind=_engine)
+
+def _db_reachable() -> bool:
+    from sqlalchemy import text
+    try:
+        with SessionLocal() as s:
+            s.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
 
 
-def setup_module(_):
-    _Base.metadata.create_all(_engine)
+_DB_OK = _db_reachable()
+pytestmark = pytest.mark.skipif(not _DB_OK, reason="Postgres not reachable")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
