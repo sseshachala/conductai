@@ -45,38 +45,11 @@ jobs:
       - name: Schema sync check
         run: make schema-check
         working-directory: apps/api
-      - name: Test — polluting files (isolated invocation)
-        # These files stub sys.modules[...] with MagicMocks. Running them
-        # in a separate pytest process guarantees the mocks can't leak
-        # into unrelated files (see 'Test — everything else').
-        run: |
-          python -m pytest -q -m 'not matrix' \
-            tests/test_analytics_dora.py \
-            tests/test_analytics_scorecards.py \
-            tests/test_z_executor_lifecycle.py \
-            tests/test_agent_identity_auth.py \
-            tests/test_token_paths.py \
-            tests/test_guard_savings.py \
-            tests/test_require_permission.py
-        working-directory: apps/api
-        env:
-          DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-      - name: Test — everything else
+      - name: Test
         # `-m 'not matrix'` skips the full endpoint×role runtime probe
         # (~600 tests). Static layers of test_endpoint_matrix still run here.
         # Full matrix runs nightly — see .github/workflows/nightly.yml.
-        run: |
-          python -m pytest tests/ -q -m 'not matrix' \
-            --ignore=tests/test_guard.py \
-            --ignore=tests/test_analytics_dora.py \
-            --ignore=tests/test_analytics_scorecards.py \
-            --ignore=tests/test_z_executor_lifecycle.py \
-            --ignore=tests/test_agent_identity_auth.py \
-            --ignore=tests/test_token_paths.py \
-            --ignore=tests/test_guard_savings.py \
-            --ignore=tests/test_require_permission.py
+        run: python -m pytest tests/ -q --ignore=tests/test_guard.py -m 'not matrix'
         working-directory: apps/api
         env:
           DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test

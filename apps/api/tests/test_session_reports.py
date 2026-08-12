@@ -39,32 +39,6 @@ _STUBS = [
 for _m in _STUBS:
     sys.modules.setdefault(_m, MagicMock())
 
-from sqlalchemy import create_engine, types as _sa_types
-from sqlalchemy.orm import sessionmaker, declarative_base
-import sqlalchemy.dialects.postgresql as _pg_dialect
-
-# ── SQLite compat shims (must precede all app model imports) ──────────────────
-class _SQLiteUUID(_sa_types.TypeDecorator):
-    impl = _sa_types.String
-    cache_ok = True
-    def process_bind_param(self, v, d): return str(v) if v is not None else None
-    def process_result_value(self, v, d): return v
-
-class _SQLiteJSON(_sa_types.TypeDecorator):
-    impl = _sa_types.Text
-    cache_ok = True
-    def process_bind_param(self, v, d):
-        import json
-        return json.dumps(v) if v is not None else None
-    def process_result_value(self, v, d):
-        import json
-        return json.loads(v) if v is not None else None
-
-_pg_dialect.UUID = lambda *a, **kw: _SQLiteUUID()
-_pg_dialect.JSONB = _SQLiteJSON
-_pg_dialect.JSON = _SQLiteJSON
-_pg_dialect.ARRAY = _sa_types.JSON
-
 # ── Use the real Postgres via app.core.database ───────────────────────────────
 # Previous SQLite shim approach broke when models were imported before the
 # shim took effect (CI test order). Real Postgres is available in CI via
