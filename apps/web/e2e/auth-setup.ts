@@ -48,9 +48,11 @@ export default async function globalSetup(config: FullConfig) {
     // Clerk's ClerkJS component uses <input name=identifier> then transitions
     // to <input name=password>. Field labels are stable across versions.
     await page.getByLabel(/email address/i).fill(account.email)
-    await page.getByRole("button", { name: /continue/i }).click()
+    // { exact: true } dodges the "Sign in with Google Continue" OAuth button.
+    await page.getByRole("button", { name: "Continue", exact: true }).click()
     await page.getByLabel(/password/i).fill(account.password)
-    await page.getByRole("button", { name: /continue/i }).click()
+    // { exact: true } dodges the "Sign in with Google Continue" OAuth button.
+    await page.getByRole("button", { name: "Continue", exact: true }).click()
 
     // App should redirect us past /sign-in after successful auth.
     await page.waitForURL(url => !/\/sign-in/.test(url.pathname), { timeout: 20_000 }).catch(() => {})
