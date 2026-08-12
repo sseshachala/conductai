@@ -13,7 +13,7 @@ PLAYBOOK = (
 
 
 def test_autopilot_parses():
-    wf = load_workflow_yaml(PLAYBOOK.read_text())
+    wf = load_workflow_yaml(PLAYBOOK.read_text(), base_dir=PLAYBOOK.parent)
     assert wf.name.lower().startswith("autopilot")
     # These are the core required blocks; the playbook may add more (memory, output, etc.)
     required = {"fetch_issue", "implement_fix", "run_tests", "tests_pass", "push_pr"}
@@ -23,15 +23,15 @@ def test_autopilot_parses():
 
 
 def test_autopilot_branches_on_test_result():
-    wf = load_workflow_yaml(PLAYBOOK.read_text())
+    wf = load_workflow_yaml(PLAYBOOK.read_text(), base_dir=PLAYBOOK.parent)
     g = yaml_to_graph(wf)
     handle_edges = [e for e in g["edges"] if "sourceHandle" in e]
     handles = {e["sourceHandle"]: e["target"] for e in handle_edges}
-    assert handles == {"pass": "push_pr", "fail": "notify_failure"}
+    assert handles == {"pass": "push_pr", "fail": "record_outcome_failure"}
 
 
 def test_autopilot_trigger_feeds_first_block():
-    wf = load_workflow_yaml(PLAYBOOK.read_text())
+    wf = load_workflow_yaml(PLAYBOOK.read_text(), base_dir=PLAYBOOK.parent)
     g = yaml_to_graph(wf)
     # The trigger must connect to the first block (may be recall_context or fetch_issue)
     trigger_targets = {e["target"] for e in g["edges"] if e["source"] == TRIGGER_NODE_ID}
