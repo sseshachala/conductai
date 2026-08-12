@@ -16,7 +16,10 @@ const clerkPublishable = env[clerkKey] || ""
 const clerkSecret = env.CLERK_SECRET_KEY || ""
 const clerkEnabled = !!(clerkPublishable && clerkSecret)
 
-const baseURL = env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000"
+// Use localhost (not 127.0.0.1) so cookies from Clerk's *.accounts.dev
+// origin play nicely with the app origin during sign-in. Clerk Development
+// instances auto-allow localhost.
+const baseURL = env.PLAYWRIGHT_BASE_URL || "http://localhost:3000"
 
 // Phase 3 harness.
 //   * `smoke`        — every-page smoke, runs unauthenticated.
