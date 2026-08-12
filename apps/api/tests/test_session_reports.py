@@ -96,7 +96,11 @@ def _db():
 
 
 def _ws_id():
-    return str(uuid.uuid4())
+    # UUID object (not str) so it works regardless of whether the SQLite
+    # shim replaced the PG UUID column type. The shim runs at import time,
+    # but if this test file loads after another that already imported
+    # models, the shim isn't retroactively applied.
+    return uuid.uuid4()
 
 
 def _make_workspace(db, ws_id: str):
