@@ -65,24 +65,40 @@ _pg_dialect.JSONB = _SQLiteJSON
 _pg_dialect.JSON = _SQLiteJSON
 _pg_dialect.ARRAY = _sa_types.JSON
 
-# ── Stub app.core.database before models import it ────────────────────────────
-_engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
-_Base = declarative_base()
-_db_mod = MagicMock()
-_db_mod.Base = _Base
-_db_mod.get_db = MagicMock()
-sys.modules["app.core.database"] = _db_mod
+# ── Use the real Postgres via app.core.database ───────────────────────────────
+# Previous SQLite shim approach broke when models were imported before the
+# shim took effect (CI test order). Real Postgres is available in CI via
+# alembic; locally the fixture below skips if it isn't reachable.
+#
+# Other tests (test_analytics_scorecards, test_z_executor_lifecycle, etc.)
+# poison sys.modules["app.core.database"] with a MagicMock. Force a fresh
+# import so we get the real SessionLocal.
+import importlib
+for _dead in ("app.core.database", "app.models"):
+    if hasattr(sys.modules.get(_dead), "_mock_name"):
+        del sys.modules[_dead]
+import app.core.database as _real_db
+importlib.reload(_real_db)
+SessionLocal = _real_db.SessionLocal
 
 import app.models  # noqa — registers all ORM tables
 from app.models.environment import Environment  # noqa — needed for workflows FK
 from app.models.workspace import Workspace
 from app.modules.guard.models import SessionReport
 
-SessionLocal = sessionmaker(bind=_engine)
+
+def _db_reachable() -> bool:
+    from sqlalchemy import text
+    try:
+        with SessionLocal() as s:
+            s.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
 
 
-def setup_module(_):
-    _Base.metadata.create_all(_engine)
+_DB_OK = _db_reachable()
+pytestmark = pytest.mark.skipif(not _DB_OK, reason="Postgres not reachable")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -96,7 +112,11 @@ def _db():
 
 
 def _ws_id():
-    return str(uuid.uuid4())
+    # UUID object (not str) so it works regardless of whether the SQLite
+    # shim replaced the PG UUID column type. The shim runs at import time,
+    # but if this test file loads after another that already imported
+    # models, the shim isn't retroactively applied.
+    return uuid.uuid4()
 
 
 def _make_workspace(db, ws_id: str):
