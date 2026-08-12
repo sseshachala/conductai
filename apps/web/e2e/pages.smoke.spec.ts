@@ -51,9 +51,11 @@ for (const route of routes) {
     expect.soft(status, `${route.url} returned ${status}`).toBeLessThan(500)
 
     // Any page should render *some* main landmark within a reasonable window.
-    // If Next served an error page, this fails loudly.
+    // If Next served an error page, this fails loudly. .first() dodges
+    // Playwright's strict-mode when marketing layouts contain multiple
+    // <main> elements (nested layouts + page).
     await expect
-      .soft(page.locator("main, [role=main], body"))
+      .soft(page.locator("main, [role=main], body").first())
       .toBeVisible({ timeout: 8_000 })
 
     expect(pageErrors, `page errors on ${route.url}`).toEqual([])
