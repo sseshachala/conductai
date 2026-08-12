@@ -230,3 +230,72 @@ def test_jwks_unreachable_typed_error_no_accept(rsa_key, monkeypatch):
     tok = _make_token(rsa_key, _base_claims())
     with pytest.raises(OktaJWTInvalid):
         verify_okta_jwt(tok, ISSUER, AUD, cache=cache)
+
+
+# 14 — RFC 7519: aud may be a list; PyJWT accepts if our expected string is in it.
+def test_list_aud_containing_expected_accepted(rsa_key, cache_with_key):
+    tok = _make_token(rsa_key, _base_claims(aud=[AUD, "api://other"]))
+    claims = verify_okta_jwt(tok, ISSUER, AUD, cache=cache_with_key)
+    assert AUD in claims["aud"]
+
+
+# 14b — List aud that does NOT contain the expected value must be rejected.
+def test_list_aud_missing_expected_rejected(rsa_key, cache_with_key):
+    tok = _make_token(rsa_key, _base_claims(aud=["api://one", "api://two"]))
+    with pytest.raises(OktaJWTInvalid):
+        verify_okta_jwt(tok, ISSUER, AUD, cache=cache_with_key)
+
+
+# 15 — iat in the future (beyond leeway) should be rejected.
+def test_iat_in_future_rejected(rsa_key, cache_with_key):
+    now = int(time.time())
+    # iat far enough in the future that leeway (30s) cannot rescue it
+    tok = _make_token(rsa_key, _base_claims(iat=now + 3600))
+    with pytest.raises(OktaJWTInvalid):
+        verify_okta_jwt(tok, ISSUER, AUD, cache=cache_with_key)
+
+
+# 16 — Concurrent unknown-kid: two threads verify at once → exactly ONE fetch.
+def test_concurrent_unknown_kid_single_fetch(rsa_key, monkeypatch):
+    """Thundering-herd: N verifiers simultaneously encounter the same
+    unknown kid. The cache lock must serialize the JWKS refresh so we call
+    _fetch once, not N times. Uses a barrier to line up the threads."""
+    import threading
+
+    cache = OktaJWKSCache(ttl_s=60)
+    call_count = {"n": 0}
+    fetch_barrier = threading.Barrier(4)  # 3 workers + this test thread
+    slow_release = threading.Event()
+
+    def _slow_fetch(issuer: str) -> dict:
+        # Increment atomically-ish; test single-writer intent
+        call_count["n"] += 1
+        # Hold the lock long enough for the other threads to queue behind it
+        slow_release.wait(timeout=2.0)
+        return {"keys": [_jwk_pub(rsa_key, KID)]}
+
+    monkeypatch.setattr(cache, "_fetch", _slow_fetch)
+
+    tok = _make_token(rsa_key, _base_claims())
+    results: list[Exception | dict] = []
+
+    def _worker():
+        fetch_barrier.wait(timeout=2.0)
+        try:
+            results.append(verify_okta_jwt(tok, ISSUER, AUD, cache=cache))
+        except Exception as e:
+            results.append(e)
+
+    threads = [threading.Thread(target=_worker) for _ in range(3)]
+    for t in threads:
+        t.start()
+    fetch_barrier.wait(timeout=2.0)
+    slow_release.set()
+    for t in threads:
+        t.join(timeout=3.0)
+
+    # Per-issuer single-flight (lock_for) guarantees exactly one JWKS fetch
+    # even with N concurrent verifiers hitting the same unknown kid.
+    assert call_count["n"] == 1
+    assert len(results) == 3
+    assert all(isinstance(r, dict) and r["sub"] == "0oa1677gbczxbjmcI698" for r in results)

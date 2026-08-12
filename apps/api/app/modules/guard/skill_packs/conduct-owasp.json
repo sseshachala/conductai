@@ -428,7 +428,7 @@
       "id": "no_audit_bypass",
       "description": "Block attempts to disable audit logging or monitoring (OWASP Agentic A07 \u2014 insufficient monitoring)",
       "match_tool": "bash,edit,write",
-      "match_pattern": "AUDIT_LOG.*=.*(false|0|null|none)|logging\\.disable\\(|audit.*enabled.*=.*false",
+      "match_pattern": "\\b(?:AUDIT_LOG|audit_log|audit(?:ing)?_enabled|audit_logging_enabled)\\s*=\\s*(?:false|False|FALSE|0|null|None|none)\\b|logging\\.disable\\(",
       "action": "block",
       "message": "Audit logging must remain enabled \u2014 disabling it is not permitted (OWASP Agentic A07).",
       "persona_affinity": [

@@ -60,7 +60,12 @@ export default defineConfig({
     {
       name: "flows",
       testMatch: /flows\/.*\.spec\.ts/,
-      use: { ...devices["Desktop Chrome"] },
+      // Reuse admin storage state when Clerk is enabled so /dashboard etc.
+      // aren't redirected to sign-in. Falls back to unauthenticated (dev-mode
+      // admin) when Clerk keys are absent.
+      use: clerkEnabled
+        ? { ...devices["Desktop Chrome"], storageState: ".auth/admin.json" }
+        : { ...devices["Desktop Chrome"] },
     },
     ...roleProjects,
   ],
