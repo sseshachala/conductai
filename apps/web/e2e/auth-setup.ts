@@ -3,7 +3,7 @@
 // matrix can reuse the session without hitting Clerk on every test.
 
 import { chromium, expect, FullConfig } from "@playwright/test"
-import { clerk, clerkSetup } from "@clerk/testing/playwright"
+import { clerk, clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright"
 import { mkdirSync } from "fs"
 import { dirname } from "path"
 
@@ -33,6 +33,11 @@ export default async function globalSetup(config: FullConfig) {
     const browser = await chromium.launch()
     const context = await browser.newContext()
     const page = await context.newPage()
+
+    // REQUIRED per-page — attaches the Clerk testing token to this browser
+    // context so Clerk's sign-in endpoint accepts programmatic auth. Skipping
+    // this call makes clerk.signIn() silently no-op (the exact bug we hit).
+    await setupClerkTestingToken({ page })
 
     await page.goto(baseURL)
     await dumpState(page, role, "01-before-signin")
