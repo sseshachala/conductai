@@ -249,7 +249,7 @@ def _eval_one(
     start = time.perf_counter()
 
     playbook_yaml = fixture.playbook_path.read_text()
-    score = score_structural(playbook_yaml, fixture.slug)
+    score = score_structural(playbook_yaml, fixture.slug, base_dir=fixture.playbook_path.parent)
 
     if live:
         score = _run_live(fixture, score, playbook_yaml, model=model, api_key=api_key, judge=judge)

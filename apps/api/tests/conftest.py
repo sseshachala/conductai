@@ -20,7 +20,7 @@ if str(APPS_API) not in sys.path:
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test_marshal")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
-os.environ.setdefault("ANTHROPIC_API_KEY", "")
+os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-dummy-key")
 os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
 # ── Patch require_permission to a permissive noop BEFORE app.main is imported.

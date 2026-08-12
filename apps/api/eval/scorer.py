@@ -247,17 +247,20 @@ for _slug in ("dependency_updater", "security_patch_updater"):
 
 # ── structural scoring ────────────────────────────────────────────────────────
 
-def score_structural(playbook_yaml: str, slug: str) -> PlaybookScore:
+def score_structural(playbook_yaml: str, slug: str, base_dir=None) -> PlaybookScore:
     """
     Run all structural checks on a raw YAML string.
     Returns a fully-populated PlaybookScore (quality fields left at 0).
+
+    `base_dir` (a Path) enables `extends:` resolution for in-repo playbooks.
+    Community submissions leave it None so extends stays blocked.
     """
     score = PlaybookScore(slug=slug)
 
     # ── 1. DSL validation (20 pts) ───────────────────────────────────────────
     try:
         from app.dsl import load_workflow_yaml, yaml_to_graph
-        wf = load_workflow_yaml(playbook_yaml)
+        wf = load_workflow_yaml(playbook_yaml, base_dir=base_dir)
         graph = yaml_to_graph(wf)
         score.criteria.append(CriterionResult(
             name="dsl_valid", passed=True, points_earned=20, points_possible=20,

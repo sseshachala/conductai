@@ -73,7 +73,9 @@ def test_all_playbooks_parse(all_fixtures):
     for fixture in all_fixtures:
         try:
             from app.dsl import load_workflow_yaml
-            load_workflow_yaml(fixture.playbook_path.read_text())
+            # In-repo playbooks can extend base playbooks. Community submissions
+            # go through the loader without base_dir elsewhere.
+            load_workflow_yaml(fixture.playbook_path.read_text(), base_dir=fixture.playbook_path.parent)
         except Exception as exc:
             failures.append(f"{fixture.slug}: {exc}")
 

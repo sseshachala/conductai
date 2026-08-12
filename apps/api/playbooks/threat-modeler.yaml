@@ -293,3 +293,9 @@ blocks:
         "categories_covered": {{plan.stride_categories_in_scope|tojson}},
         "run_id": "{{_run_id}}"
       }
+
+test_trigger:
+  payload:
+    target_repo: "sseshachala/conductai-testbed-node"
+    pr_number: 12
+    severity_threshold: medium
