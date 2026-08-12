@@ -30,16 +30,22 @@ export default async function globalSetup(config: FullConfig) {
     const context = await browser.newContext()
     const page = await context.newPage()
 
-    await page.goto(baseURL)
+    // Sign in on the app origin (not on Clerk's hosted UI) so cookies land
+    // on 127.0.0.1:3000 and survive storage snapshot.
+    await page.goto(`${baseURL}/sign-in`)
     await clerk.signIn({
       page,
       signInParams: { strategy: "password", identifier: account.email, password: account.password },
     })
 
-    // Land on an authenticated route so Clerk finishes setting the session
-    // cookie before we snapshot storage.
+    // Wait for the app to redirect us past the sign-in page. If the session
+    // cookie didn't land, we stay on /sign-in and this timeout catches it
+    // — much clearer failure than "no dashboard heading" downstream.
+    await page.waitForURL(url => !/\/sign-in/.test(url.pathname), { timeout: 15_000 })
+
+    // Land on an authenticated route so Clerk finishes hydrating.
     await page.goto(`${baseURL}/dashboard`)
-    await expect(page.locator("body")).toBeVisible()
+    await expect(page.getByRole("heading", { name: /dashboard/i })).toBeVisible({ timeout: 15_000 })
 
     await context.storageState({ path: outPath })
     await browser.close()
