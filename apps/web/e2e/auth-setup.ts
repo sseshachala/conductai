@@ -30,20 +30,19 @@ export default async function globalSetup(config: FullConfig) {
     const context = await browser.newContext()
     const page = await context.newPage()
 
-    // Sign in on the app origin (not on Clerk's hosted UI) so cookies land
-    // on 127.0.0.1:3000 and survive storage snapshot.
-    await page.goto(`${baseURL}/sign-in`)
+    // Standard @clerk/testing pattern — visit an unauthenticated app page
+    // first so Clerk's SDK has the origin to bind cookies to, then sign in
+    // via the SDK (not Clerk's hosted UI at /sign-in — the SDK can't
+    // operate on that catch-all page).
+    await page.goto(baseURL)
     await clerk.signIn({
       page,
       signInParams: { strategy: "password", identifier: account.email, password: account.password },
     })
 
-    // Wait for the app to redirect us past the sign-in page. If the session
-    // cookie didn't land, we stay on /sign-in and this timeout catches it
-    // — much clearer failure than "no dashboard heading" downstream.
-    await page.waitForURL(url => !/\/sign-in/.test(url.pathname), { timeout: 15_000 })
-
-    // Land on an authenticated route so Clerk finishes hydrating.
+    // Go to an authenticated route and prove the session cookie survived —
+    // any drift now fails HERE with a clear message instead of downstream
+    // "heading not found" in every flow spec.
     await page.goto(`${baseURL}/dashboard`)
     await expect(page.getByRole("heading", { name: /dashboard/i })).toBeVisible({ timeout: 15_000 })
 
