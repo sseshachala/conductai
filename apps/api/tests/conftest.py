@@ -20,7 +20,11 @@ if str(APPS_API) not in sys.path:
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test_marshal")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
-os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-dummy-key")
+# CI passes ANTHROPIC_API_KEY as an empty string when the GH secret isn't set,
+# so setdefault() is a no-op — force a non-empty dummy so the LLM client's
+# missing-key check doesn't short-circuit patched tests.
+if not os.environ.get("ANTHROPIC_API_KEY"):
+    os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test-dummy-key"
 os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
 # ── Patch require_permission to a permissive noop BEFORE app.main is imported.
