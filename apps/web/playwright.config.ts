@@ -67,6 +67,23 @@ export default defineConfig({
         ? { ...devices["Desktop Chrome"], storageState: ".auth/admin.json" }
         : { ...devices["Desktop Chrome"] },
     },
+    // Cross-browser coverage — golden flows only (skip the 98-page smoke
+    // to keep the CI budget bounded). Firefox + WebKit run against the
+    // same 5 flows the Chromium `flows` project already covers.
+    {
+      name: "flows-firefox",
+      testMatch: /flows\/.*\.spec\.ts/,
+      use: clerkEnabled
+        ? { ...devices["Desktop Firefox"], storageState: ".auth/admin.json" }
+        : { ...devices["Desktop Firefox"] },
+    },
+    {
+      name: "flows-webkit",
+      testMatch: /flows\/.*\.spec\.ts/,
+      use: clerkEnabled
+        ? { ...devices["Desktop Safari"], storageState: ".auth/admin.json" }
+        : { ...devices["Desktop Safari"] },
+    },
     ...roleProjects,
   ],
   webServer: {
