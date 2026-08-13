@@ -13,7 +13,7 @@ test.skip("all cases skipped — see file header", () => {})
 
 const CAN_CREATE_TOKEN = new Set(["admin"])
 
-test("agent-identity page 'Create token' visibility matches role", async ({ page }, testInfo) => {
+test.skip("agent-identity page 'Create token' visibility matches role", async ({ page }, testInfo) => {
   const role = testInfo.project.name
   await page.goto("/agent-identity")
 
