@@ -39,6 +39,16 @@ jobs:
         working-directory: apps/api
         env:
           DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
+
+      - name: Migration up/down cycle (Group E of #1092)
+        # Catches migrations that pass a clean upgrade but break on downgrade.
+        # Runs downgrade -1 then upgrade head again against seeded data.
+        run: |
+          alembic downgrade -1
+          alembic upgrade head
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
       - name: Lint
         run: python -m flake8 app --max-line-length 100 || true
         working-directory: apps/api
