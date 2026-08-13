@@ -65,7 +65,8 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          # Workspace lock lives at repo root (apps/web is an npm workspace).
+          cache-dependency-path: package-lock.json
 
       - name: Install API deps
         run: pip install -r apps/api/requirements.txt
@@ -91,8 +92,9 @@ jobs:
         working-directory: apps/api
 
       - name: Install web deps
+        # Install at repo root — apps/web is declared as an npm workspace,
+        # so the lock file lives here, not in apps/web/.
         run: npm ci
-        working-directory: apps/web
 
       - name: Install Playwright browsers
         # chromium for smoke + admin + per-role flows; firefox + webkit
