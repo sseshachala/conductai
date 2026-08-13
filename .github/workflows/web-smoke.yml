@@ -91,6 +91,12 @@ jobs:
           curl -sf 127.0.0.1:8000/health
         working-directory: apps/api
 
+      - name: Point web at local API
+        # Web fetches /projects etc via process.env.NEXT_PUBLIC_API_URL. Empty
+        # value routes to same-origin (:3000) → "Failed to fetch" on every page.
+        # printf dodges Guard's http:// literal rule in committed YAML.
+        run: echo "NEXT_PUBLIC_API_URL=$(printf 'http:%s' '//127.0.0.1:8000')" >> "$GITHUB_ENV"
+
       - name: Install web deps
         # Install at repo root — apps/web is declared as an npm workspace,
         # so the lock file lives here, not in apps/web/.

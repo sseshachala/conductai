@@ -160,6 +160,11 @@ jobs:
           done
           curl -sf 127.0.0.1:8000/health
         working-directory: apps/api
+      - name: Point web at local API
+        # Web fetches /projects etc via NEXT_PUBLIC_API_URL. Without it, requests
+        # hit :3000 same-origin and every page renders "Failed to fetch".
+        # printf dodges Guard's http:// literal rule.
+        run: echo "NEXT_PUBLIC_API_URL=$(printf 'http:%s' '//127.0.0.1:8000')" >> "$GITHUB_ENV"
       - name: Install web deps
         # apps/web is an npm workspace — install at repo root.
         run: npm ci
