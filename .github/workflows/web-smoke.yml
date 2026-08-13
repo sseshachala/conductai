@@ -17,7 +17,9 @@ on:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 45 min: Group F added a11y sweeps + visual regression + 2 mobile
+    # viewport projects (98 pages × 2). Old 25-min cap was blown ~25:19.
+    timeout-minutes: 45
     services:
       postgres:
         image: pgvector/pgvector:pg16
