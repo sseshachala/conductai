@@ -322,6 +322,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
             value={sort}
             onChange={e => setSort(e.target.value)}
             className="btn btn-ghost"
+            aria-label="Sort agents"
             style={{ height: 36, fontWeight: 600 }}
           >
             <option value="recent">Sort: Recently edited</option>
@@ -333,6 +334,8 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
               <button
                 key={v}
                 onClick={() => setView(v)}
+                aria-label={v === "list" ? "List view" : "Grid view"}
+                aria-pressed={view === v}
                 style={{ border: "none", background: view === v ? "var(--surface)" : "transparent", borderRadius: 6, padding: "5px 9px", cursor: "pointer", color: view === v ? "var(--text)" : "var(--text-3)", boxShadow: view === v ? "var(--shadow-sm)" : "none" }}
               >
                 {v === "list" ? (
