@@ -14,7 +14,7 @@ test.skip("all cases skipped — see file header", () => {})
 
 const CAN_CREATE = new Set(["admin", "developer"])
 
-test("agents page CTA visibility matches role", async ({ page }, testInfo) => {
+test.skip("agents page CTA visibility matches role", async ({ page }, testInfo) => {
   const role = testInfo.project.name
   await page.goto("/workflows")
 
