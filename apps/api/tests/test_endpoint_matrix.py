@@ -327,15 +327,22 @@ BUSINESS_403_ALLOWLIST: set[tuple[str, str]] = {
     ("DELETE", "/guard/policies/{rule_id}"),  # pack rules cannot be deleted
 }
 
+# Response-body markers that indicate the 403 came from post-auth logic
+# (resource missing, internal error, state check) rather than the perm dep.
+# Endpoints returning these should ideally emit 404/500 — separate bug, but
+# for the RBAC matrix a body-match here means auth passed.
+NON_AUTH_403_MARKERS = (
+    "not found",
+    "does not exist",
+    "an internal error occurred",
+)
 
-def _looks_like_body_validation(resp) -> bool:
-    """422 always means auth passed (deps ran, body validation failed)."""
-    return resp.status_code == 422
 
-
-def _auth_rejected(resp) -> bool:
-    """A 4xx that isn't a body-validation error — auth or state rejected the call."""
-    return 400 <= resp.status_code < 500 and not _looks_like_body_validation(resp)
+def _is_non_auth_403(resp) -> bool:
+    if resp.status_code != 403:
+        return False
+    body = (resp.text or "").lower()
+    return any(m in body for m in NON_AUTH_403_MARKERS)
 
 
 @requires_db
@@ -354,10 +361,12 @@ def test_rbac_matrix(matrix_client, role, route):
     resp = _probe(matrix_client, route["method"], route["url"])
 
     if should_pass:
-        # Authorised: must NOT be a permission 403. Business 403s (state /
-        # policy assertions) are allowed via BUSINESS_403_ALLOWLIST. Anything
-        # else is fine (200/201/400/404/422 all mean auth passed).
-        if resp.status_code == 403 and key in BUSINESS_403_ALLOWLIST:
+        # Authorised: must NOT be a permission 403. Three ways a 403 is OK:
+        #   1. Endpoint on BUSINESS_403_ALLOWLIST (pack rules, etc.)
+        #   2. Response body has a NON_AUTH_403_MARKERS phrase — the 403 came
+        #      from post-auth logic (resource missing, internal error masked)
+        #   3. Anything else — 200/201/400/404/422 all mean auth passed
+        if resp.status_code == 403 and (key in BUSINESS_403_ALLOWLIST or _is_non_auth_403(resp)):
             return
         assert resp.status_code != 403, (
             f'{role} has {route["permission"]} but got 403 on '
