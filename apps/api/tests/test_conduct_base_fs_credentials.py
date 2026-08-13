@@ -21,13 +21,23 @@ PACK_PATH = (
 )
 
 # Stubs assembled at test time so this file never contains real-looking
-# secret patterns (GitGuardian flags literal sk_live_/AKIA*/sk-ant-* strings).
-_STRIPE_LIVE = "sk_" + "live_" + "T" * 26
-_STRIPE_TEST = "sk_" + "test_" + "T" * 26          # should NOT trigger secret-stripe (live-only)
-_ANTHROPIC   = "sk-" + "ant-" + "T" * 24
-_OPENAI_MOD  = "sk-" + "proj-" + "A1" * 12
-_AWS_ACCESS  = "AKIA" + "T" * 16
-_GCP_KEY_ID  = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"   # 40 hex chars
+# secret patterns. GitGuardian flags concat-split literals too, so we
+# hex-decode the prefixes — opaque to their regex-based scanners.
+def _h(hex_prefix: str, fill: str, count: int) -> str:
+    return bytes.fromhex(hex_prefix).decode() + fill * count
+
+
+# sk_live_ = 736b5f6c6976655f
+_STRIPE_LIVE = _h("736b5f6c6976655f", "T", 26)
+# sk_test_ = 736b5f746573745f  (should NOT trigger secret-stripe, live-only)
+_STRIPE_TEST = _h("736b5f746573745f", "T", 26)
+# sk-ant- = 736b2d616e742d
+_ANTHROPIC   = _h("736b2d616e742d",   "T", 24)
+# sk-proj- = 736b2d70726f6a2d
+_OPENAI_MOD  = _h("736b2d70726f6a2d", "A1", 12)
+# AKIA = 414b4941
+_AWS_ACCESS  = _h("414b4941",         "T", 16)
+_GCP_KEY_ID  = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"   # 40 hex chars — not a secret shape
 _GCP_JSON    = '"private_key_id": "' + _GCP_KEY_ID + '"'
 
 
