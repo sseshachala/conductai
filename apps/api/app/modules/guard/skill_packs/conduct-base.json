@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "rules": [
@@ -443,8 +443,8 @@
       "description": "Warn when AI writes AWS access keys into code",
       "match_tool": "filesystem-write,workflow",
       "match_pattern": "AKIA[0-9A-Z]{16}",
-      "action": "warn",
-      "message": "AWS access key detected in generated code. Use IAM roles.",
+      "action": "block",
+      "message": "AWS access key detected in file. Blocked \u2014 use IAM roles or short-lived STS credentials.",
       "severity": "critical",
       "frameworks": [
         "SOC2:CC6.1"
@@ -453,10 +453,10 @@
       "enforcement": {
         "version": 1,
         "proxy": "not_supported",
-        "hook": "advisory",
-        "mcp": "advisory",
-        "runtime": "advisory",
-        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
         "requires": [
           "A supported pre-tool hook is installed, synced, and invoked before the action",
           "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
@@ -476,8 +476,8 @@
       "description": "Warn when AI writes Stripe live keys into code",
       "match_tool": "filesystem-write,workflow",
       "match_pattern": "sk_live_[0-9a-zA-Z]{24,}",
-      "action": "warn",
-      "message": "Stripe live key detected in generated code. Use environment variables.",
+      "action": "block",
+      "message": "Stripe live key detected in file. Blocked \u2014 load from environment or secrets manager.",
       "severity": "critical",
       "frameworks": [
         "PCI_DSS:3.5"
@@ -486,10 +486,10 @@
       "enforcement": {
         "version": 1,
         "proxy": "not_supported",
-        "hook": "advisory",
-        "mcp": "advisory",
-        "runtime": "advisory",
-        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
         "requires": [
           "A supported pre-tool hook is installed, synced, and invoked before the action",
           "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
@@ -1200,6 +1200,171 @@
         ],
         "known_limitations": [
           "Only request text exposed to the proxy matcher is inspected"
+        ]
+      }
+    },
+    {
+      "id": "secret-anthropic",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block Anthropic API keys written to files",
+      "match_tool": "filesystem-write,workflow",
+      "match_pattern": "sk-ant-[a-zA-Z0-9\\-]{20,}",
+      "action": "block",
+      "message": "Anthropic API key detected in file. Blocked \u2014 use ANTHROPIC_API_KEY env var.",
+      "severity": "critical",
+      "frameworks": [
+        "SOC2:CC6.1"
+      ],
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
+    },
+    {
+      "id": "secret-openai-modern",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block modern OpenAI project keys (sk-proj-*)",
+      "match_tool": "filesystem-write,workflow",
+      "match_pattern": "sk-proj-[A-Za-z0-9_\\-]{20,}",
+      "action": "block",
+      "message": "OpenAI project key detected in file. Blocked \u2014 use OPENAI_API_KEY env var.",
+      "severity": "critical",
+      "frameworks": [
+        "SOC2:CC6.1"
+      ],
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
+    },
+    {
+      "id": "secret-postgres-url",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block PostgreSQL connection strings with credentials written to files",
+      "match_tool": "filesystem-write,workflow",
+      "match_pattern": "postgres(?:ql)?://[^:]+:[^@\\s]+@\\S+",
+      "action": "block",
+      "message": "PostgreSQL connection string with credentials detected in file. Blocked \u2014 use DATABASE_URL env var.",
+      "severity": "high",
+      "frameworks": [
+        "SOC2:CC6.1"
+      ],
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
+    },
+    {
+      "id": "secret-mysql-url",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block MySQL connection strings with credentials written to files",
+      "match_tool": "filesystem-write,workflow",
+      "match_pattern": "mysql://[^:]+:[^@\\s]+@\\S+",
+      "action": "block",
+      "message": "MySQL connection string with credentials detected in file. Blocked \u2014 use DATABASE_URL env var.",
+      "severity": "high",
+      "frameworks": [
+        "SOC2:CC6.1"
+      ],
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
+    },
+    {
+      "id": "secret-gcp-service-account",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block Google Cloud service account JSON keys written to files",
+      "match_tool": "filesystem-write,workflow",
+      "match_pattern": "\"private_key_id\"\\s*:\\s*\"[a-f0-9]{40}\"",
+      "action": "block",
+      "message": "GCP service account key detected in file. Blocked \u2014 use workload identity or short-lived tokens.",
+      "severity": "critical",
+      "frameworks": [
+        "SOC2:CC6.1"
+      ],
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
         ]
       }
     }
