@@ -1,0 +1,184 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: '0 6 * * *'    # 06:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Run only one lane"
+        type: choice
+        options: [all, api-matrix, cli-matrix, web-smoke]
+        default: all
+
+# Nightly — full-matrix coverage that per-PR CI opts out of.
+# See epic #1092. Failures auto-open a GH issue.
+
+jobs:
+  api-matrix:
+    if: ${{ github.event.inputs.only == '' || github.event.inputs.only == 'all' || github.event.inputs.only == 'api-matrix' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: marshal
+          POSTGRES_PASSWORD: marshal
+          POSTGRES_DB: marshal_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
+      REDIS_URL: redis://localhost:6379
+      ENCRYPTION_KEY: test-key-32-bytes-long-xxxxxxxx!
+      CLERK_TEST_USER_ADMIN: user_3Hn63BfXeSt9ZCBw9UbVQw8ZR5c
+      CLERK_TEST_USER_SECURITY: user_3Hn67p1ETwiglYtpaHMbxeWORvI
+      CLERK_TEST_USER_DEVELOPER: user_3Hn6OmfvjbKikrH9kZpGKi71FIU
+      CLERK_TEST_USER_VIEWER: user_3Hn6TKhuWBpYG0IOAim5ufTqYpe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - name: Install API deps
+        run: pip install -r apps/api/requirements.txt
+      - name: Migrate DB
+        run: alembic upgrade head
+        working-directory: apps/api
+      - name: Seed matrix workspace + role users
+        run: python scripts/seed_e2e_workspace.py
+        working-directory: apps/api
+      - name: Endpoint × role matrix (664 probes)
+        run: python -m pytest tests/test_endpoint_matrix.py -q -m matrix
+        working-directory: apps/api
+      - name: Open failure issue
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "nightly api-matrix failed $(date +%F)" \
+            --label nightly-fail \
+            --assignee sseshachala \
+            --body "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  cli-matrix:
+    if: ${{ github.event.inputs.only == '' || github.event.inputs.only == 'all' || github.event.inputs.only == 'cli-matrix' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e packages/conduct-cli pytest
+      - name: CLI matrix (--help + auth boundary)
+        run: pytest packages/conduct-cli/tests -q -m matrix
+      - name: Open failure issue
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "nightly cli-matrix failed $(date +%F)" \
+            --label nightly-fail \
+            --assignee sseshachala \
+            --body "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  web-smoke:
+    # web-smoke.yml runs on every push to main; add a scheduled invocation
+    # here so we catch regressions that don't touch apps/web or apps/api
+    # (dependency updates, upstream Clerk changes, etc).
+    if: ${{ github.event.inputs.only == '' || github.event.inputs.only == 'all' || github.event.inputs.only == 'web-smoke' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: marshal
+          POSTGRES_PASSWORD: marshal
+          POSTGRES_DB: marshal_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
+      REDIS_URL: redis://localhost:6379
+      ENCRYPTION_KEY: test-key-32-bytes-long-xxxxxxxx!
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_TEST_PUBLISHABLE_KEY }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_TEST_SECRET_KEY }}
+      CLERK_FRONTEND_API: ${{ secrets.CLERK_TEST_FRONTEND_API }}
+      CLERK_TEST_USER_ADMIN: user_3Hn63BfXeSt9ZCBw9UbVQw8ZR5c
+      CLERK_TEST_USER_SECURITY: user_3Hn67p1ETwiglYtpaHMbxeWORvI
+      CLERK_TEST_USER_DEVELOPER: user_3Hn6OmfvjbKikrH9kZpGKi71FIU
+      CLERK_TEST_USER_VIEWER: user_3Hn6TKhuWBpYG0IOAim5ufTqYpe
+      admin:     ${{ secrets.CLERK_TEST_PASSWORD_ADMIN }}
+      security:  ${{ secrets.CLERK_TEST_PASSWORD_SECURITY }}
+      developer: ${{ secrets.CLERK_TEST_PASSWORD_DEVELOPER }}
+      viewer:    ${{ secrets.CLERK_TEST_PASSWORD_VIEWER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install API deps
+        run: pip install -r apps/api/requirements.txt
+      - name: Migrate DB
+        run: alembic upgrade head
+        working-directory: apps/api
+      - name: Seed e2e workspace
+        run: python scripts/seed_e2e_workspace.py
+        working-directory: apps/api
+      - name: Boot API
+        run: |
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/api.log 2>&1 &
+          for i in $(seq 1 40); do
+            curl -sf 127.0.0.1:8000/health && break
+            sleep 1
+          done
+          curl -sf 127.0.0.1:8000/health
+        working-directory: apps/api
+      - name: Install web deps
+        run: npm ci
+        working-directory: apps/web
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox
+        working-directory: apps/web
+      - name: Run Playwright
+        run: npm run test:e2e
+        working-directory: apps/web
+      - name: Open failure issue
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "nightly web-smoke failed $(date +%F)" \
+            --label nightly-fail \
+            --assignee sseshachala \
+            --body "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ github.run_id }}
+          path: apps/web/test-results
+          retention-days: 14
