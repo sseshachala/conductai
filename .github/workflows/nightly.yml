@@ -101,7 +101,8 @@ jobs:
     # (dependency updates, upstream Clerk changes, etc).
     if: ${{ github.event.inputs.only == '' || github.event.inputs.only == 'all' || github.event.inputs.only == 'web-smoke' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 45 min: matches web-smoke.yml — Group F expanded runtime past 25.
+    timeout-minutes: 45
     services:
       postgres:
         image: pgvector/pgvector:pg16
