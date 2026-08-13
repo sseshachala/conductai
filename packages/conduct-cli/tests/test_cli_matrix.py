@@ -30,11 +30,24 @@ CONDUCT = shutil.which("conduct") or "conduct"
 # Commands that intentionally do NOT touch the API (local ops only).
 # Kept small on purpose — add sparingly, with a comment.
 OFFLINE_ONLY: set[tuple[str, ...]] = {
-    ("login",),               # opens browser, no direct API from CLI process
-    ("mcp", "install"),       # writes local Claude/Codex config
-    ("session-report",),      # scans local files
-    ("test-guard",),          # local synthetic events
-    ("test-security",),       # local synthetic findings
+    ("login",),                    # opens browser, no direct API from CLI process
+    ("mcp", "install"),            # writes local Claude/Codex config
+    ("session-report",),           # scans local files
+    ("test-guard",),               # local synthetic events
+    ("test-security",),            # local synthetic findings
+    ("sessions",),                 # reads local Claude Code session directory
+    ("whoami",),                   # status query — prints config state, no API call when unauth'd
+    ("guard", "audit"),            # reads local ~/.conduct/audit.log
+    ("guard", "booster-status"),   # checks local booster install
+    ("guard", "discover"),         # scans local system for AI tools
+    ("guard", "install"),          # writes local hook + policy files
+    ("guard", "lint"),             # lints local policy YAML
+    ("guard", "savings"),          # reads local telemetry file
+    ("guard", "session", "start"), # local session state file
+    ("guard", "session", "stop"),  # local session state file
+    ("guard", "skip-setup"),       # writes local "skip" flag
+    ("guard", "status"),           # reads local guard config
+    ("guard", "watch"),            # local daemon
 }
 
 # Match `{a,b,c}` in the argparse "positional arguments:" section only.
