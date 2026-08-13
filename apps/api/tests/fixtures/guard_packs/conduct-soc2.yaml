@@ -1,0 +1,101 @@
+# Conduct SOC 2 pack — per-rule E2E validation.
+#
+# All SOC 2 rules are hook-scoped (match_tool: edit,write). Each case
+# supplies tool_name + tool_input and asserts the named rule fires
+# with the expected action.
+
+pack: conduct-soc2
+source: apps/api/app/modules/guard/skill_packs/conduct-soc2.json
+
+cases:
+  # ── soc2_hardcoded_secret (block) — CC6.1 ───────────────────────────────
+  - rule_id: soc2_hardcoded_secret
+    scenario: password hardcoded blocks write
+    tool_name: write
+    tool_input:
+      file_path: config.py
+      content: "password = '<<CRED:GENERIC_SECRET>>'"
+    expected: block
+
+  - rule_id: soc2_hardcoded_secret
+    scenario: api_key hardcoded blocks write
+    tool_name: write
+    tool_input:
+      file_path: config.py
+      content: "api_key = '<<CRED:GENERIC_SECRET>>'"
+    expected: block
+
+  - rule_id: soc2_hardcoded_secret
+    scenario: secret hardcoded blocks write
+    tool_name: write
+    tool_input:
+      file_path: config.py
+      content: "secret = '<<CRED:GENERIC_SECRET>>'"
+    expected: block
+
+  - rule_id: soc2_hardcoded_secret
+    scenario: env-var reference is allowed
+    tool_name: write
+    tool_input:
+      file_path: config.py
+      content: "password = os.environ['DB_PASSWORD']"
+    expected: allow
+
+  # ── soc2_log_pii (warn) — CC6.7 ─────────────────────────────────────────
+  - rule_id: soc2_log_pii
+    scenario: console.log email warns
+    tool_name: write
+    tool_input:
+      file_path: app.js
+      content: "console.log('User email:', user.email)"
+    expected: warn
+
+  - rule_id: soc2_log_pii
+    scenario: print with email warns
+    tool_name: write
+    tool_input:
+      file_path: app.py
+      content: "print('Sending to', customer.email)"
+    expected: warn
+
+  - rule_id: soc2_log_pii
+    scenario: logger email warns
+    tool_name: write
+    tool_input:
+      file_path: app.py
+      content: "logger.info('email delivered to', target.email)"
+    expected: warn
+
+  # ── soc2_debug_mode (warn) — CC6.6 + CC8.1 ──────────────────────────────
+  - rule_id: soc2_debug_mode
+    scenario: DEBUG True in code warns
+    tool_name: write
+    tool_input:
+      file_path: settings.py
+      content: "DEBUG = True"
+    expected: warn
+
+  - rule_id: soc2_debug_mode
+    scenario: DEBUG False is allowed
+    tool_name: write
+    tool_input:
+      file_path: settings.py
+      content: "DEBUG = False"
+    expected: allow
+
+  # ── soc2_unencrypted_storage (warn) — CC6.1 ─────────────────────────────
+  - rule_id: soc2_unencrypted_storage
+    scenario: opening a secret file for write warns
+    tool_name: write
+    tool_input:
+      file_path: dump.py
+      content: "open('secret.txt', 'w').write(data)"
+    expected: warn
+
+  - rule_id: soc2_unencrypted_storage
+    scenario: opening a non-secret file for write is allowed
+    tool_name: write
+    tool_input:
+      file_path: dump.py
+      content: "open('output.log', 'w').write(data)"
+    expected: allow
