@@ -31,6 +31,9 @@ for (const path of PAGES) {
     // type than we have installed; the API is identical at runtime.
     const results = await new AxeBuilder({ page: page as any })
       .withTags(["wcag2a", "wcag2aa"])
+      // Exclude embedded iframes (YouTube on /). axe recurses into iframe
+      // content, and we can't fix upstream markup.
+      .exclude("iframe")
       .analyze()
     const gating = results.violations.filter((v) => !KNOWN_UX_DEBT.has(v.id))
     expect(
