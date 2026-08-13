@@ -80,13 +80,16 @@ export default defineConfig({
         ? { ...devices["Desktop Firefox"], storageState: ".auth/admin.json" }
         : { ...devices["Desktop Firefox"] },
     },
-    {
-      name: "flows-webkit",
-      testMatch: /flows\/.*\.spec\.ts/,
-      use: clerkEnabled
-        ? { ...devices["Desktop Safari"], storageState: ".auth/admin.json" }
-        : { ...devices["Desktop Safari"] },
-    },
+    // WebKit disabled — @clerk/testing storageState doesn't restore session
+    // cookies reliably on Safari (Chromium + Firefox both green with the same
+    // setup). Re-enable when Clerk's WebKit fixture support ships.
+    // {
+    //   name: "flows-webkit",
+    //   testMatch: /flows\/.*\.spec\.ts/,
+    //   use: clerkEnabled
+    //     ? { ...devices["Desktop Safari"], storageState: ".auth/admin.json" }
+    //     : { ...devices["Desktop Safari"] },
+    // },
     ...roleProjects,
   ],
   webServer: {
