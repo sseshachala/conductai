@@ -2,19 +2,20 @@
 
 For each YAML fixture under ``tests/fixtures/guard_packs/``:
   1. Load the pack JSON that the fixture points at.
-  2. For each case, evaluate the pack's rules against the case's prompt_text
-     using the same ``_rule_matches`` function the live proxy uses.
-  3. Assert the highest-severity matching rule's ID and action equal the
-     fixture's expected values.
+  2. For each case, evaluate the pack's rules against the case's input.
+  3. Assert the expected rule fires with the expected action.
 
-Framework v1 scope: pack rule-firing correctness. Full HTTP-through-proxy
-E2E (with Portkey mock + audit-log assert) is a v2 add — see #1127.
+Two case shapes:
+  * proxy case — has ``prompt_text``. Uses live proxy's ``_rule_matches``.
+  * hook case — has ``tool_name`` + ``tool_input``. Uses hook-style regex
+    match against serialised tool_input, filtering by ``match_tool``.
 
 Marker: ``pack_matrix``. Opt-in via ``pytest -m pack_matrix``.
 """
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,10 @@ _CRED_STUBS = {
     "SLACK_BOT":     _h("786f78622d",       "T", 20),
     # xoxp- = 786f78702d
     "SLACK_USER":    _h("786f78702d",       "T", 20),
+    # Generic 12+ char secret-shaped string for password= / api_key= / secret= tests.
+    # Assembled at load time so YAML on disk never contains a literal
+    # secret-shaped string that trips generic-secret scanners.
+    "GENERIC_SECRET": _h("54455354", "X", 16),   # TEST + XXXXXXXXXXXXXXXX
 }
 
 
@@ -79,10 +84,57 @@ def _matching_rules(rules: list[dict], prompt_text: str, provider: str, model: s
     return matches
 
 
+# ── Hook-side matcher — mirrors packages/conduct-cli/src/conduct_cli/guard.py
+# ``_check_policy`` semantics: filter rules by match_tool, then regex against
+# JSON-serialised tool_input. Kept local so this test doesn't import the CLI
+# package (which isn't on the API test path).
+_TOOL_EXPAND = {
+    "filesystem-write": {"write", "edit", "write_file", "edit_file", "str_replace_editor"},
+    "filesystem-read":  {"read", "read_file"},
+    "shell":            {"bash"},
+    "workflow":         {"workflow"},
+    "network":          {"webfetch", "websearch"},
+}
+
+
+def _expand_tools(match_tool_str: str) -> set[str]:
+    tools = set()
+    for raw in (t.strip().lower() for t in match_tool_str.split(",")):
+        tools.update(_TOOL_EXPAND.get(raw, {raw}))
+    return tools
+
+
+def _matching_hook_rules(rules: list[dict], tool_name: str, tool_input: dict) -> list[dict]:
+    """Return every hook-eligible rule that fires for this tool call.
+
+    Mirrors CLI ``_check_policy`` semantics: rule matches when its
+    ``match_tool`` (expanded via tool_groups) contains ``tool_name`` AND
+    its ``match_pattern`` matches ``json.dumps(tool_input)``.
+    """
+    input_text = json.dumps(tool_input)
+    tool_lc = tool_name.lower()
+    matches: list[dict] = []
+    for rule in rules:
+        match_tool = (rule.get("match_tool") or "*").lower()
+        if match_tool != "*":
+            if tool_lc not in _expand_tools(match_tool):
+                continue
+        pat = rule.get("match_pattern")
+        if pat:
+            try:
+                if not re.search(pat, input_text, re.IGNORECASE):
+                    continue
+            except re.error:
+                continue
+        matches.append(rule)
+    return matches
+
+
 def _load_cases() -> list[tuple]:
     """Flatten every fixture into (pack_name, pack_rules, case) tuples.
 
-    Expands <<CRED:*>> stubs in prompt_text so YAML on disk never contains
+    Expands <<CRED:*>> stubs in both prompt_text (proxy cases) and
+    tool_input.content (hook cases) so YAML on disk never contains
     real-looking secret patterns (which trip GitGuardian / other scanners).
     """
     cases: list[tuple] = []
@@ -91,7 +143,14 @@ def _load_cases() -> list[tuple]:
         pack_name = data["pack"]
         rules = _load_pack(pack_name)
         for case in data["cases"]:
-            case["prompt_text"] = _expand_stubs(case["prompt_text"])
+            if "prompt_text" in case:
+                case["prompt_text"] = _expand_stubs(case["prompt_text"])
+            if "tool_input" in case:
+                ti = case["tool_input"]
+                if isinstance(ti.get("content"), str):
+                    ti["content"] = _expand_stubs(ti["content"])
+                if isinstance(ti.get("command"), str):
+                    ti["command"] = _expand_stubs(ti["command"])
             cases.append((pack_name, rules, case))
     return cases
 
@@ -107,33 +166,36 @@ def _case_id(case_tuple) -> str:
 @pytest.mark.parametrize("case_tuple", _load_cases(), ids=_case_id)
 def test_guard_pack_rule(case_tuple):
     pack_name, rules, case = case_tuple
-    provider = case.get("provider", "anthropic")
-    model = case.get("model", "claude-3-5-sonnet-20241022")
-    prompt_text = case["prompt_text"]
     expected = case["expected"]
 
-    matches = _matching_rules(rules, prompt_text, provider, model)
+    # Route to hook matcher if the case describes a tool call, else proxy.
+    if "tool_input" in case:
+        tool_name = case.get("tool_name", "write")
+        tool_input = case["tool_input"]
+        matches = _matching_hook_rules(rules, tool_name, tool_input)
+        input_repr = f"{tool_name} {json.dumps(tool_input)[:120]}"
+    else:
+        provider = case.get("provider", "anthropic")
+        model = case.get("model", "claude-3-5-sonnet-20241022")
+        prompt_text = case["prompt_text"]
+        matches = _matching_rules(rules, prompt_text, provider, model)
+        input_repr = f"prompt: {prompt_text!r}"
 
     if expected == "allow":
         assert not matches, (
             f"{pack_name}/{case['rule_id']}: expected no match, but "
-            f"{[m['id'] for m in matches]} fired. Prompt: {prompt_text!r}"
+            f"{[m['id'] for m in matches]} fired. Input: {input_repr}"
         )
         return
 
-    # The expected rule must be among those that fired. Multiple rules may
-    # match the same input (e.g. a GitHub PAT matches both no-gh-pat-in-code
-    # AND proxy-no-credential-leak); the fixture pins which rule we care
-    # about, but tolerates overlap from other rules of the same or higher
-    # severity.
     matched_ids = [m["id"] for m in matches]
     assert case["rule_id"] in matched_ids, (
         f"{pack_name}/{case['rule_id']}: expected this rule to fire. "
-        f"Rules that fired: {matched_ids}. Prompt: {prompt_text!r}"
+        f"Rules that fired: {matched_ids}. Input: {input_repr}"
     )
     target = next(m for m in matches if m["id"] == case["rule_id"])
     actual_action = target.get("action", "").lower()
     assert actual_action == expected, (
         f"{pack_name}/{case['rule_id']}: expected action={expected}, "
-        f"got action={actual_action}. Prompt: {prompt_text!r}"
+        f"got action={actual_action}. Input: {input_repr}"
     )
