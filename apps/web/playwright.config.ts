@@ -90,6 +90,18 @@ export default defineConfig({
     //     ? { ...devices["Desktop Safari"], storageState: ".auth/admin.json" }
     //     : { ...devices["Desktop Safari"] },
     // },
+    // Mobile viewport smoke — pages.smoke on iPhone + Pixel. Kept scope
+    // tight (smoke only, not flows) so runtime stays bounded.
+    {
+      name: "smoke-mobile-iphone",
+      testMatch: /pages\.smoke\.spec\.ts/,
+      use: { ...devices["iPhone 14"] },
+    },
+    {
+      name: "smoke-mobile-pixel",
+      testMatch: /pages\.smoke\.spec\.ts/,
+      use: { ...devices["Pixel 7"] },
+    },
     ...roleProjects,
   ],
   webServer: {
