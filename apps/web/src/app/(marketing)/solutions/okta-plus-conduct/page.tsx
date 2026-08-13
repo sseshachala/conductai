@@ -3,7 +3,7 @@ import { CtaLink } from "@/components/marketing/CtaLink"
 export const metadata = {
   title: "Okta + Conduct: complete AI agent governance | Conduct",
   description:
-    "Okta issues the identity. Guard governs the action. A reference architecture pairing Okta AI Agent Import with Conduct Guard for end-to-end agent governance across every builder platform your teams use.",
+    "Okta issues the identity. Guard governs the action. Native sync of Okta agent identities into Conduct Guard, plus JWT authentication for runtime enforcement. Available now.",
 }
 
 export default function OktaPlusConductPage() {
@@ -14,7 +14,7 @@ export default function OktaPlusConductPage() {
       <ThreeQuestionsSection />
       <LayerSplitSection />
       <IntegrationSection />
-      <StatusNote />
+      <JwtAuthSection />
       <CtaSection />
     </>
   )
@@ -153,7 +153,7 @@ const LAYERS = [
   },
   {
     role: "Conduct Guard",
-    covers: "Consumes the identity registry as a source of Guard principals. Every Okta-imported agent becomes a first-class principal in Guard policy. Runtime decisions cite the Okta identity in the audit chain. Deactivation in Okta revokes Guard tokens on the next sync.",
+    covers: "Consumes the identity registry as a source of Guard principals. Every Okta-imported agent becomes a first-class principal in Guard policy. Runtime decisions cite the Okta identity in the audit chain. Agents can authenticate to Guard with their Okta-issued JWTs, so Okta remains the single credential system.",
     where: "The runtime layer.",
   },
 ]
@@ -203,8 +203,9 @@ function IntegrationSection() {
           </li>
           <li>
             <span className="font-bold text-stone-900">2. Guard pulls the identity registry from Okta.</span>{" "}
-            A scheduled sync (targeting under 5 minutes) mirrors the Okta agent identity registry into Guard's
-            agent-identity module. Owner, source platform, and lifecycle state carry over as first-class fields.
+            An on-demand sync mirrors the Okta agent identity registry into Guard's agent-identity module. Owner is
+            assigned on the first sync. Source platform and lifecycle state carry over on every sync. Scheduled sync
+            is on the roadmap.
           </li>
           <li>
             <span className="font-bold text-stone-900">3. Guard principals reference Okta identity.</span>{" "}
@@ -213,8 +214,8 @@ function IntegrationSection() {
           </li>
           <li>
             <span className="font-bold text-stone-900">4. Lifecycle changes propagate.</span>{" "}
-            Deactivating an agent in Okta revokes its Guard run tokens on the next sync. Owner changes propagate to
-            Guard's audit metadata. Access certifications in Okta include Guard action data as evidence.
+            Deactivating an agent in Okta marks it inactive on the next sync. The Okta status field is the source of
+            truth for whether the identity is live. Runtime enforcement of Okta status is on the roadmap.
           </li>
           <li>
             <span className="font-bold text-stone-900">5. One control plane for humans and agents.</span>{" "}
@@ -224,23 +225,45 @@ function IntegrationSection() {
         </ol>
       </div>
       <p className="text-xs text-stone-500 italic text-center">
-        Reference architecture. The Okta-native integration is on the roadmap as epic #1036, with the identity model
-        alignment (#1037) shipping first so the integration is a sync connector rather than a schema translator.
+        Available now. Configure at Agent Identity → Integrations.
       </p>
     </section>
   )
 }
 
-function StatusNote() {
+function JwtAuthSection() {
   return (
-    <section className="max-w-3xl mx-auto px-6 py-8">
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
-        <p className="text-xs font-bold uppercase tracking-widest text-amber-700 mb-2">Status: reference architecture</p>
-        <p className="text-sm text-amber-900 leading-relaxed">
-          This page documents the Okta plus Conduct pattern as a reference architecture. The native Okta integration
-          is on our roadmap. If you run Okta AI Agent Import and want to be a design partner for the integration, we
-          would like to hear from you.
-        </p>
+    <section className="bg-stone-50 border-y border-stone-200 px-6 py-20">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-12">
+          <p className="text-xs font-bold uppercase tracking-widest text-indigo-500 mb-3">Runtime authentication</p>
+          <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight mb-4">
+            Agents authenticate to Guard with their Okta identity.
+          </h2>
+          <p className="text-stone-500 max-w-2xl mx-auto leading-relaxed">
+            No shared secrets between Okta and Conduct. Agents present an Okta-issued JWT. Guard verifies it against
+            your Okta authorization server and treats the identity as a first-class Guard principal for policy
+            evaluation.
+          </p>
+        </div>
+        <div className="grid md:grid-cols-2 gap-5">
+          <div className="border border-stone-200 rounded-2xl p-6 bg-white">
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-500 mb-3">Setup</p>
+            <ol className="text-sm text-stone-700 space-y-2 leading-relaxed">
+              <li>1. Create an OAuth authorization server in Okta admin.</li>
+              <li>2. Paste the issuer URL and audience into Agent Identity → Integrations.</li>
+              <li>3. Toggle Enabled.</li>
+            </ol>
+          </div>
+          <div className="border border-stone-200 rounded-2xl p-6 bg-white">
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-500 mb-3">Runtime flow</p>
+            <ol className="text-sm text-stone-700 space-y-2 leading-relaxed">
+              <li>1. Agent requests a token from Okta.</li>
+              <li>2. Agent calls Guard proxy with the Okta JWT as a Bearer token.</li>
+              <li>3. Guard verifies the JWT against Okta JWKS, evaluates policy, and forwards to the LLM.</li>
+            </ol>
+          </div>
+        </div>
       </div>
     </section>
   )
