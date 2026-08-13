@@ -353,10 +353,10 @@ def _require_guard_config() -> dict:
     ws = cfg.get("workspace_id") or cfg.get("workspace")
     if not cfg or not ws:
         print(f"{RED}Guard not connected. Run: conduct login{RESET}", file=sys.stderr)
-        sys.exit(0)
+        sys.exit(1)
     if not cfg.get("agent_token"):
         print(f"{RED}Guard config is missing credentials. Run: conduct login{RESET}", file=sys.stderr)
-        sys.exit(0)
+        sys.exit(1)
     return cfg
 
 
