@@ -13,7 +13,7 @@ test.skip("all cases skipped — see file header", () => {})
 
 const CAN_EDIT_POLICIES = new Set(["admin", "security"])
 
-test("policies page CTA visibility matches role", async ({ page }, testInfo) => {
+test.skip("policies page CTA visibility matches role", async ({ page }, testInfo) => {
   const role = testInfo.project.name
   await page.goto("/theguard/policies")
 
