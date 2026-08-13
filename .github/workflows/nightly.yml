@@ -78,7 +78,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -e packages/conduct-cli pytest
+      # pyyaml + psutil + structlog: pulled in transitively by conduct-cli's
+      # top-level imports (packages/conduct-cli/pyproject.toml is empty and
+      # doesn't declare them, so an editable install misses them).
+      - run: pip install -e packages/conduct-cli pytest pyyaml psutil structlog httpx
       - name: CLI matrix (--help + auth boundary)
         run: pytest packages/conduct-cli/tests -q -m matrix
       - name: Open failure issue
