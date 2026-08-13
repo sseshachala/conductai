@@ -58,6 +58,9 @@ jobs:
       - name: Endpoint × role matrix (664 probes)
         run: python -m pytest tests/test_endpoint_matrix.py -q -m matrix
         working-directory: apps/api
+      - name: Guard pack matrix (per-rule E2E — #1127)
+        run: python -m pytest tests/test_guard_pack_matrix.py -q -m pack_matrix
+        working-directory: apps/api
       - name: Open failure issue
         if: failure() && github.event_name == 'schedule'
         env:
