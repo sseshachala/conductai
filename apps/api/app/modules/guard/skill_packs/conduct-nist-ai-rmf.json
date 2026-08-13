@@ -1,7 +1,7 @@
 {
   "slug": "conduct-nist-ai-rmf",
   "name": "Conduct NIST AI RMF",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "tier": "paid",
   "description": "NIST AI Risk Management Framework enforcement rules across GOVERN, MAP, MEASURE, and MANAGE functions",
   "rules": [
@@ -9,7 +9,7 @@
       "id": "nist-govern-policy-bypass",
       "description": "Block attempts to disable or bypass AI governance controls (NIST AI RMF GOVERN 2.2)",
       "match_tool": "bash,edit,write",
-      "match_pattern": "(disable.*policy|bypass.*guard|skip.*governance|no.?policy|governance.*=.*false|policy_enabled.*=.*(false|0|null))",
+      "match_pattern": "(--disable[- _]?policy\\b|--no[- _]?policy\\b|policy_enabled\\s*[:=]\\s*(false|0|null|off)|governance\\s*[:=]\\s*(false|0|null|off)|GUARD_DISABLED\\s*[:=]\\s*(1|true)|export\\s+GUARD_DISABLED)",
       "action": "block",
       "message": "AI governance policy bypass blocked — NIST AI RMF GOVERN 2.2 requires organisational AI policies to remain active.",
       "persona_affinity": [

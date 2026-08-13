@@ -299,6 +299,57 @@ def _bash_operator_signature(command: str) -> str:
     return " ; ".join(parts)
 
 
+# Flags whose value is prose meant for humans (issue bodies, commit messages,
+# PR descriptions, titles). Values here are excluded from pattern + decode
+# scanning so natural-language content does not trip pack regexes that were
+# only meant to catch CLI/env forms.
+_CONTENT_FLAGS = {
+    "--body", "--body-file", "-b",
+    "--message", "-m",
+    "--description", "-d",
+    "--title", "-t",
+    "--comment", "-c",
+    "--note",
+}
+
+
+def _bash_scan_target(command: str) -> str:
+    """Return command with content-flag values stripped, for pattern + decode scanning.
+
+    Preserves operator signature (argv, subcommands, flag names, paths, env
+    vars) so obfuscation-detection still works on the shell parts. Strips
+    only the prose-holding argument values that follow content flags.
+    """
+    if not command:
+        return ""
+    segments = re.split(r"&&|\|\||\|(?!\|)|;", command)
+    parts = []
+    for seg in segments:
+        try:
+            tokens = shlex.split(seg.strip())
+        except ValueError:
+            parts.append(seg.strip())
+            continue
+        keep = []
+        skip_next = False
+        for t in tokens:
+            if skip_next:
+                skip_next = False
+                continue
+            if t in _CONTENT_FLAGS:
+                keep.append(t)
+                skip_next = True
+                continue
+            if t.startswith("--") and "=" in t:
+                flag_name = t.split("=", 1)[0]
+                if flag_name in _CONTENT_FLAGS:
+                    keep.append(flag_name)
+                    continue
+            keep.append(t)
+        parts.append(" ".join(keep))
+    return " ; ".join(parts)
+
+
 # Framework rule prefixes known to false-positive on files that DEFINE, DOCUMENT,
 # or TEST security concepts. On paths under DEV_PATH_MARKERS these skip.
 # Fix for #1048. Prefix match rather than literal to avoid our own scanner triggers.
@@ -504,7 +555,7 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
     rules = policy.get("rules", [])
     if tool_name == "Bash" and tool_input.get("command"):
         input_text = _bash_operator_signature(tool_input["command"])
-        raw_for_decode = tool_input["command"]
+        raw_for_decode = _bash_scan_target(tool_input["command"])
     else:
         input_text = json.dumps(tool_input)
         raw_for_decode = input_text
