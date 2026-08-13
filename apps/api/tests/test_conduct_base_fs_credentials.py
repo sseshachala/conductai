@@ -49,10 +49,26 @@ def rules_by_id():
 
 def test_pack_version_bumped(rules_by_id):
     data = json.loads(PACK_PATH.read_text())
-    assert data["version"] == "2.11.0", (
-        f"Expected pack version 2.11.0, got {data['version']}. "
+    assert data["version"] == "2.11.1", (
+        f"Expected pack version 2.11.1, got {data['version']}. "
         "Bump when adding rules so `conduct guard sync` picks up changes."
     )
+
+
+def test_new_secret_rules_ordered_before_audit_catchall(rules_by_id):
+    """secret-* rules must come before surface-dev-audit-prod-write (which
+    matches all filesystem-write). _check_policy returns first match, so new
+    block rules never fire if they land after the audit catch-all."""
+    data = json.loads(PACK_PATH.read_text())
+    order = {r["id"]: i for i, r in enumerate(data["rules"])}
+    audit_idx = order["surface-dev-audit-prod-write"]
+    for rid in ("secret-anthropic", "secret-openai-modern",
+                "secret-postgres-url", "secret-mysql-url",
+                "secret-gcp-service-account"):
+        assert order[rid] < audit_idx, (
+            f"Rule {rid} at index {order[rid]} must come before "
+            f"surface-dev-audit-prod-write at {audit_idx}"
+        )
 
 
 @pytest.mark.parametrize(
@@ -89,7 +105,7 @@ def test_credential_rule_is_block(rule_id, target_action, rules_by_id):
         ("secret-openai-modern",    f"key = '{_OPENAI_MOD}'",        "sk-proj-x"),
         ("secret-postgres-url",     "url = 'postgres://user:pass@host:5432/db'", "postgres://host/db"),
         ("secret-mysql-url",        "url = 'mysql://root:secret@127.0.0.1/db'", "mysql://host/db"),
-        ("secret-gcp-service-account", "config = {" + _GCP_JSON + "}", '"private_key_id": "short"'),
+        ("secret-gcp-service-account", "config = {" + _GCP_JSON + "}", "private_key_id: short-not-40-chars"),
     ],
 )
 def test_credential_rule_matches_target(rule_id, hit_text, miss_text, rules_by_id):
