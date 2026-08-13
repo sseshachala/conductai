@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.9.2] - 2026-08-13
+
+### Fixed
+- Pretouse hook: content-flag stripping. `_bash_scan_target` now strips values of content flags (`--body`, `--body-file`, `-b`, `--message`, `-m`, `--description`, `-d`, `--title`, `-t`, `--comment`, `-c`, `--note`) before decode-scan, so pack regexes no longer fire on natural-language prose passed to `gh pr create --body`, `git commit -m`, etc. Argv, subcommands, non-content flag values, paths, and env vars are preserved.
+- Companion pack change: `conduct-nist-ai-rmf` bumped 1.0.0 → 1.0.1 with `nist-govern-policy-bypass` narrowed to explicit CLI-flag, env-var, and config-assignment forms.
+
+### Notes
+- Restores pyproject.toml (accidentally wiped in the 0.9.1 bump commit). Sister repo and PyPI were still at 0.8.7 — this release ships every change since (obfuscation pre-decode, endpoint-attack pack authoring skips, dev-repo sentinel, hook exclusions, and the prose-scan fix).
+
+---
+
 ## [0.9.1] - 2026-08-09
 
 ### Added
