@@ -1,0 +1,59 @@
+pack: conduct-irs-1075
+source: apps/api/app/modules/guard/skill_packs/conduct-irs-1075.json
+cases:
+- rule_id: irs1075-no-ein-in-prompt
+  scenario: EIN literal blocked
+  tool_name: write
+  tool_input:
+    file_path: p.py
+    content: prompt = 'lookup ein 12-3456789'
+  expected: block
+- rule_id: irs1075-no-tax-return-data
+  scenario: form 1040 field reference blocked
+  tool_name: write
+  tool_input:
+    file_path: p.py
+    content: form_1040_agi_field = 'adjusted_gross_income'
+  expected: block
+- rule_id: irs1075-no-fti-external-endpoint
+  scenario: FTI to external LLM endpoint blocked
+  tool_name: bash
+  tool_input:
+    command: curl https://openai.com/v1/completions -d 'summarize ssn 123-45-6789
+      tax return'
+  expected: block
+- rule_id: irs1075-no-fti-training-data
+  scenario: FTI in training set blocked
+  tool_name: write
+  tool_input:
+    file_path: t.py
+    content: training_data.append(taxpayer.ssn)
+  expected: block
+- rule_id: irs1075-no-fti-plain-log
+  scenario: FTI in plain log blocked
+  tool_name: write
+  tool_input:
+    file_path: l.py
+    content: logger.info('citizen ssn value %s', taxpayer)
+  expected: block
+- rule_id: irs1075-third-party-fti-processor
+  scenario: importing openai (unmanaged) flagged
+  tool_name: write
+  tool_input:
+    file_path: c.py
+    content: import openai
+  expected: warn
+- rule_id: irs1075-fti-purpose-limitation
+  scenario: export FTI to marketing blocked
+  tool_name: write
+  tool_input:
+    file_path: m.py
+    content: export fti tax_return records to marketing
+  expected: block
+- rule_id: irs1075-no-ein-in-prompt
+  scenario: non-FTI prompt allowed
+  tool_name: write
+  tool_input:
+    file_path: p.py
+    content: prompt = 'summarize this article'
+  expected: allow
