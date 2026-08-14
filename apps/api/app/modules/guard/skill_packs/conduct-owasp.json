@@ -1,7 +1,7 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "tier": "paid",
   "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents, including ASI06 Memory Poisoning (MITRE ATLAS AML.M0031)",
   "rules": [
@@ -40,7 +40,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "owasp_crypto_guard",
@@ -77,7 +80,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "owasp_weak_session_guard",
@@ -113,7 +119,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "owasp_ssrf_guard",
@@ -149,7 +158,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "owasp_eval_guard",
@@ -185,7 +197,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "owasp_xss_guard",
@@ -221,7 +236,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_prompt_inject",
@@ -256,7 +274,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_sensitive_data_exfil",
@@ -290,7 +311,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_unsigned_package",
@@ -323,7 +347,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_overreach_shell",
@@ -356,7 +383,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_model_extract",
@@ -389,7 +419,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_covert_channel",
@@ -422,7 +455,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_audit_bypass",
@@ -456,7 +492,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_unverified_deploy",
@@ -489,7 +528,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_privilege_escalat",
@@ -522,7 +564,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_budget_bypass",
@@ -557,7 +602,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_recon_fs",
@@ -593,7 +641,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_shell_persist",
@@ -629,7 +680,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_dns_exfil",
@@ -665,7 +719,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "no_agent_pivot",
@@ -701,7 +758,10 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "asi06_memory_write_without_classification",
@@ -736,7 +796,10 @@
           "Memory writes performed inside the agent process without a tool call are not visible to Guard",
           "In-process memory integrity checks belong to an in-process library. Guard governs the writes, not the store"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "asi06_untrusted_promotion_to_durable",
@@ -772,7 +835,10 @@
           "Memory writes performed inside the agent process without a tool call are not visible to Guard",
           "In-process memory integrity checks belong to an in-process library. Guard governs the writes, not the store"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "asi06_instruction_shaped_memory_write",
@@ -808,7 +874,10 @@
           "Memory writes performed inside the agent process without a tool call are not visible to Guard",
           "In-process memory integrity checks belong to an in-process library. Guard governs the writes, not the store"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "asi06_cross_tenant_memory_read",
@@ -844,7 +913,10 @@
           "Memory writes performed inside the agent process without a tool call are not visible to Guard",
           "In-process memory integrity checks belong to an in-process library. Guard governs the writes, not the store"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "asi06_memory_integrity_bypass",
@@ -880,7 +952,10 @@
           "Memory writes performed inside the agent process without a tool call are not visible to Guard",
           "In-process memory integrity checks belong to an in-process library. Guard governs the writes, not the store"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     }
   ]
 }

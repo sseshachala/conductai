@@ -1,7 +1,7 @@
 {
   "slug": "conduct-prompt-injection",
   "name": "Conduct Prompt Injection Defense",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "tier": "free",
   "description": "Dedicated pack of ~100 patterns for detecting prompt injection, jailbreak, role-hijack, delimiter-escape, and system-prompt disclosure attempts across Bash, Edit, and Write tool inputs. Covers OWASP LLM A01, MITRE ATLAS AML.M0031, ASI06, and common public jailbreak library entries. Complements the base OWASP pack. ML classifier and indirect-injection tracking are on the roadmap.",
   "rules": [
@@ -37,7 +37,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-system-prompt-reveal",
@@ -71,7 +74,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-role-hijack",
@@ -104,7 +110,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-jailbreak-personas",
@@ -138,7 +147,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-grandma-exploit",
@@ -171,7 +183,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-hypothetical-framing",
@@ -204,7 +219,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-suffix-attack",
@@ -237,7 +255,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-delimiter-escape",
@@ -270,7 +291,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-indirect-tool-output",
@@ -304,7 +328,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-context-window-flood",
@@ -338,7 +365,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-encoded-payload-marker",
@@ -371,7 +401,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-encoded-canary-b64-ignore",
@@ -404,7 +437,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-decoded-override",
@@ -438,7 +474,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-tool-injection-instruction",
@@ -472,7 +511,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-fake-conversation",
@@ -505,7 +547,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-payload-in-url",
@@ -538,7 +583,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-markdown-link-instruction",
@@ -571,7 +619,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-tool-name-spoof",
@@ -604,7 +655,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-unicode-tag-smuggle",
@@ -637,7 +691,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-zero-width-flood",
@@ -670,7 +727,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-homoglyph-instruction",
@@ -703,7 +763,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-credentials-exfil-instruction",
@@ -738,7 +801,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-persistence-write",
@@ -773,7 +839,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-tool-disable",
@@ -807,7 +876,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-emotional-coercion",
@@ -840,7 +912,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-authority-spoof",
@@ -873,7 +948,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-refusal-suppress",
@@ -906,7 +984,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-payload-splitting",
@@ -939,7 +1020,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-code-block-instruction",
@@ -972,7 +1056,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     },
     {
       "id": "prompt-inject-language-switch-attack",
@@ -1005,7 +1092,10 @@
           "Workflow runtime skips rules restricted to non-workflow tool families",
           "The proxy skips tool-semantic rules and cannot inspect this matcher shape"
         ]
-      }
+      },
+      "except_paths": [
+        "tests/fixtures/guard_packs"
+      ]
     }
   ]
 }
