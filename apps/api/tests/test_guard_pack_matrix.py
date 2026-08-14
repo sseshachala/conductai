@@ -121,20 +121,27 @@ def _expand_tools(match_tool_str: str) -> set[str]:
     return tools
 
 
-def _matching_hook_rules(rules: list[dict], tool_name: str, tool_input: dict) -> list[dict]:
+def _matching_hook_rules(rules: list[dict], tool_name: str, tool_input: dict, ai_tool: str = "") -> list[dict]:
     """Return every hook-eligible rule that fires for this tool call.
 
     Mirrors CLI ``_check_policy`` semantics: rule matches when its
-    ``match_tool`` (expanded via tool_groups) contains ``tool_name`` AND
-    its ``match_pattern`` matches ``json.dumps(tool_input)``.
+    ``match_tool`` (expanded via tool_groups) contains ``tool_name``, its
+    ``match_ai_tool`` (if set) contains ``ai_tool``, AND its
+    ``match_pattern`` (if set) matches ``json.dumps(tool_input)``.
     """
     input_text = json.dumps(tool_input)
     tool_lc = tool_name.lower()
+    ai_lc = ai_tool.lower()
     matches: list[dict] = []
     for rule in rules:
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
             if tool_lc not in _expand_tools(match_tool):
+                continue
+        match_ai = rule.get("match_ai_tool")
+        if match_ai:
+            surfaces = [s.strip().lower() for s in match_ai.split(",")]
+            if not any(s in ai_lc for s in surfaces):
                 continue
         pat = rule.get("match_pattern")
         if pat:
@@ -188,9 +195,10 @@ def test_guard_pack_rule(case_tuple):
     # Route to hook matcher if the case describes a tool call, else proxy.
     if "tool_input" in case:
         tool_name = case.get("tool_name", "write")
+        ai_tool = case.get("ai_tool", "")
         tool_input = case["tool_input"]
-        matches = _matching_hook_rules(rules, tool_name, tool_input)
-        input_repr = f"{tool_name} {json.dumps(tool_input)[:120]}"
+        matches = _matching_hook_rules(rules, tool_name, tool_input, ai_tool)
+        input_repr = f"{tool_name}[{ai_tool}] {json.dumps(tool_input)[:120]}"
     else:
         provider = case.get("provider", "anthropic")
         model = case.get("model", "claude-3-5-sonnet-20241022")
