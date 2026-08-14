@@ -121,6 +121,7 @@ function ReviewCard({
   saveError: string | null
 }) {
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof GeneratedPolicy, string>>>({})
+  const [guidanceReviewed, setGuidanceReviewed] = useState(false)
 
   function set<K extends keyof GeneratedPolicy>(key: K, value: GeneratedPolicy[K]) {
     onChange({ ...policy, [key]: value })
@@ -290,9 +291,27 @@ function ReviewCard({
             <option value="approval">approval — block, require manual override</option>
           </select>
           <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, fontSize: 12, color: "var(--text-3)", cursor: "pointer" }}>
-            <input type="checkbox" checked={policy.inject_guidance} onChange={e => set("inject_guidance", e.target.checked)} style={{ margin: 0 }} />
+            <input type="checkbox" checked={policy.inject_guidance} onChange={e => { set("inject_guidance", e.target.checked); if (e.target.checked) setGuidanceReviewed(false) }} style={{ margin: 0 }} />
             Also inject guidance to model <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(message becomes a system-prompt safety net)</span>
           </label>
+          {policy.inject_guidance && !guidanceReviewed && (
+            <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8, borderLeft: "3px solid var(--warn)", fontSize: 12, color: "var(--text-2)" }}>
+              <div style={{ fontWeight: 500, marginBottom: 4 }}>Review the guidance the model will receive</div>
+              <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>
+                The message field below is prepended to the model&apos;s system prompt. Edit it if needed, then confirm.
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button type="button" onClick={() => setGuidanceReviewed(true)} className="btn btn-primary btn-sm">Confirm guidance</button>
+                <button type="button" onClick={() => { set("inject_guidance", false); setGuidanceReviewed(false) }} className="btn btn-ghost btn-sm">Cancel</button>
+              </div>
+            </div>
+          )}
+          {policy.inject_guidance && guidanceReviewed && (
+            <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--ok)" }}>
+              <span>✓ Guidance reviewed</span>
+              <button type="button" onClick={() => setGuidanceReviewed(false)} className="btn btn-ghost btn-sm" style={{ padding: "0 6px", fontSize: 11 }}>Edit</button>
+            </div>
+          )}
         </div>
 
         {/* match_pattern */}
@@ -361,9 +380,10 @@ function ReviewCard({
         <button
           type="button"
           onClick={handleSaveClick}
-          disabled={saving}
+          disabled={saving || (policy.inject_guidance && !guidanceReviewed)}
           className="btn btn-primary btn-sm"
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: saving ? 0.5 : 1, cursor: saving ? "not-allowed" : undefined }}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: saving || (policy.inject_guidance && !guidanceReviewed) ? 0.5 : 1, cursor: saving || (policy.inject_guidance && !guidanceReviewed) ? "not-allowed" : undefined }}
+          title={policy.inject_guidance && !guidanceReviewed ? "Confirm the guidance to save." : undefined}
         >
           {saving ? (
             <>
