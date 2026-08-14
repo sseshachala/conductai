@@ -42,6 +42,179 @@ function SectionHeader({ title, hint }: { title: string; hint?: string }) {
 }
 
 
+
+// ─── #1142 Phase 1 — per-action notifications card ────────────────────────────
+
+const NOTIF_ACTIONS: Array<{ k: "block" | "warn" | "audit" | "approval"; label: string; hint: string }> = [
+  { k: "block",    label: "Block",    hint: "loud by default — send to a security channel" },
+  { k: "warn",     label: "Warn",     hint: "quiet — a heads-up to a dev channel" },
+  { k: "audit",    label: "Audit",    hint: "silent by default — leave empty to skip" },
+  { k: "approval", label: "Approval", hint: "notify approvers when a rule requires human sign-off" },
+]
+
+interface NotifChannel {
+  id: string
+  action: "block" | "warn" | "audit" | "approval"
+  channel_type: string
+  channel_ref: string
+  enabled: boolean
+}
+
+interface NotifGroup { action: string; channels: NotifChannel[] }
+
+function NotificationsCard({
+  workspaceId,
+  isAdmin,
+}: {
+  workspaceId: string | null
+  isAdmin: boolean
+}) {
+  const { authFetch } = useAuthFetch()
+  const [groups, setGroups] = useState<NotifGroup[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [addingAction, setAddingAction] = useState<string | null>(null)
+  const [addChannel, setAddChannel] = useState("")
+  const [testResult, setTestResult] = useState<Record<string, { ok: boolean; err: string | null }>>({})
+
+  const load = useCallback(async () => {
+    if (!workspaceId) return
+    setLoading(true)
+    try {
+      const data = await guard.notifications.list(authFetch, workspaceId)
+      setGroups(data.groups as NotifGroup[])
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load notifications")
+    } finally {
+      setLoading(false)
+    }
+  }, [authFetch, workspaceId])
+
+  useEffect(() => { void load() }, [load])
+
+  async function handleAdd(action: "block" | "warn" | "audit" | "approval") {
+    if (!workspaceId || !addChannel.trim()) return
+    try {
+      await guard.notifications.create(authFetch, workspaceId, {
+        action,
+        channel_type: "slack",
+        channel_ref: addChannel.trim().replace(/^#+/, ""),
+      })
+      setAddingAction(null)
+      setAddChannel("")
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add channel")
+    }
+  }
+
+  async function handleRemove(id: string) {
+    if (!workspaceId) return
+    try {
+      await guard.notifications.remove(authFetch, id, workspaceId)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove channel")
+    }
+  }
+
+  async function handleTest(id: string) {
+    if (!workspaceId) return
+    try {
+      const res = await guard.notifications.test(authFetch, id, workspaceId)
+      setTestResult(prev => ({ ...prev, [id]: { ok: res.ok, err: res.error } }))
+      setTimeout(() => setTestResult(prev => { const { [id]: _drop, ...rest } = prev; return rest }), 4000)
+    } catch (e) {
+      setTestResult(prev => ({ ...prev, [id]: { ok: false, err: e instanceof Error ? e.message : "Test failed" } }))
+    }
+  }
+
+  if (loading) return <div className="card" style={{ padding: 20, fontSize: 12, color: "var(--text-muted)" }}>Loading notifications…</div>
+  if (error)   return <div className="card" style={{ padding: 20, fontSize: 12, color: "var(--err)" }}>{error}</div>
+
+  return (
+    <div className="card" style={{ overflow: "hidden" }}>
+      <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ width: 30, height: 30, borderRadius: 8, background: "#7c3aed", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            <path d="M14.5 2v20M9.5 2v20M2 14.5h20M2 9.5h20" />
+          </svg>
+        </span>
+        <div style={{ fontWeight: 650, fontSize: 14.5 }}>Slack channels by action</div>
+      </div>
+
+      <div style={{ padding: "4px 20px 16px" }}>
+        {NOTIF_ACTIONS.map((a, i) => {
+          const group = groups.find(g => g.action === a.k)
+          const channels = group?.channels ?? []
+          return (
+            <div key={a.k} style={{ padding: "13px 0", borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{a.label}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-3)" }}>{a.hint}</div>
+                </div>
+                {isAdmin && addingAction !== a.k && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => { setAddingAction(a.k); setAddChannel("") }}
+                  >
+                    + Slack channel
+                  </button>
+                )}
+              </div>
+
+              {channels.length === 0 && addingAction !== a.k && (
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", padding: "6px 0" }}>
+                  (none)
+                </div>
+              )}
+
+              {channels.map(ch => (
+                <div key={ch.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
+                  <span style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)", color: "var(--text)", flex: 1 }}>
+                    #{ch.channel_ref}
+                  </span>
+                  {testResult[ch.id] && (
+                    <span style={{ fontSize: 11, color: testResult[ch.id].ok ? "var(--ok)" : "var(--err)" }}>
+                      {testResult[ch.id].ok ? "sent ✓" : (testResult[ch.id].err ?? "failed")}
+                    </span>
+                  )}
+                  {isAdmin && (
+                    <>
+                      <button type="button" onClick={() => handleTest(ch.id)} className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11 }}>Test</button>
+                      <button type="button" onClick={() => handleRemove(ch.id)} className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11, color: "var(--err)" }}>Remove</button>
+                    </>
+                  )}
+                </div>
+              ))}
+
+              {addingAction === a.k && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, padding: "6px 8px", background: "var(--surface-2)", borderRadius: 6 }}>
+                  <span style={{ color: "var(--text-3)", fontSize: 12 }}>#</span>
+                  <input
+                    autoFocus
+                    value={addChannel}
+                    onChange={e => setAddChannel(e.target.value.replace(/^#+/, ""))}
+                    placeholder="compliance-hipaa"
+                    style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 8px", fontSize: 12.5 }}
+                    onKeyDown={e => { if (e.key === "Enter") void handleAdd(a.k); if (e.key === "Escape") { setAddingAction(null); setAddChannel("") } }}
+                  />
+                  <button type="button" onClick={() => void handleAdd(a.k)} className="btn btn-primary btn-sm" style={{ fontSize: 11 }}>Save</button>
+                  <button type="button" onClick={() => { setAddingAction(null); setAddChannel("") }} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>Cancel</button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+
 // ─── Toggle ───────────────────────────────────────────────────────────────────
 
 function GuardToggle({ on, onClick, disabled }: { on: boolean; onClick: () => void; disabled?: boolean }) {
@@ -337,7 +510,10 @@ function SettingsContent() {
           <SectionHeader title="Enforcement" hint="How Guard decides and when it fails safely" />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 20, alignItems: "stretch" }}>
               <div className="card" style={{ padding: "18px 20px", minWidth: 0 }}>
-                <div className="eyebrow" style={{ marginBottom: 4 }}>Agent guard <span style={{ color: "var(--text-muted)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>· workspace default</span></div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, gap: 8 }}>
+                  <div className="eyebrow">Agent guard <span style={{ color: "var(--text-muted)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>· workspace default</span></div>
+                  <a href="/playbooks" style={{ fontSize: 12, color: "var(--text-3)", textDecoration: "none", whiteSpace: "nowrap" }}>Learn more →</a>
+                </div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Applied to playbook runs (brain / tool / output blocks).</div>
                 {enforcementError && (
                   <div style={{ fontSize: 12, color: "var(--err)", background: "var(--err-bg)", border: "1px solid var(--err-bd)", borderRadius: 6, padding: "6px 10px", marginBottom: 10 }}>
@@ -477,99 +653,25 @@ function SettingsContent() {
               </div>
           </div>
 
-          <SectionHeader title="Notifications" hint="How your team hears about policy events" />
+          <SectionHeader title="Notifications" hint="Route policy events per action tier. Add multiple Slack channels — each one gets pinged whenever a rule with that action fires." />
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              <div className="card" style={{ overflow: "hidden" }}>
-                {/* Card header */}
-                <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ width: 30, height: 30, borderRadius: 8, background: "#7c3aed", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                    {/* Slack hash icon approximation */}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                      <path d="M14.5 2v20M9.5 2v20M2 14.5h20M2 9.5h20" />
-                    </svg>
-                  </span>
-                  <div style={{ fontWeight: 650, fontSize: 14.5 }}>Slack notifications</div>
-                  {isSlackConnected ? (
-                    <span className="sbadge ok" style={{ marginLeft: "auto" }}>
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--ok)", display: "inline-block" }} />
-                      Connected
-                    </span>
-                  ) : (
-                    <span className="sbadge" style={{ marginLeft: "auto", background: "var(--surface-2)", color: "var(--text-3)", border: "1px solid var(--border)" }}>
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--text-muted)", display: "inline-block" }} />
-                      Not connected
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ padding: "16px 20px" }}>
-                  {/* Alert channel — Slack integration picker */}
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>Alert channel</div>
-                  <SlackIntegrationPicker
-                    base={API}
-                    wsId={wsId ?? undefined}
-                    buildHeaders={async () => {
-                      const token = await getToken()
-                      const h: Record<string, string> = { "Content-Type": "application/json" }
-                      if (token) h["Authorization"] = `Bearer ${token}`
-                      return h
-                    }}
-                    integrationId={prefs.alert_slack_integration_id}
-                    channel={prefs.alert_channel ?? ""}
-                    isAdmin={isAdmin}
-                    onSave={async (integrationId, channel) => {
-                      await patchConfig({ alert_slack_integration_id: integrationId as any, alert_channel: channel || null })
-                      setPrefs(p => ({ ...p, alert_slack_integration_id: integrationId, alert_channel: channel || null }))
-                    }}
-                  />
-                  <div style={{ marginBottom: 10 }} />
-
-                  {/* Notification toggles */}
-                  {NOTIFS.map((x) => (
-                    <div
-                      key={x.k}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 14,
-                        padding: "13px 0",
-                        borderTop: "1px solid var(--border)",
-                      }}
-                    >
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13.5 }}>{x.t}</div>
-                        <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{x.d}</div>
-                      </div>
-                      <GuardToggle
-                        on={getNotifValue(x.k)}
-                        onClick={() => toggleNotif(x.k)}
-                        disabled={!isAdmin || x.locked}
-                      />
-                    </div>
-                  ))}
-
-                  <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 14, lineHeight: 1.5 }}>
-                    Spend alerts are deduped — Slack fires once per 5% increment, not on every tool call.
-                    Drift alerts (guardrail goes inactive) post to the same channel.
-                  </div>
-                </div>
-              </div>
-              <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: "var(--info)", marginBottom: 6 }}>Setup checklist</p>
-                <p style={{ fontSize: 12, color: "var(--info)", marginBottom: 4 }}>
-                  Invite the Conduct AI Slack bot to your alert channel:{" "}
-                  <code style={{ background: "rgba(37,99,235,.12)", padding: "1px 5px", borderRadius: 4, fontFamily: "ui-monospace,monospace" }}>
-                    /invite @ConductAI
-                  </code>
-                </p>
-                <p style={{ fontSize: 12, color: "var(--info)" }}>
-                  No Slack credentials yet?{" "}
-                  <a href="/settings/environments" style={{ color: "var(--info)", textDecoration: "underline" }}>
-                    Add them in Settings &rarr; Environments
-                  </a>
-                  .
-                </p>
-              </div>
+            <NotificationsCard workspaceId={wsId ?? null} isAdmin={isAdmin} />
+            <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "var(--info)", marginBottom: 6 }}>Setup checklist</p>
+              <p style={{ fontSize: 12, color: "var(--info)", marginBottom: 4 }}>
+                Invite the Conduct AI Slack bot to each channel:{" "}
+                <code style={{ background: "rgba(37,99,235,.12)", padding: "1px 5px", borderRadius: 4, fontFamily: "ui-monospace,monospace" }}>
+                  /invite @ConductAI
+                </code>
+              </p>
+              <p style={{ fontSize: 12, color: "var(--info)" }}>
+                No Slack credentials yet?{" "}
+                <a href="/settings/environments" style={{ color: "var(--info)", textDecoration: "underline" }}>
+                  Add them in Settings &rarr; Environments
+                </a>
+                .
+              </p>
+            </div>
           </div>
 
           <SectionHeader title="Cost & performance" hint="Token guardrails detected and enforced across your workspace" />

@@ -71,6 +71,30 @@ export interface GuardEnforcementCoverage {
   exception_expired: boolean
 }
 
+export type NotificationAction = "block" | "warn" | "audit" | "approval"
+export type NotificationChannelType = "slack" | "email" | "pagerduty" | "webhook"
+
+export interface NotificationChannel {
+  id: string
+  action: NotificationAction
+  channel_type: NotificationChannelType
+  integration_id: string | null
+  channel_ref: string
+  enabled: boolean
+  dedupe_window_sec: number
+  created_at: string
+}
+
+export interface NotificationGroup {
+  action: NotificationAction
+  channels: NotificationChannel[]
+}
+
+export interface NotificationList {
+  workspace_id: string
+  groups: NotificationGroup[]
+}
+
 export const guard = {
   config: {
     get: (f: AuthFetch, workspaceId?: string) => {
@@ -230,6 +254,32 @@ export const guard = {
       put(f, `${base()}/proxy-config`, body),
     push: (f: AuthFetch, body: Record<string, unknown>) =>
       post(f, `${base()}/proxy-config/push`, body),
+  },
+
+  notifications: {
+    list: (f: AuthFetch, workspaceId: string) =>
+      json<NotificationList>(f, `${base()}/notifications?workspace_id=${workspaceId}`),
+    create: (f: AuthFetch, workspaceId: string, body: {
+      action: NotificationAction
+      channel_type?: NotificationChannelType
+      integration_id?: string | null
+      channel_ref: string
+      dedupe_window_sec?: number
+    }) =>
+      post(f, `${base()}/notifications?workspace_id=${workspaceId}`, body),
+    patch: (f: AuthFetch, id: string, workspaceId: string, body: {
+      enabled?: boolean
+      channel_ref?: string
+      integration_id?: string | null
+      dedupe_window_sec?: number
+    }) =>
+      patch(f, `${base()}/notifications/${id}?workspace_id=${workspaceId}`, body),
+    remove: (f: AuthFetch, id: string, workspaceId: string) =>
+      f(`${base()}/notifications/${id}?workspace_id=${workspaceId}`, { method: "DELETE" }),
+    test: (f: AuthFetch, id: string, workspaceId: string) =>
+      json<{ ok: boolean; error: string | null }>(f, `${base()}/notifications/${id}/test?workspace_id=${workspaceId}`, {
+        method: "POST",
+      }),
   },
 
   mcp: {
