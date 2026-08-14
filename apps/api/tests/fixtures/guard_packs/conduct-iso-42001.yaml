@@ -1,0 +1,99 @@
+pack: conduct-iso-42001
+source: apps/api/app/modules/guard/skill_packs/conduct-iso-42001.json
+cases:
+- rule_id: iso42001-data-quality
+  scenario: unlabeled dataset flagged
+  tool_name: write
+  tool_input:
+    file_path: pipeline.py
+    content: train(unlabeled_dataset)
+  expected: warn
+- rule_id: iso42001-data-quality
+  scenario: unvalidated training data flagged
+  tool_name: write
+  tool_input:
+    file_path: pipeline.py
+    content: model.fit(unvalidated_training_data)
+  expected: warn
+- rule_id: iso42001-human-oversight
+  scenario: skip approval on deploy blocked
+  tool_name: write
+  tool_input:
+    file_path: pipeline.py
+    content: 'skip_approval = True  # auto_execute deploy'
+  expected: block
+- rule_id: iso42001-human-oversight
+  scenario: no-human-review on delete blocked
+  tool_name: write
+  tool_input:
+    file_path: pipeline.py
+    content: no_human_review = True; auto_delete(record)
+  expected: block
+- rule_id: iso42001-impact-assessment
+  scenario: kubectl apply for llm service flagged
+  tool_name: bash
+  tool_input:
+    command: kubectl apply -f llm_service.yaml
+  expected: warn
+- rule_id: iso42001-supplier-ai-control
+  scenario: importing unmanaged AI provider flagged
+  tool_name: write
+  tool_input:
+    file_path: client.py
+    content: import replicate
+  expected: warn
+- rule_id: iso42001-supplier-ai-control
+  scenario: from-import unmanaged provider flagged
+  tool_name: write
+  tool_input:
+    file_path: client.py
+    content: from together_ai import Client
+  expected: warn
+- rule_id: iso42001-data-minimisation
+  scenario: log_all flag flagged
+  tool_name: write
+  tool_input:
+    file_path: cfg.py
+    content: log_all = True
+  expected: warn
+- rule_id: iso42001-data-minimisation
+  scenario: save_all_prompts flag flagged
+  tool_name: write
+  tool_input:
+    file_path: cfg.py
+    content: save_all_prompts = True
+  expected: warn
+- rule_id: iso42001-monitoring-required
+  scenario: disabling monitoring blocked
+  tool_name: write
+  tool_input:
+    file_path: cfg.py
+    content: MONITORING_ENABLED = false
+  expected: block
+- rule_id: iso42001-monitoring-required
+  scenario: disabling observability blocked
+  tool_name: write
+  tool_input:
+    file_path: cfg.py
+    content: OBSERVABILITY_ENABLED = 0
+  expected: block
+- rule_id: iso42001-bias-testing
+  scenario: prod model release without bias eval flagged
+  tool_name: bash
+  tool_input:
+    command: push_to_prod; ship model checkpoint
+  expected: warn
+- rule_id: iso42001-incident-capture
+  scenario: swallowed Exception flagged
+  tool_name: write
+  tool_input:
+    file_path: worker.py
+    content: 'except Exception: pass'
+  expected: warn
+- rule_id: iso42001-data-minimisation
+  scenario: benign config write is allowed
+  tool_name: write
+  tool_input:
+    file_path: cfg.py
+    content: MAX_RETRIES = 3
+  expected: allow
