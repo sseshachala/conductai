@@ -22,7 +22,6 @@ ACTION_TO_EFFECT = {
     "warn": "permit",
     "audit": "permit",
     "approval": "permit",
-    "inject": "permit",
 }
 
 ACTION_TO_ADVICE = {
@@ -30,7 +29,6 @@ ACTION_TO_ADVICE = {
     "audit": None,       # audit is the default effect, no advice needed
     "block": None,       # forbid maps directly
     "approval": "approval",
-    "inject": "inject",
 }
 
 
@@ -103,6 +101,10 @@ def _build_annotations(rule: dict[str, Any]) -> list[str]:
     source_pack = rule.get("source_pack")
     if source_pack:
         out.append(f'@source_pack({_quote(source_pack)})')
+
+    # #1141: inject_guidance flag is orthogonal to action — emit as its own annotation.
+    if rule.get("inject_guidance"):
+        out.append('@inject_guidance("true")')
 
     return out
 
