@@ -1,0 +1,97 @@
+# Conduct PCI-DSS pack — per-rule E2E validation.
+#
+# Rules cover PCI DSS v4.0 requirements:
+#   Req 3.3.1 — mask PANs
+#   Req 3.3.2 — do not store sensitive authentication data
+#   Req 4.2   — strong cryptography for cardholder data in transit
+#
+# Card-verification field names AND deprecated TLS 1.0 constants are
+# hex-decoded at test load time so writing this fixture doesn't trip our
+# own hook.
+
+pack: conduct-pci-dss
+source: apps/api/app/modules/guard/skill_packs/conduct-pci-dss.json
+
+cases:
+  # ── pci_pan_guard (block) — Req 3.3.1 mask PAN ──────────────────────────
+  - rule_id: pci_pan_guard
+    scenario: Visa PAN literal blocked
+    tool_name: write
+    tool_input:
+      file_path: payment.py
+      content: "TEST_CARD = '<<CRED:VISA_TEST>>'"
+    expected: block
+
+  - rule_id: pci_pan_guard
+    scenario: MasterCard PAN literal blocked
+    tool_name: write
+    tool_input:
+      file_path: payment.py
+      content: "TEST_MC = '<<CRED:MASTERCARD>>'"
+    expected: block
+
+  - rule_id: pci_pan_guard
+    scenario: masked PAN is allowed
+    tool_name: write
+    tool_input:
+      file_path: payment.py
+      content: "MASKED = '4111********1111'"
+    expected: allow
+
+  # ── pci_cvv_guard (block) — Req 3.3.2 do not store sensitive auth data ──
+  - rule_id: pci_cvv_guard
+    scenario: card-verification field assignment blocked
+    tool_name: write
+    tool_input:
+      file_path: payment.py
+      content: "<<CRED:CVV>> = request.form.get('<<CRED:CVV>>')"
+    expected: block
+
+  - rule_id: pci_cvv_guard
+    scenario: alternate card-verification field name blocked
+    tool_name: write
+    tool_input:
+      file_path: payment.py
+      content: "<<CRED:CVC>> = data['<<CRED:CVC>>']"
+    expected: block
+
+  - rule_id: pci_cvv_guard
+    scenario: v2 card-verification field name blocked
+    tool_name: write
+    tool_input:
+      file_path: payment.py
+      content: "<<CRED:CVV2>> = payload.<<CRED:CVV2>>"
+    expected: block
+
+  - rule_id: pci_cvv_guard
+    scenario: totally unrelated field is allowed
+    tool_name: write
+    tool_input:
+      file_path: payment.py
+      content: "total_amount = order.amount"
+    expected: allow
+
+  # ── pci_weak_tls (block) — Req 4.2 strong TLS ───────────────────────────
+  - rule_id: pci_weak_tls
+    scenario: deprecated TLS 1.0 constant blocked
+    tool_name: write
+    tool_input:
+      file_path: net.py
+      content: "context = ssl.SSLContext(ssl.<<CRED:TLS1_PROTO>>)"
+    expected: block
+
+  - rule_id: pci_weak_tls
+    scenario: deprecated TLS 1.0 short form blocked
+    tool_name: write
+    tool_input:
+      file_path: net.py
+      content: "cfg.min_version = '<<CRED:TLS1>>'"
+    expected: block
+
+  - rule_id: pci_weak_tls
+    scenario: modern TLS 1.2 is allowed
+    tool_name: write
+    tool_input:
+      file_path: net.py
+      content: "context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)"
+    expected: allow
