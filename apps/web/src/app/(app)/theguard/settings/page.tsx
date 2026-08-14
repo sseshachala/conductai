@@ -283,7 +283,7 @@ function SettingsContent() {
 
           {/* Status ribbon — sync + resync side by side */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-              <div className="card" style={{ padding: "18px 20px" }}>
+              <div className="card" style={{ padding: "18px 20px", minWidth: 0 }}>
                 <div className="eyebrow" style={{ marginBottom: 12 }}>Sync status</div>
                 {toolCoverage === null ? (
                   <div style={{ height: 40 }} />
@@ -335,10 +335,10 @@ function SettingsContent() {
           </div>
 
           <SectionHeader title="Enforcement" hint="How Guard decides and when it fails safely" />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 20, alignItems: "start" }}>
-              <div className="card" style={{ padding: "18px 20px" }}>
-                <div className="eyebrow" style={{ marginBottom: 4 }}>Agent guard</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Enforce policy before every agentic AI step</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 20, alignItems: "stretch" }}>
+              <div className="card" style={{ padding: "18px 20px", minWidth: 0 }}>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>Agent guard <span style={{ color: "var(--text-muted)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>· workspace default</span></div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Applied to playbook runs (brain / tool / output blocks).</div>
                 {enforcementError && (
                   <div style={{ fontSize: 12, color: "var(--err)", background: "var(--err-bg)", border: "1px solid var(--err-bd)", borderRadius: 6, padding: "6px 10px", marginBottom: 10 }}>
                     {enforcementError}
@@ -396,10 +396,10 @@ function SettingsContent() {
                   </label>
                 ))}
               </div>
-              <div className="card" style={{ padding: "18px 20px" }}>
+              <div className="card" style={{ padding: "18px 20px", minWidth: 0 }}>
                 <div className="eyebrow" style={{ marginBottom: 4 }}>Outage behavior</div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                  What the CLI hook does when it can&apos;t reach Guard
+                  What the CLI hook does when it can&apos;t reach Guard. Applies to conduct-cli hook calls only.
                 </div>
                 {([
                   ["fail_open",   "Fail open",   "Tool calls proceed when Guard is unreachable. Recommended for most teams — keeps developers productive when our infra hiccups."],
@@ -453,10 +453,10 @@ function SettingsContent() {
                   Change takes effect on each machine the next time <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "0 4px", borderRadius: 3 }}>conduct guard sync</code> runs (≤60s for active CLI sessions).
                 </div>
               </div>
-              <div className="card" style={{ padding: "18px 20px" }}>
+              <div className="card" style={{ padding: "18px 20px", minWidth: 0 }}>
                 <div className="eyebrow" style={{ marginBottom: 4 }}>Policy error behavior</div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                  What Guard does if policy evaluation throws an unexpected error
+                  What Guard does if policy evaluation throws. Applies across proxy, MCP, and playbook runtime.
                 </div>
                 <label style={{ display: "flex", gap: 11, alignItems: "flex-start", cursor: isAdmin ? "pointer" : "default" }}
                   onClick={async () => {
