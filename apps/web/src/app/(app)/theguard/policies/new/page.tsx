@@ -38,6 +38,7 @@ interface GeneratedPolicy {
   match_path_pattern: string
   action: PolicyAction
   inject_guidance: boolean
+  guidance: string
   message: string
 }
 
@@ -296,13 +297,20 @@ function ReviewCard({
           </label>
           {policy.inject_guidance && !guidanceReviewed && (
             <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8, borderLeft: "3px solid var(--warn)", fontSize: 12, color: "var(--text-2)" }}>
-              <div style={{ fontWeight: 500, marginBottom: 4 }}>Review the guidance the model will receive</div>
-              <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>
-                The message field below is prepended to the model&apos;s system prompt. Edit it if needed, then confirm.
+              <div style={{ fontWeight: 500, marginBottom: 4 }}>Guidance to model</div>
+              <div style={{ color: "var(--text-muted)", marginBottom: 6 }}>
+                Prepended to the model&apos;s system prompt. Write model-directed text (imperative, one paragraph).
               </div>
+              <textarea
+                value={policy.guidance || policy.message}
+                onChange={e => set("guidance", e.target.value)}
+                rows={4}
+                placeholder="e.g. Do not echo any PII verbatim. Refer to individuals by role only."
+                style={{ ...inputStyle, fontFamily: "var(--font-mono, monospace)", fontSize: 12, marginBottom: 8 }}
+              />
               <div style={{ display: "flex", gap: 6 }}>
-                <button type="button" onClick={() => setGuidanceReviewed(true)} className="btn btn-primary btn-sm">Confirm guidance</button>
-                <button type="button" onClick={() => { set("inject_guidance", false); setGuidanceReviewed(false) }} className="btn btn-ghost btn-sm">Cancel</button>
+                <button type="button" onClick={() => { if (!policy.guidance) set("guidance", policy.message); setGuidanceReviewed(true) }} className="btn btn-primary btn-sm">Confirm guidance</button>
+                <button type="button" onClick={() => { set("inject_guidance", false); set("guidance", ""); setGuidanceReviewed(false) }} className="btn btn-ghost btn-sm">Cancel</button>
               </div>
             </div>
           )}
@@ -421,7 +429,7 @@ export default function NewPolicyPage() {
   const [policy, setPolicy] = useState<GeneratedPolicy>({
     rule_id: "", description: "", persona: initialPersona,
     match_tool: "*", match_ai_tool: "", match_pattern: "",
-    match_path_pattern: "", action: "block", inject_guidance: false, message: "",
+    match_path_pattern: "", action: "block", inject_guidance: false, guidance: "", message: "",
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -437,6 +445,7 @@ export default function NewPolicyPage() {
         match_pattern: policy.match_pattern.trim(),
         action: policy.action,
         inject_guidance: policy.inject_guidance,
+        guidance: policy.guidance.trim() || undefined,
         message: policy.message.trim(),
         enabled: true,
         builtin: false,
