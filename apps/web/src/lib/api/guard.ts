@@ -14,6 +14,7 @@ export interface GuardPolicy {
   match_path_pattern: string | null
   action: GuardPolicyAction
   inject_guidance: boolean
+  guidance: string | null
   message: string | null
   enabled: boolean
   builtin: boolean
@@ -38,6 +39,7 @@ export interface GuardPolicyPatch {
   match_path_pattern?: string
   action?: GuardPolicyAction
   inject_guidance?: boolean
+  guidance?: string
   message?: string
   reason?: string
   expires_at?: string

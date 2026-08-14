@@ -459,6 +459,7 @@ interface AddRuleFormData {
   match_path_pattern: string
   action: PolicyAction
   inject_guidance: boolean
+  guidance: string
   message: string
   persona: "agent" | "proxy"
 }
@@ -472,6 +473,7 @@ const EMPTY_FORM: AddRuleFormData = {
   match_path_pattern: "",
   action: "block",
   inject_guidance: false,
+  guidance: "",
   message: "",
   persona: "agent",
 }
@@ -723,13 +725,20 @@ function AddRuleModal({
           </label>
           {form.inject_guidance && !guidanceReviewed && (
             <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8, borderLeft: "3px solid var(--warn)", fontSize: 12, color: "var(--text-2)" }}>
-              <div style={{ fontWeight: 500, marginBottom: 4 }}>Review the guidance the model will receive</div>
-              <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>
-                The rule message below is prepended to the model&apos;s system prompt. Edit it if needed, then confirm.
+              <div style={{ fontWeight: 500, marginBottom: 4 }}>Guidance to model</div>
+              <div style={{ color: "var(--text-muted)", marginBottom: 6 }}>
+                Prepended to the model&apos;s system prompt. Write model-directed text (imperative, one paragraph) — distinct from the human-facing message.
               </div>
+              <textarea
+                value={form.guidance || form.message}
+                onChange={e => set("guidance", e.target.value)}
+                rows={4}
+                placeholder="e.g. Do not echo any PII verbatim. Refer to individuals by role only."
+                style={{ ...fieldStyle, fontFamily: "var(--font-mono, monospace)", fontSize: 12, marginBottom: 8 }}
+              />
               <div style={{ display: "flex", gap: 6 }}>
-                <button type="button" onClick={() => setGuidanceReviewed(true)} className="btn btn-primary btn-sm">Confirm guidance</button>
-                <button type="button" onClick={() => { set("inject_guidance", false); setGuidanceReviewed(false) }} className="btn btn-ghost btn-sm">Cancel</button>
+                <button type="button" onClick={() => { if (!form.guidance) set("guidance", form.message); setGuidanceReviewed(true) }} className="btn btn-primary btn-sm">Confirm guidance</button>
+                <button type="button" onClick={() => { set("inject_guidance", false); set("guidance", ""); setGuidanceReviewed(false) }} className="btn btn-ghost btn-sm">Cancel</button>
               </div>
             </div>
           )}
@@ -885,6 +894,7 @@ function PoliciesContent() {
   const [editAction, setEditAction] = useState<PolicyAction>("block")
   const [editInjectGuidance, setEditInjectGuidance] = useState(false)
   const [editGuidanceReviewed, setEditGuidanceReviewed] = useState(true)
+  const [editGuidance, setEditGuidance] = useState("")
   const [editMessage, setEditMessage] = useState("")
   const [editSaving, setEditSaving] = useState(false)
   const [exceptionRequest, setExceptionRequest] = useState<PolicyExceptionRequest | null>(null)
@@ -971,6 +981,7 @@ function PoliciesContent() {
     const patch: GuardPolicyPatch = {}
     if (editAction !== policy.action) patch.action = editAction
     if (editInjectGuidance !== (policy.inject_guidance ?? false)) patch.inject_guidance = editInjectGuidance
+    if (editGuidance !== (policy.guidance ?? "")) patch.guidance = editGuidance
     if (editMessage !== (policy.message ?? "")) patch.message = editMessage
     if (Object.keys(patch).length === 0) {
       setEditId(null)
@@ -1048,6 +1059,7 @@ function PoliciesContent() {
         match_pattern: formData.match_pattern.trim(),
         action: formData.action,
         inject_guidance: formData.inject_guidance,
+        guidance: formData.guidance.trim() || undefined,
         message: formData.message.trim(),
         enabled: true,
         builtin: false,
@@ -1257,7 +1269,7 @@ function PoliciesContent() {
                         </button>
                       )}
                       {!locked && canWrite && p.builtin && (
-                        <button type="button" onClick={() => { setEditId(editId === p.id ? null : p.id); setEditAction(p.action); setEditInjectGuidance(p.inject_guidance ?? false); setEditGuidanceReviewed(true); setEditMessage(p.message ?? "") }} style={{ background: "none", border: "none", cursor: "pointer", color: editId === p.id ? "var(--accent)" : "var(--text-muted)", padding: 2, flexShrink: 0 }} title="Override">
+                        <button type="button" onClick={() => { setEditId(editId === p.id ? null : p.id); setEditAction(p.action); setEditInjectGuidance(p.inject_guidance ?? false); setEditGuidanceReviewed(true); setEditGuidance(p.guidance ?? ""); setEditMessage(p.message ?? "") }} style={{ background: "none", border: "none", cursor: "pointer", color: editId === p.id ? "var(--accent)" : "var(--text-muted)", padding: 2, flexShrink: 0 }} title="Override">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </button>
                       )}
@@ -1292,13 +1304,20 @@ function PoliciesContent() {
                         </label>
                         {editInjectGuidance && !editGuidanceReviewed && (
                           <div style={{ padding: "8px 10px", background: "var(--surface)", borderRadius: 6, borderLeft: "3px solid var(--warn)", fontSize: 11.5, color: "var(--text-2)" }}>
-                            <div style={{ fontWeight: 500, marginBottom: 3 }}>Review the guidance the model will receive</div>
+                            <div style={{ fontWeight: 500, marginBottom: 3 }}>Guidance to model</div>
                             <div style={{ color: "var(--text-muted)", marginBottom: 6 }}>
-                              The message below is prepended to the model&apos;s system prompt.
+                              Prepended to the model&apos;s system prompt. Model-directed text (imperative).
                             </div>
+                            <textarea
+                              value={editGuidance || editMessage}
+                              onChange={e => setEditGuidance(e.target.value)}
+                              rows={3}
+                              placeholder="e.g. Do not reveal API keys. Redact before retry."
+                              style={{ ...fieldStyle, fontFamily: "var(--font-mono, monospace)", fontSize: 11.5, marginBottom: 6 }}
+                            />
                             <div style={{ display: "flex", gap: 6 }}>
-                              <button type="button" onClick={() => setEditGuidanceReviewed(true)} className="btn btn-primary btn-sm">Confirm</button>
-                              <button type="button" onClick={() => { setEditInjectGuidance(false); setEditGuidanceReviewed(true) }} className="btn btn-ghost btn-sm">Cancel</button>
+                              <button type="button" onClick={() => { if (!editGuidance) setEditGuidance(editMessage); setEditGuidanceReviewed(true) }} className="btn btn-primary btn-sm">Confirm</button>
+                              <button type="button" onClick={() => { setEditInjectGuidance(false); setEditGuidance(""); setEditGuidanceReviewed(true) }} className="btn btn-ghost btn-sm">Cancel</button>
                             </div>
                           </div>
                         )}
