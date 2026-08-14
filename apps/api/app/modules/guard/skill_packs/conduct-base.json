@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.12.0",
+  "version": "2.12.1",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "rules": [
@@ -478,7 +478,7 @@
       "match_tool": "filesystem-write,workflow",
       "match_pattern": "sk_live_[0-9a-zA-Z]{24,}",
       "action": "block",
-      "message": "Stripe live key detected in file. Blocked \u2014 load from environment or secrets manager.",
+      "message": "Stripe live key detected in file. Blocked to prevent credential leak. Remove the sk_live_* literal from source, load from environment via os.environ['STRIPE_LIVE_KEY'] or your secrets manager. For local development, use Stripe test-mode keys (sk_test_*) which this rule does not block.",
       "severity": "critical",
       "frameworks": [
         "PCI_DSS:3.5"
@@ -501,7 +501,8 @@
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Runtime evaluates serialized workflow state, not every external tool or model interaction"
         ]
-      }
+      },
+      "inject_guidance": true
     },
     {
       "id": "secret-anthropic",
