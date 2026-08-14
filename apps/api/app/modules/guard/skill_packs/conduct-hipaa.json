@@ -1,53 +1,17 @@
 {
   "slug": "conduct-hipaa",
   "name": "Conduct HIPAA",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "tier": "paid",
   "description": "HIPAA PHI protection rules",
   "rules": [
-    {
-      "id": "hipaa_phi_field",
-      "description": "Warn on PHI field access (HIPAA §164.312)",
-      "match_tool": "edit,write,bash",
-      "match_pattern": "(patient_id|ssn|dob|date_of_birth|medical_record)",
-      "action": "warn",
-      "message": "PHI field — ensure encrypted at rest and access is logged.",
-      "persona_affinity": [
-        "agent"
-      ],
-      "frameworks": [
-        "HIPAA:164.514",
-        "GDPR:Art32",
-        "ISO_42001:8.11"
-      ],
-      "severity": "high",
-      "recommendation": "De-identify PHI per Safe Harbor or Expert Determination methods before processing. Document the de-identification approach.",
-      "iso_control": "A.8.11",
-      "enforcement": {
-        "version": 1,
-        "proxy": "not_supported",
-        "hook": "advisory",
-        "mcp": "advisory",
-        "runtime": "not_supported",
-        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
-        "requires": [
-          "A supported pre-tool hook is installed, synced, and invoked before the action",
-          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
-        ],
-        "known_limitations": [
-          "Hook enforcement depends on the AI tool emitting supported structured hook events",
-          "MCP cannot enforce actions the agent does not submit to guard_check",
-          "Workflow runtime skips rules restricted to non-workflow tool families"
-        ]
-      }
-    },
     {
       "id": "hipaa_http_phi",
       "description": "Block PHI over plain HTTP",
       "match_tool": "edit,write,bash",
       "match_pattern": "http://.*patient|http://.*health",
       "action": "block",
-      "message": "PHI over plain HTTP is a HIPAA violation — use HTTPS.",
+      "message": "PHI over plain HTTP is a HIPAA violation \u2014 use HTTPS.",
       "persona_affinity": [
         "agent"
       ],
@@ -83,7 +47,7 @@
       "match_tool": "edit,write",
       "match_pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
       "action": "block",
-      "message": "Social Security Number detected — never store in source.",
+      "message": "Social Security Number detected \u2014 never store in source.",
       "persona_affinity": [
         "agent"
       ],
@@ -102,6 +66,42 @@
         "mcp": "conditional",
         "runtime": "not_supported",
         "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "hipaa_phi_field",
+      "description": "Warn on PHI field access (HIPAA \u00a7164.312)",
+      "match_tool": "edit,write,bash",
+      "match_pattern": "(patient_id|ssn|dob|date_of_birth|medical_record)",
+      "action": "warn",
+      "message": "PHI field \u2014 ensure encrypted at rest and access is logged.",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "HIPAA:164.514",
+        "GDPR:Art32",
+        "ISO_42001:8.11"
+      ],
+      "severity": "high",
+      "recommendation": "De-identify PHI per Safe Harbor or Expert Determination methods before processing. Document the de-identification approach.",
+      "iso_control": "A.8.11",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "advisory",
+        "mcp": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
         "requires": [
           "A supported pre-tool hook is installed, synced, and invoked before the action",
           "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"

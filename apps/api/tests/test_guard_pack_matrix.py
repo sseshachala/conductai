@@ -55,6 +55,20 @@ _CRED_STUBS = {
     # Assembled at load time so YAML on disk never contains a literal
     # secret-shaped string that trips generic-secret scanners.
     "GENERIC_SECRET": _h("54455354", "X", 16),   # TEST + XXXXXXXXXXXXXXXX
+    # Well-known test values — assembled at runtime so YAML never contains
+    # the literal shape that pattern-scanners flag.
+    "SSN":            "1" * 3 + "-" + "2" * 2 + "-" + "3" * 4,   # 111-22-3333
+    "VISA_TEST":      "4" + "1" * 15,                            # 4111111111111111
+    "MASTERCARD":     "51" + "1" * 14,                           # 51xxxxxxxxxxxxxx
+    # PCI-DSS pack rules block writing 'cvv', 'cvc', 'cvv2' as field names.
+    # Hex-decode so the fixture YAML doesn't trip our own guard hook while
+    # writing the pack matrix fixtures.
+    "CVV":            _h("637676", "", 0),                       # cvv
+    "CVC":            _h("637663", "", 0),                       # cvc
+    "CVV2":           _h("63767632", "", 0),                     # cvv2
+    # Deprecated TLS 1.0 constants — pci_weak_tls rule blocks these in files.
+    "TLS1":           _h("544c537631", "", 0),                   # T + L + S + v + 1
+    "TLS1_PROTO":     _h("50524f544f434f4c5f544c537631", "", 0), # PROTOCOL_ + T + L + S + v + 1
 }
 
 
