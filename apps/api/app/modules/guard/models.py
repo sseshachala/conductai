@@ -118,6 +118,34 @@ class GuardSession(Base):
     session_parser = Column(String(30), nullable=True)        # claude_code_v1|codex_v1
 
 
+class GuardNotificationChannel(Base):
+    """Per-action notification routing (#1142 Phase 1).
+
+    One row per (workspace, action, channel_type, channel_ref). Phase 1 supports
+    channel_type='slack'; Phase 2 adds email/pagerduty/webhook.
+
+    Legacy guard_config.alert_channel + notify_on_block/notify_on_budget stay in
+    place; the router auto-seeds this table from them on first read.
+    """
+
+    __tablename__ = "guard_notification_channels"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    action = Column(String(20), nullable=False)  # block | warn | audit | approval
+    channel_type = Column(String(20), nullable=False, default="slack")
+    integration_id = Column(UUID(as_uuid=True), nullable=True)
+    channel_ref = Column(String(200), nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True)
+    dedupe_window_sec = Column(Integer, nullable=False, default=300)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
 class GuardAuditEvent(Base):
     __tablename__ = "guard_audit_events"
 

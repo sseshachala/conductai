@@ -170,13 +170,19 @@ def notify_guard_block(
     user_email: str | None, tool: str | None = None,
     provider: str | None = None, source: str = "hook",
 ) -> None:
-    """Single entry point for Guard block/warn Slack notifications."""
+    """Single entry point for Guard block/warn Slack notifications.
+
+    Fans out via the #1142 per-action-tier notification channels table when any
+    rows exist for this workspace + action; falls back to the legacy single-
+    channel setup on guard_config otherwise. Once the operator adds a channel
+    via /theguard/settings > Notifications, that new config takes over.
+    """
     import uuid as _uuid
     from app.modules.guard.models import GuardConfig as _GC
+    from app.modules.guard.routers.notifications import resolve_channels as _resolve_channels
     ws = _uuid.UUID(str(workspace_id)) if not isinstance(workspace_id, _uuid.UUID) else workspace_id
     cfg = db.query(_GC).filter(_GC.workspace_id == ws).first()
-    if not cfg or not cfg.notify_on_block:
-        return
+
     icon = "🚨" if decision == "blocked" else "⚠️"
     lines = [f"{icon} *Guard {decision}* — `{rule_id or source}`"]
     if user_email:
@@ -185,7 +191,40 @@ def notify_guard_block(
         lines.append(f"• Tool: `{tool}`")
     if provider:
         lines.append(f"• Provider: `{provider}` · via {source}")
-    _send_guard_slack(db, cfg, "\n".join(lines))
+    text_msg = "\n".join(lines)
+
+    # #1142 Phase 1 — fan out to per-action channels if configured.
+    action = "block" if decision == "blocked" else "warn" if decision == "warned" else "audit"
+    channels = _resolve_channels(db, ws, action)
+    if channels:
+        _fanout_slack(db, ws, channels, text_msg)
+        return
+
+    # Legacy fallback — single alert_channel gated by notify_on_block.
+    if not cfg or not cfg.notify_on_block:
+        return
+    _send_guard_slack(db, cfg, text_msg)
+
+
+def _fanout_slack(db: Session, workspace_id, channels, text_msg: str) -> None:
+    """Post text_msg to every Slack channel in `channels`. Silently skips any
+    that lack credentials or fail — one bad channel must not block the others."""
+    from app.core.credentials import get_credential
+    try:
+        creds = get_credential(db, str(workspace_id), "slack")
+        token = (creds or {}).get("token") or (creds or {}).get("bot_token", "")
+        if not token:
+            return
+        from app.runtime.integrations.slack import post_message
+        for ch in channels:
+            if ch.channel_type != "slack":
+                continue
+            try:
+                post_message(token=token, channel=ch.channel_ref, text=text_msg)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def _send_guard_slack(db: Session, config: GuardConfig, text_msg: str) -> None:
