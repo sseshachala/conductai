@@ -28,6 +28,20 @@ interface TeamPrefs {
 }
 
 
+// ─── Section header (reused across all groupings) ─────────────────────────────
+
+function SectionHeader({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div style={{ margin: "28px 0 12px" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em" }}>
+        {title}
+      </div>
+      {hint && <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{hint}</div>}
+    </div>
+  )
+}
+
+
 // ─── Toggle ───────────────────────────────────────────────────────────────────
 
 function GuardToggle({ on, onClick, disabled }: { on: boolean; onClick: () => void; disabled?: boolean }) {
@@ -267,11 +281,204 @@ function SettingsContent() {
             </div>
           )}
 
-          {/* Two-column layout */}
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, alignItems: "start" }}>
+          {/* Status ribbon — sync + resync side by side */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              <div className="card" style={{ padding: "18px 20px" }}>
+                <div className="eyebrow" style={{ marginBottom: 12 }}>Sync status</div>
+                {toolCoverage === null ? (
+                  <div style={{ height: 40 }} />
+                ) : (() => {
+                  const total = toolCoverage.length
+                  const synced = toolCoverage.filter(dev =>
+                    dev.detected_tools.every(t =>
+                      dev.mcp_registered.includes(t) || dev.hook_registered.includes(t)
+                    )
+                  ).length
+                  const allGood = total === 0 || synced === total
+                  return (
+                    <>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                        <span style={{ fontSize: 26, fontWeight: 700, color: allGood ? "var(--ok)" : "var(--warn)" }}>
+                          {total === 0 ? "—" : `${synced}/${total}`}
+                        </span>
+                        <span style={{ fontSize: 13, color: "var(--text-3)" }}>machines in sync</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
+                        Policies propagate within <strong style={{ color: "var(--text-2)" }}>60s</strong> of a change.
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 14, fontSize: 12.5, color: allGood ? "var(--ok)" : "var(--warn)" }}>
+                        <span className="conduct-pulse-dot" style={{ background: allGood ? "var(--ok)" : "var(--warn)" }} />
+                        {total === 0 ? "No developers connected yet" : allGood ? "All developers up to date" : `${total - synced} developer${total - synced !== 1 ? "s" : ""} need sync — run: conduct guard sync`}
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+              <div className="card" style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 4v6h-6M1 20v-6h6" />
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Re-sync all machines</div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Force a policy push now</div>
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={!isAdmin || resyncing}
+                  style={{ opacity: isAdmin ? 1 : 0.5 }}
+                  onClick={handleResync}
+                >
+                  {resyncing ? "Syncing…" : resyncDone ? "Synced" : "Re-sync"}
+                </button>
+              </div>
+          </div>
 
-            {/* LEFT — Slack notifications */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <SectionHeader title="Enforcement" hint="How Guard decides and when it fails safely" />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 20, alignItems: "start" }}>
+              <div className="card" style={{ padding: "18px 20px" }}>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>Agent guard</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Enforce policy before every agentic AI step</div>
+                {enforcementError && (
+                  <div style={{ fontSize: 12, color: "var(--err)", background: "var(--err-bg)", border: "1px solid var(--err-bd)", borderRadius: 6, padding: "6px 10px", marginBottom: 10 }}>
+                    {enforcementError}
+                  </div>
+                )}
+                {([
+                  ["block", "Block",      "Run halts — the AI step never executes"],
+                  ["warn",  "Warn",       "Flagged in the run trace, step proceeds"],
+                  ["audit", "Audit only", "Recorded silently, no visible interruption"],
+                ] as const).map(([k, t, d], i) => (
+                  <label
+                    key={k}
+                    style={{
+                      display: "flex",
+                      gap: 11,
+                      padding: "10px 0",
+                      borderTop: i > 0 ? "1px solid var(--border)" : "none",
+                      cursor: isAdmin ? "pointer" : "default",
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <span
+                      onClick={async () => {
+                        if (!isAdmin || enforcementMode === k) return
+                        const prev = enforcementMode
+                        setEnforcementMode(k)
+                        setEnforcementError(null)
+                        try {
+                          await patchConfig({ enforcement_mode: k } as never)
+                        } catch (e) {
+                          setEnforcementMode(prev)
+                          setEnforcementError(e instanceof Error ? e.message : "Failed to save enforcement mode")
+                        }
+                      }}
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: "50%",
+                        border: `2px solid ${enforcementMode === k ? "var(--accent)" : "var(--border-2)"}`,
+                        display: "grid",
+                        placeItems: "center",
+                        marginTop: 2,
+                        flexShrink: 0,
+                        cursor: isAdmin ? "pointer" : "default",
+                      }}
+                    >
+                      {enforcementMode === k && (
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)" }} />
+                      )}
+                    </span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{d}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <div className="card" style={{ padding: "18px 20px" }}>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>Outage behavior</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                  What the CLI hook does when it can&apos;t reach Guard
+                </div>
+                {([
+                  ["fail_open",   "Fail open",   "Tool calls proceed when Guard is unreachable. Recommended for most teams — keeps developers productive when our infra hiccups."],
+                  ["fail_closed", "Fail-Closed Mode", "Tool calls are blocked with rule_id=guard-unavailable until Guard responds. Use for regulated workloads where missing a policy check is worse than a paused build."],
+                ] as const).map(([k, t, d], i) => (
+                  <label
+                    key={k}
+                    style={{
+                      display: "flex",
+                      gap: 11,
+                      padding: "10px 0",
+                      borderTop: i > 0 ? "1px solid var(--border)" : "none",
+                      cursor: isAdmin ? "pointer" : "default",
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <span
+                      onClick={async () => {
+                        if (!isAdmin || failMode === k) return
+                        const prev = failMode
+                        setFailMode(k)
+                        try {
+                          await patchConfig({ fail_mode: k } as never)
+                        } catch {
+                          setFailMode(prev)
+                        }
+                      }}
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: "50%",
+                        border: `2px solid ${failMode === k ? "var(--accent)" : "var(--border-2)"}`,
+                        display: "grid",
+                        placeItems: "center",
+                        marginTop: 2,
+                        flexShrink: 0,
+                        cursor: isAdmin ? "pointer" : "default",
+                      }}
+                    >
+                      {failMode === k && (
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)" }} />
+                      )}
+                    </span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{d}</div>
+                    </div>
+                  </label>
+                ))}
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Change takes effect on each machine the next time <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "0 4px", borderRadius: 3 }}>conduct guard sync</code> runs (≤60s for active CLI sessions).
+                </div>
+              </div>
+              <div className="card" style={{ padding: "18px 20px" }}>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>Policy error behavior</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                  What Guard does if policy evaluation throws an unexpected error
+                </div>
+                <label style={{ display: "flex", gap: 11, alignItems: "flex-start", cursor: isAdmin ? "pointer" : "default" }}
+                  onClick={async () => {
+                    if (!isAdmin) return
+                    const next = !denyOnError
+                    setDenyOnError(next)
+                    try { await patchConfig({ deny_on_error: next } as never) }
+                    catch { setDenyOnError(!next) }
+                  }}>
+                  <GuardToggle on={denyOnError} onClick={() => {}} disabled={!isAdmin} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>Fail closed on error</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                      Block the request and write an audit entry if the policy engine throws. Recommended. Disable only if you prefer fail-open during policy engine incidents.
+                    </div>
+                  </div>
+                </label>
+              </div>
+          </div>
+
+          <SectionHeader title="Notifications" hint="How your team hears about policy events" />
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               <div className="card" style={{ overflow: "hidden" }}>
                 {/* Card header */}
                 <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
@@ -347,8 +554,6 @@ function SettingsContent() {
                   </div>
                 </div>
               </div>
-
-              {/* Setup checklist */}
               <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>
                 <p style={{ fontSize: 12, fontWeight: 600, color: "var(--info)", marginBottom: 6 }}>Setup checklist</p>
                 <p style={{ fontSize: 12, color: "var(--info)", marginBottom: 4 }}>
@@ -365,214 +570,9 @@ function SettingsContent() {
                   .
                 </p>
               </div>
-            </div>
-
-            {/* RIGHT — Sync status + Agent guard + Re-sync */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-              {/* Sync status — real data from /guard/developer-tools */}
-              <div className="card" style={{ padding: "18px 20px" }}>
-                <div className="eyebrow" style={{ marginBottom: 12 }}>Sync status</div>
-                {toolCoverage === null ? (
-                  <div style={{ height: 40 }} />
-                ) : (() => {
-                  const total = toolCoverage.length
-                  const synced = toolCoverage.filter(dev =>
-                    dev.detected_tools.every(t =>
-                      dev.mcp_registered.includes(t) || dev.hook_registered.includes(t)
-                    )
-                  ).length
-                  const allGood = total === 0 || synced === total
-                  return (
-                    <>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                        <span style={{ fontSize: 26, fontWeight: 700, color: allGood ? "var(--ok)" : "var(--warn)" }}>
-                          {total === 0 ? "—" : `${synced}/${total}`}
-                        </span>
-                        <span style={{ fontSize: 13, color: "var(--text-3)" }}>machines in sync</span>
-                      </div>
-                      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
-                        Policies propagate within <strong style={{ color: "var(--text-2)" }}>60s</strong> of a change.
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 14, fontSize: 12.5, color: allGood ? "var(--ok)" : "var(--warn)" }}>
-                        <span className="conduct-pulse-dot" style={{ background: allGood ? "var(--ok)" : "var(--warn)" }} />
-                        {total === 0 ? "No developers connected yet" : allGood ? "All developers up to date" : `${total - synced} developer${total - synced !== 1 ? "s" : ""} need sync — run: conduct guard sync`}
-                      </div>
-                    </>
-                  )
-                })()}
-              </div>
-
-              {/* Agent guard */}
-              <div className="card" style={{ padding: "18px 20px" }}>
-                <div className="eyebrow" style={{ marginBottom: 4 }}>Agent guard</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Enforce policy before every agentic AI step</div>
-                {enforcementError && (
-                  <div style={{ fontSize: 12, color: "var(--err)", background: "var(--err-bg)", border: "1px solid var(--err-bd)", borderRadius: 6, padding: "6px 10px", marginBottom: 10 }}>
-                    {enforcementError}
-                  </div>
-                )}
-                {([
-                  ["block", "Block",      "Run halts — the AI step never executes"],
-                  ["warn",  "Warn",       "Flagged in the run trace, step proceeds"],
-                  ["audit", "Audit only", "Recorded silently, no visible interruption"],
-                ] as const).map(([k, t, d], i) => (
-                  <label
-                    key={k}
-                    style={{
-                      display: "flex",
-                      gap: 11,
-                      padding: "10px 0",
-                      borderTop: i > 0 ? "1px solid var(--border)" : "none",
-                      cursor: isAdmin ? "pointer" : "default",
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <span
-                      onClick={async () => {
-                        if (!isAdmin || enforcementMode === k) return
-                        const prev = enforcementMode
-                        setEnforcementMode(k)
-                        setEnforcementError(null)
-                        try {
-                          await patchConfig({ enforcement_mode: k } as never)
-                        } catch (e) {
-                          setEnforcementMode(prev)
-                          setEnforcementError(e instanceof Error ? e.message : "Failed to save enforcement mode")
-                        }
-                      }}
-                      style={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: "50%",
-                        border: `2px solid ${enforcementMode === k ? "var(--accent)" : "var(--border-2)"}`,
-                        display: "grid",
-                        placeItems: "center",
-                        marginTop: 2,
-                        flexShrink: 0,
-                        cursor: isAdmin ? "pointer" : "default",
-                      }}
-                    >
-                      {enforcementMode === k && (
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)" }} />
-                      )}
-                    </span>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{d}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-
-              {/* Outage behavior — fail-open vs fail-closed */}
-              <div className="card" style={{ padding: "18px 20px" }}>
-                <div className="eyebrow" style={{ marginBottom: 4 }}>Outage behavior</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                  What the CLI hook does when it can&apos;t reach Guard
-                </div>
-                {([
-                  ["fail_open",   "Fail open",   "Tool calls proceed when Guard is unreachable. Recommended for most teams — keeps developers productive when our infra hiccups."],
-                  ["fail_closed", "Fail-Closed Mode", "Tool calls are blocked with rule_id=guard-unavailable until Guard responds. Use for regulated workloads where missing a policy check is worse than a paused build."],
-                ] as const).map(([k, t, d], i) => (
-                  <label
-                    key={k}
-                    style={{
-                      display: "flex",
-                      gap: 11,
-                      padding: "10px 0",
-                      borderTop: i > 0 ? "1px solid var(--border)" : "none",
-                      cursor: isAdmin ? "pointer" : "default",
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <span
-                      onClick={async () => {
-                        if (!isAdmin || failMode === k) return
-                        const prev = failMode
-                        setFailMode(k)
-                        try {
-                          await patchConfig({ fail_mode: k } as never)
-                        } catch {
-                          setFailMode(prev)
-                        }
-                      }}
-                      style={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: "50%",
-                        border: `2px solid ${failMode === k ? "var(--accent)" : "var(--border-2)"}`,
-                        display: "grid",
-                        placeItems: "center",
-                        marginTop: 2,
-                        flexShrink: 0,
-                        cursor: isAdmin ? "pointer" : "default",
-                      }}
-                    >
-                      {failMode === k && (
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)" }} />
-                      )}
-                    </span>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{d}</div>
-                    </div>
-                  </label>
-                ))}
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
-                  Change takes effect on each machine the next time <code style={{ fontFamily: "ui-monospace,monospace", background: "var(--surface-2)", padding: "0 4px", borderRadius: 3 }}>conduct guard sync</code> runs (≤60s for active CLI sessions).
-                </div>
-              </div>
-
-              {/* Policy eval error behavior */}
-              <div className="card" style={{ padding: "18px 20px" }}>
-                <div className="eyebrow" style={{ marginBottom: 4 }}>Policy error behavior</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                  What Guard does if policy evaluation throws an unexpected error
-                </div>
-                <label style={{ display: "flex", gap: 11, alignItems: "flex-start", cursor: isAdmin ? "pointer" : "default" }}
-                  onClick={async () => {
-                    if (!isAdmin) return
-                    const next = !denyOnError
-                    setDenyOnError(next)
-                    try { await patchConfig({ deny_on_error: next } as never) }
-                    catch { setDenyOnError(!next) }
-                  }}>
-                  <GuardToggle on={denyOnError} onClick={() => {}} disabled={!isAdmin} />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>Fail closed on error</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-                      Block the request and write an audit entry if the policy engine throws. Recommended. Disable only if you prefer fail-open during policy engine incidents.
-                    </div>
-                  </div>
-                </label>
-              </div>
-
-              {/* Re-sync */}
-              <div className="card" style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 4v6h-6M1 20v-6h6" />
-                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                </svg>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>Re-sync all machines</div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Force a policy push now</div>
-                </div>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  disabled={!isAdmin || resyncing}
-                  style={{ opacity: isAdmin ? 1 : 0.5 }}
-                  onClick={handleResync}
-                >
-                  {resyncing ? "Syncing…" : resyncDone ? "Synced" : "Re-sync"}
-                </button>
-              </div>
-
-            </div>
           </div>
 
-
-          {/* ── Token Guardrails — manual + auto-detected ───────────────────── */}
+          <SectionHeader title="Cost & performance" hint="Token guardrails detected and enforced across your workspace" />
           <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
             <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
@@ -651,7 +651,7 @@ function SettingsContent() {
             </div>
           </div>
 
-          {/* ── MCP servers link (canonical list lives on /integrations) ────── */}
+          <SectionHeader title="Connections" hint="MCP servers and integrations" />
           <div className="card" style={{ marginTop: 20, padding: "14px 20px", display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
