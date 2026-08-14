@@ -20,12 +20,14 @@ PERSONA_TYPE_MAP = {
     "Admin": "admin",
 }
 
+# #1141: advice=inject is legacy — remap to audit and set inject_guidance=true
+# at the rule level. Mirrors backend policy_engine._build_rules migration.
 ADVICE_ACTION_MAP = {
     "warn": "warn",
     "block": "block",
     "audit": "audit",
     "approval": "approval",
-    "inject": "inject",
+    "inject": "audit",
 }
 
 
@@ -66,6 +68,11 @@ def cedar_json_to_rule(policy: dict[str, Any]) -> dict[str, Any]:
         rule["action"] = ADVICE_ACTION_MAP.get(advice, "block")
     else:
         rule["action"] = ADVICE_ACTION_MAP.get(advice, "audit")
+
+    # #1141: inject_guidance flag — either from legacy advice=inject or the
+    # new @inject_guidance annotation.
+    if advice == "inject" or str(annotations.get("inject_guidance", "")).lower() == "true":
+        rule["inject_guidance"] = True
 
     compliance = annotations.get("compliance")
     if compliance:
