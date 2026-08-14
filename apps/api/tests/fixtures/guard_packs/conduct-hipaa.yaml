@@ -1,0 +1,93 @@
+# Conduct HIPAA pack — per-rule E2E validation.
+#
+# Rules cover 45 CFR §164.312 (Technical Safeguards):
+#   §164.312(a)(1) — access controls
+#   §164.312(e)(1) — transmission security
+#   §164.312(c)(1) — integrity controls
+
+pack: conduct-hipaa
+source: apps/api/app/modules/guard/skill_packs/conduct-hipaa.json
+
+cases:
+  # ── hipaa_phi_field (warn) — §164.312(a) access controls ────────────────
+  - rule_id: hipaa_phi_field
+    scenario: patient_id field name in Python code
+    tool_name: write
+    tool_input:
+      file_path: models.py
+      content: "class Encounter:\n    patient_id: str"
+    expected: warn
+
+  - rule_id: hipaa_phi_field
+    scenario: ssn field name in code
+    tool_name: write
+    tool_input:
+      file_path: forms.py
+      content: "form.add_field(name='ssn', required=True)"
+    expected: warn
+
+  - rule_id: hipaa_phi_field
+    scenario: date_of_birth field name in code
+    tool_name: write
+    tool_input:
+      file_path: models.py
+      content: "date_of_birth = Column(Date, nullable=False)"
+    expected: warn
+
+  - rule_id: hipaa_phi_field
+    scenario: medical_record field name in code
+    tool_name: write
+    tool_input:
+      file_path: models.py
+      content: "medical_record = Column(Text)"
+    expected: warn
+
+  - rule_id: hipaa_phi_field
+    scenario: unrelated field name is allowed
+    tool_name: write
+    tool_input:
+      file_path: models.py
+      content: "order_id = Column(Integer, primary_key=True)"
+    expected: allow
+
+  # ── hipaa_http_phi (block) — §164.312(e)(1) transmission security ───────
+  - rule_id: hipaa_http_phi
+    scenario: HTTP patient endpoint blocked
+    tool_name: write
+    tool_input:
+      file_path: client.py
+      content: "PATIENT_API = 'http://records.local/patient/lookup'"
+    expected: block
+
+  - rule_id: hipaa_http_phi
+    scenario: HTTP health endpoint blocked
+    tool_name: write
+    tool_input:
+      file_path: client.py
+      content: "HEALTH_URL = 'http://internal.local/health-records'"
+    expected: block
+
+  - rule_id: hipaa_http_phi
+    scenario: HTTPS patient endpoint is allowed
+    tool_name: write
+    tool_input:
+      file_path: client.py
+      content: "PATIENT_API = 'https://records.local/patient/lookup'"
+    expected: allow
+
+  # ── hipaa_ssn_pattern (block) — §164.312(c)(1) integrity ────────────────
+  - rule_id: hipaa_ssn_pattern
+    scenario: SSN pattern in Python literal blocked
+    tool_name: write
+    tool_input:
+      file_path: data.py
+      content: "PATIENT_SSN = '<<CRED:SSN>>'"
+    expected: block
+
+  - rule_id: hipaa_ssn_pattern
+    scenario: 9-digit number without dashes not caught by SSN rule
+    tool_name: write
+    tool_input:
+      file_path: data.py
+      content: "order_number = '123456789'"
+    expected: allow
