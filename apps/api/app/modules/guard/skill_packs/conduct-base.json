@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.11.1",
+  "version": "2.12.0",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "rules": [
@@ -69,7 +69,7 @@
       "description": "Warn when LLM prompt contains PII",
       "match_pattern": "(\\b\\d{3}-\\d{2}-\\d{4}\\b|\\b4[0-9]{12}(?:[0-9]{3})?\\b|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})",
       "action": "warn",
-      "message": "PII detected in prompt. Verify this data is permitted to reach the LLM provider.",
+      "message": "PII detected in the user prompt (SSN, credit card, or email pattern). Do NOT echo any PII verbatim in your response. Refer to individuals by role ('the customer', 'the user') rather than by name or identifier. Redact any identifying details when quoting the prompt back.",
       "severity": "high",
       "frameworks": [
         "GDPR:Art32",
@@ -88,7 +88,8 @@
         "known_limitations": [
           "Only request text exposed to the proxy matcher is inspected"
         ]
-      }
+      },
+      "inject_guidance": true
     },
     {
       "id": "proxy-audit-vision-input",
