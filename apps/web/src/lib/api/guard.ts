@@ -2,7 +2,7 @@ import { API, AuthFetch, json, patch, post, put } from "./client"
 
 const base = () => `${API}/guard`
 
-export type GuardPolicyAction = "block" | "approval" | "warn" | "inject" | "audit"
+export type GuardPolicyAction = "block" | "approval" | "warn" | "audit"
 
 export interface GuardPolicy {
   id: string
@@ -13,6 +13,7 @@ export interface GuardPolicy {
   match_pattern: string | null
   match_path_pattern: string | null
   action: GuardPolicyAction
+  inject_guidance: boolean
   message: string | null
   enabled: boolean
   builtin: boolean
@@ -36,6 +37,7 @@ export interface GuardPolicyPatch {
   match_pattern?: string
   match_path_pattern?: string
   action?: GuardPolicyAction
+  inject_guidance?: boolean
   message?: string
   reason?: string
   expires_at?: string
