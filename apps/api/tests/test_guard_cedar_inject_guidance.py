@@ -98,3 +98,54 @@ def test_exporter_never_emits_legacy_inject_action():
     cedar_text = rule_to_cedar_text(rule)
     # inject is no longer in ACTION_TO_EFFECT, so exporter uses .get(..., "permit").
     assert cedar_text.startswith("@id(") or "permit" in cedar_text
+
+
+# ─── #1141 follow-up — @guidance annotation round-trip ─────────────────────
+
+def test_mapper_reads_guidance_annotation():
+    policy = _base_cedar_policy({
+        "id": "with-guidance",
+        "advice": "warn",
+        "message": "Human-directed audit line.",
+        "guidance": "Model-directed coaching text.",
+        "inject_guidance": "true",
+    })
+    rule = cedar_json_to_rule(policy)
+    assert rule["message"] == "Human-directed audit line."
+    assert rule["guidance"] == "Model-directed coaching text."
+    assert rule["inject_guidance"] is True
+
+
+def test_exporter_emits_guidance_annotation():
+    rule = {
+        "id": "with-guidance-out",
+        "action": "audit",
+        "inject_guidance": True,
+        "message": "Human line.",
+        "guidance": "Model coaching.",
+        "match_tool": "*",
+    }
+    cedar_text = rule_to_cedar_text(rule)
+    assert '@guidance("Model coaching.")' in cedar_text
+    assert '@message("Human line.")' in cedar_text
+    assert '@inject_guidance("true")' in cedar_text
+
+
+def test_exporter_omits_guidance_when_absent():
+    rule = {"id": "no-guidance", "action": "warn", "message": "just human", "match_tool": "*"}
+    cedar_text = rule_to_cedar_text(rule)
+    assert "@guidance" not in cedar_text
+
+
+def test_round_trip_preserves_both_message_and_guidance():
+    original = _base_cedar_policy({
+        "id": "roundtrip-split",
+        "advice": "audit",
+        "message": "Audit-log message.",
+        "guidance": "System-prompt guidance.",
+        "inject_guidance": "true",
+    })
+    imported = cedar_json_to_rule(original)
+    exported = rule_to_cedar_text(imported)
+    assert '@message("Audit-log message.")' in exported
+    assert '@guidance("System-prompt guidance.")' in exported

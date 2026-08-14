@@ -729,9 +729,11 @@ async def mcp_endpoint(
                 message = rule.get("message") or f"Policy violation ({rule_id})"
                 # #1141: inject_guidance appends a GUIDANCE line so the AI sees an
                 # out-of-band nudge (distinct from the short block/warn reason).
+                # Prefer rule.guidance (model-directed) over rule.message (human-directed).
                 _guidance_suffix = ""
-                if rule.get("inject_guidance") and message:
-                    _guidance_suffix = f"\n\nGUIDANCE — {message}"
+                _guidance_text = rule.get("guidance") or message
+                if rule.get("inject_guidance") and _guidance_text:
+                    _guidance_suffix = f"\n\nGUIDANCE — {_guidance_text}"
 
                 if _advisory:
                     _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)

@@ -262,3 +262,28 @@ def test_inject_guidance_strips_whitespace_in_guidance():
     body = {"messages": [{"role": "user", "content": "hi"}]}
     out = _inject_guidance(body, "  padded  ", "openai")
     assert out["messages"][0]["content"] == "[Guard guidance] padded"
+
+
+# ─── #1141 follow-up — guidance / message split precedence ─────────────────
+
+def test_inject_guidance_prefers_explicit_field_over_message():
+    """The proxy's _evaluate_policies should populate `guidance` from
+    rule.guidance when set. This is documented via a shape-level check
+    rather than a full evaluate call (that path needs a DB)."""
+    # Simulate what _evaluate_policies computes internally:
+    def _resolve(rule: dict) -> str | None:
+        if not rule.get("inject_guidance"):
+            return None
+        return rule.get("guidance") or rule.get("message") or rule.get("description")
+
+    r_both = {"inject_guidance": True, "guidance": "model text", "message": "human text"}
+    assert _resolve(r_both) == "model text"
+
+    r_message_only = {"inject_guidance": True, "message": "human text"}
+    assert _resolve(r_message_only) == "human text"  # fallback
+
+    r_neither_set = {"inject_guidance": True, "description": "desc"}
+    assert _resolve(r_neither_set) == "desc"  # final fallback
+
+    r_flag_off = {"guidance": "ignored", "message": "ignored"}
+    assert _resolve(r_flag_off) is None

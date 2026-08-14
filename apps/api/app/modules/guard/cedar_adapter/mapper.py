@@ -49,7 +49,7 @@ def cedar_json_to_rule(policy: dict[str, Any]) -> dict[str, Any]:
 
     rule: dict[str, Any] = {}
 
-    for key in ("id", "description", "message", "recommendation", "severity", "iso_control"):
+    for key in ("id", "description", "message", "guidance", "recommendation", "severity", "iso_control"):
         if key in annotations:
             rule[key] = annotations[key]
 

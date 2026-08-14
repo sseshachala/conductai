@@ -74,6 +74,10 @@ def _build_annotations(rule: dict[str, Any]) -> list[str]:
     if message:
         out.append(f'@message({_quote(message)})')
 
+    guidance = rule.get("guidance")
+    if guidance:
+        out.append(f'@guidance({_quote(guidance)})')
+
     recommendation = rule.get("recommendation")
     if recommendation:
         out.append(f'@recommendation({_quote(recommendation)})')
