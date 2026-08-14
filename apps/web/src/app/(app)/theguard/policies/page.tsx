@@ -16,11 +16,19 @@ import { EnforcementCoverageMatrix } from "@/components/guard/EnforcementCoverag
 
 type PolicyAction = GuardPolicyAction
 type Policy = GuardPolicy
+
+// #1141: legacy rows stored with action:"inject" surface as audit + guidance.
+// Mirrors backend _build_rules migration so the UI never renders "inject".
+function normalizePolicy(p: Policy): Policy {
+  if ((p.action as string) === "inject") {
+    return { ...p, action: "audit", inject_guidance: true }
+  }
+  return p
+}
 type MatchTool = "shell" | "filesystem-write" | "filesystem-read" | "network" | "*"
 
 const ACTION_RESTRICTIVENESS: Record<PolicyAction, number> = {
   audit: 1,
-  inject: 2,
   warn: 3,
   approval: 4,
   block: 5,
@@ -63,7 +71,6 @@ function ActionAvatar({ action }: { action: PolicyAction }) {
   const styles: Record<PolicyAction, { bg: string; color: string }> = {
     block:    { bg: "var(--err-bg)",  color: "var(--err)"  },
     warn:     { bg: "var(--warn-bg)", color: "var(--warn)" },
-    inject:   { bg: "var(--info-bg)", color: "var(--info)" },
     audit:    { bg: "var(--info-bg)", color: "var(--info)" },
     approval: { bg: "var(--info-bg)", color: "var(--info)" },
   }
@@ -87,7 +94,7 @@ function ActionAvatar({ action }: { action: PolicyAction }) {
         </svg>
       )
     }
-    // audit / approval / inject
+    // audit / approval
     return (
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" />
@@ -118,7 +125,6 @@ function ActionAvatar({ action }: { action: PolicyAction }) {
 const ACTION_BADGE_TONE: Record<PolicyAction, string> = {
   block:    "err",
   warn:     "warn",
-  inject:   "info",
   audit:    "info",
   approval: "info",
 }
@@ -452,6 +458,7 @@ interface AddRuleFormData {
   match_pattern: string
   match_path_pattern: string
   action: PolicyAction
+  inject_guidance: boolean
   message: string
   persona: "agent" | "proxy"
 }
@@ -464,6 +471,7 @@ const EMPTY_FORM: AddRuleFormData = {
   match_pattern: "",
   match_path_pattern: "",
   action: "block",
+  inject_guidance: false,
   message: "",
   persona: "agent",
 }
@@ -706,9 +714,12 @@ function AddRuleModal({
             <option value="block">Block</option>
             <option value="approval">Require approval</option>
             <option value="warn">Warn</option>
-            <option value="inject">Inject guidance</option>
             <option value="audit">Audit</option>
           </select>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12, color: "var(--text-2)", cursor: "pointer" }}>
+            <input type="checkbox" checked={form.inject_guidance} onChange={e => set("inject_guidance", e.target.checked)} style={{ margin: 0 }} />
+            Also inject guidance to model <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(rule message becomes a system-prompt safety net)</span>
+          </label>
         </div>
       </div>
 
@@ -852,6 +863,7 @@ function PoliciesContent() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [editId, setEditId] = useState<string | null>(null)
   const [editAction, setEditAction] = useState<PolicyAction>("block")
+  const [editInjectGuidance, setEditInjectGuidance] = useState(false)
   const [editMessage, setEditMessage] = useState("")
   const [editSaving, setEditSaving] = useState(false)
   const [exceptionRequest, setExceptionRequest] = useState<PolicyExceptionRequest | null>(null)
@@ -871,7 +883,7 @@ function PoliciesContent() {
       setError(null)
       try {
         const data = await guard.policies.list(authFetch, teamId)
-        setPolicies(data)
+        setPolicies(data.map(normalizePolicy))
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load policies.")
       } finally {
@@ -897,7 +909,7 @@ function PoliciesContent() {
     try {
       await guard.policies.reinstallBase(authFetch, teamId)
       const data = await guard.policies.list(authFetch, teamId)
-      setPolicies(data)
+      setPolicies(data.map(normalizePolicy))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Refresh failed.")
     } finally {
@@ -937,6 +949,7 @@ function PoliciesContent() {
 
     const patch: GuardPolicyPatch = {}
     if (editAction !== policy.action) patch.action = editAction
+    if (editInjectGuidance !== (policy.inject_guidance ?? false)) patch.inject_guidance = editInjectGuidance
     if (editMessage !== (policy.message ?? "")) patch.message = editMessage
     if (Object.keys(patch).length === 0) {
       setEditId(null)
@@ -1013,6 +1026,7 @@ function PoliciesContent() {
         match_tool: formData.match_tool,
         match_pattern: formData.match_pattern.trim(),
         action: formData.action,
+        inject_guidance: formData.inject_guidance,
         message: formData.message.trim(),
         enabled: true,
         builtin: false,
@@ -1222,7 +1236,7 @@ function PoliciesContent() {
                         </button>
                       )}
                       {!locked && canWrite && p.builtin && (
-                        <button type="button" onClick={() => { setEditId(editId === p.id ? null : p.id); setEditAction(p.action); setEditMessage(p.message ?? "") }} style={{ background: "none", border: "none", cursor: "pointer", color: editId === p.id ? "var(--accent)" : "var(--text-muted)", padding: 2, flexShrink: 0 }} title="Override">
+                        <button type="button" onClick={() => { setEditId(editId === p.id ? null : p.id); setEditAction(p.action); setEditInjectGuidance(p.inject_guidance ?? false); setEditMessage(p.message ?? "") }} style={{ background: "none", border: "none", cursor: "pointer", color: editId === p.id ? "var(--accent)" : "var(--text-muted)", padding: 2, flexShrink: 0 }} title="Override">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </button>
                       )}
@@ -1248,10 +1262,13 @@ function PoliciesContent() {
                             <option value="block">Block</option>
                             <option value="approval">Require approval</option>
                             <option value="warn">Warn</option>
-                            <option value="inject">Inject guidance</option>
                             <option value="audit">Audit</option>
                           </select>
                         </div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-2)", cursor: "pointer" }}>
+                          <input type="checkbox" checked={editInjectGuidance} onChange={e => setEditInjectGuidance(e.target.checked)} style={{ margin: 0 }} />
+                          Also inject guidance to model
+                        </label>
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                           <label style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 500, whiteSpace: "nowrap" }}>Message</label>
                           <input value={editMessage} onChange={e => setEditMessage(e.target.value)} placeholder={p.message ?? "Override message (optional)"} style={{ ...fieldStyle, fontSize: 12 }} />

@@ -37,6 +37,7 @@ interface GeneratedPolicy {
   match_pattern: string
   match_path_pattern: string
   action: PolicyAction
+  inject_guidance: boolean
   message: string
 }
 
@@ -288,6 +289,10 @@ function ReviewCard({
             <option value="audit">audit — log silently</option>
             <option value="approval">approval — block, require manual override</option>
           </select>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, fontSize: 12, color: "var(--text-3)", cursor: "pointer" }}>
+            <input type="checkbox" checked={policy.inject_guidance} onChange={e => set("inject_guidance", e.target.checked)} style={{ margin: 0 }} />
+            Also inject guidance to model <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(message becomes a system-prompt safety net)</span>
+          </label>
         </div>
 
         {/* match_pattern */}
@@ -396,7 +401,7 @@ export default function NewPolicyPage() {
   const [policy, setPolicy] = useState<GeneratedPolicy>({
     rule_id: "", description: "", persona: initialPersona,
     match_tool: "*", match_ai_tool: "", match_pattern: "",
-    match_path_pattern: "", action: "block", message: "",
+    match_path_pattern: "", action: "block", inject_guidance: false, message: "",
   })
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -411,6 +416,7 @@ export default function NewPolicyPage() {
         match_tool: policy.match_tool,
         match_pattern: policy.match_pattern.trim(),
         action: policy.action,
+        inject_guidance: policy.inject_guidance,
         message: policy.message.trim(),
         enabled: true,
         builtin: false,
