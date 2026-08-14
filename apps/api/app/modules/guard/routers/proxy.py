@@ -534,7 +534,9 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
                 continue
             action = (r.get("action") or "warn").upper()
             inject_guidance = bool(r.get("inject_guidance"))
-            guidance = r.get("message") or r.get("description") if inject_guidance else None
+            # #1141 follow-up: prefer explicit `guidance` field (model-directed);
+            # fall back to `message` for compat with rules pre-dating the split.
+            guidance = (r.get("guidance") or r.get("message") or r.get("description")) if inject_guidance else None
             return {
                 "action": "BLOCK" if action == "BLOCK" else ("WARN" if action == "WARN" else "ALLOW"),
                 "rule_id": r.get("rule_id") or r.get("id"),

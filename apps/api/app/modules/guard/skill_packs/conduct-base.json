@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.12.1",
+  "version": "2.13.0",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "rules": [
@@ -69,7 +69,7 @@
       "description": "Warn when LLM prompt contains PII",
       "match_pattern": "(\\b\\d{3}-\\d{2}-\\d{4}\\b|\\b4[0-9]{12}(?:[0-9]{3})?\\b|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})",
       "action": "warn",
-      "message": "PII detected in the user prompt (SSN, credit card, or email pattern). Do NOT echo any PII verbatim in your response. Refer to individuals by role ('the customer', 'the user') rather than by name or identifier. Redact any identifying details when quoting the prompt back.",
+      "message": "PII detected in prompt. Verify this data is permitted to reach the LLM provider.",
       "severity": "high",
       "frameworks": [
         "GDPR:Art32",
@@ -89,7 +89,8 @@
           "Only request text exposed to the proxy matcher is inspected"
         ]
       },
-      "inject_guidance": true
+      "inject_guidance": true,
+      "guidance": "The user prompt contains PII (SSN, credit card, or email pattern). Do NOT echo any PII verbatim in your response. Refer to individuals by role ('the customer', 'the user') rather than by name or identifier. Redact any identifying details when quoting the prompt back."
     },
     {
       "id": "proxy-audit-vision-input",
@@ -478,7 +479,7 @@
       "match_tool": "filesystem-write,workflow",
       "match_pattern": "sk_live_[0-9a-zA-Z]{24,}",
       "action": "block",
-      "message": "Stripe live key detected in file. Blocked to prevent credential leak. Remove the sk_live_* literal from source, load from environment via os.environ['STRIPE_LIVE_KEY'] or your secrets manager. For local development, use Stripe test-mode keys (sk_test_*) which this rule does not block.",
+      "message": "Stripe live key detected in file. Blocked \u2014 load from environment or secrets manager.",
       "severity": "critical",
       "frameworks": [
         "PCI_DSS:3.5"
@@ -502,7 +503,8 @@
           "Runtime evaluates serialized workflow state, not every external tool or model interaction"
         ]
       },
-      "inject_guidance": true
+      "inject_guidance": true,
+      "guidance": "A Stripe live key (sk_live_*) was blocked. Do not paste live keys into source. Load via os.environ['STRIPE_LIVE_KEY'] or a secrets manager. For local development, use Stripe test-mode keys (sk_test_*) which are not blocked."
     },
     {
       "id": "secret-anthropic",
