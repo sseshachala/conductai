@@ -194,6 +194,13 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
             if o.custom_message:
                 rules[o.rule_id]["message"] = o.custom_message
 
+    # #1141: retire standalone action:inject → audit + inject_guidance=true.
+    # Decouples decision (block/warn/audit/approval) from side-effect (nudge model).
+    for rule in rules.values():
+        if rule.get("action") == "inject":
+            rule["action"] = "audit"
+            rule["inject_guidance"] = True
+
     return list(rules.values())
 
 

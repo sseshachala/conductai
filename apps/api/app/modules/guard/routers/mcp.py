@@ -727,15 +727,20 @@ async def mcp_endpoint(
                 action  = rule.get("action", "audit")
                 rule_id = rule.get("rule_id", "unknown")
                 message = rule.get("message") or f"Policy violation ({rule_id})"
+                # #1141: inject_guidance appends a GUIDANCE line so the AI sees an
+                # out-of-band nudge (distinct from the short block/warn reason).
+                _guidance_suffix = ""
+                if rule.get("inject_guidance") and message:
+                    _guidance_suffix = f"\n\nGUIDANCE — {message}"
 
                 if _advisory:
                     _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                     # #997: advisory is between "ok" and "warning" — still tell the user, but tersely.
-                    return JSONResponse(_text(msg_id, f"advisory: {message} [rule: {rule_id}]"))
+                    return JSONResponse(_text(msg_id, f"advisory: {message} [rule: {rule_id}]{_guidance_suffix}"))
 
                 if action == "block":
                     _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-                    return JSONResponse(_text(msg_id, f"BLOCKED — {message}  [rule: {rule_id}]"))
+                    return JSONResponse(_text(msg_id, f"BLOCKED — {message}  [rule: {rule_id}]{_guidance_suffix}"))
                 if action in ("warn", "approval"):
                     already_warned = db.query(GuardAuditEvent).filter(
                         GuardAuditEvent.workspace_id == ws_uuid,
@@ -746,10 +751,10 @@ async def mcp_endpoint(
                     if already_warned:
                         return JSONResponse(_text(msg_id, "ok"))
                     _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-                    return JSONResponse(_text(msg_id, f"WARNING — {message}  [rule: {rule_id}]"))
+                    return JSONResponse(_text(msg_id, f"WARNING — {message}  [rule: {rule_id}]{_guidance_suffix}"))
 
                 _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-                return JSONResponse(_text(msg_id, f"AUDITED — {message}  [rule: {rule_id}]"))
+                return JSONResponse(_text(msg_id, f"AUDITED — {message}  [rule: {rule_id}]{_guidance_suffix}"))
 
             elif tool_name == "guard_sync":
                 rules = _get_rules(db, ws_uuid)

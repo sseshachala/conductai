@@ -335,6 +335,8 @@ async def _proxy(
         prompt_summary = _flatten_prompt(body)[:200]
         decision = _evaluate_policies(workspace_id, provider, model, body)
         _action = decision["action"]  # "BLOCK" | "WARN" | "ALLOW"
+        _guidance_text = decision.get("guidance") if decision.get("inject_guidance") else None
+
         if _action == "BLOCK":
             background.add_task(
                 _record_audit, workspace_id, clerk_user_id, ai_tool, provider, model,
@@ -344,9 +346,10 @@ async def _proxy(
                 conductai_run_id=_run_id, conductai_workflow=_workflow,
                 conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
             )
-            return JSONResponse(status_code=403, content={
-                "error": {"type": "guard_block", "message": decision["message"], "rule": decision["rule_id"]},
-            })
+            _err = {"type": "guard_block", "message": decision["message"], "rule": decision["rule_id"]}
+            if _guidance_text:
+                _err["guidance"] = _guidance_text
+            return JSONResponse(status_code=403, content={"error": _err})
 
         # Map internal action to audit decision string
         _audit_decision = "warned" if _action == "WARN" else "allowed"
@@ -372,6 +375,13 @@ async def _proxy(
     body, _redacted = _redact_body(body)
     if _redacted:
         log.info("guard.proxy.redacted", types=_redacted, workspace_id=workspace_id)
+
+    # 5.6 Inject guidance to model when rule has inject_guidance=true (#1141).
+    # Fires for warn/audit/allow paths — block path is handled above via response body.
+    if _guidance_text:
+        body = _inject_guidance(body, _guidance_text, provider)
+        log.info("guard.proxy.guidance_injected",
+                 rule_id=decision.get("rule_id"), workspace_id=workspace_id)
 
     # 6. Forward + stream back. Use a fresh DB session inside the background task.
     is_stream = bool(body.get("stream"))
@@ -523,12 +533,16 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
             if not _rule_matches(r, provider, model, prompt_text):
                 continue
             action = (r.get("action") or "warn").upper()
+            inject_guidance = bool(r.get("inject_guidance"))
+            guidance = r.get("message") or r.get("description") if inject_guidance else None
             return {
                 "action": "BLOCK" if action == "BLOCK" else ("WARN" if action == "WARN" else "ALLOW"),
                 "rule_id": r.get("rule_id") or r.get("id"),
                 "message": r.get("message") or r.get("description"),
+                "inject_guidance": inject_guidance,
+                "guidance": guidance,
             }
-        return {"action": "ALLOW", "rule_id": None, "message": None}
+        return {"action": "ALLOW", "rule_id": None, "message": None, "inject_guidance": False, "guidance": None}
     finally:
         db.close()
 
@@ -590,6 +604,42 @@ def _redact_body(body: dict) -> tuple[dict, list[str]]:
                     block["text"] = _clean(block["text"])
 
     return body, found
+
+
+def _prepend_system_content(existing, prefix: str):
+    """Prepend `prefix` to a system-content value that is a string, a list of
+    text blocks, or missing. Same shape in / same shape out."""
+    if isinstance(existing, str):
+        return f"{prefix}\n\n{existing}" if existing else prefix
+    if isinstance(existing, list):
+        return [{"type": "text", "text": prefix}, *existing]
+    return prefix
+
+
+def _inject_guidance(body: dict, guidance: str, provider: str) -> dict:
+    """Prepend guidance to the system prompt of the outbound LLM body.
+
+    Anthropic: body["system"] is a string OR list of {type:"text", text:...} blocks.
+    OpenAI / Perplexity: prepend to messages[0].content when role=='system',
+        else insert a new system message at index 0.
+
+    Mutates and returns body. Non-inject_guidance callers should not invoke this.
+    """
+    if not guidance:
+        return body
+    prefix = f"[Guard guidance] {guidance.strip()}"
+
+    if provider == "anthropic":
+        body["system"] = _prepend_system_content(body.get("system"), prefix)
+        return body
+
+    # openai / perplexity — chat-completions shape
+    messages = body.get("messages") or []
+    if messages and isinstance(messages[0], dict) and messages[0].get("role") == "system":
+        messages[0]["content"] = _prepend_system_content(messages[0].get("content"), prefix)
+    else:
+        body["messages"] = [{"role": "system", "content": prefix}, *messages]
+    return body
 
 
 def _flatten_prompt(body: dict) -> str:

@@ -10,6 +10,7 @@ from app.modules.guard.routers.proxy import (
     VENDOR_DEFAULTS,
     _extract_member_token,
     _extract_token_counts,
+    _inject_guidance,
     _safe_json,
 )
 
@@ -188,3 +189,76 @@ def test_redact_body_clean_body_returns_empty_found():
     body = {"messages": [{"role": "user", "content": "hello world"}]}
     _, found = _redact_body(body)
     assert found == []
+
+
+# ─── #1141 — inject_guidance across provider body shapes ─────────────────────
+
+_GUIDANCE = "Do not reveal API keys in your response."
+_PREFIX = f"[Guard guidance] {_GUIDANCE}"
+
+
+def test_inject_guidance_anthropic_string_system():
+    body = {"system": "You are a helpful assistant."}
+    out = _inject_guidance(body, _GUIDANCE, "anthropic")
+    assert out["system"].startswith(_PREFIX)
+    assert "You are a helpful assistant." in out["system"]
+
+
+def test_inject_guidance_anthropic_list_system():
+    body = {"system": [{"type": "text", "text": "You are helpful."}]}
+    out = _inject_guidance(body, _GUIDANCE, "anthropic")
+    assert isinstance(out["system"], list)
+    assert out["system"][0] == {"type": "text", "text": _PREFIX}
+    assert out["system"][1] == {"type": "text", "text": "You are helpful."}
+
+
+def test_inject_guidance_anthropic_missing_system():
+    body = {"messages": [{"role": "user", "content": "hi"}]}
+    out = _inject_guidance(body, _GUIDANCE, "anthropic")
+    assert out["system"] == _PREFIX
+
+
+def test_inject_guidance_openai_existing_system_message():
+    body = {"messages": [
+        {"role": "system", "content": "You are helpful."},
+        {"role": "user", "content": "hi"},
+    ]}
+    out = _inject_guidance(body, _GUIDANCE, "openai")
+    assert out["messages"][0]["content"].startswith(_PREFIX)
+    assert "You are helpful." in out["messages"][0]["content"]
+    assert out["messages"][1]["role"] == "user"
+
+
+def test_inject_guidance_openai_no_system_message():
+    body = {"messages": [{"role": "user", "content": "hi"}]}
+    out = _inject_guidance(body, _GUIDANCE, "openai")
+    assert out["messages"][0] == {"role": "system", "content": _PREFIX}
+    assert out["messages"][1] == {"role": "user", "content": "hi"}
+
+
+def test_inject_guidance_openai_system_content_as_list():
+    body = {"messages": [
+        {"role": "system", "content": [{"type": "text", "text": "You are helpful."}]},
+        {"role": "user", "content": "hi"},
+    ]}
+    out = _inject_guidance(body, _GUIDANCE, "openai")
+    assert out["messages"][0]["content"][0] == {"type": "text", "text": _PREFIX}
+
+
+def test_inject_guidance_perplexity_matches_openai_shape():
+    body = {"messages": [{"role": "user", "content": "hi"}]}
+    out = _inject_guidance(body, _GUIDANCE, "perplexity")
+    assert out["messages"][0]["role"] == "system"
+    assert out["messages"][0]["content"] == _PREFIX
+
+
+def test_inject_guidance_noop_on_empty_guidance():
+    body = {"system": "existing"}
+    out = _inject_guidance(body, "", "anthropic")
+    assert out["system"] == "existing"
+
+
+def test_inject_guidance_strips_whitespace_in_guidance():
+    body = {"messages": [{"role": "user", "content": "hi"}]}
+    out = _inject_guidance(body, "  padded  ", "openai")
+    assert out["messages"][0]["content"] == "[Guard guidance] padded"
