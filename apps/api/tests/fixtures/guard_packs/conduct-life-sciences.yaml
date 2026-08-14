@@ -1,0 +1,80 @@
+pack: conduct-life-sciences
+source: apps/api/app/modules/guard/skill_packs/conduct-life-sciences.json
+cases:
+- rule_id: ls_clinical_adjacent_requires_human_review
+  scenario: dosing_recommendation blocked
+  tool_name: write
+  tool_input:
+    file_path: c.py
+    content: dosing_recommendation.auto()
+  expected: block
+- rule_id: ls_clinical_adjacent_requires_human_review
+  scenario: treatment_option blocked
+  tool_name: write
+  tool_input:
+    file_path: c.py
+    content: treatment_option = model.predict()
+  expected: block
+- rule_id: ls_regulated_system_write_requires_two_person
+  scenario: LIMS write blocked
+  tool_name: write
+  tool_input:
+    file_path: r.py
+    content: lims.write_batch_record(sample)
+  expected: block
+- rule_id: ls_regulated_system_write_requires_two_person
+  scenario: electronic_batch_record blocked
+  tool_name: write
+  tool_input:
+    file_path: r.py
+    content: electronic_batch_record.commit(batch)
+  expected: block
+- rule_id: ls_intended_use_scope_check
+  scenario: intended_use off_label flagged
+  tool_name: write
+  tool_input:
+    file_path: c.py
+    content: intended_use = 'off_label'
+  expected: warn
+- rule_id: ls_credibility_assessment_freshness
+  scenario: credibility_assessment expired blocked
+  tool_name: write
+  tool_input:
+    file_path: c.py
+    content: credibility_assessment = 'expired'
+  expected: block
+- rule_id: ls_lifecycle_traceability_log
+  scenario: artifact reference audited
+  tool_name: write
+  tool_input:
+    file_path: log.py
+    content: artifact = 'release_v3.zip'
+  expected: audit
+- rule_id: ls_model_swap_requires_revalidation
+  scenario: model swap flagged
+  tool_name: write
+  tool_input:
+    file_path: r.py
+    content: 'model = ''gpt-4''  # swap to gpt-5'
+  expected: warn
+- rule_id: ls_patient_safety_action_requires_hitl
+  scenario: adverse_event auto blocked
+  tool_name: write
+  tool_input:
+    file_path: p.py
+    content: adverse_event.escalate_auto()
+  expected: block
+- rule_id: ls_phi_scope_check_required
+  scenario: data_class phi blocked
+  tool_name: write
+  tool_input:
+    file_path: p.py
+    content: data_class = 'phi'
+  expected: block
+- rule_id: ls_clinical_adjacent_requires_human_review
+  scenario: benign util function allowed
+  tool_name: write
+  tool_input:
+    file_path: u.py
+    content: counter = increment(citation_id=42)
+  expected: allow

@@ -1,0 +1,66 @@
+pack: conduct-financial-services
+source: apps/api/app/modules/guard/skill_packs/conduct-financial-services.json
+cases:
+- rule_id: fs_tier3_requires_human_oversight
+  scenario: tier_3 risk tier requires oversight
+  tool_name: write
+  tool_input:
+    file_path: agent.py
+    content: agent_risk_tier = 'tier_3'
+  expected: block
+- rule_id: fs_model_swap_requires_change_record
+  scenario: model_swap without change record flagged
+  tool_name: write
+  tool_input:
+    file_path: deploy.py
+    content: 'model = ''gpt-4''  # swap to gpt-5'
+  expected: warn
+- rule_id: fs_lifecycle_promotion_requires_attestation
+  scenario: promotion to prod without attestation blocked
+  tool_name: write
+  tool_input:
+    file_path: r.py
+    content: lifecycle = 'prod'
+  expected: block
+- rule_id: fs_ledger_write_requires_sod
+  scenario: ledger write with same actor and approver blocked
+  tool_name: write
+  tool_input:
+    file_path: l.py
+    content: ledger_write(actor='alice', approver='alice')
+  expected: block
+- rule_id: fs_regulated_decisions_require_hitl
+  scenario: regulated decision without hitl blocked
+  tool_name: write
+  tool_input:
+    file_path: c.py
+    content: 'credit_decision_auto_approve = True # regulated_decision'
+  expected: block
+- rule_id: fs_customer_data_class_requires_control_mapping
+  scenario: customer_pii class without control mapping blocked
+  tool_name: write
+  tool_input:
+    file_path: m.py
+    content: customer_data_class = 'customer_pii_no_mapping'
+  expected: block
+- rule_id: fs_cross_tenant_customer_data_blocked
+  scenario: cross-tenant customer read blocked
+  tool_name: write
+  tool_input:
+    file_path: d.py
+    content: cross_tenant_customer_data.read(a, b)
+  expected: block
+- rule_id: fs_cost_approaching_committee_cap
+  scenario: committee cost cap warning flagged
+  tool_name: write
+  tool_input:
+    file_path: b.py
+    content: budget_utilization = 0.95
+  expected: warn
+- rule_id: fs_tier3_requires_human_oversight
+  scenario: unrelated write allowed
+  tool_name: write
+  tool_input:
+    file_path: a.py
+    content: MAX_WORKERS = 4
+  expected: allow
