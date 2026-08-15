@@ -75,7 +75,7 @@ function NotificationsCard({
   const [error, setError] = useState<string | null>(null)
   const [addingAction, setAddingAction] = useState<string | null>(null)
   const [addChannel, setAddChannel] = useState("")
-  const [addEnvId, setAddEnvId] = useState<string>("")
+  const [selectedEnvId, setSelectedEnvId] = useState<string>("")
   const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
   const [slackIntegrations, setSlackIntegrations] = useState<Array<{ id: string; handle: string; environment_id: string | null; environment_name: string | null }>>([])
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; err: string | null }>>({})
@@ -90,9 +90,12 @@ function NotificationsCard({
         credentials.slack.integration(authFetch, workspaceId).catch(() => []),
       ])
       setGroups(data.groups as NotifGroup[])
-      setEnvironments(Array.isArray(envList) ? envList : [])
+      const envs = Array.isArray(envList) ? envList : []
+      setEnvironments(envs)
       const integs = Array.isArray(integList) ? integList : (integList ? [integList] : [])
       setSlackIntegrations(integs)
+      // Panel-level env: seed once from the first env if user hasn't picked yet.
+      setSelectedEnvId(prev => prev || envs[0]?.id || "")
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load notifications")
@@ -106,10 +109,9 @@ function NotificationsCard({
   async function handleAdd(action: "block" | "warn" | "audit" | "approval") {
     if (!workspaceId || !addChannel.trim()) return
     try {
-      // Environment → Slack integration lookup. Prefer an integration under the
-      // selected env; fall back to the first available if the env has none (rare).
-      const integ = addEnvId
-        ? (slackIntegrations.find(i => i.environment_id === addEnvId) ?? null)
+      // Environment → Slack integration lookup: uses the panel-level env picker.
+      const integ = selectedEnvId
+        ? (slackIntegrations.find(i => i.environment_id === selectedEnvId) ?? null)
         : (slackIntegrations[0] ?? null)
       await guard.notifications.create(authFetch, workspaceId, {
         action,
@@ -119,7 +121,6 @@ function NotificationsCard({
       })
       setAddingAction(null)
       setAddChannel("")
-      setAddEnvId("")
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add channel")
@@ -159,6 +160,25 @@ function NotificationsCard({
           </svg>
         </span>
         <div style={{ fontWeight: 650, fontSize: 14.5 }}>Slack channels by action</div>
+        {environments.length > 0 && (
+          <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
+            Environment
+            <select
+              value={selectedEnvId}
+              onChange={e => setSelectedEnvId(e.target.value)}
+              style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px", fontSize: 12.5, color: "var(--text)" }}
+            >
+              {environments.map(env => {
+                const hasSlack = slackIntegrations.some(i => i.environment_id === env.id)
+                return (
+                  <option key={env.id} value={env.id}>
+                    {env.name}{hasSlack ? "" : " — (no Slack)"}
+                  </option>
+                )
+              })}
+            </select>
+          </label>
+        )}
       </div>
 
       <div style={{ padding: "4px 20px 16px" }}>
@@ -176,11 +196,7 @@ function NotificationsCard({
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    onClick={() => {
-                      setAddingAction(a.k)
-                      setAddChannel("")
-                      setAddEnvId(environments[0]?.id ?? "")
-                    }}
+                    onClick={() => { setAddingAction(a.k); setAddChannel("") }}
                   >
                     + Slack channel
                   </button>
@@ -221,60 +237,33 @@ function NotificationsCard({
               })}
 
               {addingAction === a.k && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, padding: "8px 10px", background: "var(--surface-2)", borderRadius: 6 }}>
-                  {environments.length === 0 ? (
-                    <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                      No environments yet — add one under{" "}
-                      <a href="/settings/environments" style={{ color: "var(--info)", textDecoration: "underline" }}>Settings → Environments</a>.
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 11.5, color: "var(--text-3)", minWidth: 78 }}>Environment</span>
-                      <select
-                        value={addEnvId}
-                        onChange={e => setAddEnvId(e.target.value)}
-                        style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 8px", fontSize: 12.5 }}
-                      >
-                        {environments.map(env => {
-                          const hasSlack = slackIntegrations.some(i => i.environment_id === env.id)
-                          return (
-                            <option key={env.id} value={env.id}>
-                              {env.name}{hasSlack ? "" : " — (no Slack)"}
-                            </option>
-                          )
-                        })}
-                      </select>
-                    </div>
-                  )}
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 11.5, color: "var(--text-3)", minWidth: 78 }}>Channel</span>
-                    <span style={{ color: "var(--text-3)", fontSize: 12 }}>#</span>
-                    <input
-                      autoFocus
-                      value={addChannel}
-                      onChange={e => setAddChannel(e.target.value.replace(/^#+/, ""))}
-                      placeholder="compliance-hipaa"
-                      style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 8px", fontSize: 12.5 }}
-                      onKeyDown={e => { if (e.key === "Enter") void handleAdd(a.k); if (e.key === "Escape") { setAddingAction(null); setAddChannel(""); setAddEnvId("") } }}
-                    />
-                    <button
-                      type="button"
-                      disabled={environments.length === 0 || !addChannel.trim()}
-                      onClick={() => void handleAdd(a.k)}
-                      className="btn btn-primary btn-sm"
-                      style={{ fontSize: 11, opacity: environments.length === 0 || !addChannel.trim() ? 0.5 : 1 }}
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setAddingAction(null); setAddChannel(""); setAddEnvId("") }}
-                      className="btn btn-ghost btn-sm"
-                      style={{ fontSize: 11 }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, padding: "6px 8px", background: "var(--surface-2)", borderRadius: 6 }}>
+                  <span style={{ color: "var(--text-3)", fontSize: 12 }}>#</span>
+                  <input
+                    autoFocus
+                    value={addChannel}
+                    onChange={e => setAddChannel(e.target.value.replace(/^#+/, ""))}
+                    placeholder="compliance-hipaa"
+                    style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 8px", fontSize: 12.5 }}
+                    onKeyDown={e => { if (e.key === "Enter") void handleAdd(a.k); if (e.key === "Escape") { setAddingAction(null); setAddChannel("") } }}
+                  />
+                  <button
+                    type="button"
+                    disabled={environments.length === 0 || !addChannel.trim()}
+                    onClick={() => void handleAdd(a.k)}
+                    className="btn btn-primary btn-sm"
+                    style={{ fontSize: 11, opacity: environments.length === 0 || !addChannel.trim() ? 0.5 : 1 }}
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAddingAction(null); setAddChannel("") }}
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: 11 }}
+                  >
+                    Cancel
+                  </button>
                 </div>
               )}
             </div>
