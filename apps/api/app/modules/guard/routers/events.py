@@ -193,17 +193,18 @@ def notify_guard_block(
         lines.append(f"• Provider: `{provider}` · via {source}")
     text_msg = "\n".join(lines)
 
-    # #1142 Phase 1+2A — fan out to per-action channels if configured.
-    # Split by channel_type: slack gets the plain-text message; webhook gets JSON.
+    # #1142 Phase 1+2A+2B+2C — fan out to per-action channels if configured.
+    # Split by channel_type: each transport gets a shape it can consume.
     action = "block" if decision == "blocked" else "warn" if decision == "warned" else "audit"
     channels = _resolve_channels(db, ws, action)
     if channels:
-        slack_chs = [c for c in channels if c.channel_type == "slack"]
-        webhook_chs = [c for c in channels if c.channel_type == "webhook"]
-        if slack_chs:
-            _fanout_slack(db, ws, slack_chs, text_msg)
-        if webhook_chs:
-            _fanout_webhook(webhook_chs, {
+        by_type: dict[str, list] = {"slack": [], "webhook": [], "pagerduty": [], "email": []}
+        for c in channels:
+            by_type.setdefault(c.channel_type, []).append(c)
+        if by_type["slack"]:
+            _fanout_slack(db, ws, by_type["slack"], text_msg)
+        if by_type["webhook"]:
+            _fanout_webhook(by_type["webhook"], {
                 "event": "guard.decision",
                 "action": action,
                 "decision": decision,
@@ -215,6 +216,19 @@ def notify_guard_block(
                 "source": source,
                 "message": text_msg,
             })
+        if by_type["pagerduty"]:
+            _fanout_pagerduty(by_type["pagerduty"], action, rule_id, text_msg)
+        if by_type["email"]:
+            _fanout_email(
+                db, ws, by_type["email"],
+                subject=f"[Guard {decision}] {rule_id or source}",
+                html=(
+                    f"<p><strong>Guard {decision}</strong> — rule <code>{rule_id or source}</code></p>"
+                    + (f"<p>User: {user_email}</p>" if user_email else "")
+                    + (f"<p>Tool: <code>{tool}</code></p>" if tool else "")
+                    + (f"<p>Provider: <code>{provider}</code> via {source}</p>" if provider else "")
+                ),
+            )
         return
 
     # Legacy fallback — single alert_channel gated by notify_on_block.
@@ -249,6 +263,64 @@ def _fanout_slack(db: Session, workspace_id, channels, text_msg: str) -> None:
             post_message(token=token, channel=ch.channel_ref, text=text_msg)
         except Exception:
             pass  # per-channel failure must not stop the fan-out
+
+
+def _pd_severity(action: str) -> str:
+    return {"block": "error", "approval": "error", "warn": "warning", "audit": "info"}.get(action, "info")
+
+
+def _fanout_pagerduty(channels, action: str, rule_id, message: str) -> None:
+    """POST a PagerDuty Events API v2 trigger for each channel.
+    channel_ref is the routing key (integration key from a PD service)."""
+    if not channels:
+        return
+    try:
+        import httpx
+    except ImportError:
+        return
+    body_template = {
+        "event_action": "trigger",
+        "payload": {
+            "summary": f"Guard {action}: {rule_id or 'policy event'}",
+            "severity": _pd_severity(action),
+            "source": "conduct-guard",
+            "custom_details": {"message": message},
+        },
+    }
+    for ch in channels:
+        if ch.channel_type != "pagerduty":
+            continue
+        try:
+            payload = dict(body_template)
+            payload["routing_key"] = ch.channel_ref
+            payload["dedup_key"] = f"conduct-guard-{ch.id}-{rule_id or 'noid'}"
+            httpx.post("https://events.pagerduty.com/v2/enqueue", json=payload, timeout=10.0)
+        except Exception:
+            pass
+
+
+def _fanout_email(db, workspace_id, channels, subject: str, html: str) -> None:
+    """Send an email to each recipient. Uses app.core.email.send_email which
+    handles workspace-scoped Resend/SendGrid credentials + platform fallback."""
+    if not channels:
+        return
+    try:
+        from app.core.email import send_email
+    except ImportError:
+        return
+    for ch in channels:
+        if ch.channel_type != "email":
+            continue
+        try:
+            send_email(
+                to=ch.channel_ref,
+                subject=subject,
+                html=html,
+                workspace_id=str(workspace_id),
+                db=db,
+            )
+        except Exception:
+            pass
 
 
 def _fanout_webhook(channels, payload: dict) -> None:
