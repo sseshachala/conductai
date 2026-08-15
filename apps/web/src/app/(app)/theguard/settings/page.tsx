@@ -74,6 +74,7 @@ function NotificationsCard({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addingAction, setAddingAction] = useState<string | null>(null)
+  const [addMenuFor, setAddMenuFor] = useState<string | null>(null)
   const [addType, setAddType] = useState<"slack" | "webhook" | "pagerduty" | "email">("slack")
   const [addChannel, setAddChannel] = useState("")
   const [selectedEnvId, setSelectedEnvId] = useState<string>("")
@@ -210,11 +211,68 @@ function NotificationsCard({
                   <div style={{ fontSize: 12, color: "var(--text-3)" }}>{a.hint}</div>
                 </div>
                 {isAdmin && addingAction !== a.k && (
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAddingAction(a.k); setAddType("slack"); setAddChannel("") }}>+ Slack</button>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAddingAction(a.k); setAddType("email"); setAddChannel("") }}>+ Email</button>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAddingAction(a.k); setAddType("pagerduty"); setAddChannel("") }}>+ PagerDuty</button>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAddingAction(a.k); setAddType("webhook"); setAddChannel("") }}>+ Webhook</button>
+                  <div style={{ position: "relative" }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setAddMenuFor(prev => prev === a.k ? null : a.k)}
+                    >
+                      + Add channel ▾
+                    </button>
+                    {addMenuFor === a.k && (
+                      <>
+                        <div
+                          onClick={() => setAddMenuFor(null)}
+                          style={{ position: "fixed", inset: 0, zIndex: 10 }}
+                        />
+                        <div style={{
+                          position: "absolute",
+                          right: 0,
+                          top: "calc(100% + 4px)",
+                          zIndex: 20,
+                          background: "var(--surface)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 8,
+                          boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
+                          padding: 4,
+                          minWidth: 160,
+                        }}>
+                          {([
+                            ["slack",     "Slack"],
+                            ["email",     "Email"],
+                            ["pagerduty", "PagerDuty"],
+                            ["webhook",   "Webhook"],
+                          ] as const).map(([type, label]) => (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => {
+                                setAddingAction(a.k)
+                                setAddType(type)
+                                setAddChannel("")
+                                setAddMenuFor(null)
+                              }}
+                              style={{
+                                display: "block",
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "6px 10px",
+                                background: "transparent",
+                                border: "none",
+                                borderRadius: 4,
+                                cursor: "pointer",
+                                fontSize: 12.5,
+                                color: "var(--text)",
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+                              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
