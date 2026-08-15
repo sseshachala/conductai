@@ -63,7 +63,7 @@ class ChannelOut(BaseModel):
 
 class ChannelCreate(BaseModel):
     action: Literal["block", "warn", "audit", "approval"]
-    channel_type: Literal["slack", "webhook"] = "slack"  # webhook added in Phase 2A
+    channel_type: Literal["slack", "webhook", "pagerduty", "email"] = "slack"
     integration_id: str | None = None
     channel_ref: str = Field(..., min_length=1, max_length=2048)
     dedupe_window_sec: int = Field(default=300, ge=0, le=86400)
@@ -203,6 +203,16 @@ def resolve_channels(
     )
 
 
+def _pd_severity(action: str) -> str:
+    """Map Guard action tier → PagerDuty severity."""
+    return {
+        "block": "error",
+        "approval": "error",
+        "warn": "warning",
+        "audit": "info",
+    }.get(action, "info")
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────────
 
 @router.get("", response_model=ListOut)
@@ -321,6 +331,47 @@ def test_channel(
     except ValueError:
         raise HTTPException(status_code=400, detail="invalid workspace_id")
     row = _get_row(db, notif_id, ws)
+    if row.channel_type == "pagerduty":
+        try:
+            import httpx
+            resp = httpx.post(
+                "https://events.pagerduty.com/v2/enqueue",
+                json={
+                    "routing_key": row.channel_ref,
+                    "event_action": "trigger",
+                    "payload": {
+                        "summary": f"Guard notification test — action={row.action}",
+                        "severity": _pd_severity(row.action),
+                        "source": "conduct-guard",
+                    },
+                    "dedup_key": f"conduct-guard-test-{row.id}",
+                },
+                timeout=10.0,
+            )
+            if resp.status_code >= 400:
+                return TestResult(ok=False, error=f"HTTP {resp.status_code}: {resp.text[:200]}")
+            return TestResult(ok=True)
+        except Exception as e:
+            log.warning("guard.notifications.pd_test_failed", err=str(e))
+            return TestResult(ok=False, error=str(e)[:200])
+
+    if row.channel_type == "email":
+        try:
+            from app.core.email import send_email
+            ok = send_email(
+                to=row.channel_ref,
+                subject=f"Guard notification test — action={row.action}",
+                html=f"<p>This is a synthetic Guard notification (workspace <code>{ws}</code>, action <code>{row.action}</code>).</p>",
+                workspace_id=str(ws),
+                db=db,
+            )
+            if not ok:
+                return TestResult(ok=False, error="Email send failed — no Resend/SendGrid credential configured for this workspace or platform.")
+            return TestResult(ok=True)
+        except Exception as e:
+            log.warning("guard.notifications.email_test_failed", err=str(e))
+            return TestResult(ok=False, error=str(e)[:200])
+
     if row.channel_type == "webhook":
         try:
             import httpx, json as _json
