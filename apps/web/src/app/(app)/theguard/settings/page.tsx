@@ -74,6 +74,7 @@ function NotificationsCard({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addingAction, setAddingAction] = useState<string | null>(null)
+  const [addType, setAddType] = useState<"slack" | "webhook">("slack")
   const [addChannel, setAddChannel] = useState("")
   const [selectedEnvId, setSelectedEnvId] = useState<string>("")
   const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
@@ -109,16 +110,32 @@ function NotificationsCard({
   async function handleAdd(action: "block" | "warn" | "audit" | "approval") {
     if (!workspaceId || !addChannel.trim()) return
     try {
-      // Environment → Slack integration lookup: uses the panel-level env picker.
-      const integ = selectedEnvId
-        ? (slackIntegrations.find(i => i.environment_id === selectedEnvId) ?? null)
-        : (slackIntegrations[0] ?? null)
-      await guard.notifications.create(authFetch, workspaceId, {
-        action,
-        channel_type: "slack",
-        channel_ref: addChannel.trim().replace(/^#+/, ""),
-        integration_id: integ?.id ?? null,
-      })
+      let body: {
+        action: typeof action
+        channel_type: "slack" | "webhook"
+        channel_ref: string
+        integration_id: string | null
+      }
+      if (addType === "webhook") {
+        body = {
+          action,
+          channel_type: "webhook",
+          channel_ref: addChannel.trim(),
+          integration_id: null,
+        }
+      } else {
+        // Environment → Slack integration lookup: uses the panel-level env picker.
+        const integ = selectedEnvId
+          ? (slackIntegrations.find(i => i.environment_id === selectedEnvId) ?? null)
+          : (slackIntegrations[0] ?? null)
+        body = {
+          action,
+          channel_type: "slack",
+          channel_ref: addChannel.trim().replace(/^#+/, ""),
+          integration_id: integ?.id ?? null,
+        }
+      }
+      await guard.notifications.create(authFetch, workspaceId, body)
       setAddingAction(null)
       setAddChannel("")
       await load()
@@ -193,13 +210,22 @@ function NotificationsCard({
                   <div style={{ fontSize: 12, color: "var(--text-3)" }}>{a.hint}</div>
                 </div>
                 {isAdmin && addingAction !== a.k && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => { setAddingAction(a.k); setAddChannel("") }}
-                  >
-                    + Slack channel
-                  </button>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => { setAddingAction(a.k); setAddType("slack"); setAddChannel("") }}
+                    >
+                      + Slack
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => { setAddingAction(a.k); setAddType("webhook"); setAddChannel("") }}
+                    >
+                      + Webhook
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -213,11 +239,15 @@ function NotificationsCard({
                 const chIntegId = (ch as { integration_id?: string | null }).integration_id
                 const integ = chIntegId ? slackIntegrations.find(i => i.id === chIntegId) : null
                 const envLabel = integ?.environment_name ?? (integ ? "(default env)" : null)
+                const isWebhook = ch.channel_type === "webhook"
                 return (
                 <div key={ch.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
-                  <span style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)", color: "var(--text)", flex: 1 }}>
-                    #{ch.channel_ref}
-                    {envLabel && (
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".04em", color: "var(--text-muted)", background: "var(--surface-2)", borderRadius: 4, padding: "1px 6px", textTransform: "uppercase" }}>
+                    {isWebhook ? "webhook" : "slack"}
+                  </span>
+                  <span style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)", color: "var(--text)", flex: 1, wordBreak: "break-all" }}>
+                    {isWebhook ? ch.channel_ref : `#${ch.channel_ref}`}
+                    {!isWebhook && envLabel && (
                       <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)", fontFamily: "inherit" }}>· {envLabel}</span>
                     )}
                   </span>
@@ -238,21 +268,21 @@ function NotificationsCard({
 
               {addingAction === a.k && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, padding: "6px 8px", background: "var(--surface-2)", borderRadius: 6 }}>
-                  <span style={{ color: "var(--text-3)", fontSize: 12 }}>#</span>
+                  {addType === "slack" && <span style={{ color: "var(--text-3)", fontSize: 12 }}>#</span>}
                   <input
                     autoFocus
                     value={addChannel}
-                    onChange={e => setAddChannel(e.target.value.replace(/^#+/, ""))}
-                    placeholder="compliance-hipaa"
-                    style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 8px", fontSize: 12.5 }}
+                    onChange={e => setAddChannel(addType === "slack" ? e.target.value.replace(/^#+/, "") : e.target.value)}
+                    placeholder={addType === "slack" ? "compliance-hipaa" : "https://example.com/hooks/guard"}
+                    style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 8px", fontSize: 12.5, fontFamily: addType === "webhook" ? "var(--font-mono, ui-monospace, monospace)" : undefined }}
                     onKeyDown={e => { if (e.key === "Enter") void handleAdd(a.k); if (e.key === "Escape") { setAddingAction(null); setAddChannel("") } }}
                   />
                   <button
                     type="button"
-                    disabled={environments.length === 0 || !addChannel.trim()}
+                    disabled={(addType === "slack" && environments.length === 0) || !addChannel.trim()}
                     onClick={() => void handleAdd(a.k)}
                     className="btn btn-primary btn-sm"
-                    style={{ fontSize: 11, opacity: environments.length === 0 || !addChannel.trim() ? 0.5 : 1 }}
+                    style={{ fontSize: 11, opacity: (addType === "slack" && environments.length === 0) || !addChannel.trim() ? 0.5 : 1 }}
                   >
                     Save
                   </button>

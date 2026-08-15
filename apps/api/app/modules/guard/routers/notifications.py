@@ -63,15 +63,15 @@ class ChannelOut(BaseModel):
 
 class ChannelCreate(BaseModel):
     action: Literal["block", "warn", "audit", "approval"]
-    channel_type: Literal["slack"] = "slack"  # Phase 1: slack only
+    channel_type: Literal["slack", "webhook"] = "slack"  # webhook added in Phase 2A
     integration_id: str | None = None
-    channel_ref: str = Field(..., min_length=1, max_length=200)
+    channel_ref: str = Field(..., min_length=1, max_length=2048)
     dedupe_window_sec: int = Field(default=300, ge=0, le=86400)
 
 
 class ChannelPatch(BaseModel):
     enabled: bool | None = None
-    channel_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    channel_ref: str | None = Field(default=None, min_length=1, max_length=2048)
     integration_id: str | None = None
     dedupe_window_sec: int | None = Field(default=None, ge=0, le=86400)
 
@@ -321,6 +321,23 @@ def test_channel(
     except ValueError:
         raise HTTPException(status_code=400, detail="invalid workspace_id")
     row = _get_row(db, notif_id, ws)
+    if row.channel_type == "webhook":
+        try:
+            import httpx, json as _json
+            payload = {
+                "event": "guard.notification.test",
+                "action": row.action,
+                "rule_id": "test",
+                "message": "synthetic notification from Guard settings",
+            }
+            resp = httpx.post(row.channel_ref, json=payload, timeout=10.0)
+            if resp.status_code >= 400:
+                return TestResult(ok=False, error=f"HTTP {resp.status_code}: {resp.text[:200]}")
+            return TestResult(ok=True)
+        except Exception as e:
+            log.warning("guard.notifications.webhook_test_failed", err=str(e))
+            return TestResult(ok=False, error=str(e)[:200])
+
     if row.channel_type != "slack":
         return TestResult(ok=False, error=f"channel type {row.channel_type!r} not yet supported")
 
