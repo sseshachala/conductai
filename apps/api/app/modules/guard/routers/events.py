@@ -208,23 +208,30 @@ def notify_guard_block(
 
 def _fanout_slack(db: Session, workspace_id, channels, text_msg: str) -> None:
     """Post text_msg to every Slack channel in `channels`. Silently skips any
-    that lack credentials or fail — one bad channel must not block the others."""
+    that lack credentials or fail — one bad channel must not block the others.
+
+    Per-channel env: honors channel.integration_id via slack_token_for_channel;
+    falls back to the workspace-default Slack cred when not set."""
     from app.core.credentials import get_credential
+    from app.modules.guard.routers.notifications import slack_token_for_channel
+    from app.runtime.integrations.slack import post_message
+
     try:
-        creds = get_credential(db, str(workspace_id), "slack")
-        token = (creds or {}).get("token") or (creds or {}).get("bot_token", "")
-        if not token:
-            return
-        from app.runtime.integrations.slack import post_message
-        for ch in channels:
-            if ch.channel_type != "slack":
-                continue
-            try:
-                post_message(token=token, channel=ch.channel_ref, text=text_msg)
-            except Exception:
-                pass
+        default_creds = get_credential(db, str(workspace_id), "slack")
     except Exception:
-        pass
+        default_creds = None
+    default_token = (default_creds or {}).get("token") or (default_creds or {}).get("bot_token") or ""
+
+    for ch in channels:
+        if ch.channel_type != "slack":
+            continue
+        token = slack_token_for_channel(db, workspace_id, ch.integration_id, default_token)
+        if not token:
+            continue
+        try:
+            post_message(token=token, channel=ch.channel_ref, text=text_msg)
+        except Exception:
+            pass  # per-channel failure must not stop the fan-out
 
 
 def _send_guard_slack(db: Session, config: GuardConfig, text_msg: str) -> None:

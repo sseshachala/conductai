@@ -159,6 +159,30 @@ def _get_row(db: Session, notif_id: str, workspace_id: _uuid.UUID) -> GuardNotif
     return row
 
 
+# ── Slack credential lookup (shared by fanout + test endpoint) ────────────
+
+def slack_token_for_channel(db, workspace_id, integration_id, default_token: str = "") -> str:
+    """Resolve the Slack bot token for one channel row.
+
+    - If integration_id is set, decrypt that specific integration's cred blob.
+    - Fall back to default_token (workspace-scoped lookup done once by the caller).
+    Returns "" when nothing usable is available.
+    """
+    from app.core.crypto import decrypt
+    from app.models.integration import Integration
+    if integration_id:
+        try:
+            row = db.query(Integration).filter(Integration.id == integration_id).first()
+            if row and row.encrypted_credentials:
+                creds = decrypt(row.encrypted_credentials) or {}
+                tok = creds.get("token") or creds.get("bot_token")
+                if tok:
+                    return tok
+        except Exception:
+            pass
+    return default_token
+
+
 # ── Public resolver (imported by events.py) ────────────────────────────────
 
 def resolve_channels(
@@ -302,10 +326,12 @@ def test_channel(
 
     try:
         from app.core.credentials import get_credential
-        creds = get_credential(db, str(ws), "slack")
-        token = (creds or {}).get("token") or (creds or {}).get("bot_token", "")
+
+        default = get_credential(db, str(ws), "slack") or {}
+        default_token = default.get("token") or default.get("bot_token") or ""
+        token = slack_token_for_channel(db, ws, row.integration_id, default_token)
         if not token:
-            return TestResult(ok=False, error="No Slack credentials configured for this workspace.")
+            return TestResult(ok=False, error="No Slack credentials configured for this workspace or environment.")
         from app.runtime.integrations.slack import post_message
         post_message(
             token=token,
