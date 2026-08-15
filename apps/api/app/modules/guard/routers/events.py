@@ -193,11 +193,28 @@ def notify_guard_block(
         lines.append(f"• Provider: `{provider}` · via {source}")
     text_msg = "\n".join(lines)
 
-    # #1142 Phase 1 — fan out to per-action channels if configured.
+    # #1142 Phase 1+2A — fan out to per-action channels if configured.
+    # Split by channel_type: slack gets the plain-text message; webhook gets JSON.
     action = "block" if decision == "blocked" else "warn" if decision == "warned" else "audit"
     channels = _resolve_channels(db, ws, action)
     if channels:
-        _fanout_slack(db, ws, channels, text_msg)
+        slack_chs = [c for c in channels if c.channel_type == "slack"]
+        webhook_chs = [c for c in channels if c.channel_type == "webhook"]
+        if slack_chs:
+            _fanout_slack(db, ws, slack_chs, text_msg)
+        if webhook_chs:
+            _fanout_webhook(webhook_chs, {
+                "event": "guard.decision",
+                "action": action,
+                "decision": decision,
+                "rule_id": rule_id,
+                "workspace_id": str(ws),
+                "user_email": user_email,
+                "tool": tool,
+                "provider": provider,
+                "source": source,
+                "message": text_msg,
+            })
         return
 
     # Legacy fallback — single alert_channel gated by notify_on_block.
@@ -230,6 +247,24 @@ def _fanout_slack(db: Session, workspace_id, channels, text_msg: str) -> None:
             continue
         try:
             post_message(token=token, channel=ch.channel_ref, text=text_msg)
+        except Exception:
+            pass  # per-channel failure must not stop the fan-out
+
+
+def _fanout_webhook(channels, payload: dict) -> None:
+    """POST a JSON payload to every webhook channel. Same fail-soft contract
+    as _fanout_slack — one bad URL does not block the others."""
+    if not channels:
+        return
+    try:
+        import httpx
+    except ImportError:
+        return
+    for ch in channels:
+        if ch.channel_type != "webhook":
+            continue
+        try:
+            httpx.post(ch.channel_ref, json=payload, timeout=10.0)
         except Exception:
             pass  # per-channel failure must not stop the fan-out
 
