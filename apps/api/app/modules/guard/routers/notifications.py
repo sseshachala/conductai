@@ -125,7 +125,7 @@ def _autoseed_from_legacy(db: Session, workspace_id: _uuid.UUID) -> None:
             workspace_id=workspace_id,
             action=action,
             channel_type="slack",
-            integration_id=_uuid.UUID(cfg.alert_slack_integration_id) if getattr(cfg, "alert_slack_integration_id", None) else None,
+            integration_id=getattr(cfg, "alert_slack_integration_id", None),  # already a UUID from SQLAlchemy
             channel_ref=cfg.alert_channel,
             enabled=bool(cfg.notify_on_block),
         ))
