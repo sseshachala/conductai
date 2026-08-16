@@ -58,7 +58,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <WorkspaceProvider clerkEnabled={clerkEnabled}>
       <GuardRoleProviderBranch>
-        <SetupGate>{children}</SetupGate>
+        {clerkEnabled ? <SetupGate>{children}</SetupGate> : children}
       </GuardRoleProviderBranch>
     </WorkspaceProvider>
   )
