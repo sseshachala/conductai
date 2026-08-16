@@ -459,3 +459,48 @@ class GuardKnowledgeIndex(Base):
     __table_args__ = (
         UniqueConstraint("workspace_id", "source_kind", "source_id", name="uq_guard_knowledge_source"),
     )
+
+
+class GuardApprovalRequest(Base):
+    """HITL approval request created by a rule with action=approval (#1140).
+
+    Surface-agnostic: created from the CLI/MCP hook, LLM proxy, or workflow
+    runtime. When triggered inside a workflow, source_run_id/source_block_id
+    link back so the decide endpoint can resume the paused run using the same
+    approval_received run_event that DSL approve blocks already emit.
+    """
+
+    __tablename__ = "guard_approval_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+
+    rule_id      = Column(String(200), nullable=False)
+    rule_pack    = Column(String(100), nullable=True)
+    rule_message = Column(Text, nullable=True)
+
+    tool_name  = Column(String(100), nullable=True)
+    tool_input = Column(JSONB, nullable=False, default=dict)
+
+    requester_email       = Column(String(255), nullable=True)
+    requester_user_id     = Column(String(255), nullable=True)
+    requester_agent_ident = Column(String(255), nullable=True)
+
+    surface    = Column(String(50), nullable=False, default="unknown")
+    session_id = Column(String(255), nullable=True)
+
+    source_run_id   = Column(UUID(as_uuid=True), ForeignKey("runs.id", ondelete="SET NULL"), nullable=True)
+    source_block_id = Column(String(255), nullable=True)
+
+    approval_group = Column(String(100), nullable=True)
+    approval_type  = Column(String(20), nullable=False, default="any_authorized")
+
+    status             = Column(String(20), nullable=False, default="pending")
+    decided_by_email   = Column(String(255), nullable=True)
+    decided_by_user_id = Column(String(255), nullable=True)
+    decided_reason     = Column(Text, nullable=True)
+    decided_at         = Column(DateTime(timezone=True), nullable=True)
+    latency_ms         = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    timeout_at = Column(DateTime(timezone=True), nullable=False)

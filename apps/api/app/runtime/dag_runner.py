@@ -1159,10 +1159,13 @@ def _execute_dag(
                 db.commit()
             except Exception:
                 pass
-            _emit(db, run_id, ap.block_id, "approval_requested", {
+            _payload = {
                 "block_id": ap.block_id,
                 "message": ap.message,
-            })
+            }
+            if ap.metadata:
+                _payload.update(ap.metadata)
+            _emit(db, run_id, ap.block_id, "approval_requested", _payload)
             log.info("run.paused", run_id=run_id, block_id=ap.block_id)
             return state  # Exit without marking failed
 

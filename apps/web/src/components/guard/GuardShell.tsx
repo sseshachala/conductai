@@ -16,6 +16,7 @@ export const GUARD_TABS: TabDef[] = [
   { href: "/logs/guard",           label: "Activity"    },
   { href: "/theguard/spend",      label: "Spend"       },
   { href: "/theguard/policies",   label: "Policies"    },
+  { href: "/theguard/approvals",  label: "Approvals"   },
   { href: "/theguard/discovery",  label: "Discovery"   },
   { href: "/theguard/compliance", label: "Compliance", roles: ["admin", "security"] },
   { href: "/theguard/settings",   label: "Settings",   roles: ["admin"] },

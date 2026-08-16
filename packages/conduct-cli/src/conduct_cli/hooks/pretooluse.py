@@ -670,6 +670,80 @@ def _record_session_warn(session_id: str, rule_id: str) -> None:
 
 # ── Hook entrypoint ───────────────────────────────────────────────────────────
 
+
+def _guard_approval_request(
+    tool_name: str,
+    tool_input: dict,
+    rule_id: str,
+    message: str,
+    session_id: str | None,
+) -> str:
+    """Create a Guard approval request and long-poll for a decision.
+
+    Returns one of: "approved" | "rejected" | "timed_out" | "unavailable".
+    Fail-open on unavailable — the caller decides whether to allow (fail_open)
+    or block (fail_closed) based on Guard's configured fail mode."""
+    try:
+        cfg = load_config()
+        workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
+        agent_token  = cfg.get("agent_token", "")
+        api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+        if not workspace_id or not agent_token:
+            return "unavailable"
+
+        body = json.dumps({
+            "rule_id":       rule_id or "unknown",
+            "rule_message":  message,
+            "tool_name":     tool_name,
+            "tool_input":    tool_input,
+            "surface":       "claude_code_hook",
+            "session_id":    session_id,
+        }).encode()
+        create_req = urllib.request.Request(
+            f"{api_url}/guard/approvals?workspace_id={workspace_id}",
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {agent_token}",
+                "Content-Type":  "application/json",
+                "X-Workspace-ID": workspace_id,
+            },
+        )
+        with urllib.request.urlopen(create_req, timeout=8) as resp:
+            created = json.loads(resp.read())
+        request_id = created.get("id")
+        url = created.get("url") or ""
+        if not request_id:
+            return "unavailable"
+
+        print(
+            f"[ConductGuard] PENDING approval - {message}\n"
+            f"  rule: {rule_id}\n"
+            f"  decide: {url}\n"
+            f"  waiting up to 5min for a decision...",
+            file=sys.stderr,
+        )
+
+        deadline = time.time() + 300
+        poll_url = f"{api_url}/guard/approvals/{request_id}?workspace_id={workspace_id}"
+        headers = {"Authorization": f"Bearer {agent_token}", "X-Workspace-ID": workspace_id}
+        while time.time() < deadline:
+            time.sleep(3.0)
+            try:
+                poll_req = urllib.request.Request(poll_url, headers=headers)
+                with urllib.request.urlopen(poll_req, timeout=5) as resp:
+                    row = json.loads(resp.read())
+                st = row.get("status", "pending")
+                if st in ("approved", "rejected", "timed_out"):
+                    return st
+            except Exception:
+                continue
+        return "timed_out"
+    except Exception as exc:
+        print(f"[ConductGuard] approval request failed: {exc}", file=sys.stderr)
+        return "unavailable"
+
+
 def main() -> None:
     try:
         data = json.load(sys.stdin)
@@ -735,7 +809,30 @@ def main() -> None:
         post_event(tool_name, tool_input, "audited", rule_id, f"[advisory] {message}", session_id, drain_via=_this_file)
         sys.exit(0)
 
-    decision = {"block": "blocked", "warn": "warned", "approval": "blocked"}.get(action, "allowed")
+    if action == "approval":
+        outcome = _guard_approval_request(tool_name, tool_input, rule_id, message, session_id)
+        if outcome == "approved":
+            post_event(tool_name, tool_input, "allowed", rule_id, f"[approval:approved] {message}", session_id, drain_via=_this_file)
+            print("[ConductGuard] approval granted - proceeding.", file=sys.stderr)
+            sys.exit(0)
+        if outcome == "rejected":
+            post_event(tool_name, tool_input, "blocked", rule_id, f"[approval:rejected] {message}", session_id, drain_via=_this_file)
+            print("[ConductGuard] approval rejected - tool call blocked.", file=sys.stderr)
+            sys.exit(2)
+        if outcome == "timed_out":
+            post_event(tool_name, tool_input, "blocked", rule_id, f"[approval:timed_out] {message}", session_id, drain_via=_this_file)
+            print("[ConductGuard] approval timed out - tool call blocked.", file=sys.stderr)
+            sys.exit(2)
+        # unavailable - respect Guard's fail mode. Default fail-closed.
+        fail_mode = _get_fail_mode()
+        post_event(tool_name, tool_input, "blocked", rule_id, f"[approval:unavailable/{fail_mode}] {message}", session_id, drain_via=_this_file)
+        if fail_mode == "fail_open":
+            print("[ConductGuard] approval service unavailable - fail-open allows.", file=sys.stderr)
+            sys.exit(0)
+        print("[ConductGuard] approval service unavailable - fail-closed blocks.", file=sys.stderr)
+        sys.exit(2)
+
+    decision = {"block": "blocked", "warn": "warned"}.get(action, "allowed")
     if action == "warn" and session_id and rule_id and _already_warned_this_session(session_id, rule_id):
         sys.exit(0)
     if action == "warn" and session_id and rule_id:
@@ -747,7 +844,7 @@ def main() -> None:
         print(msg)
         print(msg, file=sys.stderr)
         sys.exit(2)
-    if action in ("warn", "approval"):
+    if action == "warn":
         print(f"[ConductGuard] {message}")
 
     sys.exit(0)

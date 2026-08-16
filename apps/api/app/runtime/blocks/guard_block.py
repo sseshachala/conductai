@@ -184,9 +184,57 @@ def _execute_guard(
                 f"[ConductGuard] Blocked by policy '{v_rule_id}': {message}{_detail}"
             )
 
-        elif action in ("warn", "approval"):
+        elif action == "warn":
             _record_event(v, "warned")
             warnings.append({"rule_id": v_rule_id, "message": message})
+
+        elif action == "approval":
+            # HITL — create a pending approval request tied to this run+block,
+            # then raise ApprovalRequired so the dag_runner pauses the run and
+            # emits an approval_requested event with the approval_id + URL.
+            from app.runtime.exceptions import ApprovalRequired
+            from app.modules.guard import approval as _approval
+            try:
+                req = _approval.create_approval_request(
+                    db,
+                    workspace_id=ws_uuid,
+                    rule=v,
+                    tool_name=block_id,
+                    tool_input={k: state.get(k) for k in list(state.keys())[:20] if not str(k).startswith("__")},
+                    requester_email=user_email,
+                    surface="workflow",
+                    session_id=None,
+                    source_run_id=str(run_id) if run_id else None,
+                    source_block_id=block_id,
+                )
+                _approval.dispatch_approval_notifications(db, req)
+            except Exception as _apr_err:
+                log.warning("guard.approval.create_failed", err=str(_apr_err), rule_id=v_rule_id)
+                # Fail-closed: pause the run with a message but no URL — the
+                # operator can still resume via the DSL approve endpoint using
+                # block_id, so the run doesn't hang forever.
+                raise ApprovalRequired(block_id=block_id, message=f"Guard rule '{v_rule_id}' requires approval: {message}")
+            try:
+                state["__pending_guard_approval"] = {
+                    "rule_id":      v_rule_id,
+                    "approval_id":  str(req.id),
+                    "approval_url": _approval.approval_url(req.id),
+                    "message":      message,
+                    "timeout_at":   req.timeout_at.isoformat(),
+                }
+            except Exception:
+                pass
+            raise ApprovalRequired(
+                block_id=block_id,
+                message=f"Guard rule '{v_rule_id}' requires approval: {message}",
+                metadata={
+                    "source":       "guard.rule",
+                    "rule_id":      v_rule_id,
+                    "approval_id":  str(req.id),
+                    "approval_url": _approval.approval_url(req.id),
+                    "timeout_at":   req.timeout_at.isoformat(),
+                },
+            )
 
         else:
             _record_event(v, "audited")

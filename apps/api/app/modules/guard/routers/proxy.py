@@ -351,6 +351,59 @@ async def _proxy(
                 _err["guidance"] = _guidance_text
             return JSONResponse(status_code=403, content={"error": _err})
 
+        if _action == "APPROVAL":
+            from app.modules.guard.models import GuardApprovalRequest as _GAR
+            from app.modules.guard import approval as _approval
+            _db2 = SessionLocal()
+            try:
+                # De-dupe: if this workspace + rule + requester already has a pending
+                # request in the last 5 minutes, reuse it so a retrying agent does
+                # not spam the inbox.
+                from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+                cutoff = _dt.now(_tz.utc) - _td(minutes=5)
+                existing = _db2.query(_GAR).filter(
+                    _GAR.workspace_id == uuid.UUID(workspace_id),
+                    _GAR.rule_id == decision["rule_id"],
+                    _GAR.requester_user_id == (clerk_user_id or ""),
+                    _GAR.status == "pending",
+                    _GAR.created_at >= cutoff,
+                ).first() if clerk_user_id else None
+                if existing is None:
+                    req = _approval.create_approval_request(
+                        _db2,
+                        workspace_id=workspace_id,
+                        rule=decision.get("rule") or {"id": decision["rule_id"], "message": decision.get("message")},
+                        tool_name=f"llm.{provider}",
+                        tool_input={"model": model, "prompt": prompt_summary},
+                        requester_email=_user_email,
+                        requester_user_id=clerk_user_id,
+                        surface="proxy",
+                        session_id=_hook_session_id,
+                        source_run_id=_run_id,
+                    )
+                    _approval.dispatch_approval_notifications(_db2, req)
+                else:
+                    req = existing
+                background.add_task(
+                    _record_audit, workspace_id, clerk_user_id, ai_tool, provider, model,
+                    "approval_pending", decision["rule_id"], int((time.monotonic() - started) * 1000),
+                    body=body, response_bytes=None,
+                    prompt_summary=prompt_summary, user_email=_user_email,
+                    conductai_run_id=_run_id, conductai_workflow=_workflow,
+                    conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
+                )
+                _err = {
+                    "type": "guard_approval_required",
+                    "message": decision["message"] or "Human approval required by policy.",
+                    "rule": decision["rule_id"],
+                    "approval_request_id": str(req.id),
+                    "approval_url": _approval.approval_url(req.id),
+                    "pending_marker": _approval.pending_marker(req),
+                }
+                return JSONResponse(status_code=428, content={"error": _err})
+            finally:
+                _db2.close()
+
         # Map internal action to audit decision string
         _audit_decision = "warned" if _action == "WARN" else "allowed"
         _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
@@ -537,12 +590,21 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
             # #1141 follow-up: prefer explicit `guidance` field (model-directed);
             # fall back to `message` for compat with rules pre-dating the split.
             guidance = (r.get("guidance") or r.get("message") or r.get("description")) if inject_guidance else None
+            if action == "BLOCK":
+                mapped = "BLOCK"
+            elif action == "WARN":
+                mapped = "WARN"
+            elif action == "APPROVAL":
+                mapped = "APPROVAL"
+            else:
+                mapped = "ALLOW"
             return {
-                "action": "BLOCK" if action == "BLOCK" else ("WARN" if action == "WARN" else "ALLOW"),
+                "action": mapped,
                 "rule_id": r.get("rule_id") or r.get("id"),
                 "message": r.get("message") or r.get("description"),
                 "inject_guidance": inject_guidance,
                 "guidance": guidance,
+                "rule": r,  # full spec — needed by APPROVAL to read approval_* fields
             }
         return {"action": "ALLOW", "rule_id": None, "message": None, "inject_guidance": False, "guidance": None}
     finally:

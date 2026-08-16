@@ -609,6 +609,28 @@ def approve_run(
         log.error("run.approve_enqueue_failed", run_id=str(run_id), error=str(_enqueue_err))
         raise HTTPException(status_code=503, detail="Approval recorded but queue unavailable — retry shortly")
 
+    # Also close any pending Guard approval requests tied to this run+block so
+    # the surface-agnostic /guard/approvals inbox stays in sync when the operator
+    # approves inline from the run page (#1140).
+    try:
+        from app.modules.guard.models import GuardApprovalRequest as _GAR
+        from app.modules.guard import approval as _guard_approval
+        matching = db.query(_GAR).filter(
+            _GAR.source_run_id == run_id,
+            _GAR.source_block_id == block_id,
+            _GAR.status == "pending",
+        ).all()
+        for gar in matching:
+            _guard_approval.apply_decision(
+                db, gar,
+                decision=body.decision,
+                decider_email=body.approver,
+                decider_user_id=None,
+                reason=None,
+            )
+    except Exception as _gc_err:
+        log.warning("run.approve.guard_close_failed", err=str(_gc_err), run_id=str(run_id))
+
     log.info("run.approved", run_id=str(run_id), workspace_id=workspace_id, approved_by=body.approver, decision=body.decision)
     return {"run_id": str(run_id), "decision": body.decision, "status": "queued"}
 
