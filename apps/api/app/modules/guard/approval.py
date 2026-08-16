@@ -46,7 +46,9 @@ def _snapshot_input(tool_input: dict | None) -> dict:
     if not tool_input:
         return {}
     try:
-        redacted = redact_secrets(json.dumps(tool_input, default=str))
+        result = redact_secrets(json.dumps(tool_input, default=str))
+        # redact_secrets returns (cleaned_text, secret_labels) — unpack.
+        redacted = result[0] if isinstance(result, tuple) else result
         payload = json.loads(redacted)
     except Exception:
         # If redaction/serialisation blows up, keep the pause functional but
