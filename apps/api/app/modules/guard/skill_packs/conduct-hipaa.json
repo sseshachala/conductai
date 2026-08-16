@@ -1,7 +1,7 @@
 {
   "slug": "conduct-hipaa",
   "name": "Conduct HIPAA",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "tier": "paid",
   "description": "HIPAA PHI protection rules",
   "rules": [
@@ -110,6 +110,44 @@
           "Hook enforcement depends on the AI tool emitting supported structured hook events",
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Workflow runtime skips rules restricted to non-workflow tool families"
+        ]
+      }
+    },
+    {
+      "id": "hipaa_phi_export_requires_approval",
+      "description": "Require compliance-officer approval before exporting PHI-shaped data (SSN, DOB, patient_id, MRN) via bulk write/curl/scp",
+      "match_tool": "bash,curl,scp,write,edit",
+      "match_pattern": "(?=.*(patient_id|patient_ssn|patient_dob|mrn|medical_record_number))(?=.*(export|dump|copy|upload|scp|curl|POST))",
+      "action": "approval",
+      "message": "PHI export requires compliance-officer approval \u2014 HIPAA 164.308(a)(4) minimum-necessary rule.",
+      "approval_group": "compliance-officers",
+      "approval_type": "peer",
+      "approval_timeout_sec": 1800,
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "HIPAA:164.308(a)(4)",
+        "HIPAA:164.312(b)",
+        "SOC2:CC6.1"
+      ],
+      "severity": "high",
+      "recommendation": "Bulk export of PHI-shaped fields must have compliance sign-off. Verify minimum-necessary scope, encryption at rest on destination, and access log capture before approving.",
+      "iso_control": "A.5.34",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "hard",
+        "guarantee": "Pauses execution and creates a Guard approval request on any surface that submits the action to guard_check; workflow runtime runs pause until decided.",
+        "requires": [
+          "Approver has platform.approvals.decide permission",
+          "Requester differs from approver (peer approval)"
+        ],
+        "known_limitations": [
+          "Hook/MCP enforcement depends on the agent invoking guard_check before the tool call",
+          "Proxy surface returns 428 with pending marker \u2014 the agent must retry after human approval"
         ]
       }
     }

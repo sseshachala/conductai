@@ -496,6 +496,31 @@ export default function RunDetailPage() {
                         <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>{run.trigger_summary}</div>
                       </div>
                     )}
+                    {(() => {
+                      const st = run.state as Record<string, unknown> | null
+                      const g = st?.__pending_guard_approval as
+                        | { rule_id?: string; message?: string; approval_url?: string; approval_id?: string }
+                        | undefined
+                      if (!g?.rule_id) return null
+                      return (
+                        <div className="card" style={{ padding: "12px 14px", background: "var(--warn-bg)", marginBottom: 16 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--warn)", marginBottom: 4 }}>
+                            Triggered by Guard rule
+                          </div>
+                          <div style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12, color: "var(--text)" }}>{g.rule_id}</div>
+                          {g.message && (
+                            <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 4 }}>{g.message}</div>
+                          )}
+                          {g.approval_url && (
+                            <div style={{ marginTop: 8, fontSize: 12 }}>
+                              <a href={g.approval_url} style={{ color: "var(--accent)", textDecoration: "underline" }}>
+                                Open in /theguard/approvals →
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
                     <div style={{ display: "flex", gap: 9 }}>
                       <button
                         className="btn btn-accent"

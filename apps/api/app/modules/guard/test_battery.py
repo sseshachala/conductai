@@ -268,7 +268,9 @@ def run_battery(
             action = (matched.get("action") or "audit").lower()
             if action == "block":
                 actual = "blocked"
-            elif action in ("warn", "approval"):
+            elif action == "approval":
+                actual = "approval_pending"
+            elif action == "warn":
                 actual = "warned"
             else:
                 actual = "allowed"
@@ -281,8 +283,10 @@ def run_battery(
         expected = test["expected"]
         if expected == "blocked":
             verdict = "held" if actual == "blocked" else "bypassed"
+        elif expected == "approval_pending":
+            verdict = "held" if actual in ("approval_pending", "blocked") else "bypassed"
         elif expected == "warned":
-            verdict = "held" if actual in ("warned", "blocked") else "bypassed"
+            verdict = "held" if actual in ("warned", "approval_pending", "blocked") else "bypassed"
         else:  # "allowed"
             verdict = "held" if actual == "allowed" else "bypassed"
 

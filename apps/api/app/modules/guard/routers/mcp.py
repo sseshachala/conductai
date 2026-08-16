@@ -31,6 +31,8 @@ from app.core.auth import get_clerk_user_email, resolve_agent_token
 from app.core.pii import redact_secrets
 from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardMemberConfig, chain_hash_for_insert, get_policy_hash
+from app.modules.guard.models import GuardApprovalRequest
+from app.modules.guard import approval as _approval
 from app.modules.guard.policy_engine import compute_policy
 from app.modules.guard.tool_groups import expand_match_tool
 
@@ -365,20 +367,31 @@ def _match_policy(tool_name: str, tool_input: dict, rules: list) -> dict | None:
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
+_APPROVAL_FIELDS = ("approval_group", "approval_type", "approval_timeout_sec", "approval_notification", "guidance", "inject_guidance")
+
+
+def _project_rule(r: dict) -> dict:
+    """Trim a raw rule to the fields the matcher + downstream handlers use.
+    Preserves approval_* fields so action=approval can honour rule spec."""
+    out = {
+        "rule_id":           r.get("id") or r.get("rule_id"),
+        "match_tool":        r.get("match_tool"),
+        "match_pattern":     r.get("match_pattern"),
+        "match_path_pattern": r.get("match_path_pattern"),
+        "action":            r.get("action"),
+        "message":           r.get("message"),
+        "pack":              r.get("pack") or r.get("pack_slug"),
+    }
+    for k in _APPROVAL_FIELDS:
+        if k in r and r[k] is not None:
+            out[k] = r[k]
+    return out
+
+
 def _get_rules(db: Session, ws_uuid: uuid.UUID) -> list[dict]:
     """Active ruleset for the agent persona — governs what AI does on the machine."""
     rules = compute_policy(db, ws_uuid, "agent")
-    return [
-        {
-            "rule_id":           r.get("id") or r.get("rule_id"),
-            "match_tool":        r.get("match_tool"),
-            "match_pattern":     r.get("match_pattern"),
-            "match_path_pattern": r.get("match_path_pattern"),
-            "action":            r.get("action"),
-            "message":           r.get("message"),
-        }
-        for r in rules
-    ]
+    return [_project_rule(r) for r in rules]
 
 
 _PERSONAS = ["agent", "proxy"]
@@ -408,14 +421,9 @@ def _get_rules_for_pack(db: Session, ws_uuid: uuid.UUID, pack_slug: str) -> list
                 continue
             if not persona and "agent" not in rule.get("persona_affinity", _PERSONAS):
                 continue
-            rules[rule["id"]] = {
-                "rule_id":            rule.get("id") or rule.get("rule_id"),
-                "match_tool":         rule.get("match_tool"),
-                "match_pattern":      rule.get("match_pattern"),
-                "match_path_pattern": rule.get("match_path_pattern"),
-                "action":             rule.get("action"),
-                "message":            rule.get("message"),
-            }
+            projected = _project_rule(rule)
+            projected["pack"] = projected.get("pack") or slug
+            rules[rule["id"]] = projected
     return list(rules.values())
 
 
@@ -743,7 +751,7 @@ async def mcp_endpoint(
                 if action == "block":
                     _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                     return JSONResponse(_text(msg_id, f"BLOCKED — {message}  [rule: {rule_id}]{_guidance_suffix}"))
-                if action in ("warn", "approval"):
+                if action == "warn":
                     already_warned = db.query(GuardAuditEvent).filter(
                         GuardAuditEvent.workspace_id == ws_uuid,
                         GuardAuditEvent.hook_session_id == session_id,
@@ -754,6 +762,32 @@ async def mcp_endpoint(
                         return JSONResponse(_text(msg_id, "ok"))
                     _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                     return JSONResponse(_text(msg_id, f"WARNING — {message}  [rule: {rule_id}]{_guidance_suffix}"))
+
+                if action == "approval":
+                    # HITL — one pending row per (session, rule) so an agent that
+                    # retries the same intent doesn't spam the inbox.
+                    existing = db.query(GuardApprovalRequest).filter(
+                        GuardApprovalRequest.workspace_id == ws_uuid,
+                        GuardApprovalRequest.rule_id == rule_id,
+                        GuardApprovalRequest.session_id == str(session_id) if session_id else None,
+                        GuardApprovalRequest.status == "pending",
+                    ).first() if session_id else None
+                    if existing is None:
+                        req = _approval.create_approval_request(
+                            db,
+                            workspace_id=ws_uuid,
+                            rule=rule,
+                            tool_name=inner_tool,
+                            tool_input=inner_input,
+                            requester_email=user_email,
+                            requester_user_id=clerk_user_id,
+                            surface=ai_tool,
+                            session_id=str(session_id) if session_id else None,
+                        )
+                        _approval.dispatch_approval_notifications(db, req)
+                    else:
+                        req = existing
+                    return JSONResponse(_text(msg_id, _approval.pending_marker(req)))
 
                 _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
                 return JSONResponse(_text(msg_id, f"AUDITED — {message}  [rule: {rule_id}]{_guidance_suffix}"))
