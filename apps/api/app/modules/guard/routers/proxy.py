@@ -48,6 +48,7 @@ from app.models.workspace import Workspace
 from app.core.workspace_context import set_workspace_rls
 from app.modules.guard.policy_engine import compute_policy, canonical_workspace_id as _canonical_workspace_id
 from app.modules.guard.detectors.normalizer import normalize as _normalize_text
+from app.modules.guard.circuit_breaker import get_breaker as _get_breaker
 from app.runtime.pricing import get_model_rates
 
 
@@ -796,6 +797,17 @@ async def _forward(
 
     # ponytail: a single shared async client would be better for connection
     # pooling. Per-call is fine until QPS warrants it.
+    _breaker = _get_breaker()
+    _breaker_key = provider or "default"
+    if not _breaker.allow(_breaker_key):
+        log.warning("guard.proxy.breaker_open", provider=_breaker_key,
+                    snapshot=_breaker.snapshot(_breaker_key))
+        return _fail_closed(
+            503,
+            f"Guard circuit breaker OPEN for provider={_breaker_key} — "
+            f"upstream failing repeatedly; retry after ~{int(_breaker.recovery_timeout)}s",
+        )
+
     client = httpx.AsyncClient(timeout=httpx.Timeout(600.0))
 
     try:
@@ -804,12 +816,19 @@ async def _forward(
                  headers={k: v for k, v in headers.items() if "key" not in k.lower() and "auth" not in k.lower()})
         resp = await client.send(req, stream=True)
     except Exception as e:
+        _breaker.record_failure(_breaker_key)
         await client.aclose()
         import traceback as _tb
         log.warning("guard.proxy.upstream_unreachable", url=_full_url,
                     exc_type=type(e).__name__, err=str(e),
                     traceback=_tb.format_exc())
         return _fail_closed(502, f"Upstream {_full_url} unreachable: {type(e).__name__}: {e}")
+
+    # 5xx = upstream failure counted against the breaker; 4xx = client error, ignored.
+    if resp.status_code >= 500:
+        _breaker.record_failure(_breaker_key)
+    elif resp.status_code < 400:
+        _breaker.record_success(_breaker_key)
 
     if resp.status_code >= 400:
         # Read the error body, close client, return as-is so the SDK sees the
