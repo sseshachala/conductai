@@ -47,6 +47,7 @@ from app.models.integration import Integration
 from app.models.workspace import Workspace
 from app.core.workspace_context import set_workspace_rls
 from app.modules.guard.policy_engine import compute_policy, canonical_workspace_id as _canonical_workspace_id
+from app.modules.guard.detectors.normalizer import normalize as _normalize_text
 from app.runtime.pricing import get_model_rates
 
 
@@ -628,10 +629,15 @@ def _rule_matches(rule: dict, provider: str, model: str, prompt_text: str) -> bo
     if m and not re.search(m, model or "", re.IGNORECASE):
         return False
     pp = rule.get("match_prompt")
-    if pp and not re.search(pp, prompt_text, re.IGNORECASE):
-        return False
     pat = rule.get("match_pattern")
-    if pat and not re.search(pat, prompt_text, re.IGNORECASE):
+    if not pp and not pat:
+        return True
+    # Normalise once, evaluate text-matching predicates against every variant.
+    # Original text is always variants[0] so anomaly-pattern rules still fire.
+    variants = _normalize_text(prompt_text or "")
+    if pp and not any(re.search(pp, v.text, re.IGNORECASE) for v in variants):
+        return False
+    if pat and not any(re.search(pat, v.text, re.IGNORECASE) for v in variants):
         return False
     return True
 
