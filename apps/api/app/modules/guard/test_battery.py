@@ -177,6 +177,85 @@ def _match_hook_rule(
     return None
 
 
+def _all_matching_hook_rules(
+    tool_name: str,
+    tool_input: dict,
+    rules: list[dict],
+    *,
+    ai_tool: str = "claude-code",
+    tokens_before: int = 0,
+) -> list[dict]:
+    """Same predicate as _match_hook_rule but returns every rule that matches.
+
+    Powers the layered verdict envelope (#1150). Preserves rule iteration order
+    for callers that want to know evaluation order; separate deterministic sort
+    happens at envelope-serialization time.
+    """
+    inp_text = json.dumps(tool_input)
+    path_fields = [
+        str(tool_input.get(field, ""))
+        for field in ("file_path", "path", "command")
+    ]
+    out: list[dict] = []
+    for rule in rules:
+        if not is_hook_applicable_rule(rule):
+            continue
+        match_tool = (rule.get("match_tool") or "*").lower()
+        if match_tool != "*":
+            allowed = expand_match_tool(match_tool)
+            if tool_name.lower() not in allowed:
+                continue
+        match_ai_tool = rule.get("match_ai_tool")
+        if match_ai_tool:
+            allowed_ai_tools = {
+                item.strip().lower()
+                for item in str(match_ai_tool).split(",")
+                if item.strip()
+            }
+            if not any(surface in ai_tool.lower() for surface in allowed_ai_tools):
+                continue
+        pattern = rule.get("match_pattern")
+        if pattern:
+            try:
+                if not re.search(pattern, inp_text, re.IGNORECASE):
+                    continue
+            except re.error:
+                continue
+        path_pattern = rule.get("match_path_pattern")
+        if path_pattern:
+            try:
+                if not any(
+                    re.search(path_pattern, field, re.IGNORECASE)
+                    for field in path_fields
+                    if field
+                ):
+                    continue
+            except re.error:
+                continue
+        min_tokens = rule.get("match_tokens_before_gt")
+        if min_tokens is not None and tokens_before <= int(min_tokens):
+            continue
+        out.append(rule)
+    return out
+
+
+# Severity weights kept in sync with routers.proxy.SEVERITY_WEIGHTS for
+# consistent defense_score semantics across proxy and hook surfaces.
+_SEVERITY_WEIGHTS = {"critical": 10, "high": 5, "medium": 3, "low": 1}
+
+
+def _defense_score_for(matched: list[dict]) -> int:
+    return sum(_SEVERITY_WEIGHTS.get((r.get("severity") or "medium").lower(), 3) for r in matched)
+
+
+def _matched_summary(rule: dict) -> dict:
+    return {
+        "rule_id": rule.get("id") or rule.get("rule_id"),
+        "severity": (rule.get("severity") or "medium").lower(),
+        "action": (rule.get("action") or "audit").lower(),
+    }
+
+
 # ── Battery runner ────────────────────────────────────────────────────────────
 
 def run_battery(
@@ -290,6 +369,13 @@ def run_battery(
         else:  # "allowed"
             verdict = "held" if actual == "allowed" else "bypassed"
 
+        all_matches = _all_matching_hook_rules(
+            test["tool"],
+            test.get("tool_input") or {},
+            rules,
+            ai_tool="claude-code",
+        )
+        matched_rules_summary = [_matched_summary(r) for r in all_matches]
         results.append({
             "asi": test["asi"],
             "name": test["name"],
@@ -297,7 +383,9 @@ def run_battery(
             "expected": expected,
             "actual": actual,
             "verdict": verdict,
-            "matched_rule": matched_rule_id,
+            "matched_rule": matched_rule_id,           # backward compat — primary winner id
+            "matched_rules": matched_rules_summary,     # #1150 phase 2 — layered envelope
+            "defense_score": _defense_score_for(all_matches),
         })
 
     return results

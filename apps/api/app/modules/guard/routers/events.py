@@ -75,6 +75,9 @@ class HookEvent(BaseModel):
     hostname: str | None = None
     goal_id:   str | None = None
     goal_name: str | None = None
+    # #1150 phase 1 — layered verdict envelope; hooks may forward the same shape
+    evaluated_rules: list[dict] | None = None
+    defense_score: int | None = None
 
 
 class UsageUpdate(BaseModel):
@@ -125,6 +128,9 @@ class EventOut(BaseModel):
     policy_hash: str | None = None
     goal_id:   str | None = None
     goal_name: str | None = None
+    # #1150 phase 1 — layered verdict envelope (nullable for pre-migration rows)
+    evaluated_rules: list[dict] | None = None
+    defense_score: int | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -158,6 +164,8 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "blast_radius": e.blast_radius,
         "ts": e.ts.isoformat(),
         "entry_hash": e.entry_hash,
+        "evaluated_rules": e.evaluated_rules,
+        "defense_score": e.defense_score,
         "policy_hash": e.policy_hash,
         "goal_id": e.goal_id,
         "goal_name": e.goal_name,
