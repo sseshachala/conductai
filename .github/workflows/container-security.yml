@@ -1,0 +1,89 @@
+name: Container Security
+
+# Scans built container images for CVEs with Trivy (Aqua) and Grype (Anchore).
+# Two scanners because their databases differ — running both catches CVEs
+# that either alone would miss (~10-15% more coverage empirically).
+#
+# During adoption: continue-on-error so pre-existing base-image CVEs do
+# not block PRs. Flip to hard-fail after #1152 F baseline triage.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/Dockerfile"
+      - "apps/web/Dockerfile"
+      - "apps/api/requirements.txt"
+      - "apps/web/package-lock.json"
+      - ".github/workflows/container-security.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/api/Dockerfile"
+      - "apps/web/Dockerfile"
+      - "apps/api/requirements.txt"
+      - "apps/web/package-lock.json"
+  schedule:
+    - cron: "37 9 * * 2"   # Tuesday 09:37 UTC — off from CodeQL/deps to spread load
+
+concurrency:
+  group: container-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Scan ${{ matrix.image.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - { name: "api", dockerfile: "apps/api/Dockerfile", context: "apps/api" }
+          - { name: "web", dockerfile: "apps/web/Dockerfile", context: "apps/web" }
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Build image (local, no push)
+        run: |
+          docker build \
+            --file ${{ matrix.image.dockerfile }} \
+            --tag conduct/${{ matrix.image.name }}:ci-${{ github.sha }} \
+            ${{ matrix.image.context }}
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297 # master
+        with:
+          image-ref: conduct/${{ matrix.image.name }}:ci-${{ github.sha }}
+          format: sarif
+          output: trivy-${{ matrix.image.name }}.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"   # warn-only during baseline period
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@d6317709a54fd87078d323eeb0e48ec331c8e621 # v3
+        with:
+          sarif_file: trivy-${{ matrix.image.name }}.sarif
+          category: trivy-${{ matrix.image.name }}
+
+      - name: Grype scan
+        uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
+        id: grype
+        with:
+          image: conduct/${{ matrix.image.name }}:ci-${{ github.sha }}
+          fail-build: false
+          severity-cutoff: high
+          only-fixed: true
+
+      - name: Upload Grype SARIF
+        uses: github/codeql-action/upload-sarif@d6317709a54fd87078d323eeb0e48ec331c8e621 # v3
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: grype-${{ matrix.image.name }}
