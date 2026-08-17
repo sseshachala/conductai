@@ -567,7 +567,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         position,
         data: { type: blockType, label: title.split(" · ")[1] ?? title, description: "", ...defaults } satisfies BlockNodeData,
       }
-      setNodes((nds) => [...nds, newNode])
+      setNodes((nds: Node[]) => [...nds, newNode])
       setSelectedNode(newNode)
     },
     [screenToFlowPosition, setNodes]
@@ -811,14 +811,14 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     setCanvasMode(m)
     if (m === "engineer") {
       setLeftOpen(true)
-      setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, reviewerDim: false } })))
+      setNodes((nds: Node[]) => nds.map(n => ({ ...n, data: { ...n.data, reviewerDim: false } })))
     } else if (m === "liverun") {
       setLeftOpen(false)
-      setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, reviewerDim: false } })))
+      setNodes((nds: Node[]) => nds.map(n => ({ ...n, data: { ...n.data, reviewerDim: false } })))
       if (running === "idle" && !activeRunId) startRun(false)
     } else if (m === "reviewer") {
       setLeftOpen(false)
-      setNodes(nds => nds.map(n => {
+      setNodes((nds: Node[]) => nds.map(n => {
         const type = (n.data as BlockNodeData).type
         const isDecision = type === "brain" || type === "approval" || type === "trigger"
         return { ...n, data: { ...n.data, reviewerDim: !isDecision } }
@@ -948,13 +948,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   }, [workflowId, getToken, TEST_RUN_KEY])
 
   const handleBlockStatus = useCallback((blockId: string, status: "running" | "completed" | "failed" | "skipped") => {
-    setNodes(nds => nds.map(n =>
+    setNodes((nds: Node[]) => nds.map(n =>
       n.id === blockId ? { ...n, data: { ...n.data, runStatus: status, ...(status === "running" ? { liveTurn: undefined } : {}) } } : n
     ))
   }, [setNodes])
 
   const handleBlockTurns = useCallback((blockId: string, turn: number) => {
-    setNodes(nds => nds.map(n =>
+    setNodes((nds: Node[]) => nds.map(n =>
       n.id === blockId ? { ...n, data: { ...n.data, liveTurn: turn } } : n
     ))
   }, [setNodes])
@@ -968,12 +968,12 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     setActiveRunId(null)
     setDrawerVisible(false)
     setRunning("idle")
-    setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, runStatus: undefined, liveTurn: undefined } })))
+    setNodes((nds: Node[]) => nds.map(n => ({ ...n, data: { ...n.data, runStatus: undefined, liveTurn: undefined } })))
   }, [setNodes, STORAGE_KEY])
 
   const handleBlockChange = useCallback(
     (blockId: string, changes: Record<string, unknown>) => {
-      setNodes((nds) =>
+      setNodes((nds: Node[]) =>
         nds.map((n) => n.id === blockId ? { ...n, data: { ...n.data, ...changes } } : n)
       )
       setSelectedNode((prev) =>
@@ -1357,8 +1357,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                     onWebhookChange={(id, repo) => { setGithubHookId(id); setGithubHookRepo(repo) }}
                     onClose={() => setSelectedNode(null)}
                     onDelete={(blockId) => {
-                      setNodes(nds => nds.filter(n => n.id !== blockId))
-                      setEdges(eds => eds.filter(e => e.source !== blockId && e.target !== blockId))
+                      setNodes((nds: Node[]) => nds.filter(n => n.id !== blockId))
+                      setEdges((eds: Edge[]) => eds.filter(e => e.source !== blockId && e.target !== blockId))
                       setSelectedNode(null)
                     }}
                     sandboxBlocks={nodes.filter(n => (n.data as Record<string, unknown>).type === "sandbox").map(n => ({ id: n.id, label: (n.data as Record<string, unknown>).label as string || "Sandbox" }))}
