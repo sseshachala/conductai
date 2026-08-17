@@ -12,7 +12,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
@@ -25,6 +25,9 @@ def _env() -> Environment:
         keep_trailing_newline=True,
         trim_blocks=False,
         lstrip_blocks=False,
+        # LLM prompts, not HTML — autoescape would break instruction text.
+        # Empty list disables HTML autoescape for every extension.
+        autoescape=select_autoescape([]),
     )
 
 

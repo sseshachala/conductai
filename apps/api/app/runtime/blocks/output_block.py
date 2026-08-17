@@ -245,9 +245,11 @@ def _execute_output(
             sig = hmac_lib.new(webhook_secret.encode(), payload, hashlib.sha256).hexdigest()
             headers["X-ConductAI-Signature"] = f"sha256={sig}"
         try:
-            req = urllib.request.Request(webhook_url, data=payload, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                return {"sent": True, "integration": "webhook", "status_code": resp.status}
+            # httpx rejects file://, gopher:// etc. by default — safer than urllib
+            # for user-supplied webhook URLs (closes bandit B310).
+            import httpx
+            resp = httpx.post(webhook_url, content=payload, headers=headers, timeout=15)
+            return {"sent": True, "integration": "webhook", "status_code": resp.status_code}
         except Exception as e:
             return {"sent": False, "integration": "webhook", "error": str(e)}
 

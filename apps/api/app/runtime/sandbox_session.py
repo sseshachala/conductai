@@ -108,7 +108,7 @@ class LocalSession:
         try:
             merged_env = {**os.environ, **(env or {})}
             result = subprocess.run(
-                command, shell=True, capture_output=True, text=True,
+                command, shell=True, capture_output=True, text=True,  # nosec B602 - intentional shell exec in isolated local sandbox subprocess
                 timeout=120, cwd=cwd, env=merged_env,
             )
             output = result.stdout + result.stderr
@@ -188,7 +188,7 @@ class ModalSession:
         return cls(token_id, token_secret)
 
     def __init__(self, token_id: str, token_secret: str) -> None:
-        self.working_dir: str | None = "/tmp"
+        self.working_dir: str | None = "/tmp"  # nosec B108 - CWD inside remote sandbox (isolated container), not host /tmp
         self._token_id = token_id
         self._token_secret = token_secret
         self._proc = None

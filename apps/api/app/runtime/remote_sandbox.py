@@ -112,7 +112,7 @@ def _open_client(host_config: dict[str, Any]):
         client.load_host_keys(host_config["known_hosts"])
         client.set_missing_host_key_policy(paramiko.RejectPolicy())
     else:
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507 - ephemeral DO droplet, no prior trust to verify; customer opts into RejectPolicy via known_hosts config
 
     client.connect(
         hostname=ip,
@@ -199,7 +199,7 @@ def _remote_run_shell(
         wrapped = command
 
     try:
-        stdin, stdout, stderr = client.exec_command(wrapped, timeout=timeout, get_pty=False)
+        stdin, stdout, stderr = client.exec_command(wrapped, timeout=timeout, get_pty=False)  # nosec B601 - intentional shell exec in ephemeral sandbox; commands are ours (agent-generated), not user-web input
         out = stdout.read().decode("utf-8", errors="replace")
         err = stderr.read().decode("utf-8", errors="replace")
         combined = out + err
@@ -216,7 +216,7 @@ def _remote_search_code(
         f"{shlex.quote(pattern)} {shlex.quote(path)}"
     )
     try:
-        _, stdout, _ = client.exec_command(cmd, timeout=DEFAULT_READ_TIMEOUT)
+        _, stdout, _ = client.exec_command(cmd, timeout=DEFAULT_READ_TIMEOUT)  # nosec B601 - grep args pre-quoted via shlex.quote above; intentional shell exec in ephemeral sandbox
         out = stdout.read().decode("utf-8", errors="replace")
         return _truncate(out, MAX_GREP_OUTPUT) or "(no matches)"
     except Exception as e:

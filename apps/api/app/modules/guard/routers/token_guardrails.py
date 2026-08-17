@@ -80,13 +80,10 @@ def _post_slack_drift(webhook_url: str, workspace_name: str, drifts: list[str]):
         + "\n".join(drifts)
     )
     try:
-        payload = json.dumps({"text": text}).encode()
-        req = urllib.request.Request(
-            webhook_url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        urllib.request.urlopen(req, timeout=5)
+        # httpx rejects file://, gopher://, etc. by default — safer than urllib
+        # for user-supplied webhook URLs (closes bandit B310).
+        import httpx
+        httpx.post(webhook_url, json={"text": text}, timeout=5)
     except Exception:
         pass
 

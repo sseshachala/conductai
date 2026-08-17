@@ -50,7 +50,7 @@ def main() -> None:
     # "sleep infinity" keeps the sandbox alive so exec() calls can run into it.
     # Without an entrypoint the sandbox exits immediately and exec() has nothing to attach to.
     sandbox = modal.Sandbox.create("sleep", "infinity", app=app, image=image, timeout=3600)
-    working_dir = "/tmp"
+    working_dir = "/tmp"  # nosec B108 - CWD inside Modal sandbox (isolated container), not host /tmp
 
     # Write sandbox ID as the first stdout line so ModalSession can terminate
     # the sandbox directly from the API process if the subprocess is force-killed.
