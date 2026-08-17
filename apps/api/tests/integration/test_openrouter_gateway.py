@@ -9,9 +9,14 @@ Required env vars:
   OPENROUTER_API_KEY        — a real OpenRouter API key (sk-or-...)
 
 Optional:
-  OPENROUTER_TEST_MODELS    — comma-separated model ids (default: openai/gpt-4o-mini,
-                              anthropic/claude-3-5-haiku, google/gemini-flash-1.5).
+  OPENROUTER_TEST_MODELS    — comma-separated model ids (default: openai/gpt-4o-mini).
                               Each model runs as its own parametrized test case.
+                              Some models (e.g. anthropic/*) require BYOK on your
+                              OpenRouter account — those cases skip cleanly on 404.
+                              Broadly-served extras worth adding:
+                                meta-llama/llama-3.3-70b-instruct
+                                google/gemini-2.0-flash-001
+                                mistralai/mistral-7b-instruct
   OPENROUTER_TEST_MODEL     — single-model override (legacy; wins over MODELS if set).
   OPENROUTER_BASE_URL       — override endpoint (default: https://openrouter.ai/api/v1)
 
@@ -47,7 +52,9 @@ def _env(key: str) -> str:
 
 def test_adapter_routes_openrouter_url():
     gw = gateway_adapt("https://openrouter.ai/api/v1", "sk-or-fake", "anthropic", "claude-3-5-haiku")
-    assert gw.headers == {}, "openrouter uses caller-supplied Bearer auth, not gateway headers"
+    assert gw.headers["Authorization"] == "Bearer sk-or-fake"
+    assert gw.headers["HTTP-Referer"] == "https://conductai.ai"
+    assert gw.headers["X-Title"] == "Conduct"
     assert gw.model == "anthropic/claude-3-5-haiku"
 
 
@@ -56,11 +63,7 @@ def test_adapter_preserves_already_prefixed_model():
     assert gw.model == "openai/gpt-4o-mini", "should not double-prefix"
 
 
-_DEFAULT_MODELS = (
-    "openai/gpt-4o-mini,"
-    "anthropic/claude-3-5-haiku,"
-    "google/gemini-flash-1.5"
-)
+_DEFAULT_MODELS = "openai/gpt-4o-mini"
 
 
 def _models() -> list[str]:
