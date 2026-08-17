@@ -527,7 +527,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   }, [undo, redo, isViewer])
 
   const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge({
+    (connection: Connection) => setEdges((eds: Edge[]) => addEdge({
       ...connection,
       type: "smoothstep",
       markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: "#a8a29e" },
