@@ -817,16 +817,23 @@ async def _forward(
     }
 
     # When routing through a BYO gateway, use gateway-specific auth headers.
-    # gateway_adapt returns non-empty headers for known gateways (Portkey, Helicone, Azure).
+    # gateway_adapt returns non-empty headers for known gateways (Portkey, Helicone,
+    # Azure, OpenRouter). Pass the requested model so gateways that need a rewritten
+    # form (OpenRouter, LiteLLM) can produce it; we then patch body["model"] below.
+    _requested_model = body.get("model") or ""
     if upstream_api_key:
         from app.runtime.adapters.gateway import gateway_adapt as _gw_adapt
-        _gw = _gw_adapt(upstream, upstream_api_key, provider, "")
+        _gw = _gw_adapt(upstream, upstream_api_key, provider, _requested_model)
         if _gw.headers:
             headers.update(_gw.headers)
             if vendor_key:
                 headers[auth_header_out] = f"Bearer {vendor_key}" if bearer else vendor_key
         else:
             headers[auth_header_out] = f"Bearer {real_key}" if bearer else real_key
+        # Rewrite model in body if the gateway needs a different format
+        # (OpenRouter/LiteLLM prepend "provider/"). Idempotent per adapter.
+        if _gw.model and _requested_model and _gw.model != _requested_model:
+            body["model"] = _gw.model
     else:
         headers[auth_header_out] = f"Bearer {real_key}" if bearer else real_key
 
