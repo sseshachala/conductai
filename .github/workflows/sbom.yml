@@ -1,0 +1,74 @@
+name: SBOM
+
+# Generates Software Bill of Materials (SBOM) artifacts for every release.
+# Uses Syft under the hood (via anchore/sbom-action) to produce CycloneDX
+# and SPDX manifests attached to the GitHub Release.
+#
+# Why: enterprise procurement asks for SBOM. When a Log4Shell-shaped CVE
+# drops, an SBOM lets us grep for affected releases in seconds instead
+# of forensic reconstruction.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to generate SBOM for (default: main)"
+        required: false
+        default: "main"
+
+concurrency:
+  group: sbom-${{ github.event.release.tag_name || github.event.inputs.ref || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: Generate ${{ matrix.target.name }} SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # attach SBOM to the release
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { name: "api",     path: "apps/api" }
+          - { name: "web",     path: "apps/web" }
+          - { name: "cli",     path: "cli" }
+          - { name: "booster", path: "packages/agent-booster" }
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Skip if target path is missing
+        id: check
+        run: |
+          if [ -d "${{ matrix.target.path }}" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "path ${{ matrix.target.path }} not present in this ref; skipping"
+          fi
+
+      - name: Generate CycloneDX SBOM
+        if: steps.check.outputs.exists == 'true'
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: ${{ matrix.target.path }}
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.target.name }}.cyclonedx.json
+          upload-artifact: true
+          upload-release-assets: ${{ github.event_name == 'release' }}
+
+      - name: Generate SPDX SBOM
+        if: steps.check.outputs.exists == 'true'
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: ${{ matrix.target.path }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.target.name }}.spdx.json
+          upload-artifact: true
+          upload-release-assets: ${{ github.event_name == 'release' }}
