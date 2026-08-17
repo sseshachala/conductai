@@ -117,7 +117,7 @@ Attack-family details are intentionally not listed in this table — see the ref
 | 9 | CloudEvent-style verdict structure | GAP | Verified absent. Our verdict is single-rule attribution (`GuardVerdict` in `models.py`); no layered envelope |
 | 10 | Multi-layer orchestrator | GAP | Verified absent. `policy_engine.py` is single-pass rule evaluation across surfaces, not layered |
 | 11 | Adversarial test harness | SHIPPED | `app/modules/guard/test_battery.py` — 11+ ASI-tagged attack cases; `routers/verify.py` POST /run executes; migration `0084_guard_verify_runs.py` persists results; `test_guard_test_battery.py` |
-| 12 | CI hardening (SHA-pinned actions, Trivy, Grype, CodeQL, Bandit, pip-audit, SBOM) | GAP | Verified absent in `.github/workflows/*.yml` |
+| 12 | CI hardening (SHA-pinned actions, Trivy, Grype, CodeQL, Bandit, pip-audit, SBOM) | SHIPPED | 36 refs SHA-pinned across `.github/workflows/*.yml`; `.github/dependabot.yml` (github-actions/pip/npm); `codeql.yml`, `dependency-security.yml` (bandit + pip-audit + npm audit), `container-security.yml` (trivy + grype), `sbom.yml` (Syft CycloneDX + SPDX on release). Shipped in #1152. Baseline triage and hard-fail flip tracked in #1153 |
 | 13 | RUNBOOK.md + QUICKSTART.md split | GAP | Verified absent from repo root, `docs/`, `docs/modules/conductguard/` |
 | 14 | Anonymous mode toggle for dev | GAP (intentional) | Verified absent; not aligned with security model |
 | 15 | W3C traceparent propagation | PARTIAL | Sentry OTel propagator only; no explicit W3C traceparent in Guard log emission |
