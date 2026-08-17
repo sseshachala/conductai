@@ -471,7 +471,7 @@ export default function GovernancePage() {
 
           let tone: "good" | "warn" | "info" = "good"
           let title = "All systems compliant"
-          let sub = `${totalRules} policies live across ${totalFrameworks} framework${totalFrameworks === 1 ? "" : "s"}`
+          let sub = `Covers ${totalFrameworks} framework${totalFrameworks === 1 ? "" : "s"}`
           let action: { label: string; href: string } | null = null
 
           if (totalFrameworks === 0) {
@@ -482,7 +482,7 @@ export default function GovernancePage() {
           } else if (blocksMtd > 0) {
             tone = "warn"
             title = `${blocksMtd.toLocaleString()} risk event${blocksMtd === 1 ? "" : "s"} intercepted this month`
-            sub = `~${fmtUsd(riskAvoidedUsd)} risk avoided · ${totalRules} policies live across ${totalFrameworks} framework${totalFrameworks === 1 ? "" : "s"}`
+            sub = `~${fmtUsd(riskAvoidedUsd)} risk avoided · covers ${totalFrameworks} framework${totalFrameworks === 1 ? "" : "s"}`
             action = { label: "View Activity →", href: "/theguard/activity?decision=blocked" }
           }
 
@@ -625,7 +625,7 @@ export default function GovernancePage() {
             value={kpis ? fmtUsd(kpis.risk_avoided_usd_mtd) : "—"}
             sub={
               kpis && kpis.blocks_mtd > 0
-                ? `${fmtInt(kpis.blocks_mtd)} risk events intercepted · industry avg $15K each`
+                ? `${fmtInt(kpis.blocks_mtd)} risk events intercepted`
                 : "no risk events intercepted yet"
             }
             tone={kpis && kpis.risk_avoided_usd_mtd > 0 ? "good" : "neutral"}
@@ -654,9 +654,9 @@ export default function GovernancePage() {
             deltaSemantic="more_is_better"
           />
           <KpiCard
-            label="Compliance packs"
+            label="Installed packs"
             value={`${installedPacks.length}`}
-            sub={installedPacks.length > 0 ? "frameworks covered" : "install packs to start coverage"}
+            sub={installedPacks.length > 0 ? "installed compliance packs" : "install packs to start coverage"}
             tone={installedPacks.length > 0 ? "good" : "neutral"}
           />
         </section>
@@ -1084,7 +1084,7 @@ export default function GovernancePage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <span style={{ width: 8, height: 8, borderRadius: "50%", background: chain.valid ? "var(--ok)" : "var(--err)", display: "inline-block", flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 600, color: chain.valid ? "var(--ok)" : "var(--err)" }}>
-                    {chain.valid ? "Chain intact" : "Chain broken"}
+                    {chain.valid ? "Chain verified" : "Chain broken"}
                   </span>
                   <span style={{ fontSize: 12, color: "var(--text-3)" }}>
                     {chain.events_checked.toLocaleString()} events verified

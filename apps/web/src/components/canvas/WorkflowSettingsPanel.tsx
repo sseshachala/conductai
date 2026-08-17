@@ -192,7 +192,7 @@ async function saveGuard(enabled = guardEnabled) {
               {guardEnabled && (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                   <label style={{ fontSize: 12, color: "var(--text-muted)" }}>Surface</label>
-                  <a href="/guard/policies?persona=agent" style={{ display: "inline-flex", alignItems: "center", background: "var(--accent-bg, #ede9fe)", color: "var(--accent, #6d28d9)", borderRadius: 6, padding: "3px 10px", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
+                  <a href="/theguard/policies?persona=agent" style={{ display: "inline-flex", alignItems: "center", background: "var(--accent-bg, #ede9fe)", color: "var(--accent, #6d28d9)", borderRadius: 6, padding: "3px 10px", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
                     Agent ↗
                   </a>
                 </div>

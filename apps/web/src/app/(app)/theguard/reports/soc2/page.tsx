@@ -238,7 +238,7 @@ function Soc2Report() {
                     background: chain.valid ? "#16a34a" : "#dc2626",
                   }} />
                   <strong style={{ fontSize: 14, color: chain.valid ? "#16a34a" : "#dc2626" }}>
-                    {chain.valid ? "Chain intact" : "Chain broken"}
+                    {chain.valid ? "Chain verified" : "Chain broken"}
                   </strong>
                 </div>
                 <div style={{ fontSize: 12, color: "#555", lineHeight: 1.7 }}>

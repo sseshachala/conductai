@@ -422,7 +422,7 @@ export default function NewPolicyPage() {
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   useEffect(() => {
     if (!permissionsLoading && !permissions.canEditPolicies) {
-      router.replace("/guard/policies")
+      router.replace("/theguard/policies")
     }
   }, [permissionsLoading, permissions.canEditPolicies, router])
 
@@ -456,7 +456,7 @@ export default function NewPolicyPage() {
       if (teamId) body.workspace_id = teamId
       await guard.policies.create(authFetch, body)
       sessionStorage.setItem("guard.policies.saved", "Rule saved successfully.")
-      router.push("/guard/policies")
+      router.push("/theguard/policies")
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Failed to save rule. Please try again.")
     } finally {
@@ -478,7 +478,7 @@ export default function NewPolicyPage() {
         <div>
           <button
             type="button"
-            onClick={() => router.push("/guard/policies")}
+            onClick={() => router.push("/theguard/policies")}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -511,7 +511,7 @@ export default function NewPolicyPage() {
           policy={policy}
           onChange={setPolicy}
           onSave={handleSave}
-          onDiscard={() => router.push("/guard/policies")}
+          onDiscard={() => router.push("/theguard/policies")}
           saving={saving}
           saveError={saveError}
         />

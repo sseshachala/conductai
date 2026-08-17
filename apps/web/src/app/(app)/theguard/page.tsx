@@ -817,7 +817,7 @@ function GuardDashboard() {
                   label="Active developers"
                   value={stats?.active_developers || derivedStats.active_developers}
                   tone="ok"
-                  sub="developers active"
+                  sub="active today"
                 />
                 <GuardStatCard
                   label="Events today"
@@ -843,7 +843,7 @@ function GuardDashboard() {
                   label="Tokens saved"
                   value={formatTotalTokensSaved(stats?.tokens_saved_today || derivedStats.tokens_saved_today)}
                   tone="accent"
-                  sub="vs unguarded calls"
+                  sub="today · vs unguarded calls"
                 />
                 <SavingsStatCard savings={savings} loading={savingsLoading} />
                 <GuardStatCard

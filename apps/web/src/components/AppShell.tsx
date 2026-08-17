@@ -105,6 +105,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/theguard/discovery')) return ['Guard', 'Discovery']
   if (pathname.startsWith('/theguard/activity')) return ['Guard', 'Activity']
   if (pathname.startsWith('/theguard/settings')) return ['Guard', 'Settings']
+  if (pathname.startsWith('/theguard/compliance')) return ['Guard', 'Compliance']
   if (pathname.startsWith('/governance')) return ['Governance']
   if (pathname.startsWith('/team-os/ai-rollout')) return ['Team OS', 'AI Rollout']
   if (pathname.startsWith('/theguard/team-os')) return ['Team OS']
@@ -743,8 +744,8 @@ function AppShellInnerContent({
                   {[
                     { label: "Overview",    href: "/theguard" },
                     { label: "Policies",    href: "/theguard/policies" },
+                    { label: "Compliance",  href: "/theguard/compliance" },
                     { label: "Team Memory", href: "/theguard/team-memory" },
-                    { label: "Activity",    href: "/logs/guard" },
                     { label: "Settings",    href: "/theguard/settings", adminOnly: true },
                   ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
                     const subActive = sub.href === "/theguard" ? pathname === "/theguard" : pathname.startsWith(sub.href)
