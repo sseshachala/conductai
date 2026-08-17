@@ -981,6 +981,9 @@ conduct guard status`}</Pre>
                 ["conduct guard status", "Show policy count, today's spend, violations, and active developer info"],
                 ["conduct guard sync",   "Pull latest policies from the server and refresh the hook script in all tools"],
                 ["conduct guard audit",  "Show recent activity log (last 24 h by default, --since 7d for a week)"],
+                ["conduct guard approvals list",           "List Guard HITL approval requests (--status pending|approved|rejected|all)"],
+                ["conduct guard approvals approve <id>",     "Approve a pending HITL request from the terminal (--reason optional)"],
+                ["conduct guard approvals reject <id>",      "Reject a pending HITL request from the terminal"],
               ].map(([cmd, desc]) => (
                 <tr key={cmd}>
                   <td className="px-4 py-3 font-mono text-xs text-stone-800">{cmd}</td>
