@@ -38,7 +38,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@clerk/testing": "^2.2.22",
-    "@playwright/test": "^1.48.0",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
