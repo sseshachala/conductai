@@ -20,6 +20,6 @@ pyyaml==6.0.2
 jsonschema~=4.23
 jinja2~=3.1
 structlog==24.4.0
-sentry-sdk[fastapi]==2.19.2
+sentry-sdk[fastapi]==2.68.0
 mcp~=1.0
 pgvector==0.3.6
