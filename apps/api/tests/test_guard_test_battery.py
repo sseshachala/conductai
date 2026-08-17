@@ -158,3 +158,42 @@ def test_advisory_mode_audits_instead_of_blocking():
 
     assert {result["actual"] for result in results} == {"audited"}
     assert {result["verdict"] for result in results} == {"bypassed"}
+
+
+
+# --------------------------------------------------------------------------- #
+# #1150 phase 2 — battery results carry matched_rules[] envelope
+# --------------------------------------------------------------------------- #
+
+def test_battery_result_includes_matched_rules_envelope():
+    """When multiple rules match the same battery case, the result dict must
+    include all of them under matched_rules, not just the winner."""
+    from app.modules.guard.test_battery import (
+        _all_matching_hook_rules,
+        _matched_summary,
+        _defense_score_for,
+    )
+
+    rules = [
+        {"id": "r-critical", "action": "block", "severity": "critical",
+         "match_tool": "bash", "match_pattern": "example.*payload"},
+        {"id": "r-high", "action": "warn", "severity": "high",
+         "match_tool": "bash", "match_pattern": "example"},
+    ]
+    matches = _all_matching_hook_rules(
+        "bash",
+        {"command": "echo example payload here"},
+        rules,
+    )
+    ids = {r["id"] for r in matches}
+    assert ids == {"r-critical", "r-high"}
+
+    summary = [_matched_summary(r) for r in matches]
+    assert {s["rule_id"] for s in summary} == {"r-critical", "r-high"}
+    assert _defense_score_for(matches) == 10 + 5   # critical + high
+
+
+def test_all_matching_hook_rules_empty_when_nothing_fires():
+    from app.modules.guard.test_battery import _all_matching_hook_rules
+    rules = [{"id": "r", "action": "block", "match_tool": "bash", "match_pattern": "no-such-token"}]
+    assert _all_matching_hook_rules("bash", {"command": "echo hello"}, rules) == []

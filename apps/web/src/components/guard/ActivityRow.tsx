@@ -38,6 +38,9 @@ export interface AuditEvent {
   session_id?: string | null
   entry_hash?: string | null
   policy_hash?: string | null
+  // #1150 phase 2 — layered verdict envelope
+  evaluated_rules?: Array<{ rule_id: string | null; severity?: string; action?: string }> | null
+  defense_score?: number | null
 }
 
 const TOOL_COLORS: Record<string, string> = {
@@ -378,8 +381,28 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           <DecisionBadge decision={ev.decision} />
         )}
       </div>
-      <div className="mono" style={{ fontSize: 11, color: ev.rule_id ? "var(--err)" : "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-        {ev.rule_id ?? "—"}
+      <div className="mono" style={{ fontSize: 11, color: ev.rule_id ? "var(--err)" : "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{ev.rule_id ?? "—"}</span>
+        {ev.evaluated_rules && ev.evaluated_rules.length > 1 && (
+          <span
+            title={`Also flagged by: ${ev.evaluated_rules
+              .filter(r => r.rule_id !== ev.rule_id)
+              .map(r => r.rule_id)
+              .join(", ")}`}
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: "var(--text-2)",
+              background: "var(--bg-2)",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
+              padding: "0 5px",
+              flexShrink: 0,
+            }}
+          >
+            +{ev.evaluated_rules.length - 1}
+          </span>
+        )}
       </div>
       {!compact && (
         <div>
