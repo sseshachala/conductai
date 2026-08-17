@@ -7,18 +7,15 @@ name: CodeQL
 # Findings appear in the repo's Security tab under "Code scanning alerts".
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-    paths:
-      - "apps/**"
-      - "cli/**"
-      - "packages/**"
-      - ".github/workflows/codeql.yml"
-  schedule:
-    # 09:17 UTC every Wednesday — off-hour cron to avoid runner contention.
-    - cron: "17 9 * * 3"
+  # Repo setting "Code scanning" must be enabled in Settings -> Code security
+  # before CodeQL can upload SARIF results. Until that toggle is on, running
+  # CodeQL on every PR pollutes the checks list with unavoidable failures.
+  #
+  # To re-enable automatic runs:
+  #   1. Repo Settings -> Code security -> enable "Code scanning"
+  #   2. Replace this workflow_dispatch trigger with the push/pull_request/schedule
+  #      block preserved in this file's git history.
+  workflow_dispatch:
 
 concurrency:
   group: codeql-${{ github.ref }}
