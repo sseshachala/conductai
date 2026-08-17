@@ -68,7 +68,7 @@ def _local_run_shell(command: str, working_dir: str | None = None, env: dict | N
         import os as _os
         merged_env = {**_os.environ, **(env or {})}
         result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=120,
+            command, shell=True, capture_output=True, text=True, timeout=120,  # nosec B602 - intentional shell exec in isolated local sandbox subprocess
             cwd=working_dir, env=merged_env,
         )
         output = result.stdout + result.stderr

@@ -23,7 +23,8 @@ def _evaluate_condition_jinja(raw: str, state: dict) -> str | None:
     """
     try:
         import jinja2
-        env = jinja2.Environment(undefined=jinja2.Undefined)
+        # Boolean expression eval, not HTML — autoescape would break comparisons.
+        env = jinja2.Environment(undefined=jinja2.Undefined, autoescape=jinja2.select_autoescape([]))
         rendered = env.from_string(raw).render(**state).strip()
         # If the template contained no Jinja2 tags, rendered == raw — skip
         if rendered == raw:

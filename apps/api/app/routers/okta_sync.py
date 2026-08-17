@@ -159,8 +159,18 @@ def _fetch_first_owner(domain: str, token: str, app_id: str) -> Optional[str]:
         "User-Agent": "Conduct-Guard-OktaSync/1.0",
     })
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        # Okta API uses https:// consistently but urllib would still accept
+        # file:// or other schemes if config is malformed. httpx rejects them
+        # (closes bandit B310).
+        import httpx
+        resp = httpx.request(
+            method=req.get_method(),
+            url=req.full_url,
+            headers=dict(req.headers),
+            content=req.data if req.data else None,
+            timeout=15,
+        )
+        data = resp.json()
     except Exception:
         return None
     if not isinstance(data, list) or not data:
@@ -363,11 +373,22 @@ def sync_okta(
             "User-Agent": "Conduct-Guard-OktaSync/1.0",
         })
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                raw = resp.read().decode("utf-8")
-                link_header = resp.headers.get("Link", "")
-        except urllib.error.HTTPError as e:
-            raise HTTPException(status_code=502, detail=f"Okta API returned {e.code}: {e.reason}")
+            # httpx rejects non-http(s) schemes (closes bandit B310).
+            import httpx
+            hx_resp = httpx.request(
+                method=req.get_method(),
+                url=req.full_url,
+                headers=dict(req.headers),
+                content=req.data if req.data else None,
+                timeout=30,
+            )
+            hx_resp.raise_for_status()
+            raw = hx_resp.text
+            link_header = hx_resp.headers.get("Link", "")
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=502, detail=f"Okta API returned {e.response.status_code}: {e.response.reason_phrase}")
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=502, detail=f"Okta API request failed: {e}")
         except urllib.error.URLError as e:
             raise HTTPException(status_code=502, detail=f"Okta unreachable: {e.reason}")
 

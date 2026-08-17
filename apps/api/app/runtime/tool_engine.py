@@ -132,7 +132,7 @@ def _tool_run_shell(command: str, working_dir: str | None = None) -> str:
     try:
         result = subprocess.run(
             command,
-            shell=True,
+            shell=True,  # nosec B602 - intentional shell exec in ephemeral tool sandbox
             capture_output=True,
             text=True,
             timeout=60,
