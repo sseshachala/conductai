@@ -1,7 +1,7 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "tier": "paid",
   "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents, including ASI06 Memory Poisoning (MITRE ATLAS AML.M0031)",
   "rules": [
@@ -428,7 +428,7 @@
       "id": "no_covert_channel",
       "description": "Warn on suspicious outbound callbacks or data exfiltration endpoints (OWASP Agentic A06)",
       "match_tool": "bash,edit,write",
-      "match_pattern": "ngrok\\.io|requestbin\\.com|hookbin\\.com|pipedream\\.net|webhook\\.site|burpcollaborator",
+      "match_pattern": "ngrok\\.io|requestbin\\.com|hookbin\\.com|pipedream\\.net|webhook\\.site|burpcollaborator|https?://\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|https?://\\[[0-9a-fA-F:]+\\]|https?://[a-z0-9.-]+\\.(?:tk|ml|ga|cf|gq)(?:/|$|\\s|:)",
       "action": "warn",
       "message": "Possible covert callback channel detected \u2014 verify this outbound destination is intentional (OWASP Agentic A06).",
       "persona_affinity": [
