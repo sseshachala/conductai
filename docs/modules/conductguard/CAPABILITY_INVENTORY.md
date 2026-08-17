@@ -121,7 +121,7 @@ Attack-family details are intentionally not listed in this table — see the ref
 | 13 | RUNBOOK.md + QUICKSTART.md split | GAP | Verified absent from repo root, `docs/`, `docs/modules/conductguard/` |
 | 14 | Anonymous mode toggle for dev | GAP (intentional) | Verified absent; not aligned with security model |
 | 15 | W3C traceparent propagation | PARTIAL | Sentry OTel propagator only; no explicit W3C traceparent in Guard log emission |
-| 16 | Circuit breaker with auto-recovery | PARTIAL | `models.py:45` `fail_mode` toggle; migrations `0054`, `0059`. Missing: closed / open / half-open state machine, failure_threshold, recovery_timeout |
+| 16 | Circuit breaker with auto-recovery | SHIPPED | `app/modules/guard/circuit_breaker.py` — `CircuitBreaker` class with CLOSED/OPEN/HALF_OPEN state machine, per-key isolation, `failure_threshold=5`, `recovery_timeout=30s`, `half_open_max_calls=3`. Wired into `routers/proxy.py::_forward` — checks `allow()` before upstream call, records success/failure on response. Transition hooks + default log hook. `models.py:45` `fail_mode` toggle preserved for the outermost fail-open/closed policy choice. 14 tests at `tests/test_guard_circuit_breaker.py`. Shipped in #1146 |
 | 17 | K8s deployment templates | GAP | Verified absent. Docker Compose exists for local dev only |
 | 18 | Hash-chained audit log | SHIPPED | Migration `0052_guard_audit_hash_chain.py`; `models.py:18` `chain_hash_for_insert()` (SHA-256, per-workspace scoped, row-locked for race safety); `models.py:187` `entry_hash` column; `routers/verify.py:240` `verify_chain()` endpoint; `test_chain_verify.py` |
 | 19 | BCC / exfil semantic analyzer (synonym map + intent) | GAP | Verified absent |
