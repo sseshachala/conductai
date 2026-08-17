@@ -30,6 +30,7 @@ def gateway_adapt(
     - None / empty       → conductai (default, no extra headers)
     - portkey.ai         → portkey
     - helicone.ai        → helicone
+    - openrouter.ai      → openrouter
     - .azure.com / azure → azure
     - anything else      → litellm (generic passthrough, rewrites model)
     """
@@ -46,6 +47,10 @@ def gateway_adapt(
     if "helicone.ai" in url:
         from app.runtime.adapters.gateway import helicone
         return helicone.adapt(api_key, provider, model)
+
+    if "openrouter.ai" in url:
+        from app.runtime.adapters.gateway import openrouter
+        return openrouter.adapt(api_key, provider, model)
 
     if ".azure.com" in url or "azure" in url:
         from app.runtime.adapters.gateway import azure

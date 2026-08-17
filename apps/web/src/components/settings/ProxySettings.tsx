@@ -91,6 +91,7 @@ export default function ProxySettings({ workspaceId }: Props) {
 
   const GATEWAYS = [
     { name: "Portkey",              url: "https://api.portkey.ai/v1" },
+    { name: "OpenRouter",           url: "https://openrouter.ai/api/v1" },
     { name: "Helicone (Anthropic)", url: "https://anthropic.helicone.ai" },
     { name: "Helicone (OpenAI)",    url: "https://oai.helicone.ai/v1" },
     { name: "LiteLLM",             url: "your-litellm-host/v1" },
