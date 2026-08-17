@@ -59,6 +59,21 @@ router = APIRouter(prefix="/proxy", tags=["guard-proxy"])
 guard_router = APIRouter(prefix="/guard", tags=["guard"])
 
 
+# Severity weights for the layered verdict envelope (#1150 phase 1).
+# Linear scale — critical bumps score meaningfully vs low.
+SEVERITY_WEIGHTS = {"critical": 10, "high": 5, "medium": 3, "low": 1}
+
+
+def _defense_score(matched: list[dict]) -> int:
+    return sum(SEVERITY_WEIGHTS.get((m.get("severity") or "medium").lower(), 3) for m in matched)
+
+
+# Action restrictiveness for winner selection when multiple rules match.
+# Duplicated from policy_engine.ACTION_RESTRICTIVENESS to avoid a proxy->engine
+# import cycle at load time. Keep in sync.
+_ACTION_RANK = {"allow": 0, "audit": 1, "inject": 2, "warn": 3, "approval": 4, "block": 5}
+
+
 VENDOR_DEFAULTS = {
     "anthropic": "https://api.anthropic.com",
     "openai":    "https://api.openai.com",
@@ -347,8 +362,16 @@ async def _proxy(
                 prompt_summary=prompt_summary, user_email=_user_email,
                 conductai_run_id=_run_id, conductai_workflow=_workflow,
                 conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
+                evaluated_rules=decision.get("matched_rules"),
+                defense_score=decision.get("defense_score"),
             )
-            _err = {"type": "guard_block", "message": decision["message"], "rule": decision["rule_id"]}
+            _err = {
+                "type": "guard_block",
+                "message": decision["message"],
+                "rule": decision["rule_id"],
+                "matched_rules": decision.get("matched_rules", []),
+                "defense_score": decision.get("defense_score", 0),
+            }
             if _guidance_text:
                 _err["guidance"] = _guidance_text
             return JSONResponse(status_code=403, content={"error": _err})
@@ -393,6 +416,8 @@ async def _proxy(
                     prompt_summary=prompt_summary, user_email=_user_email,
                     conductai_run_id=_run_id, conductai_workflow=_workflow,
                     conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
+                    evaluated_rules=decision.get("matched_rules"),
+                    defense_score=decision.get("defense_score"),
                 )
                 _err = {
                     "type": "guard_approval_required",
@@ -401,6 +426,8 @@ async def _proxy(
                     "approval_request_id": str(req.id),
                     "approval_url": _approval.approval_url(req.id),
                     "pending_marker": _approval.pending_marker(req),
+                    "matched_rules": decision.get("matched_rules", []),
+                    "defense_score": decision.get("defense_score", 0),
                 }
                 return JSONResponse(status_code=428, content={"error": _err})
             finally:
@@ -582,33 +609,56 @@ def _evaluate_policies(workspace_id: str, provider: str, model: str, body: dict)
             return {"action": "ALLOW", "rule_id": "guard.engine_error", "message": None}
 
         prompt_text = _flatten_prompt(body)
+        matched: list[dict] = []          # layered envelope — every rule that fired
+        winner_full: dict | None = None    # full spec of the primary/winning rule
+        winner_rank = -1
         for r in rules:
             if not _is_proxy_rule(r):
                 continue
             if not _rule_matches(r, provider, model, prompt_text):
                 continue
-            action = (r.get("action") or "warn").upper()
-            inject_guidance = bool(r.get("inject_guidance"))
-            # #1141 follow-up: prefer explicit `guidance` field (model-directed);
-            # fall back to `message` for compat with rules pre-dating the split.
-            guidance = (r.get("guidance") or r.get("message") or r.get("description")) if inject_guidance else None
-            if action == "BLOCK":
-                mapped = "BLOCK"
-            elif action == "WARN":
-                mapped = "WARN"
-            elif action == "APPROVAL":
-                mapped = "APPROVAL"
-            else:
-                mapped = "ALLOW"
-            return {
-                "action": mapped,
-                "rule_id": r.get("rule_id") or r.get("id"),
+            rule_id = r.get("rule_id") or r.get("id")
+            action = (r.get("action") or "warn").lower()
+            matched.append({
+                "rule_id": rule_id,
+                "severity": (r.get("severity") or "medium").lower(),
+                "action": action,
                 "message": r.get("message") or r.get("description"),
-                "inject_guidance": inject_guidance,
-                "guidance": guidance,
-                "rule": r,  # full spec — needed by APPROVAL to read approval_* fields
+            })
+            rank = _ACTION_RANK.get(action, 0)
+            if rank > winner_rank:
+                winner_rank = rank
+                winner_full = r
+
+        # Deterministic order for downstream consumers — severity desc, then rule_id asc
+        matched.sort(key=lambda m: (-SEVERITY_WEIGHTS.get(m["severity"], 3), m["rule_id"] or ""))
+        score = _defense_score(matched)
+
+        if winner_full is None:
+            return {
+                "action": "ALLOW",
+                "rule_id": None,
+                "message": None,
+                "inject_guidance": False,
+                "guidance": None,
+                "matched_rules": matched,
+                "defense_score": score,
             }
-        return {"action": "ALLOW", "rule_id": None, "message": None, "inject_guidance": False, "guidance": None}
+
+        w_action = (winner_full.get("action") or "warn").upper()
+        inject_guidance = bool(winner_full.get("inject_guidance"))
+        guidance = (winner_full.get("guidance") or winner_full.get("message") or winner_full.get("description")) if inject_guidance else None
+        mapped = {"BLOCK": "BLOCK", "WARN": "WARN", "APPROVAL": "APPROVAL"}.get(w_action, "ALLOW")
+        return {
+            "action": mapped,
+            "rule_id": winner_full.get("rule_id") or winner_full.get("id"),
+            "message": winner_full.get("message") or winner_full.get("description"),
+            "inject_guidance": inject_guidance,
+            "guidance": guidance,
+            "rule": winner_full,
+            "matched_rules": matched,
+            "defense_score": score,
+        }
     finally:
         db.close()
 
@@ -903,6 +953,7 @@ def _record_audit(
     prompt_summary: str = "", user_email: str | None = None,
     conductai_run_id: str | None = None, conductai_workflow: str | None = None,
     conductai_workflow_id: str | None = None, hook_session_id: str | None = None,
+    evaluated_rules: list[dict] | None = None, defense_score: int | None = None,
 ) -> None:
     """Background task — best-effort, never blocks the response."""
     db = SessionLocal()
@@ -922,7 +973,8 @@ def _record_audit(
                   tokens_before, tokens_after, duration_ms,
                   cost_usd_after, input_summary, user_email,
                   conductai_run_id, conductai_workflow, conductai_workflow_id,
-                  hook_session_id
+                  hook_session_id,
+                  evaluated_rules, defense_score
                 ) VALUES (
                   :ws, :uid, :ai, NULL,
                   'proxy', :prov, :model,
@@ -930,7 +982,8 @@ def _record_audit(
                   :tin, :tout, :dur,
                   :cost, :summary, :email,
                   :run_id, :workflow, :workflow_id,
-                  :hook_session_id
+                  :hook_session_id,
+                  CAST(:eval AS jsonb), :score
                 )
             """),
             {
@@ -947,6 +1000,8 @@ def _record_audit(
                 "workflow": conductai_workflow,
                 "workflow_id": conductai_workflow_id,
                 "hook_session_id": hook_session_id,
+                "eval": json.dumps(evaluated_rules) if evaluated_rules else None,
+                "score": defense_score,
             },
         )
         db.commit()

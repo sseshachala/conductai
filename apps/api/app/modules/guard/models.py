@@ -189,6 +189,10 @@ class GuardAuditEvent(Base):
     # session goal set by `conduct session start`
     goal_id   = Column(String(255), nullable=True)
     goal_name = Column(String(255), nullable=True)
+    # layered verdict envelope (#1150 phase 1) — nullable so pre-migration and
+    # non-eval audit paths (auth, approval, guard block) stay as-is
+    evaluated_rules = Column(JSONB, nullable=True)   # list of {rule_id, severity, action, message}
+    defense_score   = Column(Integer, nullable=True)  # weighted aggregate across matched rules
 
 
 class GuardSavings(Base):
