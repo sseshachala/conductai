@@ -691,7 +691,7 @@ function ActivityContent() {
                 </div>
                 <div style={{ fontSize: 12.5 }}>{r.lines_per_hour != null ? Math.round(r.lines_per_hour) : <span style={{ color: "var(--text-muted)" }}>—</span>}</div>
                 <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{formatReportDate(r.created_at)}</div>
-                <div><Link href={`/guard/session-reports/${r.id}`} style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "none", fontWeight: 500 }}>View →</Link></div>
+                <div><Link href={`/theguard/session-reports/${r.id}`} style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "none", fontWeight: 500 }}>View →</Link></div>
               </div>
             ))}
             <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>

@@ -231,7 +231,7 @@ export default function DiscoveryPage() {
                 <div className="flex items-end justify-between">
                   <div>
                     <p className="text-3xl font-bold text-stone-900">{coveragePct}%</p>
-                    <p className="text-sm text-stone-500 mt-0.5">Guard coverage</p>
+                    <p className="text-sm text-stone-500 mt-0.5">Agent coverage</p>
                   </div>
                   <div className="flex gap-6 text-right">
                     <div>
@@ -240,7 +240,7 @@ export default function DiscoveryPage() {
                     </div>
                     <div>
                       <p className="text-xl font-semibold text-green-700">{summary.under_guard}</p>
-                      <p className="text-xs text-stone-500">under Guard</p>
+                      <p className="text-xs text-stone-500">Under Guard</p>
                     </div>
                     <div>
                       <p className="text-xl font-semibold text-red-600">{summary.missing}</p>

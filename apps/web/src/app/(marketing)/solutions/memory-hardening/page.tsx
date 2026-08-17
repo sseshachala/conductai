@@ -169,7 +169,7 @@ function RuleExamplesSection() {
             Five ASI06 rules ship in conduct-owasp v2.2.0.
           </h2>
           <p className="text-stone-400 max-w-2xl mx-auto text-sm leading-relaxed">
-            Every rule is tagged with OWASP:ASI06 and MITRE_ATLAS:AML.M0031 for compliance evidence.
+            Every rule is tagged with OWASP ASI-06 and MITRE ATLAS (AML.M0031) for compliance evidence.
           </p>
         </div>
         <div className="space-y-3">

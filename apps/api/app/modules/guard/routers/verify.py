@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -20,10 +21,14 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id
 from app.core.database import get_db
+from app.models.rbac import Role
 from app.models.workspace import Workspace
+from app.modules.agent_identity.models import AgentIdentity
+from app.modules.guard.asi_controls import CONTROLS as _CONTROLS, evaluate as _evaluate_controls
 from app.modules.guard.models import (
     GuardAuditEvent,
     GuardConfig,
+    GuardSession,
     GuardVerifyRun,
     WorkspaceCustomRule,
     WorkspaceSigningKey,
@@ -34,19 +39,7 @@ from app.modules.guard.test_battery import run_battery
 router = APIRouter(prefix="/guard/verify", tags=["guard"])
 
 # ── ASI control definitions ───────────────────────────────────────────────────
-
-_CONTROLS = [
-    ("ASI-01", "Prompt Injection",           "PreToolUse hook intercepts before LLM call"),
-    ("ASI-02", "Insecure Tool Use",          "Guard proxy enforces tool-use policies"),
-    ("ASI-03", "Excessive Agency",           "Turn budgets + max_cost_usd caps"),
-    ("ASI-04", "Unauthorized Escalation",    "RBAC + require_permission() on all endpoints"),
-    ("ASI-05", "Trust Boundary Violation",   "All LLM traffic routed through Guard proxy"),
-    ("ASI-06", "Insufficient Logging",       "guard_audit_events with SHA-256 hash chain"),
-    ("ASI-07", "Insecure Identity",          "agent_role_id + member tokens per agent"),
-    ("ASI-08", "Policy Bypass",              "fail_mode=fail_closed blocks on Guard outage"),
-    ("ASI-09", "Supply Chain Integrity",     "Signed policies (signing_key)"),
-    ("ASI-10", "Behavioral Anomaly",         "Session scanning + violations_count tracking"),
-]
+# Taxonomy + predicates live in asi_controls.py (imported as _CONTROLS above).
 
 _GRADES = [
     (85, "A"),
@@ -172,35 +165,47 @@ def get_verify_evidence(
         score += 10
 
     # ── Controls ───────────────────────────────────────────────────────────
-    fail_closed = gc and gc.fail_mode == "fail_closed"
+    fail_closed = bool(gc and gc.fail_mode == "fail_closed")
 
-    def _status(asi: str) -> str:
-        if asi in ("ASI-01", "ASI-02", "ASI-05"):
-            return "active" if guard_active else "missing"
-        if asi in ("ASI-03", "ASI-04"):
-            return "active"
-        if asi == "ASI-06":
-            if guard_active and events_24h > 0:
-                return "active"
-            return "partial" if guard_active else "missing"
-        if asi == "ASI-07":
-            return "partial"
-        if asi == "ASI-08":
-            return "active" if fail_closed else "partial"
-        if asi == "ASI-09":
-            return "active" if signing_key else "missing"
-        if asi == "ASI-10":
-            return "partial"
-        return "missing"
-
-    controls = [
-        ControlStatus(
-            id=asi,
-            name=name,
-            status=_status(asi),
-            control=control,
+    role_count = (
+        db.query(Role).filter(Role.workspace_id == ws_uuid).count()
+    )
+    agent_identity_count = (
+        db.query(AgentIdentity).filter(AgentIdentity.workspace_id == ws_uuid).count()
+    )
+    sessions_24h = (
+        db.query(GuardSession)
+        .filter(
+            GuardSession.workspace_id == ws_uuid,
+            GuardSession.started_at >= since,
         )
-        for asi, name, control in _CONTROLS
+        .count()
+    )
+    # ponytail: O(1) chain-liveness probe — the last event has a non-null
+    # entry_hash. Full walk lives at GET /guard/verify/chain; not called here.
+    last_event = (
+        db.query(GuardAuditEvent.entry_hash)
+        .filter(GuardAuditEvent.workspace_id == ws_uuid)
+        .order_by(GuardAuditEvent.ts.desc())
+        .first()
+    )
+    chain_live = bool(last_event and last_event.entry_hash)
+    guardrails_configured = bool(gc and gc.token_guardrails)
+
+    ctx = SimpleNamespace(
+        guard_active=guard_active,
+        fail_closed=fail_closed,
+        signing_key=bool(signing_key),
+        events_24h=events_24h,
+        chain_live=chain_live,
+        role_count=role_count,
+        agent_identity_count=agent_identity_count,
+        sessions_24h=sessions_24h,
+        guardrails_configured=guardrails_configured,
+    )
+    controls = [
+        ControlStatus(id=asi, name=name, control=control, status=status)
+        for asi, name, control, status in _evaluate_controls(ctx)
     ]
 
     active_count = sum(1 for c in controls if c.status == "active")

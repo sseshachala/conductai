@@ -220,7 +220,7 @@ function SessionReportsContent() {
                   {/* Report link */}
                   <div>
                     <Link
-                      href={`/guard/session-reports/${report.id}`}
+                      href={`/theguard/session-reports/${report.id}`}
                       style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "none", fontWeight: 500 }}
                       aria-label={`View session report for ${report.developer_email}`}
                     >

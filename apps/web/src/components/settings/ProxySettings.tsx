@@ -129,7 +129,7 @@ export default function ProxySettings({ workspaceId }: Props) {
           <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: ".06em", display: "block", marginBottom: 10 }}>
             Enforcement Surface
           </label>
-          <a href="/guard/policies?persona=proxy" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-bg, #ede9fe)", color: "var(--accent, #6d28d9)", borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
+          <a href="/theguard/policies?persona=proxy" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-bg, #ede9fe)", color: "var(--accent, #6d28d9)", borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
             Proxy ↗
           </a>
           <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>All active proxy rules apply to every LLM call routed through this URL.</p>

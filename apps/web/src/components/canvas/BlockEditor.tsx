@@ -924,7 +924,7 @@ function GuardBlockPanel({
             {mode} policies
           </span>
           {isAdmin && (
-            <a href="/guard/policies" className="text-[10px] text-stone-400 hover:text-stone-600 underline">
+            <a href="/theguard/policies" className="text-[10px] text-stone-400 hover:text-stone-600 underline">
               Manage →
             </a>
           )}
@@ -932,7 +932,7 @@ function GuardBlockPanel({
         {modePolicies.length === 0 ? (
           <div className="rounded-lg border border-dashed border-stone-200 bg-stone-50 px-3 py-2.5 text-[10px] text-stone-400">
             No {mode} policies configured.{" "}
-            <a href="/guard/policies" className="underline hover:text-stone-600">Add one →</a>
+            <a href="/theguard/policies" className="underline hover:text-stone-600">Add one →</a>
           </div>
         ) : (
           <ul className="space-y-1">
