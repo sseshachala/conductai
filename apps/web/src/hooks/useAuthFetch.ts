@@ -11,6 +11,9 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 const CLERK_ENABLED = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
 function useAuthSafe() {
+  // CLERK_ENABLED is a module-level compile-time constant, so the branch
+  // is stable across renders — Rules of Hooks is not actually violated.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   if (CLERK_ENABLED) return useAuth()
   return { getToken: async () => null } as ReturnType<typeof useAuth>
 }
