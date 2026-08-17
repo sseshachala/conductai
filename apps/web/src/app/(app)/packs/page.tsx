@@ -1231,8 +1231,8 @@ resp, _ := http.DefaultClient.Do(req)`,
 
       {/* Footer */}
       <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-        Need credentials?{" "}
-        <a href="/integrations" style={{ color: "var(--accent-text)", textDecoration: "none", fontWeight: 600 }}>Set up integrations →</a>
+        Need an API token?{" "}
+        <a href="/agent-identity?tab=tokens" style={{ color: "var(--accent-text)", textDecoration: "none", fontWeight: 600 }}>Generate one in Agent Identity →</a>
       </p>
     </div>
   )
@@ -1342,8 +1342,8 @@ Authorization: Bearer YOUR_CONDUCT_API_KEY`}</pre>
 
       {/* Footer */}
       <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-        Need an API key?{" "}
-        <a href="/settings?tab=api-keys" style={{ color: "var(--accent-text)", textDecoration: "none", fontWeight: 600 }}>Manage API keys →</a>
+        Need an API token?{" "}
+        <a href="/agent-identity?tab=tokens" style={{ color: "var(--accent-text)", textDecoration: "none", fontWeight: 600 }}>Generate one in Agent Identity →</a>
       </p>
     </div>
   )
