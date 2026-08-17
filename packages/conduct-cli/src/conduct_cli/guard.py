@@ -2374,6 +2374,21 @@ def register_guard_parser(sub):
     session_sub.add_parser("stop", help="End the current goal session")
     p_session.set_defaults(func=cmd_guard_session)
 
+    # conduct guard approvals list|approve|reject — HITL decide from CLI (#1140)
+    approv_p = guard_sub.add_parser("approvals", help="List and decide Guard HITL approval requests")
+    approv_sub = approv_p.add_subparsers(dest="approvals_command")
+    list_p = approv_sub.add_parser("list", help="List approval requests")
+    list_p.add_argument("--status", default="pending",
+                        choices=["pending", "approved", "rejected", "timed_out", "all"],
+                        help="Filter by status (default: pending)")
+    list_p.add_argument("--limit", type=int, default=50, help="Max rows (default: 50)")
+    approve_p = approv_sub.add_parser("approve", help="Approve a pending request by id")
+    approve_p.add_argument("request_id", help="Approval request UUID")
+    approve_p.add_argument("--reason", default=None, help="Optional decision reason")
+    reject_p = approv_sub.add_parser("reject", help="Reject a pending request by id")
+    reject_p.add_argument("request_id", help="Approval request UUID")
+    reject_p.add_argument("--reason", default=None, help="Optional decision reason")
+
     return guard_p, guard_sub
 
 
@@ -3178,6 +3193,60 @@ def cmd_guard_simulate(args):
         print("[simulation] identity   : (none — token did not resolve to an AgentIdentity)")
 
 
+def cmd_guard_approvals(args, guard_p):
+    """List and decide Guard HITL approval requests (#1140)."""
+    sub = getattr(args, "approvals_command", None)
+    if sub not in ("list", "approve", "reject"):
+        guard_p.print_help()
+        sys.exit(1)
+
+    cfg          = _require_guard_config()
+    workspace_id = cfg.get("workspace_id")
+    agent_token  = cfg.get("agent_token", "")
+    base_url     = _api_url(cfg)
+
+    if sub == "list":
+        url = f"{base_url}/guard/approvals?workspace_id={workspace_id}&status={args.status}&limit={args.limit}"
+        resp = _req("GET", url, token=agent_token or None)
+        items = resp.get("items", []) if isinstance(resp, dict) else []
+        if not items:
+            print(f"{GRAY}No approvals with status={args.status}.{RESET}")
+            return
+        id_w, req_w, rule_w, msg_w = 38, 26, 24, 40
+        print()
+        print(f"{BOLD}{'ID':<{id_w}} {'Requester':<{req_w}} {'Rule':<{rule_w}} {'Message':<{msg_w}} Status{RESET}")
+        print("─" * (id_w + req_w + rule_w + msg_w + 12))
+        colors = {"pending": YELLOW, "approved": GREEN, "rejected": RED, "timed_out": GRAY}
+        for it in items:
+            st = it.get("status", "?")
+            print(
+                f"{it.get('id',''):<{id_w}} "
+                f"{(it.get('requester_email') or '—')[:req_w-1]:<{req_w}} "
+                f"{(it.get('rule_id') or '—')[:rule_w-1]:<{rule_w}} "
+                f"{(it.get('rule_message') or '—')[:msg_w-1]:<{msg_w}} "
+                f"{colors.get(st, '')}{st}{RESET}"
+            )
+        return
+
+    # approve / reject share a body shape
+    decision = "approved" if sub == "approve" else "rejected"
+    body = {"decision": decision}
+    if args.reason:
+        body["reason"] = args.reason
+    url = f"{base_url}/guard/approvals/{args.request_id}/decide?workspace_id={workspace_id}"
+    resp = _req("POST", url, body=body, token=agent_token or None)
+    req = resp.get("request") if isinstance(resp, dict) else None
+    if not req:
+        print(f"{RED}Decision failed — no response body.{RESET}")
+        sys.exit(1)
+    color = GREEN if decision == "approved" else RED
+    print(f"{color}{decision.upper()}{RESET} — {req.get('rule_id','')}  "
+          f"by {req.get('decided_by_email','?')}  "
+          f"latency={req.get('latency_ms','?')}ms  "
+          f"run_resumed={resp.get('run_resumed')}")
+
+
+
 def dispatch_guard(args, guard_p):
     """Dispatch to the correct guard handler. Called from main()."""
     guard_command = getattr(args, "guard_command", None)
@@ -3205,6 +3274,8 @@ def dispatch_guard(args, guard_p):
         cmd_guard_session(args)
     elif guard_command == "simulate":
         cmd_guard_simulate(args)
+    elif guard_command == "approvals":
+        cmd_guard_approvals(args, guard_p)
     else:
         guard_p.print_help()
         sys.exit(1)
