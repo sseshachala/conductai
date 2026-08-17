@@ -5,7 +5,7 @@ alembic==1.13.3
 psycopg2-binary==2.9.12
 redis==5.1.0
 pydantic>=2.11,<3
-pydantic-settings==2.5.2
+pydantic-settings==2.15.0
 anthropic==0.40.0
 openai==1.51.0
 python-dotenv==1.2.2
