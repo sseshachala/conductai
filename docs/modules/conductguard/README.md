@@ -3,6 +3,9 @@
 | Section | Description |
 |---|---|
 | [Overview](overview.md) | What ConductGuard is, the MDM analogy, core value prop, and how control flows |
+| [Quickstart](QUICKSTART.md) | Dev-side 15-min path: verify Guard, send a proxy call, add your first custom rule |
+| [Runbook](RUNBOOK.md) | On-call ops guide: health checks, failure modes, rollback, alert playbook |
+| [Capability Inventory](CAPABILITY_INVENTORY.md) | Ground-truth reference for every shipped capability (file:line refs) |
 | [Developer Setup](developer_setup.md) | Install CLI, join a team, sync policies, hook location, troubleshooting |
 | [Hook & Tool Coverage](hook_coverage.md) | PreToolUse/PostToolUse mechanics, policy matching, AI tools covered |
 | [conductguard-mcp](conductguard_mcp.md) | MCP server for Cursor/Gemini, registration, how it mirrors hook enforcement |
