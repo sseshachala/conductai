@@ -143,6 +143,24 @@ _TOOLS = [
         },
     },
     {
+        "name": "guard_recent_activity",
+        "description": (
+            "Read-only: show recent Guard audit events for the caller in this workspace. "
+            "Complements guard_activity (which is write-only). Returns a compact list of "
+            "'time  decision  rule_id  tool_call' rows so agents can see what they have done recently."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "days":     {"type": "integer", "description": "Window in days (1-30). Default 1.", "default": 1},
+                "limit":    {"type": "integer", "description": "Max events to return (1-100). Default 20.", "default": 20},
+                "decision": {"type": "string", "description": "Optional filter: ok / blocked / warned / audited"},
+                "rule_id":  {"type": "string", "description": "Optional filter to a specific rule_id"},
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "guard_discover",
         "description": "Show all AI agents discovered in this org and Guard coverage. Returns total, coverage %, and the full agent inventory — each entry has a `governed: true|false` flag so callers can filter to shadow (ungoverned) or governed as needed.",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
@@ -917,6 +935,40 @@ async def mcp_endpoint(
                 _workflow = arguments.get("conduct_workflow") or None
                 _record_event(db, ws_uuid, "guard_activity", {"summary": summary, "category": category}, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
                 return JSONResponse(_text(msg_id, f"Activity logged — '{summary}'"))
+
+            elif tool_name == "guard_recent_activity":
+                from datetime import timedelta as _timedelta
+                # ponytail: caller-scoped by default (user_email match). Add all_users
+                # flag when guard.activity.view_all permission actually gets consumed.
+                _days     = max(1, min(int(arguments.get("days") or 1), 30))
+                _limit    = max(1, min(int(arguments.get("limit") or 20), 100))
+                _decision = arguments.get("decision") or None
+                _rule_id  = arguments.get("rule_id") or None
+                _since    = datetime.now(timezone.utc) - _timedelta(days=_days)
+
+                _q = db.query(GuardAuditEvent).filter(
+                    GuardAuditEvent.workspace_id == ws_uuid,
+                    GuardAuditEvent.ts >= _since,
+                )
+                if user_email:
+                    _q = _q.filter(GuardAuditEvent.user_email == user_email)
+                if _decision:
+                    _q = _q.filter(GuardAuditEvent.decision == _decision)
+                if _rule_id:
+                    _q = _q.filter(GuardAuditEvent.rule_id == _rule_id)
+                _rows = _q.order_by(GuardAuditEvent.ts.desc()).limit(_limit).all()
+
+                if not _rows:
+                    return JSONResponse(_text(msg_id, f"No events in the last {_days} day(s)."))
+
+                _lines = [f"Last {len(_rows)} event(s) - past {_days} day(s):"]
+                for _r in _rows:
+                    _t   = _r.ts.strftime("%Y-%m-%d %H:%MZ") if _r.ts else "-"
+                    _dec = (_r.decision or "-").ljust(8)
+                    _rid = ((_r.rule_id or "-")[:24]).ljust(24)
+                    _call = (_r.tool_call or _r.ai_tool or "-")[:60]
+                    _lines.append(f"{_t}  {_dec}  {_rid}  {_call}")
+                return JSONResponse(_text(msg_id, "\n".join(_lines)))
 
             elif tool_name == "guard_discover":
                 from app.modules.guard.models import DiscoveredAgent
