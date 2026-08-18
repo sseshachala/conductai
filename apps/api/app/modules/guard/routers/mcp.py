@@ -18,6 +18,7 @@ import json
 import os
 import re
 import uuid
+from contextvars import ContextVar
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query, Request
@@ -508,7 +509,17 @@ def _err(msg_id, code: int, message: str) -> dict:
     return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}}
 
 
+# Governance: when a tool_call handler runs, we stamp the response text with
+# [ws:xxxxxxxx] so the model can spot silent workspace drift (dashboard switch,
+# token rotation, etc) without having to poll guard_status every turn.
+# Init / OAuth responses leave this unset, so their text stays unchanged.
+_tool_ws_ctx: ContextVar[uuid.UUID | None] = ContextVar("guard_mcp_tool_ws", default=None)
+
+
 def _text(msg_id, text: str) -> dict:
+    _ws = _tool_ws_ctx.get()
+    if _ws is not None:
+        text = f"[ws:{str(_ws)[:8]}] {text}"
     return _ok(msg_id, {"content": [{"type": "text", "text": text}]})
 
 
@@ -676,6 +687,9 @@ async def mcp_endpoint(
             return JSONResponse(_ok(msg_id, {"tools": _TOOLS}))
 
         elif method == "tools/call":
+            # ponytail: stamps every tool response with [ws:xxxxxxxx] so the
+            # model can detect silent workspace changes without polling.
+            _tool_ws_ctx.set(ws_uuid)
             tool_name = params.get("name", "")
             arguments = params.get("arguments") or {}
             # Try explicit surface header, then clientInfo (rarely on tools/call),
