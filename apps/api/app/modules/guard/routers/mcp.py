@@ -937,37 +937,41 @@ async def mcp_endpoint(
                 return JSONResponse(_text(msg_id, f"Activity logged — '{summary}'"))
 
             elif tool_name == "guard_recent_activity":
-                from datetime import timedelta as _timedelta
-                # ponytail: caller-scoped by default (user_email match). Add all_users
-                # flag when guard.activity.view_all permission actually gets consumed.
+                # ponytail: raw SQL projecting only rendered columns — sidesteps schema
+                # drift (ORM SELECT * breaks if any migration hasn't run on this DB)
+                # and cuts the row payload. Caller-scoped by default (user_email match);
+                # add all_users flag when guard.activity.view_all is actually consumed.
                 _days     = max(1, min(int(arguments.get("days") or 1), 30))
                 _limit    = max(1, min(int(arguments.get("limit") or 20), 100))
                 _decision = arguments.get("decision") or None
                 _rule_id  = arguments.get("rule_id") or None
-                _since    = datetime.now(timezone.utc) - _timedelta(days=_days)
 
-                _q = db.query(GuardAuditEvent).filter(
-                    GuardAuditEvent.workspace_id == ws_uuid,
-                    GuardAuditEvent.ts >= _since,
-                )
+                _parts = [
+                    "SELECT ts, decision, rule_id, tool_call, ai_tool",
+                    "FROM guard_audit_events",
+                    "WHERE workspace_id = :ws",
+                    "AND ts > now() - (:days || ' days')::interval",
+                ]
+                _params = {"ws": ws_uuid, "days": _days, "lim": _limit}
                 if user_email:
-                    _q = _q.filter(GuardAuditEvent.user_email == user_email)
+                    _parts.append("AND user_email = :email"); _params["email"] = user_email
                 if _decision:
-                    _q = _q.filter(GuardAuditEvent.decision == _decision)
+                    _parts.append("AND decision = :dec"); _params["dec"] = _decision
                 if _rule_id:
-                    _q = _q.filter(GuardAuditEvent.rule_id == _rule_id)
-                _rows = _q.order_by(GuardAuditEvent.ts.desc()).limit(_limit).all()
+                    _parts.append("AND rule_id = :rid"); _params["rid"] = _rule_id
+                _parts.append("ORDER BY ts DESC LIMIT :lim")
+                _rows = db.execute(_sql(" ".join(_parts)), _params).fetchall()
 
                 if not _rows:
                     return JSONResponse(_text(msg_id, f"No events in the last {_days} day(s)."))
 
                 _lines = [f"Last {len(_rows)} event(s) - past {_days} day(s):"]
-                for _r in _rows:
-                    _t   = _r.ts.strftime("%Y-%m-%d %H:%MZ") if _r.ts else "-"
-                    _dec = (_r.decision or "-").ljust(8)
-                    _rid = ((_r.rule_id or "-")[:24]).ljust(24)
-                    _call = (_r.tool_call or _r.ai_tool or "-")[:60]
-                    _lines.append(f"{_t}  {_dec}  {_rid}  {_call}")
+                for _ts, _dec, _rid, _tc, _ait in _rows:
+                    _t     = _ts.strftime("%Y-%m-%d %H:%MZ") if _ts else "-"
+                    _decs  = (_dec or "-").ljust(8)
+                    _rids  = ((_rid or "-")[:24]).ljust(24)
+                    _call  = (_tc or _ait or "-")[:60]
+                    _lines.append(f"{_t}  {_decs}  {_rids}  {_call}")
                 return JSONResponse(_text(msg_id, "\n".join(_lines)))
 
             elif tool_name == "guard_discover":
