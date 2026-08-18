@@ -301,6 +301,14 @@ playbooks:
     featured: true
     description: "Smoke-test staging, prod, and canary in one run. Diffs results to distinguish env-specific failures from universal ones."
 
+  network_diagnosis_agent:
+    file: network-diagnosis-agent.yaml
+    icon: "🛰️"
+    category: Network Ops
+    tags: [network, autonomy, governance, demo]
+    featured: true
+    description: "Autonomous NetOps agent diagnoses a synthetic Branch-42 incident (Aruba/Juniper). Executes reversible remediations; policy-modifying attempts (ACL/firewall) are blocked by Guard and routed to human approval. Bounded autonomy in action."
+
 # GitHub events Conduct listens for globally (union of all playbook github_events above).
 # Used when registering a repo webhook so GitHub sends everything and we filter in the handler.
 all_github_events:
