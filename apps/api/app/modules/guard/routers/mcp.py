@@ -144,7 +144,7 @@ _TOOLS = [
     },
     {
         "name": "guard_discover",
-        "description": "Show all AI agents discovered in this org and Guard coverage. Returns total agents found, how many are under Guard, coverage %, and a list of shadow agents not yet governed.",
+        "description": "Show all AI agents discovered in this org and Guard coverage. Returns total, coverage %, and the full agent inventory — each entry has a `governed: true|false` flag so callers can filter to shadow (ungoverned) or governed as needed.",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
     {
@@ -905,17 +905,22 @@ async def mcp_endpoint(
                     _org_ws = db.query(Workspace.id).filter(Workspace.owner_id == _ws.owner_id)
                 else:
                     _org_ws = db.query(Workspace.id).filter(Workspace.id == ws_uuid)
-                total   = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(_org_ws)).count()
-                covered = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(_org_ws), DiscoveredAgent.under_guard == True).count()
+                # ponytail: return full inventory with governed flag; callers filter as needed.
+                all_agents = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(_org_ws)).limit(200).all()
+                total   = len(all_agents)
+                covered = sum(1 for a in all_agents if a.under_guard)
                 missing = total - covered
                 pct     = round(covered / total * 100) if total else 0
-                shadow  = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(_org_ws), DiscoveredAgent.under_guard == False).limit(20).all()
-                shadow_list = [{"id": str(a.id), "name": a.name, "framework": a.framework, "source": a.source, "location": a.location} for a in shadow]
-                result = {"total": total, "under_guard": covered, "missing": missing, "coverage_pct": pct, "shadow_agents": shadow_list}
+                agents_list = [{
+                    "id": str(a.id), "name": a.name, "framework": a.framework,
+                    "source": a.source, "location": a.location,
+                    "governed": bool(a.under_guard),
+                } for a in all_agents]
+                result = {"total": total, "under_guard": covered, "missing": missing, "coverage_pct": pct, "agents": agents_list}
                 if total == 0:
                     msg = "No discovery scan found. Run `conduct guard discover` from your machine first."
                 else:
-                    msg = f"Guard coverage: {covered} of {total} agents ({pct}%)\n{missing} shadow agents not under Guard.\n\n" + json.dumps(shadow_list, indent=2)
+                    msg = f"Guard coverage: {covered} of {total} agents ({pct}%)\n{missing} shadow agents not under Guard.\n\n" + json.dumps(agents_list, indent=2)
                 return JSONResponse(_text(msg_id, msg))
 
             elif tool_name == "guard_discover_register":
