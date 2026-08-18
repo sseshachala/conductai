@@ -1438,6 +1438,22 @@ def cmd_switch(args):
     new_id   = str(chosen["id"])
     new_name = chosen["name"]
 
+    # Re-mint agent token bound to the new workspace so server-side attribution
+    # follows the switch. Without this, POSTs (discover, audit, heartbeats)
+    # keep hitting the workspace the token was originally minted for.
+    try:
+        _r = api.req("POST", f"{server}/auth/switch-workspace", hdrs, {"workspace_id": new_id})
+        if _r and _r.get("agent_token"):
+            cfg["agent_token"]      = _r["agent_token"]
+            if _r.get("refresh_token"):
+                cfg["refresh_token"] = _r["refresh_token"]
+            import datetime as _dt
+            cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=int(_r.get("expires_in", 28800)))).isoformat()
+    except SystemExit:
+        print(f"  {YELLOW}⚠ Could not re-mint token for new workspace — falling back to config-only switch{RESET}")
+    except Exception as e:
+        print(f"  {YELLOW}⚠ Token re-mint failed ({e}) — falling back to config-only switch{RESET}")
+
     # Update ~/.conduct/config.json atomically
     cfg["workspace"] = new_id; cfg["workspace_id"] = new_id
     _atomic_write(CONFIG_PATH, cfg)
