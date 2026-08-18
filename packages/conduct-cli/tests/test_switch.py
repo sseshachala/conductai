@@ -377,3 +377,96 @@ def test_switch_falls_back_gracefully_when_remint_fails(tmp_path, monkeypatch, c
     assert updated_cfg["workspace_id"] == "ab1b2c3d-0000-0000-0000-000000000002"
     out = capsys.readouterr().out
     assert "falling back to config-only switch" in out
+
+
+# ---------------------------------------------------------------------------
+# 0.9.9 — cmd_switch must fire _report_tool_coverage so the new workspace's
+# "developer connected" widget populates immediately (not just after next login)
+# ---------------------------------------------------------------------------
+
+def test_switch_fires_tool_coverage(tmp_path, monkeypatch, capsys):
+    from conduct_cli import main as m
+    from conduct_cli import guard as g
+
+    cfg_path = tmp_path / "conduct" / "config.json"
+    cfg_path.parent.mkdir(parents=True)
+    cfg_path.write_text(json.dumps({
+        "api_url":     "https://api.conductai.ai",
+        "agent_token": "cond_agt_test",
+        "workspace":   "ef0a7e36-0000-0000-0000-000000000001",
+    }))
+    args = _make_args(workspace="Marketing")
+
+    def _api_req(method, url, hdrs, body=None, timeout=30):
+        if method == "GET" and url.endswith("/projects"):
+            return _fake_workspaces()
+        if method == "POST" and url.endswith("/auth/switch-workspace"):
+            return {"agent_token": "cond_agt_new", "expires_in": 28800, "workspace_id": body["workspace_id"], "user_id": "u1"}
+        raise AssertionError(f"unexpected call {method} {url}")
+
+    with (
+        patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("pathlib.Path.home", return_value=tmp_path),
+        patch.object(m.api, "req", side_effect=_api_req),
+        patch.object(g, "_req", return_value={"version": "1", "rules": []}),
+        patch.object(g, "_save_policy"),
+        patch.object(m, "_report_tool_coverage") as coverage,
+    ):
+        m.cmd_switch(args)
+
+    coverage.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# 0.9.9 — cmd_login must preserve the prior workspace_id if it differs from
+# the server-returned default. Otherwise every re-login blows away the user's
+# last `conduct switch`.
+# ---------------------------------------------------------------------------
+
+def test_login_preserves_prior_workspace(tmp_path, capsys):
+    from conduct_cli import main as m
+
+    cfg_path = tmp_path / "config.json"
+    # Prior state: user was on Marketing (via a previous switch)
+    cfg_path.write_text(json.dumps({
+        "api_url":     "https://api.conductai.ai",
+        "agent_token": "cond_agt_old",
+        "workspace":   "ab1b2c3d-0000-0000-0000-000000000002",
+        "workspace_id": "ab1b2c3d-0000-0000-0000-000000000002",
+    }))
+    args = _make_args(server=None, token=None)
+
+    # Login returns Engineering (server default) — but prior was Marketing
+    fake_login_result = {
+        "agent_token": "cond_agt_from_login_engineering",
+        "workspace_id": "ef0a7e36-0000-0000-0000-000000000001",
+    }
+    remint_response = {
+        "agent_token": "cond_agt_reminted_for_marketing",
+        "refresh_token": "cond_ref_reminted",
+        "expires_in": 28800,
+        "workspace_id": "ab1b2c3d-0000-0000-0000-000000000002",
+        "user_id": "u1",
+    }
+
+    def _api_req(method, url, hdrs, body=None, timeout=30):
+        if method == "POST" and url.endswith("/auth/switch-workspace"):
+            # Should be called with prior_ws (Marketing UUID)
+            assert body == {"workspace_id": "ab1b2c3d-0000-0000-0000-000000000002"}
+            return remint_response
+        if method == "GET" and url.endswith("/projects"):
+            return _fake_workspaces()
+        raise AssertionError(f"unexpected call {method} {url}")
+
+    with (
+        patch.object(m, "CONFIG_PATH", cfg_path),
+        patch.object(m, "_web_login_flow", return_value=fake_login_result),
+        patch.object(m.api, "req", side_effect=_api_req),
+        patch("conduct_cli.guard.cmd_guard_sync", return_value=None),
+    ):
+        m.cmd_login(args)
+
+    updated_cfg = json.loads(cfg_path.read_text())
+    assert updated_cfg["workspace_id"] == "ab1b2c3d-0000-0000-0000-000000000002"
+    assert updated_cfg["agent_token"] == "cond_agt_reminted_for_marketing"
+    assert updated_cfg["refresh_token"] == "cond_ref_reminted"
