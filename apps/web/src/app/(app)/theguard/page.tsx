@@ -181,7 +181,7 @@ function CostTrendChart({
       { headers }
     )
       .then(r => r.json())
-      .then(setData)
+      .then(d => setData(Array.isArray(d) ? d : []))
       .catch(() => setData([]))
       .finally(() => setLoading(false))
   }, [periodParam, workspaceId, token])
