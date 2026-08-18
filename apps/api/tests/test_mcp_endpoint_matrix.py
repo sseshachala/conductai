@@ -135,6 +135,34 @@ def test_tools_list_returns_non_empty(workspace_no_config):
 
 @requires_db
 @pytest.mark.matrix
+def test_guard_discover_returns_full_inventory_with_governed_flag(workspace_no_config):
+    """Regression 971cdce: payload uses `agents` (not `shadow_agents`) with per-entry `governed` flag."""
+    from app.modules.guard.models import DiscoveredAgent
+    ws_id, token = workspace_no_config
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        db.add(DiscoveredAgent(id=uuid.uuid4(), workspace_id=ws_id, name="gov-agent",
+            framework="claude-code", source="ai-tool", location="-",
+            under_guard=True, proxy_routed=False, first_seen_at=now))
+        db.add(DiscoveredAgent(id=uuid.uuid4(), workspace_id=ws_id, name="shadow-agent",
+            framework="cursor", source="config", location="/tmp/x",
+            under_guard=False, proxy_routed=False, first_seen_at=now))
+        db.commit()
+
+    c = TestClient(app)
+    c.post(MCP_URL, headers={"Authorization": "Bearer " + token},
+           json=_rpc("initialize", {"protocolVersion": "2024-11-05", "clientInfo": {"name": "test"}}))
+    r = c.post(MCP_URL, headers={"Authorization": "Bearer " + token},
+               json=_rpc("tools/call", {"name": "guard_discover", "arguments": {}}, mid=2))
+    assert r.status_code == 200
+    text = r.json()["result"]["content"][0]["text"]
+    assert '"governed": true' in text
+    assert '"governed": false' in text
+    assert '"shadow_agents"' not in text
+
+
+@requires_db
+@pytest.mark.matrix
 def test_notifications_initialized_is_204(workspace_no_config):
     _ws_id, token = workspace_no_config
     r = TestClient(app).post(MCP_URL,
