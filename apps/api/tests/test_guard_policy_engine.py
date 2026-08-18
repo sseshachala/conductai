@@ -152,7 +152,9 @@ def test_compute_policy_returns_cached_payload():
 
     db = _mock_db()
     db.get.return_value = cached  # GuardPolicyCache hit
+    # No crossed-expiry override AND no newer pack version → cache served
     db.query.return_value.filter.return_value.first.return_value = None
+    db.query.return_value.join.return_value.filter.return_value.filter.return_value.first.return_value = None
 
     result = compute_policy(db, ws_uuid, "agent")
     assert result == [{"id": "rule_1", "action": "block"}]
@@ -460,3 +462,121 @@ def test_invalidate_policy_cache_redis_failure_is_swallowed():
         invalidate_policy_cache(db, ws_uuid)  # must not raise
 
     db.expire_all.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Regression: cache must invalidate when a newer SkillPack version is added
+# to the catalog after the cache was written. Without this, workspaces
+# silently serve stale rules across pack bumps (e.g. no-env-read dropped
+# from a live workspace after conduct-base was updated).
+# ---------------------------------------------------------------------------
+
+def test_compute_policy_invalidates_on_pack_version_bump():
+    ws_uuid = _ws_uuid()
+    cached = MagicMock(
+        payload=[{"id": "old-rule", "action": "block"}],
+        computed_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+    db = _mock_db()
+    db.get.return_value = cached
+
+    # 1st query: GuardRuleOverride expiry check → no crossed expiry
+    override_chain = MagicMock()
+    override_chain.filter.return_value.first.return_value = None
+    # 2nd query: SkillPack join+filter+filter+first → newer pack exists
+    pack_chain = MagicMock()
+    pack_chain.join.return_value.filter.return_value.filter.return_value.first.return_value = MagicMock()
+    db.query.side_effect = [override_chain, pack_chain]
+
+    with patch("app.modules.guard.policy_engine._write_cache"), \
+         patch("app.modules.guard.policy_engine._build_rules", return_value=[{"id": "fresh-rule"}]):
+        result = compute_policy(db, ws_uuid, "agent")
+
+    assert result == [{"id": "fresh-rule"}]
+    db.delete.assert_called_once_with(cached)
+
+
+def test_compute_policy_serves_cache_when_no_newer_pack():
+    """Cache hit + no override expiry + no newer pack → serve cache, don't rebuild."""
+    ws_uuid = _ws_uuid()
+    cached = MagicMock(
+        payload=[{"id": "cached-rule"}],
+        computed_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+    db = _mock_db()
+    db.get.return_value = cached
+
+    override_chain = MagicMock()
+    override_chain.filter.return_value.first.return_value = None
+    pack_chain = MagicMock()
+    pack_chain.join.return_value.filter.return_value.filter.return_value.first.return_value = None
+    db.query.side_effect = [override_chain, pack_chain]
+
+    with patch("app.modules.guard.policy_engine._build_rules") as build:
+        result = compute_policy(db, ws_uuid, "agent")
+
+    assert result == [{"id": "cached-rule"}]
+    build.assert_not_called()
+    db.delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Pipeline coverage: every rule in every shipped skill pack must survive
+# _build_rules for at least one persona. Catches silent drops from persona
+# filtering, enforcement metadata, or future pipeline changes.
+# ---------------------------------------------------------------------------
+
+def test_every_shipped_pack_rule_survives_build_rules():
+    import json as _json
+    from pathlib import Path as _Path
+    from app.modules.guard.enforcement import rule_personas
+
+    packs_dir = _Path(__file__).parent.parent / "app" / "modules" / "guard" / "skill_packs"
+    pack_files = sorted(packs_dir.glob("*.json"))
+    assert pack_files, f"No packs found under {packs_dir}"
+
+    dropped: list[str] = []
+
+    for pack_file in pack_files:
+        pack_data = _json.loads(pack_file.read_text())
+        pack_slug = pack_data.get("slug", pack_file.stem)
+        pack_rules = pack_data.get("rules", [])
+        if not pack_rules:
+            continue
+
+        # Fake SkillPack object with .rules
+        fake_pack = MagicMock(rules=pack_rules)
+
+        # Fake WorkspaceSkillPack row for this pack
+        fake_wp = MagicMock(pack_slug=pack_slug, pinned_version=None)
+
+        ws_uuid = _ws_uuid()
+        db = _mock_db()
+
+        # db.query(WorkspaceSkillPack).filter(...).order_by(...).all() → [fake_wp]
+        wp_chain = MagicMock()
+        wp_chain.filter.return_value.order_by.return_value.all.return_value = [fake_wp]
+        # db.query(WorkspaceCustomRule).filter(...).all() → []
+        custom_chain = MagicMock()
+        custom_chain.filter.return_value.all.return_value = []
+        # db.query(GuardRuleOverride).filter(...).all() → []
+        override_chain = MagicMock()
+        override_chain.filter.return_value.all.return_value = []
+        db.query.side_effect = [wp_chain, custom_chain, override_chain]
+
+        for rule in pack_rules:
+            personas = rule_personas(rule)
+            if not personas:
+                dropped.append(f"{pack_slug}:{rule.get('id')} — no personas")
+                continue
+
+        # Try compute across all personas this pack's rules target
+        with patch("app.modules.guard.policy_engine._get_pack", return_value=fake_pack):
+            for persona in {"agent", "proxy"}:
+                db.query.side_effect = [wp_chain, custom_chain, override_chain]
+                result_ids = {r.get("id") for r in _build_rules(db, ws_uuid, persona)}
+                for rule in pack_rules:
+                    if persona in rule_personas(rule) and rule.get("id") not in result_ids:
+                        dropped.append(f"{pack_slug}:{rule.get('id')} dropped for persona={persona}")
+
+    assert not dropped, "Rules silently dropped by _build_rules:\n" + "\n".join(dropped)

@@ -98,7 +98,18 @@ def compute_policy(db: Session, workspace_id: uuid.UUID, persona: str) -> list[d
             )
             .first()
         )
-        if not crossed_expiry:
+        # ponytail: also invalidate on pack-version bump — any installed pack
+        # whose row was written after the cache means the catalog changed and
+        # cached rules may be stale (see: no-env-read dropped from a workspace
+        # cache after a new conduct-base version landed with the rule).
+        newer_pack = (
+            db.query(SkillPack)
+            .join(WorkspaceSkillPack, WorkspaceSkillPack.pack_slug == SkillPack.slug)
+            .filter(WorkspaceSkillPack.workspace_id == workspace_id)
+            .filter(SkillPack.created_at > cached.computed_at)
+            .first()
+        )
+        if not crossed_expiry and not newer_pack:
             return cached.payload
         db.delete(cached)
         db.flush()
