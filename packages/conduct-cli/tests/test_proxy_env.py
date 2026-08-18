@@ -170,3 +170,42 @@ def test_windows_prefers_ps7_profile_when_no_wps5_exists(tmp_path, monkeypatch):
     assert rc == ps7
     assert ps7.exists()
     assert not wps5.exists()
+
+
+# ---------------------------------------------------------------------------
+# Regression: _is_anthropic_proxied / _is_openai_proxied must fall back to
+# ~/.conduct/env when the env var is missing from the current process.
+# `conduct login` writes the file but does not re-source itself, so the
+# per-tool coverage table used to report `✗ Not routed` right after login
+# even though future shells will route correctly.
+# ---------------------------------------------------------------------------
+
+@pytestmark_posix
+def test_is_anthropic_proxied_falls_back_to_env_file(tmp_path, monkeypatch):
+    _redirect_home(tmp_path, monkeypatch)
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    (tmp_path / ".conduct").mkdir(exist_ok=True)
+    (tmp_path / ".conduct" / "env").write_text(
+        'export ANTHROPIC_BASE_URL="https://api.conductai.ai/proxy"\n'
+        'export ANTHROPIC_API_KEY="cond_agt_test"\n'
+    )
+    assert guard._is_anthropic_proxied() is True
+
+
+@pytestmark_posix
+def test_is_openai_proxied_falls_back_to_env_file(tmp_path, monkeypatch):
+    _redirect_home(tmp_path, monkeypatch)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    (tmp_path / ".conduct").mkdir(exist_ok=True)
+    (tmp_path / ".conduct" / "env").write_text(
+        'export OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai"\n'
+    )
+    assert guard._is_openai_proxied() is True
+
+
+@pytestmark_posix
+def test_is_anthropic_proxied_false_when_no_env_and_no_file(tmp_path, monkeypatch):
+    _redirect_home(tmp_path, monkeypatch)
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    # No ~/.conduct/env written
+    assert guard._is_anthropic_proxied() is False

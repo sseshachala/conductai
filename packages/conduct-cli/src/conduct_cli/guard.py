@@ -1086,13 +1086,25 @@ def cmd_guard_join(args):
     )
 
 
+def _read_conduct_env_var(name: str) -> str:
+    # ponytail: fall back to ~/.conduct/env so proxy detection is truthful
+    # right after `conduct login`, before the user sources the file.
+    try:
+        for line in (Path.home() / ".conduct" / "env").read_text().splitlines():
+            if line.startswith(f"export {name}="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return ""
+
+
 def _is_anthropic_proxied() -> bool:
-    url = os.environ.get("ANTHROPIC_BASE_URL", "")
+    url = os.environ.get("ANTHROPIC_BASE_URL", "") or _read_conduct_env_var("ANTHROPIC_BASE_URL")
     return "conductai.ai" in url or "conduct" in url.lower()
 
 
 def _is_openai_proxied() -> bool:
-    url = os.environ.get("OPENAI_BASE_URL", "")
+    url = os.environ.get("OPENAI_BASE_URL", "") or _read_conduct_env_var("OPENAI_BASE_URL")
     return "conductai.ai" in url or "conduct" in url.lower()
 
 
