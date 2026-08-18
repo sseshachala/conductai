@@ -227,3 +227,64 @@ def test_switch_accepts_api_url_key(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Not logged in" not in out
     assert "Engineering" in out
+
+
+# ---------------------------------------------------------------------------
+# Regression: `conduct login` prints workspace name (not just UUID) and a
+# switch-hint when the account has more than one workspace. Cross-surface
+# workspace drift (web-UI-switched, CLI still on old) was invisible before.
+# ---------------------------------------------------------------------------
+
+def test_login_shows_name_and_nudges_when_multiple_workspaces(tmp_path, capsys):
+    from conduct_cli import main as m
+
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({}))
+    args = _make_args(server=None, token=None)
+
+    fake_result = {
+        "agent_token": "cond_agt_testkey",
+        "workspace_id": "ef0a7e36-0000-0000-0000-000000000001",
+    }
+
+    with (
+        patch.object(m, "CONFIG_PATH", cfg_path),
+        patch.object(m, "_web_login_flow", return_value=fake_result),
+        patch.object(m.api, "req", return_value=_fake_workspaces()),
+        patch("conduct_cli.guard.cmd_guard_sync", return_value=None),
+    ):
+        m.cmd_login(args)
+
+    out = capsys.readouterr().out
+    # Current workspace displayed by name (not just UUID)
+    assert "Engineering" in out
+    # Nudge appears because account has >1 workspace
+    assert "conduct switch" in out
+    # Other workspace names surfaced in the preview
+    assert "Marketing" in out or "Eng Backup" in out
+
+
+def test_login_omits_nudge_when_single_workspace(tmp_path, capsys):
+    from conduct_cli import main as m
+
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({}))
+    args = _make_args(server=None, token=None)
+
+    fake_result = {
+        "agent_token": "cond_agt_testkey",
+        "workspace_id": "ef0a7e36-0000-0000-0000-000000000001",
+    }
+    single_ws = [{"id": "ef0a7e36-0000-0000-0000-000000000001", "name": "Only", "owner_id": "u1", "workflow_count": 0}]
+
+    with (
+        patch.object(m, "CONFIG_PATH", cfg_path),
+        patch.object(m, "_web_login_flow", return_value=fake_result),
+        patch.object(m.api, "req", return_value=single_ws),
+        patch("conduct_cli.guard.cmd_guard_sync", return_value=None),
+    ):
+        m.cmd_login(args)
+
+    out = capsys.readouterr().out
+    assert "Only" in out
+    assert "conduct switch" not in out
