@@ -230,3 +230,118 @@ def test_refresh_uses_default_api_url_when_not_in_config():
         _refresh_agent_token()
 
     assert captured_req["url"] == "https://api.conductai.ai/auth/refresh"
+
+
+# ---------------------------------------------------------------------------
+# 0.9.11 — _proactive_token_refresh must preserve the prior workspace_id.
+# Server returns whichever workspace the refresh token was issued for
+# (usually the account default). Without restore, every 5-min token
+# refresh silently blows away the user's active `conduct switch` state.
+# ---------------------------------------------------------------------------
+
+def test_proactive_refresh_preserves_prior_workspace(tmp_path, monkeypatch):
+    import datetime as _dt
+    import json as _json
+    from conduct_cli import guard as g
+
+    # Prior state: user was switched to Marketing
+    cfg_path = tmp_path / ".conduct" / "config.json"
+    cfg_path.parent.mkdir(parents=True)
+    prior_ws = "ab1b2c3d-0000-0000-0000-000000000002"
+    server_default_ws = "ef0a7e36-0000-0000-0000-000000000001"
+    cfg_path.write_text(_json.dumps({
+        "api_url":          "https://api.example.com",
+        "agent_token":      "cond_agt_old_marketing",
+        "refresh_token":    "cond_ref_old",
+        "workspace":        prior_ws,
+        "workspace_id":     prior_ws,
+        # Force refresh — expiry already past
+        "token_expires_at": (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=1)).isoformat(),
+    }))
+    monkeypatch.setattr(g, "CONDUCT_HOME", cfg_path.parent)
+    monkeypatch.setattr(g, "CONFIG_PATH", cfg_path)
+
+    refresh_response = {
+        "agent_token":  "cond_agt_after_refresh_engineering",
+        "refresh_token": "cond_ref_after_refresh",
+        "workspace_id":  server_default_ws,  # server returns default
+    }
+    remint_response = {
+        "agent_token":  "cond_agt_reminted_for_marketing",
+        "refresh_token": "cond_ref_reminted",
+        "expires_in":    28800,
+        "workspace_id":  prior_ws,
+        "user_id":       "u1",
+    }
+
+    call_urls = []
+
+    def _fake_urlopen(req, timeout=None):
+        call_urls.append(req.full_url)
+        class _R:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self_inner):
+                if req.full_url.endswith("/auth/refresh"):
+                    return _json.dumps(refresh_response).encode()
+                if req.full_url.endswith("/auth/switch-workspace"):
+                    # Verify the restore call sends prior_ws
+                    body = _json.loads(req.data.decode())
+                    assert body == {"workspace_id": prior_ws}
+                    return _json.dumps(remint_response).encode()
+                raise AssertionError(f"unexpected url {req.full_url}")
+        return _R()
+
+    with patch("urllib.request.urlopen", side_effect=_fake_urlopen):
+        g._proactive_token_refresh()
+
+    updated = _json.loads(cfg_path.read_text())
+    assert updated["workspace_id"] == prior_ws
+    assert updated["agent_token"]  == "cond_agt_reminted_for_marketing"
+    assert updated["refresh_token"] == "cond_ref_reminted"
+    # Both endpoints were hit
+    assert any("/auth/refresh" in u for u in call_urls)
+    assert any("/auth/switch-workspace" in u for u in call_urls)
+
+
+def test_proactive_refresh_no_restore_when_prior_matches_default(tmp_path, monkeypatch):
+    """If prior workspace_id already matches the refreshed default, no restore call."""
+    import datetime as _dt
+    import json as _json
+    from conduct_cli import guard as g
+
+    same_ws = "ef0a7e36-0000-0000-0000-000000000001"
+    cfg_path = tmp_path / ".conduct" / "config.json"
+    cfg_path.parent.mkdir(parents=True)
+    cfg_path.write_text(_json.dumps({
+        "api_url":          "https://api.example.com",
+        "agent_token":      "cond_agt_old",
+        "refresh_token":    "cond_ref_old",
+        "workspace":        same_ws,
+        "workspace_id":     same_ws,
+        "token_expires_at": (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=1)).isoformat(),
+    }))
+    monkeypatch.setattr(g, "CONDUCT_HOME", cfg_path.parent)
+    monkeypatch.setattr(g, "CONFIG_PATH", cfg_path)
+
+    call_urls = []
+
+    def _fake_urlopen(req, timeout=None):
+        call_urls.append(req.full_url)
+        class _R:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self_inner):
+                return _json.dumps({
+                    "agent_token":   "cond_agt_new",
+                    "refresh_token": "cond_ref_new",
+                    "workspace_id":  same_ws,
+                }).encode()
+        return _R()
+
+    with patch("urllib.request.urlopen", side_effect=_fake_urlopen):
+        g._proactive_token_refresh()
+
+    # Only /auth/refresh should have been called, not /auth/switch-workspace
+    assert any("/auth/refresh" in u for u in call_urls)
+    assert not any("/auth/switch-workspace" in u for u in call_urls)
