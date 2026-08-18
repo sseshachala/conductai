@@ -288,3 +288,92 @@ def test_login_omits_nudge_when_single_workspace(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Only" in out
     assert "conduct switch" not in out
+
+
+# ---------------------------------------------------------------------------
+# Fix A regression: cmd_switch must re-mint the agent token by calling
+# POST /auth/switch-workspace so server-side attribution follows the local
+# workspace flip. Without this, POSTs after switch keep hitting the
+# original workspace.
+# ---------------------------------------------------------------------------
+
+def test_switch_remints_agent_token_via_endpoint(tmp_path, monkeypatch, capsys):
+    from conduct_cli import main as m
+    from conduct_cli import guard as g
+
+    cfg_path = tmp_path / "conduct" / "config.json"
+    cfg_path.parent.mkdir(parents=True)
+    cfg_path.write_text(json.dumps({
+        "api_url":     "https://api.conductai.ai",
+        "agent_token": "cond_agt_ORIGINAL_engineering",
+        "workspace":   "ef0a7e36-0000-0000-0000-000000000001",
+    }))
+
+    args = _make_args(workspace="Marketing")
+    remint_response = {
+        "agent_token":   "cond_agt_NEW_marketing_scoped",
+        "refresh_token": "cond_ref_new_refresh",
+        "expires_in":    28800,
+        "workspace_id":  "ab1b2c3d-0000-0000-0000-000000000002",
+        "user_id":       "user_test",
+    }
+
+    def _api_req(method, url, hdrs, body=None, timeout=30):
+        if method == "GET" and url.endswith("/projects"):
+            return _fake_workspaces()
+        if method == "POST" and url.endswith("/auth/switch-workspace"):
+            assert body == {"workspace_id": "ab1b2c3d-0000-0000-0000-000000000002"}
+            return remint_response
+        raise AssertionError(f"unexpected call {method} {url}")
+
+    with (
+        patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("pathlib.Path.home", return_value=tmp_path),
+        patch.object(m.api, "req", side_effect=_api_req),
+        patch.object(g, "_req", return_value={"version": "1", "rules": []}),
+        patch.object(g, "_save_policy"),
+    ):
+        m.cmd_switch(args)
+
+    updated_cfg = json.loads(cfg_path.read_text())
+    assert updated_cfg["agent_token"]  == "cond_agt_NEW_marketing_scoped"
+    assert updated_cfg["refresh_token"] == "cond_ref_new_refresh"
+    assert updated_cfg["workspace_id"] == "ab1b2c3d-0000-0000-0000-000000000002"
+    assert "token_expires_at" in updated_cfg
+
+
+def test_switch_falls_back_gracefully_when_remint_fails(tmp_path, monkeypatch, capsys):
+    """If the switch-workspace endpoint 401s (older server), config-only switch still applies."""
+    from conduct_cli import main as m
+    from conduct_cli import guard as g
+
+    cfg_path = tmp_path / "conduct" / "config.json"
+    cfg_path.parent.mkdir(parents=True)
+    cfg_path.write_text(json.dumps({
+        "api_url":     "https://api.conductai.ai",
+        "agent_token": "cond_agt_ORIGINAL",
+        "workspace":   "ef0a7e36-0000-0000-0000-000000000001",
+    }))
+    args = _make_args(workspace="Marketing")
+
+    def _api_req(method, url, hdrs, body=None, timeout=30):
+        if method == "GET" and url.endswith("/projects"):
+            return _fake_workspaces()
+        # Endpoint failure — mimic api.req's SystemExit on HTTP error
+        raise SystemExit(1)
+
+    with (
+        patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("pathlib.Path.home", return_value=tmp_path),
+        patch.object(m.api, "req", side_effect=_api_req),
+        patch.object(g, "_req", return_value={"version": "1", "rules": []}),
+        patch.object(g, "_save_policy"),
+    ):
+        m.cmd_switch(args)
+
+    updated_cfg = json.loads(cfg_path.read_text())
+    # Token unchanged (fallback preserves the original) but workspace_id updated
+    assert updated_cfg["agent_token"] == "cond_agt_ORIGINAL"
+    assert updated_cfg["workspace_id"] == "ab1b2c3d-0000-0000-0000-000000000002"
+    out = capsys.readouterr().out
+    assert "falling back to config-only switch" in out

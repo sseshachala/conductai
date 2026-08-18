@@ -200,3 +200,40 @@ def refresh_cli_token(
         workspace_id=str(identity.workspace_id),
         user_id=None,
     )
+
+
+# ─── Fix A: switch-workspace — re-mint token bound to different workspace ───
+
+class SwitchWorkspaceRequest(BaseModel):
+    workspace_id: str
+
+
+@router.post("/switch-workspace", response_model=CliTokenResponse)
+def switch_workspace(
+    body: SwitchWorkspaceRequest,
+    user_id: str = Depends(get_user_id),
+    db: Session = Depends(get_db),
+):
+    """Mint a fresh agent_token bound to a different workspace the caller is a member of.
+
+    Called by `conduct switch <name>` so the CLI's server-side context follows
+    the local workspace_id change. Without this, `conduct switch` only flips
+    the local config label — subsequent POSTs still attribute to the workspace
+    the token was originally minted for.
+    """
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Machine token cannot switch workspaces")
+    # Membership check reuses the same helper as get_workspace_id — 403 if not a member.
+    from app.core.auth import _assert_workspace_member
+    _assert_workspace_member(db, body.workspace_id, user_id)
+
+    _, agent_raw, refresh_raw = _upsert_identity(db, body.workspace_id, user_id)
+    db.commit()
+
+    return CliTokenResponse(
+        agent_token=agent_raw,
+        refresh_token=refresh_raw,
+        expires_in=int(_AGENT_TOKEN_TTL.total_seconds()),
+        workspace_id=body.workspace_id,
+        user_id=user_id,
+    )
