@@ -1484,28 +1484,18 @@ def cmd_switch(args):
     cfg["workspace"] = new_id; cfg["workspace_id"] = new_id
     _atomic_write(CONFIG_PATH, cfg)
 
-    # Fire coverage POST so the new workspace's "developer connected" widget
-    # populates immediately. Without this the switch works but the widget
-    # stays empty until the next `conduct login`.
+    # Full propagation to every surface — same flow login uses:
+    #   proxy env file, MCP client configs (Cursor / Claude Desktop /
+    #   Windsurf / Copilot), hook script, coverage POST, policy cache.
+    # Without this, MCP clients keep sending the OLD token to /guard/mcp
+    # and every tool call attributes to the previous workspace.
     try:
-        _report_tool_coverage()
-    except Exception:
-        pass
-
-    # Re-sync Guard policies for the new workspace
-    try:
-        policy = _guard._req(
-            "GET",
-            f"{server}/guard/policies/sync?workspace_id={new_id}",
-            token=token,
-        )
-        _guard._save_policy(policy)
-        rule_count = len(policy.get("rules", []))
-        print(f"  {GRAY}Guard policies synced: {rule_count} rule(s){RESET}")
+        import types
+        _guard.cmd_guard_sync(types.SimpleNamespace())
     except SystemExit:
-        print(f"  {GRAY}Guard not configured for this workspace — policies not synced{RESET}")
+        pass
     except Exception as e:
-        print(f"  {YELLOW}⚠ Guard policy sync failed: {e}{RESET}")
+        print(f"  {YELLOW}⚠ Guard sync after switch failed: {e}{RESET}")
 
     print(f"{GREEN}✓ Switched to \"{new_name}\" ({new_id[:8]}){RESET}")
 
