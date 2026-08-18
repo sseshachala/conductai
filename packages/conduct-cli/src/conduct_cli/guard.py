@@ -1362,6 +1362,11 @@ def _proactive_token_refresh() -> None:
             return  # still valid
     except ValueError:
         pass
+    # Capture prior workspace BEFORE refresh — server returns whichever
+    # workspace the refresh token was originally issued for (usually the
+    # account default). Without restore, every 5-min token refresh silently
+    # blows away the user's active workspace context.
+    prior_ws = cfg.get("workspace_id") or cfg.get("workspace") or ""
     api_url = _api_url(cfg)
     try:
         req = urllib.request.Request(
@@ -1377,6 +1382,28 @@ def _proactive_token_refresh() -> None:
         cfg["workspace_id"]     = data["workspace_id"]
         cfg["workspace"]        = data["workspace_id"]
         cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=8)).isoformat()
+        # Restore prior workspace if refresh returned a different default.
+        if prior_ws and str(prior_ws) != str(data["workspace_id"]):
+            try:
+                _req2 = urllib.request.Request(
+                    f"{api_url}/auth/switch-workspace",
+                    data=_json.dumps({"workspace_id": prior_ws}).encode(),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {cfg['agent_token']}",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(_req2, timeout=10) as _resp2:
+                    _rd = _json.loads(_resp2.read())
+                cfg["agent_token"]      = _rd["agent_token"]
+                if _rd.get("refresh_token"):
+                    cfg["refresh_token"] = _rd["refresh_token"]
+                cfg["workspace"]        = prior_ws
+                cfg["workspace_id"]     = prior_ws
+                cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=int(_rd.get("expires_in", 28800)))).isoformat()
+            except Exception:
+                pass  # not a member or endpoint missing — keep server default
         _save_guard_config(cfg)
     except Exception:
         print(f"  {YELLOW}⚠ Token refresh failed — run `conduct login` if sync fails{RESET}")
