@@ -197,3 +197,33 @@ def test_whoami_prints_all_sections(tmp_path, capsys):
     assert "sudhi@b2bsphere.com" in out
     assert "3 rules" in out
     assert "Booster" in out
+
+
+# ---------------------------------------------------------------------------
+# Regression: cmd_switch must accept `api_url` when `server` is absent.
+# `conduct login` writes `api_url`; older cmd_switch only read `server`
+# and falsely reported "Not logged in".
+# ---------------------------------------------------------------------------
+
+def test_switch_accepts_api_url_key(tmp_path, capsys):
+    """conduct switch works when config was written by `conduct login` (api_url only)."""
+    from conduct_cli import main as m
+
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({
+        "api_url":     "https://api.conductai.ai",
+        "agent_token": "cond_agt_testkey",
+        "workspace":   "ef0a7e36-0000-0000-0000-000000000001",
+    }))
+
+    args = _make_args(workspace=None)
+
+    with (
+        patch.object(m, "CONFIG_PATH", cfg_path),
+        patch.object(m.api, "req", return_value=_fake_workspaces()),
+    ):
+        m.cmd_switch(args)
+
+    out = capsys.readouterr().out
+    assert "Not logged in" not in out
+    assert "Engineering" in out

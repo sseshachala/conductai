@@ -343,7 +343,7 @@ def _report_tool_coverage() -> None:
     """Detect AI tools on this machine and POST coverage to Guard API. Silent on failure."""
     try:
         cfg = _load_config()
-        server  = cfg.get("server", "").rstrip("/")
+        server  = (cfg.get("server") or cfg.get("api_url") or "").rstrip("/")
         api_key = cfg.get("agent_token", "")
         token   = cfg.get("token", "")
         email   = cfg.get("email", "")
@@ -1354,7 +1354,7 @@ def _atomic_write(path: Path, data: dict) -> None:
 
 def cmd_switch(args):
     cfg = _load_config()
-    server  = cfg.get("server", "").rstrip("/")
+    server  = (cfg.get("server") or cfg.get("api_url") or "").rstrip("/")
     api_key = cfg.get("agent_token", "")
     token   = cfg.get("token", "")
 
@@ -1798,7 +1798,7 @@ def _render_table(rows: list[dict]) -> str:
 
 def _fetch_runs(cfg: dict) -> list[dict]:
     """Fetch recent runs from GET /runs."""
-    server  = cfg.get("server", "").rstrip("/")
+    server  = (cfg.get("server") or cfg.get("api_url") or "").rstrip("/")
     api_key = cfg.get("agent_token", "")
     ws_id   = cfg.get("workspace", "")
     if not all([server, api_key, ws_id]):
@@ -1814,7 +1814,7 @@ def _fetch_runs(cfg: dict) -> list[dict]:
 
 def _fetch_guard_activity(cfg: dict, guard_cfg: dict) -> list[dict]:
     """Fetch recent Guard events grouped by developer."""
-    server  = cfg.get("server", "").rstrip("/")
+    server  = (cfg.get("server") or cfg.get("api_url") or "").rstrip("/")
     api_key = cfg.get("agent_token", "")
     ws_id   = cfg.get("workspace", "")
     if not all([server, api_key, ws_id]):
