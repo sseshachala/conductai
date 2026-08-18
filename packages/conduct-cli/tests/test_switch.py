@@ -408,13 +408,13 @@ def test_switch_fires_tool_coverage(tmp_path, monkeypatch, capsys):
         patch.object(m, "CONFIG_PATH", cfg_path),
         patch("pathlib.Path.home", return_value=tmp_path),
         patch.object(m.api, "req", side_effect=_api_req),
-        patch.object(g, "_req", return_value={"version": "1", "rules": []}),
-        patch.object(g, "_save_policy"),
-        patch.object(m, "_report_tool_coverage") as coverage,
+        patch.object(g, "cmd_guard_sync") as sync,
     ):
         m.cmd_switch(args)
 
-    coverage.assert_called_once()
+    # 0.9.10: cmd_switch delegates surface propagation (env, MCP, hooks,
+    # coverage) to cmd_guard_sync — one hop, all clients follow.
+    sync.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
