@@ -552,6 +552,10 @@ def cmd_login(args):
     api_url = (getattr(args, "server", None) or _load_config().get("api_url", _DEFAULT_API_URL)).rstrip("/")
     web_url = _DEFAULT_WEB_URL
 
+    # Capture the workspace the user was on BEFORE login — so we can restore
+    # it after the login flow (which always returns the account's default).
+    prior_ws = _load_config().get("workspace_id") or _load_config().get("workspace") or ""
+
     # --token escape hatch: paste agent_token directly (no browser)
     manual_token = getattr(args, "token", None)
     if manual_token:
@@ -575,6 +579,28 @@ def cmd_login(args):
     # Clear legacy api_key — agent_token is the credential now
     cfg.pop("api_key", None)
     _atomic_write(CONFIG_PATH, cfg)
+
+    # Restore prior workspace if login returned a different default. Otherwise
+    # every `conduct login` silently blows away the last `conduct switch`.
+    if prior_ws and str(prior_ws) != str(result["workspace_id"]):
+        try:
+            _hdrs_restore = {"Authorization": f"Bearer {result['agent_token']}", "Content-Type": "application/json"}
+            _r = api.req("POST", f"{api_url}/auth/switch-workspace", _hdrs_restore, {"workspace_id": prior_ws})
+            if _r and _r.get("agent_token"):
+                cfg["agent_token"] = _r["agent_token"]
+                if _r.get("refresh_token"):
+                    cfg["refresh_token"] = _r["refresh_token"]
+                cfg["workspace"]    = prior_ws
+                cfg["workspace_id"] = prior_ws
+                cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=int(_r.get("expires_in", 28800)))).isoformat()
+                _atomic_write(CONFIG_PATH, cfg)
+                # Update `result` so subsequent code (name display, sync) targets prior workspace
+                result["workspace_id"] = prior_ws
+                result["agent_token"] = cfg["agent_token"]
+        except SystemExit:
+            pass  # not a member of prior workspace anymore, or endpoint missing — keep server default
+        except Exception:
+            pass
 
     # Fetch workspaces so we can display the current one by name and nudge
     # the user if their account has more than one (cross-surface switch drift).
@@ -1458,6 +1484,13 @@ def cmd_switch(args):
     cfg["workspace"] = new_id; cfg["workspace_id"] = new_id
     _atomic_write(CONFIG_PATH, cfg)
 
+    # Fire coverage POST so the new workspace's "developer connected" widget
+    # populates immediately. Without this the switch works but the widget
+    # stays empty until the next `conduct login`.
+    try:
+        _report_tool_coverage()
+    except Exception:
+        pass
 
     # Re-sync Guard policies for the new workspace
     try:
