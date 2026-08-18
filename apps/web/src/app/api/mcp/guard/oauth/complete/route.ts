@@ -50,13 +50,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${appUrl}/sign-in?error=mcp_no_email`);
   }
 
-  // Prefer explicit workspace_id from OAuth state; fall back to the user's
-  // active workspace in the browser (same cookie the workspace picker uses).
-  // Without this, Claude.ai OAuth silently binds tokens to whichever workspace
-  // the user most recently joined — ignoring what they see on-screen.
+  // Browser cookie wins over state.workspaceId. Reason: state.workspaceId
+  // is seeded from the MCP client's resource URL in /authorize, which may
+  // carry a stale workspace_id (Claude.ai reuses cached MCP URLs across
+  // reconnects). The delegator_project_id cookie always reflects what the
+  // user is currently viewing on app.conductai.ai — ground truth for intent.
   const activeWs =
-    oauthState.workspaceId ||
     req.cookies.get('delegator_project_id')?.value ||
+    oauthState.workspaceId ||
     '';
 
   const clerkToken = await session.getToken();
