@@ -172,15 +172,14 @@ function CostTrendChart({
   const periodParam = scale.toLowerCase() as "daily" | "weekly" | "monthly"
 
   useEffect(() => {
+    if (!workspaceId || !token) { setData([]); setLoading(false); return }
     setLoading(true)
-    const headers: Record<string, string> = {}
-    if (token) headers["Authorization"] = `Bearer ${token}`
     const tzOffset = new Date().getTimezoneOffset()
     fetch(
       `${API}/guard/events/cost-trend?period=${periodParam}&workspace_id=${workspaceId}&tz_offset=${tzOffset}`,
-      { headers }
+      { headers: { Authorization: `Bearer ${token}` } }
     )
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : [])
       .then(d => setData(Array.isArray(d) ? d : []))
       .catch(() => setData([]))
       .finally(() => setLoading(false))
