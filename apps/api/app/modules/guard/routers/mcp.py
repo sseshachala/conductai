@@ -154,7 +154,7 @@ _TOOLS = [
             "properties": {
                 "days":     {"type": "integer", "description": "Window in days (1-30). Default 1.", "default": 1},
                 "limit":    {"type": "integer", "description": "Max events to return (1-100). Default 20.", "default": 20},
-                "decision": {"type": "string", "description": "Optional filter: ok / blocked / warned / audited"},
+                "decision": {"type": "string", "description": "Optional filter: allowed / blocked / warned / audited (alias: ok → allowed)"},
                 "rule_id":  {"type": "string", "description": "Optional filter to a specific rule_id"},
             },
             "required": [],
@@ -944,6 +944,8 @@ async def mcp_endpoint(
                 _days     = max(1, min(int(arguments.get("days") or 1), 30))
                 _limit    = max(1, min(int(arguments.get("limit") or 20), 100))
                 _decision = arguments.get("decision") or None
+                if _decision == "ok":  # accept legacy alias; storage layer writes "allowed"
+                    _decision = "allowed"
                 _rule_id  = arguments.get("rule_id") or None
 
                 _parts = [
@@ -952,7 +954,8 @@ async def mcp_endpoint(
                     "WHERE workspace_id = :ws",
                     "AND ts > now() - (:days || ' days')::interval",
                 ]
-                _params = {"ws": ws_uuid, "days": _days, "lim": _limit}
+                # +1 so we can tell "more available" without a COUNT(*)
+                _params = {"ws": ws_uuid, "days": _days, "lim": _limit + 1}
                 if user_email:
                     _parts.append("AND user_email = :email"); _params["email"] = user_email
                 if _decision:
@@ -962,14 +965,23 @@ async def mcp_endpoint(
                 _parts.append("ORDER BY ts DESC LIMIT :lim")
                 _rows = db.execute(_sql(" ".join(_parts)), _params).fetchall()
 
+                _has_more = len(_rows) > _limit
+                _rows = _rows[:_limit]
+
                 if not _rows:
                     return JSONResponse(_text(msg_id, f"No events in the last {_days} day(s)."))
 
-                _lines = [f"Last {len(_rows)} event(s) - past {_days} day(s):"]
+                _hdr = f"Last {len(_rows)} event(s) - past {_days} day(s)"
+                if _has_more:
+                    _hdr += " (more available — raise `limit` or narrow with `decision`/`rule_id`)"
+                _hdr += ":"
+                _lines = [_hdr]
                 for _ts, _dec, _rid, _tc, _ait in _rows:
                     _t     = _ts.strftime("%Y-%m-%d %H:%MZ") if _ts else "-"
                     _decs  = (_dec or "-").ljust(8)
-                    _rids  = ((_rid or "-")[:24]).ljust(24)
+                    # "none" reads as "no rule fired" (typical of allowed rows);
+                    # "-" only appears if the column was actually NULL for other reasons.
+                    _rids  = ((_rid or ("none" if _dec == "allowed" else "-"))[:24]).ljust(24)
                     _call  = (_tc or _ait or "-")[:60]
                     _lines.append(f"{_t}  {_decs}  {_rids}  {_call}")
                 return JSONResponse(_text(msg_id, "\n".join(_lines)))
