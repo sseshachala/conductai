@@ -692,10 +692,28 @@ async def mcp_endpoint(
 
             if tool_name == "guard_status":
                 rules = _get_rules(db, ws_uuid)
+                # never return workspace_id=null when we successfully
+                # resolved the workspace — fall back to str(ws_uuid). Auditors
+                # need policy attribution; a null workspace defeats governance.
+                _ws_out = workspace_id or (str(ws_uuid) if ws_uuid else None)
+                # policy_version pins which ruleset was in effect at
+                # response time — SOC2/EU AI Act auditors ask for this.
+                _pv = None
+                _pv_at = None
+                try:
+                    from app.modules.guard.models import GuardPolicyCache as _PC
+                    _cache = db.get(_PC, (ws_uuid, "agent"))
+                    if _cache:
+                        _pv    = _cache.version_hash
+                        _pv_at = _cache.computed_at.isoformat() if _cache.computed_at else None
+                except Exception:
+                    pass  # never fail guard_status over policy-version lookup
                 result = json.dumps({
-                    "workspace_id": workspace_id,
-                    "email":        user_email,
-                    "rules_active": len(rules),
+                    "workspace_id":       _ws_out,
+                    "email":              user_email,
+                    "rules_active":       len(rules),
+                    "policy_version":     _pv,
+                    "policy_computed_at": _pv_at,
                 }, indent=2)
                 return JSONResponse(_text(msg_id, result))
 
@@ -789,8 +807,12 @@ async def mcp_endpoint(
                         req = existing
                     return JSONResponse(_text(msg_id, _approval.pending_marker(req)))
 
+                # audit action fires the side-effect but returns "ok"
+                # to the agent — matches documented ok/BLOCKED/WARNING contract.
+                # Agents following "proceed silently on ok/empty" now have
+                # defined behavior for audit-only rules.
                 _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-                return JSONResponse(_text(msg_id, f"AUDITED — {message}  [rule: {rule_id}]{_guidance_suffix}"))
+                return JSONResponse(_text(msg_id, "ok"))
 
             elif tool_name == "guard_sync":
                 rules = _get_rules(db, ws_uuid)
