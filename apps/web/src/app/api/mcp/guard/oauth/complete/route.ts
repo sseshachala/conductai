@@ -50,6 +50,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${appUrl}/sign-in?error=mcp_no_email`);
   }
 
+  // Prefer explicit workspace_id from OAuth state; fall back to the user's
+  // active workspace in the browser (same cookie the workspace picker uses).
+  // Without this, Claude.ai OAuth silently binds tokens to whichever workspace
+  // the user most recently joined — ignoring what they see on-screen.
+  const activeWs =
+    oauthState.workspaceId ||
+    req.cookies.get('delegator_project_id')?.value ||
+    '';
+
   const clerkToken = await session.getToken();
   const tokenRes = await fetch(`${apiUrl}/guard/mcp/oauth/member-token`, {
     method: 'POST',
@@ -57,12 +66,12 @@ export async function GET(req: NextRequest) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${clerkToken}`,
     },
-    body: JSON.stringify({ workspace_id: oauthState.workspaceId, email }),
+    body: JSON.stringify({ workspace_id: activeWs, email }),
   });
 
   if (!tokenRes.ok) {
     const errBody = await tokenRes.text().catch(() => 'unreadable');
-    const wsid = oauthState.workspaceId || '(empty)';
+    const wsid = activeWs || '(empty)';
     return NextResponse.redirect(
       `${appUrl}/sign-in?error=mcp_member_token_failed&status=${tokenRes.status}&ws=${wsid}&api=${encodeURIComponent(apiUrl)}&detail=${encodeURIComponent(errBody.slice(0, 100))}`
     );
@@ -72,7 +81,7 @@ export async function GET(req: NextRequest) {
 
   const codePayload = JSON.stringify({
     memberToken: member_token,
-    workspaceId: oauthState.workspaceId,
+    workspaceId: activeWs,
     cc: oauthState.codeChallenge,
     exp: Date.now() + 5 * 60 * 1000,
   });
