@@ -576,7 +576,19 @@ def cmd_login(args):
     cfg.pop("api_key", None)
     _atomic_write(CONFIG_PATH, cfg)
 
-    print(f"{GREEN}✓ Logged in{RESET} — workspace {GRAY}{result['workspace_id']}{RESET}")
+    # Fetch workspaces so we can display the current one by name and nudge
+    # the user if their account has more than one (cross-surface switch drift).
+    try:
+        _hdrs = {"Authorization": f"Bearer {result['agent_token']}", "Content-Type": "application/json"}
+        _workspaces = api.req("GET", f"{api_url}/projects", _hdrs) or []
+    except Exception:
+        _workspaces = []
+    _current = next((w for w in _workspaces if str(w.get("id")) == str(result["workspace_id"])), None)
+    _name = (_current or {}).get("name") or ""
+    if _name:
+        print(f"{GREEN}✓ Logged in{RESET} — workspace {BOLD}{_name}{RESET} {GRAY}({str(result['workspace_id'])[:8]}…){RESET}")
+    else:
+        print(f"{GREEN}✓ Logged in{RESET} — workspace {GRAY}{result['workspace_id']}{RESET}")
 
     # Auto-sync: register hooks + pull policy
     try:
@@ -587,6 +599,15 @@ def cmd_login(args):
         pass
     except Exception:
         pass
+
+    # Nudge if the account has multiple workspaces — the web UI and CLI hold
+    # workspace context independently, so users routinely forget which one
+    # the CLI is now targeting.
+    if len(_workspaces) > 1:
+        _others = [w.get("name","") for w in _workspaces if str(w.get("id")) != str(result["workspace_id"])]
+        _preview = ", ".join(o for o in _others[:3] if o)
+        print(f"\n  {GRAY}You have {len(_workspaces)} workspaces. This CLI now targets:{RESET} {BOLD}{_name or result['workspace_id']}{RESET}")
+        print(f"  {GRAY}Switch with:{RESET} {CYAN}conduct switch \"<name>\"{RESET}  {GRAY}(others: {_preview}){RESET}")
 
 
 def cmd_agents(args):
