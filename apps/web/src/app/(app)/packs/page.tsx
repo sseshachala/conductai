@@ -248,6 +248,15 @@ const PACK_CATALOG = [
     guardRules: 2,
   },
   {
+    id: "conduct-network-ops",
+    icon: "🛰️",
+    name: "Network Operations Governance",
+    subtitle: "Hook-surface rule blocking autonomous writes to ACL / firewall / routing policy. Companion pack for the network_diagnosis_agent playbook.",
+    description: "Bounded-autonomy pack for NetOps agents. Ships one rule (no-network-policy-modify) that blocks agent shell commands matching Junos / Aruba / IOS-style network configuration change verbs — configure terminal, set/delete firewall/security/access-list, write memory, direct writes to *config_changes*.json. Enforcement is hook-only (proxy=not_supported) so LLM prompts about network config flow through untouched; blocks fire only when the agent actually invokes run_shell with a matching command.",
+    tags: ["Demo", "Network", "Autonomy", "Bounded"],
+    guardRules: 1,
+  },
+  {
     id: "conduct-base",
     icon: "🚀",
     name: "Startup Baseline",
