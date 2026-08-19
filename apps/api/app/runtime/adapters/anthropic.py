@@ -171,8 +171,14 @@ class AnthropicClient:
         if raw is None:
             raise RuntimeError("anthropic.create: retry loop exhausted without response or exception")
 
+        # Anthropic occasionally returns a response object with content=None
+        # (proxy-normalised safety block, empty tool-only reply, transient
+        # upstream oddity). Iterating None here would kill the whole brain
+        # block with 'NoneType is not iterable'; treat as empty response.
+        _raw_content = raw.content or []
+
         content: list[LLMTextBlock | LLMToolUseBlock] = []
-        for block in raw.content:
+        for block in _raw_content:
             if block.type == "text":
                 content.append(LLMTextBlock(text=block.text))
             elif block.type == "tool_use":
@@ -195,7 +201,7 @@ class AnthropicClient:
             stop_reason=raw.stop_reason or "end_turn",
             usage=usage,
             cost_usd=_anthropic_cost(model, usage, self._pricing_snapshot),
-            _raw_content=raw.content,  # preserved for make_assistant_turn
+            _raw_content=_raw_content,  # preserved for make_assistant_turn
         )
 
     def make_assistant_turn(self, response: LLMResponse) -> list[dict]:
