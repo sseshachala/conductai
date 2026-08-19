@@ -4,6 +4,14 @@
   "version": "1.1.0",
   "tier": "paid",
   "description": "PCI-DSS cardholder data rules",
+  "ui": {
+    "icon": "\ud83d\udcb3",
+    "subtitle": "Block PANs and CVVs in source, flag weak TLS. Covers Requirements 3 and 4.",
+    "tags": [
+      "Finance",
+      "Payments"
+    ]
+  },
   "rules": [
     {
       "id": "pci_pan_guard",
@@ -11,7 +19,7 @@
       "match_tool": "edit,write,bash",
       "match_pattern": "\\b4[0-9]{12}(?:[0-9]{3})?\\b|\\b5[1-5][0-9]{14}\\b",
       "action": "block",
-      "message": "Card number detected — never log or store PANs in plaintext.",
+      "message": "Card number detected \u2014 never log or store PANs in plaintext.",
       "persona_affinity": [
         "agent"
       ],
@@ -84,7 +92,7 @@
       "match_tool": "edit,write",
       "match_pattern": "TLSv1\\b|ssl\\.PROTOCOL_TLSv1\\b",
       "action": "block",
-      "message": "TLS 1.0 is prohibited under PCI DSS — use TLS 1.2+.",
+      "message": "TLS 1.0 is prohibited under PCI DSS \u2014 use TLS 1.2+.",
       "persona_affinity": [
         "agent"
       ],

@@ -99,6 +99,70 @@ def list_installed_packs(
     return InstalledPacksOut(installed=sorted(r[0] for r in rows))
 
 
+# ── Pack catalog (marketplace metadata) ───────────────────────────────────────
+
+@router.get("/packs/catalog")
+def list_pack_catalog():
+    """List every pack file with the metadata the marketplace UI needs.
+
+    Reads pack JSONs from disk so adding a new pack is a single-file change:
+      1. drop apps/api/app/modules/guard/skill_packs/<slug>.json
+      2. add <slug> to scripts/seed_skill_packs.py PACK_SLUGS
+      3. done — the card appears in the marketplace automatically
+
+    Each pack can opt in to richer UI by declaring a top-level `ui` block:
+      {"ui": {"icon": "🛰️", "subtitle": "...", "tags": ["Demo", "Network"]}}
+
+    Missing UI fields fall back to sensible defaults derived from the pack's
+    core metadata (slug, name, description).
+    """
+    from pathlib import Path
+    import json as _json
+
+    skill_packs_dir = Path(__file__).resolve().parent.parent / "modules/guard/skill_packs"
+    catalog: list[dict] = []
+
+    for pack_path in sorted(skill_packs_dir.glob("*.json")):
+        try:
+            pack = _json.loads(pack_path.read_text())
+        except Exception:
+            continue
+
+        slug = pack.get("slug")
+        if not slug:
+            continue
+
+        ui = pack.get("ui") or {}
+        rules = pack.get("rules") or []
+
+        # Rule surface breakdown for the card badges. Best-effort — counts
+        # only what the pack self-declares in enforcement contracts.
+        proxy_rules = sum(
+            1 for r in rules
+            if (r.get("enforcement") or {}).get("proxy") in ("hard", "conditional")
+        )
+        hook_rules = sum(
+            1 for r in rules
+            if (r.get("enforcement") or {}).get("hook") in ("hard", "conditional")
+        )
+
+        catalog.append({
+            "id": slug,
+            "name": pack.get("name") or slug,
+            "icon": ui.get("icon") or "📦",
+            "subtitle": ui.get("subtitle") or (pack.get("description") or "")[:180],
+            "description": pack.get("description") or "",
+            "tags": ui.get("tags") or [],
+            "guardRules": len(rules),
+            "proxyRules": proxy_rules,
+            "hookRules": hook_rules,
+            "version": pack.get("version") or "0.0.0",
+            "tier": pack.get("tier") or "standard",
+        })
+
+    return {"packs": catalog}
+
+
 @router.get("/packs/{pack_id}", response_model=PackDetailOut)
 def get_pack_detail(
     pack_id: str,

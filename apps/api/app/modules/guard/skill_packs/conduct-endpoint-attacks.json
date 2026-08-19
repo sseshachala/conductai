@@ -4,6 +4,15 @@
   "version": "1.0.1",
   "tier": "free",
   "description": "10 pattern rules for the endpoint-attack techniques Numbat and other agent EDRs surface: reverse shells, SSH/cloud credential file reads, cloud instance metadata recon, persistence via cron/systemd/launchd/shell profiles, encoded-payload shell chains, and secret-read-then-egress chains. Every rule maps to a MITRE ATT&CK sub-technique. Hook and MCP surfaces are covered; the runtime and proxy surfaces are not (these are tool_input-level patterns).",
+  "ui": {
+    "icon": "\ud83d\udee1\ufe0f",
+    "subtitle": "10 rules for reverse shells, credential file reads, cloud metadata recon, persistence, download-pipe-shell, and exfil chains.",
+    "tags": [
+      "Security",
+      "MITRE ATT&CK",
+      "Endpoint"
+    ]
+  },
   "rules": [
     {
       "id": "endpoint-attack-reverse-shell",

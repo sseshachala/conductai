@@ -4,6 +4,14 @@
   "version": "2.2.2",
   "tier": "paid",
   "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents, including ASI06 Memory Poisoning (MITRE ATLAS AML.M0031)",
+  "ui": {
+    "icon": "\ud83d\udd10",
+    "subtitle": "Guards and scan rules for the 10 most critical web application security risks.",
+    "tags": [
+      "Security",
+      "Web"
+    ]
+  },
   "rules": [
     {
       "id": "owasp_injection_guard",

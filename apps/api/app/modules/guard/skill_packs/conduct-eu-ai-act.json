@@ -3,7 +3,16 @@
   "name": "Conduct EU AI Act",
   "version": "1.0.0",
   "tier": "paid",
-  "description": "EU AI Act enforcement rules — Article 5 prohibited practices, Article 14 human oversight, Article 13 transparency, Article 10 data governance",
+  "description": "EU AI Act enforcement rules \u2014 Article 5 prohibited practices, Article 14 human oversight, Article 13 transparency, Article 10 data governance",
+  "ui": {
+    "icon": "\ud83c\uddea\ud83c\uddfa",
+    "subtitle": "10 rules covering Article 5 prohibited practices, transparency, oversight, and data governance.",
+    "tags": [
+      "Compliance",
+      "Regulation",
+      "EU"
+    ]
+  },
   "rules": [
     {
       "id": "eu-ai-no-social-scoring",
@@ -11,7 +20,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(social_score|citizen_score|behavior_score|trust_score|compliance_score)\\s*[=:(]|rank.*citizens|score.*individuals.*behavior",
       "action": "block",
-      "message": "Social scoring system detected — ranking individuals by social behavior is prohibited under EU AI Act Article 5.1(c).",
+      "message": "Social scoring system detected \u2014 ranking individuals by social behavior is prohibited under EU AI Act Article 5.1(c).",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -47,7 +56,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(emotion_detect|emotion_recogni|facial_expression).*(employee|worker|staff|student|classroom|workplace)|mood.*(monitor|track).*(employee|staff)",
       "action": "block",
-      "message": "Emotion recognition in workplace/education context blocked — prohibited under EU AI Act Article 5.1(f).",
+      "message": "Emotion recognition in workplace/education context blocked \u2014 prohibited under EU AI Act Article 5.1(f).",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -83,7 +92,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(biometric|facial|voice_print|fingerprint).*(race|ethnicity|religion|political|sexual|gender|national_origin)|infer.*(protected|sensitive).*(biometric|face|voice)",
       "action": "block",
-      "message": "Biometric categorization to infer sensitive attributes blocked — prohibited under EU AI Act Article 5.1(b).",
+      "message": "Biometric categorization to infer sensitive attributes blocked \u2014 prohibited under EU AI Act Article 5.1(b).",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -120,7 +129,7 @@
       "match_tool": "edit,write,bash",
       "match_pattern": "(realtime|real.?time|live).*(biometric|facial_recogni|face_id).*(public|street|crowd|cctv|camera)|bulk_biometric|mass_surveillance",
       "action": "block",
-      "message": "Real-time biometric surveillance in public spaces blocked — prohibited under EU AI Act Article 5.1(h).",
+      "message": "Real-time biometric surveillance in public spaces blocked \u2014 prohibited under EU AI Act Article 5.1(h).",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -156,7 +165,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(auto_approve|auto_decide|skip.*review|bypass.*human|no.?human.*(oversight|review|approval)).*(hire|terminate|fire|loan|credit|medical|judicial|sentence|evict|deny|grant)",
       "action": "block",
-      "message": "Autonomous consequential decision without human oversight blocked — EU AI Act Article 14 requires human oversight for high-risk AI systems.",
+      "message": "Autonomous consequential decision without human oversight blocked \u2014 EU AI Act Article 14 requires human oversight for high-risk AI systems.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -193,7 +202,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(human.?written|written.?by.?human|not.?ai|human.?authored|no.?ai.?involved)|pretend.*(you are human|to be human|not an ai)",
       "action": "block",
-      "message": "Misrepresenting AI-generated content as human-authored is prohibited — EU AI Act Article 13 requires transparency.",
+      "message": "Misrepresenting AI-generated content as human-authored is prohibited \u2014 EU AI Act Article 13 requires transparency.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -230,7 +239,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(train|training_data|fine.?tune|dataset).*(email|ssn|social.?security|phone_number|credit.?card|passport|date.?of.?birth)|append.*(pii|personal.?data).*(csv|json|parquet|tfrecord)",
       "action": "block",
-      "message": "PII detected in training data write — EU AI Act Article 10 requires data governance for training datasets.",
+      "message": "PII detected in training data write \u2014 EU AI Act Article 10 requires data governance for training datasets.",
       "persona_affinity": [
         "agent"
       ],
@@ -265,7 +274,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(gpt|claude|gemini|llama|mistral|cohere|anthropic).*(medical.?diagnos|legal.?decision|credit.?scor|hiring.?decision|criminal.?justice|biometric)",
       "action": "warn",
-      "message": "GPAI model used in high-risk application domain — EU AI Act Article 53 requires documented impact assessment for GPAI in high-risk use cases.",
+      "message": "GPAI model used in high-risk application domain \u2014 EU AI Act Article 53 requires documented impact assessment for GPAI in high-risk use cases.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -302,7 +311,7 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "(audit_log|event_log|ai_log).*(disabled|=\\s*false|=\\s*0|=\\s*null)|logging\\.disable\\(|LOG_LEVEL\\s*=\\s*CRITICAL",
       "action": "block",
-      "message": "Audit logging must remain enabled — EU AI Act Article 12 mandates automatic logging for high-risk AI systems.",
+      "message": "Audit logging must remain enabled \u2014 EU AI Act Article 12 mandates automatic logging for high-risk AI systems.",
       "persona_affinity": [
         "agent"
       ],
@@ -337,7 +346,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(subliminal|subconscious.*(influence|persuade|manipulate)|exploit.*(cognitive|psychological|vulnerability|weakness|bias).*(user|person|individual)|dark.?pattern.*(consent|choice|decision))",
       "action": "block",
-      "message": "Subliminal or manipulative AI technique blocked — EU AI Act Article 5.1(a) prohibits AI that exploits psychological vulnerabilities.",
+      "message": "Subliminal or manipulative AI technique blocked \u2014 EU AI Act Article 5.1(a) prohibits AI that exploits psychological vulnerabilities.",
       "persona_affinity": [
         "agent",
         "proxy"

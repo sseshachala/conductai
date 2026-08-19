@@ -3,7 +3,16 @@
   "name": "PH Dispatch",
   "version": "0.1.0",
   "tier": "demo",
-  "description": "E1 demo pack — entitlement-aware RMA dispatch for the fictional Meridian Devices support org. Blocks on-site truck rolls for depot-tier tenants (Northwind) and self-serve tenants (Fabrikam), suggests mail-in RMA or remote session, emits a cost-avoided receipt. Backs docs/demo-scripts/E1-the-140-dollar-ticket.md.",
+  "description": "E1 demo pack \u2014 entitlement-aware RMA dispatch for the fictional Meridian Devices support org. Blocks on-site truck rolls for depot-tier tenants (Northwind) and self-serve tenants (Fabrikam), suggests mail-in RMA or remote session, emits a cost-avoided receipt. Backs docs/demo-scripts/E1-the-140-dollar-ticket.md.",
+  "ui": {
+    "icon": "\ud83d\udce6",
+    "subtitle": "E1 demo pack \u2014 entitlement-aware RMA dispatch. Blocks $140 truck rolls for depot-tier tenants; suggests mail-in.",
+    "tags": [
+      "Demo",
+      "Cost",
+      "Entitlement"
+    ]
+  },
   "rules": [
     {
       "id": "meridian.dispatch.entitlement_check",
@@ -11,9 +20,14 @@
       "match_tool": "dispatch.rma",
       "match_pattern": "\"tenant\"\\s*:\\s*\"(northwind|fabrikam)\"",
       "action": "block",
-      "message": "Tenant entitlement is depot — dispatch requires onsite. Try rma.mail_in instead. Cost avoided: $135.50.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["SOC2:CC7.3", "ISO_42001:6.1"],
+      "message": "Tenant entitlement is depot \u2014 dispatch requires onsite. Try rma.mail_in instead. Cost avoided: $135.50.",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "SOC2:CC7.3",
+        "ISO_42001:6.1"
+      ],
       "severity": "high",
       "recommendation": "Re-plan as rma.mail_in with a prepaid shipping label. Real dispatch costs $140; mail-in costs $4.50.",
       "enforcement": {
@@ -27,7 +41,7 @@
           "Sierra (or any calling agent) invokes MCP guard_check with tool_name='dispatch.rma' and tool_input including the tenant id, OR the dispatch.meridian.com API is routed through the Conduct Guard Proxy"
         ],
         "known_limitations": [
-          "Demo pack uses a hardcoded tenant allowlist in match_pattern rather than a live entitlement lookup — see 'meridian-dispatch.yaml' for the intended require: tenant.entitlement_tier shape",
+          "Demo pack uses a hardcoded tenant allowlist in match_pattern rather than a live entitlement lookup \u2014 see 'meridian-dispatch.yaml' for the intended require: tenant.entitlement_tier shape",
           "MCP cannot enforce actions the agent does not submit to guard_check"
         ]
       }
@@ -38,9 +52,13 @@
       "match_tool": "dispatch.rma,rma.mail_in",
       "match_pattern": "\"tenant\"\\s*:\\s*\"fabrikam\"",
       "action": "block",
-      "message": "Tenant is self-serve tier — physical fulfillment not covered. Route to remote.session. Cost avoided: $105.00.",
-      "persona_affinity": ["agent"],
-      "frameworks": ["SOC2:CC7.3"],
+      "message": "Tenant is self-serve tier \u2014 physical fulfillment not covered. Route to remote.session. Cost avoided: $105.00.",
+      "persona_affinity": [
+        "agent"
+      ],
+      "frameworks": [
+        "SOC2:CC7.3"
+      ],
       "severity": "medium",
       "recommendation": "Offer a remote screen-share session ($35) or AI-only walkthrough (cents) instead of any physical fulfillment.",
       "enforcement": {
@@ -54,7 +72,7 @@
           "Sierra invokes MCP guard_check before firing dispatch.rma or rma.mail_in, OR the fulfillment API is routed through the Conduct Guard Proxy"
         ],
         "known_limitations": [
-          "Demo pack — see meridian-dispatch.yaml for the intended require: tenant.entitlement_tier shape",
+          "Demo pack \u2014 see meridian-dispatch.yaml for the intended require: tenant.entitlement_tier shape",
           "MCP cannot enforce actions the agent does not submit to guard_check"
         ]
       }

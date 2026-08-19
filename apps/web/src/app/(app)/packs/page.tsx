@@ -289,6 +289,9 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
   )
   const [installedPacks, setInstalledPacks] = useState<Set<string>>(new Set())
   const [packInstalling, setPackInstalling] = useState<string | null>(null)
+  // Pack catalog is fetched from the server so adding a new pack file is a
+  // single-place change. Falls back to the hardcoded PACK_CATALOG on error.
+  const [packCatalog, setPackCatalog] = useState<typeof PACK_CATALOG>(PACK_CATALOG)
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState("All")
@@ -308,6 +311,19 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
         .catch(() => {})
     )
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Load pack catalog once from the server. Falls back to the hardcoded
+  // PACK_CATALOG (already the initial state) if the fetch fails.
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/catalog`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (Array.isArray(d?.packs) && d.packs.length > 0) {
+          setPackCatalog(d.packs as typeof PACK_CATALOG)
+        }
+      })
+      .catch(() => {})
   }, [])
 
   // YAML preview modal
@@ -732,7 +748,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
         {marketTab === "compliance" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <CedarImportBanner getToken={getToken} />
-            {PACK_CATALOG.map(pack => {
+            {packCatalog.map(pack => {
               const installed = installedPacks.has(pack.id)
               const busy = packInstalling === pack.id
               return (

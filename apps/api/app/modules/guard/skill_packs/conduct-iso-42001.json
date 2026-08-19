@@ -3,7 +3,16 @@
   "name": "Conduct ISO 42001",
   "version": "1.0.0",
   "tier": "paid",
-  "description": "ISO/IEC 42001:2023 AI Management System enforcement rules — operational controls, data governance, responsible AI use, and continual improvement",
+  "description": "ISO/IEC 42001:2023 AI Management System enforcement rules \u2014 operational controls, data governance, responsible AI use, and continual improvement",
+  "ui": {
+    "icon": "\ud83d\udcd0",
+    "subtitle": "10 rules covering operational controls, bias testing, data quality, impact assessment, and incident capture.",
+    "tags": [
+      "Compliance",
+      "AI Governance",
+      "ISO"
+    ]
+  },
   "rules": [
     {
       "id": "iso42001-data-quality",
@@ -11,7 +20,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(unlabeled|unvalidated|unverified|raw|uncleaned).*(dataset|training.?data|corpus|embedding)|dataset.*quality.*=.*(unknown|none|null|false)",
       "action": "warn",
-      "message": "Unlabeled or unvalidated data in AI pipeline — ISO 42001 Clause 8.4 requires data quality controls for AI training and inference data.",
+      "message": "Unlabeled or unvalidated data in AI pipeline \u2014 ISO 42001 Clause 8.4 requires data quality controls for AI training and inference data.",
       "persona_affinity": [
         "agent"
       ],
@@ -90,7 +99,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(no.?human.?review|skip.?approval|auto.?execute|autonomous.?action).*(delete|deploy|send.?email|publish|post|transfer|payment|access.?grant|permission)",
       "action": "block",
-      "message": "Autonomous high-impact action without human oversight — ISO 42001 Clause 8.1 requires operational controls including human review for consequential AI actions.",
+      "message": "Autonomous high-impact action without human oversight \u2014 ISO 42001 Clause 8.1 requires operational controls including human review for consequential AI actions.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -127,7 +136,7 @@
       "match_tool": "bash",
       "match_pattern": "(docker.?run|kubectl.?apply|helm.?install|deploy|push.?to.?prod).*(model|agent|llm|ai.?service|embedding.?service)(?!.*(impact|assessment|reviewed|approved))",
       "action": "warn",
-      "message": "AI system deployed without impact assessment evidence — ISO 42001 Clause 8.5 requires AI system impact assessment before deployment.",
+      "message": "AI system deployed without impact assessment evidence \u2014 ISO 42001 Clause 8.5 requires AI system impact assessment before deployment.",
       "persona_affinity": [
         "agent"
       ],
@@ -162,7 +171,7 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "(~/.ssh|/etc/passwd|/etc/shadow|/var/log/auth|/proc/self|/root/|/home/(?!\\$USER)|\\.\\./)(\\.\\./)+",
       "action": "block",
-      "message": "AI agent accessing resource outside designated scope — ISO 42001 Clause 8.1 requires access controls scoped to the AI system's intended operational boundary.",
+      "message": "AI agent accessing resource outside designated scope \u2014 ISO 42001 Clause 8.1 requires access controls scoped to the AI system's intended operational boundary.",
       "persona_affinity": [
         "agent"
       ],
@@ -193,11 +202,11 @@
     },
     {
       "id": "iso42001-supplier-ai-control",
-      "description": "Warn on new third-party AI supplier integration without documented controls (ISO 42001 Clause 8.1 — supplier relationships)",
+      "description": "Warn on new third-party AI supplier integration without documented controls (ISO 42001 Clause 8.1 \u2014 supplier relationships)",
       "match_tool": "edit,write",
       "match_pattern": "import (replicate|together|groq|cohere|mistral|fireworks|anyscale|deepinfra)|from (replicate|together_ai|groq) import|REPLICATE_API|TOGETHER_API|GROQ_API",
       "action": "warn",
-      "message": "New third-party AI supplier detected — ISO 42001 Clause 8.1 requires supplier controls including DPA and security review before production use.",
+      "message": "New third-party AI supplier detected \u2014 ISO 42001 Clause 8.1 requires supplier controls including DPA and security review before production use.",
       "persona_affinity": [
         "agent"
       ],
@@ -232,7 +241,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(log_all|collect_all|store_everything|log_full_conversation|save_all_prompts|retain_all_inputs)|(log|store|save|persist).*(all.?(user|message|prompt|response|conversation|session))",
       "action": "warn",
-      "message": "Broad AI data collection detected — ISO 42001 Clause 8.4 requires data minimisation: collect only what is necessary for the stated AI purpose.",
+      "message": "Broad AI data collection detected \u2014 ISO 42001 Clause 8.4 requires data minimisation: collect only what is necessary for the stated AI purpose.",
       "persona_affinity": [
         "agent"
       ],
@@ -267,7 +276,7 @@
       "match_tool": "bash",
       "match_pattern": "(push.?to.?prod|deploy.*prod|release.*v[0-9]).*(model|checkpoint|weights|llm)(?!.*(bias|fairness|eval|test|benchmark|audit))",
       "action": "warn",
-      "message": "AI model deployed without bias testing evidence — ISO 42001 Clause 8.2 requires risk assessment including fairness evaluation before production deployment.",
+      "message": "AI model deployed without bias testing evidence \u2014 ISO 42001 Clause 8.2 requires risk assessment including fairness evaluation before production deployment.",
       "persona_affinity": [
         "agent"
       ],
@@ -302,7 +311,7 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "(MONITORING_ENABLED|OBSERVABILITY_ENABLED|AI_METRICS_ENABLED|TRACING_ENABLED)\\s*=\\s*(false|0|off|null)|prometheus.*disabled|metrics.*=.*false",
       "action": "block",
-      "message": "AI system monitoring disabled — ISO 42001 Clause 9.1 requires ongoing monitoring, measurement, analysis, and evaluation of AI systems.",
+      "message": "AI system monitoring disabled \u2014 ISO 42001 Clause 9.1 requires ongoing monitoring, measurement, analysis, and evaluation of AI systems.",
       "persona_affinity": [
         "agent"
       ],
@@ -337,7 +346,7 @@
       "match_tool": "edit,write",
       "match_pattern": "except (Exception|BaseException|Error):\\s*(pass|\\.\\.\\.)|(catch|rescue)\\s*\\(?(Exception|Error|\\*)?\\)?\\s*\\{?\\s*(//.*)?\\}?\\s*$",
       "action": "warn",
-      "message": "AI system error silently discarded — ISO 42001 Clause 10.2 requires nonconformities and incidents to be captured and acted on for continual improvement.",
+      "message": "AI system error silently discarded \u2014 ISO 42001 Clause 10.2 requires nonconformities and incidents to be captured and acted on for continual improvement.",
       "persona_affinity": [
         "agent"
       ],
