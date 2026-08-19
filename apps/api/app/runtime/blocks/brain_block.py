@@ -1062,22 +1062,34 @@ def _execute_brain(
                                 _ACTION_PRIORITY = {"block": 0, "approval": 1, "warn": 2, "audit": 3}
                                 _best_priority = 999
                                 _guard_hit = None
+                                # Only fire rules that ACTUALLY apply to this tool.
+                                # "workflow" is a scope for workflow-level enforcement,
+                                # not a tool alias — treating it as a wildcard here
+                                # made every conduct-base workflow rule fire on every
+                                # brain tool_use, blocking all read_file / write_file /
+                                # search_code / run_shell calls.
+                                _TOOL_ALIASES = {
+                                    "run_shell": {"shell", "run_shell"},
+                                    "read_file": {"filesystem-read", "read_file", "read"},
+                                    "write_file": {"filesystem-write", "write_file", "write"},
+                                    "edit": {"filesystem-write", "edit"},
+                                    "search_code": {"filesystem-read", "search_code", "grep"},
+                                }
                                 for _rule in _guard_rules:
                                     _mt = (_rule.get("match_tool") or "").strip()
                                     if _mt and _mt != "*":
-                                        _mt_allowed = [t.strip().lower() for t in _mt.split(",")]
-                                        # tc.name is our internal tool id (run_shell, edit, etc)
-                                        # Match if the rule lists "shell" and this is run_shell,
-                                        # or "workflow" (workflow-wide match), or the exact tool.
+                                        _mt_allowed = {t.strip().lower() for t in _mt.split(",")}
                                         _tc_lower = tc.name.lower()
-                                        if not (
-                                            _tc_lower in _mt_allowed
-                                            or ("shell" in _mt_allowed and _tc_lower == "run_shell")
-                                            or "workflow" in _mt_allowed
-                                            or "*" in _mt_allowed
-                                        ):
+                                        _my_aliases = _TOOL_ALIASES.get(_tc_lower, {_tc_lower})
+                                        if not (_mt_allowed & _my_aliases) and "*" not in _mt_allowed:
                                             continue
+                                    # Require an actual matcher (pattern OR non-wildcard
+                                    # match_tool). A rule with match_tool="*" and no
+                                    # match_pattern would block every tool_use — refuse
+                                    # to fire on that shape.
                                     _mp = _rule.get("match_pattern")
+                                    if not _mp and (not _mt or _mt == "*"):
+                                        continue
                                     if _mp:
                                         try:
                                             if not _re.search(_mp, _tool_input_text, _re.IGNORECASE):
@@ -1092,7 +1104,9 @@ def _execute_brain(
                                 if _guard_hit:
                                     _guard_action = _guard_hit.get("action", "audit")
                                     _guard_msg = _guard_hit.get("message", "")
-                                    _guard_rule_id = _guard_hit.get("id")
+                                    # _project_rule (mcp.py) renames id -> rule_id.
+                                    # Also fall back to "id" for defence in depth.
+                                    _guard_rule_id = _guard_hit.get("rule_id") or _guard_hit.get("id")
                                     # Emit to run event stream so the CLI + dashboard see it
                                     if db and run_id:
                                         _emit(db, run_id, block_id, "brain_tool_call", {
