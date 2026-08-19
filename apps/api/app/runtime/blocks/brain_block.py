@@ -263,6 +263,12 @@ def _load_workspace_mcp_tools(
                 )
                 continue
 
+        # Fail-open: a cache payload of "null" or a list_tools() call that
+        # returned None (instead of raising) would crash the whole brain block
+        # with 'NoneType' object is not iterable. Skip the server instead.
+        if not raw_tools:
+            continue
+
         for t in raw_tools:
             tool_name = t.get("name", "")
             if not tool_name:
