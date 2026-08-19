@@ -74,11 +74,20 @@ blocks:
       Suggested sequence (pack into as few run_shell calls as makes
       sense — the session is persistent, files created in one call are
       available in the next):
-          Turn 1: git clone --depth 1 https://github.com/{{inputs.repo}}.git /tmp/repo
-          Turn 2: cat /tmp/repo/fixtures/topology.json
+          Turn 1 (env probe — helps debug sandbox issues; keep on for now):
+              pwd && whoami && ls -la /tmp && which git && git --version && \
+              echo "---egress test---" && curl -sSI --max-time 5 https://github.com | head -3
+          Turn 2: git clone --depth 1 https://github.com/{{inputs.repo}}.git /tmp/repo
+                  ls -la /tmp/repo && ls /tmp/repo/fixtures
+          Turn 3: cat /tmp/repo/fixtures/topology.json
                   cat /tmp/repo/fixtures/telemetry_{{inputs.branch}}.json
                   cat /tmp/repo/fixtures/recent_config_changes.json
                   cat /tmp/repo/fixtures/syslog_{{inputs.branch}}.txt
+
+      If Turn 1 or Turn 2 fails (git missing, no egress, /tmp read-only),
+      surface the specific error in your JSON summary rather than fabricating
+      data — that lets the operator distinguish sandbox-config issues from
+      real incident-load failures.
     prompt: |
       Incident: branch {{inputs.branch}} — on-call was paged for elevated
       authentication failures and packet loss.
