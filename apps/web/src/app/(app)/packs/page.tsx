@@ -1002,8 +1002,8 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
               )}
             </div>
 
-            {/* Playbook inputs — `repo` is rendered by the GitHub repo picker section above, so skip it here to avoid duplication */}
-            {Object.entries(playbookInputs).filter(([key]) => key !== "repo").map(([key, input]) => (
+            {/* Playbook inputs — only skip `repo` when the GitHub repo picker below will render it (webhook-triggered playbooks). Non-webhook playbooks that declare inputs.repo still need a field. */}
+            {Object.entries(playbookInputs).filter(([key]) => !(key === "repo" && GITHUB_WEBHOOK_SLUGS.has(pendingSlug))).map(([key, input]) => (
               <div key={key} className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-stone-500">
                   {input.label ?? key}
