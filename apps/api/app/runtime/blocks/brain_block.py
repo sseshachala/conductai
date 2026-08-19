@@ -1076,6 +1076,14 @@ def _execute_brain(
                                     "search_code": {"filesystem-read", "search_code", "grep"},
                                 }
                                 for _rule in _guard_rules:
+                                    # Honour enforcement.runtime — a rule marked
+                                    # not_supported was authored for a different
+                                    # surface (e.g. surface-chat-no-bash targets
+                                    # chat UIs, not workflow runtime).
+                                    _enf = (_rule.get("enforcement") or {})
+                                    if _enf.get("runtime") == "not_supported":
+                                        continue
+
                                     _mt = (_rule.get("match_tool") or "").strip()
                                     if _mt and _mt != "*":
                                         _mt_allowed = {t.strip().lower() for t in _mt.split(",")}
@@ -1083,12 +1091,15 @@ def _execute_brain(
                                         _my_aliases = _TOOL_ALIASES.get(_tc_lower, {_tc_lower})
                                         if not (_mt_allowed & _my_aliases) and "*" not in _mt_allowed:
                                             continue
-                                    # Require an actual matcher (pattern OR non-wildcard
-                                    # match_tool). A rule with match_tool="*" and no
-                                    # match_pattern would block every tool_use — refuse
-                                    # to fire on that shape.
+
                                     _mp = _rule.get("match_pattern")
-                                    if not _mp and (not _mt or _mt == "*"):
+                                    _mpp = _rule.get("match_path_pattern")
+
+                                    # Require SOME matcher — pattern, path pattern,
+                                    # or specific (non-wildcard) tool. A rule with
+                                    # only wildcards and no patterns would block
+                                    # every tool_use, almost always a config error.
+                                    if not _mp and not _mpp and (not _mt or _mt == "*"):
                                         continue
                                     if _mp:
                                         try:
@@ -1096,6 +1107,25 @@ def _execute_brain(
                                                 continue
                                         except _re.error:
                                             continue
+
+                                    # match_path_pattern applies to the tool_input's
+                                    # path-like fields (path, file_path, filename).
+                                    # Rules like no-path-traversal use this to catch
+                                    # `../etc/passwd` style attacks — must be checked
+                                    # separately from match_pattern which is content-side.
+                                    if _mpp:
+                                        _path_val = (tc.input or {}).get("path") \
+                                                    or (tc.input or {}).get("file_path") \
+                                                    or (tc.input or {}).get("filename") \
+                                                    or ""
+                                        if not _path_val:
+                                            continue  # no path to check → rule doesn't apply
+                                        try:
+                                            if not _re.search(_mpp, str(_path_val), _re.IGNORECASE):
+                                                continue
+                                        except _re.error:
+                                            continue
+
                                     _p = _ACTION_PRIORITY.get(_rule.get("action", "audit"), 3)
                                     if _p < _best_priority:
                                         _best_priority = _p

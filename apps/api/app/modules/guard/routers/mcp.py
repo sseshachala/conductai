@@ -391,7 +391,9 @@ _APPROVAL_FIELDS = ("approval_group", "approval_type", "approval_timeout_sec", "
 
 def _project_rule(r: dict) -> dict:
     """Trim a raw rule to the fields the matcher + downstream handlers use.
-    Preserves approval_* fields so action=approval can honour rule spec."""
+    Preserves approval_* fields so action=approval can honour rule spec.
+    Preserves enforcement contract so surface-scoped matchers can honour
+    proxy/hook/mcp/runtime = not_supported / conditional / hard."""
     out = {
         "rule_id":           r.get("id") or r.get("rule_id"),
         "match_tool":        r.get("match_tool"),
@@ -400,6 +402,7 @@ def _project_rule(r: dict) -> dict:
         "action":            r.get("action"),
         "message":           r.get("message"),
         "pack":              r.get("pack") or r.get("pack_slug"),
+        "enforcement":       r.get("enforcement") or {},
     }
     for k in _APPROVAL_FIELDS:
         if k in r and r[k] is not None:
