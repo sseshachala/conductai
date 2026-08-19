@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from app.runtime.llm_client import (
-    LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage,
+    GuardProxyBlocked, LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage,
     LLMUpstreamError, _extract_upstream_ids, _should_retry, make_retry_info,
     raise_if_guard_proxy_blocked,
 )
@@ -189,17 +189,24 @@ class AnthropicClient:
                 _diag = {k: v for k, v in _raw_dict.items() if k not in ("content",)}
             except Exception:
                 _diag = {"model_dump_failed": True}
-            raise LLMUpstreamError(
+            import structlog as _sl
+            _sl.get_logger().warning(
+                "anthropic.empty_response_envelope",
+                model=model, diag=_diag,
+            )
+            # dag_runner classifies GuardProxyBlocked(error_type="conduct_guard_proxy")
+            # as PROXY_CONFIG_ERROR and shows the actionable next-step:
+            # "Check Settings → Modules → Guard proxy config and BYO LLM keys."
+            raise GuardProxyBlocked(
+                provider=self._provider,
+                status=200,
+                error_type="conduct_guard_proxy",
                 message=(
-                    "Upstream LLM returned an empty response envelope "
-                    "(content=None, stop_reason=None, output_tokens=0). "
-                    "Common causes: proxy could not parse upstream body, "
-                    "upstream returned 200 with malformed JSON, or model id "
-                    f"'{model}' is unrecognised by the upstream. Diag: {_diag}"
+                    f"Upstream returned an empty response envelope for model '{model}'. "
+                    "This usually means the workspace has no upstream API key for this provider — "
+                    f"add {self._provider.upper()}_API_KEY under Settings → Environments, or set a "
+                    "BYO gateway key under Settings → Proxy."
                 ),
-                cf_ray=None,
-                request_id=None,
-                attempts=1,
             )
 
         # Legitimate empty content with a stop_reason (safety refusal with no
