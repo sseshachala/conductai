@@ -56,24 +56,30 @@ inputs:
 blocks:
 
   # ── 1. Load & parse the incident bundle ────────────────────────────────────
+  # ── 1. Load & parse the incident bundle ────────────────────────────────────
   load_incident:
     type: brain
     mode: agentic
     model: "{{ inputs.model }}"
+    label: Load incident bundle
+    description: Clone the fixture repo and read topology, telemetry, config changes, syslog for the affected branch.
     next: correlate
     system: |
       You are a Level-2 NetOps engineer receiving a fresh incident. The
-      runtime has already cloned the fixture repo into your working
-      directory — the four artefacts live under ./fixtures/. Read them
-      with run_shell (cat/jq). Do NOT invent details — every claim you
-      make later must trace to something in these files.
+      fixtures live in the GitHub repo passed as `inputs.repo`. Follow
+      the STANDARD REPO SETUP from the execution preamble: clone the
+      repo, then read the four artefacts with run_shell (cat/jq). Do
+      NOT invent details — every claim you make later must trace to
+      something in these files.
 
-      IMPORTANT: each run_shell call gets a FRESH container. Do ALL four
-      reads in a SINGLE run_shell call:
-          cat fixtures/topology.json
-          cat fixtures/telemetry_{{ inputs.branch }}.json
-          cat fixtures/recent_config_changes.json
-          cat fixtures/syslog_{{ inputs.branch }}.txt
+      Suggested sequence (pack into as few run_shell calls as makes
+      sense — the session is persistent, files created in one call are
+      available in the next):
+          Turn 1: git clone --depth 1 https://github.com/{{ inputs.repo }}.git /tmp/repo
+          Turn 2: cat /tmp/repo/fixtures/topology.json
+                  cat /tmp/repo/fixtures/telemetry_{{ inputs.branch }}.json
+                  cat /tmp/repo/fixtures/recent_config_changes.json
+                  cat /tmp/repo/fixtures/syslog_{{ inputs.branch }}.txt
     prompt: |
       Incident: branch {{ inputs.branch }} — on-call was paged for elevated
       authentication failures and packet loss.
@@ -94,6 +100,8 @@ blocks:
     type: brain
     mode: single
     model: "{{ inputs.model }}"
+    label: Correlate change → onset
+    description: Rank recent config changes by likelihood of being the root cause based on timing, device, and change type.
     next: diagnose
     system: |
       You are correlating a network incident to recent config changes. You do
@@ -121,6 +129,8 @@ blocks:
     type: brain
     mode: single
     model: "{{ inputs.model }}"
+    label: Produce diagnosis + plan
+    description: Write the root cause hypothesis and split remediations into reversible actions and policy-modifying actions.
     next: remediate
     system: |
       You are writing a diagnosis a NOC engineer will act on. Be specific:
@@ -155,6 +165,8 @@ blocks:
     type: brain
     mode: agentic
     model: "{{ inputs.model }}"
+    label: Attempt remediation
+    description: Execute the plan. Reversible actions land; policy-modifying attempts are blocked by Guard (that is the point).
     next: summarize
     system: |
       You are executing the remediation plan. Guard is watching every action.
@@ -191,6 +203,8 @@ blocks:
     type: brain
     mode: single
     model: claude-haiku-4-5-20251001
+    label: Summarize for on-call
+    description: One-screen summary an on-call engineer reads at 08:47 — diagnosis, what was attempted, what Guard blocked, and what needs approval.
     system: |
       You are writing the short summary the NOC on-call will read at 08:47.
       No preamble. No filler. Just the outcome.
