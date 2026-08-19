@@ -176,6 +176,22 @@ class AnthropicClient:
         # upstream oddity). Iterating None here would kill the whole brain
         # block with 'NoneType is not iterable'; treat as empty response.
         _raw_content = raw.content or []
+        if raw.content is None or (isinstance(raw.content, list) and len(raw.content) == 0):
+            # Surface enough diagnostic info to figure out WHY the response
+            # came back empty — stop_reason + usage + full raw dict tail.
+            try:
+                _raw_dict = raw.model_dump() if hasattr(raw, "model_dump") else raw.__dict__
+                _diag = {k: v for k, v in _raw_dict.items() if k not in ("content",)}
+            except Exception:
+                _diag = {"model_dump_failed": True}
+            import structlog as _sl
+            _sl.get_logger().warning(
+                "anthropic.empty_content",
+                model=model,
+                stop_reason=getattr(raw, "stop_reason", None),
+                usage=getattr(raw, "usage", None),
+                diag=_diag,
+            )
 
         content: list[LLMTextBlock | LLMToolUseBlock] = []
         for block in _raw_content:
