@@ -1,0 +1,40 @@
+{
+  "slug": "conduct-network-ops",
+  "name": "Conduct — Network Operations Governance",
+  "version": "0.1.0",
+  "tier": "custom",
+  "description": "Hook-surface rules for governing autonomous NetOps agents. Blocks writes to security-sensitive network configuration (ACL, firewall, routing policy) while allowing reversible operational actions (QoS, service restart, logging). Companion pack for the network_diagnosis_agent playbook.",
+  "rules": [
+    {
+      "id": "no-network-policy-modify",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block agent shell commands that modify security-sensitive network configuration (ACL, firewall, routing policy, RADIUS/AAA). Reversible operational actions (QoS, service restart, logging) remain allowed. Policy changes must go through human approval per the Level-5 autonomy tier.",
+      "match_tool": "shell,workflow",
+      "match_pattern": "(?:^\\s*(?:configure(?:\\s+terminal)?|commit(?:\\s+confirmed)?)\\s*$)|(?:(?:set|delete|edit)\\s+(?:firewall|security|policy-options|routing-instances|access-list|acl|policy)\\b)|(?:^\\s*no\\s+access-list\\b)|(?:write\\s+(?:memory|config)\\b)|(?:^\\s*ip\\s+access-list\\b)|(?:>\\s*(?:.*/)?recent_config_changes\\.json\\b)|(?:>\\s*(?:.*/)?firewall(?:_policy)?\\.(?:conf|json|yaml|yml))",
+      "action": "block",
+      "message": "Blocked: this shell action would modify a security-sensitive network policy. Autonomous agents can propose the change and log the recommendation, but the commit must be approved by a human (Level 5 in the autonomy hierarchy).",
+      "severity": "high",
+      "frameworks": ["SOC2:CC6.1", "ISO_42001:6.1"],
+      "tag": "network_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on hook and MCP surfaces when their listed dependencies are satisfied. Does NOT inspect LLM prompt or response text.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
+    }
+  ]
+}
