@@ -43,7 +43,7 @@ NOW = datetime.now(timezone.utc)
 
 # ── Pack definitions (loaded from JSON files) ─────────────────────────────────
 
-PACK_SLUGS = ["conduct-base", "conduct-owasp", "conduct-soc2", "conduct-hipaa", "conduct-pci-dss", "conduct-eu-ai-act", "conduct-nist-ai-rmf", "conduct-iso-42001", "conduct-irs-1075", "conduct-financial-services", "conduct-life-sciences", "conduct-prompt-injection", "conduct-endpoint-attacks", "surface-aware", "meridian-dispatch"]
+PACK_SLUGS = ["conduct-base", "conduct-owasp", "conduct-soc2", "conduct-hipaa", "conduct-pci-dss", "conduct-eu-ai-act", "conduct-nist-ai-rmf", "conduct-iso-42001", "conduct-irs-1075", "conduct-financial-services", "conduct-life-sciences", "conduct-prompt-injection", "conduct-endpoint-attacks", "conduct-network-ops", "surface-aware", "meridian-dispatch"]
 
 
 def _load_pack(slug: str) -> dict:
