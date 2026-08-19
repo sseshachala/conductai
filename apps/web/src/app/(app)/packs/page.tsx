@@ -1523,6 +1523,7 @@ function PlaybookCard({
 }
 
 function CedarImportBanner({ getToken }: { getToken: (() => Promise<string | null>) | null }) {
+  const { activeWorkspace } = useWorkspace()
   const [open, setOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [packSlug, setPackSlug] = useState("")
@@ -1548,6 +1549,11 @@ function CedarImportBanner({ getToken }: { getToken: (() => Promise<string | nul
         const token = await getToken()
         if (token) headers["Authorization"] = `Bearer ${token}`
       }
+      // Backend resolves the target workspace from this header. Without it,
+      // /guard/registry/import-cedar 400s with "Invalid workspace ID" even
+      // when the user is clearly inside a workspace in the UI.
+      const workspaceId = activeWorkspace?.id ?? null
+      if (workspaceId) headers["X-Workspace-Id"] = workspaceId
       const res = await fetch(`${API}/guard/registry/import-cedar`, {
         method: "POST",
         headers,
