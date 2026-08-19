@@ -1045,6 +1045,98 @@ def _execute_brain(
                                 result_content = f"[mcp_error] {_mcp_exc!s:.500}"
                         result_content = _classify_tool_error(result_content)
                     else:
+                        # Guard check for non-MCP tools (run_shell, edit, write, etc).
+                        # The MCP branch above already guards MCP tool calls, but shell
+                        # commands and file edits were bypassing every hook-surface rule
+                        # entirely — the audit trail never saw them and no rule could
+                        # block, even when match_tool included "shell" or "workflow".
+                        # This mirrors the MCP guard block against the same rule set.
+                        _guard_blocked_non_mcp = False
+                        if state.get("__guard_enabled") and db and workspace_id:
+                            try:
+                                from app.modules.guard.routers.mcp import _get_rules
+                                import uuid as _uuid
+                                import re as _re
+                                _guard_rules = _get_rules(db, _uuid.UUID(workspace_id))
+                                _tool_input_text = json.dumps(tc.input or {})
+                                _ACTION_PRIORITY = {"block": 0, "approval": 1, "warn": 2, "audit": 3}
+                                _best_priority = 999
+                                _guard_hit = None
+                                for _rule in _guard_rules:
+                                    _mt = (_rule.get("match_tool") or "").strip()
+                                    if _mt and _mt != "*":
+                                        _mt_allowed = [t.strip().lower() for t in _mt.split(",")]
+                                        # tc.name is our internal tool id (run_shell, edit, etc)
+                                        # Match if the rule lists "shell" and this is run_shell,
+                                        # or "workflow" (workflow-wide match), or the exact tool.
+                                        _tc_lower = tc.name.lower()
+                                        if not (
+                                            _tc_lower in _mt_allowed
+                                            or ("shell" in _mt_allowed and _tc_lower == "run_shell")
+                                            or "workflow" in _mt_allowed
+                                            or "*" in _mt_allowed
+                                        ):
+                                            continue
+                                    _mp = _rule.get("match_pattern")
+                                    if _mp:
+                                        try:
+                                            if not _re.search(_mp, _tool_input_text, _re.IGNORECASE):
+                                                continue
+                                        except _re.error:
+                                            continue
+                                    _p = _ACTION_PRIORITY.get(_rule.get("action", "audit"), 3)
+                                    if _p < _best_priority:
+                                        _best_priority = _p
+                                        _guard_hit = _rule
+
+                                if _guard_hit:
+                                    _guard_action = _guard_hit.get("action", "audit")
+                                    _guard_msg = _guard_hit.get("message", "")
+                                    _guard_rule_id = _guard_hit.get("id")
+                                    # Emit to run event stream so the CLI + dashboard see it
+                                    if db and run_id:
+                                        _emit(db, run_id, block_id, "brain_tool_call", {
+                                            "tool": tc.name,
+                                            "guard_action": _guard_action,
+                                            "guard_rule": _guard_rule_id,
+                                            "guard_message": _guard_msg,
+                                            "turn": turns,
+                                        })
+                                    # Also write to the Guard audit trail so it appears
+                                    # in the flight recorder (Guard → Activity), same as
+                                    # hook and proxy verdicts.
+                                    try:
+                                        from app.modules.guard.models import GuardAuditEvent
+                                        from datetime import datetime as _dt, timezone as _tz
+                                        db.add(GuardAuditEvent(
+                                            workspace_id=_uuid.UUID(workspace_id),
+                                            user_email=user_email,
+                                            ai_tool="conduct_runtime",
+                                            tool_call=tc.name,
+                                            source="runtime",
+                                            decision=("blocked" if _guard_action == "block"
+                                                      else "warned" if _guard_action == "warn"
+                                                      else "audited"),
+                                            rule_id=_guard_rule_id,
+                                            rule_message=_guard_msg,
+                                            input_summary=_tool_input_text[:500],
+                                            conductai_run_id=str(run_id) if run_id else None,
+                                            conductai_workflow=playbook_slug,
+                                            conductai_workflow_id=str(workflow_id) if workflow_id else None,
+                                            ts=_dt.now(_tz.utc),
+                                        ))
+                                        db.commit()
+                                    except Exception as _audit_exc:
+                                        log.warning("brain.non_mcp_guard.audit_write_failed",
+                                                    error=str(_audit_exc))
+                                        db.rollback()
+
+                                    if _guard_action == "block":
+                                        result_content = f"[guard_blocked] {_guard_msg}  [rule: {_guard_rule_id}]"
+                                        _guard_blocked_non_mcp = True
+                            except Exception as _guard_exc:
+                                log.warning("brain.non_mcp_dispatch.guard_failed", error=str(_guard_exc))
+
                         # require_tests_pass guardrail: intercept commit-like calls
                         # when no test run has been observed yet in this turn.
                         _GIT_COMMIT_PATTERNS = ("git commit", "git push", "gh pr create")
@@ -1055,7 +1147,9 @@ def _execute_brain(
                                 for p in _GIT_COMMIT_PATTERNS
                             )
                         )
-                        if _require_tests_pass and _is_commit_call and not _test_ran_this_turn:
+                        if _guard_blocked_non_mcp:
+                            pass  # result_content already set to the guard block message
+                        elif _require_tests_pass and _is_commit_call and not _test_ran_this_turn:
                             result_content = (
                                 "[guardrail_blocked] Tests must pass before committing. "
                                 "Run tests first."
