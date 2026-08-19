@@ -1120,6 +1120,15 @@ def _safe_json(b: bytes, *, fallback: dict) -> dict:
     try:
         return json.loads(b)
     except Exception:
+        # Log a snippet so operators can see WHY the upstream returned junk —
+        # silent fallback to {} looks like a valid empty response to the SDK
+        # and turns into an all-hands debug session later.
+        try:
+            snippet = (b[:400] or b"").decode("utf-8", errors="replace")
+        except Exception:
+            snippet = repr(b[:400])
+        log.warning("guard.proxy.upstream_unparseable_body",
+                    snippet=snippet, byte_length=len(b or b""))
         return fallback
 
 
