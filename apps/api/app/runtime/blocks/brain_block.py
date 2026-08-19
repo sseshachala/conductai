@@ -1116,6 +1116,15 @@ def _execute_brain(
                                             "guard_message": _guard_msg,
                                             "turn": turns,
                                         })
+                                    # Decision label used in both the audit row and the
+                                    # notification payload — kept as one variable so the
+                                    # two surfaces never disagree.
+                                    _decision_label = (
+                                        "blocked" if _guard_action == "block"
+                                        else "warned" if _guard_action == "warn"
+                                        else "audited"
+                                    )
+
                                     # Also write to the Guard audit trail so it appears
                                     # in the flight recorder (Guard → Activity), same as
                                     # hook and proxy verdicts.
@@ -1128,9 +1137,7 @@ def _execute_brain(
                                             ai_tool="conduct_runtime",
                                             tool_call=tc.name,
                                             source="runtime",
-                                            decision=("blocked" if _guard_action == "block"
-                                                      else "warned" if _guard_action == "warn"
-                                                      else "audited"),
+                                            decision=_decision_label,
                                             rule_id=_guard_rule_id,
                                             rule_message=_guard_msg,
                                             input_summary=_tool_input_text[:500],
@@ -1144,6 +1151,25 @@ def _execute_brain(
                                         log.warning("brain.non_mcp_guard.audit_write_failed",
                                                     error=str(_audit_exc))
                                         db.rollback()
+
+                                    # Fan out block/warn (skip audit — too noisy) to the
+                                    # workspace's configured notification channels
+                                    # (Slack, webhook, PagerDuty, email). Same helper the
+                                    # proxy and MCP surfaces use.
+                                    if _guard_action in ("block", "warn"):
+                                        try:
+                                            from app.modules.guard.routers.events import notify_guard_block
+                                            notify_guard_block(
+                                                db, workspace_id,
+                                                decision=_decision_label,
+                                                rule_id=_guard_rule_id,
+                                                user_email=user_email,
+                                                tool=tc.name,
+                                                source="runtime",
+                                            )
+                                        except Exception as _notify_exc:
+                                            log.warning("brain.non_mcp_guard.notify_failed",
+                                                        error=str(_notify_exc))
 
                                     if _guard_action == "block":
                                         result_content = f"[guard_blocked] {_guard_msg}  [rule: {_guard_rule_id}]"
