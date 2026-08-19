@@ -4,6 +4,7 @@ Hi,
 
 Your Conduct AI agent "{workflow_name}" finished running.
 
+Workspace: {workspace_name} ({workspace_id})
 Status: {status}
 Duration: {duration}
 Triggered by: {triggered_by}

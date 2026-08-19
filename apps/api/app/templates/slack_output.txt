@@ -1,6 +1,7 @@
 *Conduct AI* — agent run complete ✓
 
 *Agent:* {workflow_name}
+*Workspace:* {workspace_name} `({workspace_id})`
 *Status:* {status}
 *Duration:* {duration}
 

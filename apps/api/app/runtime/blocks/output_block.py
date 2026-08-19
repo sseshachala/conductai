@@ -91,7 +91,14 @@ def _load_template(name: str) -> str:
         return "{run_summary}"
 
 
-def _fill_template(template: str, state: dict, workflow_name: str = "Agent", trace_url: str = "") -> tuple[str, str]:
+def _fill_template(
+    template: str,
+    state: dict,
+    workflow_name: str = "Agent",
+    trace_url: str = "",
+    workspace_id: str = "",
+    workspace_name: str = "",
+) -> tuple[str, str]:
     """Return (subject, body) filled from template."""
     run_summary = _build_run_summary(state)
     triggered_by = str(state.get("__triggered_by", "manual"))
@@ -107,6 +114,8 @@ def _fill_template(template: str, state: dict, workflow_name: str = "Agent", tra
     body = "\n".join(body_lines)
     replacements = {
         "{workflow_name}": workflow_name,
+        "{workspace_id}": workspace_id or "(unknown)",
+        "{workspace_name}": workspace_name or "(unknown)",
         "{status}": "completed",
         "{duration}": "\u2014",
         "{triggered_by}": triggered_by,
@@ -118,6 +127,24 @@ def _fill_template(template: str, state: dict, workflow_name: str = "Agent", tra
         body = body.replace(k, v)
 
     return subject, body
+
+
+def _resolve_workspace_name(workspace_id: str) -> str:
+    """Look up the workspace's display name. Best-effort — falls back to empty."""
+    if not workspace_id:
+        return ""
+    try:
+        from app.core.database import get_db as _get_db
+        from app.models.workspace import Workspace
+        import uuid as _uuid
+        db = next(_get_db())
+        try:
+            ws = db.query(Workspace).filter(Workspace.id == _uuid.UUID(workspace_id)).first()
+            return (ws.name if ws else "") or ""
+        finally:
+            db.close()
+    except Exception:
+        return ""
 
 
 # ── block executor ────────────────────────────────────────────────────────────
@@ -153,6 +180,11 @@ def _execute_output(
     from app.runtime.integrations import slack, email as email_integration
     from app.core.config import settings
     from app.runtime.tool_engine import _resolve_refs
+
+    # Resolve workspace name once — used by both slack and email templates so
+    # every outbound notification is attributed to a workspace. Best-effort,
+    # falls back to "(unknown)" in the template if lookup fails.
+    _ws_name = _resolve_workspace_name(workspace_id)
     from app.core.credentials import fetch_credential
 
     from app.runtime.run_contract import cred_from_state, get_email_creds
@@ -179,7 +211,7 @@ def _execute_output(
             results["slack"] = {"sent": False, "reason": "No Slack channel configured"}
         else:
             try:
-                _, body = _fill_template(_load_template("slack_output.txt"), state, workflow_name, trace_url)
+                _, body = _fill_template(_load_template("slack_output.txt"), state, workflow_name, trace_url, workspace_id=workspace_id, workspace_name=_ws_name)
                 use_approval = config.get("approval", False) and bool(run_id)
                 mcp_slack = None if use_approval else _resolve_slack_mcp(workspace_id)
                 if mcp_slack:
@@ -221,7 +253,7 @@ def _execute_output(
             results["email"] = {"sent": False, "reason": "No recipient address configured \u2014 set 'Email address' on the output block"}
         else:
             try:
-                subject, body = _fill_template(_load_template("email_output.txt"), state, workflow_name, trace_url)
+                subject, body = _fill_template(_load_template("email_output.txt"), state, workflow_name, trace_url, workspace_id=workspace_id, workspace_name=_ws_name)
                 r = email_integration.execute("send_email", {"to": to, "subject": subject, "body": body, "from_address": from_address}, email_creds)
                 results["email"] = r
             except Exception as e:
