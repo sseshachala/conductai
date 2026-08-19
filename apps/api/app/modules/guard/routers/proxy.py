@@ -906,6 +906,32 @@ async def _forward(
 
     # Non-streaming path
     full = await resp.aread()
+    # httpx with stream=True returns raw bytes; content-encoding is NOT
+    # auto-decoded. Anthropic responds with gzip/brotli when we forward the
+    # SDK's accept-encoding header. Decompress here or _safe_json downstream
+    # sees binary garbage, falls back to {}, and every brain block returns
+    # an empty envelope silently.
+    _enc = (resp.headers.get("content-encoding") or "").lower().strip()
+    if _enc == "gzip":
+        try:
+            import gzip as _gzip
+            full = _gzip.decompress(full)
+        except Exception as e:
+            log.warning("guard.proxy.gzip_decompress_failed", err=str(e))
+    elif _enc in ("br", "brotli"):
+        try:
+            import brotli as _brotli
+            full = _brotli.decompress(full)
+        except ImportError:
+            log.warning("guard.proxy.brotli_missing", note="pip install brotli")
+        except Exception as e:
+            log.warning("guard.proxy.brotli_decompress_failed", err=str(e))
+    elif _enc == "deflate":
+        try:
+            import zlib as _zlib
+            full = _zlib.decompress(full)
+        except Exception as e:
+            log.warning("guard.proxy.deflate_decompress_failed", err=str(e))
     await resp.aclose()
     await client.aclose()
     background.add_task(
@@ -919,9 +945,14 @@ async def _forward(
         conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
         hook_session_id=audit_args[14] if len(audit_args) > 14 else None,
     )
+    # Drop the now-stale content-encoding header so downstream (the SDK
+    # inside brain_block) doesn't try to decompress the already-decompressed
+    # body a second time.
+    _resp_headers = {k: v for k, v in resp.headers.items() if k.lower() != "content-encoding" and k.lower() != "content-length"}
     return JSONResponse(
         status_code=resp.status_code,
         content=_safe_json(full, fallback={}),
+        headers=_resp_headers,
     )
 
 
