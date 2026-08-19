@@ -20,6 +20,14 @@ description: >
   blocked by Guard and surfaced for human approval.
 
 inputs:
+  repo:
+    label: Fixture repository
+    type: string
+    default: "sseshachala/conduct-network-ops"
+    placeholder: owner/repo
+    hint: Repo cloned into the sandbox before block 1. Owns fixtures/*.json.
+    description: Public GitHub repo holding the synthetic Aruba/Juniper telemetry.
+
   branch:
     label: Branch site code
     type: string
