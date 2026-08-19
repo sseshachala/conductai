@@ -101,6 +101,7 @@ def list_installed_packs(
 
 # ── Pack catalog (marketplace metadata) ───────────────────────────────────────
 
+@router.get("/packs/available")
 @router.get("/packs/catalog")
 def list_pack_catalog():
     """List every pack file with the metadata the marketplace UI needs.
@@ -148,12 +149,14 @@ def list_pack_catalog():
 
         catalog.append({
             "id": slug,
+            "slug": slug,           # CLI expects `slug`; frontend uses `id`
             "name": pack.get("name") or slug,
             "icon": ui.get("icon") or "📦",
             "subtitle": ui.get("subtitle") or (pack.get("description") or "")[:180],
             "description": pack.get("description") or "",
             "tags": ui.get("tags") or [],
             "guardRules": len(rules),
+            "rules": rules,          # CLI does len(rules); keep the list projected
             "proxyRules": proxy_rules,
             "hookRules": hook_rules,
             "version": pack.get("version") or "0.0.0",
