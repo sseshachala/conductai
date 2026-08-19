@@ -56,11 +56,10 @@ inputs:
 blocks:
 
   # ── 1. Load & parse the incident bundle ────────────────────────────────────
-  # ── 1. Load & parse the incident bundle ────────────────────────────────────
   load_incident:
     type: brain
     mode: agentic
-    model: "{{ inputs.model }}"
+    model: "{{inputs.model}}"
     label: Load incident bundle
     description: Clone the fixture repo and read topology, telemetry, config changes, syslog for the affected branch.
     next: correlate
@@ -75,19 +74,19 @@ blocks:
       Suggested sequence (pack into as few run_shell calls as makes
       sense — the session is persistent, files created in one call are
       available in the next):
-          Turn 1: git clone --depth 1 https://github.com/{{ inputs.repo }}.git /tmp/repo
+          Turn 1: git clone --depth 1 https://github.com/{{inputs.repo}}.git /tmp/repo
           Turn 2: cat /tmp/repo/fixtures/topology.json
-                  cat /tmp/repo/fixtures/telemetry_{{ inputs.branch }}.json
+                  cat /tmp/repo/fixtures/telemetry_{{inputs.branch}}.json
                   cat /tmp/repo/fixtures/recent_config_changes.json
-                  cat /tmp/repo/fixtures/syslog_{{ inputs.branch }}.txt
+                  cat /tmp/repo/fixtures/syslog_{{inputs.branch}}.txt
     prompt: |
-      Incident: branch {{ inputs.branch }} — on-call was paged for elevated
+      Incident: branch {{inputs.branch}} — on-call was paged for elevated
       authentication failures and packet loss.
 
       Read the four fixture files (topology, telemetry, recent_config_changes,
       syslog) and return a JSON summary on the last line:
       {
-        "branch": "{{ inputs.branch }}",
+        "branch": "{{inputs.branch}}",
         "onset_ts": "<ISO ts when metrics degraded>",
         "auth_fail_pct_at_peak": <float>,
         "packet_loss_pct_at_peak": <float>,
@@ -99,7 +98,7 @@ blocks:
   correlate:
     type: brain
     mode: single
-    model: "{{ inputs.model }}"
+    model: "{{inputs.model}}"
     label: Correlate change → onset
     description: Rank recent config changes by likelihood of being the root cause based on timing, device, and change type.
     next: diagnose
@@ -108,7 +107,7 @@ blocks:
       NOT have new information — only reason over what load_incident produced.
     prompt: |
       Incident summary:
-      {{ load_incident.output }}
+      {{load_incident.output}}
 
       Rank the changes_in_window by likelihood of being the root cause. A
       change is a strong candidate if:
@@ -128,7 +127,7 @@ blocks:
   diagnose:
     type: brain
     mode: single
-    model: "{{ inputs.model }}"
+    model: "{{inputs.model}}"
     label: Produce diagnosis + plan
     description: Write the root cause hypothesis and split remediations into reversible actions and policy-modifying actions.
     next: remediate
@@ -139,10 +138,10 @@ blocks:
       will enforce the difference.
     prompt: |
       Correlation output:
-      {{ correlate.output }}
+      {{correlate.output}}
 
       Full incident context (do not restate, use for grounding):
-      {{ load_incident.output }}
+      {{load_incident.output}}
 
       Produce:
       1) Root cause hypothesis — 2 sentences.
@@ -164,7 +163,7 @@ blocks:
   remediate:
     type: brain
     mode: agentic
-    model: "{{ inputs.model }}"
+    model: "{{inputs.model}}"
     label: Attempt remediation
     description: Execute the plan. Reversible actions land; policy-modifying attempts are blocked by Guard (that is the point).
     next: summarize
@@ -172,7 +171,7 @@ blocks:
       You are executing the remediation plan. Guard is watching every action.
 
       RULES OF ENGAGEMENT:
-      - Aggressiveness for this run: {{ inputs.aggressiveness }}
+      - Aggressiveness for this run: {{inputs.aggressiveness}}
       - Even at "full" aggressiveness, ATTEMPT the policy-modifying actions
         so we can observe Guard's block-with-reason. Do NOT skip them.
       - When Guard blocks an action, record the block reason and CONTINUE
@@ -180,7 +179,7 @@ blocks:
       - Each run_shell call is a fresh container — batch related work.
     prompt: |
       Diagnosis + plan:
-      {{ diagnose.output }}
+      {{diagnose.output}}
 
       Execute in this order:
       1) Every reversible action (unless aggressiveness = observe-only).
@@ -209,8 +208,8 @@ blocks:
       You are writing the short summary the NOC on-call will read at 08:47.
       No preamble. No filler. Just the outcome.
     prompt: |
-      Root cause: {{ diagnose.output }}
-      Execution: {{ remediate.output }}
+      Root cause: {{diagnose.output}}
+      Execution: {{remediate.output}}
 
       Format exactly:
         DIAGNOSIS:  <one line>

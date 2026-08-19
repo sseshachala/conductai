@@ -134,7 +134,11 @@ def _resolve_refs(value: Any, state: dict) -> Any:
                     return m.group(0)
             return str(obj)
 
-        return _re.sub(r"\{\{([\w.]+)\}\}", replace, value)
+        # Tolerate optional whitespace inside {{ ... }} so authors can write
+        # either {{foo}} or {{ foo.bar }}. Jinja convention allows the latter;
+        # strict-no-space matching silently leaked literal templates when the
+        # author added a space (surfaced by network_diagnosis_agent 2026-08-19).
+        return _re.sub(r"\{\{\s*([\w.]+)\s*\}\}", replace, value)
     if isinstance(value, dict):
         return {k: _resolve_refs(v, state) for k, v in value.items()}
     if isinstance(value, list):
