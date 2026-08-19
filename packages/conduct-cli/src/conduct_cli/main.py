@@ -153,6 +153,10 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
         elif kind == "block_failed":
             err = payload.get("error", json.dumps(payload, default=str, ensure_ascii=False)[:200])
             print(f"{RED}    ✗ {prefix}{err}{RESET}")
+            _tb = (payload.get("failure") or {}).get("traceback")
+            if _tb:
+                for _line in str(_tb).rstrip().splitlines():
+                    print(f"{RED}      {_line}{RESET}")
         elif kind == "brain_tool_call":
             summary = payload.get("summary", payload.get("tool", ""))
             print(f"      · {summary}{RESET}")
