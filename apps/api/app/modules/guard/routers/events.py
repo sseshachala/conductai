@@ -449,35 +449,38 @@ def _bg_slack_notify(
     rule_id: str | None,
     rule_message: str | None,
 ) -> None:
-    """Background task: send Slack block/warn notification."""
-    if decision not in ("blocked", "warned") or not notify_on_block:
+    """Background task: fan out block/warn notifications for hook events.
+
+    Delegates to notify_guard_block so hook (CLI) events get the same
+    per-action-channel fan-out (Slack / webhook / PagerDuty / email) as the
+    proxy, MCP, and runtime surfaces. Falls back to the legacy single Slack
+    channel automatically when no per-action channels are configured.
+    """
+    if decision not in ("blocked", "warned"):
         return
     db = SessionLocal()
     try:
         import uuid as _uuid
         ws_uuid = _uuid.UUID(workspace_id_str)
-        config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
-        if not config:
-            return
-        who = user_email or clerk_user_id or "unknown"
-        tool = ai_tool or "Claude Code"
-        rule_label = f"`{rule_id}`" if rule_id else "a policy"
-        if rule_id == "budget-hard-cap":
-            header_emoji = "\U0001f6a8"
-            decision_label = "BUDGET CAP HIT"
-        elif decision == "blocked":
-            header_emoji = "\U0001f6a8"
-            decision_label = "BLOCKED"
-        else:
-            header_emoji = "\u26a0\ufe0f"
-            decision_label = "WARNED"
-        msg = (
-            f"{header_emoji} *{decision_label}* by {rule_label} in {tool}\n"
-            f"\U0001f464 *Developer:* {who}"
+        # Honour the legacy notify_on_block toggle. When it's off AND no
+        # per-action channels exist, nothing fires (matches previous behaviour).
+        # notify_guard_block itself already handles the "no channels + no legacy
+        # config" case, so we just gate the direct legacy-only path here.
+        if not notify_on_block:
+            # Check per-action channels — if any exist, still fan out. Otherwise
+            # respect the operator's opt-out.
+            from app.modules.guard.routers.notifications import resolve_channels as _resolve_channels
+            _action = "block" if decision == "blocked" else "warn"
+            if not _resolve_channels(db, ws_uuid, _action):
+                return
+        notify_guard_block(
+            db, ws_uuid,
+            decision=decision,
+            rule_id=rule_id,
+            user_email=user_email or clerk_user_id,
+            tool=ai_tool,
+            source="hook",
         )
-        if rule_message:
-            msg += f"\n\U0001f4ac {rule_message}"
-        _send_guard_slack(db, config, msg)
     except Exception as exc:
         log.warning("guard.slack_notification_failed", exc=str(exc))
     finally:

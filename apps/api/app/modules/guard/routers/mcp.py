@@ -460,6 +460,7 @@ def _record_event(
     conductai_run_id: str | None = None,
     conductai_workflow: str | None = None,
     prompt: str | None = None,
+    source: str = "mcp",
 ) -> None:
     ts = datetime.now(timezone.utc)
     prev_hash, entry_hash = chain_hash_for_insert(db, ws_uuid, ts, tool_name, decision)
@@ -475,6 +476,7 @@ def _record_event(
         user_email=user_email,
         ai_tool=ai_tool,
         tool_call=tool_name,
+        source=source,
         input_summary=raw_summary,
         decision=decision,
         rule_id=rule_id,
@@ -489,12 +491,14 @@ def _record_event(
     db.add(event)
     db.commit()
 
-    # Slack notification — one path for all blocks/warns
+    # Slack + webhook + PagerDuty + email fan-out for blocks/warns.
+    # Uses caller-provided `source` so Guard Activity attribution is precise
+    # (mcp vs hook vs runtime vs proxy).
     if decision in ("blocked", "warned"):
         try:
             from app.modules.guard.routers.events import notify_guard_block
             notify_guard_block(db, ws_uuid, decision=decision, rule_id=rule_id,
-                               user_email=user_email, tool=tool_name, source="hook")
+                               user_email=user_email, tool=tool_name, source=source)
         except Exception:
             pass
 
