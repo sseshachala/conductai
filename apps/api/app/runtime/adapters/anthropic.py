@@ -171,27 +171,41 @@ class AnthropicClient:
         if raw is None:
             raise RuntimeError("anthropic.create: retry loop exhausted without response or exception")
 
-        # Anthropic occasionally returns a response object with content=None
-        # (proxy-normalised safety block, empty tool-only reply, transient
-        # upstream oddity). Iterating None here would kill the whole brain
-        # block with 'NoneType is not iterable'; treat as empty response.
-        _raw_content = raw.content or []
-        if raw.content is None or (isinstance(raw.content, list) and len(raw.content) == 0):
-            # Surface enough diagnostic info to figure out WHY the response
-            # came back empty — stop_reason + usage + full raw dict tail.
+        # Guard against silent-failure envelopes. A well-formed Anthropic
+        # response has content as a non-null list AND at least one of
+        # {stop_reason, usage.output_tokens}. If content is None AND we also
+        # have no stop_reason and zero tokens, the proxy almost certainly
+        # returned an unparseable body that collapsed to {} — silently
+        # treating that as "empty response" masks real upstream failures
+        # (bad key, malformed stream, upstream 500 with 200 status, etc).
+        _stop_reason = getattr(raw, "stop_reason", None)
+        _usage = getattr(raw, "usage", None)
+        _out_tokens = getattr(_usage, "output_tokens", 0) if _usage else 0
+        _content_missing = (raw.content is None) or (isinstance(raw.content, list) and len(raw.content) == 0)
+
+        if _content_missing and not _stop_reason and not _out_tokens:
             try:
                 _raw_dict = raw.model_dump() if hasattr(raw, "model_dump") else raw.__dict__
                 _diag = {k: v for k, v in _raw_dict.items() if k not in ("content",)}
             except Exception:
                 _diag = {"model_dump_failed": True}
-            import structlog as _sl
-            _sl.get_logger().warning(
-                "anthropic.empty_content",
-                model=model,
-                stop_reason=getattr(raw, "stop_reason", None),
-                usage=getattr(raw, "usage", None),
-                diag=_diag,
+            raise LLMUpstreamError(
+                message=(
+                    "Upstream LLM returned an empty response envelope "
+                    "(content=None, stop_reason=None, output_tokens=0). "
+                    "Common causes: proxy could not parse upstream body, "
+                    "upstream returned 200 with malformed JSON, or model id "
+                    f"'{model}' is unrecognised by the upstream. Diag: {_diag}"
+                ),
+                cf_ray=None,
+                request_id=None,
+                attempts=1,
             )
+
+        # Legitimate empty content with a stop_reason (safety refusal with no
+        # text, tool-only replies before message end, etc.) still passes
+        # through as an empty response — brain block turn loop handles it.
+        _raw_content = raw.content or []
 
         content: list[LLMTextBlock | LLMToolUseBlock] = []
         for block in _raw_content:
