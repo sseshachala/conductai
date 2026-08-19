@@ -149,6 +149,13 @@ def _classify_failure(
         msg = f"LLM connection failed — {cause_msg}" if cause_msg else "LLM connection failed (check proxy URL and agent token)"
         next_action = "Check that the Conduct proxy URL is reachable and CONDUCT_AGENT_TOKEN is set in this environment."
 
+    # Include the traceback tail so operators can pinpoint the failure without
+    # hunting through Render logs. Trimmed to last 20 lines — enough to spot
+    # the exact file:line, small enough not to blow up the event payload.
+    import traceback as _tb
+    _tb_lines = _tb.format_exception(type(exc), exc, exc.__traceback__)
+    _tb_tail = "".join(_tb_lines)[-2000:]
+
     return {
         "code": code,
         "category": category,
@@ -156,6 +163,7 @@ def _classify_failure(
         "message": msg,
         "block_id": block_id,
         "next_action": next_action,
+        "traceback": _tb_tail,
     }
 
 _STATE_CHECKPOINT_TTL = 604800  # 7 days — Redis LLM-cache TTL (unchanged)
