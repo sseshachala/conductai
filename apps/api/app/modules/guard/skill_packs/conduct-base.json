@@ -4,6 +4,14 @@
   "version": "2.13.0",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
+  "ui": {
+    "icon": "\ud83d\ude80",
+    "subtitle": "Auto-installed. Proxy safety, agent guardrails, and surface-aware policies for every AI tool.",
+    "tags": [
+      "Starter",
+      "General"
+    ]
+  },
   "rules": [
     {
       "id": "proxy-no-credential-leak",

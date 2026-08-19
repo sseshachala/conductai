@@ -3,15 +3,24 @@
   "name": "Conduct IRS 1075",
   "version": "1.0.0",
   "tier": "paid",
-  "description": "IRS Publication 1075 enforcement rules — Federal Tax Information (FTI) protection for government agencies and contractors handling IRS-shared tax data under IRC Section 6103",
+  "description": "IRS Publication 1075 enforcement rules \u2014 Federal Tax Information (FTI) protection for government agencies and contractors handling IRS-shared tax data under IRC Section 6103",
+  "ui": {
+    "icon": "\ud83c\udfdb\ufe0f",
+    "subtitle": "8 rules protecting Federal Tax Information (FTI) for agencies and contractors under IRC Section 6103.",
+    "tags": [
+      "Government",
+      "Tax",
+      "FTI"
+    ]
+  },
   "rules": [
     {
       "id": "irs1075-no-ein-in-prompt",
-      "description": "Block Employer Identification Numbers (EIN) in AI prompts (IRS 1075 Section 4 — FTI Safeguards)",
+      "description": "Block Employer Identification Numbers (EIN) in AI prompts (IRS 1075 Section 4 \u2014 FTI Safeguards)",
       "match_tool": "bash,edit,write",
       "match_pattern": "\\b[0-9]{2}-[0-9]{7}\\b",
       "action": "block",
-      "message": "EIN detected in AI prompt — Federal Tax Information must not be passed to AI models without explicit authorisation under IRS 1075 Section 4 and IRC Section 6103.",
+      "message": "EIN detected in AI prompt \u2014 Federal Tax Information must not be passed to AI models without explicit authorisation under IRS 1075 Section 4 and IRC Section 6103.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -48,7 +57,7 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "(adjusted.?gross.?income|agi|taxable.?income|federal.?tax.?withheld|form.?1040|w.?2.?wages|1099.?(int|div|misc|nec|r|g)|refund.?amount|tax.?liability).*(\\$|[0-9]{3,}|=|:)",
       "action": "block",
-      "message": "Tax return data (FTI) detected in AI context — IRS 1075 Section 4 prohibits passing Federal Tax Information to AI systems without documented authorisation.",
+      "message": "Tax return data (FTI) detected in AI context \u2014 IRS 1075 Section 4 prohibits passing Federal Tax Information to AI systems without documented authorisation.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -81,11 +90,11 @@
     },
     {
       "id": "irs1075-no-fti-external-endpoint",
-      "description": "Block FTI from being sent to external AI endpoints not on approved vendor list (IRS 1075 Section 4 — Disclosure Prohibition)",
+      "description": "Block FTI from being sent to external AI endpoints not on approved vendor list (IRS 1075 Section 4 \u2014 Disclosure Prohibition)",
       "match_tool": "bash,edit,write",
       "match_pattern": "(curl|fetch|requests\\.post|axios\\.post|http\\.post).*(openai\\.com|anthropic\\.com|api\\.together|groq\\.com|replicate\\.com|cohere\\.com).*(ssn|ein|tax|fti|1040|w.?2|1099|agi)",
       "action": "block",
-      "message": "FTI transmission to external AI endpoint blocked — IRS 1075 requires all third-party processors of FTI to have a signed Data Services Agreement and IRS approval.",
+      "message": "FTI transmission to external AI endpoint blocked \u2014 IRS 1075 requires all third-party processors of FTI to have a signed Data Services Agreement and IRS approval.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -118,11 +127,11 @@
     },
     {
       "id": "irs1075-no-fti-training-data",
-      "description": "Block writing FTI into AI training datasets (IRS 1075 Section 4 — Use Restriction)",
+      "description": "Block writing FTI into AI training datasets (IRS 1075 Section 4 \u2014 Use Restriction)",
       "match_tool": "edit,write",
       "match_pattern": "(train|training.?data|fine.?tune|dataset|corpus).*(ssn|ein|tax.?return|fti|1040|w.?2|1099|adjusted.?gross)|append.*(tax|fti|ein|ssn).*(csv|json|parquet|jsonl|tfrecord)",
       "action": "block",
-      "message": "FTI detected in AI training data write — IRS 1075 prohibits using Federal Tax Information to train, fine-tune, or build AI models.",
+      "message": "FTI detected in AI training data write \u2014 IRS 1075 prohibits using Federal Tax Information to train, fine-tune, or build AI models.",
       "persona_affinity": [
         "agent"
       ],
@@ -153,11 +162,11 @@
     },
     {
       "id": "irs1075-no-fti-unencrypted-write",
-      "description": "Block writing FTI to unencrypted files or plain-text storage (IRS 1075 Section 9 — Encryption)",
+      "description": "Block writing FTI to unencrypted files or plain-text storage (IRS 1075 Section 9 \u2014 Encryption)",
       "match_tool": "edit,write",
       "match_pattern": "open\\(['\"].*\\.(txt|csv|log|json)['\"],\\s*['\"]w['\"]\\).*\\n.*(ssn|ein|tax|fti|1040|agi)|write.*(ssn|ein|tax_return|fti).*(file|disk|storage)(?!.*(encrypt|cipher|kms|aes|vault))",
       "action": "block",
-      "message": "FTI written to unencrypted storage — IRS 1075 Section 9 requires AES-256 encryption for all FTI at rest.",
+      "message": "FTI written to unencrypted storage \u2014 IRS 1075 Section 9 requires AES-256 encryption for all FTI at rest.",
       "persona_affinity": [
         "agent"
       ],
@@ -188,11 +197,11 @@
     },
     {
       "id": "irs1075-no-fti-plain-log",
-      "description": "Block FTI appearing unredacted in application logs (IRS 1075 Section 4 — Safeguard Activity)",
+      "description": "Block FTI appearing unredacted in application logs (IRS 1075 Section 4 \u2014 Safeguard Activity)",
       "match_tool": "edit,write",
       "match_pattern": "(console\\.log|print|logger\\.(info|debug|warn|error)|logging\\.(info|debug|warning|error))\\(.*( ssn| ein| agi|tax_return|fti|1040|w2_wage|1099)",
       "action": "block",
-      "message": "FTI in application log — IRS 1075 requires all FTI to be redacted before logging. Plain-text FTI in logs is a reportable breach.",
+      "message": "FTI in application log \u2014 IRS 1075 requires all FTI to be redacted before logging. Plain-text FTI in logs is a reportable breach.",
       "persona_affinity": [
         "agent"
       ],
@@ -224,11 +233,11 @@
     },
     {
       "id": "irs1075-third-party-fti-processor",
-      "description": "Warn on third-party AI service integration in systems that handle FTI (IRS 1075 Section 4 — Contractor Requirements)",
+      "description": "Warn on third-party AI service integration in systems that handle FTI (IRS 1075 Section 4 \u2014 Contractor Requirements)",
       "match_tool": "edit,write",
       "match_pattern": "import (openai|anthropic|cohere|replicate|together|groq|mistral)|from (openai|anthropic|cohere|replicate|together_ai|groq) import|(OPENAI_API_KEY|ANTHROPIC_API_KEY|COHERE_API_KEY|REPLICATE_API_TOKEN)",
       "action": "warn",
-      "message": "Third-party AI provider integrated in FTI-handling system — IRS 1075 requires a signed Data Services Agreement and IRS approval before any contractor processes FTI.",
+      "message": "Third-party AI provider integrated in FTI-handling system \u2014 IRS 1075 requires a signed Data Services Agreement and IRS approval before any contractor processes FTI.",
       "persona_affinity": [
         "agent"
       ],
@@ -263,7 +272,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(repurpose|reuse|share|export|transfer).*(fti|tax.?return|tax.?data|federal.?tax).*(marketing|analytics|model.?train|research|third.?party|external)|fti.*(outside|beyond).*(authoris|authoriz|approved|permitted).*(use|purpose|scope)",
       "action": "block",
-      "message": "FTI use outside authorised purpose blocked — IRC Section 6103 restricts FTI use strictly to the purpose for which it was disclosed. Unauthorised use is a federal criminal offence.",
+      "message": "FTI use outside authorised purpose blocked \u2014 IRC Section 6103 restricts FTI use strictly to the purpose for which it was disclosed. Unauthorised use is a federal criminal offence.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -274,7 +283,7 @@
         "EU_AI_ACT:Art10"
       ],
       "severity": "critical",
-      "recommendation": "FTI may only be used for the specific purpose authorised under IRC Section 6103. Any secondary use — including AI analytics, model training, or sharing — requires separate IRS authorisation.",
+      "recommendation": "FTI may only be used for the specific purpose authorised under IRC Section 6103. Any secondary use \u2014 including AI analytics, model training, or sharing \u2014 requires separate IRS authorisation.",
       "enforcement": {
         "version": 1,
         "proxy": "not_supported",

@@ -4,6 +4,14 @@
   "version": "1.2.1",
   "tier": "paid",
   "description": "HIPAA PHI protection rules",
+  "ui": {
+    "icon": "\ud83c\udfe5",
+    "subtitle": "Block PHI patterns and flag unencrypted health data. \u00a7164.312 aligned.",
+    "tags": [
+      "Healthcare",
+      "PII"
+    ]
+  },
   "rules": [
     {
       "id": "hipaa_http_phi",

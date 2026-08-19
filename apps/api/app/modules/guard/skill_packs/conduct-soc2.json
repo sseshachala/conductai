@@ -4,6 +4,14 @@
   "version": "1.2.0",
   "tier": "paid",
   "description": "SOC 2 compliance rules",
+  "ui": {
+    "icon": "\ud83d\udccb",
+    "subtitle": "Rules aligned to SOC 2 Trust Service Criteria for audit-ready compliance.",
+    "tags": [
+      "Compliance",
+      "Audit"
+    ]
+  },
   "rules": [
     {
       "id": "soc2_hardcoded_secret",

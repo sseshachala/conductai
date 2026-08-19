@@ -4,6 +4,15 @@
   "version": "1.0.1",
   "tier": "paid",
   "description": "NIST AI Risk Management Framework enforcement rules across GOVERN, MAP, MEASURE, and MANAGE functions",
+  "ui": {
+    "icon": "\ud83c\udfdb\ufe0f",
+    "subtitle": "10 rules across GOVERN, MAP, MEASURE, and MANAGE functions of the NIST AI Risk Management Framework.",
+    "tags": [
+      "Compliance",
+      "Risk",
+      "NIST"
+    ]
+  },
   "rules": [
     {
       "id": "nist-govern-policy-bypass",
@@ -11,7 +20,7 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "(--disable[- _]?policy\\b|--no[- _]?policy\\b|policy_enabled\\s*[:=]\\s*(false|0|null|off)|governance\\s*[:=]\\s*(false|0|null|off)|GUARD_DISABLED\\s*[:=]\\s*(1|true)|export\\s+GUARD_DISABLED)",
       "action": "block",
-      "message": "AI governance policy bypass blocked — NIST AI RMF GOVERN 2.2 requires organisational AI policies to remain active.",
+      "message": "AI governance policy bypass blocked \u2014 NIST AI RMF GOVERN 2.2 requires organisational AI policies to remain active.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -48,7 +57,7 @@
       "match_tool": "bash",
       "match_pattern": "chmod -R 777|chown -R root|sudo su|sudo -i|usermod.*sudo|visudo|pkexec",
       "action": "block",
-      "message": "Privilege escalation beyond agent scope blocked — NIST AI RMF GOVERN 1.2 requires least-privilege access for AI systems.",
+      "message": "Privilege escalation beyond agent scope blocked \u2014 NIST AI RMF GOVERN 1.2 requires least-privilege access for AI systems.",
       "persona_affinity": [
         "agent"
       ],
@@ -83,7 +92,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(autonomous|auto_decide|no.?human).*(terminate|approve|reject|grant|deny|hire|fire|sentence|evict|block.?access|revoke)",
       "action": "block",
-      "message": "Autonomous consequential decision blocked — NIST AI RMF GOVERN 6.1 requires human oversight for high-stakes AI decisions.",
+      "message": "Autonomous consequential decision blocked \u2014 NIST AI RMF GOVERN 6.1 requires human oversight for high-stakes AI decisions.",
       "persona_affinity": [
         "agent",
         "proxy"
@@ -120,7 +129,7 @@
       "match_tool": "edit,write,bash",
       "match_pattern": "(deploy|release|launch|push.?to.?prod).*(medical|clinical|diagnos|legal|judicial|criminal|hiring|credit.?scor|insurance.?underwrite|welfare.?benefit).*(ai|model|agent|assistant)",
       "action": "warn",
-      "message": "AI deployment in high-risk domain — NIST AI RMF MAP 5.1 requires documented risk assessment before deploying AI in consequential contexts.",
+      "message": "AI deployment in high-risk domain \u2014 NIST AI RMF MAP 5.1 requires documented risk assessment before deploying AI in consequential contexts.",
       "persona_affinity": [
         "agent"
       ],
@@ -155,7 +164,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(raw_user_input|external_data|untrusted_source|user_provided).*(model|llm|prompt|context|embed|train)|fetch\\(.*\\).*model\\.predict|requests\\.get.*\\).*llm",
       "action": "warn",
-      "message": "Unverified external data passed to AI model — NIST AI RMF MAP 1.5 requires validating data sources before use in AI systems.",
+      "message": "Unverified external data passed to AI model \u2014 NIST AI RMF MAP 1.5 requires validating data sources before use in AI systems.",
       "persona_affinity": [
         "agent"
       ],
@@ -190,7 +199,7 @@
       "match_tool": "bash,edit,write",
       "match_pattern": "(telemetry|monitoring|observability|tracing).*(disabled|=\\s*false|=\\s*off|=\\s*0)|OTEL_SDK_DISABLED.*true|DD_TRACE_ENABLED.*false",
       "action": "block",
-      "message": "AI system monitoring disabled — NIST AI RMF MEASURE 2.5 requires continuous monitoring of AI system behaviour.",
+      "message": "AI system monitoring disabled \u2014 NIST AI RMF MEASURE 2.5 requires continuous monitoring of AI system behaviour.",
       "persona_affinity": [
         "agent"
       ],
@@ -225,7 +234,7 @@
       "match_tool": "edit,write",
       "match_pattern": "except.*:\\s*(pass|\\.\\.\\.|continue)|catch\\s*\\(.*\\)\\s*\\{\\s*\\}|rescue\\s*=>.*nil",
       "action": "warn",
-      "message": "Swallowed exception in AI pipeline — NIST AI RMF MEASURE 2.2 requires AI failures to be captured and logged for incident analysis.",
+      "message": "Swallowed exception in AI pipeline \u2014 NIST AI RMF MEASURE 2.2 requires AI failures to be captured and logged for incident analysis.",
       "persona_affinity": [
         "agent"
       ],
@@ -260,7 +269,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(api_key|access_token|bearer).*(replicate\\.com|together\\.ai|groq\\.com|anyscale|perplexity\\.ai|fireworks\\.ai)|import (replicate|together|groq)",
       "action": "warn",
-      "message": "Third-party AI provider detected — NIST AI RMF MANAGE 4.1 requires vendor risk assessment before using external AI services.",
+      "message": "Third-party AI provider detected \u2014 NIST AI RMF MANAGE 4.1 requires vendor risk assessment before using external AI services.",
       "persona_affinity": [
         "agent"
       ],
@@ -295,7 +304,7 @@
       "match_tool": "edit,write",
       "match_pattern": "(permanent|indefinite|no.?expiry|ttl.*=.*-1|retention.*=.*null).*(store|save|log|cache).*(conversation|prompt|inference|user.?data|chat.?history)",
       "action": "warn",
-      "message": "Indefinite AI data retention detected — NIST AI RMF MANAGE 2.4 requires data retention limits aligned with stated AI purpose.",
+      "message": "Indefinite AI data retention detected \u2014 NIST AI RMF MANAGE 2.4 requires data retention limits aligned with stated AI purpose.",
       "persona_affinity": [
         "agent"
       ],
@@ -330,7 +339,7 @@
       "match_tool": "bash",
       "match_pattern": "(docker run|kubectl apply|helm install|terraform apply).*(ai|model|agent|llm|embedding)(?!.*(owner|team|responsible|contact))",
       "action": "warn",
-      "message": "AI system deployment without accountability tag — NIST AI RMF GOVERN 1.7 requires clear ownership for every AI system in production.",
+      "message": "AI system deployment without accountability tag \u2014 NIST AI RMF GOVERN 1.7 requires clear ownership for every AI system in production.",
       "persona_affinity": [
         "agent"
       ],

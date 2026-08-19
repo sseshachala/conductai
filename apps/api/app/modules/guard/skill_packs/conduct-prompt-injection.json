@@ -4,6 +4,15 @@
   "version": "1.0.1",
   "tier": "free",
   "description": "Dedicated pack of ~100 patterns for detecting prompt injection, jailbreak, role-hijack, delimiter-escape, and system-prompt disclosure attempts across Bash, Edit, and Write tool inputs. Covers OWASP LLM A01, MITRE ATLAS AML.M0031, ASI06, and common public jailbreak library entries. Complements the base OWASP pack. ML classifier and indirect-injection tracking are on the roadmap.",
+  "ui": {
+    "icon": "\ud83e\uddf1",
+    "subtitle": "30 patterns for override, role-hijack, delimiter-escape, encoded-payload, tool-call-spoof, and system-prompt disclosure attempts.",
+    "tags": [
+      "Security",
+      "AI",
+      "OWASP LLM"
+    ]
+  },
   "rules": [
     {
       "id": "prompt-inject-override-instructions",
