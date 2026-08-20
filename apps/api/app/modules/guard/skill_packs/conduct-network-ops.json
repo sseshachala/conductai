@@ -1,7 +1,7 @@
 {
   "slug": "conduct-network-ops",
   "name": "Conduct \u2014 Network Operations Governance",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "tier": "custom",
   "description": "Hook-surface rules for governing autonomous NetOps agents. Blocks writes to security-sensitive network configuration (ACL, firewall, routing policy) while allowing reversible operational actions (QoS, service restart, logging). Companion pack for the network_diagnosis_agent playbook.",
   "ui": {
@@ -46,6 +46,108 @@
           "Hook enforcement depends on the AI tool emitting supported structured hook events",
           "MCP cannot enforce actions the agent does not submit to guard_check",
           "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
+    },
+    {
+      "id": "no-radius-policy-modify",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block agent shell / API actions that mutate RADIUS / AAA / ClearPass identity policy — service enforcement, role mapping, authentication method changes. Autonomous agents can propose the change and log the recommendation, but the commit must be approved by a human (Level 5 autonomy).",
+      "match_tool": "shell",
+      "match_pattern": "(?:(?:set|delete|edit)\\s+(?:access|system)\\s+(?:radius-server|profile|aaa)\\b)|(?:^\\s*(?:aaa|radius-server)\\s+(?:authentication|authorization|accounting|server-group|host)\\b)|(?:^\\s*port-access\\s+(?:role|policy)\\b)|(?:(?:POST|PUT|PATCH|DELETE)\\s+[^\\s]*/api/(?:enforcement-policy|enforcement-profile|service|role-mapping|network-device)\\b)|(?:curl\\s+[^\\n]*-X\\s+(?:POST|PUT|PATCH|DELETE)[^\\n]*/api/(?:enforcement-policy|enforcement-profile|service|role-mapping|network-device)\\b)",
+      "action": "block",
+      "message": "Blocked: this action would modify RADIUS / AAA / ClearPass identity policy. Identity enforcement changes must be approved by a human — an agent can log the recommendation but cannot commit.",
+      "severity": "high",
+      "frameworks": [
+        "SOC2:CC6.1",
+        "SOC2:CC6.6",
+        "ISO_42001:6.1"
+      ],
+      "tag": "identity_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on hook, MCP, and runtime surfaces when their listed dependencies are satisfied. Does NOT inspect LLM prompt or response text.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Regex is verb-based; new ClearPass API paths or vendor CLI dialects require pattern updates",
+          "Does not intercept identity changes made via GUI sessions the agent does not shell out"
+        ]
+      }
+    },
+    {
+      "id": "no-firmware-downgrade",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block agent shell actions that install, load, or activate a network device firmware / OS image (Junos, ArubaOS, ArubaOS-CX, Aruba Instant). Firmware changes — especially downgrades — must be approved by a human because they can silently reintroduce known CVEs and reset feature flags.",
+      "match_tool": "shell",
+      "match_pattern": "(?:^\\s*request\\s+(?:system|vmhost)\\s+software\\s+(?:add|rollback|downgrade)\\b)|(?:^\\s*boot\\s+system\\s+(?:primary|secondary|flash)\\b)|(?:^\\s*copy\\s+(?:tftp|ftp|scp|sftp|usb)[^\\n]*\\s+(?:primary|secondary|system:|flash:|bootflash:)\\b)|(?:^\\s*image\\s+(?:download|activate|install)\\b)|(?:^\\s*upgrade\\s+image\\b)|(?:^\\s*install\\s+(?:activate|add|rollback|source)\\b)",
+      "action": "block",
+      "message": "Blocked: this action would change network device firmware. Firmware updates and especially downgrades require human approval — an autonomous agent should propose the version and change window, not commit it.",
+      "severity": "high",
+      "frameworks": [
+        "SOC2:CC6.1",
+        "SOC2:CC7.1",
+        "ISO_42001:6.1"
+      ],
+      "tag": "firmware_change",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on hook, MCP, and runtime surfaces when their listed dependencies are satisfied. Does NOT inspect LLM prompt or response text.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Cannot distinguish upgrade from downgrade without inspecting the target version — treats all image changes as approval-required",
+          "Vendor out-of-band firmware paths (Aruba Central push, ZTP boot) that bypass device shell are not intercepted"
+        ]
+      }
+    },
+    {
+      "id": "no-mass-vlan-reassignment",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block agent shell actions that reassign VLAN membership across many ports at once — interface ranges, port-access role rebinds, or scripted loops. Single-port moves stay allowed; broadcast-scope changes require human approval to prevent an agent from splitting a floor or a data center off the network.",
+      "match_tool": "shell",
+      "match_pattern": "(?:^\\s*interface\\s+range\\b[^\\n]*\\bvlan\\b)|(?:^\\s*interface\\s+range\\b[^\\n]*\\n[^\\n]*switchport\\s+access\\s+vlan\\b)|(?:^\\s*set\\s+interfaces\\s+ge-[^\\s]*\\s+unit\\s+\\d+\\s+family\\s+ethernet-switching\\s+vlan\\b[^\\n]*\\bmembers\\b[^\\n]*,)|(?:for\\s+\\w+\\s+in\\s+[^\\n]+;\\s*do[^\\n]*(?:vlan|switchport)\\b)|(?:^\\s*port-access\\s+role\\s+\\S+\\s+vlan\\b)",
+      "action": "block",
+      "message": "Blocked: this action would reassign VLAN membership across multiple ports at once. Broadcast-scope VLAN moves must be approved by a human — agents can propose the plan and per-port sequence but cannot commit the bulk change.",
+      "severity": "high",
+      "frameworks": [
+        "SOC2:CC6.1",
+        "SOC2:CC7.2",
+        "ISO_42001:6.1"
+      ],
+      "tag": "network_segmentation",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on hook, MCP, and runtime surfaces when their listed dependencies are satisfied. Does NOT inspect LLM prompt or response text.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Regex flags common bulk-change forms (interface range, scripted loops, comma-list Junos member changes); atomic single-port moves are not blocked by design",
+          "Cannot detect a bulk change delivered as many separate CLI sessions from a controller"
         ]
       }
     }
