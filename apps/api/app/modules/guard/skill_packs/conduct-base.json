@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.13.0",
+  "version": "2.14.0",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "ui": {
@@ -353,11 +353,13 @@
       "id": "approve-prod-deploy",
       "persona": "agent",
       "non_overridable": false,
-      "description": "Warn on production deploys",
+      "description": "Gate production deploys behind admin approval",
       "match_tool": "shell,workflow",
       "match_pattern": "deploy.*(prod|production)|vercel.*--prod|railway.*prod",
-      "action": "warn",
-      "message": "Production deploy proposed by an AI agent. Human approval required before this executes.",
+      "action": "approval",
+      "message": "Production deploy proposed by an AI agent. Admin approval required before this executes.",
+      "approval_type": "any_admin",
+      "approval_timeout_sec": 1800,
       "severity": "high",
       "frameworks": [
         "SOC2:CC8.1"
@@ -365,19 +367,17 @@
       "enforcement": {
         "version": 1,
         "proxy": "not_supported",
-        "hook": "advisory",
-        "mcp": "advisory",
-        "runtime": "advisory",
-        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "hard",
+        "guarantee": "Halts workflow execution and creates a Guard approval request. The workflow runtime does not resume until a permitted approver decides (approved \u2192 continue, rejected \u2192 abort). Hook and MCP surfaces pause the agent's next action pending the same decision.",
         "requires": [
-          "A supported pre-tool hook is installed, synced, and invoked before the action",
-          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
-          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+          "Approver has platform.approvals.decide permission",
+          "Workspace has at least one member with the admin role"
         ],
         "known_limitations": [
-          "Hook enforcement depends on the AI tool emitting supported structured hook events",
-          "MCP cannot enforce actions the agent does not submit to guard_check",
-          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+          "Hook/MCP enforcement depends on the agent invoking guard_check before the tool call",
+          "Proxy surface returns 428 with pending marker \u2014 the agent must retry after human approval"
         ]
       }
     },
@@ -385,11 +385,13 @@
       "id": "approve-db-migration-prod",
       "persona": "agent",
       "non_overridable": false,
-      "description": "Warn on production DB migrations",
+      "description": "Gate production DB migrations behind admin approval",
       "match_tool": "shell,workflow",
       "match_pattern": "alembic upgrade|prisma migrate deploy",
-      "action": "warn",
-      "message": "DB migration to production proposed by an AI agent. Requires human review and explicit approval before execution.",
+      "action": "approval",
+      "message": "DB migration to production proposed by an AI agent. Admin approval required before execution.",
+      "approval_type": "any_admin",
+      "approval_timeout_sec": 1800,
       "severity": "high",
       "frameworks": [
         "SOC2:CC8.1"
@@ -397,19 +399,17 @@
       "enforcement": {
         "version": 1,
         "proxy": "not_supported",
-        "hook": "advisory",
-        "mcp": "advisory",
-        "runtime": "advisory",
-        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "hard",
+        "guarantee": "Halts workflow execution and creates a Guard approval request. The workflow runtime does not resume until a permitted approver decides (approved \u2192 continue, rejected \u2192 abort). Hook and MCP surfaces pause the agent's next action pending the same decision.",
         "requires": [
-          "A supported pre-tool hook is installed, synced, and invoked before the action",
-          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
-          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+          "Approver has platform.approvals.decide permission",
+          "Workspace has at least one member with the admin role"
         ],
         "known_limitations": [
-          "Hook enforcement depends on the AI tool emitting supported structured hook events",
-          "MCP cannot enforce actions the agent does not submit to guard_check",
-          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+          "Hook/MCP enforcement depends on the agent invoking guard_check before the tool call",
+          "Proxy surface returns 428 with pending marker \u2014 the agent must retry after human approval"
         ]
       }
     },

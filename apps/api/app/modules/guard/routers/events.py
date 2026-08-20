@@ -187,12 +187,16 @@ def notify_guard_block(
     """
     import uuid as _uuid
     from app.modules.guard.models import GuardConfig as _GC
+    from app.models.workspace import Workspace as _WS
     from app.modules.guard.routers.notifications import resolve_channels as _resolve_channels
     ws = _uuid.UUID(str(workspace_id)) if not isinstance(workspace_id, _uuid.UUID) else workspace_id
     cfg = db.query(_GC).filter(_GC.workspace_id == ws).first()
+    ws_name = db.query(_WS.name).filter(_WS.id == ws).scalar()
+    ws_label = f"{ws_name} · `{str(ws)[:8]}`" if ws_name else f"`{str(ws)[:8]}`"
 
     icon = "🚨" if decision == "blocked" else "⚠️"
     lines = [f"{icon} *Guard {decision}* — `{rule_id or source}`"]
+    lines.append(f"• Workspace: {ws_label}")
     if user_email:
         lines.append(f"• User: {user_email}")
     if tool:
@@ -232,6 +236,7 @@ def notify_guard_block(
                 subject=f"[Guard {decision}] {rule_id or source}",
                 html=(
                     f"<p><strong>Guard {decision}</strong> — rule <code>{rule_id or source}</code></p>"
+                    + f"<p>Workspace: {ws_name or ''} <code>{str(ws)[:8]}</code></p>"
                     + (f"<p>User: {user_email}</p>" if user_email else "")
                     + (f"<p>Tool: <code>{tool}</code></p>" if tool else "")
                     + (f"<p>Provider: <code>{provider}</code> via {source}</p>" if provider else "")

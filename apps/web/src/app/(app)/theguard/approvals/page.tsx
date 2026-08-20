@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
@@ -79,7 +80,9 @@ const STATUS_COLOR: Record<ApprovalStatus, { bg: string; fg: string }> = {
 
 export default function ApprovalsPage() {
   const { authFetch, workspaceId } = useAuthFetch()
-  const [filter, setFilter] = useState<ApprovalStatus | "all">("pending")
+  const searchParams = useSearchParams()
+  const highlight = searchParams?.get("highlight") ?? null
+  const [filter, setFilter] = useState<ApprovalStatus | "all">(highlight ? "all" : "pending")
   const [items, setItems] = useState<ApprovalRow[]>([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -116,6 +119,15 @@ export default function ApprovalsPage() {
     const t = setInterval(load, 5000)
     return () => clearInterval(t)
   }, [filter, load])
+
+  useEffect(() => {
+    if (!highlight || items.length === 0) return
+    if (items.some(r => r.id === highlight)) {
+      setExpandedId(highlight)
+      const el = typeof document !== "undefined" ? document.getElementById(`approval-${highlight}`) : null
+      el?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+  }, [highlight, items])
 
   const decide = useCallback(
     async (row: ApprovalRow, decision: "approved" | "rejected") => {
@@ -206,7 +218,14 @@ export default function ApprovalsPage() {
             return (
               <div
                 key={row.id}
-                style={{ border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", padding: 14 }}
+                id={`approval-${row.id}`}
+                style={{
+                  border: `1px solid ${highlight === row.id ? "var(--info)" : "var(--border)"}`,
+                  borderRadius: 8,
+                  background: "var(--surface)",
+                  padding: 14,
+                  boxShadow: highlight === row.id ? "0 0 0 3px var(--info-bg)" : undefined,
+                }}
               >
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                   <div style={{ minWidth: 0, flex: 1 }}>

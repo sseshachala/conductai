@@ -37,7 +37,7 @@ def _base_url() -> str:
 
 
 def approval_url(request_id: str | _uuid.UUID) -> str:
-    return f"{_base_url()}/theguard/approvals/{request_id}"
+    return f"{_base_url()}/theguard/approvals?highlight={request_id}"
 
 
 def _snapshot_input(tool_input: dict | None) -> dict:
