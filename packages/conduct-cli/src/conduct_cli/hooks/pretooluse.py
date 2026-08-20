@@ -553,9 +553,14 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
         return None, "allow", None, None
 
     rules = policy.get("rules", [])
-    if tool_name == "Bash" and tool_input.get("command"):
-        input_text = _bash_operator_signature(tool_input["command"])
-        raw_for_decode = _bash_scan_target(tool_input["command"])
+    if tool_name in expand_match_tool("shell") and tool_input.get("command"):
+        # ponytail: match against the full scan target (preserves argv beyond
+        # signature) so anchor-based rules (^\s*boot\s+system\b, etc.) work
+        # as authored. Prior code compared against `Bash` literal after the
+        # entry point had lowercased tool_name — the branch was unreachable
+        # and rules silently matched json.dumps(tool_input) instead.
+        input_text = _bash_scan_target(tool_input["command"])
+        raw_for_decode = input_text
     else:
         input_text = json.dumps(tool_input)
         raw_for_decode = input_text
