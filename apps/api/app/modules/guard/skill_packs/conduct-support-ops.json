@@ -1,0 +1,70 @@
+{
+  "slug": "conduct-support-ops",
+  "name": "Conduct — Support Operations Governance",
+  "version": "0.1.0",
+  "tier": "custom",
+  "description": "Hook-surface rules for autonomous support agents. Blocks credential harvest, data exfiltration, and DNS tunneling attempts that arise when agents ingest untrusted customer input (prompt injection). Companion pack for the compromised_support_agent playbook.",
+  "ui": {
+    "icon": "\ud83c\udfab",
+    "subtitle": "Blocks credential harvest + data exfil + DNS tunneling when support agents ingest untrusted customer input. Companion pack for compromised_support_agent.",
+    "tags": ["Demo", "Support", "Prompt Injection", "Exfil"]
+  },
+  "rules": [
+    {
+      "id": "no-external-post-with-body",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block agent HTTP POST/PUT with body via curl or wget. Prompt injection through customer input frequently uses this pattern to exfiltrate credentials or PII to attacker-controlled hosts.",
+      "match_tool": "shell",
+      "match_pattern": "(?:curl|wget)\\s+[^|;]*?(?:-X\\s*(?:POST|PUT|PATCH)|--(?:request\\s+(?:POST|PUT|PATCH)|post-data))[^|;]*?(?:-d\\b|--data\\b|--data-binary\\b|--data-raw\\b|-F\\b|--form\\b)",
+      "action": "block",
+      "message": "Blocked: agent HTTP POST with body detected. Prompt injection through customer input frequently uses curl/wget POST to exfiltrate credentials or PII. Route legitimate outbound calls through an approved integration.",
+      "severity": "high",
+      "frameworks": ["SOC2:CC6.7", "ISO_42001:6.1", "OWASP_LLM:LLM01"],
+      "tag": "exfil",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks HTTP POST/PUT with body only on hook + runtime surfaces when tool_input contains matching command bytes.",
+        "requires": [
+          "Pre-tool hook installed for the calling AI tool, OR conduct runtime evaluation active for brain block tool_use"
+        ],
+        "known_limitations": [
+          "Does not inspect encrypted payloads",
+          "Does not cover raw socket writes or python http.client / requests library calls"
+        ]
+      }
+    },
+    {
+      "id": "no-dns-exfil",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Block DNS lookups with unusually long encoded subdomain labels (base64 or hex shape). DNS tunneling is the standard fallback for exfiltration after HTTP is blocked — data is smuggled byte-by-byte through subdomain lookups.",
+      "match_tool": "shell",
+      "match_pattern": "(?:nslookup|dig|host|drill)\\s+[A-Za-z0-9+/=_-]{40,}",
+      "action": "block",
+      "message": "Blocked: DNS lookup with a 40+ character encoded label detected. This is the DNS tunneling pattern used to exfiltrate data one query at a time after HTTP exfil is blocked. Legitimate DNS lookups do not use encoded subdomain labels.",
+      "severity": "high",
+      "frameworks": ["SOC2:CC6.7", "ISO_42001:6.1"],
+      "tag": "exfil",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks DNS lookups with encoded-looking labels on hook + runtime surfaces.",
+        "requires": [
+          "Pre-tool hook installed for the calling AI tool, OR conduct runtime evaluation active for brain block tool_use"
+        ],
+        "known_limitations": [
+          "Cannot inspect DNS over HTTPS (DoH) or DNS over TLS (DoT) traffic",
+          "May false-positive on legitimate long service discovery labels"
+        ]
+      }
+    }
+  ]
+}
