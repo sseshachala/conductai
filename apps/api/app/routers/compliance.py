@@ -99,6 +99,31 @@ def list_installed_packs(
     return InstalledPacksOut(installed=sorted(r[0] for r in rows))
 
 
+# ── Admin: force re-seed skill_packs from disk ────────────────────────────────
+
+@router.post("/packs/reseed")
+def reseed_skill_packs(
+    _: str = Depends(require_permission("guard.policies.edit")),
+):
+    """Force the skill_packs seeder to run synchronously. Returns per-pack
+    results so operators can see which pack file failed to load / validate /
+    insert — much better than trying to grep startup logs after the fact.
+
+    Idempotent — existing rows with current enforcement contract are skipped.
+    """
+    import io as _io
+    import contextlib as _ctx
+    from scripts.seed_skill_packs import run as _seed_run
+
+    buf = _io.StringIO()
+    try:
+        with _ctx.redirect_stdout(buf):
+            _seed_run(dry_run=False, force=True)
+        return {"ok": True, "output": buf.getvalue()}
+    except Exception as exc:
+        return {"ok": False, "output": buf.getvalue(), "error": str(exc)}
+
+
 # ── Pack catalog (marketplace metadata) ───────────────────────────────────────
 
 @router.get("/packs/available")
