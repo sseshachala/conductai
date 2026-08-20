@@ -1054,7 +1054,12 @@ def cmd_delete(args):
         if not name:
             print(f"{RED}Usage: conduct delete [environment|project|credential] <name>{RESET}")
             sys.exit(1)
-        proj = _resolve_project(server, workspace_id, hdrs, name)
+        # ponytail: strict lookup — never create-on-delete (matches _resolve_environment semantics)
+        projects = _list_projects(server, workspace_id, hdrs)
+        proj = next((p for p in projects if p["name"].lower() == name.lower()), None)
+        if not proj:
+            print(f"{RED}Project '{name}' not found. Run 'conduct projects' to list projects.{RESET}")
+            sys.exit(1)
         purge = getattr(args, "purge", False)
         if purge:
             print(f"{RED}{BOLD}⚠ PURGE mode — this will permanently delete ALL data for '{proj['name']}'{RESET}")
