@@ -79,44 +79,59 @@ LEGACY_PACK_MAP = {
 # ── Main (raw SQL — avoids ORM relationship resolution issues) ────────────────
 
 def run(dry_run: bool, force: bool = False) -> None:
-    with engine.connect() as conn:
-        with conn.begin():
-            # 1. Seed skill_packs
-            print("\n── Seeding skill_packs ──")
-            for slug in _discover_pack_slugs():
-                pack = _load_pack(slug)
-                version = pack["version"]
-                existing = conn.execute(_text(
-                    "SELECT rules FROM skill_packs WHERE slug=:s AND version=:v"
-                ), {"s": slug, "v": version}).fetchone()
-                has_current_contract = bool(
-                    existing
-                    and existing[0]
-                    and all(
-                        isinstance(rule.get("enforcement"), dict)
-                        and rule["enforcement"].get("version") == 1
-                        for rule in (existing[0] or [])
-                    )
-                )
-                if existing and has_current_contract and not force:
-                    print(f"  skill_pack {slug} {version} already exists — skipping")
-                    continue
-                if not dry_run:
-                    conn.execute(_text("""
-                        INSERT INTO skill_packs (slug, version, name, description, tier, rules, published_at, created_at)
-                        VALUES (:slug, :version, :name, :desc, :tier, CAST(:rules AS jsonb), :now, :now)
-                        ON CONFLICT (slug, version) DO UPDATE
-                          SET name=EXCLUDED.name, description=EXCLUDED.description,
-                              tier=EXCLUDED.tier, rules=EXCLUDED.rules
-                    """), {
-                        "slug": slug, "version": version,
-                        "name": pack["name"], "desc": pack.get("description", ""),
-                        "tier": pack["tier"], "rules": json.dumps(pack["rules"]),
-                        "now": NOW,
-                    })
-                print(f"  {'[dry]' if dry_run else ''} seeded {slug} v{version} ({len(pack['rules'])} rules, tier={pack['tier']})")
+    # Per-pack sub-transactions so one bad pack file cannot block every other
+    # pack from being seeded. Previously the whole loop ran in one conn.begin()
+    # and a single validation failure (e.g. hipaa_phi_export_requires_approval
+    # action='approval' claiming hard blocking) rolled back the entire batch,
+    # leaving new packs like conduct-network-ops uninserted forever.
+    print("\n── Seeding skill_packs ──")
+    seeded_ok = 0
+    failed: list[tuple[str, str]] = []
 
-            # 2. Auto-install conduct-base for every workspace with a guard_config
+    with engine.connect() as conn:
+        for slug in _discover_pack_slugs():
+            try:
+                with conn.begin():
+                    pack = _load_pack(slug)
+                    version = pack["version"]
+                    existing = conn.execute(_text(
+                        "SELECT rules FROM skill_packs WHERE slug=:s AND version=:v"
+                    ), {"s": slug, "v": version}).fetchone()
+                    has_current_contract = bool(
+                        existing
+                        and existing[0]
+                        and all(
+                            isinstance(rule.get("enforcement"), dict)
+                            and rule["enforcement"].get("version") == 1
+                            for rule in (existing[0] or [])
+                        )
+                    )
+                    if existing and has_current_contract and not force:
+                        print(f"  skill_pack {slug} {version} already exists — skipping")
+                        continue
+                    if not dry_run:
+                        conn.execute(_text("""
+                            INSERT INTO skill_packs (slug, version, name, description, tier, rules, published_at, created_at)
+                            VALUES (:slug, :version, :name, :desc, :tier, CAST(:rules AS jsonb), :now, :now)
+                            ON CONFLICT (slug, version) DO UPDATE
+                              SET name=EXCLUDED.name, description=EXCLUDED.description,
+                                  tier=EXCLUDED.tier, rules=EXCLUDED.rules
+                        """), {
+                            "slug": slug, "version": version,
+                            "name": pack["name"], "desc": pack.get("description", ""),
+                            "tier": pack["tier"], "rules": json.dumps(pack["rules"]),
+                            "now": NOW,
+                        })
+                    print(f"  {'[dry]' if dry_run else ''} seeded {slug} v{version} ({len(pack['rules'])} rules, tier={pack['tier']})")
+                    seeded_ok += 1
+            except Exception as exc:
+                # sub-transaction auto-rolled back; other packs continue
+                print(f"  ✗ {slug} FAILED: {type(exc).__name__}: {exc}")
+                failed.append((slug, str(exc)))
+
+        # 2. Auto-install conduct-base for every workspace with a guard_config
+        # Own sub-transaction — should never be affected by pack seed failures.
+        with conn.begin():
             print("\n── Installing conduct-base for all workspaces ──")
             configs = conn.execute(_text("SELECT workspace_id FROM guard_config")).fetchall()
             for (ws_id,) in configs:
@@ -128,11 +143,13 @@ def run(dry_run: bool, force: bool = False) -> None:
                     """), {"ws": ws_id, "now": NOW})
             print(f"  {'[dry]' if dry_run else ''} {len(configs)} workspaces → conduct-base")
 
-            if dry_run:
-                conn.execute(_text("ROLLBACK"))
-                print("\n[dry-run] No changes committed.")
-            else:
-                print("\n✓ Done.")
+    print(f"\n✓ Done. seeded={seeded_ok}, failed={len(failed)}")
+    if failed:
+        print("Failed packs (each isolated — did not block others):")
+        for slug, err in failed:
+            print(f"  ✗ {slug}: {err}")
+    if dry_run:
+        print("[dry-run] no changes actually committed above the ORM boundary.")
 
 
 
