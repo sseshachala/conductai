@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "governing-37-ai-agents-in-production",
+      title: "Governing 37 AI Agents in Production: A Field Guide to Runtime Governance.",
+      excerpt: "Claude Code, Cursor, Copilot, custom agents, MCP servers — each with its own dashboard and no shared audit trail. Policy as a runtime primitive, not a doc. Six use cases from what real teams are doing.",
+      date: "August 20, 2026",
+      tag: "Field Guide",
+      tagColor: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    },
+    {
       slug: "guard-and-security-loop",
       title: "Two things, one product: Guard and the Security Loop.",
       excerpt: "We've been telling too many stories at once. Conduct is two things: Guard on the wire in front of every AI call, and the Security Loop that closes scan-to-fix. Everything else is a playbook in the registry.",
