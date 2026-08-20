@@ -26,6 +26,12 @@ export default function BlogPost() {
 
       <div className="prose prose-stone max-w-none">
 
+        <img
+          src="/blog/governing-37-ai-agents-hero.png"
+          alt="Governing 37 AI Agents in Production — a field guide to runtime governance"
+          className="w-full rounded-2xl border border-stone-200 mb-12"
+        />
+
         <h2 className="text-2xl font-bold text-stone-900 mt-12 mb-4">The problem we started with</h2>
         <p className="text-stone-700 leading-relaxed mb-4">
           At most engineering teams we talk to, AI now runs unattended in five
