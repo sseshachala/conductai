@@ -266,7 +266,7 @@ class GuardRateLimit(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    agent_identity_id = Column(UUID(as_uuid=True), ForeignKey("agent_identities.id", ondelete="CASCADE"), nullable=True)
+    agent_identity_id = Column(String(36), ForeignKey("agent_identities.id", ondelete="CASCADE"), nullable=True)
     rpm = Column(Integer, nullable=True)
     tpm = Column(Integer, nullable=True)
     created_at = Column(

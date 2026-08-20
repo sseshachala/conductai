@@ -34,7 +34,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "agent_identity_id",
-            UUID(as_uuid=True),
+            sa.String(36),
             sa.ForeignKey("agent_identities.id", ondelete="CASCADE"),
             nullable=True,
         ),
