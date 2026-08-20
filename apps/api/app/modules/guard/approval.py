@@ -238,6 +238,31 @@ def pending_marker(request: GuardApprovalRequest) -> str:
     )
 
 
+def resume_verdict(prior: GuardApprovalRequest | None) -> tuple[str, str | None]:
+    """Given a prior approval request for the same (session, rule), return
+    the resume verdict for the caller (MCP guard_check, hook, runtime).
+
+    Returns (verdict, block_reason):
+      ("proceed", None)      — prior approved, caller returns ok / exit 0
+      ("block", reason)      — prior rejected or timed_out, caller returns BLOCKED
+      ("wait", None)         — prior still pending, caller returns existing marker
+      ("create", None)       — no prior, caller creates a new approval request
+
+    The prior row must already have been passed through sweep_if_timed_out
+    so its status is current.
+    """
+    if prior is None:
+        return ("create", None)
+    if prior.status == "approved":
+        return ("proceed", None)
+    if prior.status == "rejected":
+        return ("block", "human reviewer rejected this action")
+    if prior.status == "timed_out":
+        return ("block", "prior approval request timed out — ask a human to re-approve")
+    # pending or any other status → keep waiting
+    return ("wait", None)
+
+
 def sweep_if_timed_out(db: Session, row: GuardApprovalRequest, *, now: datetime | None = None) -> GuardApprovalRequest:
     """Lazy timeout: called on every read. If the request is still pending
     past `timeout_at`, mark it timed_out and commit. No background job needed."""

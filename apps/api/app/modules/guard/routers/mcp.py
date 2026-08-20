@@ -821,29 +821,47 @@ async def mcp_endpoint(
                     return JSONResponse(_text(msg_id, f"WARNING — {message}  [rule: {rule_id}]{_guidance_suffix}"))
 
                 if action == "approval":
-                    # HITL — one pending row per (session, rule) so an agent that
-                    # retries the same intent doesn't spam the inbox.
-                    existing = db.query(GuardApprovalRequest).filter(
-                        GuardApprovalRequest.workspace_id == ws_uuid,
-                        GuardApprovalRequest.rule_id == rule_id,
-                        GuardApprovalRequest.session_id == str(session_id) if session_id else None,
-                        GuardApprovalRequest.status == "pending",
-                    ).first() if session_id else None
-                    if existing is None:
-                        req = _approval.create_approval_request(
-                            db,
-                            workspace_id=ws_uuid,
-                            rule=rule,
-                            tool_name=inner_tool,
-                            tool_input=inner_input,
-                            requester_email=user_email,
-                            requester_user_id=clerk_user_id,
-                            surface=ai_tool,
-                            session_id=str(session_id) if session_id else None,
+                    # HITL resume: look up the most recent request for this
+                    # (session, rule). If prior was approved → proceed (return
+                    # ok). If rejected/timed_out → block. If pending → return
+                    # its marker (dedup). Else create a new request.
+                    prior = None
+                    if session_id:
+                        prior = (
+                            db.query(GuardApprovalRequest)
+                            .filter(
+                                GuardApprovalRequest.workspace_id == ws_uuid,
+                                GuardApprovalRequest.rule_id == rule_id,
+                                GuardApprovalRequest.session_id == str(session_id),
+                            )
+                            .order_by(GuardApprovalRequest.created_at.desc())
+                            .first()
                         )
-                        _approval.dispatch_approval_notifications(db, req)
-                    else:
-                        req = existing
+                        if prior:
+                            prior = _approval.sweep_if_timed_out(db, prior)
+
+                    verdict, block_reason = _approval.resume_verdict(prior)
+                    if verdict == "proceed":
+                        _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
+                        return JSONResponse(_text(msg_id, "ok"))
+                    if verdict == "block":
+                        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
+                        return JSONResponse(_text(msg_id, f"BLOCKED — {block_reason}  [rule: {rule_id}]{_guidance_suffix}"))
+                    if verdict == "wait":
+                        return JSONResponse(_text(msg_id, _approval.pending_marker(prior)))
+                    # verdict == "create"
+                    req = _approval.create_approval_request(
+                        db,
+                        workspace_id=ws_uuid,
+                        rule=rule,
+                        tool_name=inner_tool,
+                        tool_input=inner_input,
+                        requester_email=user_email,
+                        requester_user_id=clerk_user_id,
+                        surface=ai_tool,
+                        session_id=str(session_id) if session_id else None,
+                    )
+                    _approval.dispatch_approval_notifications(db, req)
                     return JSONResponse(_text(msg_id, _approval.pending_marker(req)))
 
                 # audit action fires the side-effect but returns "ok"
