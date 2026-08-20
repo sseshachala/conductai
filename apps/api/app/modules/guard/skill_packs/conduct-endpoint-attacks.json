@@ -1,7 +1,7 @@
 {
   "slug": "conduct-endpoint-attacks",
   "name": "Conduct Endpoint Attacks",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "tier": "free",
   "description": "10 pattern rules for the endpoint-attack techniques Numbat and other agent EDRs surface: reverse shells, SSH/cloud credential file reads, cloud instance metadata recon, persistence via cron/systemd/launchd/shell profiles, encoded-payload shell chains, and secret-read-then-egress chains. Every rule maps to a MITRE ATT&CK sub-technique. Hook and MCP surfaces are covered; the runtime and proxy surfaces are not (these are tool_input-level patterns).",
   "ui": {
@@ -319,9 +319,9 @@
       "action": "block",
       "severity": "critical",
       "match_tool": "bash,edit,write",
-      "match_pattern": "(curl|wget|fetch)\\s+[^|]*\\|\\s*(/bin/)?(bash|sh|zsh|python[23]?|perl|ruby|node|npx)\\b|base64\\s+-d[^|]*\\|\\s*(/bin/)?(bash|sh)",
-      "message": "Download-and-execute or encoded-payload-to-shell chain detected.",
-      "recommendation": "Never pipe network output directly into a shell interpreter. Download, review, then execute.",
+      "match_pattern": "(curl|wget|fetch)\\s+(?![^|]*https?://(?:sh\\.rustup\\.rs\\b|get\\.docker\\.com\\b|install\\.python-poetry\\.org\\b|astral\\.sh\\b|bun\\.sh\\b|deno\\.land\\b|deb\\.nodesource\\.com\\b|apt\\.postgresql\\.org\\b|packages\\.microsoft\\.com\\b|raw\\.githubusercontent\\.com/(?:Homebrew|nvm-sh|nodesource|denoland|oven-sh|astral-sh)/|dl\\.google\\.com/linux/))[^|]*\\|\\s*(/bin/)?(bash|sh|zsh|python[23]?|perl|ruby|node|npx)\\b|base64\\s+-d[^|]*\\|\\s*(/bin/)?(bash|sh)",
+      "message": "Download-and-execute or encoded-payload-to-shell chain detected. If this is a known installer, the URL host must be on the trusted-installer allowlist.",
+      "recommendation": "Never pipe network output directly into a shell interpreter unless the URL host is a known-trusted installer (rustup, docker, homebrew, nvm, bun, deno, poetry, uv). For anything else, download, review, then execute.",
       "frameworks": [
         "MITRE_ATT&CK:T1105",
         "MITRE_ATT&CK:T1027",

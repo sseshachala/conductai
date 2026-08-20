@@ -2,7 +2,7 @@
   "slug": "conduct-network-ops",
   "name": "Conduct \u2014 Network Operations Governance",
   "version": "0.2.1",
-  "tier": "custom",
+  "tier": "demo",
   "description": "Hook-surface rules for governing autonomous NetOps agents. Blocks writes to security-sensitive network configuration (ACL, firewall, routing policy) while allowing reversible operational actions (QoS, service restart, logging). Companion pack for the network_diagnosis_agent playbook.",
   "ui": {
     "icon": "\ud83d\udef0\ufe0f",

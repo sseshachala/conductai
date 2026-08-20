@@ -1,7 +1,7 @@
 {
   "slug": "conduct-hipaa",
   "name": "Conduct HIPAA",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "tier": "paid",
   "description": "HIPAA PHI protection rules",
   "ui": {
@@ -15,11 +15,11 @@
   "rules": [
     {
       "id": "hipaa_http_phi",
-      "description": "Block PHI over plain HTTP",
+      "description": "Block PHI over unencrypted transit \u2014 plain HTTP, FTP, or telnet to endpoints handling patient/medical/PHI/FHIR/HL7/DICOM/EHR/MRN identifiers (HIPAA \u00a7164.312(e)(1))",
       "match_tool": "edit,write,bash",
-      "match_pattern": "http://.*patient|http://.*health",
+      "match_pattern": "(?:http|ftp|telnet)://[^\\s\"'\\)>]{0,300}(patient|health|phi|mrn|medical|diagnosis|treatment|prescription|clinical|fhir|ehr|hl7|dicom)|(?:url|endpoint|host|base[_-]?url|api[_-]?url|server)\\s*=\\s*[\"']http://[^\"']{0,200}(patient|health|phi|mrn|medical|fhir|ehr|clinical)",
       "action": "block",
-      "message": "PHI over plain HTTP is a HIPAA violation \u2014 use HTTPS.",
+      "message": "PHI over unencrypted transit is a HIPAA violation \u2014 use HTTPS/TLS 1.2+ for any endpoint carrying patient, medical, or PHI-adjacent data (\u00a7164.312(e)(1)).",
       "persona_affinity": [
         "agent"
       ],
@@ -147,8 +147,8 @@
         "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
-        "runtime": "hard",
-        "guarantee": "Pauses execution and creates a Guard approval request on any surface that submits the action to guard_check; workflow runtime runs pause until decided.",
+        "runtime": "conditional",
+        "guarantee": "Pauses execution and creates a Guard approval request on any surface that submits the action to guard_check; workflow runtime pauses when the pre-tool hook is invoked.",
         "requires": [
           "Approver has platform.approvals.decide permission",
           "Requester differs from approver (peer approval)"

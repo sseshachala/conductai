@@ -1,7 +1,7 @@
 {
   "slug": "conduct-soc2",
   "name": "Conduct SOC 2",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "tier": "paid",
   "description": "SOC 2 compliance rules",
   "ui": {
@@ -126,9 +126,9 @@
     },
     {
       "id": "soc2_unencrypted_storage",
-      "description": "Warn on unencrypted write with sensitive filename",
-      "match_tool": "write",
-      "match_pattern": "open\\(['\"].*secret.*['\"],\\s*['\"]w",
+      "description": "Warn when sensitive data is written to disk without evident encryption \u2014 covers open() with credential-shaped filenames, dump/write APIs handling secret payloads, and shell copies of credential files",
+      "match_tool": "edit,write,bash",
+      "match_pattern": "open\\s*\\(\\s*[\"'][^\"']*(secret|password|passwd|credential|token|api[_-]?key|access[_-]?key|private[_-]?key|creds|auth|\\.env|\\.pem|\\.p12|\\.jks|\\.key|\\.pfx)[^\"']*[\"']\\s*,\\s*[\"'][wa][b+]?[\"']|(?:to_csv|to_json|to_parquet|to_pickle|write_text|writelines|\\.write|json\\.dump|pickle\\.dump|yaml\\.dump)\\s*\\([^)]*\\b(secret|password|passwd|credential|token|api[_-]?key|access[_-]?key|private[_-]?key)[a-z0-9_]*\\b|(?:aws\\s+s3\\s+cp|gsutil\\s+cp|az\\s+storage\\s+blob\\s+upload|\\bscp\\s|\\bcp\\s|\\btee\\s)[^\\n]{0,200}(secret|password|credential|token|\\.pem|\\.key|\\.env)",
       "action": "warn",
       "message": "Writing sensitive data unencrypted \u2014 use a secrets manager.",
       "persona_affinity": [

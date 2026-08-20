@@ -2,7 +2,7 @@
   "slug": "conduct-life-sciences",
   "name": "Conduct Life Sciences",
   "version": "1.0.0",
-  "tier": "paid",
+  "tier": "demo",
   "description": "Guard controls aligned to life sciences regulatory frameworks for agentic AI. Covers FDA Computer Software Assurance principles, FDA/EMA Good Machine Learning Practice, ICH quality risk management, GAMP AI guidance, and EU AI Act high-risk obligations.",
   "rules": [
     {

@@ -34,8 +34,6 @@ RULE_COUNT_FLOOR: dict[str, int] = {
     "conduct-irs-1075": 6,
     "conduct-financial-services": 6,
     "conduct-life-sciences": 7,
-    "surface-aware": 5,
-    "meridian-dispatch": 2,
 }
 
 

@@ -2,7 +2,7 @@
   "slug": "conduct-financial-services",
   "name": "Conduct Financial Services",
   "version": "1.0.0",
-  "tier": "paid",
+  "tier": "demo",
   "description": "Guard controls aligned to US banking model risk management for agentic AI. Interim controls covering SR 11-7 principles while agent-specific guidance is pending.",
   "rules": [
     {

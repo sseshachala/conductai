@@ -2,7 +2,7 @@
   "slug": "conduct-support-ops",
   "name": "Conduct — Support Operations Governance",
   "version": "0.1.0",
-  "tier": "custom",
+  "tier": "demo",
   "description": "Hook-surface rules for autonomous support agents. Blocks credential harvest, data exfiltration, and DNS tunneling attempts that arise when agents ingest untrusted customer input (prompt injection). Companion pack for the compromised_support_agent playbook.",
   "ui": {
     "icon": "\ud83c\udfab",

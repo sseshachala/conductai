@@ -1,7 +1,7 @@
 {
   "slug": "conduct-irs-1075",
   "name": "Conduct IRS 1075",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "tier": "paid",
   "description": "IRS Publication 1075 enforcement rules \u2014 Federal Tax Information (FTI) protection for government agencies and contractors handling IRS-shared tax data under IRC Section 6103",
   "ui": {
@@ -55,7 +55,7 @@
       "id": "irs1075-no-tax-return-data",
       "description": "Block tax return fields (AGI, W-2, 1099 values) in AI model context (IRS 1075 Section 4)",
       "match_tool": "bash,edit,write",
-      "match_pattern": "(adjusted.?gross.?income|agi|taxable.?income|federal.?tax.?withheld|form.?1040|w.?2.?wages|1099.?(int|div|misc|nec|r|g)|refund.?amount|tax.?liability).*(\\$|[0-9]{3,}|=|:)",
+      "match_pattern": "(adjusted_gross_income|\\bagi\\b|taxable_income|federal_tax_withheld|form_1040|w2_wages|1099_(int|div|misc|nec|r|g)|refund_amount|tax_liability)[\"']?\\]?\\s*[=:]\\s*[\"']?(\\$|-?[0-9])",
       "action": "block",
       "message": "Tax return data (FTI) detected in AI context \u2014 IRS 1075 Section 4 prohibits passing Federal Tax Information to AI systems without documented authorisation.",
       "persona_affinity": [
@@ -162,11 +162,14 @@
     },
     {
       "id": "irs1075-no-fti-unencrypted-write",
-      "description": "Block writing FTI to unencrypted files or plain-text storage (IRS 1075 Section 9 \u2014 Encryption)",
-      "match_tool": "edit,write",
-      "match_pattern": "open\\(['\"].*\\.(txt|csv|log|json)['\"],\\s*['\"]w['\"]\\).*\\n.*(ssn|ein|tax|fti|1040|agi)|write.*(ssn|ein|tax_return|fti).*(file|disk|storage)(?!.*(encrypt|cipher|kms|aes|vault))",
-      "action": "block",
-      "message": "FTI written to unencrypted storage \u2014 IRS 1075 Section 9 requires AES-256 encryption for all FTI at rest.",
+      "description": "Require compliance-officer approval for writes of FTI-shaped data to file, disk, or object storage (IRS 1075 Section 9 \u2014 Encryption). Regex cannot verify AES-256/KMS use; a human reviews the write path and confirms encryption before proceeding.",
+      "match_tool": "edit,write,bash",
+      "match_pattern": "(open\\s*\\(|to_csv\\s*\\(|to_json\\s*\\(|to_parquet\\s*\\(|write_text\\s*\\(|writelines\\s*\\(|\\.write\\s*\\(|\\bcp\\s|\\bscp\\s|\\bdd\\s|\\btee\\s|aws\\s+s3\\s+cp|gsutil\\s+cp|az\\s+storage\\s+blob\\s+upload).*\\b(ssn|ein|fti|tax_return|form_1040|w2_wages|1099_(int|div|misc|nec|r|g)|adjusted_gross_income|\\bagi\\b)\\b",
+      "action": "approval",
+      "message": "FTI write to storage detected \u2014 IRS 1075 Section 9 requires AES-256 at rest. Compliance-officer approval required to verify encryption library, key management, and rotation.",
+      "approval_group": "compliance-officers",
+      "approval_type": "peer",
+      "approval_timeout_sec": 1800,
       "persona_affinity": [
         "agent"
       ],
@@ -176,22 +179,23 @@
         "SOC2:CC6.1"
       ],
       "severity": "critical",
-      "recommendation": "All FTI must be encrypted at rest using AES-256. Use a managed KMS for key management. Never write FTI to plain-text files or unencrypted storage.",
+      "recommendation": "All FTI must be encrypted at rest using AES-256 with keys held in a managed KMS. Provide the approver with (1) destination path/bucket, (2) encryption library or KMS in use, (3) key rotation policy, and (4) access-log destination. Attach evidence before approving.",
       "enforcement": {
         "version": 1,
         "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
-        "runtime": "not_supported",
-        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "runtime": "conditional",
+        "guarantee": "Pauses execution and creates a Guard approval request on any surface that submits the action to guard_check; workflow runtime pauses when the pre-tool hook is invoked.",
         "requires": [
-          "A supported pre-tool hook is installed, synced, and invoked before the action",
-          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting"
+          "Approver has platform.approvals.decide permission",
+          "Requester differs from approver (peer approval)",
+          "A supported pre-tool hook is installed, synced, and invoked before the action"
         ],
         "known_limitations": [
-          "Hook enforcement depends on the AI tool emitting supported structured hook events",
-          "MCP cannot enforce actions the agent does not submit to guard_check",
-          "Workflow runtime skips rules restricted to non-workflow tool families"
+          "Regex cannot verify encryption library configuration \u2014 the approver must inspect surrounding code",
+          "Hook/MCP enforcement depends on the agent invoking guard_check before the tool call",
+          "Proxy surface returns 428 with pending marker \u2014 the agent must retry after human approval"
         ]
       }
     },

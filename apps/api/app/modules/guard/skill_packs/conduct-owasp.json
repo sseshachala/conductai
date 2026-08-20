@@ -1,7 +1,7 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "tier": "paid",
   "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents, including ASI06 Memory Poisoning (MITRE ATLAS AML.M0031)",
   "ui": {
@@ -15,9 +15,9 @@
   "rules": [
     {
       "id": "owasp_injection_guard",
-      "description": "Block SQL string concatenation (OWASP Web A03)",
+      "description": "Block SQL injection patterns \u2014 f-string interpolation and string concatenation in SQL statements (OWASP Web A03)",
       "match_tool": "bash,edit,write",
-      "match_pattern": "SELECT\\s+.*\\+|execute\\(.*f['\"]",
+      "match_pattern": "execute\\s*\\(\\s*f['\"][^'\"]*\\b(SELECT|INSERT|UPDATE|DELETE|DROP|MERGE|CREATE|ALTER|TRUNCATE)\\b|execute\\s*\\(\\s*['\"][^'\"]*\\b(SELECT|INSERT|UPDATE|DELETE)\\b[^'\"]*['\"]\\s*\\+|\\b(SELECT|INSERT|UPDATE|DELETE)\\b[^;\\n]{0,200}['\"]\\s*\\+\\s*\\w|f['\"][^'\"]*\\b(SELECT|INSERT|UPDATE|DELETE|DROP|MERGE)\\b[^'\"]*\\{",
       "action": "block",
       "message": "Possible SQL injection \u2014 use parameterised queries.",
       "persona_affinity": [
