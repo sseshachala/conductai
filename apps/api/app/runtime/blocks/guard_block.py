@@ -49,6 +49,24 @@ def _execute_guard(
     except (ValueError, KeyError):
         return {"status": "skipped", "reason": "invalid_workspace_id"}
 
+    # HITL resume: when a prior action=approval rule paused the run and an
+    # approver decided, the approvals router sets state[__approval_<block_id>].
+    # Consume it once so this pass skips re-evaluation (approved) or blocks
+    # (rejected). Without this the same rule fires again on resume and
+    # creates another pending request — the loop never completes.
+    _approval_key = f"__approval_{block.get('id', 'guard')}"
+    _approval_decision = state.pop(_approval_key, None) if isinstance(state, dict) else None
+    if _approval_decision == "approved":
+        return {
+            "status":       "resumed_approved",
+            "workspace_id": str(ws_uuid),
+            "block_id":     block.get("id", "guard"),
+        }
+    if _approval_decision == "rejected":
+        raise RuntimeError(
+            f"[ConductGuard] Approval rejected for guard block '{block.get('id', 'guard')}'"
+        )
+
     policies         = list(_policy_cache.get("policies") or [])
     enforcement_mode = _policy_cache.get("enforcement_mode", "block")
     advisory         = bool(_policy_cache.get("advisory", False))
