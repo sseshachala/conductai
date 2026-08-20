@@ -255,7 +255,8 @@ def _eval_one(
         score = _run_live(fixture, score, playbook_yaml, model=model, api_key=api_key, judge=judge)
 
     elapsed = time.perf_counter() - start
-    log.info(
+    _emit = log.info if live else log.debug
+    _emit(
         "eval",
         slug=fixture.slug,
         structural=score.structural_score,
