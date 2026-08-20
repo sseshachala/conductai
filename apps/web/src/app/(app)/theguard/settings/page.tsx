@@ -496,6 +496,8 @@ function RateLimitsCard({ isAdmin }: { isAdmin: boolean }) {
           </label>
         </div>
 
+        <RateLimitPresets isAdmin={isAdmin} onPick={(r, t) => { setRpm(String(r)); setTpm(String(t)) }} />
+
         {err && <div style={{ fontSize: 12, color: "var(--danger)" }}>{err}</div>}
 
         <div>
@@ -508,6 +510,59 @@ function RateLimitsCard({ isAdmin }: { isAdmin: boolean }) {
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+// Anthropic Tier 1 defaults for reference: 50 RPM, 40k input TPM.
+const RATE_LIMIT_PRESETS: Array<{ label: string; rpm: number; tpm: number; why: string }> = [
+  { label: "Solo dev / smoke test",     rpm: 2,   tpm: 500,     why: "trips the cap in a 3-call test — good for verifying enforcement" },
+  { label: "Small team, exploratory",   rpm: 60,  tpm: 100000,  why: "~1 req/sec sustained; enough for Cursor / Claude Code chat" },
+  { label: "Team of 10-20 devs",        rpm: 300, tpm: 500000,  why: "absorbs bursts, still catches runaway agents" },
+]
+
+function RateLimitPresets({ isAdmin, onPick }: { isAdmin: boolean; onPick: (rpm: number, tpm: number) => void }) {
+  return (
+    <div style={{ border: "1px dashed var(--border)", borderRadius: 8, padding: "10px 14px" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>
+        Suggested defaults
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {RATE_LIMIT_PRESETS.map(p => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => onPick(p.rpm, p.tpm)}
+            disabled={!isAdmin}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "160px 60px 80px 1fr",
+              gap: 10,
+              alignItems: "center",
+              padding: "6px 8px",
+              background: "transparent",
+              border: "1px solid transparent",
+              borderRadius: 6,
+              cursor: isAdmin ? "pointer" : "default",
+              textAlign: "left",
+              color: "var(--text-2)",
+              fontSize: 12.5,
+            }}
+            onMouseEnter={e => { if (isAdmin) e.currentTarget.style.background = "var(--surface-2)" }}
+            onMouseLeave={e => { e.currentTarget.style.background = "transparent" }}
+            title={isAdmin ? "Apply to fields" : "Admin only"}
+          >
+            <span style={{ fontWeight: 600, color: "var(--text)" }}>{p.label}</span>
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>{p.rpm} rpm</span>
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>{p.tpm.toLocaleString()} tpm</span>
+            <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>{p.why}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
+        Per-agent identity gets its own limits once the picker ships. Anthropic Tier 1 default for reference: 50 rpm, 40k tpm.
       </div>
     </div>
   )
