@@ -17,6 +17,7 @@ from app.modules.guard.routers import policies as guard_policies
 from app.modules.guard.routers import events as guard_events
 from app.modules.guard.routers import spend as guard_spend
 from app.modules.guard.routers import savings as guard_savings
+from app.modules.guard.routers import rate_limits as guard_rate_limits
 from app.modules.guard.routers import developer_tools as guard_developer_tools
 from app.modules.guard.routers import token_guardrails as guard_token_guardrails
 from app.modules.guard.routers import notifications as guard_notifications
@@ -132,6 +133,7 @@ app.include_router(guard_policies.router)
 app.include_router(guard_events.router)
 app.include_router(guard_spend.router)
 app.include_router(guard_savings.router)
+app.include_router(guard_rate_limits.router)
 app.include_router(guard_developer_tools.router)
 app.include_router(guard_token_guardrails.router)
 app.include_router(guard_notifications.router)

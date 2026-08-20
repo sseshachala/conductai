@@ -437,6 +437,59 @@ async def _proxy(
         _audit_decision = "warned" if _action == "WARN" else "allowed"
         _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
 
+        # 4d. Pre-forward budget check (#1083 — Loopers parity).
+        # ponytail: SQL scan per call; swap to atomic Redis Lua counter when
+        # throughput hurts (#822 tracks the upgrade).
+        from app.modules.guard.routers.spend import budget_check as _budget_check
+        _bc = _budget_check(workspace_id=workspace_id, clerk_user_id=clerk_user_id, db=db)
+        if _bc.hard_blocked:
+            background.add_task(
+                _record_audit, workspace_id, clerk_user_id, ai_tool, provider, model,
+                "budget_exceeded", None, int((time.monotonic() - started) * 1000),
+                body=body, response_bytes=None,
+                prompt_summary=prompt_summary, user_email=_user_email,
+                conductai_run_id=_run_id, conductai_workflow=_workflow,
+                conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
+            )
+            return JSONResponse(
+                status_code=429,
+                content={"error": {
+                    "type": "guard_budget_exceeded",
+                    "message": _bc.reason or "Monthly AI budget reached.",
+                    "monthly_cost_usd": _bc.monthly_cost_usd,
+                    "hard_limit_usd": _bc.hard_limit_usd,
+                }},
+            )
+
+        # 4d.2. Per-key RPM/TPM rate limit (#980 — Loopers parity).
+        from app.modules.guard.rate_limit import check_rate_limit as _check_rate_limit
+        _rl = _check_rate_limit(
+            db,
+            workspace_id=workspace_id,
+            agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+            input_tokens=_estimate_input_tokens(body),
+        )
+        if _rl.limited:
+            background.add_task(
+                _record_audit, workspace_id, clerk_user_id, ai_tool, provider, model,
+                "rate_limited", None, int((time.monotonic() - started) * 1000),
+                body=body, response_bytes=None,
+                prompt_summary=prompt_summary, user_email=_user_email,
+                conductai_run_id=_run_id, conductai_workflow=_workflow,
+                conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
+            )
+            return JSONResponse(
+                status_code=429,
+                content={"error": {
+                    "type": "guard_rate_limited",
+                    "message": _rl.reason,
+                    "metric": _rl.metric,
+                    "limit": _rl.limit,
+                    "current": _rl.current,
+                    "scope": _rl.scope,
+                }},
+            )
+
         # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
         # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
         upstream = _upstream_url(db, workspace_id, provider, _environment_id)

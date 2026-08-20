@@ -1,4 +1,4 @@
-import { API, AuthFetch, json, patch, post, put } from "./client"
+import { API, AuthFetch, del, json, patch, post, put } from "./client"
 
 const base = () => `${API}/guard`
 
@@ -179,6 +179,18 @@ export const guard = {
       const q = params ? `?${new URLSearchParams(params)}` : ""
       return json<any[]>(f, `${base()}/spend/sessions${q}`)
     },
+  },
+
+  rateLimits: {
+    list: (f: AuthFetch, workspaceId?: string) => {
+      const q = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : ""
+      return json<Array<{ id: string; agent_identity_id: string | null; rpm: number | null; tpm: number | null }>>(
+        f, `${base()}/rate-limits${q}`,
+      )
+    },
+    upsert: (f: AuthFetch, body: { agent_identity_id?: string | null; rpm?: number | null; tpm?: number | null }) =>
+      put(f, `${base()}/rate-limits`, body),
+    remove: (f: AuthFetch, id: string) => del(f, `${base()}/rate-limits/${encodeURIComponent(id)}`),
   },
 
   tokenGuardrails: {

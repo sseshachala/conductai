@@ -255,6 +255,35 @@ class GuardSpendBudget(Base):
     )
 
 
+class GuardRateLimit(Base):
+    """Per-workspace / per-agent-identity RPM+TPM caps (#980).
+
+    workspace_id + agent_identity_id=NULL row = workspace default.
+    workspace_id + agent_identity_id=X row  = override for that agent identity.
+    Enforced by app.modules.guard.rate_limit.check_rate_limit at proxy step 4d.2.
+    """
+    __tablename__ = "guard_rate_limits"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    agent_identity_id = Column(UUID(as_uuid=True), ForeignKey("agent_identities.id", ondelete="CASCADE"), nullable=True)
+    rpm = Column(Integer, nullable=True)
+    tpm = Column(Integer, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "agent_identity_id", name="uq_guard_rate_limits_scope"),
+    )
+
+
 class SessionReport(Base):
     __tablename__ = "session_reports"
 
