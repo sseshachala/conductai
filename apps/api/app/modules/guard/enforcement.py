@@ -7,7 +7,10 @@ CONTRACT_VERSION = 1
 SURFACES = ("proxy", "hook", "mcp", "runtime")
 STATUSES = frozenset({"hard", "conditional", "advisory", "not_supported"})
 BLOCKING_ACTIONS = frozenset({"block"})
-NON_BLOCKING_ACTIONS = frozenset({"audit", "audited", "inject", "warn", "approval"})
+NON_BLOCKING_ACTIONS = frozenset({"audit", "audited", "inject", "warn"})
+# `approval` is intentionally in neither set: it halts execution until a human
+# decides, so it can legitimately claim `hard` on runtime/hook/mcp surfaces
+# (the resume plumbing landed in commits 2fb824e / b4df3b9 / 8b8d771).
 
 
 class EnforcementMetadataError(ValueError):

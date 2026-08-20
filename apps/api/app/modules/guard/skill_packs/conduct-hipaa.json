@@ -1,7 +1,7 @@
 {
   "slug": "conduct-hipaa",
   "name": "Conduct HIPAA",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "tier": "paid",
   "description": "HIPAA PHI protection rules",
   "ui": {
@@ -147,8 +147,8 @@
         "proxy": "not_supported",
         "hook": "conditional",
         "mcp": "conditional",
-        "runtime": "conditional",
-        "guarantee": "Pauses execution and creates a Guard approval request on any surface that submits the action to guard_check; workflow runtime pauses when the pre-tool hook is invoked.",
+        "runtime": "hard",
+        "guarantee": "Halts workflow execution and creates a Guard approval request. The workflow runtime does not resume until a permitted approver decides (approved \u2192 continue, rejected \u2192 abort). Hook and MCP surfaces pause the agent's next action pending the same decision.",
         "requires": [
           "Approver has platform.approvals.decide permission",
           "Requester differs from approver (peer approval)"
