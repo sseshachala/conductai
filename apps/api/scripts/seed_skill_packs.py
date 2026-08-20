@@ -41,9 +41,21 @@ from app.modules.guard.enforcement import validate_pack
 
 NOW = datetime.now(timezone.utc)
 
-# ── Pack definitions (loaded from JSON files) ─────────────────────────────────
+# ── Pack discovery — every *.json in skill_packs/ is a pack ──────────────────
+#
+# Dropped the hardcoded PACK_SLUGS list. Adding a new pack is now a single
+# file drop: apps/api/app/modules/guard/skill_packs/<slug>.json. No seeder
+# edit, no PACK_SLUGS bump — next restart picks it up.
 
-PACK_SLUGS = ["conduct-base", "conduct-owasp", "conduct-soc2", "conduct-hipaa", "conduct-pci-dss", "conduct-eu-ai-act", "conduct-nist-ai-rmf", "conduct-iso-42001", "conduct-irs-1075", "conduct-financial-services", "conduct-life-sciences", "conduct-prompt-injection", "conduct-endpoint-attacks", "conduct-network-ops", "surface-aware", "meridian-dispatch"]
+def _discover_pack_slugs() -> list[str]:
+    """Scan the skill_packs/ directory and return every .json slug, sorted.
+    conduct-base is pulled to the front because downstream logic (auto-install
+    for every workspace) references it explicitly."""
+    slugs = sorted(p.stem for p in SKILL_PACKS_DIR.glob("*.json"))
+    if "conduct-base" in slugs:
+        slugs.remove("conduct-base")
+        slugs.insert(0, "conduct-base")
+    return slugs
 
 
 def _load_pack(slug: str) -> dict:
@@ -71,7 +83,7 @@ def run(dry_run: bool, force: bool = False) -> None:
         with conn.begin():
             # 1. Seed skill_packs
             print("\n── Seeding skill_packs ──")
-            for slug in PACK_SLUGS:
+            for slug in _discover_pack_slugs():
                 pack = _load_pack(slug)
                 version = pack["version"]
                 existing = conn.execute(_text(
