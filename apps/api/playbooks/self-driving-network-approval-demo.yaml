@@ -1,0 +1,166 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# self-driving-network-approval-demo — HITL on multi-fabric config push
+#
+# An HPE / Aruba Central + Juniper Mist self-driving network agent detects
+# config drift across both fabrics and proposes a synchronized remediation.
+# Any push targeting a prod fabric is intercepted by Guard's
+# approve-prod-deploy rule — a NOC engineer clicks Approve or Reject in
+# Slack. Approve → both fabrics converge. Reject → run halts, audit chain
+# preserved. One rule, one Slack notification, works across every network
+# vendor: the point of a single control plane for autonomous NetOps.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Self-Driving Network — Prod Config Push (HITL)
+version: 1
+description: >
+  Multi-fabric NetOps agent (Juniper Mist + Aruba Central) proposes a
+  synchronized config push. Guard's approve-prod-deploy rule pauses the run
+  for NOC sign-off in Slack; approve resumes the deploy, reject halts it.
+  Sandbox-safe — the deploy CLI does not exist, so no real network is
+  touched; the demo focuses on the Guard verdict + Slack Approve/Reject
+  round-trip.
+
+inputs:
+  fabric_scope:
+    label: Fabric scope
+    type: select
+    default: "both"
+    options:
+      - both
+      - junos-only
+      - aruba-only
+    description: Which fabric to target. Default hits Juniper Mist + Aruba Central together.
+
+  environment:
+    label: Environment tag
+    type: string
+    default: "prod-us-west"
+    description: Included in the deploy command so the approval message shows the target env.
+
+  model:
+    label: AI model
+    type: select
+    default: claude-sonnet-4-6
+    options:
+      - claude-sonnet-4-6
+      - claude-opus-4-7
+      - claude-haiku-4-5-20251001
+
+blocks:
+
+  # ── 1. Assess fabric health + produce a remediation plan ───────────────────
+  assess:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Assess fabric health
+    description: Score current fabric telemetry and produce a remediation plan for both Juniper Mist and Aruba Central.
+    next: deploy_prod
+    system: |
+      You are a self-driving network agent that fronts HPE Aruba Central +
+      Juniper Mist AI. Your job is to read the current inbox of anomalies
+      and produce a synchronized remediation plan. Fabric scope for this
+      run: {{inputs.fabric_scope}}.
+
+      This is a demo run — do NOT invent additional telemetry beyond what
+      the prompt provides. Ground every plan item in the anomalies listed.
+    prompt: |
+      Current inbox (synthetic telemetry, safe for sandbox demo):
+
+        Juniper Mist fabric:
+          - qfx-core-02 — BGP session flap with peer 10.10.30.5, last
+            hold-timer expiry 4m ago. Recommended fix: push updated
+            hold-timer (30 → 90s) + import policy filter tightening.
+
+        Aruba Central:
+          - campus-01 — 12 of 47 APs reporting radar detect on channel 149
+            (DFS event). Recommended fix: push channel-plan rebalance
+            moving affected APs to 36/40.
+
+      For fabric scope "{{inputs.fabric_scope}}", produce the plan.
+
+      Return JSON on the last line:
+      {
+        "junos_action": "<one-line if included in scope, else null>",
+        "aruba_action": "<one-line if included in scope, else null>",
+        "target_env": "{{inputs.environment}}",
+        "requires_prod_push": true
+      }
+
+  # ── 2. Push config to prod fabrics (Guard gates this) ─────────────────────
+  deploy_prod:
+    type: brain
+    mode: agentic
+    model: "{{inputs.model}}"
+    label: Push config to prod fabrics
+    description: Attempt the deploy. Guard's approve-prod-deploy rule pauses the run for NOC sign-off in Slack; approved → both fabrics converge, rejected → run halts.
+    next: report
+    system: |
+      You are pushing the plan to the network. Guard sits at the runtime
+      layer and inspects the raw command bytes of every run_shell. Any
+      command that mentions 'deploy' + 'prod' matches the
+      approve-prod-deploy rule and pauses the run for human approval in
+      Slack. That is expected behavior — not a failure.
+
+      Fire the push as ONE run_shell call. The command MUST contain both
+      words 'deploy' and 'prod' so the runtime evaluator matches. Suggested
+      shape (both fabrics in one command — one approval, both converge):
+
+          network-orchestrator deploy \
+            --targets junos-fabric,aruba-fabric \
+            --env {{inputs.environment}} \
+            --plan-summary "junos+aruba synchronized remediation"
+
+      For junos-only / aruba-only scopes, drop the other target from
+      --targets. The `network-orchestrator` CLI does NOT exist in this
+      sandbox — the shell will return a "command not found" after Guard's
+      verdict lands. That is fine; the point of this run is the Guard
+      approval round-trip, not the deploy tool's output.
+
+      RULES OF ENGAGEMENT:
+        - Exactly ONE run_shell call. Do not retry on non-zero exit.
+        - After Guard resolves (approved OR rejected), capture the
+          decision and stop.
+        - Do not fabricate a deploy result — report what actually
+          happened at the Guard layer.
+    prompt: |
+      Plan from assess:
+      {{assess.output}}
+
+      Fire the deploy command as ONE run_shell call, then return this JSON
+      on the last line:
+      {
+        "guard_verdict": "<approved|rejected|blocked|unknown>",
+        "command_used": "<the exact run_shell string>",
+        "shell_exit_note": "<'command not found' expected in sandbox, or 'blocked before execution' when Guard rejected>"
+      }
+
+  # ── 3. Report outcome for the NOC audit trail ─────────────────────────────
+  report:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Report outcome
+    description: Concise NOC-facing summary suitable for pasting into an incident ticket.
+    system: |
+      Write for a NOC engineer reviewing an audit ticket. Neutral tone,
+      concrete facts, no speculation. Every claim must trace to
+      assess.output or deploy_prod.output.
+    prompt: |
+      Plan:
+      {{assess.output}}
+
+      Deploy result:
+      {{deploy_prod.output}}
+
+      Write a 3-line NOC summary:
+        line 1 — what was proposed (fabric scope, env)
+        line 2 — Guard verdict (approved / rejected / blocked) + decider hint
+        line 3 — next step (fabrics converged / held for review / manual)
+
+      Return JSON on the last line:
+      {
+        "outcome": "<approved_and_deployed|rejected|blocked|other>",
+        "fabric_scope": "{{inputs.fabric_scope}}",
+        "target_env": "{{inputs.environment}}",
+        "audit_hint": "See Guard Activity for the hash-chained decision."
+      }
