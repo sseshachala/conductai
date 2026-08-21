@@ -41,7 +41,7 @@ def test_guard_approve_flow_wires_apply_decision_and_slack_update():
     from app.routers.webhooks import _handle_guard_slack_decision
 
     row = SimpleNamespace(
-        id="req-42",
+        id="aab035d3-9ce8-4037-a92a-7cfb456da60d",
         workspace_id="ws-1",
         status="pending",
     )
@@ -66,8 +66,8 @@ def test_guard_approve_flow_wires_apply_decision_and_slack_update():
             body=b'{"noop": true}',
             timestamp="0",
             signature="v0=irrelevant",  # platform-check already passed upstream
-            payload=_make_payload("req-42", "approve", user="sudhi"),
-            request_id_str="req-42",
+            payload=_make_payload("aab035d3-9ce8-4037-a92a-7cfb456da60d", "approve", user="sudhi"),
+            request_id_str="aab035d3-9ce8-4037-a92a-7cfb456da60d",
             decision="approved",
         )
 
@@ -109,7 +109,7 @@ def test_guard_unknown_request_is_noop():
 def test_guard_already_decided_row_is_idempotent():
     from app.routers.webhooks import _handle_guard_slack_decision
 
-    row = SimpleNamespace(id="req-9", workspace_id="ws-1", status="approved")
+    row = SimpleNamespace(id="9aab035d-9ce8-4037-a92a-7cfb456da60d", workspace_id="ws-1", status="approved")
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = row
 
@@ -122,8 +122,8 @@ def test_guard_already_decided_row_is_idempotent():
             body=b'{}',
             timestamp="0",
             signature="v0=x",
-            payload=_make_payload("req-9", "reject"),
-            request_id_str="req-9",
+            payload=_make_payload("9aab035d-9ce8-4037-a92a-7cfb456da60d", "reject"),
+            request_id_str="9aab035d-9ce8-4037-a92a-7cfb456da60d",
             decision="rejected",
         )
     assert result == {"ok": True}
