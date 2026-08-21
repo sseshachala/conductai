@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -725,9 +726,22 @@ def _guard_approval_request(
             f"[ConductGuard] PENDING approval - {message}\n"
             f"  rule: {rule_id}\n"
             f"  decide: {url}\n"
+            f"  or run: conduct guard approvals approve {request_id}\n"
+            f"          conduct guard approvals reject  {request_id} --reason \"...\"\n"
             f"  waiting up to 5min for a decision...",
             file=sys.stderr,
         )
+
+        # ponytail: open the approval page in the default browser so the
+        # human doesn't have to copy-paste the URL. Fail-soft on headless
+        # environments (SSH, containers) — the marker still shows the URL
+        # and the CLI commands. Opt-out via CONDUCT_APPROVAL_OPEN_BROWSER=0.
+        if os.environ.get("CONDUCT_APPROVAL_OPEN_BROWSER", "1") != "0" and url:
+            try:
+                import webbrowser
+                webbrowser.open(url, new=2)
+            except Exception:
+                pass
 
         deadline = time.time() + 300
         poll_url = f"{api_url}/guard/approvals/{request_id}?workspace_id={workspace_id}"
