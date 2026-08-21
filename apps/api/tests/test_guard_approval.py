@@ -249,7 +249,7 @@ class TestPendingMarker:
 
     def test_url_helper(self):
         u = approval_url("req-abc")
-        assert u.endswith("/theguard/approvals/req-abc")
+        assert u.endswith("/theguard/approvals?highlight=req-abc")
 
 
 if __name__ == "__main__":

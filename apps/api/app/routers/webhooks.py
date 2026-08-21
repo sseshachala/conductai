@@ -93,6 +93,69 @@ def _get_slack_signing_secret(run: "Run", db: Session) -> str:
     return creds.get("signing_secret") or settings.slack_signing_secret or ""
 
 
+def _handle_guard_slack_decision(
+    *,
+    db: Session,
+    body: bytes,
+    timestamp: str,
+    signature: str,
+    payload: dict,
+    request_id_str: str,
+    decision: str,
+) -> dict:
+    """Slack Approve/Reject on a GuardApprovalRequest. Mirrors the runtime
+    path: re-verify signature against workspace secret, apply the decision,
+    resume any workflow run tied to the approval, and stamp the Slack card.
+    Silently no-ops on unknown/decided rows so retries stay idempotent."""
+    from app.core.credentials import get_credential
+    from app.modules.guard.approval import apply_decision, sweep_if_timed_out
+    from app.modules.guard.models import GuardApprovalRequest
+    from app.modules.guard.routers.approvals import _resume_workflow_run
+    from app.runtime.integrations.slack import update_approval_message
+
+    row = db.query(GuardApprovalRequest).filter(GuardApprovalRequest.id == request_id_str).first()
+    if not row:
+        log.warning("slack.unknown_guard_request", request_id=request_id_str)
+        return {"ok": True}
+
+    try:
+        ws_creds = get_credential(db, str(row.workspace_id), "slack")
+    except Exception:
+        ws_creds = None
+    ws_secret = (ws_creds or {}).get("signing_secret") or settings.slack_signing_secret or ""
+    if ws_secret and ws_secret != settings.slack_signing_secret:
+        if not _verify_slack_signature(body, timestamp, signature, ws_secret):
+            raise HTTPException(status_code=401, detail="Invalid Slack signature")
+
+    approver = payload.get("user", {}).get("name", "slack-user")
+    row = sweep_if_timed_out(db, row)
+    if row.status == "pending":
+        row = apply_decision(
+            db, row,
+            decision=decision,
+            decider_email=None,
+            decider_user_id=None,
+            reason=f"slack:{approver}",
+        )
+        _resume_workflow_run(db, row, decision=decision, decider_email=None)
+        log.info("guard.approval.slack_decision", request_id=str(row.id), decision=decision, approver=approver)
+    else:
+        log.info("guard.approval.slack_duplicate", request_id=str(row.id), status=row.status)
+
+    msg_container = payload.get("container", {})
+    msg_channel = msg_container.get("channel_id") or payload.get("channel", {}).get("id")
+    msg_ts = msg_container.get("message_ts") or payload.get("message", {}).get("ts")
+    if msg_channel and msg_ts:
+        try:
+            token = (ws_creds or {}).get("token") or (ws_creds or {}).get("bot_token", "")
+            if token:
+                update_approval_message(token, msg_channel, msg_ts, row.status, approver)
+        except Exception as e:
+            log.warning("slack.guard_update_message_failed", error=str(e))
+
+    return {"ok": True}
+
+
 @router.post("/slack/interactions")
 async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     """
@@ -134,16 +197,29 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     action_id = action.get("action_id", "")
     value = action.get("value", "")
 
-    if action_id not in ("approve_run", "reject_run"):
+    if action_id not in ("approve_run", "reject_run", "guard_approve", "guard_reject"):
         return {"ok": True}
 
-    # Value format: "approve:{run_id}" or "reject:{run_id}"
+    # Value format: "approve:{id}" or "reject:{id}"
     parts = value.split(":", 1)
     if len(parts) != 2:
         raise HTTPException(status_code=400, detail="Invalid action value format")
 
-    decision_word, run_id_str = parts
+    decision_word, target_id_str = parts
     decision = "approved" if decision_word == "approve" else "rejected"
+
+    if action_id in ("guard_approve", "guard_reject"):
+        return _handle_guard_slack_decision(
+            db=db,
+            body=body,
+            timestamp=timestamp,
+            signature=signature,
+            payload=payload,
+            request_id_str=target_id_str,
+            decision=decision,
+        )
+
+    run_id_str = target_id_str
 
     run = db.query(Run).filter(Run.id == run_id_str).first()
     if not run:

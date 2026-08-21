@@ -250,12 +250,16 @@ def notify_guard_block(
     _send_guard_slack(db, cfg, text_msg)
 
 
-def _fanout_slack(db: Session, workspace_id, channels, text_msg: str) -> None:
+def _fanout_slack(db: Session, workspace_id, channels, text_msg: str, *, blocks: list | None = None) -> None:
     """Post text_msg to every Slack channel in `channels`. Silently skips any
     that lack credentials or fail — one bad channel must not block the others.
 
     Per-channel env: honors channel.integration_id via slack_token_for_channel;
-    falls back to the workspace-default Slack cred when not set."""
+    falls back to the workspace-default Slack cred when not set.
+
+    Pass `blocks` for interactive messages (e.g. Guard approval Approve/Reject
+    buttons); text_msg is kept as the fallback rendered by Slack clients that
+    can't display blocks."""
     from app.core.credentials import get_credential
     from app.modules.guard.routers.notifications import slack_token_for_channel
     from app.runtime.integrations.slack import post_message
@@ -273,7 +277,7 @@ def _fanout_slack(db: Session, workspace_id, channels, text_msg: str) -> None:
         if not token:
             continue
         try:
-            post_message(token=token, channel=ch.channel_ref, text=text_msg)
+            post_message(token=token, channel=ch.channel_ref, text=text_msg, blocks=blocks)
         except Exception:
             pass  # per-channel failure must not stop the fan-out
 

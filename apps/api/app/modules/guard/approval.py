@@ -184,6 +184,28 @@ def dispatch_approval_notifications(
         f"• {summary}\n"
         f"• Decide: {url}"
     )
+    slack_blocks = [
+        {"type": "section", "text": {"type": "mrkdwn", "text": slack_text}},
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Approve"},
+                    "style": "primary",
+                    "value": f"approve:{request.id}",
+                    "action_id": "guard_approve",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Reject"},
+                    "style": "danger",
+                    "value": f"reject:{request.id}",
+                    "action_id": "guard_reject",
+                },
+            ],
+        },
+    ]
     email_html = (
         f"<p><strong>Guard approval required</strong> — rule <code>{rule_id}</code></p>"
         f"<p>Requester: {requester}</p>"
@@ -210,7 +232,7 @@ def dispatch_approval_notifications(
         by_type.setdefault(ch.channel_type, []).append(ch)
     try:
         if by_type["slack"]:
-            _fanout_slack(db, request.workspace_id, by_type["slack"], slack_text)
+            _fanout_slack(db, request.workspace_id, by_type["slack"], slack_text, blocks=slack_blocks)
         if by_type["webhook"]:
             _fanout_webhook(by_type["webhook"], webhook_payload)
         if by_type["pagerduty"]:
