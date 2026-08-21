@@ -102,6 +102,7 @@ def _handle_guard_slack_decision(
     payload: dict,
     request_id_str: str,
     decision: str,
+    platform_sig_ok: bool = False,
 ) -> dict:
     """Slack Approve/Reject on a GuardApprovalRequest. Mirrors the runtime
     path: re-verify signature against workspace secret, apply the decision,
@@ -135,8 +136,19 @@ def _handle_guard_slack_decision(
             ws_creds = get_credential(db, str(row.workspace_id), "slack")
         except Exception:
             ws_creds = None
-        ws_secret = (ws_creds or {}).get("signing_secret") or settings.slack_signing_secret or ""
-        if ws_secret and ws_secret != settings.slack_signing_secret:
+        ws_secret = (ws_creds or {}).get("signing_secret") or ""
+
+        # Verify against workspace secret when the platform-level check was
+        # skipped or when the workspace has its own (stricter) secret. If no
+        # secret is available anywhere and the platform check didn't already
+        # pass, we can't trust the request — drop it silently.
+        needs_workspace_verify = (not platform_sig_ok) or (
+            ws_secret and ws_secret != settings.slack_signing_secret
+        )
+        if needs_workspace_verify:
+            if not ws_secret:
+                log.warning("slack.guard_no_secret_to_verify", request_id=str(req_uuid))
+                return {"ok": True}
             if not _verify_slack_signature(body, timestamp, signature, ws_secret):
                 log.warning("slack.guard_bad_signature", request_id=str(req_uuid))
                 return {"ok": True}
@@ -181,14 +193,17 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     timestamp = request.headers.get("X-Slack-Request-Timestamp", "0")
     signature = request.headers.get("X-Slack-Signature", "")
 
-    # Signature verification is mandatory — reject immediately if no platform secret is configured.
-    # This prevents unsigned requests from triggering paid agent runs.
-    if not settings.slack_signing_secret:
-        raise HTTPException(status_code=401, detail="Slack signing secret not configured")
-
-    # Verify with platform-level signing secret — before any DB access.
-    # This prevents unauthenticated requests from triggering DB reads.
-    if not _verify_slack_signature(body, timestamp, signature, settings.slack_signing_secret):
+    # Signature verification: platform-level secret is optional. When set, use
+    # it as a zero-DB gate that rejects unsigned traffic before any lookup.
+    # When unset, the guard/run branches below verify against the workspace's
+    # own signing_secret credential (one indexed DB read on unsigned requests
+    # instead of an immediate 401 — small trade-off customers accept in
+    # exchange for not having to manage a platform env var).
+    platform_secret = settings.slack_signing_secret or ""
+    platform_sig_ok = bool(platform_secret) and _verify_slack_signature(
+        body, timestamp, signature, platform_secret,
+    )
+    if platform_secret and not platform_sig_ok:
         raise HTTPException(status_code=401, detail="Invalid Slack signature")
 
     # Parse payload
@@ -232,6 +247,7 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
             payload=payload,
             request_id_str=target_id_str,
             decision=decision,
+            platform_sig_ok=platform_sig_ok,
         )
 
     run_id_str = target_id_str
@@ -241,11 +257,17 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
         log.warning("slack.unknown_run", run_id=run_id_str)
         return {"ok": True}
 
-    # If the workspace has its own signing secret, re-verify against it.
-    # This is mandatory — if the workspace secret is present and the signature does not match,
-    # the request is rejected even though the platform-level check passed.
+    # Workspace signing-secret verify. Required when the platform-level check
+    # was skipped (no platform secret configured) OR when the workspace has
+    # its own stricter secret. If we can't verify anywhere, drop the request.
     signing_secret = _get_slack_signing_secret(run, db)
-    if signing_secret and signing_secret != settings.slack_signing_secret:
+    needs_workspace_verify = (not platform_sig_ok) or (
+        signing_secret and signing_secret != settings.slack_signing_secret
+    )
+    if needs_workspace_verify:
+        if not signing_secret:
+            log.warning("slack.run_no_secret_to_verify", run_id=run_id_str)
+            return {"ok": True}
         if not _verify_slack_signature(body, timestamp, signature, signing_secret):
             raise HTTPException(status_code=401, detail="Invalid Slack signature")
 
