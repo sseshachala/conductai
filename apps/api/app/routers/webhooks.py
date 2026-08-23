@@ -304,7 +304,7 @@ async def slack_interactions(request: Request, bg: BackgroundTasks, db: Session 
         state[f"__approver_{block_id}"] = approver
         cas_result = db.execute(
             _text(
-                "UPDATE runs SET status='pending', paused_at=NULL, state=:state::jsonb "
+                "UPDATE runs SET status='pending', paused_at=NULL, state=CAST(:state AS jsonb) "
                 "WHERE id=:id AND status='paused' "
                 "RETURNING id"
             ),
