@@ -83,7 +83,8 @@ blocks:
         "junos_action": "<one-line if included in scope, else null>",
         "aruba_action": "<one-line if included in scope, else null>",
         "target_env": "{{inputs.environment}}",
-        "requires_prod_push": true
+        "requires_prod_push": true,
+        "deploy_command": "network-orchestrator deploy --env {{inputs.environment}}"
       }
 
   # ── 2. Push config to prod fabrics (Guard gates this) ─────────────────────
