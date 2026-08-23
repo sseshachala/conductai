@@ -571,8 +571,8 @@ def _auto_guard_check(
             "warnings":         result.get("warnings", []),
             "audited":          result.get("audited", []),
         })
-    except RuntimeError:
-        raise  # block → propagate to halt the run
+    except (RuntimeError, ApprovalRequired, ClarificationRequired, PermissionError):
+        raise  # block / approval / clarification / permission → propagate to halt or pause the run
     except Exception as _ge:
         log.warning("guard.auto_check_failed", block_id=block_id, block_type=block_type, error=str(_ge))
 
