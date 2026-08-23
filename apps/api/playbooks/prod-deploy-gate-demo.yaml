@@ -48,3 +48,7 @@ blocks:
     prompt: |
       A human approver authorized the production deploy. In one sentence,
       state that the deploy was authorized and completed.
+
+test_trigger:
+  payload:
+    model: claude-haiku-4-5-20251001
