@@ -317,6 +317,14 @@ playbooks:
     featured: true
     description: "Autonomous support agent picks up a customer ticket containing a prompt-injection payload. Attempts credential harvest, HTTP exfil, and DNS tunneling — all blocked by Guard's hook-surface rules. Falls back to a legit L2 escalation. Bounded autonomy under adversarial input."
 
+  prod_deploy_gate_demo:
+    file: prod-deploy-gate-demo.yaml
+    icon: "🚦"
+    category: Network Ops
+    tags: [approval, governance, demo, network]
+    featured: true
+    description: "Agent proposes a production deploy. Guard's approve-prod-deploy rule pauses the run, fires a Slack approval post, and waits for a human click before the next block runs. The missing gate between 'agent proposes' and 'prod boundary crossed'."
+
 # GitHub events Conduct listens for globally (union of all playbook github_events above).
 # Used when registering a repo webhook so GitHub sends everything and we filter in the handler.
 all_github_events:

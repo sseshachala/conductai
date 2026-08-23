@@ -1,0 +1,50 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# prod-deploy-gate-demo — proves the approval gate end-to-end.
+#
+# Block 1 emits an exact deploy string into state. Block 2 starts and the
+# runtime guard scan matches approve-prod-deploy (action=approval) → run
+# pauses, Slack fires, approver clicks → resume → block 2 completes.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Prod Deploy Gate Demo
+version: 1
+description: >
+  Minimal proof that approve-prod-deploy actually pauses a run and waits
+  for a human approver via the Guard approvals UI.
+
+inputs:
+  model:
+    label: AI Model
+    type: select
+    default: claude-haiku-4-5-20251001
+    options:
+      - claude-haiku-4-5-20251001
+      - claude-sonnet-4-6
+
+blocks:
+
+  propose_deploy:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Propose production deploy
+    description: Emits the exact deploy string that trips the approval rule.
+    next: post_deploy
+    system: |
+      You are a release bot. Output only the exact command shown, nothing else.
+    prompt: |
+      Output ONLY this exact string as your response, with no quotes, no code
+      fences, and no extra text:
+
+      vercel deploy --prod
+
+  post_deploy:
+    type: brain
+    mode: single
+    model: "{{inputs.model}}"
+    label: Confirm deploy authorized
+    description: Runs only after a human approves the deploy in the Guard UI.
+    system: |
+      You confirm a production deploy has been approved.
+    prompt: |
+      A human approver authorized the production deploy. In one sentence,
+      state that the deploy was authorized and completed.
