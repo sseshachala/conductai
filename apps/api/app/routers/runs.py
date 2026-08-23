@@ -416,54 +416,70 @@ def stream_run_events(
                 last_seen_created_at = ev.created_at
                 yield f"data: {json.dumps({'id': str(ev.id), 'kind': ev.kind, 'block_id': ev.block_id, 'payload': ev.payload})}\n\n"
 
-        def is_terminal() -> str | None:
+        # Truly terminal states — stream closes on these.
+        # 'paused' / 'paused_for_clarification' are NOT terminal: the stream
+        # emits a one-shot run_paused notice and keeps listening so the
+        # approval → resume transition streams the rest of the run on the
+        # same connection. No CLI polling, no reconnect dance.
+        _TERMINAL = {"succeeded", "failed", "cancelled"}
+        _PAUSED = {"paused", "paused_for_clarification"}
+
+        def current_status() -> str | None:
             stream_db.expire_all()
             current = stream_db.query(Run).filter(Run.id == run_id).first()
-            return current.status if current and current.status in ("succeeded", "failed", "paused", "paused_for_clarification", "cancelled") else None
+            return current.status if current else None
+
+        def emit_pause_notice(status: str):
+            r = stream_db.query(Run).filter(Run.id == run_id).first()
+            yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {'status': status}})}\n\n"
 
         try:
             # Flush any events already written before we subscribed
             yield from flush_new_events()
-            terminal = is_terminal()
-            if terminal:
-                if terminal in ("paused", "paused_for_clarification"):
-                    r = stream_db.query(Run).filter(Run.id == run_id).first()
-                    yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {'status': terminal}})}\n\n"
+            status = current_status()
+            if status in _TERMINAL:
                 yield "data: [DONE]\n\n"
                 return
 
-            # Poll using get_message with a short timeout so the deadline is enforced.
-            # pubsub.listen() has no timeout; get_message(timeout=N) yields control
-            # every N seconds so we can check both the deadline and run status.
+            last_paused_notice: str | None = None
+            if status in _PAUSED:
+                yield from emit_pause_notice(status)
+                last_paused_notice = status
+
             _last_keepalive = _time.monotonic()
             _KEEPALIVE_INTERVAL = 15  # seconds — Render drops idle SSE after ~30s
             while _time.monotonic() < deadline:
                 message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if message and message["type"] == "message":
                     yield from flush_new_events()
-                    terminal = is_terminal()
-                    if terminal:
-                        if terminal == "paused":
-                            r = stream_db.query(Run).filter(Run.id == run_id).first()
-                            yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {}})}\n\n"
+                    status = current_status()
+                    if status in _TERMINAL:
                         yield "data: [DONE]\n\n"
                         return
+                    if status in _PAUSED and last_paused_notice != status:
+                        yield from emit_pause_notice(status)
+                        last_paused_notice = status
+                    elif status not in _PAUSED and last_paused_notice is not None:
+                        yield f"data: {json.dumps({'kind': 'run_resumed', 'payload': {'status': status}})}\n\n"
+                        last_paused_notice = None
                 elif message is None:
-                    # Emit SSE comment ping every 15s to prevent Render/proxy idle timeout.
                     now = _time.monotonic()
                     if now - _last_keepalive >= _KEEPALIVE_INTERVAL:
                         yield ": keepalive\n\n"
                         _last_keepalive = now
-                    # No pub/sub message — poll DB periodically (every ~5 s) to catch
-                    # runs that completed without publishing (e.g. Redis pub/sub miss).
-                    terminal = is_terminal()
-                    if terminal:
+                    # Fallback DB poll (~1s cadence via get_message timeout) — catches
+                    # transitions that missed Redis pub/sub.
+                    status = current_status()
+                    if status in _TERMINAL:
                         yield from flush_new_events()
-                        if terminal == "paused":
-                            r = stream_db.query(Run).filter(Run.id == run_id).first()
-                            yield f"data: {json.dumps({'kind': 'run_paused', 'block_id': r.current_block_id if r else None, 'payload': {}})}\n\n"
                         yield "data: [DONE]\n\n"
                         return
+                    if status in _PAUSED and last_paused_notice != status:
+                        yield from emit_pause_notice(status)
+                        last_paused_notice = status
+                    elif status not in _PAUSED and last_paused_notice is not None:
+                        yield f"data: {json.dumps({'kind': 'run_resumed', 'payload': {'status': status}})}\n\n"
+                        last_paused_notice = None
 
             # Deadline reached — close the stream; client will reconnect.
             yield "data: {\"kind\": \"stream_timeout\"}\n\n"

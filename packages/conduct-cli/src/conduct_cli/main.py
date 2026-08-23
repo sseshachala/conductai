@@ -138,11 +138,10 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
         qs_parts.append(f"token={token}")
     url  = f"{server}/workflows/{workflow_id}/runs/{run_id}/stream?{'&'.join(qs_parts)}"
 
-    saw_pause = False
-
     def _consume_stream() -> str | None:
-        """Consume SSE stream. Returns 'completed', 'failed', 'paused', or None on stream end."""
-        nonlocal saw_pause
+        """Consume SSE stream until terminal. Backend keeps stream open across
+        pause/resume — run_paused / run_resumed are informational events, not
+        stream terminators."""
         for data in api.stream(url, hdrs):
             kind    = data.get("kind", "")
             bid     = data.get("block_id") or ""
@@ -183,9 +182,12 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
                 if url_a:
                     print(f"{YELLOW}       decide: {url_a}{RESET}")
             elif kind == "run_paused":
-                saw_pause = True
+                # Backend keeps SSE open across pause/resume. Just show the
+                # banner and stay connected — the resume events flow on the
+                # same stream.
                 print(f"{YELLOW}    ⏸  run paused — waiting for Slack Approve/Reject click...{RESET}")
-                return "paused"
+            elif kind == "run_resumed":
+                print(f"{GREEN}    ▶ approval granted — resuming{RESET}")
             elif kind == "run_completed":
                 print(f"{BOLD}{GREEN}    ✓ done{RESET}")
                 return "completed"
@@ -198,37 +200,6 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
         return None
 
     outcome = _consume_stream()
-
-    # If the run paused for approval, wait until the approver decides, then
-    # re-attach to the stream to catch the resumed portion. Approve → the
-    # remaining blocks stream in normally. Reject → the run terminates.
-    while outcome == "paused":
-        terminal = {"succeeded", "failed", "cancelled"}
-        last_status = "paused"
-        for i in range(360):  # 30 min — matches approval_timeout_sec on the rule
-            time.sleep(5)
-            try:
-                run = api.req("GET", f"{server}/runs/{run_id}", hdrs)
-                status = run.get("status", "") or "unknown"
-                if status != last_status:
-                    print(f"{GRAY}    status: {last_status} → {status}{RESET}")
-                    last_status = status
-                if status == "paused":
-                    continue
-                if status in ("running", "queued", "pending"):
-                    print(f"{GREEN}    ▶ approval granted — resuming{RESET}")
-                    break
-                if status in terminal:
-                    print(f"{BOLD}{GREEN if status == 'succeeded' else RED}    ✓ {status}{RESET}")
-                    return status == "succeeded"
-            except Exception as _e:
-                print(f"{RED}    poll error: {type(_e).__name__}: {str(_e)[:200]}{RESET}")
-        else:
-            print(f"{RED}    timed out waiting for approval{RESET}")
-            return False
-
-        outcome = _consume_stream()
-
     return outcome == "completed"
 
 
