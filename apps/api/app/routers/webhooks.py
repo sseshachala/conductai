@@ -178,8 +178,16 @@ def _handle_guard_slack_decision(
                     update_approval_message(token, msg_channel, msg_ts, row.status, approver)
             except Exception as e:
                 log.warning("slack.guard_update_message_failed", error=str(e))
-    except Exception:
-        log.exception("slack.guard_decision_unhandled", request_id=request_id_str, decision=decision)
+    except Exception as _exc:
+        import traceback as _tb
+        log.error(
+            "slack.guard_decision_unhandled",
+            request_id=request_id_str,
+            decision=decision,
+            err_type=type(_exc).__name__,
+            err=str(_exc),
+            tb=_tb.format_exc(),
+        )
     return {"ok": True}
 
 
