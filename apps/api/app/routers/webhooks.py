@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import unquote_plus
 
 import redis
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
@@ -184,7 +184,7 @@ def _handle_guard_slack_decision(
 
 
 @router.post("/slack/interactions")
-async def slack_interactions(request: Request, db: Session = Depends(get_db)):
+async def slack_interactions(request: Request, bg: BackgroundTasks, db: Session = Depends(get_db)):
     """
     Handle Slack interactive component payloads.
     Slack sends a URL-encoded body with a 'payload' field containing JSON.
@@ -239,16 +239,29 @@ async def slack_interactions(request: Request, db: Session = Depends(get_db)):
     decision = "approved" if decision_word == "approve" else "rejected"
 
     if action_id in ("guard_approve", "guard_reject"):
-        return _handle_guard_slack_decision(
-            db=db,
-            body=body,
-            timestamp=timestamp,
-            signature=signature,
-            payload=payload,
-            request_id_str=target_id_str,
-            decision=decision,
-            platform_sig_ok=platform_sig_ok,
-        )
+        # Slack enforces a 3s response deadline on interactive components. The
+        # decision handler does DB writes + a Slack API round-trip to update
+        # the message, which can exceed 3s and cause Slack to retry (visible
+        # to the user as "had to click twice"). Push the work to a background
+        # task and return 200 immediately.
+        def _bg_guard_decision():
+            from app.core.database import SessionLocal
+            _db = SessionLocal()
+            try:
+                _handle_guard_slack_decision(
+                    db=_db,
+                    body=body,
+                    timestamp=timestamp,
+                    signature=signature,
+                    payload=payload,
+                    request_id_str=target_id_str,
+                    decision=decision,
+                    platform_sig_ok=platform_sig_ok,
+                )
+            finally:
+                _db.close()
+        bg.add_task(_bg_guard_decision)
+        return {"ok": True}
 
     run_id_str = target_id_str
 
