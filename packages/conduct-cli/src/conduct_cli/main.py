@@ -138,51 +138,98 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
         qs_parts.append(f"token={token}")
     url  = f"{server}/workflows/{workflow_id}/runs/{run_id}/stream?{'&'.join(qs_parts)}"
 
-    for data in api.stream(url, hdrs):
-        kind    = data.get("kind", "")
-        bid     = data.get("block_id") or ""
-        payload = data.get("payload", data)
-        prefix  = f"[{bid}] " if bid else ""
+    saw_pause = False
 
-        if kind == "block_started":
-            label = payload.get("label") or payload.get("type", "")
-            print(f"{BLUE}    ▶ {prefix}{label}{RESET}")
-        elif kind == "block_completed":
-            summary = payload.get("summary") or json.dumps(payload, default=str, ensure_ascii=False)[:120]
-            print(f"{GREEN}    ✓ {prefix}{summary}{RESET}")
-        elif kind == "block_failed":
-            err = payload.get("error", json.dumps(payload, default=str, ensure_ascii=False)[:200])
-            print(f"{RED}    ✗ {prefix}{err}{RESET}")
-            _tb = (payload.get("failure") or {}).get("traceback")
-            if _tb:
-                for _line in str(_tb).rstrip().splitlines():
-                    print(f"{RED}      {_line}{RESET}")
-        elif kind == "brain_tool_call":
-            summary = payload.get("summary", payload.get("tool", ""))
-            print(f"      · {summary}{RESET}")
-        elif kind == "guard_check":
-            n = payload.get("rules_checked", 0)
-            block_type = payload.get("block_type", "")
-            if payload.get("warnings"):
-                for w in payload["warnings"]:
-                    print(f"{YELLOW}    ⚠ [guard:{block_type}] {w.get('rule_id', '')}: {w.get('message', '')}{RESET}")
-            elif payload.get("audited"):
-                for a in payload["audited"]:
-                    print(f"{BLUE}    ● [guard:{block_type}] {a.get('rule_id', '')}: {a.get('message', '')}{RESET}")
+    def _consume_stream() -> str | None:
+        """Consume SSE stream. Returns 'completed', 'failed', 'paused', or None on stream end."""
+        nonlocal saw_pause
+        for data in api.stream(url, hdrs):
+            kind    = data.get("kind", "")
+            bid     = data.get("block_id") or ""
+            payload = data.get("payload", data)
+            prefix  = f"[{bid}] " if bid else ""
+
+            if kind == "block_started":
+                label = payload.get("label") or payload.get("type", "")
+                print(f"{BLUE}    ▶ {prefix}{label}{RESET}")
+            elif kind == "block_completed":
+                summary = payload.get("summary") or json.dumps(payload, default=str, ensure_ascii=False)[:120]
+                print(f"{GREEN}    ✓ {prefix}{summary}{RESET}")
+            elif kind == "block_failed":
+                err = payload.get("error", json.dumps(payload, default=str, ensure_ascii=False)[:200])
+                print(f"{RED}    ✗ {prefix}{err}{RESET}")
+                _tb = (payload.get("failure") or {}).get("traceback")
+                if _tb:
+                    for _line in str(_tb).rstrip().splitlines():
+                        print(f"{RED}      {_line}{RESET}")
+            elif kind == "brain_tool_call":
+                summary = payload.get("summary", payload.get("tool", ""))
+                print(f"      · {summary}{RESET}")
+            elif kind == "guard_check":
+                n = payload.get("rules_checked", 0)
+                block_type = payload.get("block_type", "")
+                if payload.get("warnings"):
+                    for w in payload["warnings"]:
+                        print(f"{YELLOW}    ⚠ [guard:{block_type}] {w.get('rule_id', '')}: {w.get('message', '')}{RESET}")
+                elif payload.get("audited"):
+                    for a in payload["audited"]:
+                        print(f"{BLUE}    ● [guard:{block_type}] {a.get('rule_id', '')}: {a.get('message', '')}{RESET}")
+                else:
+                    print(f"{GREEN}    ✓ [guard:{block_type}] {n} rules checked — passed{RESET}")
+            elif kind == "approval_requested":
+                msg = payload.get("message", "")
+                url_a = payload.get("approval_url", "")
+                print(f"{YELLOW}    ⏸  approval required: {msg}{RESET}")
+                if url_a:
+                    print(f"{YELLOW}       decide: {url_a}{RESET}")
+            elif kind == "run_paused":
+                saw_pause = True
+                print(f"{YELLOW}    ⏸  run paused — waiting for Slack Approve/Reject click...{RESET}")
+                return "paused"
+            elif kind == "run_completed":
+                print(f"{BOLD}{GREEN}    ✓ done{RESET}")
+                return "completed"
+            elif kind == "run_failed":
+                err = payload.get("error", "")
+                print(f"{BOLD}{RED}    ✗ failed: {err}{RESET}")
+                return "failed"
             else:
-                print(f"{GREEN}    ✓ [guard:{block_type}] {n} rules checked — passed{RESET}")
-        elif kind == "run_completed":
-            print(f"{BOLD}{GREEN}    ✓ done{RESET}")
-        elif kind == "run_failed":
-            err = payload.get("error", "")
-            print(f"{BOLD}{RED}    ✗ failed: {err}{RESET}")
+                print(f"{GRAY}    {kind}: {json.dumps(payload, default=str, ensure_ascii=False)[:120]}{RESET}")
+        return None
+
+    outcome = _consume_stream()
+
+    # If the run paused for approval, wait until the approver decides, then
+    # re-attach to the stream to catch the resumed portion. Approve → the
+    # remaining blocks stream in normally. Reject → the run terminates.
+    while outcome == "paused":
+        terminal = {"succeeded", "failed", "cancelled"}
+        last_status = "paused"
+        for i in range(360):  # 30 min — matches approval_timeout_sec on the rule
+            time.sleep(5)
+            try:
+                run = api.req("GET", f"{server}/runs/{run_id}", hdrs)
+                status = run.get("status", "") or "unknown"
+                if status != last_status:
+                    print(f"{GRAY}    status: {last_status} → {status}{RESET}")
+                    last_status = status
+                if status == "paused":
+                    continue
+                if status in ("running", "queued", "pending"):
+                    print(f"{GREEN}    ▶ approval granted — resuming{RESET}")
+                    break
+                if status in terminal:
+                    print(f"{BOLD}{GREEN if status == 'succeeded' else RED}    ✓ {status}{RESET}")
+                    return status == "succeeded"
+            except Exception as _e:
+                print(f"{RED}    poll error: {type(_e).__name__}: {str(_e)[:200]}{RESET}")
         else:
-            print(f"{GRAY}    {kind}: {json.dumps(payload, default=str, ensure_ascii=False)[:120]}{RESET}")
+            print(f"{RED}    timed out waiting for approval{RESET}")
+            return False
 
-        if kind in ("run_completed", "run_failed"):
-            return kind == "run_completed"
+        outcome = _consume_stream()
 
-    return False
+    return outcome == "completed"
 
 
 def _poll_run(server: str, workflow_id: str, run_id: str, hdrs: dict) -> bool:
