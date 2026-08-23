@@ -164,3 +164,9 @@ blocks:
         "target_env": "{{inputs.environment}}",
         "audit_hint": "See Guard Activity for the hash-chained decision."
       }
+
+test_trigger:
+  payload:
+    fabric_scope: both
+    environment: prod-us-west
+    model: claude-sonnet-4-6
