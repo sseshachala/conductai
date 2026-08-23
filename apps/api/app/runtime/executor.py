@@ -431,7 +431,19 @@ def execute_run(run_id: str):
             pass
     finally:
         # Invalidate ephemeral run token so it cannot be replayed after the run ends.
-        if _run_token_row_id:
+        # Skip when the run is paused for approval / clarification — those runs
+        # are coming back and need the same token to keep making LLM calls
+        # through the Guard proxy after resume.
+        _paused_states = {"paused", "paused_for_clarification"}
+        _run_paused = False
+        try:
+            _cur = db.query(Run).filter(Run.id == run_id).first()
+            if _cur and _cur.status in _paused_states:
+                _run_paused = True
+        except Exception:
+            pass
+
+        if _run_token_row_id and not _run_paused:
             try:
                 from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
                 from datetime import datetime as _dt, timezone as _rtz
