@@ -177,13 +177,40 @@ def dispatch_approval_notifications(
     rule_id = request.rule_id
     summary = request.rule_message or f"Approval required for rule {rule_id}"
     requester = request.requester_email or request.requester_agent_ident or "unknown"
-    slack_text = (
-        f":raised_hand: *Guard approval required* — `{rule_id}`\n"
-        f"• Requester: {requester}\n"
-        f"• Surface: `{request.surface}`\n"
-        f"• {summary}\n"
-        f"• Decide: {url}"
-    )
+
+    # Workflow context — when this pause came from a workflow run, look up the
+    # workflow name + build a run-page link so the Slack post is actionable
+    # (Aug 23 demo feedback: "Requester: unknown" left the reviewer with
+    # nothing to click through to).
+    workflow_name: str | None = None
+    run_url: str | None = None
+    if request.source_run_id:
+        run_url = f"{_base_url()}/runs/{request.source_run_id}"
+        try:
+            from app.models.run import Run as _Run
+            from app.models.workflow import Workflow as _Workflow, WorkflowVersion as _WV
+            _wf_name = (
+                db.query(_Workflow.name)
+                .join(_WV, _WV.workflow_id == _Workflow.id)
+                .join(_Run, _Run.workflow_version_id == _WV.id)
+                .filter(_Run.id == request.source_run_id)
+                .scalar()
+            )
+            if _wf_name:
+                workflow_name = _wf_name
+        except Exception as exc:
+            log.warning("guard.approval.workflow_lookup_failed", err=str(exc))
+
+    _lines = [f":raised_hand: *Guard approval required* — `{rule_id}`"]
+    if workflow_name:
+        _lines.append(f"• Workflow: *{workflow_name}*")
+    _lines.append(f"• Requester: {requester}")
+    _lines.append(f"• Surface: `{request.surface}`")
+    _lines.append(f"• {summary}")
+    if run_url:
+        _lines.append(f"• Run: {run_url}")
+    _lines.append(f"• Decide: {url}")
+    slack_text = "\n".join(_lines)
     slack_blocks = [
         {"type": "section", "text": {"type": "mrkdwn", "text": slack_text}},
         {
@@ -206,11 +233,15 @@ def dispatch_approval_notifications(
             ],
         },
     ]
+    _wf_html = f"<p>Workflow: <strong>{workflow_name}</strong></p>" if workflow_name else ""
+    _run_html = f'<p><a href="{run_url}">View run →</a></p>' if run_url else ""
     email_html = (
         f"<p><strong>Guard approval required</strong> — rule <code>{rule_id}</code></p>"
+        f"{_wf_html}"
         f"<p>Requester: {requester}</p>"
         f"<p>Surface: <code>{request.surface}</code></p>"
         f"<p>{summary}</p>"
+        f"{_run_html}"
         f'<p><a href="{url}">Approve or reject in ConductGuard →</a></p>'
     )
     webhook_payload = {
@@ -222,7 +253,9 @@ def dispatch_approval_notifications(
         "message": summary,
         "requester": requester,
         "surface": request.surface,
+        "workflow_name": workflow_name,
         "source_run_id": str(request.source_run_id) if request.source_run_id else None,
+        "run_url": run_url,
         "url": url,
         "timeout_at": request.timeout_at.isoformat() if request.timeout_at else None,
     }
