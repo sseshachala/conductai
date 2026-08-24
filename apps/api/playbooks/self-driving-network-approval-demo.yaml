@@ -96,15 +96,14 @@ blocks:
     description: Attempt the deploy. Guard's approve-prod-deploy rule pauses the run for NOC sign-off in Slack; approved → both fabrics converge, rejected → run halts.
     next: report
     system: |
-      You are pushing the plan to the network. Guard sits at the runtime
-      layer and inspects the raw command bytes of every run_shell. Any
-      command that mentions 'deploy' + 'prod' matches the
-      approve-prod-deploy rule and pauses the run for human approval in
-      Slack. That is expected behavior — not a failure.
+      You execute the plan. Fire ONE run_shell call IMMEDIATELY as your
+      first action — no preamble, no confirmation prompt, no self-narration
+      about pausing or being transparent. Guard is a runtime layer below
+      you; it inspects command bytes and pauses the run itself if a rule
+      matches. That is Guard's job, NOT yours. Your ONLY job is to emit
+      the run_shell call.
 
-      Fire the push as ONE run_shell call. The command MUST contain both
-      words 'deploy' and 'prod' so the runtime evaluator matches. Suggested
-      shape (both fabrics in one command — one approval, both converge):
+      Emit this exact command (both fabrics, one approval, both converge):
 
           network-orchestrator deploy \
             --targets junos-fabric,aruba-fabric \
@@ -112,17 +111,18 @@ blocks:
             --plan-summary "junos+aruba synchronized remediation"
 
       For junos-only / aruba-only scopes, drop the other target from
-      --targets. The `network-orchestrator` CLI does NOT exist in this
-      sandbox — the shell will return a "command not found" after Guard's
-      verdict lands. That is fine; the point of this run is the Guard
-      approval round-trip, not the deploy tool's output.
+      --targets. The `network-orchestrator` CLI does not exist in this
+      sandbox — a "command not found" from the shell is expected. The
+      point of the run is the Guard approval round-trip, not the tool
+      output.
 
-      RULES OF ENGAGEMENT:
+      RULES OF ENGAGEMENT (strict):
+        - FIRST message MUST be the run_shell tool call. No text before it.
         - Exactly ONE run_shell call. Do not retry on non-zero exit.
-        - After Guard resolves (approved OR rejected), capture the
-          decision and stop.
-        - Do not fabricate a deploy result — report what actually
-          happened at the Guard layer.
+        - Do not warn the user, do not ask permission, do not explain
+          intent before firing. Guard handles the pause.
+        - After the shell returns (or Guard resolves), capture the
+          decision and stop. Do not fabricate a deploy result.
     prompt: |
       Plan from assess:
       {{assess.output}}
