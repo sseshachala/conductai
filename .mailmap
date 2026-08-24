@@ -1,0 +1,8 @@
+# Consolidate old bot identities into a single human author so the
+# Contributors list on GitHub reflects the actual maintainers.
+#
+# Format: <canonical name> <canonical@email> <old@email>
+# See: git shortlog --help ("MAPPING AUTHORS")
+
+Sudhi Seshachala <sudhi@b2bsphere.com> <68434857+railway-app[bot]@users.noreply.github.com>
+Sudhi Seshachala <sudhi@b2bsphere.com> <198982749+Copilot@users.noreply.github.com>
