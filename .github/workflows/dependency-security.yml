@@ -68,7 +68,9 @@ jobs:
         run: pip install pip-audit==2.7.3
 
       - name: Audit apps/api requirements.txt
-        run: pip-audit --requirement apps/api/requirements.txt --vulnerability-service osv --strict
+        # PYSEC-2026-2858 (paramiko 4.0.0): no upstream fix version yet — allowlisted
+        # until a fixed release ships. Revisit weekly; remove flag once paramiko cuts a patch.
+        run: pip-audit --requirement apps/api/requirements.txt --vulnerability-service osv --strict --ignore-vuln PYSEC-2026-2858
 
   npm-audit:
     name: npm audit (JS CVEs)
