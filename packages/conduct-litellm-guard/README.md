@@ -20,7 +20,10 @@ pip install conduct-litellm-guard
    ```bash
    export CONDUCT_AGENT_TOKEN=cond_agt_...
    ```
-3. Add the guardrail to your LiteLLM proxy's `config.yaml`:
+3. Add the guardrail to your LiteLLM proxy's `config.yaml`. Two forms —
+   both work today, they differ only in the `guardrail:` string:
+
+   **Explicit (works on any LiteLLM version):**
    ```yaml
    guardrails:
      - guardrail_name: conduct-guard
@@ -31,6 +34,23 @@ pip install conduct-litellm-guard
          agent_token: os.environ/CONDUCT_AGENT_TOKEN
          fail_mode: fail_closed
    ```
+
+   **Native (once [BerriAI/litellm#38143](https://github.com/BerriAI/litellm/pull/38143) merges):**
+   ```yaml
+   guardrails:
+     - guardrail_name: conduct-guard
+       litellm_params:
+         guardrail: conduct
+         mode: pre_call
+         api_key: os.environ/CONDUCT_AGENT_TOKEN
+         fail_mode: fail_closed
+   ```
+   The native form uses LiteLLM's idiomatic `api_base` / `api_key`
+   parameter names. You still install this package —
+   `pip install conduct-litellm-guard` — because the native adapter
+   is a thin wrapper that imports from it. Same pattern Aporia and
+   Lakera use.
+
 4. Start the proxy:
    ```bash
    litellm --config config.yaml

@@ -140,11 +140,15 @@ export ANTHROPIC_API_KEY=cond_agt_...`}
           </div>
           <h3 className="text-xl font-bold text-stone-900 mb-2">LiteLLM + Guard plugin</h3>
           <p className="text-sm text-stone-600 leading-relaxed mb-4">
-            Keep your LiteLLM proxy. Add{" "}
-            <code className="text-stone-800 text-xs">conduct-litellm-guard</code> as a guardrail — every call
-            through LiteLLM policy-checks against your active Conduct packs before the upstream request goes out.
+            Keep your LiteLLM proxy. Install{" "}
+            <code className="text-stone-800 text-xs">conduct-litellm-guard</code> — every call through LiteLLM
+            policy-checks against your active Conduct packs before the upstream request goes out.
           </p>
-          <div className="bg-stone-950 rounded-lg p-3 mb-4">
+
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-stone-400 mb-2">
+            Explicit form — any LiteLLM version
+          </p>
+          <div className="bg-stone-950 rounded-lg p-3 mb-3">
             <pre className="text-xs font-mono text-stone-100 overflow-x-auto">
 {`# config.yaml
 guardrails:
@@ -154,8 +158,30 @@ guardrails:
       agent_token: os.environ/CONDUCT_AGENT_TOKEN`}
             </pre>
           </div>
+
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-stone-400 mb-2">
+            Native form —{" "}
+            <a
+              href="https://github.com/BerriAI/litellm/pull/38143"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-indigo-600 hover:underline normal-case tracking-normal"
+            >
+              once BerriAI PR #38143 merges
+            </a>
+          </p>
+          <div className="bg-stone-950 rounded-lg p-3 mb-4">
+            <pre className="text-xs font-mono text-stone-100 overflow-x-auto">
+{`guardrails:
+  - guardrail_name: conduct-guard
+    litellm_params:
+      guardrail: conduct
+      api_key: os.environ/CONDUCT_AGENT_TOKEN`}
+            </pre>
+          </div>
+
           <ul className="text-xs text-stone-500 space-y-1 leading-relaxed">
-            <li><code className="text-stone-700">pip install conduct-litellm-guard</code></li>
+            <li><code className="text-stone-700">pip install conduct-litellm-guard</code> (both forms)</li>
             <li>No infrastructure change to your LiteLLM setup</li>
             <li>
               <a
