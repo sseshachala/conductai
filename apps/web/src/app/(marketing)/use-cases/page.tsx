@@ -3,7 +3,7 @@ import { CtaLink } from "@/components/marketing/CtaLink"
 export const metadata = {
   title: "Use cases we operate in today | Conduct",
   description:
-    "Nine shipped surfaces of Guard, the all-in-one AI compliance and security platform. IDE governance, MCP governance, security loop, compliance evidence, spend guardrails, shadow-AI discovery, agent identity, content inspection, and business-agent action governance.",
+    "Nine shipped surfaces of Guard, the all-in-one AI compliance and security platform. IDE governance, MCP governance, security loop, compliance evidence, spend guardrails, shadow-AI discovery, Know Your Agent (KYA), content inspection, and business-agent action governance.",
 }
 
 type UseCase = {
@@ -153,7 +153,7 @@ const CASES: UseCase[] = [
   {
     n: "07",
     slug: "agent-identity",
-    title: "Agents get an identity, not a shared API key",
+    title: "Know Your Agent (KYA). Every agent gets an attested identity, not a shared API key.",
     oneLiner: "Every run is a bounded session. Every credential expires with the run.",
     persona: "Platform engineering teams standing up agent fleets.",
     situation:
@@ -168,7 +168,7 @@ const CASES: UseCase[] = [
       "A code-review agent starts. Guard issues a cond_run scoped to the model calls the playbook needs, and a cond_cred scoped to the GitHub PR API for that repo only. The run finishes. Both tokens die. If the run had tried to call the payroll API instead, cond_cred would have refused before GitHub was ever contacted.",
     metrics: "Active identities. Median session length. Revocations per week. Unused credential scopes.",
     integrations: "Okta, Azure AD, Google Workspace as identity source. Guard is the runtime authority.",
-    ctaLabel: "Provision an agent identity",
+    ctaLabel: "Provision an attested agent identity",
     ctaHref: "/agent-identity",
   },
   {

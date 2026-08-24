@@ -1044,9 +1044,9 @@ function AgentIdentitySection() {
     <section className="px-6 py-24 bg-white">
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14">
-          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-3">Agent Identity</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-3">Know Your Agent (KYA)</p>
           <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight leading-tight mb-5">
-            Every agent gets an identity.<br />Every call is attributed.
+            Every agent gets an attested identity.<br />Every call is attributed.
           </h2>
           <p className="text-stone-500 text-lg leading-relaxed max-w-2xl mx-auto">
             Guard issues scoped tokens to every agent. Short-lived for interactive tools, long-lived for CI and integrations. Both enforce the same proxy rules and write to the same audit trail.
