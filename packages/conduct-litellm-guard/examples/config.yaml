@@ -8,7 +8,13 @@ model_list:
       api_key: os.environ/OPENAI_API_KEY
   - model_name: claude-sonnet
     litellm_params:
-      model: anthropic/claude-sonnet-4-6
+      # Use a model ID your Anthropic account has access to. Query
+      # your list with:
+      #   curl https://api.anthropic.com/v1/models \
+      #     -H "x-api-key: $ANTHROPIC_API_KEY" \
+      #     -H "anthropic-version: 2023-06-01"
+      # Then paste any `id` from the response below (with the anthropic/ prefix).
+      model: anthropic/claude-haiku-4-5-20251001
       api_key: os.environ/ANTHROPIC_API_KEY
 
 guardrails:
@@ -26,6 +32,12 @@ guardrails:
       # fail_closed = deny if Guard is unreachable. Matches Conduct's
       # default posture across every enforcement surface.
       fail_mode: fail_closed
+      # Optional. Which Guard tool_name the plugin reports as. Default
+      # is 'llm_call' (matches future pack rules built for LLM traffic).
+      # Set to 'workflow' to reuse existing pack rules that already
+      # scope to workflow (like conduct-owasp / conduct-prompt-injection)
+      # without editing the pack.
+      # tool_name: workflow
       # How long a single guard_check may take before the fail-mode
       # kicks in. 8s is generous — a healthy Guard responds in <100ms.
       timeout: 8.0

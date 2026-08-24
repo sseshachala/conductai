@@ -141,6 +141,7 @@ class ConductGuard(CustomGuardrail):
         agent_token: str | None = None,
         workspace_id: str | None = None,
         fail_mode: FailMode = "fail_closed",
+        tool_name: str = "llm_call",
         timeout: float = 8.0,
         # LiteLLM CustomGuardrail kwargs — accept and forward.
         **kwargs: Any,
@@ -160,6 +161,11 @@ class ConductGuard(CustomGuardrail):
         self._agent_token = token
         self._workspace_id = workspace_id or os.environ.get("CONDUCT_WORKSPACE_ID")
         self._fail_mode: FailMode = fail_mode
+        # Overridable per-config so existing pack rules that scope to
+        # 'workflow' / 'filesystem-write' can catch LLM traffic without
+        # editing the pack. Default 'llm_call' is what future packs will
+        # scope to natively.
+        self._tool_name = tool_name
         self._client = GuardCheckClient(
             api_url=self._api_url,
             agent_token=self._agent_token,
@@ -205,7 +211,7 @@ class ConductGuard(CustomGuardrail):
 
         try:
             raw = await self._client.guard_check(
-                tool_name="llm_call",
+                tool_name=self._tool_name,
                 tool_input=tool_input,
                 session_id=session_id,
                 prompt=prompt,
