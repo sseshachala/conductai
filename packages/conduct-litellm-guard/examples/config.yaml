@@ -1,0 +1,31 @@
+# Example LiteLLM proxy config wired to Conduct Guard.
+# Save as config.yaml and run: litellm --config config.yaml
+
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+guardrails:
+  - guardrail_name: conduct-guard
+    litellm_params:
+      guardrail: conduct_litellm_guard.ConductGuard
+      mode: pre_call
+      # Where Guard lives. Override for self-hosted deployments.
+      api_url: https://api.conductai.ai
+      # Mint an agent token in the Conduct console and set the env var.
+      agent_token: os.environ/CONDUCT_AGENT_TOKEN
+      # Optional — pins checks to a specific workspace when the token is
+      # provisioned for more than one. Usually the token owns this.
+      workspace_id: os.environ/CONDUCT_WORKSPACE_ID
+      # fail_closed = deny if Guard is unreachable. Matches Conduct's
+      # default posture across every enforcement surface.
+      fail_mode: fail_closed
+      # How long a single guard_check may take before the fail-mode
+      # kicks in. 8s is generous — a healthy Guard responds in <100ms.
+      timeout: 8.0

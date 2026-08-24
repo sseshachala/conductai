@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conduct-litellm-guard"
+version = "0.1.0"
+description = "Conduct Guard as a LiteLLM guardrail — enforce runtime policy on every LLM call routed through LiteLLM."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "FSL-1.1-MIT" }
+authors = [{ name = "Conduct AI", email = "hello@conductai.ai" }]
+keywords = ["litellm", "guardrail", "ai-governance", "policy", "llm-security"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "httpx>=0.24,<1.0",
+]
+
+[project.optional-dependencies]
+litellm = ["litellm>=1.40"]
+dev = [
+    "pytest>=7",
+    "pytest-asyncio>=0.21",
+    "respx>=0.20",
+]
+
+[project.urls]
+Homepage = "https://conductai.ai"
+Documentation = "https://conductai.ai/docs"
+Repository = "https://github.com/sseshachala/conductai"
+Issues = "https://github.com/sseshachala/conductai/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
