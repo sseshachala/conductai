@@ -252,6 +252,134 @@ class TestPendingMarker:
         assert u.endswith("/theguard/approvals?highlight=req-abc")
 
 
+# ── Endpoint validation branches (post humanised-copy commit) ──────────────
+#
+# The decide_approval() endpoint has two validation branches added to make
+# the /theguard/approvals UI copy human-friendly:
+#   1. Non-pending row → 409 with a per-status sentence (not the raw enum).
+#   2. decision=rejected + missing/whitespace reason → 400.
+# We call the endpoint function directly with all deps injected so we don't
+# need TestClient just to exercise these tiny branches.
+
+from unittest.mock import patch
+
+from fastapi import HTTPException
+
+from app.modules.guard.routers.approvals import DecisionIn, decide_approval
+
+
+def _call_decide(row, body):
+    """Invoke decide_approval() with every dependency injected explicitly.
+    _get_row and sweep_if_timed_out are patched to passthrough — we only
+    care about the validation branches added here."""
+    db = _FakeDB()
+    with patch(
+        "app.modules.guard.routers.approvals._get_row", return_value=row
+    ), patch(
+        "app.modules.guard.routers.approvals.sweep_if_timed_out",
+        side_effect=lambda db, r: r,
+    ):
+        return decide_approval(
+            request_id=row.id,
+            body=body,
+            workspace_id=row.workspace_id,
+            user_id="user_admin",
+            role="admin",
+            db=db,
+            _="ok",  # require_permission stub
+        )
+
+
+class TestDecideEndpointRejectRequiresReason:
+    """Backend enforcement of the UI 'Reason (required to reject)' rule.
+    UI can be bypassed via curl; API is the source of truth."""
+
+    def test_reject_without_reason_returns_400(self):
+        row = _row(status="pending")
+        with pytest.raises(HTTPException) as exc:
+            _call_decide(row, DecisionIn(decision="rejected", reason=None))
+        assert exc.value.status_code == 400
+        assert "reason is required" in exc.value.detail.lower()
+
+    def test_reject_with_whitespace_only_reason_returns_400(self):
+        row = _row(status="pending")
+        with pytest.raises(HTTPException) as exc:
+            _call_decide(row, DecisionIn(decision="rejected", reason="   "))
+        assert exc.value.status_code == 400
+
+    def test_approve_without_reason_does_not_400(self):
+        """Approve stays optional-reason — only reject requires one. We
+        assert we get past the reason-required branch; anything downstream
+        (fake-DB attribute errors, serialisation) is not our concern here."""
+        row = _row(status="pending")
+        try:
+            _call_decide(row, DecisionIn(decision="approved", reason=None))
+        except HTTPException as e:
+            assert e.status_code != 400, (
+                f"approve should not require a reason, got 400: {e.detail}"
+            )
+        except Exception:
+            # Fake DB / SimpleNamespace can't fully serialize a DecisionOut.
+            # That's fine — we only care that we didn't 400.
+            pass
+
+
+class TestDecideEndpointHumanised409:
+    """Non-pending rows must surface human-readable copy, not raw enum values
+    like 'approval already timed_out'."""
+
+    @pytest.mark.parametrize(
+        "status,expected_phrase",
+        [
+            ("approved", "already been approved"),
+            ("rejected", "already been rejected"),
+            ("timed_out", "already timed out"),
+        ],
+    )
+    def test_known_non_pending_status_returns_specific_sentence(
+        self, status, expected_phrase
+    ):
+        row = _row(status=status)
+        with pytest.raises(HTTPException) as exc:
+            _call_decide(row, DecisionIn(decision="approved", reason="ok"))
+        assert exc.value.status_code == 409
+        assert expected_phrase in exc.value.detail.lower(), (
+            f"expected {expected_phrase!r} in message, got {exc.value.detail!r}"
+        )
+
+    def test_unknown_status_falls_back_to_generic_sentence(self):
+        # If we ever add a new status without updating the phrase map we
+        # must still produce a human-readable fallback, never the raw enum.
+        row = _row(status="wat_is_this")
+        with pytest.raises(HTTPException) as exc:
+            _call_decide(row, DecisionIn(decision="approved", reason="ok"))
+        assert exc.value.status_code == 409
+        assert "no longer pending" in exc.value.detail.lower()
+
+
+class TestDecideEndpointSecondClick:
+    """Race condition: two admins click Approve/Reject in quick succession.
+    The second click must return the humanised 409, not a generic error."""
+
+    def test_second_click_after_approve_gets_human_409(self):
+        # First decision succeeds (not modelled here). Second click arrives
+        # after the row has status=approved.
+        row = _row(status="approved", decided_by_email="alice@example.com")
+        with pytest.raises(HTTPException) as exc:
+            _call_decide(
+                row, DecisionIn(decision="rejected", reason="changed my mind")
+            )
+        assert exc.value.status_code == 409
+        assert "already been approved" in exc.value.detail.lower()
+
+    def test_second_click_after_timeout_gets_human_409(self):
+        row = _row(status="timed_out")
+        with pytest.raises(HTTPException) as exc:
+            _call_decide(row, DecisionIn(decision="approved", reason="ok"))
+        assert exc.value.status_code == 409
+        assert "already timed out" in exc.value.detail.lower()
+
+
 if __name__ == "__main__":
     import subprocess
     raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", __file__, "-v"]))
