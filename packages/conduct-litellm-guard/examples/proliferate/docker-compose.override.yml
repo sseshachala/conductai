@@ -1,0 +1,15 @@
+# Docker Compose override that layers Conduct Guard onto Proliferate's
+# local LiteLLM service.
+#
+# Drop into: proliferate/server/docker-compose.override.yml
+# Docker Compose auto-detects and merges this with docker-compose.yml.
+
+services:
+  litellm:
+    image: !reset null
+    build:
+      context: .
+      dockerfile: litellm/Dockerfile.with-conduct
+    environment:
+      CONDUCT_AGENT_TOKEN: ${CONDUCT_AGENT_TOKEN:-}
+      CONDUCT_API_URL: ${CONDUCT_API_URL:-https://api.conductai.ai}

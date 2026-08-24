@@ -1,0 +1,19 @@
+# Append this block to proliferate/server/litellm/config.yaml —
+# right before or after the existing `general_settings:` section.
+#
+# Every LLM call routed through Proliferate's LiteLLM proxy will run
+# through Conduct Guard on the way to the upstream provider.
+
+guardrails:
+  - guardrail_name: conduct-guard
+    litellm_params:
+      guardrail: conduct_litellm_guard.ConductGuard
+      mode: pre_call
+      api_url: https://api.conductai.ai
+      agent_token: os.environ/CONDUCT_AGENT_TOKEN
+      fail_mode: fail_closed
+      # tool_name=workflow reuses existing pack rules that scope to
+      # filesystem-write,workflow (e.g. conduct-owasp:no-aws-keys).
+      # Drop this line once packs ship the llm_call scope natively.
+      tool_name: workflow
+      default_on: true

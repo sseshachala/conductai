@@ -35,19 +35,57 @@ gets the same policy, same audit chain, same signed configuration.
 
 ## Step 1 — Install the plugin
 
-Add `conduct-litellm-guard` to whatever image runs Proliferate's
-LiteLLM service. If you deployed with their Docker Compose, extend
-their `server/litellm` Dockerfile:
+Proliferate's local Docker Compose uses the vanilla
+`ghcr.io/berriai/litellm:v1.93.0` image directly; its production ECS
+image is built from `server/litellm/Dockerfile`. The install path is
+different for each.
+
+### Local Docker Compose (dev)
+
+Create `server/litellm/Dockerfile.with-conduct`:
 
 ```dockerfile
-RUN pip install conduct-litellm-guard
+FROM ghcr.io/berriai/litellm:v1.93.0@sha256:a1745e629abfb17d434426ff48b115f54f4f4c4a0f5af241de569e93c63c411e
+
+RUN pip install --no-cache-dir conduct-litellm-guard
 ```
 
-Or add `conduct-litellm-guard>=0.1` to your requirements file.
+Add a `server/docker-compose.override.yml`:
+
+```yaml
+services:
+  litellm:
+    image: !reset null
+    build:
+      context: .
+      dockerfile: litellm/Dockerfile.with-conduct
+    environment:
+      CONDUCT_AGENT_TOKEN: ${CONDUCT_AGENT_TOKEN:-}
+      CONDUCT_API_URL: ${CONDUCT_API_URL:-https://api.conductai.ai}
+```
+
+Docker Compose auto-detects `docker-compose.override.yml` and merges
+it with `docker-compose.yml` — no flag needed.
+
+### Production ECS
+
+Add one line to `server/litellm/Dockerfile`:
+
+```diff
+ FROM ghcr.io/berriai/litellm:v1.93.0@sha256:...
+
++RUN pip install --no-cache-dir conduct-litellm-guard
+ COPY server/litellm/config.yaml /app/proliferate-litellm-config.yaml
+```
+
+**Ready-to-copy fixtures** for both paths live at
+[`packages/conduct-litellm-guard/examples/proliferate/`](https://github.com/sseshachala/conductai/tree/main/packages/conduct-litellm-guard/examples/proliferate)
+in this repo.
 
 ## Step 2 — Wire the guardrail into the LiteLLM config
 
-Extend Proliferate's `server/litellm/config.yaml`:
+Append this block to `server/litellm/config.yaml`, right before or
+after the existing `general_settings:` section:
 
 ```yaml
 guardrails:
@@ -59,6 +97,7 @@ guardrails:
       agent_token: os.environ/CONDUCT_AGENT_TOKEN
       fail_mode: fail_closed
       tool_name: workflow
+      default_on: true
 ```
 
 `tool_name: workflow` makes plugin traffic register under the tool
@@ -85,10 +124,25 @@ services:
 ## Step 4 — Restart and verify
 
 ```bash
-docker compose restart litellm
+cd /path/to/proliferate/server
+docker compose up -d --build litellm    # --build picks up Dockerfile.with-conduct
 ```
 
-Run any agent inside Proliferate. In the Conduct console:
+Send a smoke-test request straight through Proliferate's LiteLLM
+proxy (bound to `localhost:14000` in dev):
+
+```bash
+curl -X POST http://localhost:14000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-proliferate-local-dev" \
+  -d '{
+    "model": "claude-haiku-4-5",
+    "messages": [{"role": "user", "content": "Hello"}],
+    "guardrails": ["conduct-guard"]
+  }'
+```
+
+Then run any agent inside Proliferate. In the Conduct console:
 
 1. Open **Guard → Activity** (`/theguard/activity`).
 2. Look for entries with `TOOL: litellm` — audit attribution comes

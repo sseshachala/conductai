@@ -1,0 +1,9 @@
+# Extends Proliferate's vanilla LiteLLM image with Conduct Guard.
+# Drop into: proliferate/server/litellm/Dockerfile.with-conduct
+#
+# Build context: proliferate/server/ (matches the base compose file).
+#   docker build -f litellm/Dockerfile.with-conduct .
+
+FROM ghcr.io/berriai/litellm:v1.93.0@sha256:a1745e629abfb17d434426ff48b115f54f4f4c4a0f5af241de569e93c63c411e
+
+RUN pip install --no-cache-dir conduct-litellm-guard
