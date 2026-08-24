@@ -107,9 +107,7 @@ DUMMY_CREDENTIALS = {
         # Fake but well-formed OpenSSH-style header so paramiko surfaces a key
         # parse error, not a "missing field" error, during smoke runs.
         "ssh_private_key": (
-            "-----BEGIN PRIVATE KEY-----
-REDACTED
------END PRIVATE KEY-----\n"
+            "-----BEGIN PRIVATE KEY-----\nFAKE_TEST_KEY\n-----END PRIVATE KEY-----\n"
         ),
     },
     "email": {"resend_api_key": "dummy_resend_key"},
