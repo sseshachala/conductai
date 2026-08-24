@@ -699,13 +699,13 @@ function DemoVideoSection() {
       <div className="max-w-4xl mx-auto text-center">
         <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3">See it in action</p>
         <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-10">
-          Watch ConductGuard block a privilege escalation in real time
+          Autonomous agents need an autonomous guard.
         </h2>
         <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
           <iframe
             className="absolute inset-0 w-full h-full rounded-2xl"
-            src="https://www.youtube.com/embed/zY8JzniqzG8"
-            title="ConductGuard blocks privilege escalation"
+            src="https://www.youtube.com/embed/NdgfQRkSg14"
+            title="Autonomous agents need an autonomous guard — ConductAI product overview"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
           />
