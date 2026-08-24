@@ -8,6 +8,7 @@ export default function GuardLandingPage() {
     <>
       <HeroSection />
       <ProofStripSection />
+      <MoatSection />
       <FailClosedSection />
       <ToolsSection />
       <ProxyCompareSection />
@@ -134,6 +135,62 @@ const TOOLS = [
 
 
 /* ─── Fail-closed ──────────────────────────────────────────────────────── */
+
+function MoatSection() {
+  const pillars = [
+    {
+      title: "Signed configuration",
+      body: "Every workspace signs its active policy set. Every Guard check verifies the signature before enforcing. A tampered pack — pushed by anyone, at any layer — is rejected before it can decide anything.",
+    },
+    {
+      title: "Hash-chained audit",
+      body: "Every decision (block, warn, audit, inject) appends to a SHA-256 chain rooted at workspace genesis. Any missing or altered entry breaks the chain and is detected on one-click verification. Compliance evidence you can hand to an auditor.",
+    },
+    {
+      title: "Policy-first, not detection-first",
+      body: "Rules decide before the action executes — block, warn, audit, or inject — with a structured reason. Firewalls flag anomalies after the fact. Guard sets what is admissible up front.",
+    },
+  ]
+
+  return (
+    <section className="px-6 py-20 bg-white">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-14">
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-3">Where the moat lives</p>
+          <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-stone-900 mb-4">
+            Governance, not observability.
+          </h2>
+          <p className="text-stone-500 max-w-2xl mx-auto leading-relaxed">
+            Runtime firewalls like <span className="font-semibold text-stone-700">Straiker</span> and <span className="font-semibold text-stone-700">Lakera</span> tell you what an agent did. Guard controls what an agent can do — with signed policy and cryptographic proof.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-5">
+          {pillars.map((p) => (
+            <div key={p.title} className="border border-stone-200 rounded-xl p-6 bg-stone-50">
+              <h3 className="text-base font-bold text-stone-900 mb-2">{p.title}</h3>
+              <p className="text-sm text-stone-600 leading-relaxed">{p.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-10 border border-emerald-200 bg-emerald-50 rounded-xl p-6 flex flex-col sm:flex-row items-start sm:items-center gap-5">
+          <div className="flex-1">
+            <p className="text-xs font-semibold uppercase tracking-widest text-emerald-700 mb-1">Free wedge tier</p>
+            <h3 className="text-lg font-bold text-stone-900 mb-1">Start with Discovery.</h3>
+            <p className="text-sm text-stone-600 leading-relaxed">
+              Read-only visibility into every AI action across your team, for free. No policy to author, nothing to install upstream. When you&apos;re ready to enforce, promote a rule from what Discovery already saw.
+            </p>
+          </div>
+          <a href="/sign-up" className="inline-flex items-center gap-2 rounded-lg bg-stone-900 text-white px-5 py-3 text-sm font-semibold hover:bg-stone-800 transition-colors whitespace-nowrap">
+            Turn on Discovery
+          </a>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 
 function FailClosedSection() {
   return (
