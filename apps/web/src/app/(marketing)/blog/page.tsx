@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "one-policy-every-llm-call",
+      title: "One policy for every LLM call.",
+      excerpt: "Conduct Guard now ships as a LiteLLM plugin. Add a rule once — every call routed through your LiteLLM proxy enforces it before the request leaves your network. Three lines of config.",
+      date: "August 24, 2026",
+      tag: "Integrations",
+      tagColor: "text-orange-700 bg-orange-50 border-orange-200",
+    },
+    {
       slug: "autonomous-agents-need-an-autonomous-guard",
       title: "Autonomous agents need an autonomous guard.",
       excerpt: "A self-driving network agent detects a BGP flap across two fabrics and proposes a fix. Before that change reaches production, ConductGuard intercepts it, asks a human, records the decision. 90-second demo.",
