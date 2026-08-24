@@ -7,6 +7,7 @@ export default function RouterLandingPage() {
     <>
       <HeroSection />
       <PrimitivesSection />
+      <TwoPathsSection />
       <UsageSection />
       <SetupSection />
       <GuardRelationSection />
@@ -84,6 +85,96 @@ function PrimitivesSection() {
           </div>
         ))}
       </div>
+    </section>
+  )
+}
+
+/* ─── Two paths ────────────────────────────────────────────────────────── */
+
+function TwoPathsSection() {
+  return (
+    <section className="max-w-5xl mx-auto px-6 py-16 bg-stone-50 rounded-2xl">
+      <h2 className="text-3xl font-black tracking-tight text-stone-900 mb-3 text-center">
+        Two ways to route through Conduct
+      </h2>
+      <p className="text-stone-500 text-center max-w-2xl mx-auto mb-12">
+        Same policy engine, two integration points. Pick based on what your stack already runs.
+      </p>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Option 1: Conduct Router */}
+        <div className="border border-stone-200 rounded-xl bg-white p-6 flex flex-col">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+              Native
+            </span>
+            <span className="text-xs text-stone-500">Best for greenfield</span>
+          </div>
+          <h3 className="text-xl font-bold text-stone-900 mb-2">Conduct Router</h3>
+          <p className="text-sm text-stone-600 leading-relaxed mb-4">
+            Point any provider SDK at <code className="text-stone-800 text-xs">api.conductai.ai/proxy/&lt;provider&gt;</code>.
+            No new infrastructure — Router speaks each provider&apos;s native API, per-agent tokens, retries, and audit
+            chain out of the box.
+          </p>
+          <div className="bg-stone-950 rounded-lg p-3 mb-4">
+            <pre className="text-xs font-mono text-stone-100 overflow-x-auto">
+{`export ANTHROPIC_BASE_URL=\\
+  https://api.conductai.ai/proxy/anthropic
+export ANTHROPIC_API_KEY=cond_agt_...`}
+            </pre>
+          </div>
+          <ul className="text-xs text-stone-500 space-y-1 leading-relaxed">
+            <li>Provider fallback + retries baked in</li>
+            <li>Spend metering per agent token</li>
+            <li>One URL swap in your app</li>
+          </ul>
+        </div>
+
+        {/* Option 2: LiteLLM plugin */}
+        <div className="border border-stone-200 rounded-xl bg-white p-6 flex flex-col">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+              Plugin
+            </span>
+            <span className="text-xs text-stone-500">Best if you already run LiteLLM</span>
+          </div>
+          <h3 className="text-xl font-bold text-stone-900 mb-2">LiteLLM + Guard plugin</h3>
+          <p className="text-sm text-stone-600 leading-relaxed mb-4">
+            Keep your LiteLLM proxy. Add{" "}
+            <code className="text-stone-800 text-xs">conduct-litellm-guard</code> as a guardrail — every call
+            through LiteLLM policy-checks against your active Conduct packs before the upstream request goes out.
+          </p>
+          <div className="bg-stone-950 rounded-lg p-3 mb-4">
+            <pre className="text-xs font-mono text-stone-100 overflow-x-auto">
+{`# config.yaml
+guardrails:
+  - guardrail_name: conduct-guard
+    litellm_params:
+      guardrail: conduct_litellm_guard.ConductGuard
+      agent_token: os.environ/CONDUCT_AGENT_TOKEN`}
+            </pre>
+          </div>
+          <ul className="text-xs text-stone-500 space-y-1 leading-relaxed">
+            <li><code className="text-stone-700">pip install conduct-litellm-guard</code></li>
+            <li>No infrastructure change to your LiteLLM setup</li>
+            <li>
+              <a
+                href="https://github.com/sseshachala/conductai/tree/main/packages/conduct-litellm-guard"
+                className="text-indigo-600 hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View plugin source
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <p className="text-xs text-stone-500 text-center mt-8 max-w-3xl mx-auto leading-relaxed">
+        Both paths hit the same policy engine, the same signed configuration, and the same hash-chained audit log.
+        Same enforcement, same evidence — different entry points.
+      </p>
     </section>
   )
 }
