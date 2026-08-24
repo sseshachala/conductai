@@ -17,9 +17,7 @@ from app.runtime.remote_sandbox import (
 HOST_CONFIG = {
     "ip": "10.0.0.42",
     "username": "root",
-    "private_key": "-----BEGIN PRIVATE KEY-----
-REDACTED
------END PRIVATE KEY-----\n",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nREDACTED\n-----END PRIVATE KEY-----\n",
 }
 
 

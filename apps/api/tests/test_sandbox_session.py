@@ -345,9 +345,7 @@ class TestModalSession:
 HOST_CONFIG = {
     "ip": "10.0.0.99",
     "username": "root",
-    "private_key": "-----BEGIN PRIVATE KEY-----
-REDACTED
------END PRIVATE KEY-----\n",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nREDACTED\n-----END PRIVATE KEY-----\n",
 }
 
 
