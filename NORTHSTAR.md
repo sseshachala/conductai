@@ -14,7 +14,7 @@ The thesis in one line: **stop building features, start building accumulators.**
 ## 1. Where We Are (May 2026)
 
 **What exists today:**
-- 11 pre-built playbooks shipped, MIT-licensed, config-as-code
+- 37 pre-built playbooks shipped, source-available under FSL-1.1-MIT (converts to MIT on 2028-08-23), config-as-code
 - GitHub, Slack, PagerDuty, OpsGenie integrations
 - Slack approval gates as first-class blocks
 - Ephemeral Modal sandboxes per run

@@ -141,6 +141,13 @@ One policy, three enforcement surfaces.
 
 For commercial use outside the permitted-purpose grant, email **hello@conductai.ai**.
 
+**Distributed CLI + tooling ship under MIT** for permissive install and integration:
+
+- [`packages/conduct-cli`](./packages/conduct-cli/LICENSE) — the `conduct` CLI (MIT)
+- [`tools/booster`](./tools/booster/LICENSE) — Agent Booster (MIT)
+
+The MIT terms apply only to the code inside those two directories. Everything else in this repository is FSL-1.1-MIT.
+
 ---
 
 ## Contributing
