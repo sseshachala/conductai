@@ -342,7 +342,18 @@ def decide_approval(
     row = _get_row(db, request_id, workspace_id)
     row = sweep_if_timed_out(db, row)
     if row.status != "pending":
-        raise HTTPException(status_code=409, detail=f"approval already {row.status}")
+        _STATUS_PHRASE = {
+            "approved": "This approval has already been approved.",
+            "rejected": "This approval has already been rejected.",
+            "timed_out": "This approval has already timed out and can no longer be decided.",
+        }
+        raise HTTPException(
+            status_code=409,
+            detail=_STATUS_PHRASE.get(row.status, f"This approval is no longer pending ({row.status})."),
+        )
+
+    if body.decision == "rejected" and not (body.reason and body.reason.strip()):
+        raise HTTPException(status_code=400, detail="A reason is required when rejecting an approval.")
 
     decider_email = get_clerk_user_email(user_id) if user_id else None
 

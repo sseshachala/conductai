@@ -277,9 +277,14 @@ export default function ApprovalsPage() {
                         </span>
                       )}
                       <span>{timeAgo(row.created_at)}</span>
-                      {isPending && (
-                        <span style={{ color: "var(--warn)" }}>expires in {timeUntil(row.timeout_at)}</span>
-                      )}
+                      {isPending && (() => {
+                        const t = timeUntil(row.timeout_at)
+                        return (
+                          <span style={{ color: "var(--warn)" }}>
+                            {t === "expired" ? "expired" : `expires in ${t}`}
+                          </span>
+                        )
+                      })()}
                       {row.status !== "pending" && row.decided_by_email && (
                         <span>
                           <b style={{ color: "var(--text)" }}>decided by</b>: {row.decided_by_email}
@@ -323,11 +328,13 @@ export default function ApprovalsPage() {
                   </pre>
                 )}
 
-                {isPending && (
+                {isPending && (() => {
+                  const rejectDisabled = busyId === row.id || !(reasonMap[row.id] || "").trim()
+                  return (
                   <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
                     <input
                       type="text"
-                      placeholder="Reason (optional)"
+                      placeholder="Reason (required to reject)"
                       value={reasonMap[row.id] || ""}
                       onChange={e => setReasonMap(m => ({ ...m, [row.id]: e.target.value }))}
                       style={{
@@ -342,7 +349,8 @@ export default function ApprovalsPage() {
                     />
                     <button
                       onClick={() => decide(row, "rejected")}
-                      disabled={busyId === row.id}
+                      disabled={rejectDisabled}
+                      title={rejectDisabled && busyId !== row.id ? "Enter a reason to reject" : ""}
                       style={{
                         padding: "6px 14px",
                         borderRadius: 6,
@@ -351,7 +359,8 @@ export default function ApprovalsPage() {
                         color: "var(--err)",
                         fontSize: 12,
                         fontWeight: 600,
-                        cursor: busyId === row.id ? "not-allowed" : "pointer",
+                        cursor: rejectDisabled ? "not-allowed" : "pointer",
+                        opacity: rejectDisabled ? 0.5 : 1,
                       }}
                     >
                       Reject
@@ -373,7 +382,8 @@ export default function ApprovalsPage() {
                       {busyId === row.id ? "…" : "Approve"}
                     </button>
                   </div>
-                )}
+                  )
+                })()}
 
                 {row.decided_reason && (
                   <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
