@@ -32,18 +32,18 @@ function ProductsDropdown() {
               <p className="text-xs text-stone-400">Guard — see and control every AI session</p>
             </div>
           </a>
-          <a href="/registry" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>⚡</span>
-            <div>
-              <p className="font-semibold">Registry</p>
-              <p className="text-xs text-stone-400">Compliance &amp; automation packs</p>
-            </div>
-          </a>
           <a href="/open-source#conduct-router" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span className="text-indigo-600 font-bold">⇋</span>
             <div>
               <p className="font-semibold">Router</p>
               <p className="text-xs text-stone-400">LLM proxy — per-agent tokens, retries, audit</p>
+            </div>
+          </a>
+          <a href="/registry" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>⚡</span>
+            <div>
+              <p className="font-semibold">Registry</p>
+              <p className="text-xs text-stone-400">Compliance &amp; automation packs</p>
             </div>
           </a>
           <a href="/tools/conduct-cli" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
