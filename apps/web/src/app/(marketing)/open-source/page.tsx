@@ -40,6 +40,16 @@ function ProjectsSection() {
   return (
     <section className="max-w-5xl mx-auto px-6 pb-20 flex flex-col gap-8">
       <ProjectCard
+        name="Conduct"
+        tagline="The Guard runtime, canvas UI, and playbook engine"
+        description="Full source of the Conduct platform — FastAPI + Redis worker, Next.js canvas UI, YAML playbook DSL, and 20+ pre-built compliance packs (OWASP, SOC 2, HIPAA, PCI, EU AI Act). FSL-1.1-MIT license — free for non-competing use, converts to MIT on 2028-08-23."
+        install={["git clone https://github.com/sseshachala/conductai", "docker compose up"]}
+        githubUrl="https://github.com/sseshachala/conductai"
+        guardRelation="This is Guard itself — every layer of the hosted product ships in this repo. Self-host for full control, or use ours."
+        badgeColor="bg-stone-900 text-white"
+        badgeLabel="Platform"
+      />
+      <ProjectCard
         name="Agent Booster"
         tagline="Context-efficient reads for Claude Code"
         description="Agent Booster intercepts Read and Grep calls and returns only the relevant symbol slices — cutting token usage 60-90% on large codebases."

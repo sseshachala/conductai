@@ -133,7 +133,7 @@ function MarketingFooter() {
               { heading: "Product", links: [["Guard", "/guard"], ["Use cases", "/use-cases"], ["Registry", "/registry"], ["SDD Scanner", "/sdd"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
               { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Security Loop", "/solutions/security-loop"], ["Action governance", "/solutions/action-governance"], ["Memory hardening", "/solutions/memory-hardening"], ["Okta + Conduct", "/solutions/okta-plus-conduct"], ["Financial services", "/solutions/financial-services"], ["Life sciences", "/solutions/life-sciences"], ["All use cases", "/use-cases"], ["Deployment options", "/deployment"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], ["Blog", "/blog"]] as [string, string][] },
-              { heading: "Resources", links: [["Team OS", "/team-os"], ["Docs", "/docs"], ["Security", "/security"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
+              { heading: "Resources", links: [["Team OS", "/team-os"], ["Docs", "/docs"], ["Security", "/security"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conductai"]] as [string, string][] },
               { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
             ].map(col => (
               <div key={col.heading}>
