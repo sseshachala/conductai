@@ -179,6 +179,10 @@ class ConductGuard(CustomGuardrail):
         """Pre-call hook. Raises to block, returns the (possibly
         annotated) data to allow. LiteLLM converts our exception into a
         400/403 response to the caller."""
+        # Normalise call_type so every LiteLLM invocation reports as
+        # tool_name=llm_call. Granularity (acompletion / embedding /
+        # image / etc) lives inside tool_input.call_type, matching the
+        # existing Guard rule ergonomics for CLI tools.
         decision = await self.check(data=data, call_type=call_type)
 
         if decision.verdict == "block" or decision.verdict == "approval":
@@ -201,7 +205,7 @@ class ConductGuard(CustomGuardrail):
 
         try:
             raw = await self._client.guard_check(
-                tool_name=call_type or "completion",
+                tool_name="llm_call",
                 tool_input=tool_input,
                 session_id=session_id,
                 prompt=prompt,
@@ -280,9 +284,11 @@ def _extract_prompt_text(data: dict[str, Any]) -> str | None:
 
 
 def _build_tool_input(data: dict[str, Any], call_type: str) -> dict[str, Any]:
-    """Compact payload for the ``tool_input`` field. Guard rules match on
-    the model name, provider, and a truncated message digest — we don't
-    ship the entire request body."""
+    """Compact payload for the ``tool_input`` field. Includes a truncated
+    view of the last user message so existing Guard rules that match
+    against ``tool_input`` fire the same way for LLM calls as they do
+    for shell / write_file. Truncation caps the field at 4KB so a
+    16-turn RAG conversation doesn't blow the audit row size."""
     messages = data.get("messages") or []
     return {
         "model": data.get("model"),
@@ -291,4 +297,7 @@ def _build_tool_input(data: dict[str, Any], call_type: str) -> dict[str, Any]:
         "temperature": data.get("temperature"),
         "max_tokens": data.get("max_tokens"),
         "stream": bool(data.get("stream")),
+        # Content is what content-match rules (prompt injection, secrets,
+        # PII, etc) look for. Same shape as tool_input.command for bash.
+        "content": _extract_prompt_text(data) or "",
     }
