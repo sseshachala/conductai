@@ -1503,9 +1503,11 @@ def cmd_switch(args):
             import datetime as _dt
             cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=int(_r.get("expires_in", 28800)))).isoformat()
     except SystemExit:
-        print(f"  {YELLOW}⚠ Could not re-mint token for new workspace — falling back to config-only switch{RESET}")
+        print(f"  {RED}✗ Cannot switch to {new_name}: token re-mint failed. Run `conduct login` and try again.{RESET}")
+        sys.exit(1)
     except Exception as e:
-        print(f"  {YELLOW}⚠ Token re-mint failed ({e}) — falling back to config-only switch{RESET}")
+        print(f"  {RED}✗ Cannot switch to {new_name}: {e}. Run `conduct login` and try again.{RESET}")
+        sys.exit(1)
 
     # Update ~/.conduct/config.json atomically
     cfg["workspace"] = new_id; cfg["workspace_id"] = new_id
