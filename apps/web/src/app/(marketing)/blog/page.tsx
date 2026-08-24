@@ -1,6 +1,22 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "guard-on-agentic-governance-benchmark",
+      title: "We scored Guard on the Agentic Governance Benchmark.",
+      excerpt: "The AGB grades runtime governance across six weighted dimensions. We ran Conduct Guard through it: 80/100, Enforced tier. Here is the per-dimension evidence and what we are not claiming.",
+      date: "August 24, 2026",
+      tag: "Benchmark",
+      tagColor: "text-indigo-700 bg-indigo-50 border-indigo-200",
+    },
+    {
+      slug: "openrouter-one-policy-every-model",
+      title: "One policy in front of 400+ models.",
+      excerpt: "Point Guard at OpenRouter and every model you route through it — Claude, GPT, Gemini, Llama, Mistral, DeepSeek — enforces the same policy before the request leaves your network.",
+      date: "August 24, 2026",
+      tag: "Integrations",
+      tagColor: "text-orange-700 bg-orange-50 border-orange-200",
+    },
+    {
       slug: "one-policy-every-llm-call",
       title: "One policy for every LLM call.",
       excerpt: "Conduct Guard now ships as a LiteLLM plugin. Add a rule once — every call routed through your LiteLLM proxy enforces it before the request leaves your network. Three lines of config.",
