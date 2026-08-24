@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "autonomous-agents-need-an-autonomous-guard",
+      title: "Autonomous agents need an autonomous guard.",
+      excerpt: "A self-driving network agent detects a BGP flap across two fabrics and proposes a fix. Before that change reaches production, ConductGuard intercepts it, asks a human, records the decision. 90-second demo.",
+      date: "August 23, 2026",
+      tag: "Autonomy",
+      tagColor: "text-indigo-700 bg-indigo-50 border-indigo-200",
+    },
+    {
       slug: "governing-37-ai-agents-in-production",
       title: "Governing 37 AI Agents in Production: A Field Guide to Runtime Governance.",
       excerpt: "Claude Code, Cursor, Copilot, custom agents, MCP servers — each with its own dashboard and no shared audit trail. Policy as a runtime primitive, not a doc. Six use cases from what real teams are doing.",
