@@ -170,6 +170,7 @@ class ConductGuard(CustomGuardrail):
             api_url=self._api_url,
             agent_token=self._agent_token,
             workspace_id=self._workspace_id,
+            surface="litellm",
             timeout=timeout,
         )
 

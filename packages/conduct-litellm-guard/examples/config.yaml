@@ -37,7 +37,7 @@ guardrails:
       # Set to 'workflow' to reuse existing pack rules that already
       # scope to workflow (like conduct-owasp / conduct-prompt-injection)
       # without editing the pack.
-      # tool_name: workflow
+      tool_name: workflow
       # How long a single guard_check may take before the fail-mode
       # kicks in. 8s is generous — a healthy Guard responds in <100ms.
       timeout: 8.0

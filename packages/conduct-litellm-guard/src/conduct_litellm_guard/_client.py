@@ -24,12 +24,14 @@ class GuardCheckClient:
         api_url: str,
         agent_token: str,
         workspace_id: str | None = None,
+        surface: str = "litellm",
         timeout: float = DEFAULT_TIMEOUT_S,
     ) -> None:
         # Strip trailing slash so ``/guard/mcp`` concatenation is predictable.
         self._base = api_url.rstrip("/")
         self._token = agent_token
         self._workspace_id = workspace_id
+        self._surface = surface
         self._client = httpx.AsyncClient(timeout=timeout)
 
     async def aclose(self) -> None:
@@ -66,6 +68,10 @@ class GuardCheckClient:
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
             "User-Agent": "conduct-litellm-guard/0.1.0",
+            # Server reads this to populate the DEVELOPER/TOOL column
+            # in the audit dashboard. Defaults to 'litellm' so audit
+            # rows land under a clear surface name instead of 'unknown'.
+            "X-Claude-Surface": self._surface,
         }
         if self._workspace_id:
             headers["X-Workspace-Id"] = self._workspace_id
