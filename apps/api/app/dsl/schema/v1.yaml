@@ -259,17 +259,20 @@ properties:
           default: null
           title: Action
         params:
+          additionalProperties: true
           title: Params
           type: object
         input:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           default: null
           title: Input
         config:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           default: null
           title: Config
@@ -531,7 +534,8 @@ properties:
           title: Complexity
         execution_policy:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           default: null
           title: Execution Policy
@@ -635,17 +639,20 @@ properties:
           default: null
           title: Action
         params:
+          additionalProperties: true
           title: Params
           type: object
         input:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           default: null
           title: Input
         config:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           default: null
           title: Config
@@ -907,7 +914,8 @@ properties:
           title: Complexity
         execution_policy:
           anyOf:
-          - type: object
+          - additionalProperties: true
+            type: object
           - type: 'null'
           default: null
           title: Execution Policy
