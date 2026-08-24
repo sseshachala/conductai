@@ -32,7 +32,7 @@ function ProductsDropdown() {
               <p className="text-xs text-stone-400">Guard — see and control every AI session</p>
             </div>
           </a>
-          <a href="/open-source#conduct-router" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+          <a href="/router" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span className="text-indigo-600 font-bold">⇋</span>
             <div>
               <p className="font-semibold">Router</p>
