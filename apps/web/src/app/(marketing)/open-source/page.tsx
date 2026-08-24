@@ -40,14 +40,24 @@ function ProjectsSection() {
   return (
     <section className="max-w-5xl mx-auto px-6 pb-20 flex flex-col gap-8">
       <ProjectCard
-        name="Conduct"
-        tagline="The Guard runtime, canvas UI, and playbook engine"
-        description="Full source of the Conduct platform — FastAPI + Redis worker, Next.js canvas UI, YAML playbook DSL, and 20+ pre-built compliance packs (OWASP, SOC 2, HIPAA, PCI, EU AI Act). FSL-1.1-MIT license — free for non-competing use, converts to MIT on 2028-08-23."
+        name="Conduct Guard"
+        tagline="Runtime policy enforcement for AI agents"
+        description="Guard sits at the LLM call and shell tool boundary — block, warn, audit, or inject before an action executes. Ships with 20+ compliance packs (OWASP, SOC 2, HIPAA, PCI, EU AI Act), a canvas UI, YAML playbook DSL, and hash-chained audit trail. FSL-1.1-MIT — free for non-competing use, converts to MIT on 2028-08-23."
         install={["git clone https://github.com/sseshachala/conductai", "docker compose up"]}
         githubUrl="https://github.com/sseshachala/conductai"
-        guardRelation="This is Guard itself — every layer of the hosted product ships in this repo. Self-host for full control, or use ours."
+        guardRelation="This is Guard itself — the policy engine, packs, canvas, and hash chain. Self-host for full control, or use the hosted product."
         badgeColor="bg-stone-900 text-white"
         badgeLabel="Platform"
+      />
+      <ProjectCard
+        name="Conduct Router"
+        tagline="LLM proxy with per-agent tokens, retries, and audit"
+        description="Router is the Guard-aware LLM proxy — every model call runs through it. Per-agent tokens (cond_agt_*), provider fallback, retry-on-upstream-error, spend metering, and full request/response audit. Sits in the same repo as Guard; deploy together or use the proxy standalone in front of any AI SDK."
+        install={["git clone https://github.com/sseshachala/conductai", "docker compose up grouter"]}
+        githubUrl="https://github.com/sseshachala/conductai"
+        guardRelation="Router is the enforcement point Guard uses at runtime — every LLM call is checked against active packs before the upstream request goes out."
+        badgeColor="bg-indigo-100 text-indigo-700"
+        badgeLabel="Proxy"
       />
       <ProjectCard
         name="Agent Booster"
@@ -92,10 +102,11 @@ function ProjectCard({
   badgeColor: string
   badgeLabel: string
 }) {
+  const anchorId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
   const installLines = Array.isArray(install) ? install : [install]
 
   return (
-    <div className="border border-stone-200 rounded-xl bg-white overflow-hidden">
+    <div id={anchorId} className="border border-stone-200 rounded-xl bg-white overflow-hidden scroll-mt-24">
       {/* Header */}
       <div className="px-8 pt-8 pb-6 border-b border-stone-100">
         <div className="flex items-start justify-between gap-4 flex-wrap">
