@@ -77,3 +77,21 @@ apps/web/CLAUDE.md
 docs/internal/
 .env*.local
 .env*
+
+# Archived to sseshachala/conduct-internal — never publish
+docs/venky/
+docs/venky-*
+docs/conduct-one-pager*.md
+docs/conduct-one-pager*.pdf
+LAUNCH_DRAFTS.md
+CAPABILITIES.md
+apps/api/playbooks/prod-deploy-gate-demo.yaml
+apps/api/debug_*.py
+apps/api/e2e_*.py
+apps/api/trace_*.py
+apps/api/.venv-local/
+public/mockups/
+
+# Local Claude Code state — never publish
+.claude/settings.local.json
+.claude/projects/

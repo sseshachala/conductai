@@ -1,64 +1,126 @@
-Conduct AI License
+Functional Source License, Version 1.1, MIT Future License
+
+Abbreviation: FSL-1.1-MIT
+
+Licensor: Conduct AI (Sudhi Seshachala)
+
+Software: Conduct
+
+Notice
+
 Copyright (c) 2026 Conduct AI (Sudhi Seshachala)
 
-─────────────────────────────────────────────────────────────────────────────
+This Software is made available under the Functional Source License,
+Version 1.1 with the MIT license as the Future License. The complete text of
+FSL-1.1-MIT is reproduced below. On the Change Date defined below, this
+Software will automatically become available under the MIT License.
 
-FREE USE (no license required)
+Change Date: 2028-08-23
 
-You may use, copy, adapt, and share this software at no cost if ALL of the
-following are true:
+Change License: MIT License, as published by the Open Source Initiative
 
-  1. Your use is non-commercial, OR you are an individual developer or a
-     team of fewer than 10 people.
-  2. You are not offering a product or service where this software (or a
-     derivative of it) is a primary component.
-  3. You include the attribution notice below in any published or
-     distributed copy.
+For commercial use that falls outside the Permitted Purpose (see below) —
+for example, offering Conduct or a derivative as a competing hosted product
+or service — contact hello@conductai.ai for a commercial license.
 
-ATTRIBUTION (required in all cases)
+────────────────────────────────────────────────────────────────────────────────
 
-Any copy, adaptation, or derivative of this work must include the following
-notice, visible to the people who use it:
+Functional Source License, Version 1.1, MIT Future License
 
-  "Powered by Conduct AI — conductai.ai"
+Terms
 
-COMMERCIAL LICENSE (required for companies)
+Licensor hereby grants you the right to use, copy, modify, create derivative
+works, publicly perform, publicly display and redistribute the Software for
+any Permitted Purpose identified below, subject to the conditions in this
+license.
 
-A commercial license is required if:
+Permitted Purpose
 
-  - Your organisation has 10 or more employees or contractors, AND
-  - You use this software in a commercial context (internal tooling, client
-    work, products, training, or consulting), OR
-  - You distribute or embed this software as part of a commercial product
-    or service.
+A Permitted Purpose is any purpose other than a Competing Use. A Competing
+Use means making the Software available to others in a commercial product or
+service that:
 
-To obtain a commercial license, contact: hello@conductai.ai
-Commercial licensees receive: written permission for their specific use,
-removal of the attribution requirement on request, and priority support
-from the Conduct AI team.
+  a. substitutes for the use of the Software;
 
-─────────────────────────────────────────────────────────────────────────────
+  b. substitutes for any other product or service we offer using the Software
+     that exists as of the date we make the Software available; or
 
-WHAT THIS MEANS IN PLAIN ENGLISH
+  c. offers the same or substantially similar functionality as the Software.
 
-  ✓  Individual developer using or building on this: free.
-  ✓  Startup (< 10 people) using this for their product: free.
-  ✓  Open-source project using or adapting this: free.
-  ✓  University course or bootcamp teaching from this: free.
+Permitted Purposes specifically include using the Software:
 
-  ✗  Company of 10+ using this as part of their engineering platform
-     without a commercial agreement: not free.
-  ✗  Consulting firm using this as the basis of a client engagement: not free.
-  ✗  Product that packages or distributes this as a feature: not free.
+  1. for your internal use and access;
 
-─────────────────────────────────────────────────────────────────────────────
+  2. for non-commercial education;
 
-NO WARRANTIES
+  3. for non-commercial research; and
 
-This software is provided as-is, without warranty of any kind. The authors
-are not liable for any damages arising from its use.
+  4. in connection with professional services that you provide to a
+     licensee using the Software in accordance with these terms.
 
-─────────────────────────────────────────────────────────────────────────────
+Notices
 
-If you are unsure whether your use requires a commercial license, email
-hello@conductai.ai and ask. We will respond within two business days.
+You must give any other recipients of the Software a copy of this license.
+
+You must retain all copyright, license and attribution notices in the
+Software.
+
+Redistribution
+
+You may redistribute the Software only under the terms of this license (or a
+later version of the Functional Source License published by the Licensor,
+or a Change License).
+
+Change License
+
+On the Change Date, the Software will become available under the Change
+License identified above. Once the Software is available under the Change
+License, you may continue to use the Software under either the Change License
+or under this license.
+
+Patents
+
+To the extent your use for a Permitted Purpose would necessarily infringe
+the Licensor's patents, the license grant above includes a license under the
+Licensor's patents. If you make a claim against any party that the Software
+infringes or contributes to the infringement of any patent, then your patent
+license to the Software ends immediately.
+
+Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTIES OF ANY KIND
+INCLUDING, WITHOUT LIMITATION, MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, NON-INFRINGEMENT, AND ANY WARRANTY ARISING OUT OF ANY COURSE OF
+DEALING, USAGE, OR TRADE.
+
+YOUR USE OF THE SOFTWARE IS AT YOUR OWN RISK. THE LICENSOR WILL NOT BE
+LIABLE FOR ANY DAMAGES OF ANY KIND, INCLUDING WITHOUT LIMITATION DIRECT,
+INDIRECT, INCIDENTAL, CONSEQUENTIAL, SPECIAL OR PUNITIVE DAMAGES, WHETHER IN
+AN ACTION OF CONTRACT, TORT OR OTHERWISE, EVEN IF THE LICENSOR HAS BEEN
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+────────────────────────────────────────────────────────────────────────────────
+
+Change License Text (MIT License)
+
+MIT License
+
+Copyright (c) 2026 Conduct AI (Sudhi Seshachala)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.

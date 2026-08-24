@@ -21,7 +21,7 @@ def main():
 
     # Find changed playbook files
     result = subprocess.run(
-        ["git", "diff", "--cached", "--name-only"],
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
         cwd=repo_root, capture_output=True, text=True
     )
     changed = [f for f in result.stdout.splitlines()
