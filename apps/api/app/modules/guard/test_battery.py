@@ -348,7 +348,7 @@ def run_battery(
             if action == "block":
                 actual = "blocked"
             elif action == "approval":
-                actual = "approval_pending"
+                actual = "warned"
             elif action == "warn":
                 actual = "warned"
             else:

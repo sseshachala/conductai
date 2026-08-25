@@ -4,7 +4,7 @@ The __main__ self-check inside okta_sync.py already covers the pure mapping
 (_okta_app_to_row, _extract_next_link, _sanitize_domain). This file covers the
 sync loop: pagination, owner enrichment, idempotent updates, and error paths.
 
-No real network. urlopen is monkeypatched.
+No real network. httpx.request is monkeypatched (was urllib.urlopen pre-bandit B310).
 """
 from __future__ import annotations
 
@@ -17,13 +17,19 @@ import pytest
 
 
 def _fake_http_response(body: dict | list, *, link_header: str = ""):
-    """Build an object that behaves like the context manager returned by urlopen."""
+    """Build an object that behaves like an httpx.Response."""
     class _Resp:
         def __init__(self, payload, link):
-            self._payload = json.dumps(payload).encode("utf-8")
+            self._payload = payload
             self.headers = {"Link": link}
-        def read(self):
+            self.status_code = 200
+            self.text = json.dumps(payload)
+        def json(self):
             return self._payload
+        def read(self):
+            return json.dumps(self._payload).encode("utf-8")
+        def raise_for_status(self):
+            return None
         def __enter__(self):
             return self
         def __exit__(self, *a):
@@ -47,44 +53,49 @@ def _app(app_id: str, *, label: str = "Sample", status: str = "ACTIVE") -> dict:
 
 def test_fetch_first_owner_extracts_username(monkeypatch):
     from app.routers import okta_sync
+    import httpx
 
-    def _fake_urlopen(req, timeout=None):
-        assert "/api/v1/apps/APPID/users" in req.full_url
-        assert req.headers["Authorization"] == "SSWS TESTTOK"
+    def _fake_request(*, method, url, headers, content=None, timeout=None, **_):
+        assert "/api/v1/apps/APPID/users" in url
+        assert headers["Authorization"] == "SSWS TESTTOK"
         return _fake_http_response([{"id": "u1", "credentials": {"userName": "owner@example.com"}}])
 
-    monkeypatch.setattr(okta_sync.urllib.request, "urlopen", _fake_urlopen)
+    monkeypatch.setattr(httpx, "request", _fake_request)
     assert okta_sync._fetch_first_owner("x.okta.com", "TESTTOK", "APPID") == "owner@example.com"
 
 
 def test_fetch_first_owner_falls_back_to_id_when_username_missing(monkeypatch):
     from app.routers import okta_sync
+    import httpx
 
     monkeypatch.setattr(
-        okta_sync.urllib.request,
-        "urlopen",
-        lambda req, timeout=None: _fake_http_response([{"id": "0uxABC", "credentials": {}}]),
+        httpx,
+        "request",
+        lambda **_: _fake_http_response([{"id": "0uxABC", "credentials": {}}]),
     )
     assert okta_sync._fetch_first_owner("x.okta.com", "T", "A") == "0uxABC"
 
 
 def test_fetch_first_owner_returns_none_on_empty(monkeypatch):
     from app.routers import okta_sync
+    import httpx
+
     monkeypatch.setattr(
-        okta_sync.urllib.request,
-        "urlopen",
-        lambda req, timeout=None: _fake_http_response([]),
+        httpx,
+        "request",
+        lambda **_: _fake_http_response([]),
     )
     assert okta_sync._fetch_first_owner("x.okta.com", "T", "A") is None
 
 
 def test_fetch_first_owner_returns_none_on_network_error(monkeypatch):
     from app.routers import okta_sync
+    import httpx
 
-    def _boom(req, timeout=None):
+    def _boom(**_):
         raise ConnectionError("network down")
 
-    monkeypatch.setattr(okta_sync.urllib.request, "urlopen", _boom)
+    monkeypatch.setattr(httpx, "request", _boom)
     assert okta_sync._fetch_first_owner("x.okta.com", "T", "A") is None
 
 
@@ -150,6 +161,7 @@ def test_sync_updates_existing_identity_not_duplicate(monkeypatch):
     """Second sync of the same Okta app id must call db.add zero times for
     that row — the update path mutates the existing SQLAlchemy object."""
     from app.routers import okta_sync
+    import httpx
 
     existing = MagicMock()
     existing.owner_user_id = "prior-owner@example.com"
@@ -166,9 +178,9 @@ def test_sync_updates_existing_identity_not_duplicate(monkeypatch):
 
     # Fake pagination: one page, no next link
     monkeypatch.setattr(
-        okta_sync.urllib.request,
-        "urlopen",
-        lambda req, timeout=None: _fake_http_response([_app("APPID")]),
+        httpx,
+        "request",
+        lambda **_: _fake_http_response([_app("APPID")]),
     )
     monkeypatch.setattr(okta_sync, "_fetch_first_owner", lambda d, t, a: "new-owner@example.com")
 

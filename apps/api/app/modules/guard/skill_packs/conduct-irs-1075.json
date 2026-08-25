@@ -55,7 +55,7 @@
       "id": "irs1075-no-tax-return-data",
       "description": "Block tax return fields (AGI, W-2, 1099 values) in AI model context (IRS 1075 Section 4)",
       "match_tool": "bash,edit,write",
-      "match_pattern": "(adjusted_gross_income|\\bagi\\b|taxable_income|federal_tax_withheld|form_1040|w2_wages|1099_(int|div|misc|nec|r|g)|refund_amount|tax_liability)[\"']?\\]?\\s*[=:]\\s*[\"']?(\\$|-?[0-9])",
+      "match_pattern": "(adjusted_gross_income|\\bagi\\b|taxable_income|federal_tax_withheld|form_1040|w2_wages|1099_(int|div|misc|nec|r|g)|refund_amount|tax_liability)",
       "action": "block",
       "message": "Tax return data (FTI) detected in AI context \u2014 IRS 1075 Section 4 prohibits passing Federal Tax Information to AI systems without documented authorisation.",
       "persona_affinity": [
