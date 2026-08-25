@@ -183,51 +183,10 @@ function ConductGuardModule() {
 }
 
 
-function GLensModule() {
-  return (
-    <ModuleCard>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ width: 40, height: 40, borderRadius: 10, background: "var(--accent-weak)", color: "var(--accent-text)", display: "grid", placeItems: "center", flexShrink: 0, fontSize: 20 }} aria-hidden="true">✦</span>
-          <div>
-            <h3 style={{ fontSize: 15, fontWeight: 650, color: "var(--text)", margin: 0 }}>GLens</h3>
-            <p style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 3, margin: "3px 0 0" }}>Conversational governance reporting — ask plain English, get live dashboards.</p>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <span className="sbadge ok">Included in your workspace</span>
-        </div>
-      </div>
-
-      <ul style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "var(--text-2)", listStyle: "none", margin: 0, padding: 0 }}>
-        {[
-          "Ask plain English — Get a live governance dashboard instantly",
-          "Clarifying questions fill in missing time ranges or team scope",
-          "Queries Guard data directly — nothing sent to the model",
-          "Pin dashboards for later, restore any past session",
-          "Cmd+K from any Guard page",
-        ].map(feat => (
-          <li key={feat} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-            <span style={{ color: "var(--ok)", marginTop: 2, flexShrink: 0, fontSize: 12 }} aria-hidden="true">✓</span>
-            <span>{feat}</span>
-          </li>
-        ))}
-      </ul>
-
-      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-        <Link href="/theguard/chat" className="btn btn-primary btn-sm">
-          Open GLens →
-        </Link>
-      </div>
-    </ModuleCard>
-  )
-}
-
 export default function ModulesManager() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <ConductGuardModule />
-      <GLensModule />
     </div>
   )
 }
