@@ -9,17 +9,13 @@ import { API } from "@/lib/api/client"
 import { GlensDashboard } from "@/components/glens/GlensDashboard"
 import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
 
-// ─── Session response type ─────────────────────────────────────────────────────
-
-interface GLensSessionResponse {
+interface LensSessionResponse {
   session_id: string
   ready: boolean
   spec?: GlensDashboardSpec
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
-export default function GLensFullPage() {
+export default function LensSessionPage() {
   const params = useParams()
   const sessionId = typeof params.sessionId === "string" ? params.sessionId : ""
 
@@ -59,7 +55,7 @@ export default function GLensFullPage() {
           return
         }
 
-        const data: GLensSessionResponse = await res.json()
+        const data: LensSessionResponse = await res.json()
 
         if (!data.spec) {
           setError("This session does not have a dashboard.")
@@ -88,10 +84,9 @@ export default function GLensFullPage() {
           padding: "32px 24px 64px",
         }}
       >
-        {/* Back nav */}
         <div style={{ marginBottom: 28 }}>
           <Link
-            href="/theguard"
+            href="/lens"
             style={{
               fontSize: 13,
               color: "var(--text-muted)",
@@ -101,11 +96,10 @@ export default function GLensFullPage() {
               gap: 6,
             }}
           >
-            ← Back to Guard
+            ← Back to Lens
           </Link>
         </div>
 
-        {/* Loading */}
         {loadingSpec && (
           <div>
             <div
@@ -146,7 +140,6 @@ export default function GLensFullPage() {
           </div>
         )}
 
-        {/* Error */}
         {!loadingSpec && error && (
           <div
             style={{
@@ -162,7 +155,6 @@ export default function GLensFullPage() {
           </div>
         )}
 
-        {/* Dashboard */}
         {!loadingSpec && spec && (
           <GlensDashboard
             spec={spec}

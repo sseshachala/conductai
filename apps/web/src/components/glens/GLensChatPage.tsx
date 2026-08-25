@@ -43,17 +43,17 @@ const DEFAULT_SUGGESTIONS = [
 ]
 
 const SKILL_LABELS: Record<string, string> = {
-  report:       "GLens · Report",
-  analytics:    "GLens · Analytics",
-  extract:      "GLens · Extract",
-  memory:       "GLens · Memory",
-  session:      "GLens · Session",
-  rules:        "GLens · Rules",
-  guard_config: "GLens · Guard Config",
-  spend_config: "GLens · Spend Config",
-  discovery:    "GLens · Discovery",
-  compliance:   "GLens · Compliance",
-  governance:   "GLens · Governance",
+  report:       "Lens ·Report",
+  analytics:    "Lens ·Analytics",
+  extract:      "Lens ·Extract",
+  memory:       "Lens ·Memory",
+  session:      "Lens ·Session",
+  rules:        "Lens ·Rules",
+  guard_config: "Lens ·Guard Config",
+  spend_config: "Lens ·Spend Config",
+  discovery:    "Lens ·Discovery",
+  compliance:   "Lens ·Compliance",
+  governance:   "Lens ·Governance",
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ function Sidebar({
       height: "100%",
     }}>
       <div style={{ padding: "16px 14px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--accent-text)" }}>GLens</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--accent-text)" }}>Lens</span>
         <button
           onClick={onNew}
           style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-2)", cursor: "pointer", fontWeight: 600 }}

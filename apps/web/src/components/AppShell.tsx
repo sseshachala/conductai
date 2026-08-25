@@ -94,6 +94,7 @@ const Icons = {
   Lock: () => <Icon><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></Icon>,
   Plug: () => <Icon><path d="M18 6L6 18M7 17l-4 4M17 7l4-4M9 3v4M15 3v4M9 7h6M9 7a3 3 0 000 6h6a3 3 0 000-6" /></Icon>,
   Users: () => <Icon><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /></Icon>,
+  Sparkles: () => <Icon><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" /><path d="M19 14l.7 2.1L22 17l-2.3.9L19 20l-.7-2.1L16 17l2.3-.9L19 14z" /></Icon>,
 }
 
 // ── Breadcrumb logic ──────────────────────────────────────────────────────────
@@ -144,8 +145,8 @@ const PALETTE_COMMANDS = [
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
   { group: "GOVERN", label: "Runtime Governance", href: "/governance", icon: "Shield" as const },
+  { group: "ASK", label: "Lens", href: "/lens", icon: "Spark" as const },
   { group: "GOVERN", label: "Guard · Overview", href: "/theguard", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · GLens", href: "/theguard/chat", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Spend", href: "/theguard/spend", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Policies", href: "/theguard/policies", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Discovery", href: "/theguard/discovery", icon: "Shield" as const },
@@ -713,6 +714,15 @@ function AppShellInnerContent({
             collapsed={collapsed}
           />
 
+          {/* Lens — platform-wide assistant */}
+          <SideNavItem
+            href="/lens"
+            label="Lens"
+            icon={<Icons.Sparkles />}
+            active={pathname.startsWith("/lens")}
+            collapsed={collapsed}
+          />
+
           {/* GOVERN group — Guard */}
           {!canSeeGuard && !collapsed && (
             <EnableGuardButton getToken={getToken} workspaceId={activeWorkspace?.id} />
@@ -744,7 +754,6 @@ function AppShellInnerContent({
                 <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
                     { label: "Overview",    href: "/theguard" },
-                    { label: "GLens",       href: "/theguard/chat" },
                     { label: "Policies",    href: "/theguard/policies" },
                     { label: "Compliance",  href: "/theguard/compliance" },
                     { label: "Team Memory", href: "/theguard/team-memory" },

@@ -3,7 +3,7 @@
 import AppShell from "@/components/AppShell"
 import { GLensChatPage } from "@/components/glens/GLensChatPage"
 
-export default function GuardChatPage() {
+export default function LensPage() {
   return (
     <AppShell>
       <GLensChatPage />
