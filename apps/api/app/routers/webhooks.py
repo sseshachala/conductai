@@ -127,7 +127,15 @@ def _handle_guard_slack_decision(
             log.warning("slack.guard_bad_request_id", request_id=request_id_str)
             return {"ok": True}
 
-        row = db.query(GuardApprovalRequest).filter(GuardApprovalRequest.id == req_uuid).first()
+        # ponytail: same row lock as the HTTP decide path (#1197) — two Slack
+        # clicks landing in the same ms serialize on commit; the loser reads
+        # the fresh non-pending status and falls into the duplicate branch.
+        row = (
+            db.query(GuardApprovalRequest)
+            .filter(GuardApprovalRequest.id == req_uuid)
+            .with_for_update()
+            .first()
+        )
         if not row:
             log.warning("slack.unknown_guard_request", request_id=str(req_uuid))
             return {"ok": True}
