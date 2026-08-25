@@ -9,7 +9,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from app.core.auth import get_workspace_id, get_user_id, require_permission, audit
+from app.core.auth import get_workspace_id, get_user_id, require_permission, audit, _assert_workspace_member
 from app.core.database import get_db
 
 log = structlog.get_logger(__name__)
@@ -72,6 +72,12 @@ def list_workflows(
     _: str = Depends(require_permission("platform.workflows.view")),
     project_id: str | None = None,
 ):
+    # ponytail: defense in depth — get_workspace_id validates membership on the
+    # Clerk path, but not every entry point (machine tokens, test overrides).
+    # Re-check here for user identities so a cross-tenant workspace_id header
+    # cannot list another workspace's workflows.
+    if user_id and user_id != "dev":
+        _assert_workspace_member(db, workspace_id, user_id)
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
     # Resolve the correct workspace from the project when the active workspace cookie
@@ -530,9 +536,9 @@ def create_workflow(body: WorkflowCreate, db: Session = Depends(get_db), workspa
 
 
 @router.get("/{workflow_id}", response_model=WorkflowDetailOut)
-def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _: str = Depends(require_permission("platform.workflows.view"))):
-    from app.core.workspace_context import set_workspace_rls
-    set_workspace_rls(db, workspace_id)
+def get_workflow(workflow_id: UUID, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), user_id: str = Depends(get_user_id), _: str = Depends(require_permission("platform.workflows.view"))):
+    if user_id and user_id != "dev":
+        _assert_workspace_member(db, workspace_id, user_id)
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
     workflow = db.query(Workflow).filter(

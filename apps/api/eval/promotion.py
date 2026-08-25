@@ -24,14 +24,15 @@ Usage
 from __future__ import annotations
 
 import json
-import logging
+import logging  # noqa: F401 — retained for downstream code that may reference logging levels
+import structlog
 from datetime import datetime, timezone
 from typing import Any
 
 from eval.report import EvalReport
 from eval.scorer import PlaybookScore
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 
 def _status_for_grade(grade: str) -> str:

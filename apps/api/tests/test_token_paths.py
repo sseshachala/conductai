@@ -426,12 +426,18 @@ class TestMCPSecurityToolSchemas:
     """post_finding and trigger_fix must be in _TOOLS with correct required fields."""
 
     def _get_tools(self):
+        # ponytail: evict again on the way out so the MagicMock stubs don't
+        # leak into unrelated tests (e.g. rate_limit_burst which reads
+        # GuardRateLimit.__table__ and gets AttributeError on a Mock).
         _evict("app.modules.guard.routers.mcp", "app.modules.guard.policy_engine",
                "app.modules.guard.models")
         sys.modules.setdefault("app.modules.guard.policy_engine", MagicMock())
         sys.modules.setdefault("app.modules.guard.models", MagicMock())
         from app.modules.guard.routers.mcp import _TOOLS
-        return {t["name"]: t for t in _TOOLS}
+        tools = {t["name"]: t for t in _TOOLS}
+        _evict("app.modules.guard.routers.mcp", "app.modules.guard.policy_engine",
+               "app.modules.guard.models")
+        return tools
 
     def test_post_finding_present(self):
         assert "post_finding" in self._get_tools()

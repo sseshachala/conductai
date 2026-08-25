@@ -89,20 +89,37 @@ for _mod_name in [
         sys.modules[_mod_name] = MagicMock()
 
 # Provide specific attributes expected by executor top-level imports.
-sys.modules["app.runtime.runtime"]._now = MagicMock(return_value=None)
-sys.modules["app.runtime.runtime"]._emit = MagicMock()
-sys.modules["app.runtime.runtime"]._redact = MagicMock()
-sys.modules["app.runtime.runtime"]._redact_payload = MagicMock()
-sys.modules["app.runtime.runtime"]._write_trace = MagicMock()
-sys.modules["app.runtime.runtime"]._agent_config = MagicMock()
-sys.modules["app.runtime.dag_runner"].ApprovalRequired = type("ApprovalRequired", (Exception,), {})
-sys.modules["app.runtime.dag_runner"].ClarificationRequired = type("ClarificationRequired", (Exception,), {})
-sys.modules["app.runtime.dag_runner"]._classify_failure = MagicMock()
+# ponytail: only stub if the module is a MagicMock (we put it there). If a real
+# module was already loaded by an earlier test, do not clobber its real names —
+# doing so replaces dag_runner.ApprovalRequired at module scope and breaks
+# `except (ApprovalRequired, ClarificationRequired)` in _with_retry for every
+# later test that raises the real exception.
+def _stub_if_mock(mod_name: str, attrs: dict) -> None:
+    mod = sys.modules.get(mod_name)
+    if isinstance(mod, MagicMock):
+        for k, v in attrs.items():
+            setattr(mod, k, v)
+
+
+_stub_if_mock("app.runtime.runtime", {
+    "_now": MagicMock(return_value=None),
+    "_emit": MagicMock(),
+    "_redact": MagicMock(),
+    "_redact_payload": MagicMock(),
+    "_write_trace": MagicMock(),
+    "_agent_config": MagicMock(),
+})
+_stub_if_mock("app.runtime.dag_runner", {
+    "ApprovalRequired": type("ApprovalRequired", (Exception,), {}),
+    "ClarificationRequired": type("ClarificationRequired", (Exception,), {}),
+    "_classify_failure": MagicMock(),
+})
 sys.modules.setdefault("app.models.run_analytics_event", MagicMock()).RunAnalyticsEvent = MagicMock()
-sys.modules["app.core.credentials"].CredentialStore = MagicMock()
-sys.modules["app.core.credentials"].get_all_credentials = MagicMock(return_value=MagicMock(_data={}, keys=lambda: []))
-sys.modules["app.core.credentials"].mint_cred_token = MagicMock(return_value="")
-sys.modules["app.core.credentials"].CredentialStore = MagicMock()
+_stub_if_mock("app.core.credentials", {
+    "CredentialStore": MagicMock(),
+    "get_all_credentials": MagicMock(return_value=MagicMock(_data={}, keys=lambda: [])),
+    "mint_cred_token": MagicMock(return_value=""),
+})
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

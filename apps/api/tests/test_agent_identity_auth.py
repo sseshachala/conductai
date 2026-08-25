@@ -590,8 +590,10 @@ class TestMcpEndpointAuth:
 
         assert response.status_code == 401
 
-    def test_valid_token_no_guard_config_returns_401_with_www_authenticate(self):
-        """Token valid but workspace has no GuardConfig → 401 + WWW-Authenticate header."""
+    def test_valid_token_no_guard_config_auto_provisions(self):
+        """Token valid but workspace has no GuardConfig → auto-provision (89cc839).
+        The old behavior (401 + WWW-Authenticate) caused Claude.ai OAuth re-loops
+        that never converged, so first-call auto-provision replaced it."""
         from app.modules.guard.routers.mcp import mcp_endpoint
 
         token = "cond_agt_" + "z" * 32
@@ -602,14 +604,16 @@ class TestMcpEndpointAuth:
             patch("app.modules.guard.routers.mcp.get_clerk_user_email", return_value="user@example.com"),
             patch("app.modules.guard.routers.mcp.GuardConfig", _GuardConfigStub),
             patch("app.modules.guard.routers.mcp.SessionLocal") as mock_sl,
+            patch("app.modules.guard.routers.config._get_or_create_config") as mock_get_or_create,
         ):
             mock_db = MagicMock()
             mock_db.query.return_value.filter.return_value.first.return_value = None
             mock_sl.return_value = mock_db
+            mock_get_or_create.return_value = _mock_guard_config()
             response = asyncio.run(mcp_endpoint(request=req, workspace_id=None))
 
-        assert response.status_code == 401
-        assert "WWW-Authenticate" in response.headers
+        assert response.status_code == 200
+        assert mock_get_or_create.called, "missing GuardConfig should trigger auto-provision"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

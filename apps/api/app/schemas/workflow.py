@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Optional
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class WorkflowGraph(BaseModel):
@@ -11,7 +11,9 @@ class WorkflowGraph(BaseModel):
 
 
 class WorkflowCreate(BaseModel):
-    name: str
+    # ponytail: max_length turns a 10MB name payload into a 422 at the schema
+    # layer instead of a DB DataError → unhandled 500 downstream.
+    name: str = Field(..., max_length=255)
     graph: WorkflowGraph = WorkflowGraph()
     template: Optional[str] = None
     repo: Optional[str] = None  # owner/repo — triggers GitHub webhook auto-registration

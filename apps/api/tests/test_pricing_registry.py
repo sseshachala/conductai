@@ -1,6 +1,10 @@
 from unittest.mock import patch
 
-from app.core.config import settings
+from app.runtime import pricing
+# ponytail: patch settings via the pricing module so we hit the same instance
+# pricing captured at import (other tests reload app.core.config mid-suite,
+# leaving a fresh settings singleton that our patches wouldn't reach).
+settings = pricing.settings
 from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 
 

@@ -40,6 +40,49 @@ def _db_available() -> bool:
 requires_db = pytest.mark.skipif(not _db_available(), reason="Postgres not reachable")
 
 
+@pytest.fixture(autouse=True)
+def _force_clerk_enabled():
+    # ponytail: attack-surface probes must exercise the auth path. CI runs
+    # without CLERK_SECRET_KEY, which makes _clerk_enabled() return False and
+    # get_user_id/get_workspace_id return "dev"/DEV_WORKSPACE_ID for every
+    # request — so unauth GET /workflows returns 200 with data. Flip
+    # _clerk_enabled to True on every module that owns a dep-callable, reached
+    # through function __globals__ so we still hit the copy of app.core.auth
+    # the router captured at import time (other tests reload the module).
+    from app.main import app
+
+    _patched: list[tuple[dict, str, object]] = []
+    _seen: set[int] = set()
+
+    def _patch(mod_globals: dict) -> None:
+        if id(mod_globals) in _seen or "_clerk_enabled" not in mod_globals:
+            return
+        _seen.add(id(mod_globals))
+        _patched.append((mod_globals, "_clerk_enabled", mod_globals["_clerk_enabled"]))
+        mod_globals["_clerk_enabled"] = lambda: True
+
+    def _walk_deps(dependant) -> None:
+        for dep in list(getattr(dependant, "dependencies", []) or []):
+            f = dep.call
+            if f is not None and hasattr(f, "__globals__"):
+                _patch(f.__globals__)
+            _walk_deps(dep)
+
+    def _walk_router(router) -> None:
+        for r in getattr(router, "routes", []) or []:
+            dependant = getattr(r, "dependant", None)
+            if dependant is not None:
+                _walk_deps(dependant)
+            sub = getattr(r, "original_router", None) or getattr(getattr(r, "app", None), "router", None)
+            if sub is not None:
+                _walk_router(sub)
+
+    _walk_router(app.router)
+    yield
+    for mod_globals, name, original in _patched:
+        mod_globals[name] = original
+
+
 @pytest.fixture
 def unauth_client() -> TestClient:
     """No Authorization header — proves every route rejects anonymous traffic."""
