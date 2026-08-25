@@ -167,7 +167,8 @@ def _clear_overrides():
 
 @pytest.fixture(autouse=True)
 def _reset_dep_overrides():
-    """Always clean up dependency overrides after each test."""
+    """Always clean up dependency overrides before and after each test."""
+    _clear_overrides()  # clear any overrides left by a previous test
     yield
     _clear_overrides()
 

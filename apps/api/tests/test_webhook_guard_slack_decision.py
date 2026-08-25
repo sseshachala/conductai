@@ -47,7 +47,7 @@ def test_guard_approve_flow_wires_apply_decision_and_slack_update():
     )
 
     db = MagicMock()
-    db.query.return_value.filter.return_value.first.return_value = row
+    db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = row
 
     with patch("app.core.credentials.get_credential", return_value={"token": "xoxb-test"}), \
          patch("app.modules.guard.approval.sweep_if_timed_out", side_effect=lambda db, r: r), \
@@ -91,7 +91,7 @@ def test_guard_unknown_request_is_noop():
     from app.routers.webhooks import _handle_guard_slack_decision
 
     db = MagicMock()
-    db.query.return_value.filter.return_value.first.return_value = None
+    db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = None
 
     with patch("app.modules.guard.approval.apply_decision") as mock_apply:
         result = _handle_guard_slack_decision(
@@ -112,7 +112,7 @@ def test_guard_already_decided_row_is_idempotent():
 
     row = SimpleNamespace(id="9aab035d-9ce8-4037-a92a-7cfb456da60d", workspace_id="ws-1", status="approved")
     db = MagicMock()
-    db.query.return_value.filter.return_value.first.return_value = row
+    db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = row
 
     with patch("app.core.credentials.get_credential", return_value=None), \
          patch("app.modules.guard.approval.sweep_if_timed_out", side_effect=lambda db, r: r), \
@@ -149,7 +149,7 @@ def test_guard_workspace_only_signing_secret_path():
 
     row = SimpleNamespace(id="req-ws", workspace_id="ws-1", status="pending")
     db = MagicMock()
-    db.query.return_value.filter.return_value.first.return_value = row
+    db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = row
 
     with patch("app.core.credentials.get_credential",
                return_value={"token": "xoxb-t", "signing_secret": workspace_secret}), \

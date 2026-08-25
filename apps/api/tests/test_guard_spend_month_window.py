@@ -20,6 +20,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from unittest.mock import patch as _patch
 
 HERE = Path(__file__).resolve()
 APPS_API = HERE.parent.parent
@@ -130,6 +131,9 @@ class _RecordingQuery:
     def order_by(self, *_): return self
     def offset(self, _): return self
     def limit(self, _): return self
+    def with_for_update(self, **_): return self
+
+    def first(self): return None
 
     def one(self):
         r = MagicMock()
@@ -198,7 +202,13 @@ def _stub_org_ws(monkeypatch):
     fake_ws_q = MagicMock()
     fake_ws_q.all.return_value = []
     fake_ws_q.filter.return_value = fake_ws_q
-    monkeypatch.setattr(spend_mod, "_org_ws_subquery", lambda db, ws: fake_ws_q)
+    # Patch via the function's own __globals__ so it works regardless of
+    # which module object `spend_mod` points to in combined test runs.
+    monkeypatch.setitem(
+        _get_spend_summary_inner.__globals__,
+        "_org_ws_subquery",
+        lambda db, ws: fake_ws_q,
+    )
 
 
 class TestMonthUpperBoundApplied:

@@ -60,6 +60,11 @@ class _FakeDB:
         if getattr(obj, "created_at", None) is None:
             obj.created_at = datetime.now(timezone.utc)
 
+    def execute(self, *args, **kwargs):
+        """Stub for raw SQL calls (e.g. set_workspace_rls SET LOCAL).
+        Return value is intentionally ignored by all callers that go through _FakeDB."""
+        return None
+
     def query(self, _model):
         return _FakeQuery(first_result=self.workflow)
 

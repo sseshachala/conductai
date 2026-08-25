@@ -29,6 +29,10 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+INSERT_WORKSPACE = text(
+    "INSERT INTO workspaces (id, name, owner_id, is_approved, plan, created_at, updated_at) "
+    "VALUES (:id, 'test-ws', 'owner_test', false, 'free', NOW(), NOW())"
+)
 INSERT_EVENT = text(
     "INSERT INTO guard_audit_events "
     "(workspace_id, ai_tool, source, decision, ts, evaluated_rules, defense_score) "
@@ -79,6 +83,7 @@ def test_insert_event_with_evaluated_rules_persists_correctly(engine):
         {"rule_id": "r-warn",  "severity": "high",     "action": "warn"},
     ]
     with engine.begin() as conn:
+        conn.execute(INSERT_WORKSPACE, {"id": ws})
         conn.execute(INSERT_EVENT, {
             "ws": ws, "ai": "test", "dec": "blocked", "ts": _now(),
             "e": json.dumps(payload), "s": 15,
@@ -95,6 +100,7 @@ def test_insert_event_with_evaluated_rules_persists_correctly(engine):
 def test_insert_event_without_new_fields_stays_null(engine):
     ws = uuid.uuid4()
     with engine.begin() as conn:
+        conn.execute(INSERT_WORKSPACE, {"id": ws})
         conn.execute(INSERT_EVENT_MINIMAL, {"ws": ws, "ai": "test", "ts": _now()})
         row = conn.execute(READ_LATEST, {"ws": ws}).first()
     assert row.evaluated_rules is None
@@ -108,6 +114,7 @@ def test_insert_event_without_new_fields_stays_null(engine):
 def test_query_events_where_two_or_more_rules_fired(engine):
     ws = uuid.uuid4()
     with engine.begin() as conn:
+        conn.execute(INSERT_WORKSPACE, {"id": ws})
         conn.execute(INSERT_EVENT, {
             "ws": ws, "ai": "test", "dec": "blocked", "ts": _now(),
             "e": json.dumps([{"rule_id": "a"}, {"rule_id": "b"}, {"rule_id": "c"}]), "s": 18,

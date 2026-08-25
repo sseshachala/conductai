@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.runtime.dag_runner import _classify_failure, _with_retry
 from app.runtime.llm_client import (
     GuardProxyBlocked,
     LLMUpstreamError,
@@ -312,8 +313,7 @@ def test_dag_runner_classifies_upstream_error():
     """_classify_failure treats LLMUpstreamError as infrastructure with a
     specific reason code, so /run-events shows a proper 'upstream blocked'
     state instead of generic EXECUTION_ERROR."""
-    from app.runtime.dag_runner import _classify_failure
-    err = LLMUpstreamError(
+    err =LLMUpstreamError(
         provider="anthropic", status=403, content_type="text/html",
         body_snippet="x",
         cf_ray="ray-abc-MIA", request_id="req-xyz", attempts=3,
@@ -462,8 +462,7 @@ def test_raise_if_guard_proxy_blocked_ignores_normal_json_error():
 
 def test_dag_runner_classifies_guard_proxy_config_error():
     """conduct_guard_proxy → PROXY_CONFIG_ERROR with operator-actionable next_action."""
-    from app.runtime.dag_runner import _classify_failure
-    err = GuardProxyBlocked(
+    err =GuardProxyBlocked(
         provider="anthropic", status=502, error_type="conduct_guard_proxy",
         message="upstream not configured",
     )
@@ -476,8 +475,7 @@ def test_dag_runner_classifies_guard_proxy_config_error():
 
 def test_dag_runner_classifies_guard_block_as_policy():
     """guard_block reuses existing Guard UX path via string match."""
-    from app.runtime.dag_runner import _classify_failure
-    err = GuardProxyBlocked(
+    err =GuardProxyBlocked(
         provider="openai", status=403, error_type="guard_block",
         message="cost limit", rule_id="max-spend-daily",
     )
@@ -629,7 +627,6 @@ def test_with_retry_does_not_retry_llm_upstream_error():
     """Adapter already ran its own 3-attempt ladder. Block-level retry would
     stack (3×N calls) and emit N false-terminal llm_upstream_blocked events.
     _with_retry must raise LLMUpstreamError on the first hit."""
-    from app.runtime.dag_runner import _with_retry
 
     calls = {"n": 0}
     err = LLMUpstreamError(
