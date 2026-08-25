@@ -11,6 +11,5 @@ export const glensUrl = {
   session: (id: string) => `${API}/glens/sessions/${id}`,
   opener: () => `${API}/glens/opener`,
   chatStream: () => `${API}/glens/chat/stream`,
-  status: () => `${API}/glens/status`,
   policyApply: (path = "/glens/policy/apply") => `${API}${path}`,
 }

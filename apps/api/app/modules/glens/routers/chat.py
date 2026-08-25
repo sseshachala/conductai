@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
-from app.models.workspace_config import WorkspaceConfig
 from app.modules.glens.executor import Executor
 from app.modules.glens.models import GlensChatSession
 from app.modules.guard.models import GuardConfig, GuardSpendBudget, WorkspaceCustomRule
@@ -554,18 +553,6 @@ def delete_session(
     db.commit()
 
 
-# ── GLens install / status ────────────────────────────────────────────────────
-
-_GLENS_KEY = "glens_enabled"
-
-
-def _glens_row(db: Session, ws_uuid: uuid.UUID):
-    return db.query(WorkspaceConfig).filter(
-        WorkspaceConfig.workspace_id == ws_uuid,
-        WorkspaceConfig.key == _GLENS_KEY,
-    ).first()
-
-
 @router.get("/opener")
 def glens_opener(
     _: str = Depends(require_permission("guard.activity.view_own")),
@@ -602,44 +589,6 @@ def glens_opener(
         chips.append("Which rule triggered most this week?")
 
     return {"chips": chips}
-
-
-@router.get("/status")
-def glens_status(
-    _: str = Depends(require_permission("guard.activity.view_own")),
-    workspace_id: str = Depends(get_workspace_id),
-    db: Session = Depends(get_db),
-):
-    ws_uuid = _parse_workspace_id(workspace_id)
-    return {"installed": _glens_row(db, ws_uuid) is not None}
-
-
-@router.post("/install", status_code=201)
-def glens_install(
-    _: str = Depends(require_permission("guard.activity.view_own")),
-    workspace_id: str = Depends(get_workspace_id),
-    db: Session = Depends(get_db),
-):
-    ws_uuid = _parse_workspace_id(workspace_id)
-    if not _glens_row(db, ws_uuid):
-        db.add(WorkspaceConfig(workspace_id=ws_uuid, key=_GLENS_KEY, value="true"))
-        db.commit()
-    return {"installed": True}
-
-
-@router.delete("/install")
-def glens_uninstall(
-    _: str = Depends(require_permission("guard.activity.view_own")),
-    workspace_id: str = Depends(get_workspace_id),
-    db: Session = Depends(get_db),
-):
-    ws_uuid = _parse_workspace_id(workspace_id)
-    db.query(WorkspaceConfig).filter(
-        WorkspaceConfig.workspace_id == ws_uuid,
-        WorkspaceConfig.key == _GLENS_KEY,
-    ).delete(synchronize_session=False)
-    db.commit()
-    return {"installed": False}
 
 
 # ── Policy / config / spend apply endpoints ───────────────────────────────────

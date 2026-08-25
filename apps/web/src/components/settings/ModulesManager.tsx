@@ -184,46 +184,6 @@ function ConductGuardModule() {
 
 
 function GLensModule() {
-  const { authFetch, workspaceId } = useAuthFetch()
-  const [installed, setInstalled] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [working, setWorking] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
-
-  useEffect(() => {
-    if (!workspaceId) return
-    authFetch(`${base}/glens/status`)
-      .then(r => r.ok ? r.json() : { installed: false })
-      .then(d => setInstalled(d.installed))
-      .catch(() => setInstalled(false))
-      .finally(() => setLoading(false))
-  }, [workspaceId, authFetch, base])
-
-  async function toggle() {
-    setError(null)
-    setWorking(true)
-    try {
-      const res = await authFetch(`${base}/glens/install`, { method: installed ? "DELETE" : "POST" })
-      if (!res.ok) throw new Error(res.statusText)
-      const d = await res.json()
-      setInstalled(d.installed)
-    } catch {
-      setError("Request failed — check your connection.")
-    } finally {
-      setWorking(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <ModuleCard>
-        <div style={{ height: 80, borderRadius: 12, background: "var(--surface-2)", opacity: 0.7 }} />
-      </ModuleCard>
-    )
-  }
-
   return (
     <ModuleCard>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
@@ -235,39 +195,30 @@ function GLensModule() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          {installed && <span className="sbadge ok">✓ Installed</span>}
-          <button onClick={toggle} disabled={working} className={installed ? "btn btn-ghost btn-sm" : "btn btn-primary btn-sm"}>
-            {working ? (installed ? "Removing…" : "Installing…") : (installed ? "Uninstall" : "Install")}
-          </button>
+          <span className="sbadge ok">Included in your workspace</span>
         </div>
       </div>
 
-      {!installed && (
-        <ul style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "var(--text-2)", listStyle: "none", margin: 0, padding: 0 }}>
-          {[
-            "Ask plain English — Get a live governance dashboard instantly",
-            "Clarifying questions fill in missing time ranges or team scope",
-            "Queries Guard data directly — nothing sent to the model",
-            "Pin dashboards for later, restore any past session",
-            "Cmd+K from any Guard page",
-          ].map(feat => (
-            <li key={feat} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-              <span style={{ color: "var(--ok)", marginTop: 2, flexShrink: 0, fontSize: 12 }} aria-hidden="true">✓</span>
-              <span>{feat}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "var(--text-2)", listStyle: "none", margin: 0, padding: 0 }}>
+        {[
+          "Ask plain English — Get a live governance dashboard instantly",
+          "Clarifying questions fill in missing time ranges or team scope",
+          "Queries Guard data directly — nothing sent to the model",
+          "Pin dashboards for later, restore any past session",
+          "Cmd+K from any Guard page",
+        ].map(feat => (
+          <li key={feat} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <span style={{ color: "var(--ok)", marginTop: 2, flexShrink: 0, fontSize: 12 }} aria-hidden="true">✓</span>
+            <span>{feat}</span>
+          </li>
+        ))}
+      </ul>
 
-      {installed && (
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-          <Link href="/theguard" className="btn btn-ghost btn-sm" style={{ color: "var(--accent-text)" }}>
-            Go to Guard — press Cmd+K to open GLens →
-          </Link>
-        </div>
-      )}
-
-      {error && <p style={{ fontSize: 12, color: "var(--err)", borderTop: "1px solid var(--err-bd)", paddingTop: 12, margin: 0 }}>{error}</p>}
+      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+        <Link href="/theguard/chat" className="btn btn-primary btn-sm">
+          Open GLens →
+        </Link>
+      </div>
     </ModuleCard>
   )
 }

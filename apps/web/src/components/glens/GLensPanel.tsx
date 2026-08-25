@@ -269,7 +269,6 @@ export function GLensPanel() {
   const { authFetch, workspaceId } = useAuthFetch()
 
   const [open, setOpen] = useState(false)
-  const [glensEnabled, setGlensEnabled] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [sessions, setSessions] = useState<GLensSession[]>([])
@@ -281,16 +280,6 @@ export function GLensPanel() {
   const isGuardPage = pathname?.startsWith("/theguard") && pathname !== "/theguard/chat"
   const SESSION_KEY = "glens_active_session"
 
-  // ─── Install gate ──────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!isGuardPage) return
-    authFetch(`${API}/glens/status`)
-      .then(r => r.ok ? r.json() : { installed: false })
-      .then(d => setGlensEnabled(d.installed))
-      .catch(() => setGlensEnabled(false))
-  }, [isGuardPage, authFetch])
-
   // ─── Cleanup on unmount ────────────────────────────────────────────────────
 
   useEffect(() => () => { abortRef.current?.abort() }, [])
@@ -298,14 +287,14 @@ export function GLensPanel() {
   // ─── Cmd+K ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!isGuardPage || !glensEnabled) return
+    if (!isGuardPage) return
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setOpen(p => !p) }
       if (e.key === "Escape") setOpen(false)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [isGuardPage, glensEnabled])
+  }, [isGuardPage])
 
   // ─── Load history + restore last session when panel opens ─────────────────
 
@@ -468,7 +457,7 @@ export function GLensPanel() {
     setOpen(false)
   }
 
-  if (!isGuardPage || !glensEnabled) return null
+  if (!isGuardPage) return null
 
   const suggestions = getSuggestions(pathname ?? "")
   const hasThread = messages.length > 0

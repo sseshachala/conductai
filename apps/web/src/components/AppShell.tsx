@@ -145,6 +145,7 @@ const PALETTE_COMMANDS = [
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
   { group: "GOVERN", label: "Runtime Governance", href: "/governance", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Overview", href: "/theguard", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Chat (GLens)", href: "/theguard/chat", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Spend", href: "/theguard/spend", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Policies", href: "/theguard/policies", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Discovery", href: "/theguard/discovery", icon: "Shield" as const },
@@ -743,6 +744,7 @@ function AppShellInnerContent({
                 <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {[
                     { label: "Overview",    href: "/theguard" },
+                    { label: "Chat",        href: "/theguard/chat" },
                     { label: "Policies",    href: "/theguard/policies" },
                     { label: "Compliance",  href: "/theguard/compliance" },
                     { label: "Team Memory", href: "/theguard/team-memory" },
