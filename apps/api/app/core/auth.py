@@ -526,45 +526,18 @@ def get_user_workspace_role(
     ).fetchone()
 
     if not row:
-        # Legacy fallback: owner_id on workspaces table (pre-migration workspaces)
+        # Workspace owner still gets admin (the create-workspace webhook inserts
+        # both owner_id and workspace_users; the owner_id path covers legacy or
+        # truncated-in-dev workspaces where the membership row is missing).
         owner_row = db.execute(
             text("SELECT owner_id FROM workspaces WHERE id = :ws AND owner_id = :uid"),
             {"ws": workspace_id, "uid": user_id},
         ).fetchone()
         if owner_row:
             return "admin"
-
-        # Self-heal: if workspace_users is completely empty for this workspace
-        # (e.g. after a DB truncate in local dev), grant the first authenticated user
-        # admin access and insert them so subsequent requests are fast.
-        # Disabled in production — an empty workspace there means misconfiguration,
-        # not a recovery scenario. Granting access silently would be a privilege escalation.
-        if settings.environment == "production":
-            raise HTTPException(status_code=403, detail="Not a member of this workspace")
-
-        member_count = db.execute(
-            text("SELECT COUNT(*) FROM workspace_users WHERE workspace_id = :ws"),
-            {"ws": workspace_id},
-        ).scalar()
-        if member_count == 0:
-            from datetime import datetime, timezone
-            log.warning(
-                "auth.self_heal_admin",
-                workspace_id=workspace_id,
-                user_id=user_id,
-                note="workspace_users empty — granting first user admin (dev only)",
-            )
-            db.execute(
-                text("""
-                    INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
-                    VALUES (:ws, :uid, 'admin', :now)
-                    ON CONFLICT DO NOTHING
-                """),
-                {"ws": workspace_id, "uid": user_id, "now": datetime.now(timezone.utc)},
-            )
-            db.commit()
-            return "admin"
-
+        # Any other caller into a workspace they don't own = cross-tenant probe.
+        # The old "empty workspace → grant first user admin" self-heal was a
+        # dev-only escalation that let isolation tests pass in CI. Removed.
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
 
     return row.role

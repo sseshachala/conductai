@@ -28,6 +28,7 @@ from app.models.workflow import Workflow
 WORKSPACE_A = uuid.UUID("33333333-3333-3333-3333-000000000001")
 WORKSPACE_B = uuid.UUID("33333333-3333-3333-3333-000000000002")
 USER_A_ADMIN = "user_isolation_admin_A"
+USER_B_OWNER = "user_isolation_owner_B"
 WORKFLOW_B = uuid.UUID("33333333-3333-3333-3333-000000000010")
 
 
@@ -51,9 +52,12 @@ def two_workspaces():
         pytest.skip("Postgres not reachable")
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
-        for ws_id, name in [(WORKSPACE_A, "iso-a"), (WORKSPACE_B, "iso-b")]:
+        for ws_id, name, owner in [
+            (WORKSPACE_A, "iso-a", USER_A_ADMIN),
+            (WORKSPACE_B, "iso-b", USER_B_OWNER),
+        ]:
             if db.get(Workspace, ws_id) is None:
-                db.add(Workspace(id=ws_id, name=name, owner_id=USER_A_ADMIN,
+                db.add(Workspace(id=ws_id, name=name, owner_id=owner,
                                  plan="free", is_approved=True, created_at=now, updated_at=now))
         # User A is admin only in WORKSPACE_A.
         if not db.query(WorkspaceUser).filter_by(workspace_id=WORKSPACE_A, clerk_user_id=USER_A_ADMIN).one_or_none():
