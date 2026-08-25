@@ -1,9 +1,9 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.14.0",
+  "version": "2.15.0",
   "tier": "free",
-  "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 14 agent + 7 surface + 4 workflow + 2 MCP rules.",
+  "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 16 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "ui": {
     "icon": "\ud83d\ude80",
     "subtitle": "Auto-installed. Proxy safety, agent guardrails, and surface-aware policies for every AI tool.",
@@ -1223,6 +1223,72 @@
       "action": "block",
       "message": "Private key material detected. Never commit keys to code \u2014 use a secrets manager.",
       "severity": "critical",
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
+    },
+    {
+      "id": "no-conduct-tokens",
+      "persona": "agent",
+      "non_overridable": true,
+      "description": "Block Conduct-issued tokens (cond_agt_*, cond_run_*, cond_cred_*, cond_live_*, cond_api_*) from appearing in tool inputs or outputs",
+      "match_pattern": "cond_(agt|run|cred|live|api)_[a-f0-9]{32,}",
+      "action": "block",
+      "message": "Conduct token detected. Do not print, log, or commit Conduct tokens \u2014 rotate immediately and use a secrets manager.",
+      "severity": "high",
+      "frameworks": [
+        "OWASP:A02",
+        "SOC2:CC6.1"
+      ],
+      "tag": "security_policy",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "conditional",
+        "mcp": "conditional",
+        "runtime": "conditional",
+        "guarantee": "Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied.",
+        "requires": [
+          "A supported pre-tool hook is installed, synced, and invoked before the action",
+          "The agent invokes MCP guard_check with accurate tool_name and tool_input before acting",
+          "Conduct workflow runtime Guard is enabled and matching content is present in workflow state"
+        ],
+        "known_limitations": [
+          "Hook enforcement depends on the AI tool emitting supported structured hook events",
+          "MCP cannot enforce actions the agent does not submit to guard_check",
+          "Runtime evaluates serialized workflow state, not every external tool or model interaction"
+        ]
+      }
+    },
+    {
+      "id": "no-booster-secrets",
+      "persona": "agent",
+      "non_overridable": true,
+      "description": "Block Agent Booster secret values (BOOSTER_SECRET followed by a 40+ hex value, typically in .mcp.json env blocks)",
+      "match_pattern": "BOOSTER_SECRET[\"'\\s:=]+[a-f0-9]{40,}",
+      "action": "block",
+      "message": "BOOSTER_SECRET value detected. Rotate the booster credential and use a secrets manager, not a plaintext .mcp.json.",
+      "severity": "high",
+      "frameworks": [
+        "OWASP:A02",
+        "SOC2:CC6.1"
+      ],
       "tag": "security_policy",
       "enforcement": {
         "version": 1,

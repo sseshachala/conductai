@@ -120,20 +120,23 @@ def _serialize(row: GuardApprovalRequest) -> ApprovalOut:
     )
 
 
-def _get_row(db: Session, req_id: str, workspace_id: str) -> GuardApprovalRequest:
+def _get_row(
+    db: Session, req_id: str, workspace_id: str, *, for_update: bool = False
+) -> GuardApprovalRequest:
     try:
         req_uuid = _uuid.UUID(req_id)
         ws_uuid = _uuid.UUID(workspace_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="invalid id")
-    row = (
-        db.query(GuardApprovalRequest)
-        .filter(
-            GuardApprovalRequest.id == req_uuid,
-            GuardApprovalRequest.workspace_id == ws_uuid,
-        )
-        .first()
+    q = db.query(GuardApprovalRequest).filter(
+        GuardApprovalRequest.id == req_uuid,
+        GuardApprovalRequest.workspace_id == ws_uuid,
     )
+    if for_update:
+        # ponytail: Postgres row-level lock — concurrent decides serialize on
+        # commit; the loser reads the fresh non-pending status and 409s.
+        q = q.with_for_update()
+    row = q.first()
     if not row:
         raise HTTPException(status_code=404, detail="approval request not found")
     return row
@@ -339,7 +342,7 @@ def decide_approval(
     db: Session = Depends(get_db),
     _: str = Depends(require_permission("platform.approvals.decide")),
 ) -> DecisionOut:
-    row = _get_row(db, request_id, workspace_id)
+    row = _get_row(db, request_id, workspace_id, for_update=True)
     row = sweep_if_timed_out(db, row)
     if row.status != "pending":
         _STATUS_PHRASE = {

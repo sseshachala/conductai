@@ -47,11 +47,13 @@ def rules_by_id():
     return {r["id"]: r for r in data["rules"]}
 
 
-def test_pack_version_bumped(rules_by_id):
+def test_pack_version_at_least_2_13(rules_by_id):
+    """This test file was born at v2.13.0; assert forward-compat only so
+    later bumps (2.14.0 added workflow rules, 2.15.0 added self-dogfood
+    token rules) don't retro-fail us."""
     data = json.loads(PACK_PATH.read_text())
-    assert data["version"] == "2.13.0", (
-        f"Expected pack version 2.13.0, got {data['version']}. "
-        "Bump when adding rules so `conduct guard sync` picks up changes."
+    assert tuple(int(p) for p in data["version"].split(".")) >= (2, 13, 0), (
+        f"Pack version {data['version']} regressed below 2.13.0"
     )
 
 

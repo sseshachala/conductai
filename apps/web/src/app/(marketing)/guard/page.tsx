@@ -163,6 +163,9 @@ function MoatSection() {
           <p className="text-stone-500 max-w-2xl mx-auto leading-relaxed">
             Runtime firewalls like <span className="font-semibold text-stone-700">Straiker</span> and <span className="font-semibold text-stone-700">Lakera</span> tell you what an agent did. Guard controls what an agent can do — with signed policy and cryptographic proof.
           </p>
+          <p className="mt-3 text-xs text-stone-400 max-w-2xl mx-auto">
+            The only vendor whose default pack catches its own token shapes. Conduct-issued and Agent Booster secrets included.
+          </p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-5">
