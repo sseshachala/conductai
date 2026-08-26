@@ -53,6 +53,10 @@ inputs:
       - full                  # allowed to attempt policy changes (Guard will still block)
     description: Even at "full", Guard's no-network-policy-modify rule enforces the boundary.
 
+on:
+  manual:
+    next: load_incident
+
 blocks:
 
   # ── 1. Load & parse the incident bundle ────────────────────────────────────
@@ -281,6 +285,8 @@ blocks:
     system: |
       You are writing the short summary the NOC on-call will read at 08:47.
       No preamble. No filler. Just the outcome.
+      End with a JSON summary on the last line:
+      {"diagnosis": "<one line>", "attempted": 0, "allowed": 0, "blocked": 0, "next": "<action or no human action required>"}
     prompt: |
       Root cause: {{diagnose.output}}
       Execution: {{remediate.output}}
@@ -291,3 +297,11 @@ blocks:
         ALLOWED:    <int> (list them, one per line, prefixed with "  + ")
         BLOCKED:    <int> (list them with reason, one per line, prefixed with "  ✕ ")
         NEXT:       <what a human needs to approve, or "no human action required">
+    output_schema: |
+      {"diagnosis": "<one line>", "attempted": 0, "allowed": 0, "blocked": 0, "next": "<action or no human action required>"}
+
+test_trigger:
+  payload:
+    branch: "br42"
+    repo: "sseshachala/conduct-network-ops"
+    aggressiveness: "reversible-only"

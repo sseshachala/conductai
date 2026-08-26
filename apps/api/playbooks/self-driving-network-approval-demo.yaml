@@ -45,6 +45,10 @@ inputs:
       - claude-opus-4-7
       - claude-haiku-4-5-20251001
 
+on:
+  manual:
+    next: assess
+
 blocks:
 
   # ── 1. Assess fabric health + produce a remediation plan ───────────────────

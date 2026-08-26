@@ -28,7 +28,7 @@ os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
 _log_mock = MagicMock()
 _log_mock.get_logger = MagicMock(return_value=MagicMock())
-sys.modules["structlog"] = _log_mock
+sys.modules.setdefault("structlog", _log_mock)
 sys.modules.setdefault("redis", MagicMock())
 sys.modules.setdefault("sentry_sdk", MagicMock())
 
@@ -43,6 +43,11 @@ _cfg_stub.settings = MagicMock(
     environment="test",
     log_level="INFO",
 )
+# Save originals and take a snapshot of all module keys before any stubbing.
+_real_cfg_rp = sys.modules.get("app.core.config")
+_real_db_rp = sys.modules.get("app.core.database")
+_real_auth_rp = sys.modules.get("app.core.auth")
+_modules_before_rp = set(sys.modules.keys())
 sys.modules["app.core.config"] = _cfg_stub
 sys.modules["app.core.database"] = MagicMock()
 
@@ -55,6 +60,27 @@ sys.modules.pop("app.core.auth", None)
 
 from fastapi import HTTPException  # noqa: E402
 from app.core.auth import require_permission  # noqa: E402
+
+# ── Cleanup: restore pre-stub module state ────────────────────────────────
+# Evict newly-imported app.* modules (compiled against stubs) so that later
+# test files that import app.main get clean versions.
+for _k in list(sys.modules.keys()):
+    if _k.startswith("app.") and _k not in _modules_before_rp:
+        sys.modules.pop(_k, None)
+# Restore explicitly-replaced modules.
+if _real_cfg_rp is not None:
+    sys.modules["app.core.config"] = _real_cfg_rp
+elif "app.core.config" in sys.modules:
+    sys.modules.pop("app.core.config", None)
+if _real_db_rp is not None:
+    sys.modules["app.core.database"] = _real_db_rp
+elif "app.core.database" in sys.modules:
+    sys.modules.pop("app.core.database", None)
+# Keep the freshly-imported app.core.auth in sys.modules so this test file's
+# require_permission reference stays valid; but also keep the original so
+# conftest's permissive patch remains active for other test files.
+if _real_auth_rp is not None:
+    sys.modules["app.core.auth"] = _real_auth_rp
 
 # A valid UUID-format workspace_id (the regex in require_permission enforces this)
 _WS = "00000000-0000-0000-0000-000000000001"

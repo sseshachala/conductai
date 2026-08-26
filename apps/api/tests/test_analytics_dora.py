@@ -45,6 +45,14 @@ _cfg_stub.settings = MagicMock(
     environment="test",
     log_level="INFO",
 )
+_real_cfg = sys.modules.get("app.core.config")
+_real_db = sys.modules.get("app.core.database")
+_real_sa = sys.modules.get("sqlalchemy")
+_real_sa_orm = sys.modules.get("sqlalchemy.orm")
+# Snapshot all app.* module keys before any stubbing so we can evict newly-
+# imported stub-compiled modules during cleanup (prevents stale MagicMock
+# references from leaking into later test files).
+_app_modules_before_stub = set(sys.modules.keys())
 sys.modules["app.core.config"] = _cfg_stub
 sys.modules["app.core.database"] = MagicMock()
 
@@ -111,22 +119,26 @@ sys.modules["app.models.run_trace"] = MagicMock()
 sys.modules["app.models.watchdog_event"] = MagicMock()
 from app.routers.insights import get_dora  # noqa: E402
 
-# Restore sqlalchemy in sys.modules so later test files that need the real
-# package can import it cleanly. Our router module is already compiled; the
-# stub was only needed to survive the module-level import.
-sys.modules.pop("sqlalchemy", None)
-sys.modules.pop("sqlalchemy.orm", None)
+# ── Cleanup: restore all pre-stub module state ─────────────────────────────
+# 1. Evict app.* modules that were added (stub-compiled) during this block
+#    so later test files reimport clean versions with real dependencies.
+#    Limit to app.* to avoid evicting C-extension modules that cannot be
+#    re-imported in the same process.
+for _k in list(sys.modules.keys()):
+    if _k.startswith("app.") and _k not in _app_modules_before_stub:
+        sys.modules.pop(_k, None)
+# 2. Also remove the SA dialect stubs (safe to reimport from real SA).
 sys.modules.pop("sqlalchemy.dialects", None)
 sys.modules.pop("sqlalchemy.dialects.postgresql", None)
-sys.modules.pop("app.models.run", None)
-sys.modules.pop("app.models.run_trace", None)
-sys.modules.pop("app.models.watchdog_event", None)
-sys.modules.pop("app.core.config", None)
-sys.modules.pop("app.core.database", None)
-sys.modules.pop("app.core.auth", None)
-sys.modules.pop("app.routers.insights", None)
-sys.modules.pop("app.routers.runs", None)
-sys.modules.pop("app.main", None)
+# 3. Restore the core modules we explicitly replaced (not just added).
+if _real_sa is not None:
+    sys.modules["sqlalchemy"] = _real_sa
+if _real_sa_orm is not None:
+    sys.modules["sqlalchemy.orm"] = _real_sa_orm
+if _real_cfg is not None:
+    sys.modules["app.core.config"] = _real_cfg
+if _real_db is not None:
+    sys.modules["app.core.database"] = _real_db
 
 _WS = "00000000-0000-0000-0000-000000000001"
 
