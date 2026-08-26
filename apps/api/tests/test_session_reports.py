@@ -39,44 +39,55 @@ _STUBS = [
 for _m in _STUBS:
     sys.modules.setdefault(_m, MagicMock())
 
-# ── Use the real Postgres via app.core.database ───────────────────────────────
-# Previous SQLite shim approach broke when models were imported before the
-# shim took effect (CI test order). Real Postgres is available in CI via
-# alembic; locally the fixture below skips if it isn't reachable.
-#
-# Other tests (test_analytics_scorecards, test_z_executor_lifecycle, etc.)
-# poison sys.modules["app.core.database"] with a MagicMock. Force a fresh
-# import so we get the real SessionLocal.
-import importlib
-# Some prior tests replace app.core.config or app.core.database with MagicMocks.
-# Evict them all so the reload gets real modules bound to real DATABASE_URL.
-for _dead in ("app.core.config", "app.core.database", "app.models"):
-    if hasattr(sys.modules.get(_dead), "_mock_name"):
-        del sys.modules[_dead]
-import app.core.config as _real_cfg
-importlib.reload(_real_cfg)
-import app.core.database as _real_db
-importlib.reload(_real_db)
-SessionLocal = _real_db.SessionLocal
+# ── All tests are skipped — DB setup is deferred to avoid polluting sys.modules ──
+# importlib.reload(app.core.database) at module level during pytest collection
+# replaces app.core.database with a fresh module whose Base class differs from
+# the one models were defined against, breaking every subsequent test that uses
+# TestClient or mock DB sessions (500s, FK errors, mapper init failures).
+# The reload is now inside _setup_db() and only runs if a test actually executes.
 
-import app.models  # noqa — registers all ORM tables
-from app.models.environment import Environment  # noqa — needed for workflows FK
-from app.models.workspace import Workspace
-from app.modules.guard.models import SessionReport
+pytestmark = pytest.mark.skip(reason="Cross-test sys.modules pollution: reloading db module can't fix inconsistent Base between Workspace/SessionReport. Needs pytest-forked or refactor to not stub sys.modules elsewhere.")
+
+# Placeholders so class bodies below don't raise NameError at collection time.
+SessionLocal = None
+Workspace = None
+SessionReport = None
+_DB_OK = False
 
 
-def _db_reachable() -> bool:
+def _setup_db():
+    """Reload app.core.database to get the real SessionLocal.
+
+    Called lazily (only when a test actually runs, not at collection time)
+    to avoid poisoning sys.modules for the rest of the test suite.
+    """
+    import importlib
+    for _dead in ("app.core.config", "app.core.database", "app.models"):
+        if hasattr(sys.modules.get(_dead), "_mock_name"):
+            del sys.modules[_dead]
+    import app.core.config as _real_cfg
+    importlib.reload(_real_cfg)
+    import app.core.database as _real_db
+    importlib.reload(_real_db)
+    global SessionLocal, Workspace, SessionReport, _DB_OK
+    SessionLocal = _real_db.SessionLocal
+    import app.models  # noqa — registers all ORM tables
+    from app.models.environment import Environment  # noqa — needed for workflows FK
+    from app.models.workspace import Workspace as _Workspace
+    from app.modules.guard.models import SessionReport as _SessionReport
+    Workspace = _Workspace
+    SessionReport = _SessionReport
     from sqlalchemy import text
     try:
         with SessionLocal() as s:
             s.execute(text("SELECT 1"))
-        return True
+        _DB_OK = True
     except Exception:
-        return False
+        _DB_OK = False
 
 
-_DB_OK = _db_reachable()
-pytestmark = pytest.mark.skip(reason="Cross-test sys.modules pollution: reloading db module can't fix inconsistent Base between Workspace/SessionReport. Needs pytest-forked or refactor to not stub sys.modules elsewhere.")
+def _db_reachable() -> bool:
+    return _DB_OK
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
