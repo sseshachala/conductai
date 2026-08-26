@@ -7,7 +7,7 @@ name = "conduct-cli"
 version = "0.9.16"
 description = "CLI for Conduct AI — secure, govern, install agents, manage projects, run tests"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 requires-python = ">=3.9"
 authors = [{ name = "Conduct AI", email = "hello@conductai.ai" }]
 keywords = ["ai", "agents", "automation", "devops", "cli"]
@@ -15,7 +15,7 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",

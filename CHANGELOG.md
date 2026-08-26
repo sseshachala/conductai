@@ -10,10 +10,12 @@ Releases page.
 
 ## Milestones
 
-### 2026-08 · Public source, FSL-1.1-MIT
-- Main platform repository made public under
-  [FSL-1.1-MIT](./LICENSE) — free for non-competing use, auto-converts
-  to MIT on 2028-08-23.
+### 2026-08 · Public source, Apache 2.0
+- Main platform repository made public under the
+  [Apache License 2.0](./LICENSE) — free for commercial and non-commercial
+  use, includes an explicit patent grant from all contributors. Previously
+  distributed under FSL-1.1-MIT; relicensed to Apache 2.0 for broader
+  enterprise adoption.
 - Guard + Router shipping as two product surfaces in one repo.
 - Hash-chained audit + signed-configuration moat locked in.
 - Cedar interchange arc opened (issue #1193) — Guard Profile v1

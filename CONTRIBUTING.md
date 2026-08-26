@@ -7,15 +7,19 @@ new playbooks, tests, and code.
 
 ## Ground rules
 
-- **License:** contributions are accepted under the same
-  [FSL-1.1-MIT](./LICENSE) license the project ships under. On the
-  Change Date, they convert to MIT along with the rest of the codebase.
+- **License:** contributions are accepted under the
+  [Apache License 2.0](./LICENSE), the same license the project ships
+  under. By opening a PR you agree your contribution is licensed under
+  Apache 2.0, including its patent grant (see Section 3 of the license).
 - **Code of conduct:** by participating you agree to the
   [Contributor Covenant](./CODE_OF_CONDUCT.md).
 - **Security issues:** do not open a public issue. Follow
   [SECURITY.md](./SECURITY.md) — email hello@conductai.ai.
-- **DCO / sign-off:** we don't require a CLA. Please sign your commits
-  (`git commit -s`) so the origin of each change is clear.
+- **DCO / sign-off (required):** we don't require a CLA. Instead, every
+  commit must be signed off (`git commit -s`), which certifies you have
+  the right to submit the change under the project license. See the
+  [Developer Certificate of Origin](https://developercertificate.org/).
+  PRs without sign-off will be asked to rebase with `-s`.
 
 ## Getting started
 
