@@ -10,7 +10,7 @@ const displayEmail = (v: string | null | undefined): string => {
   if (v.startsWith("user_")) return "unknown user"
   return v
 }
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
@@ -847,7 +847,7 @@ function ActivityContent() {
                             {runGroup.runId ? (
                               <Link
                                 href={`/runs/${runGroup.runId}`}
-                                onClick={e => e.stopPropagation()}
+                                onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}
                                 style={{ fontSize: 11.5, fontFamily: "var(--font-mono, ui-monospace, monospace)", color: "var(--accent-text)", textDecoration: "none", fontWeight: 600 }}
                               >
                                 {runGroup.runId}

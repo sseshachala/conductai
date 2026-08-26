@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
@@ -243,8 +243,8 @@ function EvalContent({ getToken, workspaceId }: { getToken: (() => Promise<strin
                 sorted.map(p => (
                   <Link key={p.slug} href={`/eval/${encodeURIComponent(p.slug)}`}
                     style={{ display: "grid", gridTemplateColumns: "1.6fr 0.6fr 1.2fr 1fr", gap: 14, padding: "11px 20px", borderBottom: "1px solid var(--border)", alignItems: "center", textDecoration: "none" }}
-                    onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = "var(--surface-2)")}
-                    onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = "")}>
+                    onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => ((e.currentTarget as HTMLElement).style.background = "var(--surface-2)")}
+                    onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => ((e.currentTarget as HTMLElement).style.background = "")}>
                     <div>
                       <span className="mono" style={{ fontSize: 12, color: "var(--text-2)", background: "var(--surface-3)", padding: "2px 7px", borderRadius: 5 }}>{p.slug}</span>
                     </div>

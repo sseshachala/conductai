@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
@@ -384,7 +384,7 @@ function ProjectListSection({
               ref={renameRef}
               value={nameValue}
               onChange={e => setNameValue(e.target.value)}
-              onClick={e => e.stopPropagation()}
+              onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}
               onBlur={submitRename}
               onKeyDown={e => {
                 if (e.key === "Enter") submitRename()
@@ -402,12 +402,12 @@ function ProjectListSection({
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }} onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}>
           <Link
             href={`/workflows/new?project_id=${project.id}`}
             className="btn btn-ghost btn-sm"
             style={{ fontSize: 11 }}
-            onClick={e => e.stopPropagation()}
+            onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}
           >
             + Agent
           </Link>
@@ -425,15 +425,15 @@ function ProjectListSection({
                   role="menuitem"
                   onClick={() => { setMenuOpen(false); setRenaming(true) }}
                   style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                  onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                  onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "none"}
                 >Rename</button>
                 <button
                   role="menuitem"
                   onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}
                   style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                  onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                  onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "none"}
                 >Delete</button>
               </div>
             )}
@@ -493,15 +493,15 @@ function AgentRow({ workflow: w, isLast, router }: { workflow: Workflow; isLast:
     <div
       style={{ display: "grid", gridTemplateColumns: "2fr 1fr 80px", gap: 14, padding: "11px 18px 11px 58px", borderBottom: isLast ? "none" : "1px solid var(--border)", alignItems: "center", cursor: "pointer", transition: "background .12s" }}
       onClick={() => router.push(`/workflows/${w.id}`)}
-      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+      onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+      onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = ""}
     >
       <div style={{ minWidth: 0 }}>
         <div style={{ fontWeight: 600, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text)" }}>{w.name}</div>
         <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>edited {timeAgo(w.updated_at)}</div>
       </div>
       <AgentStatusPill s={status} />
-      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }} onClick={e => e.stopPropagation()}>
+      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }} onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}>
         <Link
           href={`/workflows/${w.id}/runs`}
           className="btn btn-ghost btn-sm"
@@ -636,7 +636,7 @@ function ProjectGridCard({
               ref={renameRef}
               value={nameValue}
               onChange={e => setNameValue(e.target.value)}
-              onClick={e => e.stopPropagation()}
+              onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}
               onBlur={submitRename}
               onKeyDown={e => {
                 if (e.key === "Enter") submitRename()
@@ -654,7 +654,7 @@ function ProjectGridCard({
           </div>
         </div>
         {/* P2-8: aria-haspopup + role="menu" on dropdown */}
-        <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+        <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }} onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}>
           <button
             className="btn btn-ghost btn-icon btn-sm"
             aria-label="Project actions"
@@ -668,15 +668,15 @@ function ProjectGridCard({
                 role="menuitem"
                 onClick={() => { setMenuOpen(false); setRenaming(true) }}
                 style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "none"}
               >Rename</button>
               <button
                 role="menuitem"
                 onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}
                 style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}
+                onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "none"}
               >Delete</button>
             </div>
           )}
@@ -688,7 +688,7 @@ function ProjectGridCard({
         {agents.length === 0 ? (
           <div style={{ padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No agents yet</span>
-            <Link href={`/workflows/new?project_id=${project.id}`} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={e => e.stopPropagation()}>
+            <Link href={`/workflows/new?project_id=${project.id}`} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}>
               + New agent
             </Link>
           </div>
@@ -700,9 +700,9 @@ function ProjectGridCard({
                 <div
                   key={w.id}
                   style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 18px", borderBottom: idx < Math.min(agents.length, 4) - 1 ? "1px solid var(--border)" : "none", cursor: "pointer", transition: "background .1s" }}
-                  onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}`) }} // P1-3: go to canvas
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+                  onClick={(e: ReactMouseEvent<HTMLElement>) => { e.stopPropagation(); router.push(`/workflows/${w.id}`) }} // P1-3: go to canvas
+                  onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                  onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = ""}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>{w.name}</div>
@@ -712,7 +712,7 @@ function ProjectGridCard({
                     href={`/workflows/${w.id}`}
                     className="btn btn-ghost btn-icon btn-sm"
                     style={{ opacity: 0.6, fontSize: 12 }}
-                    onClick={e => e.stopPropagation()}
+                    onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}
                     title="Open canvas"
                   >→</Link>
                 </div>
@@ -722,8 +722,8 @@ function ProjectGridCard({
               <div
                 style={{ padding: "9px 18px", fontSize: 12, color: "var(--text-muted)", cursor: "pointer", textAlign: "center", transition: "background .1s" }}
                 onClick={() => router.push(`/projects/${project.id}`)}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+                onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = ""}
               >
                 +{agents.length - 4} more agents →
               </div>

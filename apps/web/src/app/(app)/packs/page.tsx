@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
@@ -858,8 +858,8 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
               textDecoration: "none",
               transition: "background .12s, color .12s",
             }}
-            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text)" }}
-            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-2)" }}
+            onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text)" }}
+            onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-2)" }}
           >
             <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
             Submit agent template
@@ -927,7 +927,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
       {/* YAML preview modal */}
       {yamlSlug && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setYamlSlug(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 flex flex-col max-h-[80vh]" onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100">
               <div>
                 <p className="text-sm font-semibold text-stone-900">{FRIENDLY_NAMES[yamlSlug] ?? yamlSlug}</p>
@@ -1396,11 +1396,11 @@ function PlaybookCard({
         transition: "border-color .14s, box-shadow .14s",
         position: "relative",
       }}
-      onMouseEnter={e => {
+      onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => {
         (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--shadow-md)"
         ;(e.currentTarget as HTMLDivElement).style.borderColor = "var(--border-2)"
       }}
-      onMouseLeave={e => {
+      onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => {
         (e.currentTarget as HTMLDivElement).style.boxShadow = ""
         ;(e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"
       }}
@@ -1525,8 +1525,8 @@ function PlaybookCard({
             flexShrink: 0,
             transition: "all .12s",
           }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text)" }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)" }}
+          onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text)" }}
+          onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)" }}
         >
           <svg width={15} height={15} viewBox="0 0 15 15" fill="none">
             <path d="M3 4.5h9M3 7.5h6M3 10.5h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
