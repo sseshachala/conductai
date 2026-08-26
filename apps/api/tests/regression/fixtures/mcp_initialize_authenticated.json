@@ -1,0 +1,37 @@
+{
+  "name": "mcp_initialize_authenticated",
+  "description": "MCP initialize with valid Bearer token. Returns 200 with serverInfo, protocolVersion echoed, Mcp-Session-Id header.",
+  "requires_db": true,
+  "request": {
+    "method": "POST",
+    "path": "/guard/mcp",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2024-11-05",
+        "clientInfo": {"name": "regression-harness", "version": "0.0.1"},
+        "capabilities": {}
+      }
+    }
+  },
+  "expected_response": {
+    "status": 200,
+    "body_match": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {"tools": {}},
+        "serverInfo": {"name": "conductguard", "version": "1.0.0"}
+      }
+    },
+    "body_present_keys": ["result._surface", "result.instructions"],
+    "headers_present": ["Mcp-Session-Id"]
+  }
+}

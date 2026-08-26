@@ -1,0 +1,38 @@
+{
+  "name": "proxy_openai_authed",
+  "description": "OpenAI proxy with valid Bearer. Upstream is mocked at the httpx layer to return a fixed non-streaming completion. Locks in the response shape passed back through the proxy (envelope should be transparent — same body as upstream returned, with our headers).",
+  "requires_db": true,
+  "requires_upstream_mock": true,
+  "upstream_mock": {
+    "url_match": "api.openai.com/v1/chat/completions",
+    "status": 200,
+    "body": {
+      "id": "chatcmpl-regression-fixed-id",
+      "object": "chat.completion",
+      "created": 1735689600,
+      "model": "gpt-4o-mini",
+      "choices": [
+        {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+      ],
+      "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}
+    }
+  },
+  "request": {
+    "method": "POST",
+    "path": "/proxy/openai/v1/chat/completions",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "model": "gpt-4o-mini",
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  },
+  "expected_response": {
+    "status": 200,
+    "custom_assertions": [
+      {"kind": "body_has_openai_choices"}
+    ]
+  }
+}
