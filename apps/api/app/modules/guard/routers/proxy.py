@@ -368,147 +368,53 @@ async def _proxy(
         _environment_id = request.headers.get("x-conductai-environment-id") or None
         _hook_session_id = request.headers.get("x-conduct-session-id") or None
 
-        # 4c. Pre-call Guard policy evaluation
+        # 4c. Pre-call Guard policy evaluation — composed engine (#1225 Phase 4)
         prompt_summary = _flatten_prompt(body)[:200]
-        decision = _evaluate_policies(workspace_id, provider, model, body)
-        _action = decision["action"]  # "BLOCK" | "WARN" | "ALLOW"
-        _guidance_text = decision.get("guidance") if decision.get("inject_guidance") else None
+        from app.guard.policy import evaluate_composed as _eval_composed
+        from app.guard.policy_types import PolicyContext as _PolicyContext
+        _ctx = _PolicyContext(
+            workspace_id=workspace_id,
+            clerk_user_id=clerk_user_id,
+            agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+            provider=provider,
+            model=model,
+            body=body,
+            input_tokens=_estimate_input_tokens(body),
+            db=db,
+        )
+        _pd = _eval_composed(_ctx)
+        decision = _pd.extras.get("raw") or {
+            "action": _pd.action.value,
+            "rule_id": _pd.rule_id,
+            "message": _pd.reason,
+            "matched_rules": _pd.matched_rules,
+            "defense_score": _pd.defense_score,
+            "inject_guidance": _pd.inject_guidance,
+            "guidance": _pd.guidance,
+            "rule": _pd.extras.get("rule"),
+        }
+        _action = _pd.action.value
+        _guidance_text = _pd.guidance if _pd.inject_guidance else None
 
-        if _action == "BLOCK":
-            background.add_task(
-                _record_audit, workspace_id, clerk_user_id, ai_tool, provider, model,
-                "blocked", decision["rule_id"], int((time.monotonic() - started) * 1000),
-                body=body, response_bytes=None,
-                prompt_summary=prompt_summary, user_email=_user_email,
-                conductai_run_id=_run_id, conductai_workflow=_workflow,
-                conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
-                evaluated_rules=decision.get("matched_rules"),
-                defense_score=decision.get("defense_score"),
+        if _pd.blocks:
+            from app.modules.guard.routers._proxy_helpers import render_block as _render_block
+            return _render_block(
+                _pd, background, workspace_id, clerk_user_id, ai_tool, provider,
+                model, body, prompt_summary, _user_email, _run_id, _workflow,
+                _workflow_id, _hook_session_id, started, _record_audit, _fail_closed,
             )
-            _err = {
-                "type": "guard_block",
-                "message": decision["message"],
-                "rule": decision["rule_id"],
-                "matched_rules": decision.get("matched_rules", []),
-                "defense_score": decision.get("defense_score", 0),
-            }
-            if _guidance_text:
-                _err["guidance"] = _guidance_text
-            return JSONResponse(status_code=403, content={"error": _err})
 
-        if _action == "APPROVAL":
-            from app.modules.guard.models import GuardApprovalRequest as _GAR
-            from app.modules.guard import approval as _approval
-            _db2 = SessionLocal()
-            try:
-                # De-dupe: if this workspace + rule + requester already has a pending
-                # request in the last 5 minutes, reuse it so a retrying agent does
-                # not spam the inbox.
-                from datetime import datetime as _dt, timedelta as _td, timezone as _tz
-                cutoff = _dt.now(_tz.utc) - _td(minutes=5)
-                existing = _db2.query(_GAR).filter(
-                    _GAR.workspace_id == uuid.UUID(workspace_id),
-                    _GAR.rule_id == decision["rule_id"],
-                    _GAR.requester_user_id == (clerk_user_id or ""),
-                    _GAR.status == "pending",
-                    _GAR.created_at >= cutoff,
-                ).first() if clerk_user_id else None
-                if existing is None:
-                    req = _approval.create_approval_request(
-                        _db2,
-                        workspace_id=workspace_id,
-                        rule=decision.get("rule") or {"id": decision["rule_id"], "message": decision.get("message")},
-                        tool_name=f"llm.{provider}",
-                        tool_input={"model": model, "prompt": prompt_summary},
-                        requester_email=_user_email,
-                        requester_user_id=clerk_user_id,
-                        surface="proxy",
-                        session_id=_hook_session_id,
-                        source_run_id=_run_id,
-                    )
-                    _approval.dispatch_approval_notifications(_db2, req)
-                else:
-                    req = existing
-                background.add_task(
-                    _record_audit, workspace_id, clerk_user_id, ai_tool, provider, model,
-                    "approval_pending", decision["rule_id"], int((time.monotonic() - started) * 1000),
-                    body=body, response_bytes=None,
-                    prompt_summary=prompt_summary, user_email=_user_email,
-                    conductai_run_id=_run_id, conductai_workflow=_workflow,
-                    conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
-                    evaluated_rules=decision.get("matched_rules"),
-                    defense_score=decision.get("defense_score"),
-                )
-                _err = {
-                    "type": "guard_approval_required",
-                    "message": decision["message"] or "Human approval required by policy.",
-                    "rule": decision["rule_id"],
-                    "approval_request_id": str(req.id),
-                    "approval_url": _approval.approval_url(req.id),
-                    "pending_marker": _approval.pending_marker(req),
-                    "matched_rules": decision.get("matched_rules", []),
-                    "defense_score": decision.get("defense_score", 0),
-                }
-                return JSONResponse(status_code=428, content={"error": _err})
-            finally:
-                _db2.close()
+        if _pd.needs_approval:
+            from app.modules.guard.routers._proxy_helpers import render_approval as _render_approval
+            return _render_approval(
+                _pd, background, workspace_id, clerk_user_id, ai_tool, provider,
+                model, body, prompt_summary, _user_email, _run_id, _workflow,
+                _workflow_id, _hook_session_id, started, _record_audit,
+            )
 
         # Map internal action to audit decision string
         _audit_decision = "warned" if _action == "WARN" else "allowed"
         _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
-
-        # 4d. Pre-forward budget check (#1083 — Loopers parity).
-        # ponytail: SQL scan per call; swap to atomic Redis Lua counter when
-        # throughput hurts (#822 tracks the upgrade).
-        from app.modules.guard.routers.spend import budget_check as _budget_check
-        _bc = _budget_check(workspace_id=workspace_id, clerk_user_id=clerk_user_id, db=db)
-        if _bc.hard_blocked:
-            background.add_task(
-                _record_audit, workspace_id, clerk_user_id, ai_tool, provider, model,
-                "budget_exceeded", None, int((time.monotonic() - started) * 1000),
-                body=body, response_bytes=None,
-                prompt_summary=prompt_summary, user_email=_user_email,
-                conductai_run_id=_run_id, conductai_workflow=_workflow,
-                conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
-            )
-            return JSONResponse(
-                status_code=429,
-                content={"error": {
-                    "type": "guard_budget_exceeded",
-                    "message": _bc.reason or "Monthly AI budget reached.",
-                    "monthly_cost_usd": _bc.monthly_cost_usd,
-                    "hard_limit_usd": _bc.hard_limit_usd,
-                }},
-            )
-
-        # 4d.2. Per-key RPM/TPM rate limit (#980 — Loopers parity).
-        from app.modules.guard.rate_limit import check_rate_limit as _check_rate_limit
-        _rl = _check_rate_limit(
-            db,
-            workspace_id=workspace_id,
-            agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-            input_tokens=_estimate_input_tokens(body),
-        )
-        if _rl.limited:
-            background.add_task(
-                _record_audit, workspace_id, clerk_user_id, ai_tool, provider, model,
-                "rate_limited", None, int((time.monotonic() - started) * 1000),
-                body=body, response_bytes=None,
-                prompt_summary=prompt_summary, user_email=_user_email,
-                conductai_run_id=_run_id, conductai_workflow=_workflow,
-                conductai_workflow_id=_workflow_id, hook_session_id=_hook_session_id,
-            )
-            return JSONResponse(
-                status_code=429,
-                content={"error": {
-                    "type": "guard_rate_limited",
-                    "message": _rl.reason,
-                    "metric": _rl.metric,
-                    "limit": _rl.limit,
-                    "current": _rl.current,
-                    "scope": _rl.scope,
-                }},
-            )
 
         # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
         # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
