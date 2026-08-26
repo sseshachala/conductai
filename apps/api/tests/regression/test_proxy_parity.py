@@ -18,7 +18,7 @@ PROXY_FIXTURES_NO_DB = [
     "proxy_anthropic_missing_auth",
 ]
 
-PROXY_FIXTURES_UPSTREAM_MOCK = [
+PROXY_FIXTURES_DB = [
     "proxy_openai_authed",
 ]
 
@@ -29,47 +29,43 @@ def test_proxy_no_db_fixture(fixture_name: str, client: TestClient) -> None:
 
 
 @requires_db
-@pytest.mark.parametrize("fixture_name", PROXY_FIXTURES_UPSTREAM_MOCK)
-def test_proxy_upstream_mock_fixture(
+@pytest.mark.parametrize("fixture_name", PROXY_FIXTURES_DB)
+def test_proxy_db_fixture(
     fixture_name: str,
     client: TestClient,
     seeded_workspace,
     monkeypatch,
 ) -> None:
-    """Fixture declares an `upstream_mock` block. Patch httpx.AsyncClient to
-    return the mocked upstream response, then replay the request through the
-    proxy and assert the response envelope + custom assertions."""
+    """DB-backed proxy fixture. If the fixture declares `upstream_mock`,
+    patch httpx.AsyncClient.post to return the mocked response so no live API
+    call is made. Otherwise (e.g. proxy_openai_authed_no_api_key which
+    short-circuits at the API-key check), no mock is installed."""
     fixture = load_fixture(fixture_name)
     _, token = seeded_workspace
 
     mock = fixture.get("upstream_mock")
-    if not mock:
-        pytest.skip(f"fixture {fixture_name} has no upstream_mock block")
+    if mock:
+        import httpx
 
-    # Minimal httpx.AsyncClient.post monkeypatch — sufficient for the current
-    # proxy which uses httpx.AsyncClient directly. If the proxy switches to
-    # streaming with .stream(), extend here.
-    import httpx
+        class _MockResp:
+            def __init__(self, status: int, body: dict):
+                self.status_code = status
+                self._body = body
+                self.headers = {"content-type": "application/json"}
+                self.text = str(body)
 
-    class _MockResp:
-        def __init__(self, status: int, body: dict):
-            self.status_code = status
-            self._body = body
-            self.headers = {"content-type": "application/json"}
-            self.text = str(body)
+            def json(self):
+                return self._body
 
-        def json(self):
-            return self._body
+            async def aread(self):
+                import json as _j
+                return _j.dumps(self._body).encode()
 
-        async def aread(self):
-            import json as _j
-            return _j.dumps(self._body).encode()
+        async def _mock_post(self, url, **kwargs):
+            if mock["url_match"] in url:
+                return _MockResp(mock["status"], mock["body"])
+            raise RuntimeError(f"unmocked upstream call to {url}")
 
-    async def _mock_post(self, url, **kwargs):
-        if mock["url_match"] in url:
-            return _MockResp(mock["status"], mock["body"])
-        raise RuntimeError(f"unmocked upstream call to {url}")
-
-    monkeypatch.setattr(httpx.AsyncClient, "post", _mock_post, raising=False)
+        monkeypatch.setattr(httpx.AsyncClient, "post", _mock_post, raising=False)
 
     _replay(client, fixture, token=token)

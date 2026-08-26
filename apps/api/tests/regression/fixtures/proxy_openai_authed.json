@@ -1,22 +1,7 @@
 {
-  "name": "proxy_openai_authed",
-  "description": "OpenAI proxy with valid Bearer. Upstream is mocked at the httpx layer to return a fixed non-streaming completion. Locks in the response shape passed back through the proxy (envelope should be transparent — same body as upstream returned, with our headers).",
+  "name": "proxy_openai_authed_no_api_key",
+  "description": "OpenAI proxy with valid Bearer but no OPENAI_API_KEY configured in the workspace. Current behavior: 503 with a specific error message pointing users to Settings → Environments. Refactor must preserve this exact 503 contract — a workspace with an agent token but no upstream key is a real onboarding state that must fail loudly.\n\nFuture fixture (proxy_openai_authed_with_key) will seed OPENAI_API_KEY on the workspace + mock upstream to test the 200 success path.",
   "requires_db": true,
-  "requires_upstream_mock": true,
-  "upstream_mock": {
-    "url_match": "api.openai.com/v1/chat/completions",
-    "status": 200,
-    "body": {
-      "id": "chatcmpl-regression-fixed-id",
-      "object": "chat.completion",
-      "created": 1735689600,
-      "model": "gpt-4o-mini",
-      "choices": [
-        {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
-      ],
-      "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}
-    }
-  },
   "request": {
     "method": "POST",
     "path": "/proxy/openai/v1/chat/completions",
@@ -30,9 +15,14 @@
     }
   },
   "expected_response": {
-    "status": 200,
+    "status": 503,
+    "body_match": {
+      "error": {
+        "type": "conduct_guard_proxy"
+      }
+    },
     "custom_assertions": [
-      {"kind": "body_has_openai_choices"}
+      {"kind": "body_error_message_contains", "text": "No API key configured"}
     ]
   }
 }

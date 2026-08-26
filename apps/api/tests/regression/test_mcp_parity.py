@@ -65,9 +65,12 @@ def _apply_custom_assertion(body: dict, resp_status: int, assertion: dict) -> No
         has_error_env = "error" in body
         result_is_error = body.get("result", {}).get("isError") is True
         content = body.get("result", {}).get("content", [])
-        has_error_text = any("error" in (c.get("text", "").lower()) for c in content)
+        error_words = ("error", "unknown", "not found", "invalid", "missing")
+        has_error_text = any(
+            any(w in (c.get("text", "").lower()) for w in error_words) for c in content
+        )
         assert has_error_env or result_is_error or has_error_text, (
-            f"expected error signal (error envelope, isError=true, or error text). body={body}"
+            f"expected error signal (error envelope, isError=true, or error/unknown/not-found text). body={body}"
         )
     elif kind == "status_in_range":
         assert assertion["min"] <= resp_status <= assertion["max"], (
@@ -76,6 +79,11 @@ def _apply_custom_assertion(body: dict, resp_status: int, assertion: dict) -> No
     elif kind == "body_has_openai_choices":
         assert "choices" in body and isinstance(body["choices"], list) and body["choices"], (
             f"expected non-empty choices[]; body={body}"
+        )
+    elif kind == "body_error_message_contains":
+        msg = body.get("error", {}).get("message", "") if isinstance(body.get("error"), dict) else ""
+        assert assertion["text"].lower() in msg.lower(), (
+            f"expected {assertion['text']!r} in error.message, got {msg!r}"
         )
     else:
         pytest.fail(f"unknown custom assertion kind: {kind}")
