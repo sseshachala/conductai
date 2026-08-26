@@ -411,6 +411,15 @@ async def glens_chat_stream(
         db.flush()
         db.commit()
 
+    # Mint session-scoped Lens token — #1218 Step 3b.3.
+    # Fresh session with no token OR pre-migration session (token_hash NULL):
+    # mint here. Existing session with a live token: overwrite (previous raw
+    # token loses access, which is fine — single stream per session).
+    # Raw token held in closure state and passed to guarded_completion;
+    # never persisted, never returned to the client.
+    from app.modules.glens import tokens as _lens_tokens
+    _lens_session_token = _lens_tokens.mint_for_session(db, session)
+
     session_messages = json.loads(session.messages)
     session_messages.append({"role": "user", "content": req.message})
     session_id_str = str(session.id)
