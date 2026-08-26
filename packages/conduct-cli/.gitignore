@@ -1,0 +1,12 @@
+# Local per-machine MCP client config — contains Bearer tokens for the
+# dogfooding Claude Code / Cursor / VS Code setup this repo dev uses.
+# Never commit: token exposure + not portable across dev machines.
+.mcp.json
+
+# Local pytest / build artefacts
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+*.egg-info/
