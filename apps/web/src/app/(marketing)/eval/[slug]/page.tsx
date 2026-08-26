@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
@@ -86,8 +86,8 @@ function CriterionRow({ c }: { c: CriterionResult }) {
           textAlign: "left",
           transition: "background 0.15s",
         }}
-        onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-        onMouseLeave={e => (e.currentTarget.style.background = "none")}
+        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface-2)")}
+        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "none")}
         onClick={() => setOpen(o => !o)}
       >
         {/* Pass/fail indicator */}
@@ -310,8 +310,8 @@ function CollapsibleJson({
           padding: 0,
           transition: "color 0.15s",
         }}
-        onMouseEnter={e => (e.currentTarget.style.color = "var(--text-3)")}
-        onMouseLeave={e => (e.currentTarget.style.color = open ? "var(--text-3)" : "var(--text-muted)")}
+        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.color = "var(--text-3)")}
+        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.color = open ? "var(--text-3)" : "var(--text-muted)")}
         onClick={() => setOpen(o => !o)}
         type="button"
       >
@@ -520,8 +520,8 @@ function EvalDetailContent({
               textDecoration: "none",
               transition: "color 0.15s",
             }}
-            onMouseEnter={e => (e.currentTarget.style.color = "var(--text-3)")}
-            onMouseLeave={e => (e.currentTarget.style.color = "var(--text-muted)")}
+            onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.color = "var(--text-3)")}
+            onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.color = "var(--text-muted)")}
           >
             ← Quality
           </Link>
