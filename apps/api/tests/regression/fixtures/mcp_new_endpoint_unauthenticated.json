@@ -1,0 +1,32 @@
+{
+  "name": "mcp_new_endpoint_unauthenticated",
+  "description": "New /mcp endpoint from #1219 Phase 3 — unauthenticated initialize returns 401 with the same JSON-RPC error contract as /guard/mcp. Locks in byte-parity so migration + cutover in Phase 4 doesn't change client-visible behavior.",
+  "request": {
+    "method": "POST",
+    "path": "/mcp",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2026-07-28",
+        "clientInfo": {"name": "regression-harness", "version": "0.0.1"},
+        "capabilities": {}
+      }
+    }
+  },
+  "expected_response": {
+    "status": 401,
+    "body_match": {
+      "jsonrpc": "2.0",
+      "id": null,
+      "error": {
+        "code": -32600,
+        "message": "missing token (use Authorization: Bearer)"
+      }
+    }
+  }
+}

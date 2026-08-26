@@ -20,6 +20,7 @@ from tests.regression.conftest import (
 
 MCP_FIXTURES_NO_DB = [
     "mcp_initialize",
+    "mcp_new_endpoint_unauthenticated",
 ]
 
 MCP_FIXTURES_DB = [
