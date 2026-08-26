@@ -38,6 +38,8 @@ MCP_FIXTURES_DB = [
     "mcp_new_guard_tools_list",
     "mcp_new_guard_status",
     "mcp_new_conduct_list_projects",
+    # Workflow tools — list_workflows + get_blocked_workflows reachable via /mcp
+    "mcp_new_lens_get_blocked_workflows",
 ]
 
 

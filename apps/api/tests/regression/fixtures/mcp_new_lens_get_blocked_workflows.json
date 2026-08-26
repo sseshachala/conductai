@@ -1,0 +1,35 @@
+{
+  "name": "mcp_new_lens_get_blocked_workflows",
+  "description": "New /mcp tools/call for get_blocked_workflows on an empty workspace \u2014 proves the tool is wired and returns a text-content result.",
+  "requires_db": true,
+  "request": {
+    "method": "POST",
+    "path": "/mcp",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 41,
+      "method": "tools/call",
+      "params": {
+        "name": "get_blocked_workflows",
+        "arguments": {}
+      }
+    }
+  },
+  "expected_response": {
+    "status": 200,
+    "body_match": {
+      "jsonrpc": "2.0",
+      "id": 41
+    },
+    "custom_assertions": [
+      {
+        "kind": "result_has_content_type",
+        "type": "text"
+      }
+    ]
+  }
+}
