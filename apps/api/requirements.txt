@@ -6,7 +6,7 @@ psycopg2-binary==2.9.12
 redis==5.3.1
 pydantic>=2.11,<3
 pydantic-settings==2.5.2
-anthropic==0.40.0
+anthropic==0.125.0
 openai==1.51.0
 python-dotenv==1.2.2
 httpx==0.27.2
