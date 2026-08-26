@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
@@ -222,8 +222,8 @@ function KPI({
         cursor: onClick ? "pointer" : "default",
       }}
       onClick={onClick}
-      onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-md)" }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = "" }}
+      onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (onClick) (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-md)" }}
+      onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLElement).style.boxShadow = "" }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <div>
@@ -618,8 +618,8 @@ function AgentHealthRow({ agent }: { agent: AgentHealth }) {
         textDecoration: "none",
         color: "inherit",
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--surface-2)" }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "" }}
+      onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLElement).style.background = "var(--surface-2)" }}
+      onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLElement).style.background = "" }}
     >
       {/* Agent name + last run time */}
       <div>
@@ -1224,8 +1224,8 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
                               textDecoration: "none",
                               color: "inherit",
                             }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--surface-2)" }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "" }}
+                            onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLElement).style.background = "var(--surface-2)" }}
+                            onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLElement).style.background = "" }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontWeight: 600, fontSize: 13 }}>{run.workflow_name}</div>

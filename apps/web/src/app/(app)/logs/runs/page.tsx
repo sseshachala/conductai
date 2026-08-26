@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
@@ -150,7 +150,7 @@ function FilterPanel({
           boxShadow: "var(--shadow-lg)",
           zIndex: 50,
         }}
-        onClick={e => e.stopPropagation()}
+        onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}
       >
         <div
           style={{
@@ -287,8 +287,8 @@ function FilterPanel({
               transition: "background .12s",
               outline: "none",
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-3)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "var(--surface-2)")}
+            onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface-3)")}
+            onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface-2)")}
           >
             Reset
           </button>
@@ -353,10 +353,10 @@ function RunRow({ run }: RunRowProps) {
             <>
               <Link
                 href={`/projects/${run.project_id}`}
-                onClick={e => e.stopPropagation()}
+                onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}
                 style={{ fontSize: 11.5, color: "var(--text-3)", fontWeight: 500, whiteSpace: "nowrap", textDecoration: "none", flexShrink: 0 }}
-                onMouseEnter={e => (e.currentTarget.style.color = "var(--accent-text)")}
-                onMouseLeave={e => (e.currentTarget.style.color = "var(--text-3)")}
+                onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.color = "var(--accent-text)")}
+                onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.color = "var(--text-3)")}
               >
                 {run.project_name}
               </Link>
@@ -728,8 +728,8 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
                 transition: "background .12s",
                 outline: "none",
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
+              onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface)")}
             >
               <svg width={15} height={15} viewBox="0 0 15 15" fill="none" aria-hidden>
                 <path d="M1.5 4h12M4 7.5h7M6.5 11h2" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
@@ -755,8 +755,8 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
                 transition: "background .12s",
                 outline: "none",
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
+              onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface)")}
             >
               <svg width={15} height={15} viewBox="0 0 15 15" fill="none" aria-hidden>
                 <path d="M13 2.5A6.5 6.5 0 1 1 6.5 1" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
@@ -887,8 +887,8 @@ function RunsContent({ getToken }: { getToken: (() => Promise<string | null>) | 
                   opacity: loadingMore ? 0.5 : 1,
                   transition: "background .12s",
                 }}
-                onMouseEnter={e => { if (!loadingMore) e.currentTarget.style.background = "var(--surface-2)" }}
-                onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)" }}
+                onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!loadingMore) e.currentTarget.style.background = "var(--surface-2)" }}
+                onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { e.currentTarget.style.background = "var(--surface)" }}
               >
                 {loadingMore ? "Loading…" : "Load more"}
               </button>
