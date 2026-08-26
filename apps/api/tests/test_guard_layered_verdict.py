@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.modules.guard.routers import proxy as proxy_module
+from app.guard import policy as proxy_module  # source of truth post-#1218 Step 1a
 from app.modules.guard.routers.proxy import (
     SEVERITY_WEIGHTS,
     _defense_score,
