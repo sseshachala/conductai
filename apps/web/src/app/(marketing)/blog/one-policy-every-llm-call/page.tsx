@@ -144,9 +144,9 @@ export default function BlogPost() {
           >
             <code>packages/conduct-litellm-guard/</code>
           </a>{" "}
-          in our main repo. Licensed FSL-1.1-MIT — free for internal
-          use, non-competing commercial use, and professional services.
-          Converts to MIT on 2028-08-23.
+          in our main repo. Licensed Apache 2.0 — free for commercial and
+          non-commercial use, with an explicit patent grant from all
+          contributors.
         </p>
 
         <h2 className="text-2xl font-bold text-stone-900 mt-12 mb-4">What is next</h2>

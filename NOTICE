@@ -1,0 +1,12 @@
+Conduct
+Copyright 2026 Conduct AI (Sudhi Seshachala)
+
+This product includes software developed at Conduct AI.
+
+Portions of this software may include third-party components governed by
+their own licenses. See the individual package manifests (pyproject.toml,
+package.json) and vendored NOTICE files for attribution.
+
+The name "Conduct", "Conduct AI", "Conduct Guard", and associated logos
+are trademarks of Conduct AI. Use of the marks is not granted by the
+Apache License 2.0 (see Section 6 of that license).

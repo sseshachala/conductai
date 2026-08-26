@@ -343,11 +343,12 @@ export OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai/v1"`}</code></pre>
           </li>
         </ol>
         <p className="text-stone-700 leading-relaxed mb-6">
-          The platform is source-available under FSL-1.1-MIT (converts to MIT
-          on 2028-08-23) and self-hostable. The CLI and Agent Booster ship
-          under standard MIT for permissive distribution. If you&apos;re
-          running AI agents in production and want to govern them the way you
-          govern the rest of your stack, we&apos;d like to hear from you.
+          The platform is open source under Apache 2.0 and self-hostable —
+          CLI, Guard, Router, Agent Booster, playbooks, and packs all ship
+          under the same license, with an explicit patent grant from
+          contributors. If you&apos;re running AI agents in production and
+          want to govern them the way you govern the rest of your stack,
+          we&apos;d like to hear from you.
         </p>
 
         <div className="mt-12 border-t border-stone-100 pt-8">
