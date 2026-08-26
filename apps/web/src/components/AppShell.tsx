@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth, useUser, useClerk } from "@clerk/nextjs"
@@ -1416,8 +1416,8 @@ function SideNavItem({
         marginBottom: 1,
         transition: "background 120ms, color 120ms",
       }}
-      onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text)" } }}
-      onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-2)" } }}
+      onMouseEnter={(e: ReactMouseEvent<HTMLAnchorElement>) => { if (!active) { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--text)" } }}
+      onMouseLeave={(e: ReactMouseEvent<HTMLAnchorElement>) => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-2)" } }}
     >
       <span style={{ flexShrink: 0, display: "flex", alignItems: "center", color: "inherit" }}>{icon}</span>
       {!collapsed && (
@@ -1532,8 +1532,8 @@ function UserChipInner({ collapsed, userRole, topbar }: { collapsed: boolean; us
             href="/settings"
             onClick={() => setMenuOpen(false)}
             style={{ display: "block", padding: "8px 12px", fontSize: 13, color: "var(--text-2)", textDecoration: "none" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text)" }}
-            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-2)" }}
+            onMouseEnter={(e: ReactMouseEvent<HTMLAnchorElement>) => { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--text)" }}
+            onMouseLeave={(e: ReactMouseEvent<HTMLAnchorElement>) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-2)" }}
           >
             Settings
           </Link>
