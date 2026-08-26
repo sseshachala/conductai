@@ -299,6 +299,9 @@ def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_toke
     from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext as _PolicyContext
     from app.guard.audit import record as _record_audit
 
+    # Timing markers for #1218 Step 3b.7 — measure the overhead of the in-process
+    # composable engine vs direct-to-OpenAI. Target: <10ms overhead on policy eval.
+    _t_call_start = _time.monotonic()
     _ctx = _PolicyContext(
         workspace_id=executor.workspace_id,
         clerk_user_id=None,  # Lens sessions are per-session, not per-user for audit purposes
@@ -309,7 +312,14 @@ def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_toke
         input_tokens=0,
         db=executor.db,
     )
+    _t_policy_start = _time.monotonic()
     _decision = _eval_composed(_ctx)
+    _policy_ms = int((_time.monotonic() - _t_policy_start) * 1000)
+    log.info("lens.timing.policy_eval",
+             duration_ms=_policy_ms,
+             action=_decision.action.value,
+             source=_decision.source,
+             matched_rules=len(_decision.matched_rules))
     if _decision.action == _PolicyAction.BLOCK:
         log.warning("lens.guard.blocked", rule=_decision.rule_id, source=_decision.source)
         # Record the block in the audit chain so Lens spend + decisions are visible
@@ -327,6 +337,7 @@ def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_toke
         raise Exception(f"Guard blocked Lens call: {_decision.reason or _decision.rule_id}")
 
     _started = _time.monotonic()
+    _first_token_ms: int | None = None
     _resp_bytes = bytearray()
     full_text = ""
     with httpx.stream(
@@ -352,10 +363,26 @@ def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_toke
                     chunk = json.loads(line[6:])
                     token = ((chunk.get("choices") or [{}])[0]).get("delta", {}).get("content") or ""
                     if token:
+                        if _first_token_ms is None:
+                            _first_token_ms = int((_time.monotonic() - _t_call_start) * 1000)
                         full_text += token
                         on_token(token)
                 except Exception:
                     pass
+
+    _stream_ms = int((_time.monotonic() - _started) * 1000)
+    _total_ms = int((_time.monotonic() - _t_call_start) * 1000)
+
+    # #1218 Step 3b.7 — one summary log line per Lens call. p50/p95 are
+    # aggregated downstream (Grafana / Loki / whatever the ops dashboard runs on).
+    log.info("lens.timing.summary",
+             policy_ms=_policy_ms,
+             stream_ms=_stream_ms,
+             total_ms=_total_ms,
+             first_token_ms=_first_token_ms,
+             tokens_generated=len(full_text.split()) if full_text else 0,
+             action=_decision.action.value,
+             model=model)
 
     # Record audit event for a successful/warned Lens call — spend + hash chain
     # entry, same as external agents.
@@ -364,7 +391,7 @@ def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_toke
             executor.workspace_id, None, "lens", provider, model,
             "warned" if _decision.action == _PolicyAction.WARN else "allowed",
             _decision.rule_id if _decision.action == _PolicyAction.WARN else None,
-            int((_time.monotonic() - _started) * 1000),
+            _total_ms,
             body=payload, response_bytes=bytes(_resp_bytes),
             prompt_summary="lens.synthesis",
             evaluated_rules=_decision.matched_rules,
