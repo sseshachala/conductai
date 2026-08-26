@@ -40,7 +40,19 @@ export default function BlogPost() {
           What we shipped
         </h2>
         <p className="text-stone-700 leading-relaxed mb-4">
-          Guard now speaks a boot-time API. Agents start with one call:
+          Two catalog sources, one enforcement layer.
+        </p>
+
+        <p className="text-stone-700 leading-relaxed mb-3">
+          <strong>1. A curated MCP Registry.</strong> Guard ships with 10 pre-canned MCPs (GitHub, Slack, Postgres, Filesystem, Confluence, Jira, GDrive, Sentry, Linear, Notion), each with default policy packs already attached per tool. Enable GitHub MCP and you get sensible defaults on day one: <code>create_issue</code> allowed, <code>merge_pr</code> requires approval, <code>delete_branch</code> blocked, PII redaction on outputs.
+        </p>
+
+        <p className="text-stone-700 leading-relaxed mb-6">
+          <strong>2. Bring Your Own MCP.</strong> Register any MCP server, private or public. Guard calls the MCP spec&rsquo;s <code>tools/list</code>, pulls every tool schema, and lets admins attach policy packs per tool. Not per server. Per tool.
+        </p>
+
+        <p className="text-stone-700 leading-relaxed mb-4">
+          Then agents boot with one call:
         </p>
 
         <pre className="bg-stone-900 text-stone-100 rounded-lg px-4 py-3 text-sm overflow-x-auto mb-4">
@@ -48,25 +60,22 @@ export default function BlogPost() {
         </pre>
 
         <p className="text-stone-700 leading-relaxed mb-4">
-          Guard returns a policy-filtered list of MCP servers the agent may reach, along with a short-lived scoped token per server. The agent never sees a long-lived credential. It never hardcodes an endpoint. Its config is empty of MCP details.
+          Guard returns a policy-filtered list of MCP servers the agent may reach, along with a short-lived scoped token per server. Every tool call the agent makes is checked against the resolved policy: pre-canned defaults for Registry MCPs, or the packs you attached for your private ones. Every call is hash-chained. Every credential rotates centrally. No agent hardcodes an endpoint or a token.
         </p>
 
-        <p className="text-stone-700 leading-relaxed mb-2">Behind that call:</p>
+        <p className="text-stone-700 leading-relaxed mb-2">Also in the box:</p>
         <ul className="text-stone-700 leading-relaxed mb-6 space-y-2 list-disc pl-6">
-          <li>
-            <strong>A workspace catalog</strong> of MCP servers, maintained centrally.
-          </li>
           <li>
             <strong>Per-agent scoped tokens</strong> minted on demand, TTL-bounded, revocable per agent.
           </li>
           <li>
-            <strong>Policy packs</strong> with two new keys, <code>mcp_scope</code> and <code>mcp_actions</code>, so &ldquo;this agent may call GitHub MCP but only for read operations&rdquo; is one line of YAML.
+            <strong>Policy pack keys</strong> <code>mcp_scope</code> and <code>mcp_actions</code>, so per-tool intent is a line of YAML.
           </li>
           <li>
-            <strong>Hash-chained audit</strong> on every tool call, with the resolving policy rule id attached. Exportable to SIEM.
+            <strong>Hash-chained audit</strong> on every tool call, resolving policy rule id attached. Exportable to SIEM.
           </li>
           <li>
-            <strong>Auto-discovery</strong> that watches your existing agent configs (<code>.mcp.json</code>, Claude Desktop, Cursor, Windsurf) and promotes newly-found MCP servers into the catalog in observation mode.
+            <strong>Auto-discovery</strong> that watches agent configs (<code>.mcp.json</code>, Claude Desktop, Cursor, Windsurf) and surfaces newly-seen MCPs into the catalog in observation mode.
           </li>
         </ul>
 
