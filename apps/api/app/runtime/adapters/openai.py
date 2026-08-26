@@ -46,6 +46,7 @@ class OpenAIClient:
         messages: list[dict],
         system: str,
         tools: list[dict] | None = None,
+        tool_choice: dict | None = None,
         max_tokens: int = 4096,
         cache_system: bool = False,
         idempotency_key: str | None = None,
@@ -149,6 +150,22 @@ class OpenAIClient:
             cost_usd=_openai_cost(model, usage, self._pricing_snapshot),
             _raw_content=message,
         )
+
+
+    def stream(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        system: str,
+        max_tokens: int = 4096,
+    ) -> Iterator[str]:
+        """Streaming not yet implemented for openai. TODO: backfill when needed."""
+        raise NotImplementedError(
+            "stream() not implemented for openai adapter yet — currently only AnthropicClient. "
+            "File an issue if you need this."
+        )
+        yield  # unreachable — makes function a generator for type-checkers
 
     def make_assistant_turn(self, response: LLMResponse) -> list[dict]:
         # OpenAI expects assistant text and tool_calls on the assistant message.

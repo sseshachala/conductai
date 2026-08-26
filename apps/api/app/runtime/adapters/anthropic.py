@@ -10,7 +10,7 @@ Handles:
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from app.runtime.llm_client import (
     GuardProxyBlocked, LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage,
@@ -52,6 +52,7 @@ class AnthropicClient:
         messages: list[dict],
         system: str,
         tools: list[dict] | None = None,
+        tool_choice: dict | None = None,
         max_tokens: int = 4096,
         cache_system: bool = False,
         idempotency_key: str | None = None,
@@ -77,6 +78,8 @@ class AnthropicClient:
 
         if tools:
             kwargs["tools"] = tools
+        if tool_choice:
+            kwargs["tool_choice"] = tool_choice
 
         # Forward Idempotency-Key via extra_headers. Anthropic's GA support
         # for this header is not documented, but sending an unknown header is
@@ -240,6 +243,29 @@ class AnthropicClient:
             cost_usd=_anthropic_cost(model, usage, self._pricing_snapshot),
             _raw_content=_raw_content,  # preserved for make_assistant_turn
         )
+
+
+    def stream(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        system: str,
+        max_tokens: int = 4096,
+    ) -> Iterator[str]:
+        """Streaming create — yields text deltas from Anthropic's SSE stream.
+
+        No retry loop (streaming is fire-and-forget; on failure, the caller
+        surfaces the exception via the wrapping error handler). No tools.
+        """
+        with self._client.messages.stream(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+        ) as stream_obj:
+            for text in stream_obj.text_stream:
+                yield text
 
     def make_assistant_turn(self, response: LLMResponse) -> list[dict]:
         # Anthropic requires the original content objects (not our normalized types)

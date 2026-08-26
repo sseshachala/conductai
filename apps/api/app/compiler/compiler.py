@@ -11,8 +11,6 @@ import json
 import structlog
 from typing import Any
 
-import anthropic
-
 from app.core.config import settings
 from app.compiler.templates import (
     brain_prompt, tool_prompt, trigger_config,
@@ -56,13 +54,20 @@ EXTRACTION_TOOL = {
 }
 
 
-def get_client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=settings.anthropic_api_key)
+def get_client():
+    """Return a vendor-neutral LLMClient (Anthropic under the hood)."""
+    from app.runtime.llm_client import client_for
+    return client_for("anthropic", settings.anthropic_api_key)
 
 
-def _extract_slots(description: str, client: anthropic.Anthropic) -> dict[str, Any]:
-    """Step 1: extract structured slots from plain English using Claude."""
-    response = client.messages.create(
+def _extract_slots(description: str, client) -> dict[str, Any]:
+    """Step 1: extract structured slots from plain English using Claude.
+
+    Uses tool_choice to force Claude to invoke extract_block_slots so the
+    output is a validated JSON shape rather than free-form text.
+    """
+    from app.runtime.llm_client import LLMToolUseBlock
+    response = client.create(
         model="claude-sonnet-4-6",
         max_tokens=1024,
         system=(
@@ -76,7 +81,7 @@ def _extract_slots(description: str, client: anthropic.Anthropic) -> dict[str, A
     )
 
     for block in response.content:
-        if block.type == "tool_use" and block.name == "extract_block_slots":
+        if isinstance(block, LLMToolUseBlock) and block.name == "extract_block_slots":
             return block.input
 
     return {"goal": description, "constraints": [], "output_description": "Produce relevant output", "key_actions": []}

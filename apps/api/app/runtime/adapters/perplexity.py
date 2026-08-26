@@ -8,7 +8,7 @@ and research tasks only (no agentic loops).
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from app.runtime.llm_client import (
     LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage,
@@ -40,6 +40,7 @@ class PerplexityClient:
         messages: list[dict],
         system: str,
         tools: list[dict] | None = None,
+        tool_choice: dict | None = None,
         max_tokens: int = 4096,
         cache_system: bool = False,
         idempotency_key: str | None = None,
@@ -105,6 +106,22 @@ class PerplexityClient:
             cost_usd=_perplexity_cost(model, usage, self._pricing_snapshot),
             _raw_content=message,
         )
+
+
+    def stream(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        system: str,
+        max_tokens: int = 4096,
+    ) -> Iterator[str]:
+        """Streaming not yet implemented for perplexity. TODO: backfill when needed."""
+        raise NotImplementedError(
+            "stream() not implemented for perplexity adapter yet — currently only AnthropicClient. "
+            "File an issue if you need this."
+        )
+        yield  # unreachable — makes function a generator for type-checkers
 
     def make_assistant_turn(self, response: LLMResponse) -> list[dict]:
         msg = response._raw_content or {}
