@@ -132,6 +132,35 @@ TOOLS = [
         "description": "Get Guard configuration: enforcement mode (block/warn/advisory/off), fail mode, whether Slack notifications are on. Use for 'guard settings', 'is guard blocking', 'enforcement mode' questions.",
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "list_workflows",
+        "description": "List workflows in this workspace's org. Use for 'what workflows do we have', 'show all workflows', 'archived workflows'. status defaults to 'active'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "enum": ["active", "archived", "all"]},
+                "limit": {"type": "integer", "default": 20, "description": "Max rows (max 100)"},
+            },
+        },
+    },
+    {
+        "name": "get_blocked_workflows",
+        "description": (
+            "Workflows Guard has blocked, ranked by block count. Use for 'which workflow triggered a block', "
+            "'which workflows are being blocked', 'top blocked workflows'. Filter by workflow_id or rule_id "
+            "to drill in. since/until narrow the window."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "since": {"type": "string", "description": "ISO date start"},
+                "until": {"type": "string", "description": "ISO date end"},
+                "workflow_id": {"type": "string", "description": "Filter to one workflow"},
+                "rule_id": {"type": "string", "description": "Filter to one rule"},
+                "limit": {"type": "integer", "default": 20},
+            },
+        },
+    },
 ]
 
 def _load_system_prompt() -> str:
@@ -212,17 +241,28 @@ def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
                 filters["until"] = args["until"]
             if args.get("rule_id"):
                 filters["rule_id"] = args["rule_id"]
+        elif name == "get_blocked_workflows":
+            page = "/theguard/activity"
+            filters["decision"] = "blocked"
+            if args.get("since"):    filters["since"] = args["since"]
+            if args.get("until"):    filters["until"] = args["until"]
+            if args.get("workflow_id"): filters["workflow_id"] = args["workflow_id"]
+            if args.get("rule_id"):  filters["rule_id"] = args["rule_id"]
+        elif name == "list_workflows":
+            page = "/workflows"
         elif name in ("get_spend_summary", "get_savings_summary", "get_budgets"):
-            page = "/guard/spend"
+            page = "/theguard/spend"
         elif name in ("list_policies", "get_guard_config"):
-            page = "/guard/policies"
+            page = "/theguard/policies"
         elif name in ("get_discovery_summary",):
-            page = "/guard/discovery"
+            page = "/theguard/discovery"
         elif name in ("get_compliance_status", "get_framework_coverage"):
-            page = "/guard/compliance"
+            page = "/theguard/compliance"
 
     if not filters and page == "/logs/guard":
         return None
+    if "since" in filters and "until" not in filters:
+        filters["until"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if filters:
         qs = "&".join(f"{k}={v}" for k, v in filters.items())
         return f"{page}?{qs}"

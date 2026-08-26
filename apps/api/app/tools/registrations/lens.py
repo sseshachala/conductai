@@ -281,6 +281,42 @@ _TOOLS: list[ToolDef] = [
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),
+    ToolDef(
+        name="list_workflows",
+        description="Enumerate workflows in this workspace's org. status = active (default) | archived | all.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "enum": ["active", "archived", "all"]},
+                "limit": _LIMIT,
+            },
+            "required": [],
+        },
+        impl=_impl("list_workflows"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_blocked_workflows",
+        description=(
+            "Workflows Guard has blocked, ranked by block count. Returns "
+            "[{workflow_id, name, block_count, top_rule_id, last_blocked_at}]. "
+            "Optional filters: since/until (ISO ts), workflow_id, rule_id."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "since": _TS_SINCE, "until": _TS_UNTIL,
+                "workflow_id": {"type": "string", "description": "Filter to one workflow"},
+                "rule_id": _RULE_ID,
+                "limit": _LIMIT,
+            },
+            "required": [],
+        },
+        impl=_impl("get_blocked_workflows"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
 ]
 
 

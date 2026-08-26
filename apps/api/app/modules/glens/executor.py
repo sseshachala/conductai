@@ -19,6 +19,8 @@ from app.modules.guard.models import (
 )
 from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
 from app.modules.guard.embedding import embedding_client_for_workspace
+from app.models.workflow import Workflow
+from sqlalchemy import func as sa_func
 
 log = structlog.get_logger(__name__)
 
@@ -742,4 +744,94 @@ class Executor:
                 "user_email": e.user_email,
             }
             for e in rows
+        ]
+
+    # ── Workflow inventory + block roll-up ──────────────────────────────────
+
+    def _tool_list_workflows(self, status: str | None = None, limit: int = 20):
+        """Enumerate workflows in this workspace's org.
+
+        status: 'active' (default) | 'archived' | 'all'. Returns id/name/
+        guard_enabled/updated_at, ordered by most recently updated.
+        """
+        org_ws = _org_ws_subquery(self.db, self.workspace_id)
+        q = self.db.query(Workflow).filter(Workflow.workspace_id.in_(org_ws))
+        status = (status or "active").lower()
+        if status == "active":
+            q = q.filter(Workflow.archived_at.is_(None))
+        elif status == "archived":
+            q = q.filter(Workflow.archived_at.isnot(None))
+        # 'all' → no filter
+        rows = q.order_by(Workflow.updated_at.desc()).limit(min(limit, 100)).all()
+        return [
+            {
+                "workflow_id": str(w.id),
+                "name": w.name,
+                "guard_enabled": bool(w.guard_enabled),
+                "archived": w.archived_at is not None,
+                "updated_at": w.updated_at.isoformat() if w.updated_at else None,
+            }
+            for w in rows
+        ]
+
+    def _tool_get_blocked_workflows(
+        self,
+        since: str | None = None,
+        until: str | None = None,
+        workflow_id: str | None = None,
+        rule_id: str | None = None,
+        limit: int = 20,
+    ):
+        """Workflows that Guard has blocked, ranked by block count.
+
+        Groups guard_audit_events where decision='blocked' AND
+        conductai_workflow_id IS NOT NULL by workflow. Returns
+        [{workflow_id, name, block_count, top_rule_id, last_blocked_at}].
+        """
+        org_ws = _org_ws_subquery(self.db, self.workspace_id)
+        base = (
+            self.db.query(GuardAuditEvent)
+            .filter(GuardAuditEvent.workspace_id.in_(org_ws))
+            .filter(GuardAuditEvent.decision == "blocked")
+            .filter(GuardAuditEvent.conductai_workflow_id.isnot(None))
+        )
+        if since:
+            base = base.filter(GuardAuditEvent.ts >= since)
+        if until:
+            base = base.filter(GuardAuditEvent.ts <= until)
+        if workflow_id:
+            base = base.filter(GuardAuditEvent.conductai_workflow_id == workflow_id)
+        if rule_id:
+            base = base.filter(GuardAuditEvent.rule_id == rule_id)
+
+        # Single-query top_rule_id via Postgres MODE() WITHIN GROUP. Use MAX(name)
+        # to survive workflow renames (old events keep the old label).
+        top_rule = (
+            sa_func.mode()
+            .within_group(GuardAuditEvent.rule_id.asc())
+            .filter(GuardAuditEvent.rule_id.isnot(None))
+            .label("top_rule_id")
+        )
+        rows = (
+            base.with_entities(
+                GuardAuditEvent.conductai_workflow_id.label("workflow_id"),
+                sa_func.max(GuardAuditEvent.conductai_workflow).label("name"),
+                sa_func.count().label("block_count"),
+                sa_func.max(GuardAuditEvent.ts).label("last_blocked_at"),
+                top_rule,
+            )
+            .group_by(GuardAuditEvent.conductai_workflow_id)
+            .order_by(sa_func.count().desc())
+            .limit(min(limit, 100))
+            .all()
+        )
+        return [
+            {
+                "workflow_id": r.workflow_id,
+                "name": r.name,
+                "block_count": int(r.block_count),
+                "top_rule_id": r.top_rule_id,
+                "last_blocked_at": r.last_blocked_at.isoformat() if r.last_blocked_at else None,
+            }
+            for r in rows
         ]

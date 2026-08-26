@@ -1,6 +1,6 @@
 {
   "name": "mcp_new_lens_tools_list",
-  "description": "New /mcp tools/list surfaces registered Lens Executor tools via ToolRegistry — proves Phase 3b lens registrations are wired.",
+  "description": "New /mcp tools/list surfaces registered Lens Executor tools via ToolRegistry \u2014 proves Phase 3b lens registrations are wired.",
   "requires_db": true,
   "request": {
     "method": "POST",
@@ -23,7 +23,18 @@
       "id": 21
     },
     "custom_assertions": [
-      {"kind": "tools_include", "names": ["get_recent_events", "get_governance_kpis", "get_compliance_status", "list_policies", "search_knowledge"]}
+      {
+        "kind": "tools_include",
+        "names": [
+          "get_recent_events",
+          "get_governance_kpis",
+          "get_compliance_status",
+          "list_policies",
+          "search_knowledge",
+          "list_workflows",
+          "get_blocked_workflows"
+        ]
+      }
     ]
   }
 }
