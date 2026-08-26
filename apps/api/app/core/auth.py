@@ -671,11 +671,130 @@ def require_workspace_role(*allowed_roles: str):
     return _check
 
 
-def require_permission(permission: str):
-    """
-    Dependency factory that enforces a named permission from the RBAC tables.
+def check_permission(
+    *,
+    user_id: str | None,
+    workspace_id: str,
+    credentials: HTTPAuthorizationCredentials | None,
+    db: Session,
+    permission: str,
+) -> str:
+    """Pure permission check. No FastAPI DI, no closures over factory args.
 
-    Checks: workspace_users.role → roles → role_permissions → permissions.name
+    Returns the effective role on success. Raises HTTPException(403) on failure.
+
+    Callable directly from unit tests: pass a mocked db (or a real one) and a
+    workspace/user pair; get the same behavior FastAPI routes get. Patch
+    _clerk_enabled at the module level to simulate the dev-bypass path.
+
+    See require_permission() below for the FastAPI wrapper used by routers.
+    """
+    from sqlalchemy import text as _text
+
+    if not _clerk_enabled():
+        return "admin"
+
+    import re as _re
+    if not _re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", workspace_id, _re.I):
+        raise HTTPException(status_code=403, detail="Invalid workspace ID")
+
+    # Machine tokens (cond_api_*) are workspace-scoped credentials with no
+    # user session. Treat as admin for the workspace they were minted for.
+    # Same model as AWS access keys, GitHub PATs, Stripe secret keys —
+    # the token IS the authorization.
+    if user_id is None and credentials and credentials.credentials.startswith("cond_api_"):
+        ai, _ = _resolve_agent_token(credentials.credentials, db)
+        if ai and str(getattr(ai, "workspace_id", "")) == workspace_id:
+            return "admin"
+        raise HTTPException(status_code=403, detail="API token workspace does not match request")
+
+    # Okta JWTs (#1056) are also workspace-scoped machine credentials —
+    # user_id is None because get_user_id returned None for the JWT above.
+    if user_id is None and credentials:
+        okta = _resolve_okta_jwt(credentials.credentials, db)
+        if okta is not None:
+            ai, _ = okta
+            if str(getattr(ai, "workspace_id", "")) == workspace_id:
+                return "admin"
+            raise HTTPException(status_code=403, detail="Okta JWT workspace does not match request")
+
+    row = db.execute(
+        _text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
+        {"ws": workspace_id, "uid": user_id},
+    ).fetchone()
+
+    if not row:
+        owner = db.execute(
+            _text("SELECT 1 FROM workspaces WHERE id = :ws AND owner_id = :uid"),
+            {"ws": workspace_id, "uid": user_id},
+        ).fetchone()
+        if owner:
+            return "admin"
+        # GMC fallback: cond_agt_* tokens prove authenticated workspace membership
+        gmc = db.execute(
+            _text("""
+                SELECT 1 FROM guard_member_config
+                WHERE workspace_id::text = :ws AND clerk_user_id = :uid
+                LIMIT 1
+            """),
+            {"ws": workspace_id, "uid": user_id},
+        ).fetchone()
+        if gmc:
+            return "admin"
+        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+
+    user_role = row.role
+
+    has_perm = db.execute(
+        _text("""
+            SELECT 1
+            FROM roles r
+            JOIN role_permissions rp ON rp.role_id = r.id
+            JOIN permissions p ON p.id = rp.permission_id
+            WHERE r.name = :role
+              AND r.workspace_id IS NULL
+              AND p.name = :perm
+            LIMIT 1
+        """),
+        {"role": user_role, "perm": permission},
+    ).fetchone()
+
+    if not has_perm:
+        # Fallback: if the RBAC tables are unseeded (migration 0044 not yet
+        # applied), grant access based on role tier so no env gets locked out.
+        seeded = db.execute(
+            _text("SELECT 1 FROM role_permissions LIMIT 1"),
+        ).fetchone()
+        if not seeded:
+            # Tables empty — derive access from role tier (mirrors the old
+            # require_workspace_role logic): admin=all, viewer=read-only,
+            # developer+security=read+write (conservative safe default).
+            read_only_perms = {
+                "platform.workflows.view", "platform.runs.view",
+                "platform.marketplace.browse", "platform.eval.view",
+                "guard.policies.view", "guard.activity.view_own",
+                "guard.spend.view_own",
+            }
+            if user_role == "admin":
+                return user_role
+            if user_role in ("developer", "security") and permission in read_only_perms:
+                return user_role
+            if user_role == "viewer" and permission in read_only_perms:
+                return user_role
+            # Write permissions need at least developer/security
+            if user_role in ("developer", "security"):
+                return user_role
+        raise HTTPException(status_code=403, detail=f"Permission denied: {permission}")
+
+    return user_role
+
+
+def require_permission(permission: str):
+    """FastAPI dependency factory. Thin wrapper around check_permission().
+
+    The check logic lives in check_permission() (pure function, unit-testable
+    without conftest-patch acrobatics). This wrapper only binds FastAPI DI to
+    that function so routers can use ``Depends(require_permission("perm.name"))``.
 
     Seeded permissions (from migration 0044):
       platform.workflows.view       — viewer, developer, security, admin
@@ -700,119 +819,22 @@ def require_permission(permission: str):
       guard.settings.edit           — admin
 
     Usage:
-        from app.core.auth import require_permission
-
         @router.get("/scorecards")
         def get_scorecards(_: str = Depends(require_permission("platform.eval.view")), ...):
-
-        @router.post("/workflows/{id}/runs")
-        def trigger_run(_: str = Depends(require_permission("platform.workflows.run")), ...):
     """
-    from sqlalchemy import text as _text
-
     def _check(
         user_id: Annotated[str | None, Depends(get_user_id)],
         workspace_id: Annotated[str, Depends(get_workspace_id)],
         credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
         db: Session = Depends(get_db),
     ) -> str:
-        if not _clerk_enabled():
-            return "admin"
-
-        import re as _re
-        if not _re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", workspace_id, _re.I):
-            raise HTTPException(status_code=403, detail="Invalid workspace ID")
-
-        # Machine tokens (cond_api_*) are workspace-scoped credentials with no
-        # user session. Treat as admin for the workspace they were minted for.
-        # Same model as AWS access keys, GitHub PATs, Stripe secret keys —
-        # the token IS the authorization.
-        if user_id is None and credentials and credentials.credentials.startswith("cond_api_"):
-            ai, _ = _resolve_agent_token(credentials.credentials, db)
-            if ai and str(getattr(ai, "workspace_id", "")) == workspace_id:
-                return "admin"
-            raise HTTPException(status_code=403, detail="API token workspace does not match request")
-
-        # Okta JWTs (#1056) are also workspace-scoped machine credentials —
-        # user_id is None because get_user_id returned None for the JWT above.
-        if user_id is None and credentials:
-            okta = _resolve_okta_jwt(credentials.credentials, db)
-            if okta is not None:
-                ai, _ = okta
-                if str(getattr(ai, "workspace_id", "")) == workspace_id:
-                    return "admin"
-                raise HTTPException(status_code=403, detail="Okta JWT workspace does not match request")
-
-        row = db.execute(
-            _text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
-            {"ws": workspace_id, "uid": user_id},
-        ).fetchone()
-
-        if not row:
-            owner = db.execute(
-                _text("SELECT 1 FROM workspaces WHERE id = :ws AND owner_id = :uid"),
-                {"ws": workspace_id, "uid": user_id},
-            ).fetchone()
-            if owner:
-                return "admin"
-            # GMC fallback: cond_agt_* tokens prove authenticated workspace membership
-            gmc = db.execute(
-                _text("""
-                    SELECT 1 FROM guard_member_config
-                    WHERE workspace_id::text = :ws AND clerk_user_id = :uid
-                    LIMIT 1
-                """),
-                {"ws": workspace_id, "uid": user_id},
-            ).fetchone()
-            if gmc:
-                return "admin"
-            raise HTTPException(status_code=403, detail="Not a member of this workspace")
-
-        user_role = row.role
-
-        has_perm = db.execute(
-            _text("""
-                SELECT 1
-                FROM roles r
-                JOIN role_permissions rp ON rp.role_id = r.id
-                JOIN permissions p ON p.id = rp.permission_id
-                WHERE r.name = :role
-                  AND r.workspace_id IS NULL
-                  AND p.name = :perm
-                LIMIT 1
-            """),
-            {"role": user_role, "perm": permission},
-        ).fetchone()
-
-        if not has_perm:
-            # Fallback: if the RBAC tables are unseeded (migration 0044 not yet
-            # applied), grant access based on role tier so no env gets locked out.
-            seeded = db.execute(
-                _text("SELECT 1 FROM role_permissions LIMIT 1"),
-            ).fetchone()
-            if not seeded:
-                # Tables empty — derive access from role tier (mirrors the old
-                # require_workspace_role logic): admin=all, viewer=read-only,
-                # developer+security=read+write (conservative safe default).
-                read_only_perms = {
-                    "platform.workflows.view", "platform.runs.view",
-                    "platform.marketplace.browse", "platform.eval.view",
-                    "guard.policies.view", "guard.activity.view_own",
-                    "guard.spend.view_own",
-                }
-                if user_role == "admin":
-                    return user_role
-                if user_role in ("developer", "security") and permission in read_only_perms:
-                    return user_role
-                if user_role == "viewer" and permission in read_only_perms:
-                    return user_role
-                # Write permissions need at least developer/security
-                if user_role in ("developer", "security"):
-                    return user_role
-            raise HTTPException(status_code=403, detail=f"Permission denied: {permission}")
-
-        return user_role
-
+        return check_permission(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            credentials=credentials,
+            db=db,
+            permission=permission,
+        )
     return _check
 
 
