@@ -80,31 +80,47 @@ def _build_gctx(ctx, db):
     )
 
 
-def _impl(tool_name: str) -> Callable[..., Any]:
-    """Build a ctx-accepting impl for one guard tool."""
+def _wrap(named_impl: Callable[..., str]) -> Callable[..., Any]:
+    """Wrap a per-tool impl from mcp_impls in a SessionLocal-aware closure.
+
+    The per-tool impls (guard_status_impl, guard_check_impl, etc.) take a
+    ready-built GuardCtx. This wrapper opens/closes the DB session and
+    builds the ctx from the MCPContext the dispatcher hands us. The
+    wrapper's __name__ mirrors the wrapped impl so registry / stack
+    traces stay grep-friendly.
+    """
     def _guard_impl(ctx, **kwargs):
         from app.core.database import SessionLocal
-        from app.modules.guard.mcp_impls import dispatch_guard_tool
 
         db = SessionLocal()
         try:
             gctx = _build_gctx(ctx, db)
-            return dispatch_guard_tool(tool_name, kwargs, gctx)
+            return named_impl(gctx, **kwargs)
         finally:
             db.close()
 
-    _guard_impl.__name__ = f"guard_impl_{tool_name}"
+    _guard_impl.__name__ = f"registry_{named_impl.__name__}"
+    _guard_impl.__wrapped__ = named_impl
     return _guard_impl
 
 
 def _to_tooldef(schema: dict[str, Any]) -> ToolDef:
-    """Project the /guard/mcp _TOOLS schema dict onto a ToolDef."""
+    """Project the /guard/mcp _TOOLS schema dict onto a ToolDef, pointing
+    impl at the matching per-tool function in mcp_impls."""
+    from app.modules.guard.mcp_impls import _GUARD_TOOL_IMPLS
+
     name = schema["name"]
+    named_impl = _GUARD_TOOL_IMPLS.get(name)
+    if named_impl is None:
+        raise KeyError(
+            f"Guard schema {name!r} has no matching *_impl in mcp_impls."
+            f" Available: {sorted(_GUARD_TOOL_IMPLS.keys())}"
+        )
     return ToolDef(
         name=name,
         description=schema["description"],
         input_schema=schema["inputSchema"],
-        impl=_impl(name),
+        impl=_wrap(named_impl),
         annotations=_ANNOTATIONS.get(name, ToolAnnotations()),
         tags=_GUARD_TAGS,
     )

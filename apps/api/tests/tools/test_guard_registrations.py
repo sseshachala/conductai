@@ -84,3 +84,53 @@ def test_unknown_tool_returns_marker_string():
         session_id = "s"
     out = dispatch_guard_tool("no_such_tool", {}, _Ctx())
     assert out == "Unknown tool: no_such_tool"
+
+
+def test_each_tool_has_named_impl_in_mcp_impls():
+    """Per-tool extraction (Chunk B follow-up) — every schema in _TOOLS
+    has a matching named function in mcp_impls._GUARD_TOOL_IMPLS. No
+    string-lookup closures; each ToolDef.impl wraps a named function."""
+    from app.modules.guard.mcp_impls import _GUARD_TOOL_IMPLS
+
+    schema_names = {s["name"] for s in _GUARD_TOOL_SCHEMAS}
+    impl_names = set(_GUARD_TOOL_IMPLS.keys())
+    assert schema_names == impl_names, (
+        f"schema/impl mismatch — extra schemas: {schema_names - impl_names}, "
+        f"extra impls: {impl_names - schema_names}"
+    )
+
+
+def test_registered_impl_wraps_named_function():
+    """ToolDef.impl is a SessionLocal wrapper — its __wrapped__ attr must
+    point at the per-tool function in mcp_impls, so grep / IDE nav / stack
+    traces all land at the right code."""
+    for t in guard_reg._TOOLS:
+        assert hasattr(t.impl, "__wrapped__"), f"{t.name} impl missing __wrapped__"
+        assert t.impl.__wrapped__.__name__ == f"{t.name}_impl", (
+            f"{t.name} wraps {t.impl.__wrapped__.__name__}, expected {t.name}_impl"
+        )
+        assert t.impl.__name__ == f"registry_{t.name}_impl"
+
+
+def test_dispatch_guard_tool_routes_via_lookup_map():
+    """dispatch_guard_tool is now a router — for any known tool_name it
+    should hand off to _GUARD_TOOL_IMPLS[tool_name]. Verified by patching
+    the map and confirming the sentinel is returned."""
+    from app.modules.guard import mcp_impls
+
+    _original = mcp_impls._GUARD_TOOL_IMPLS["guard_status"]
+    mcp_impls._GUARD_TOOL_IMPLS["guard_status"] = lambda ctx, **kw: "SENTINEL"
+    try:
+        class _Ctx:
+            db = None
+            ws_uuid = uuid.uuid4()
+            workspace_id = str(ws_uuid)
+            resolved_token = ""
+            clerk_user_id = None
+            user_email = None
+            ai_tool = "http"
+            session_id = "s"
+        out = dispatch_guard_tool("guard_status", {}, _Ctx())
+        assert out == "SENTINEL"
+    finally:
+        mcp_impls._GUARD_TOOL_IMPLS["guard_status"] = _original
