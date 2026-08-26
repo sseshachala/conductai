@@ -14,7 +14,6 @@ class GlensChatSession(Base):
     workspace_id = Column(PG_UUID(as_uuid=True), nullable=False, index=True)
     title        = Column(String, nullable=False)
     messages     = Column(Text, nullable=False, default="[]")
-    render_spec  = Column(Text, nullable=True)
     context_summary = Column(Text, nullable=True)
     # Session-scoped token — SHA-256 of the raw cond_lens_* token.
     # #1218 Step 3b — Guard-enforced Lens with per-session blast-radius.
