@@ -32,6 +32,13 @@ function ProductsDropdown() {
               <p className="text-xs text-stone-400">Guard — see and control every AI session</p>
             </div>
           </a>
+          <a href="/mcp-gateway" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+            <span>🔌</span>
+            <div>
+              <p className="font-semibold">MCP Gateway</p>
+              <p className="text-xs text-stone-400">Boot-time tool discovery + policy + audit</p>
+            </div>
+          </a>
           <a href="/router" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
             <span className="text-indigo-600 font-bold">⇋</span>
             <div>
@@ -137,7 +144,7 @@ function MarketingFooter() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
-              { heading: "Product", links: [["Guard", "/guard"], ["Use cases", "/use-cases"], ["Registry", "/registry"], ["SDD Scanner", "/sdd"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
+              { heading: "Product", links: [["Guard", "/guard"], ["MCP Gateway", "/mcp-gateway"], ["Use cases", "/use-cases"], ["Registry", "/registry"], ["SDD Scanner", "/sdd"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
               { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Security Loop", "/solutions/security-loop"], ["Action governance", "/solutions/action-governance"], ["Memory hardening", "/solutions/memory-hardening"], ["Okta + Conduct", "/solutions/okta-plus-conduct"], ["Financial services", "/solutions/financial-services"], ["Life sciences", "/solutions/life-sciences"], ["All use cases", "/use-cases"], ["Deployment options", "/deployment"]] as [string, string][] },
               { heading: "Company", links: [["About", "/about"], ["Blog", "/blog"]] as [string, string][] },
               { heading: "Resources", links: [["Team OS", "/team-os"], ["Docs", "/docs"], ["Security", "/security"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conductai"]] as [string, string][] },
