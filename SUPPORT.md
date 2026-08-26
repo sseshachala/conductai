@@ -22,8 +22,9 @@ days.
 
 ## Commercial support
 
-For evaluations, enterprise deployments, or licensing outside the
-[FSL-1.1-MIT](./LICENSE) permitted-use grant, email
+For evaluations, enterprise deployments, indemnification, or the hosted
+control plane at [conductai.ai](https://conductai.ai) (built on top of
+the [Apache 2.0](./LICENSE) core), email
 **hello@conductai.ai** or book a call at
 [cal.com/sudhi-seshachala-pks7pd](https://cal.com/sudhi-seshachala-pks7pd).
 

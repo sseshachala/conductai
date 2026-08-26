@@ -111,9 +111,8 @@ still work — they just can't be resumed against a prior check.
 
 ## License
 
-`conduct-litellm-guard` is distributed under the same
-[FSL-1.1-MIT](../../LICENSE) license as the rest of Conduct. On
-2028-08-23 it converts to MIT.
+`conduct-litellm-guard` is distributed under the
+[Apache License 2.0](../../LICENSE), the same license as the rest of Conduct.
 
 ## Links
 

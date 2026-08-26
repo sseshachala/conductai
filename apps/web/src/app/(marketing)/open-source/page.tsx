@@ -28,7 +28,7 @@ function HeroSection() {
         Open Source
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed">
-        Free for individuals and small teams. Commercial use by companies requires a license — conductai.ai/team-os/license
+        Apache 2.0. Free for everyone — individuals, teams, and companies — for commercial and non-commercial use, with an explicit patent grant from contributors.
       </p>
     </section>
   )
@@ -42,7 +42,7 @@ function ProjectsSection() {
       <ProjectCard
         name="Conduct Guard"
         tagline="Runtime policy enforcement for AI agents"
-        description="Guard sits at the LLM call and shell tool boundary — block, warn, audit, or inject before an action executes. Ships with 20+ compliance packs (OWASP, SOC 2, HIPAA, PCI, EU AI Act), a canvas UI, YAML playbook DSL, and hash-chained audit trail. FSL-1.1-MIT — free for non-competing use, converts to MIT on 2028-08-23."
+        description="Guard sits at the LLM call and shell tool boundary — block, warn, audit, or inject before an action executes. Ships with 20+ compliance packs (OWASP, SOC 2, HIPAA, PCI, EU AI Act), a canvas UI, YAML playbook DSL, and hash-chained audit trail. Apache 2.0 — free for commercial and non-commercial use, with an explicit patent grant."
         install={["git clone https://github.com/sseshachala/conductai", "docker compose up"]}
         githubUrl="https://github.com/sseshachala/conductai"
         guardRelation="This is Guard itself — the policy engine, packs, canvas, and hash chain. Self-host for full control, or use the hosted product."

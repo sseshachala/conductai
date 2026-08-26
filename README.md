@@ -2,7 +2,7 @@
 
 [![Try Conduct — conductai.ai](https://img.shields.io/badge/Try_Conduct-conductai.ai-6366f1?style=for-the-badge&logoColor=white&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyek0xMSAxN3YtNkg5bDMtNCAzIDRoLTJ2NmgtMnoiLz48L3N2Zz4=)](https://conductai.ai)
 [![Star on GitHub](https://img.shields.io/github/stars/sseshachala/conductai?style=for-the-badge&logo=github&color=gold)](https://github.com/sseshachala/conductai/stargazers)
-[![License FSL-1.1-MIT](https://img.shields.io/badge/License-FSL--1.1--MIT-blue?style=for-the-badge)](LICENSE)
+[![License Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/conduct-cli?style=for-the-badge&logo=pypi&logoColor=white&color=0073b7)](https://pypi.org/project/conduct-cli/)
 
 # Conduct
@@ -133,20 +133,16 @@ One policy, three enforcement surfaces.
 
 ## License
 
-**[FSL-1.1-MIT](./LICENSE)** — Functional Source License 1.1 with MIT as the future license.
+**[Apache License 2.0](./LICENSE)** — the entire repository, including the CLI, Guard, Router, Agent Booster, playbooks, and packs.
 
-- Free for internal use, non-commercial research, non-commercial education, and professional services delivered to licensees.
-- Not permitted: offering Conduct (or a substantially similar service) as a competing hosted product.
-- **Change Date: 2028-08-23** — on this date the license automatically converts to MIT.
+- Free for commercial and non-commercial use, modification, and redistribution.
+- Includes an explicit patent grant from all contributors (Apache 2.0 §3).
+- Trademark rights are not granted; see [NOTICE](./NOTICE) — "Conduct", "Conduct AI", and "Conduct Guard" remain trademarks of Conduct AI.
+- Redistribution must preserve the `LICENSE` and `NOTICE` files.
 
-For commercial use outside the permitted-purpose grant, email **hello@conductai.ai**.
+The hosted control plane at [conductai.ai](https://conductai.ai) (canvas UI, team RBAC, marketplace, managed Guard) is a commercial offering built on top of this repository.
 
-**Distributed CLI + tooling ship under MIT** for permissive install and integration:
-
-- [`packages/conduct-cli`](./packages/conduct-cli/LICENSE) — the `conduct` CLI (MIT)
-- [`tools/booster`](./tools/booster/LICENSE) — Agent Booster (MIT)
-
-The MIT terms apply only to the code inside those two directories. Everything else in this repository is FSL-1.1-MIT.
+For enterprise support, indemnification, or licensing questions, email **hello@conductai.ai**.
 
 ---
 
