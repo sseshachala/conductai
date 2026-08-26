@@ -47,11 +47,9 @@ _cfg_stub.settings = MagicMock(
     allowed_egress_hosts=[],
     log_level="INFO",
 )
-sys.modules["app.core.config"] = _cfg_stub
-
-# Stub app.core.database (we'll inject mock sessions directly)
+sys.modules.setdefault("app.core.config", _cfg_stub)
 _db_stub = MagicMock()
-sys.modules["app.core.database"] = _db_stub
+sys.modules.setdefault("app.core.database", _db_stub)
 
 from app.modules.guard.routers.savings import (  # noqa: E402
     _build_summary,

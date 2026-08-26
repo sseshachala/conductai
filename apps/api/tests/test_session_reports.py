@@ -34,7 +34,11 @@ os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 _STUBS = [
     "structlog", "redis", "sentry_sdk",
     "app.runtime.llm_client", "app.runtime.model_router",
-    "app.routers.runs", "app.core.crypto",
+    # "app.routers.runs" intentionally omitted: all tests here are skipped so
+    # there is no need to stub this at collection time, and installing a
+    # MagicMock here permanently breaks every later test that imports app.main
+    # (FastAPI cannot mount a MagicMock as a router → 500 on all routes).
+    "app.core.crypto",
 ]
 for _m in _STUBS:
     sys.modules.setdefault(_m, MagicMock())
