@@ -6,8 +6,6 @@ import json
 import structlog
 from typing import Generator, Any
 
-import anthropic
-
 from app.core.config import settings
 
 log = structlog.get_logger(__name__)
@@ -64,15 +62,15 @@ def stream_compile_block(block: dict[str, Any]) -> Generator[str, None, None]:
         return
 
     try:
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        with client.messages.stream(
+        from app.runtime.llm_client import client_for
+        client = client_for("anthropic", settings.anthropic_api_key)
+        for text in client.stream(
             model="claude-sonnet-4-6",
             max_tokens=1024,
             system=COMPILER_SYSTEM,
             messages=[{"role": "user", "content": _build_user_message(block)}],
-        ) as stream:
-            for text in stream.text_stream:
-                yield f"data: {json.dumps({'text': text})}\n\n"
+        ):
+            yield f"data: {json.dumps({'text': text})}\n\n"
 
         yield "data: [DONE]\n\n"
 

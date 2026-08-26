@@ -17,7 +17,7 @@ Adding a new provider: implement LLMClient, add to adapters/, register in client
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol, runtime_checkable
+from typing import Any, Callable, Iterator, Protocol, runtime_checkable
 
 
 # ── Normalized response types ─────────────────────────────────────────────────
@@ -96,6 +96,7 @@ class LLMClient(Protocol):
         messages: list[dict],
         system: str,
         tools: list[dict] | None = None,
+        tool_choice: dict | None = None,
         max_tokens: int = 4096,
         cache_system: bool = False,
         idempotency_key: str | None = None,
@@ -110,9 +111,30 @@ class LLMClient(Protocol):
             system:       System prompt as a plain string; adapter handles caching internally
             tools:        Tool definitions in BRAIN_TOOLS format (name/description/input_schema).
                           None for single-shot (non-agentic) calls.
+            tool_choice:  Force a specific tool (e.g. {"type": "tool", "name": "foo"}) or
+                          {"type": "any"} to force any tool. None = let model decide.
             max_tokens:   Max tokens for this response
             cache_system: When True, adapter wraps system prompt with cache_control so
                           turns 2-N in an agentic loop read from cache (~10% cost)
+        """
+        ...
+
+    def stream(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        system: str,
+        max_tokens: int = 4096,
+    ) -> Iterator[str]:
+        """
+        Streaming variant of create(). Yields text deltas as they arrive.
+
+        No tools, no tool_choice — streaming is text-only. If you need
+        structured/tool output, use create() (non-streaming).
+
+        Currently implemented only by AnthropicClient. Other adapters raise
+        NotImplementedError until backfilled.
         """
         ...
 
