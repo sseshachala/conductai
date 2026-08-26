@@ -1,0 +1,38 @@
+{
+  "name": "mcp_initialize_unauthenticated",
+  "description": "MCP JSON-RPC initialize WITHOUT a Bearer token. Current /guard/mcp requires auth on every request (including initialize), so this returns 401 with a specific JSON-RPC error envelope. Refactor must preserve this exact contract.",
+  "request": {
+    "method": "POST",
+    "path": "/guard/mcp",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2024-11-05",
+        "clientInfo": {
+          "name": "regression-harness",
+          "version": "0.0.1"
+        },
+        "capabilities": {}
+      }
+    }
+  },
+  "expected_response": {
+    "status": 401,
+    "body_match": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "error": {
+        "code": -32600,
+        "message": "missing token (use Authorization: Bearer)"
+      }
+    },
+    "body_present_keys": [],
+    "headers_present": []
+  },
+  "expected_db_rows": []
+}
