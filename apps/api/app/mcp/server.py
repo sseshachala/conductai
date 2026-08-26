@@ -46,10 +46,17 @@ class MCPContext:
 
     Adapters build this from their transport auth (Bearer token → workspace_id,
     OAuth → clerk_user_id, etc.). Tools read but never mutate.
+
+    Enriched fields (user_email/session_id/resolved_token) are populated by
+    adapters that support them — Lens tools ignore them, guard tools need
+    them for audit attribution and HITL approval flow (#1219 Phase 3b B2).
     """
     workspace_id: str
     clerk_user_id: str | None = None
     surface: str = "unknown"     # claude.ai / claude-code / cursor / windsurf / vscode / stdio / http
+    user_email: str | None = None
+    session_id: str | None = None
+    resolved_token: str = ""      # raw Bearer — guard_enable echoes it back to the user
 
 
 def _ok(msg_id: Any, result: dict[str, Any]) -> dict[str, Any]:

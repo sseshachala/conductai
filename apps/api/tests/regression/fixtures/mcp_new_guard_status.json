@@ -1,0 +1,32 @@
+{
+  "name": "mcp_new_guard_status",
+  "description": "New /mcp tools/call guard_status returns the workspace's Guard snapshot via the same dispatch_guard_tool the legacy /guard/mcp endpoint uses. Byte-parity by construction — both endpoints call the same code.",
+  "requires_db": true,
+  "request": {
+    "method": "POST",
+    "path": "/mcp",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 32,
+      "method": "tools/call",
+      "params": {
+        "name": "guard_status",
+        "arguments": {}
+      }
+    }
+  },
+  "expected_response": {
+    "status": 200,
+    "body_match": {
+      "jsonrpc": "2.0",
+      "id": 32
+    },
+    "custom_assertions": [
+      {"kind": "result_has_content_type", "type": "text"}
+    ]
+  }
+}

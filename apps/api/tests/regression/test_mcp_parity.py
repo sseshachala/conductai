@@ -31,6 +31,13 @@ MCP_FIXTURES_DB = [
     # #1219 Phase 3b Chunk A — Lens tools on the new /mcp endpoint
     "mcp_new_lens_tools_list",
     "mcp_new_lens_tool_call",
+    # #1219 Phase 3b Chunk B — Guard tools on the new /mcp endpoint via
+    # the extracted dispatch_guard_tool. Both endpoints share code — the
+    # two fixtures below verify the guard catalogue + one canary read tool
+    # + a helper-backed tool land through the /mcp adapter.
+    "mcp_new_guard_tools_list",
+    "mcp_new_guard_status",
+    "mcp_new_conduct_list_projects",
 ]
 
 

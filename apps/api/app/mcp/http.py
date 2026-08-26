@@ -112,15 +112,40 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
     finally:
         db.close()
 
-    # Detect surface from clientInfo if present (initialize call), else None
+    # Detect surface from clientInfo if present (initialize call), else headers.
     client_info = (body.get("params") or {}).get("clientInfo") or {}
     from app.mcp.server import _detect_surface  # type: ignore
     surface = _detect_surface(client_info) if client_info else "http"
+    # Explicit surface header wins (Copilot rmcp reveals itself via User-Agent
+    # rather than clientInfo on tools/call — mirror the /guard/mcp resolution).
+    _hdr_surface = request.headers.get("x-claude-surface")
+    if _hdr_surface:
+        surface = _hdr_surface
+    elif surface in ("http", "unknown"):
+        ua_surface = _detect_surface({"name": request.headers.get("User-Agent", "")})
+        if ua_surface != "unknown":
+            surface = ua_surface
+
+    # Guard tools need user_email + session_id for audit attribution and HITL
+    # resume. Fetch email once per request; mint fresh session_id when the
+    # client didn't provide one. (#1219 Phase 3b B2)
+    user_email = None
+    if clerk_user_id:
+        try:
+            from app.core.auth import get_clerk_user_email
+            user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
+        except Exception as e:
+            log.warning("mcp.http.email_lookup_failed", err=str(e))
+            user_email = clerk_user_id
+    session_id = request.headers.get("x-session-id") or str(uuid.uuid4())
 
     ctx = MCPContext(
         workspace_id=workspace_id,
         clerk_user_id=clerk_user_id,
         surface=surface,
+        user_email=user_email,
+        session_id=session_id,
+        resolved_token=token,
     )
 
     response = dispatch(body, ctx, default_registry)

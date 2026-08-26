@@ -1,0 +1,32 @@
+{
+  "name": "mcp_new_conduct_list_projects",
+  "description": "New /mcp tools/call conduct_list_projects returns an empty list on a fresh seeded workspace. Exercises the shared dispatch_guard_tool path — same code the legacy /guard/mcp endpoint runs.",
+  "requires_db": true,
+  "request": {
+    "method": "POST",
+    "path": "/mcp",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 33,
+      "method": "tools/call",
+      "params": {
+        "name": "conduct_list_projects",
+        "arguments": {}
+      }
+    }
+  },
+  "expected_response": {
+    "status": 200,
+    "body_match": {
+      "jsonrpc": "2.0",
+      "id": 33
+    },
+    "custom_assertions": [
+      {"kind": "result_has_content_type", "type": "text"}
+    ]
+  }
+}
