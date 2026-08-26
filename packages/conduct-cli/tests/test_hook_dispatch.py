@@ -124,17 +124,6 @@ def test_conduct_entrypoint_resolves():
     assert callable(getattr(mod, fn_name, None))
 
 
-def test_conductguard_mcp_entrypoint_resolves():
-    eps = _parse_entrypoints()
-    for name in ("conduct-mcp", "conductguard-mcp"):
-        target = eps.get(name, "")
-        if not target:
-            continue
-        module_path, fn_name = target.rsplit(":", 1)
-        mod = importlib.import_module(module_path)
-        assert callable(getattr(mod, fn_name, None)), f"{name} entrypoint broken"
-
-
 # ── 4. Token backfill returns correct types ──────────────────────────────────
 
 def test_read_tokens_returns_ints_on_missing_file():

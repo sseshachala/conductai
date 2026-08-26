@@ -1,0 +1,32 @@
+{
+  "name": "mcp_tool_call_allow",
+  "description": "MCP tools/call for guard_status. Read-only tool, no policy block. Returns a text content block with the workspace's Guard status snapshot.",
+  "requires_db": true,
+  "request": {
+    "method": "POST",
+    "path": "/guard/mcp",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "tools/call",
+      "params": {
+        "name": "guard_status",
+        "arguments": {}
+      }
+    }
+  },
+  "expected_response": {
+    "status": 200,
+    "body_match": {
+      "jsonrpc": "2.0",
+      "id": 3
+    },
+    "custom_assertions": [
+      {"kind": "result_has_content_type", "type": "text"}
+    ]
+  }
+}

@@ -54,9 +54,9 @@ _cfg_stub.settings = MagicMock(
     environment="test",
     log_level="INFO",
 )
-sys.modules["app.core.config"] = _cfg_stub
+sys.modules.setdefault("app.core.config", _cfg_stub)
 _db_stub = MagicMock()
-sys.modules["app.core.database"] = _db_stub
+sys.modules.setdefault("app.core.database", _db_stub)
 
 # Add venv site-packages so SQLAlchemy / cryptography are importable
 _venv_site = APPS_API / ".venv" / "lib"

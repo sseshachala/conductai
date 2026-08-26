@@ -1,0 +1,32 @@
+{
+  "name": "mcp_tool_call_unknown",
+  "description": "MCP tools/call for a non-existent tool. Locks in the current error envelope shape — MCP JSON-RPC error -32601 method not found OR a text content block with error message (implementation-dependent).",
+  "requires_db": true,
+  "request": {
+    "method": "POST",
+    "path": "/guard/mcp",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "tools/call",
+      "params": {
+        "name": "nonexistent_tool_xyz",
+        "arguments": {}
+      }
+    }
+  },
+  "expected_response": {
+    "status": 200,
+    "body_match": {
+      "jsonrpc": "2.0",
+      "id": 4
+    },
+    "custom_assertions": [
+      {"kind": "response_signals_error"}
+    ]
+  }
+}

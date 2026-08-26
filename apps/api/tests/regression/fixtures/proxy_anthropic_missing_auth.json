@@ -1,0 +1,22 @@
+{
+  "name": "proxy_anthropic_missing_auth",
+  "description": "Anthropic proxy without Bearer token. Auth guard 401 contract, mirror of the OpenAI variant. Ensures the auth path is uniform across proxy providers.",
+  "request": {
+    "method": "POST",
+    "path": "/proxy/anthropic/v1/messages",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "model": "claude-3-5-haiku-20241022",
+      "max_tokens": 128,
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  },
+  "expected_response": {
+    "status": 401,
+    "custom_assertions": [
+      {"kind": "status_in_range", "min": 401, "max": 401}
+    ]
+  }
+}

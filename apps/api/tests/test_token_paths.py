@@ -55,8 +55,12 @@ _cfg_stub.settings = MagicMock(
     redis_url="redis://localhost:6379",
     default_max_cost_usd=5.0,
 )
-sys.modules["app.core.config"] = _cfg_stub
-sys.modules["app.core.database"] = MagicMock()
+# Use setdefault so we don't overwrite modules already imported by conftest.py
+# (conftest imports app.core.auth which pulls in app.core.config and
+# app.core.database; replacing them permanently at collection time corrupts every
+# test that runs after this file is collected, even tests in other files).
+sys.modules.setdefault("app.core.config", _cfg_stub)
+sys.modules.setdefault("app.core.database", MagicMock())
 
 _venv_site = APPS_API / ".venv" / "lib"
 for _p in _venv_site.glob("python*/site-packages"):
@@ -426,9 +430,11 @@ class TestMCPSecurityToolSchemas:
     """post_finding and trigger_fix must be in _TOOLS with correct required fields."""
 
     def _get_tools(self):
-        # ponytail: evict again on the way out so the MagicMock stubs don't
-        # leak into unrelated tests (e.g. rate_limit_burst which reads
-        # GuardRateLimit.__table__ and gets AttributeError on a Mock).
+        # Save the real guard.models (already imported by guard tests that ran
+        # earlier) so we can restore it after this stub-compile round-trip.
+        # Without the restore, later tests that import guard.models get a
+        # reimport that collides with already-registered SQLAlchemy tables.
+        _real_guard_models = sys.modules.get("app.modules.guard.models")
         _evict("app.modules.guard.routers.mcp", "app.modules.guard.policy_engine",
                "app.modules.guard.models")
         sys.modules.setdefault("app.modules.guard.policy_engine", MagicMock())
@@ -437,6 +443,10 @@ class TestMCPSecurityToolSchemas:
         tools = {t["name"]: t for t in _TOOLS}
         _evict("app.modules.guard.routers.mcp", "app.modules.guard.policy_engine",
                "app.modules.guard.models")
+        # Restore the real guard.models so subsequent imports don't trigger a
+        # second table registration (SQLAlchemy raises on duplicate table names).
+        if _real_guard_models is not None:
+            sys.modules["app.modules.guard.models"] = _real_guard_models
         return tools
 
     def test_post_finding_present(self):

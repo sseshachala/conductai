@@ -230,8 +230,32 @@ def _poll_run(server: str, workflow_id: str, run_id: str, hdrs: dict) -> bool:
 
 # ── Commands ──────────────────────────────────────────────────────────────────
 
-def _write_mcp_config(path: Path, *, keys: tuple = ("mcpServers",), create: bool = False) -> bool:
-    """Write conduct-mcp entry into a JSON config file. Returns True if written or already present."""
+# #1219 Phase 3 M3 (Option A): stdio bridge is Cloudflare's `mcp-remote`.
+# `npx -y mcp-remote <url> --header "Authorization: Bearer <token>"` is what
+# Claude.ai / Claude Code / Cursor / Codex / VS Code Copilot all speak — one
+# bridge, one endpoint. Native Python bridge tracked in #1229.
+_MCP_URL_DEFAULT = "https://api.conductai.ai/mcp"
+
+
+def _mcp_remote_args(api_url: str, token: str) -> list:
+    """Args list for the mcp-remote invocation. Kept as a helper so JSON and
+    TOML writers stay in sync."""
+    return ["-y", "mcp-remote", api_url.rstrip("/") + "/mcp",
+            "--header", f"Authorization: Bearer {token}"]
+
+
+def _write_mcp_config(
+    path: Path,
+    *,
+    api_url: str,
+    token: str,
+    keys: tuple = ("mcpServers",),
+    create: bool = False,
+) -> bool:
+    """Write a conduct MCP server entry (via mcp-remote) into a JSON config.
+    Returns True if written or already present. Replaces a pre-existing entry
+    if it still points at the retired `conduct-mcp` binary so upgrades cut over
+    cleanly."""
     if not create and not path.parent.exists():
         return False
     try:
@@ -240,9 +264,13 @@ def _write_mcp_config(path: Path, *, keys: tuple = ("mcpServers",), create: bool
         for k in keys[:-1]:
             node = node.setdefault(k, {})
         servers = node.setdefault(keys[-1], {})
-        if "conduct" in servers:
+        _new_entry = {"command": "npx", "args": _mcp_remote_args(api_url, token)}
+        _prior = servers.get("conduct") or servers.get("conductguard")
+        if _prior == _new_entry:
             return True
-        servers["conduct"] = {"command": "conduct-mcp", "args": []}
+        # Cut over from the retired binaries. Keep the key name "conduct".
+        servers.pop("conductguard", None)
+        servers["conduct"] = _new_entry
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(existing, indent=2))
         return True
@@ -250,16 +278,36 @@ def _write_mcp_config(path: Path, *, keys: tuple = ("mcpServers",), create: bool
         return False
 
 
-def _write_codex_mcp_config() -> bool:
-    """Write conduct-mcp into ~/.codex/config.toml (TOML — different format)."""
+def _write_codex_mcp_config(api_url: str, token: str) -> bool:
+    """Write the conduct MCP server entry into ~/.codex/config.toml (TOML,
+    different format from JSON). Rewrites when a stale `conduct-mcp` command
+    is present so upgrades cut over cleanly."""
     config_path = Path.home() / ".codex" / "config.toml"
     if not config_path.parent.exists():
         return False
     try:
         content = config_path.read_text() if config_path.exists() else ""
-        if "conduct-mcp" in content:
+        _quoted_args = ", ".join('"' + a.replace('"', '\\"') + '"'
+                                 for a in _mcp_remote_args(api_url, token))
+        _snippet = (
+            "\n[mcp_servers.conduct]\n"
+            'command = "npx"\n'
+            f"args = [{_quoted_args}]\n"
+        )
+        if _snippet.strip() in content:
             return True
-        config_path.write_text(content + '\n[mcp_servers.conduct]\ncommand = "conduct-mcp"\nargs = []\n')
+        # Drop any prior [mcp_servers.conduct] / [mcp_servers.conductguard]
+        # block so we don't stack duplicates on repeated installs. Split by
+        # section header (`[...]` at line start) and keep only the sections
+        # whose header isn't one of the retired keys.
+        import re as _re
+        _sections = _re.split(r"(?m)(?=^\[)", content)
+        _keep = [
+            sec for sec in _sections
+            if not sec.startswith(("[mcp_servers.conduct]", "[mcp_servers.conductguard]"))
+        ]
+        content = "".join(_keep)
+        config_path.write_text(content.rstrip() + _snippet)
         return True
     except Exception:
         return False
@@ -396,9 +444,25 @@ def _report_tool_coverage() -> None:
 
 
 def cmd_mcp_install(args):
-    """Register conduct-mcp in Claude Code, Codex, Cursor, Windsurf, and VS Code."""
+    """Register the Conduct MCP server in Claude Code, Codex, Cursor, Windsurf,
+    and VS Code. Uses `npx -y mcp-remote` as the stdio bridge (#1219 Phase 3
+    M3 Option A) — one server, one endpoint, no local binaries. Native
+    Python bridge tracked in #1229 for enterprise SBOM ask.
+    """
     import shutil
     import subprocess
+
+    cfg = _load_config()
+    api_url = (cfg.get("api_url") or _DEFAULT_API_URL).rstrip("/")
+    token = cfg.get("agent_token") or ""
+    if not token:
+        print(f"{RED}No Conduct token found — run `conduct login` first, then re-run `conduct mcp install`.{RESET}")
+        return
+    if not shutil.which("npx"):
+        print(f"{YELLOW}⚠ `npx` not on PATH.{RESET}")
+        print(f"{GRAY}  MCP stdio bridge (mcp-remote) needs Node.js. Install Node 18+ then re-run.{RESET}")
+        print(f"{GRAY}  Or track #1229 for a native Python bridge (no Node dep).{RESET}")
+        return
 
     home = Path.home()
     # claude mcp add --global writes to project-level settings; write directly instead.
@@ -415,14 +479,17 @@ def cmd_mcp_install(args):
 
     registered = []
     for label, path, keys, create in _MCP_TARGETS:
-        if path and _write_mcp_config(path, keys=keys, create=create):
+        if path and _write_mcp_config(path, api_url=api_url, token=token, keys=keys, create=create):
             registered.append(label)
-    if _write_codex_mcp_config():
+    if _write_codex_mcp_config(api_url=api_url, token=token):
         registered.append("Codex")
 
     if registered:
-        print(f"{GREEN}✓ conduct-mcp registered in: {', '.join(registered)}{RESET}")
-        print(f"{GRAY}  Restart your AI tools to pick up the new MCP server.{RESET}")
+        print(f"{GREEN}✓ Conduct MCP registered in: {', '.join(registered)}{RESET}")
+        print(f"{GRAY}  Bridge: npx -y mcp-remote {api_url}/mcp{RESET}")
+        print(f"{GRAY}  MCP surface consolidated — the old `conductguard-mcp` binary and{RESET}")
+        print(f"{GRAY}  `/guard/mcp` URL are being retired in favor of one `/mcp` endpoint (#1219).{RESET}")
+        print(f"{GRAY}  Restart your AI tools to pick up the new server.{RESET}")
     else:
         print(f"{YELLOW}⚠ No supported AI tools detected on this machine.{RESET}")
         print(f"{GRAY}  Supported: Claude Code, Codex, Cursor, Windsurf, VS Code{RESET}")

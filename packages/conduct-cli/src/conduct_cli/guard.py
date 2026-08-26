@@ -391,14 +391,26 @@ _MCP_TARGETS = [
 
 
 def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bool = False) -> None:
-    """Write conductguard + agent-booster MCP entries into every AI tool config found.
+    """Write conduct + agent-booster MCP entries into every AI tool config found.
 
-    Credentials are NOT stored in the MCP config — the server reads them from
-    ~/.conduct/config.json at startup, which is written by guard sync.
+    Uses `npx -y mcp-remote` as the stdio bridge (#1219 Phase 3 M3 Option A)
+    since the retired `conductguard-mcp` binary no longer exists. Native
+    Python bridge tracked in #1229 for enterprise SBOM ask.
+
+    The Bearer token is embedded in the args list because mcp-remote needs
+    it to authenticate against the remote /mcp endpoint. This is the same
+    token guard sync writes to ~/.conduct/config.json — treat as sensitive.
     """
     import shutil
+    _mcp_url = api_url.rstrip("/") + "/mcp"
     servers: dict[str, dict] = {
-        "conductguard": {"command": "conductguard-mcp"},
+        "conduct": {
+            "command": "npx",
+            "args": [
+                "-y", "mcp-remote", _mcp_url,
+                "--header", f"Authorization: Bearer {agent_token}",
+            ],
+        },
     }
     # Register agent-booster only if the binary is available
     if shutil.which("booster"):
@@ -422,6 +434,12 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
             existing = {}
         mcp = existing.setdefault("mcpServers", {})
         changed = False
+        # Cut over from the retired `conductguard-mcp` binary if present —
+        # else users end up with both entries and Claude Desktop shows two
+        # servers pointing at the same tools.
+        if "conductguard" in mcp:
+            mcp.pop("conductguard")
+            changed = True
         for name, entry in servers.items():
             if mcp.get(name) == entry:
                 print(f"  {GRAY}{name} MCP already registered in {label}{RESET}")
@@ -1168,14 +1186,14 @@ def _detect_ai_tools() -> list[dict]:
             tools.append({
                 "name": "codex-desktop",
                 "mcp_registered": _check_toml_str(config, "conduct-mcp"),
-                "hook_registered": _check_toml_str(config, "conductguard"),
+                "hook_registered": _check_toml_str(config, "conductguard") or _check_toml_str(config, "conduct"),
                 "proxy_routed": False,
             })
         else:
             tools.append({
                 "name": "codex",
                 "mcp_registered": _check_toml_str(config, "conduct-mcp"),
-                "hook_registered": _check_toml_str(config, "conductguard"),
+                "hook_registered": _check_toml_str(config, "conductguard") or _check_toml_str(config, "conduct"),
                 "proxy_routed": _is_openai_proxied(),
             })
 
@@ -2458,7 +2476,8 @@ def _discover_config_agents() -> list[tuple]:
                 # Codex: check hooks.json sibling
                 hooks_path = path.parent / "hooks.json"
                 if hooks_path.exists():
-                    return "conductguard" in hooks_path.read_text()
+                    _content = hooks_path.read_text()
+                    return "conductguard" in _content or "conduct" in _content
                 return False
             import json as _j
             d = _j.loads(path.read_text())

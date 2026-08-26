@@ -1,0 +1,29 @@
+{
+  "name": "mcp_tools_list",
+  "description": "MCP tools/list returns the registered tool catalogue. Must contain at minimum: guard_status, guard_check, guard_activity, guard_sync, conduct_list_agents. Full assertion is on names+count, not per-tool schema (schema drift is a separate concern).",
+  "requires_db": true,
+  "request": {
+    "method": "POST",
+    "path": "/guard/mcp",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "tools/list",
+      "params": {}
+    }
+  },
+  "expected_response": {
+    "status": 200,
+    "body_match": {
+      "jsonrpc": "2.0",
+      "id": 2
+    },
+    "custom_assertions": [
+      {"kind": "tools_include", "names": ["guard_status", "guard_check", "guard_activity", "guard_sync", "conduct_list_agents", "conduct_list_projects", "conduct_list_playbooks", "conduct_run_workflow", "conduct_get_run"]}
+    ]
+  }
+}

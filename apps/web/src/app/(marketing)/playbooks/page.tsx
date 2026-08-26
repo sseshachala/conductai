@@ -4,6 +4,15 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 
+// ponytail: env-gate so preview builds without Clerk key don't crash at
+// prerender. Same pattern as CtaLink and WorkspaceProvider.
+const CLERK_ENABLED = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+function useSignedIn(): boolean | undefined {
+  if (!CLERK_ENABLED) return false
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return useAuth().isSignedIn
+}
+
 interface Playbook {
   slug: string
   name: string
@@ -126,7 +135,7 @@ export default function AutomationsPage() {
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState("All")
-  const { isSignedIn } = useAuth()
+  const isSignedIn = useSignedIn()
 
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL

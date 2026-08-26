@@ -1,0 +1,28 @@
+{
+  "name": "proxy_openai_authed_no_api_key",
+  "description": "OpenAI proxy with valid Bearer but no OPENAI_API_KEY configured in the workspace. Current behavior: 503 with a specific error message pointing users to Settings → Environments. Refactor must preserve this exact 503 contract — a workspace with an agent token but no upstream key is a real onboarding state that must fail loudly.\n\nFuture fixture (proxy_openai_authed_with_key) will seed OPENAI_API_KEY on the workspace + mock upstream to test the 200 success path.",
+  "requires_db": true,
+  "request": {
+    "method": "POST",
+    "path": "/proxy/openai/v1/chat/completions",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "model": "gpt-4o-mini",
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  },
+  "expected_response": {
+    "status": 503,
+    "body_match": {
+      "error": {
+        "type": "conduct_guard_proxy"
+      }
+    },
+    "custom_assertions": [
+      {"kind": "body_error_message_contains", "text": "No API key configured"}
+    ]
+  }
+}

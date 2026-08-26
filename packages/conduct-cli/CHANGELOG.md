@@ -6,6 +6,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.10.0] - 2026-08-26
+
+### Changed
+- **BREAKING (client-side)**: `conduct mcp install` no longer registers the
+  local `conductguard-mcp` / `conduct-mcp` stdio binaries. It now writes
+  `npx -y mcp-remote https://api.conductai.ai/mcp --header "Authorization:
+  Bearer <token>"` configs into Claude Code, Cursor, Windsurf, VS Code
+  Copilot, and Codex. One bridge, one endpoint, one policy source — server
+  is the only place policy is evaluated. Run `conduct mcp install` after
+  upgrade to cut over your local AI-tool configs; the writer replaces
+  stale `conduct-mcp` command entries automatically.
+- **REMOVED**: `conduct-mcp` and `conductguard-mcp` entry points deleted
+  from `pyproject.toml`. `conduct_cli/mcp_server.py` (365 lines) and
+  `conduct_cli/guardmcp.py` (497 lines) deleted. Local
+  `policy.json`-based evaluation removed — all policy lives on the
+  server, always current. Native Python stdio bridge tracked in
+  [#1229](https://github.com/sseshachala/conductai/issues/1229) for
+  enterprise SBOM requirements (no Node dep, pinnable via pip).
+
+### Requirements
+- `npx` on PATH (Node.js 18+). `conduct mcp install` fails helpfully if
+  missing.
+
+### Related
+- [#1219](https://github.com/sseshachala/conductai/issues/1219) —
+  consolidate to one Conduct MCP. This release ships Phase 3b + M3.
+- [#1230](https://github.com/sseshachala/conductai/issues/1230) —
+  Phase 5 retirement of the legacy `/guard/mcp` route, deferred until
+  after Aug 31 demo.
+
+---
+
 ## [0.9.2] - 2026-08-13
 
 ### Fixed

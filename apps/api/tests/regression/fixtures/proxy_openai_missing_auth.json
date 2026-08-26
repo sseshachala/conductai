@@ -1,0 +1,21 @@
+{
+  "name": "proxy_openai_missing_auth",
+  "description": "OpenAI proxy without Bearer token. Locks in the current 401 shape. No upstream call is made — auth check short-circuits before mock is needed. This is the zero-mock fixture that proves the proxy auth guard behaves per contract.",
+  "request": {
+    "method": "POST",
+    "path": "/proxy/openai/v1/chat/completions",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "model": "gpt-4o-mini",
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  },
+  "expected_response": {
+    "status": 401,
+    "custom_assertions": [
+      {"kind": "status_in_range", "min": 401, "max": 401}
+    ]
+  }
+}

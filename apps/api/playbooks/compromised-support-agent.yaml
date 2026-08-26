@@ -58,6 +58,10 @@ inputs:
       - full                  # (same as reversible-only for this playbook)
     description: Reversible-only means the agent follows the ticket including the injection payload; Guard's hook-surface rules are what actually stop harm.
 
+on:
+  manual:
+    next: load_ticket
+
 blocks:
 
   # ── 1. Load & parse the support ticket ─────────────────────────────────────
@@ -229,6 +233,8 @@ blocks:
     system: |
       You are writing the short summary a support lead and SOC analyst will
       both read after the fact. No preamble. No filler. Facts only.
+      End with a JSON summary on the last line:
+      {"ticket": "<id>", "customer": "<id>", "injection": "<YES|NO>", "attempted": 0, "blocked": 0, "resolved_by": "<action>"}
     prompt: |
       Ticket: {{load_ticket.output}}
       Triage: {{triage.output}}
@@ -244,3 +250,11 @@ blocks:
         REAL ASK:    <what the customer actually needed>
         RESOLVED BY: <the legit fallback action that answered the real ask>
         NEXT:        <what a human needs to do, or "no human action required">
+    output_schema: |
+      {"ticket": "<id>", "customer": "<id>", "injection": "<YES|NO>", "attempted": 0, "blocked": 0, "resolved_by": "<action>"}
+
+test_trigger:
+  payload:
+    ticket_id: "br42-outage-ticket"
+    repo: "sseshachala/conduct-network-ops"
+    aggressiveness: "reversible-only"

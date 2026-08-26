@@ -46,7 +46,7 @@ _cfg_stub.settings = MagicMock(
     allowed_egress_hosts=[],
     log_level="INFO",
 )
-sys.modules["app.core.config"] = _cfg_stub
+sys.modules.setdefault("app.core.config", _cfg_stub)
 
 # Patch create_engine before app.core.database loads — SQLite rejects
 # max_overflow / pool_size that Postgres accepts, so strip them silently.
@@ -64,12 +64,10 @@ def _safe_create_engine(url, *args, **kwargs):
 
 _sa.create_engine = _safe_create_engine
 
-# If test_guard_savings.py ran first it stubbed app.core.database with a
-# MagicMock — that poisons the ORM models (columns become Mock attrs). Evict
-# any stubbed / already-imported guard modules so the real ones re-import.
+# Evict the guard spend/savings routers so they re-import with the correct
+# real database module (app.core.database is no longer polluted by
+# test_guard_savings.py now that it uses setdefault there).
 for _mod in [
-    "app.core.database",
-    "app.modules.guard.models",
     "app.modules.guard.routers.spend",
     "app.modules.guard.routers.savings",
 ]:

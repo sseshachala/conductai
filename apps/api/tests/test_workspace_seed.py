@@ -28,12 +28,11 @@ os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/tes
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
 
-# Stub heavy ORM modules to avoid mapper resolution overhead on import.
-for _mod in [
-    "app.modules.guard.models",
-]:
-    if _mod in sys.modules:
-        sys.modules.pop(_mod, None)
+# The individual test helpers (_run_seed, _run_seed_update) already save and
+# restore app.modules.guard.models around each call, so there is no need to
+# evict it at collection time. Evicting it here would cause a stale-Base
+# re-import error ("Table guard_config already defined") in any test file
+# that imported guard.models earlier in the collection pass.
 importlib.invalidate_caches()
 
 

@@ -9,14 +9,15 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import { TabBar } from "@/components/TabBar"
 
-type Tab = "tokens" | "run_tokens" | "identities" | "integrations"
+type Tab = "tokens" | "run_tokens" | "identities" | "lens_sessions" | "integrations"
 const TAB_LABELS: Record<Tab, string> = {
   tokens: "Tokens",
   run_tokens: "Run tokens",
   identities: "Identities",
+  lens_sessions: "Lens sessions",
   integrations: "Integrations",
 }
-const TABS: Tab[] = ["tokens", "run_tokens", "identities", "integrations"]
+const TABS: Tab[] = ["tokens", "run_tokens", "identities", "lens_sessions", "integrations"]
 
 interface RunToken {
   id: string
@@ -57,6 +58,18 @@ interface Identity {
   certification_cadence_days: number | null
   risk_tier: string | null
   deactivated_at: string | null
+}
+
+interface LensSession {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+  token_revoked_at: string | null
+  is_active: boolean
+  is_idle: boolean
+  turns: number
+  spend_usd: number
 }
 
 const TIER_STYLE: Record<string, { bg: string; fg: string }> = {
@@ -108,6 +121,12 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
 
   const [identities, setIdentities] = useState<Identity[]>([])
   const [identitiesLoading, setIdentitiesLoading] = useState(true)
+
+  // Lens Sessions (#1218 Step 3b.6)
+  const [lensSessions, setLensSessions] = useState<LensSession[]>([])
+  const [lensSessionsLoading, setLensSessionsLoading] = useState(true)
+  const [lensIncludeExpired, setLensIncludeExpired] = useState(false)
+  const [revokingLensSessionId, setRevokingLensSessionId] = useState<string | null>(null)
   const [savingIdentity, setSavingIdentity] = useState<string | null>(null)
 
   const router = useRouter()
@@ -167,6 +186,34 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   }, [workspaceId, authFetch])
 
   useEffect(() => { load() }, [load])
+
+  // Lens Sessions loader (#1218 Step 3b.6)
+  const loadLensSessions = useCallback(async () => {
+    if (!workspaceId) return
+    setLensSessionsLoading(true)
+    try {
+      const qs = lensIncludeExpired ? "?include_expired=true" : ""
+      const res = await authFetch(`${API}/glens/lens-sessions${qs}`)
+      if (res.ok) setLensSessions(await res.json())
+    } catch {}
+    setLensSessionsLoading(false)
+  }, [workspaceId, authFetch, lensIncludeExpired])
+
+  useEffect(() => {
+    if (activeTab === "lens_sessions") loadLensSessions()
+  }, [activeTab, loadLensSessions])
+
+  async function revokeLensSession(id: string) {
+    setRevokingLensSessionId(id)
+    try {
+      const res = await authFetch(`${API}/glens/lens-sessions/${id}/revoke`, { method: "POST" })
+      if (res.ok) {
+        const data = await res.json()
+        setLensSessions(prev => prev.map(s => s.id === id ? { ...s, token_revoked_at: data.revoked_at, is_active: false } : s))
+      }
+    } catch {}
+    setRevokingLensSessionId(null)
+  }
 
   function fmt(d: string | null) {
     if (!d) return "—"
@@ -604,6 +651,83 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         </div>
 
         {/* Okta integration — #1036 Phase 2 */}
+        {/* Lens sessions — #1218 Step 3b.6 */}
+        <div role="tabpanel" id="tabpanel-lens_sessions" aria-labelledby="tab-lens_sessions" hidden={activeTab !== "lens_sessions"} style={{ display: activeTab === "lens_sessions" ? "block" : "none" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Lens sessions</div>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
+              <input
+                type="checkbox"
+                checked={lensIncludeExpired}
+                onChange={e => setLensIncludeExpired(e.target.checked)}
+              />
+              Include expired / revoked
+            </label>
+          </div>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
+            Short-lived tokens (cond_lens_*) minted per chat session. Every Lens LLM call is Guard-enforced through the same policy engine as external agents. Revoke a session to kill its token immediately — the next call fails auth.
+          </p>
+          <div className="card" style={{ overflowX: "auto" }}>
+            {lensSessionsLoading ? (
+              <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)" }}>Loading sessions…</div>
+            ) : lensSessions.length === 0 ? (
+              <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)" }}>
+                {lensIncludeExpired ? "No Lens sessions yet." : "No active Lens sessions in the last 24h. Toggle \"Include expired / revoked\" to see history."}
+              </div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Session</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Started</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Last activity</th>
+                    <th style={{ textAlign: "right", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Turns</th>
+                    <th style={{ textAlign: "right", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Spend</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Status</th>
+                    <th style={{ padding: "8px 12px" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lensSessions.map(s => {
+                    const status = s.token_revoked_at ? "Revoked" : s.is_idle ? "Idle" : s.is_active ? "Active" : "Inactive"
+                    const statusColor = s.token_revoked_at ? "#991b1b" : s.is_idle ? "#92400e" : s.is_active ? "#166534" : "var(--text-muted)"
+                    const statusBg    = s.token_revoked_at ? "#fee2e2" : s.is_idle ? "#fef3c7" : s.is_active ? "#dcfce7" : "var(--surface-2)"
+                    const canRevoke   = !s.token_revoked_at
+                    const busy = revokingLensSessionId === s.id
+                    return (
+                      <tr key={s.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "8px 12px" }}>
+                          <div style={{ fontWeight: 500, color: "var(--text)", maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>{s.id.slice(0, 8)}…</div>
+                        </td>
+                        <td style={{ padding: "8px 12px", color: "var(--text-2)" }}>{fmt(s.created_at)}</td>
+                        <td style={{ padding: "8px 12px", color: "var(--text-2)" }}>{fmt(s.updated_at)}</td>
+                        <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-2)" }}>{s.turns}</td>
+                        <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-2)", fontFamily: "monospace" }}>${s.spend_usd.toFixed(4)}</td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: statusBg, color: statusColor }}>{status}</span>
+                        </td>
+                        <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                          {canRevoke && (
+                            <button
+                              onClick={() => revokeLensSession(s.id)}
+                              disabled={busy}
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: "var(--err)" }}
+                            >
+                              {busy ? "Revoking…" : "Revoke"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
         <div role="tabpanel" id="tabpanel-integrations" aria-labelledby="tab-integrations" hidden={activeTab !== "integrations"} style={{ display: activeTab === "integrations" ? "block" : "none" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Okta integration</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>

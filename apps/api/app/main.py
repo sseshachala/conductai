@@ -33,6 +33,9 @@ from app.modules.guard.routers import memory_search as guard_memory_search
 from app.modules.guard.routers import verify as guard_verify
 from app.modules.guard.routers import knowledge_search as guard_knowledge_search
 from app.modules.glens.routers import chat as glens_chat
+from app.modules.glens.routers import lens_sessions as glens_lens_sessions
+from app.mcp import http as mcp_http
+from app.tools import registrations as _tool_registrations  # noqa: F401  # side-effect: populate default_registry
 from app.modules.telemetry import routes as telemetry_routes
 from app.routers.organizations import router as organizations_router
 from app.routers.workspaces import router as workspaces_router
@@ -150,6 +153,9 @@ app.include_router(guard_discovery.router)
 app.include_router(guard_verify.router)
 app.include_router(guard_knowledge_search.router)
 app.include_router(glens_chat.router)
+app.include_router(glens_lens_sessions.router)
+app.include_router(mcp_http.router)
+app.include_router(mcp_http.well_known_router)
 app.include_router(telemetry_routes.router)
 app.include_router(rbac_router)
 app.include_router(me_rbac_router)

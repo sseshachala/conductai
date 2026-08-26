@@ -93,8 +93,8 @@ After a tool call completes, the hook sends an audit event to `/guard/events` wi
 |---|---|---|
 | **Claude Code** | Native PreToolUse/PostToolUse | Conditional on hook installation, sync, and supported event fields |
 | **Codex CLI** | Native PreToolUse/PostToolUse | Conditional on compatible hook registration and event fields |
-| **Cursor** | `conductguard-mcp` MCP server | Agent-invoked checks; see [conductguard-mcp](conductguard_mcp.md) |
-| **Gemini CLI** | `conductguard-mcp` MCP server | Experimental, agent-invoked checks |
+| **Cursor** | Conduct MCP via `npx mcp-remote` | Agent-invoked checks; see [MCP setup](conductguard_mcp.md) |
+| **Gemini CLI** | Conduct MCP via `npx mcp-remote` | Experimental, agent-invoked checks |
 
 ---
 
