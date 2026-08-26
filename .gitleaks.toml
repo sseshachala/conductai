@@ -1,0 +1,43 @@
+# gitleaks config: default rules + Conduct-specific token prefixes.
+# ponytail: extend default, don't reinvent. Upgrade path = add rules as new prefixes ship.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "conduct-agent-token"
+description = "Conduct agent token (cond_agt_*)"
+regex = '''cond_agt_[A-Za-z0-9_-]{16,}'''
+tags = ["conduct", "token", "secret"]
+
+[[rules]]
+id = "conduct-run-token"
+description = "Conduct run token (cond_run_*)"
+regex = '''cond_run_[A-Za-z0-9_-]{16,}'''
+tags = ["conduct", "token", "secret"]
+
+[[rules]]
+id = "conduct-credential-token"
+description = "Conduct credential broker token (cond_cred_*)"
+regex = '''cond_cred_[A-Za-z0-9_-]{16,}'''
+tags = ["conduct", "token", "secret"]
+
+[[rules]]
+id = "conduct-live-token"
+description = "Conduct live workspace token (cond_live_*)"
+regex = '''cond_live_[A-Za-z0-9_-]{16,}'''
+tags = ["conduct", "token", "secret"]
+
+[[rules]]
+id = "conduct-workspace-token"
+description = "Conduct workspace/member token (cond_ws_* / cond_wsk_*)"
+regex = '''cond_(ws|wsk)_[A-Za-z0-9_-]{16,}'''
+tags = ["conduct", "token", "secret"]
+
+[allowlist]
+description = "Fixture, test, example, and doc paths only. Real code must never contain live tokens."
+paths = [
+  '''(.*?)(_test\.py|test_.*\.py|\.example|\.example\..*|fixtures?/)''',
+  '''docs/.*\.(md|mdx)$''',
+  '''README.*\.md$''',
+]

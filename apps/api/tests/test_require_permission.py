@@ -1,88 +1,28 @@
-"""
-Unit tests for require_permission in app.core.auth.
+"""Unit tests for check_permission in app.core.auth.
 
-No real DB, no network. Uses the same module-stub pattern as test_guard_savings.py.
+Tests target `check_permission` directly — the pure function extracted from
+what used to be the `require_permission._check` closure. No FastAPI DI, no
+sys.modules manipulation, no fixture acrobatics to bypass conftest's patch
+of `require_permission`. The pure function doesn't touch the wrapper that
+conftest patches, so tests run reliably regardless of order, autouse
+fixtures, or which other tests ran first.
 
-require_permission(perm) returns a _check closure. We test _check directly,
-injecting a mock user_id, workspace_id, and db rather than going through
-FastAPI Depends resolution.
+The db is injected directly; imports are safe because SQLAlchemy is lazy
+about connecting.
+
+See app.core.auth.require_permission for the FastAPI wrapper used by routers.
 """
 from __future__ import annotations
 
-import os
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
-HERE = Path(__file__).resolve()
-APPS_API = HERE.parent.parent
-if str(APPS_API) not in sys.path:
-    sys.path.insert(0, str(APPS_API))
+from app.core.auth import check_permission
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
-os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
-os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
-_log_mock = MagicMock()
-_log_mock.get_logger = MagicMock(return_value=MagicMock())
-sys.modules.setdefault("structlog", _log_mock)
-sys.modules.setdefault("redis", MagicMock())
-sys.modules.setdefault("sentry_sdk", MagicMock())
-
-_cfg_stub = MagicMock()
-_cfg_stub.settings = MagicMock(
-    sentry_dsn=None,
-    sqlalchemy_database_url="sqlite:///:memory:",
-    encryption_key="test-key-32-bytes-long-xxxxxxxx!",
-    allowed_egress_hosts=[],
-    clerk_secret_key = "REDACTED",
-    clerk_frontend_api="clerk.example.com",
-    environment="test",
-    log_level="INFO",
-)
-# Save originals and take a snapshot of all module keys before any stubbing.
-_real_cfg_rp = sys.modules.get("app.core.config")
-_real_db_rp = sys.modules.get("app.core.database")
-_real_auth_rp = sys.modules.get("app.core.auth")
-_modules_before_rp = set(sys.modules.keys())
-sys.modules["app.core.config"] = _cfg_stub
-sys.modules["app.core.database"] = MagicMock()
-
-_venv_site = APPS_API / ".venv" / "lib"
-for _p in _venv_site.glob("python*/site-packages"):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
-
-sys.modules.pop("app.core.auth", None)
-
-from fastapi import HTTPException  # noqa: E402
-from app.core.auth import require_permission  # noqa: E402
-
-# ── Cleanup: restore pre-stub module state ────────────────────────────────
-# Evict newly-imported app.* modules (compiled against stubs) so that later
-# test files that import app.main get clean versions.
-for _k in list(sys.modules.keys()):
-    if _k.startswith("app.") and _k not in _modules_before_rp:
-        sys.modules.pop(_k, None)
-# Restore explicitly-replaced modules.
-if _real_cfg_rp is not None:
-    sys.modules["app.core.config"] = _real_cfg_rp
-elif "app.core.config" in sys.modules:
-    sys.modules.pop("app.core.config", None)
-if _real_db_rp is not None:
-    sys.modules["app.core.database"] = _real_db_rp
-elif "app.core.database" in sys.modules:
-    sys.modules.pop("app.core.database", None)
-# Keep the freshly-imported app.core.auth in sys.modules so this test file's
-# require_permission reference stays valid; but also keep the original so
-# conftest's permissive patch remains active for other test files.
-if _real_auth_rp is not None:
-    sys.modules["app.core.auth"] = _real_auth_rp
-
-# A valid UUID-format workspace_id (the regex in require_permission enforces this)
+# A valid UUID-format workspace_id (the regex in check_permission enforces this)
 _WS = "00000000-0000-0000-0000-000000000001"
 _UID = "user_abc123"
 
@@ -125,6 +65,7 @@ def _make_db_no_member(owner_match: bool = False):
     """
     First db.execute call → no workspace_users row.
     Second db.execute call → owner row if owner_match else None.
+    Third db.execute call → None (GMC fallback).
     """
     db = MagicMock()
     owner_row = MagicMock() if owner_match else None
@@ -136,9 +77,15 @@ def _make_db_no_member(owner_match: bool = False):
     return db
 
 
-def _call_check(checker, db, user_id=_UID, workspace_id=_WS):
-    """Call the _check closure returned by require_permission directly."""
-    return checker(user_id=user_id, workspace_id=workspace_id, db=db)
+def _call(db, permission, user_id=_UID, workspace_id=_WS, credentials=None):
+    """Call check_permission with test defaults."""
+    return check_permission(
+        user_id=user_id,
+        workspace_id=workspace_id,
+        credentials=credentials,
+        db=db,
+        permission=permission,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -147,100 +94,88 @@ def _call_check(checker, db, user_id=_UID, workspace_id=_WS):
 
 class TestValidPermission:
     def test_valid_permission_returns_role(self):
-        checker = require_permission("platform.eval.view")
         db = _make_db_with_role_and_perm("developer", has_perm=True)
         with patch("app.core.auth._clerk_enabled", return_value=True):
-            result = _call_check(checker, db)
+            result = _call(db, "platform.eval.view")
         assert result == "developer"
 
     def test_valid_permission_admin_role(self):
-        checker = require_permission("platform.workspace.edit")
         db = _make_db_with_role_and_perm("admin", has_perm=True)
         with patch("app.core.auth._clerk_enabled", return_value=True):
-            result = _call_check(checker, db)
+            result = _call(db, "platform.workspace.edit")
         assert result == "admin"
 
 
 class TestMissingPermission:
     def test_missing_permission_raises_403(self):
-        checker = require_permission("guard.policies.edit")
         db = _make_db_with_role_and_perm("developer", has_perm=False)
         with patch("app.core.auth._clerk_enabled", return_value=True):
             with pytest.raises(HTTPException) as exc_info:
-                _call_check(checker, db)
+                _call(db, "guard.policies.edit")
         assert exc_info.value.status_code == 403
 
     def test_missing_permission_detail_mentions_permission(self):
-        checker = require_permission("guard.policies.edit")
         db = _make_db_with_role_and_perm("developer", has_perm=False)
         with patch("app.core.auth._clerk_enabled", return_value=True):
             with pytest.raises(HTTPException) as exc_info:
-                _call_check(checker, db)
+                _call(db, "guard.policies.edit")
         assert "guard.policies.edit" in exc_info.value.detail
 
 
 class TestNonMember:
     def test_non_member_raises_403(self):
-        checker = require_permission("platform.eval.view")
         db = _make_db_no_member(owner_match=False)
         with patch("app.core.auth._clerk_enabled", return_value=True):
             with pytest.raises(HTTPException) as exc_info:
-                _call_check(checker, db)
+                _call(db, "platform.eval.view")
         assert exc_info.value.status_code == 403
 
     def test_non_member_detail(self):
-        checker = require_permission("platform.eval.view")
         db = _make_db_no_member(owner_match=False)
         with patch("app.core.auth._clerk_enabled", return_value=True):
             with pytest.raises(HTTPException) as exc_info:
-                _call_check(checker, db)
+                _call(db, "platform.eval.view")
         assert "member" in exc_info.value.detail.lower() or exc_info.value.status_code == 403
 
 
-@pytest.mark.skip(reason="Cross-test sys.modules pollution: patch on _clerk_enabled doesn't reach the reloaded auth module in CI order")
 class TestDevMode:
     def test_dev_mode_skips_check(self):
-        checker = require_permission("guard.settings.edit")
         db = MagicMock()
         db.execute.side_effect = RuntimeError("DB should not be called in dev mode")
         with patch("app.core.auth._clerk_enabled", return_value=False):
-            result = _call_check(checker, db)
+            result = _call(db, "guard.settings.edit")
         assert result == "admin"
 
     def test_dev_mode_never_hits_db(self):
-        checker = require_permission("platform.eval.view")
         db = MagicMock()
         with patch("app.core.auth._clerk_enabled", return_value=False):
-            _call_check(checker, db)
+            _call(db, "platform.eval.view")
         db.execute.assert_not_called()
 
 
 class TestOwnerFallback:
     def test_owner_fallback_grants_admin(self):
         """Not in workspace_users, but IS the workspace owner → returns 'admin'."""
-        checker = require_permission("platform.eval.view")
         db = _make_db_no_member(owner_match=True)
         with patch("app.core.auth._clerk_enabled", return_value=True):
-            result = _call_check(checker, db)
+            result = _call(db, "platform.eval.view")
         assert result == "admin"
 
     def test_owner_fallback_does_not_check_permission_table(self):
         """Owner path returns immediately — no third DB call for role_permissions."""
-        checker = require_permission("platform.eval.view")
         db = _make_db_no_member(owner_match=True)
         with patch("app.core.auth._clerk_enabled", return_value=True):
-            _call_check(checker, db)
+            _call(db, "platform.eval.view")
         # Only two db.execute calls: workspace_users check + owner check
         assert db.execute.call_count == 2
 
 
 class TestInvalidWorkspaceId:
     def test_non_uuid_workspace_id_raises_403(self):
-        checker = require_permission("platform.eval.view")
         db = MagicMock()
         with patch("app.core.auth._clerk_enabled", return_value=True):
             with pytest.raises(HTTPException) as exc_info:
-                _call_check(checker, db, workspace_id="not-a-uuid")
+                _call(db, "platform.eval.view", workspace_id="not-a-uuid")
         assert exc_info.value.status_code == 403
 
 
@@ -265,37 +200,32 @@ def _make_db_unseeded(role: str):
 
 class TestUnseedledRbacFallback:
     def test_admin_gets_through_unseeded(self):
-        checker = require_permission("guard.settings.edit")
         db = _make_db_unseeded("admin")
         with patch("app.core.auth._clerk_enabled", return_value=True):
-            result = _call_check(checker, db)
+            result = _call(db, "guard.settings.edit")
         assert result == "admin"
 
     def test_developer_read_perm_unseeded(self):
-        checker = require_permission("platform.eval.view")
         db = _make_db_unseeded("developer")
         with patch("app.core.auth._clerk_enabled", return_value=True):
-            result = _call_check(checker, db)
+            result = _call(db, "platform.eval.view")
         assert result == "developer"
 
     def test_developer_write_perm_unseeded(self):
-        checker = require_permission("guard.policies.edit")
         db = _make_db_unseeded("developer")
         with patch("app.core.auth._clerk_enabled", return_value=True):
-            result = _call_check(checker, db)
+            result = _call(db, "guard.policies.edit")
         assert result == "developer"
 
     def test_viewer_read_perm_unseeded(self):
-        checker = require_permission("platform.workflows.view")
         db = _make_db_unseeded("viewer")
         with patch("app.core.auth._clerk_enabled", return_value=True):
-            result = _call_check(checker, db)
+            result = _call(db, "platform.workflows.view")
         assert result == "viewer"
 
     def test_viewer_write_perm_unseeded_raises_403(self):
-        checker = require_permission("guard.policies.edit")
         db = _make_db_unseeded("viewer")
         with patch("app.core.auth._clerk_enabled", return_value=True):
             with pytest.raises(HTTPException) as exc_info:
-                _call_check(checker, db)
+                _call(db, "guard.policies.edit")
         assert exc_info.value.status_code == 403

@@ -55,9 +55,9 @@ def _summarise(raw_transcript: str | None) -> str | None:
         return truncated[:500]
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        msg = client.messages.create(
+        from app.runtime.llm_client import client_for, LLMTextBlock
+        client = client_for("anthropic", settings.anthropic_api_key)
+        msg = client.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=300,
             system=(
@@ -69,7 +69,8 @@ def _summarise(raw_transcript: str | None) -> str | None:
             ),
             messages=[{"role": "user", "content": truncated}],
         )
-        result = msg.content[0].text.strip()
+        first = msg.content[0] if msg.content else None
+        result = first.text.strip() if isinstance(first, LLMTextBlock) else ""
         if result == "NULL" or not result:
             return None
         return result

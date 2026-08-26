@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type MouseEvent as ReactMouseEvent } from "react"
 import { timeAgo } from "@/lib/runUtils"
 import { DecisionBadge } from "./DecisionBadge"
 
@@ -332,7 +332,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           {ev.source === "brain_block" && ev.conductai_workflow ? (
             ev.conductai_run_id ? (
               <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()}
                 style={{ textDecoration: "none", fontSize: 11.5, fontFamily: "var(--font-mono, monospace)", color: "var(--accent-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", maxWidth: "100%" }}>
                 {ev.conductai_workflow}
               </Link>
@@ -341,7 +341,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
             )
           ) : (
             ev.conductai_run_id ? (
-              <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} onClick={(e) => e.stopPropagation()} style={{ textDecoration: "none" }}>
+              <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()} style={{ textDecoration: "none" }}>
                 <ToolBadge tool={ev.ai_tool} />
               </Link>
             ) : (
@@ -373,7 +373,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       </div>
       <div>
         {ev.conductai_run_id ? (
-          <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
+          <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
             <DecisionBadge decision={ev.decision} />
             <span style={{ fontSize: 11, color: "var(--accent-text)" }}>→</span>
           </Link>

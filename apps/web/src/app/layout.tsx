@@ -147,8 +147,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </head>
           <body>
             {children}
-            <Script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" strategy="afterInteractive" />
-            <Script src="https://narratr.ai/embed.js" data-brand="conductai" strategy="afterInteractive" />
+            <script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" async></script>
+            <script src="https://narratr.ai/embed.js" data-brand="conductai" async></script>
           </body>
         </html>
       </ClerkProvider>
@@ -162,7 +162,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         {children}
-        <Script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" strategy="afterInteractive" />
+        <script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" async></script>
       </body>
     </html>
   )

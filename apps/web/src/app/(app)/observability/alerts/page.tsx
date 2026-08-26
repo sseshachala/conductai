@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
@@ -287,8 +287,8 @@ export default function AlertsPage() {
                     <tr
                       key={a.id}
                       style={{ borderBottom: isLast ? "none" : "1px solid var(--border)" }}
-                      onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                      onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface-2)")}
+                      onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "transparent")}
                     >
                       <td style={{ padding: "10px 16px" }}>
                         <span className={severityClass(a.severity)}>
@@ -300,8 +300,8 @@ export default function AlertsPage() {
                           <Link
                             href={`/workflows/${a.workflow_id}`}
                             style={{ color: "var(--text)", textDecoration: "none", fontWeight: 500 }}
-                            onMouseEnter={e => (e.currentTarget.style.color = "var(--accent)")}
-                            onMouseLeave={e => (e.currentTarget.style.color = "var(--text)")}
+                            onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.color = "var(--accent)")}
+                            onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.color = "var(--text)")}
                           >
                             {workflowName}
                           </Link>

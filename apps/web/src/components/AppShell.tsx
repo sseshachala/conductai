@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth, useUser, useClerk } from "@clerk/nextjs"
@@ -551,8 +551,8 @@ function AppShellInnerContent({
                 gap: 10,
                 position: "relative",
               }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--border-2)")}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}
+              onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.borderColor = "var(--border-2)")}
+              onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.borderColor = "var(--border)")}
             >
               <div style={{
                 width: 26, height: 26, borderRadius: 7,
@@ -636,8 +636,8 @@ function AppShellInnerContent({
                     </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", padding: "0 12px" }}
-                      onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                      onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface-2)")}
+                      onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "transparent")}
                     >
                       <button
                         onClick={() => { setActiveWorkspace(ws as Parameters<typeof setActiveWorkspace>[0]); setWsOpen(false); router.refresh() }}
@@ -663,8 +663,8 @@ function AppShellInnerContent({
                       <button
                         onClick={() => { setDeletingTeamId(ws.id); setDeleteConfirmValue("") }}
                         style={{ fontSize: 11, padding: "2px 4px", background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", opacity: 0 }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; (e.currentTarget as HTMLButtonElement).style.color = "var(--err)" }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = "0" }}
+                        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; (e.currentTarget as HTMLButtonElement).style.color = "var(--err)" }}
+                        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLButtonElement).style.opacity = "0" }}
                         title="Delete workspace"
                         aria-label="Delete workspace"
                       >
@@ -774,8 +774,8 @@ function AppShellInnerContent({
                           background: subActive ? "var(--accent-weak)" : "transparent",
                           textDecoration: "none",
                         }}
-                        onMouseEnter={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
-                        onMouseLeave={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
+                        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
+                        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
                       >
                         {sub.label}
                       </Link>
@@ -812,8 +812,8 @@ function AppShellInnerContent({
                           background: subActive ? "var(--accent-weak)" : "transparent",
                           textDecoration: "none",
                         }}
-                        onMouseEnter={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
-                        onMouseLeave={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
+                        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
+                        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
                       >
                         {sub.label}
                       </Link>
@@ -850,8 +850,8 @@ function AppShellInnerContent({
                       const isRenaming = renamingProjectId === project.id
                       return (
                         <div key={project.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", borderRadius: 7, background: isActive ? "var(--accent-weak)" : "transparent" }}
-                          onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "var(--surface-2)" }}
-                          onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "transparent" }}
+                          onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "var(--surface-2)" }}
+                          onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "transparent" }}
                         >
                           <span style={{
                             width: 16, height: 16, borderRadius: 4,
@@ -886,8 +886,8 @@ function AppShellInnerContent({
                               <button
                                 onClick={() => { setRenamingProjectId(project.id); setRenameValue(project.name) }}
                                 style={{ fontSize: 11, background: "transparent", border: "none", cursor: "pointer", color: "var(--text-muted)", opacity: 0, padding: "0 2px" }}
-                                onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
-                                onMouseLeave={e => (e.currentTarget.style.opacity = "0")}
+                                onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.opacity = "1")}
+                                onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.opacity = "0")}
                                 title="Rename"
                               >✎</button>
                             </>
@@ -917,8 +917,8 @@ function AppShellInnerContent({
                             background: "transparent", border: "none", cursor: "pointer",
                             color: "var(--text-muted)", width: "100%",
                           }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)"; (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)" }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLButtonElement).style.background = "transparent" }}
+                          onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)"; (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)" }}
+                          onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLButtonElement).style.background = "transparent" }}
                         >
                           + New project
                         </button>
@@ -990,8 +990,8 @@ function AppShellInnerContent({
                         background: subActive ? "var(--accent-weak)" : "transparent",
                         textDecoration: "none",
                       }}
-                      onMouseEnter={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
-                      onMouseLeave={e => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
+                      onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
+                      onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
                     >
                       {sub.label}
                     </Link>
@@ -1106,8 +1106,8 @@ function AppShellInnerContent({
                 cursor: "pointer", fontSize: 13,
                 color: "var(--text-3)",
               }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--border-2)")}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}
+              onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.borderColor = "var(--border-2)")}
+              onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.borderColor = "var(--border)")}
             >
               <Icons.Search />
               <span>Search</span>
@@ -1129,8 +1129,8 @@ function AppShellInnerContent({
                   cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
                   color: "var(--text-2)",
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-3)")}
-                onMouseLeave={e => (e.currentTarget.style.background = "var(--surface-2)")}
+                onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface-3)")}
+                onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface-2)")}
               >
                 <Icons.Bell />
                 {unreadCount > 0 && (
@@ -1244,7 +1244,7 @@ function AppShellInnerContent({
           display: "flex", alignItems: "flex-start", justifyContent: "center",
           paddingTop: "15vh",
         }}
-        onClick={e => { if (e.target === e.currentTarget) setPaletteOpen(false) }}
+        onClick={(e: ReactMouseEvent<HTMLElement>) => { if (e.target === e.currentTarget) setPaletteOpen(false) }}
       >
         <div style={{
           width: 560, maxHeight: "60vh",
@@ -1416,8 +1416,8 @@ function SideNavItem({
         marginBottom: 1,
         transition: "background 120ms, color 120ms",
       }}
-      onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text)" } }}
-      onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-2)" } }}
+      onMouseEnter={(e: ReactMouseEvent<HTMLAnchorElement>) => { if (!active) { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--text)" } }}
+      onMouseLeave={(e: ReactMouseEvent<HTMLAnchorElement>) => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-2)" } }}
     >
       <span style={{ flexShrink: 0, display: "flex", alignItems: "center", color: "inherit" }}>{icon}</span>
       {!collapsed && (
@@ -1487,8 +1487,8 @@ function UserChipInner({ collapsed, userRole, topbar }: { collapsed: boolean; us
           width: topbar ? "auto" : "100%",
           textAlign: "left",
         }}
-        onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "var(--surface-2)")}
+        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.background = "transparent")}
       >
         <div style={{
           width: 28, height: 28, borderRadius: "50%",
@@ -1532,8 +1532,8 @@ function UserChipInner({ collapsed, userRole, topbar }: { collapsed: boolean; us
             href="/settings"
             onClick={() => setMenuOpen(false)}
             style={{ display: "block", padding: "8px 12px", fontSize: 13, color: "var(--text-2)", textDecoration: "none" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text)" }}
-            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = "transparent"; (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-2)" }}
+            onMouseEnter={(e: ReactMouseEvent<HTMLAnchorElement>) => { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--text)" }}
+            onMouseLeave={(e: ReactMouseEvent<HTMLAnchorElement>) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-2)" }}
           >
             Settings
           </Link>
@@ -1544,8 +1544,8 @@ function UserChipInner({ collapsed, userRole, topbar }: { collapsed: boolean; us
               width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 13,
               color: "var(--text-2)", background: "transparent", border: "none", cursor: "pointer",
             }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text)" }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)" }}
+            onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text)" }}
+            onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-2)" }}
           >
             Sign out
           </button>

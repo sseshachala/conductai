@@ -565,14 +565,16 @@ def generate_policy(
         )
 
     try:
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
+        from app.runtime.llm_client import client_for, LLMTextBlock
+        client = client_for("anthropic", api_key)
+        response = client.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=512,
             system=_GENERATE_SYSTEM,
             messages=[{"role": "user", "content": body.prompt}],
         )
-        raw = response.content[0].text.strip()
+        first = response.content[0] if response.content else None
+        raw = first.text.strip() if isinstance(first, LLMTextBlock) else ""
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):

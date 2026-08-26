@@ -990,7 +990,8 @@ def _estimate_turns_for_graph(
     history_floor = _historical_floor(workflow_id, db)
 
     api_key = _resolve_preflight_key(workspace_id, db)
-    client = anthropic.Anthropic(api_key=api_key)
+    from app.runtime.llm_client import client_for
+    client = client_for("anthropic", api_key)
     block_estimates = []
     all_files: list[str] = []
 
@@ -1015,12 +1016,15 @@ def _estimate_turns_for_graph(
         )
 
         try:
-            resp = client.messages.create(
+            from app.runtime.llm_client import LLMTextBlock
+            resp = client.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=256,
+                system="",
                 messages=[{"role": "user", "content": prompt}],
             )
-            text = resp.content[0].text.strip()
+            first = resp.content[0] if resp.content else None
+            text = first.text.strip() if isinstance(first, LLMTextBlock) else ""
             m = re.search(r"\{.*\}", text, re.DOTALL)
             parsed = json.loads(m.group()) if m else {}
             est = int(parsed.get("estimated_turns", kw_floor))
