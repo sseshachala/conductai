@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
@@ -248,8 +248,8 @@ function ProjectContent({ getToken, currentUserId }: {
         {/* Breadcrumb */}
         <nav style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
           <Link href="/projects" style={{ color: "var(--text-3)", textDecoration: "none" }}
-            onMouseEnter={e => (e.currentTarget.style.color = "var(--text-2)")}
-            onMouseLeave={e => (e.currentTarget.style.color = "var(--text-3)")}
+            onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.color = "var(--text-2)")}
+            onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.color = "var(--text-3)")}
           >Projects</Link>
           <span>/</span>
           <span style={{ color: "var(--text-2)", fontWeight: 500 }}>{project?.name ?? "…"}</span>
@@ -405,8 +405,8 @@ function ProjectContent({ getToken, currentUserId }: {
                       key={w.id}
                       style={{ display: "grid", gridTemplateColumns: AGENT_GRID, gap: 14, padding: "13px 18px", borderBottom: "1px solid var(--border)", alignItems: "center", cursor: "pointer", transition: "background .12s" }}
                       onClick={() => router.push(`/workflows/${w.id}`)}
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+                      onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                      onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = ""}
                     >
                       <div style={{ minWidth: 0 }}>
                         {renaming === w.id ? (
@@ -414,7 +414,7 @@ function ProjectContent({ getToken, currentUserId }: {
                             ref={renameInputRef}
                             value={renameValue}
                             onChange={e => setRenameValue(e.target.value)}
-                            onClick={e => e.stopPropagation()}
+                            onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}
                             onBlur={() => {
                               // P2-3: don't commit on ESC blur
                               if (cancelRenameRef.current) { cancelRenameRef.current = false; return }
@@ -445,12 +445,12 @@ function ProjectContent({ getToken, currentUserId }: {
                           className="btn btn-ghost btn-sm"
                           style={{ fontSize: 11, padding: "3px 9px" }}
                           aria-label="View runs"
-                          onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}/runs`) }}
+                          onClick={(e: ReactMouseEvent<HTMLElement>) => { e.stopPropagation(); router.push(`/workflows/${w.id}/runs`) }}
                         >Runs</button>
                         <button
                           className="btn btn-ghost btn-icon btn-sm"
                           aria-label="Open in canvas"
-                          onClick={e => { e.stopPropagation(); router.push(`/workflows/${w.id}`) }}
+                          onClick={(e: ReactMouseEvent<HTMLElement>) => { e.stopPropagation(); router.push(`/workflows/${w.id}`) }}
                         >→</button>
                         {isAdmin && (
                           <div style={{ position: "relative" }}>
@@ -458,7 +458,7 @@ function ProjectContent({ getToken, currentUserId }: {
                               className="btn btn-ghost btn-icon btn-sm"
                               aria-label="More actions"
                               aria-haspopup="menu"
-                              onClick={e => { e.stopPropagation(); setMenuOpen(menuOpen === w.id ? null : w.id) }}
+                              onClick={(e: ReactMouseEvent<HTMLElement>) => { e.stopPropagation(); setMenuOpen(menuOpen === w.id ? null : w.id) }}
                             >⋯</button>
                             {menuOpen === w.id && (
                               <div
@@ -466,8 +466,8 @@ function ProjectContent({ getToken, currentUserId }: {
                                 onMouseDown={e => e.stopPropagation()}
                                 style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 20, minWidth: 130, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-md)", padding: "4px 0" }}
                               >
-                                <button role="menuitem" onClick={e => { e.stopPropagation(); setMenuOpen(null); setRenaming(w.id); setRenameValue(w.name) }} style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }} onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"} onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}>Rename</button>
-                                <button role="menuitem" onMouseDown={e => { e.stopPropagation(); setMenuOpen(null); setConfirming(w.id); setConfirmValue("") }} style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }} onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"} onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "none"}>Delete</button>
+                                <button role="menuitem" onClick={(e: ReactMouseEvent<HTMLElement>) => { e.stopPropagation(); setMenuOpen(null); setRenaming(w.id); setRenameValue(w.name) }} style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--text)", background: "none", border: "none", cursor: "pointer" }} onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"} onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "none"}>Rename</button>
+                                <button role="menuitem" onMouseDown={e => { e.stopPropagation(); setMenuOpen(null); setConfirming(w.id); setConfirmValue("") }} style={{ width: "100%", textAlign: "left", padding: "7px 14px", fontSize: 13, color: "var(--err)", background: "none", border: "none", cursor: "pointer" }} onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"} onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "none"}>Delete</button>
                               </div>
                             )}
                           </div>
@@ -485,8 +485,8 @@ function ProjectContent({ getToken, currentUserId }: {
                     onClick={() => router.push(`/workflows/${w.id}`)}
                     className="card"
                     style={{ padding: "16px 18px", cursor: "pointer" }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-md)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border-2)" }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = ""; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)" }}
+                    onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLElement).style.boxShadow = "var(--shadow-md)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border-2)" }}
+                    onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { (e.currentTarget as HTMLElement).style.boxShadow = ""; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)" }}
                   >
                     <div style={{ marginBottom: 12 }}>
                       <div style={{ fontWeight: 650, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{w.name}</div>
@@ -531,8 +531,8 @@ function ProjectContent({ getToken, currentUserId }: {
                   key={run.id}
                   style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.2fr 0.7fr 0.7fr", gap: 14, padding: "13px 18px", borderBottom: idx < runs.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center", cursor: "pointer", transition: "background .12s" }}
                   onClick={() => router.push(`/workflows/${run.workflow_id}/runs/${run.id}`)}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+                  onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = "var(--surface-2)"}
+                  onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget as HTMLElement).style.background = ""}
                 >
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 650, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{run.workflow_name}</div>
