@@ -181,3 +181,23 @@ def evaluate(workspace_id: str, provider: str, model: str, body: dict) -> dict:
         }
     finally:
         db.close()
+
+
+# ─── Composable engine — #1225 Phase 3 ────────────────────────────────────────
+
+def evaluate_composed(ctx, sources=None):
+    """Run policy sources in order. Short-circuit on first BLOCK. Merge others."""
+    from app.guard.policy_types import PolicyAction, merge_decisions
+    from app.guard.sources import DEFAULT_SOURCES
+
+    if sources is None:
+        sources = DEFAULT_SOURCES
+
+    collected = []
+    for source in sources:
+        decision = source.evaluate(ctx)
+        collected.append(decision)
+        if decision.action == PolicyAction.BLOCK:
+            return decision  # short-circuit — later sources not called
+
+    return merge_decisions(collected)
