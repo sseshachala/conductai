@@ -96,6 +96,24 @@ def test_block_at_position_zero_short_circuits():
     assert sources[2].call_count == 0
 
 
+def _approval(name="s", rule_id="r-a", reason="human review"):
+    return _StaticSource(name, PolicyDecision(
+        action=PolicyAction.APPROVAL,
+        source=name,
+        rule_id=rule_id,
+        reason=reason,
+    ))
+
+
+def test_approval_short_circuits():
+    """APPROVAL is a terminal state — downstream sources shouldn't run."""
+    sources = [_approval("rule"), _allow("cost"), _allow("throughput")]
+    d = evaluate_composed(_ctx(), sources=sources)
+    assert d.action == PolicyAction.APPROVAL
+    assert sources[1].call_count == 0
+    assert sources[2].call_count == 0
+
+
 def test_block_preserves_rule_id_and_reason():
     sources = [_blocker("cap", rule_id="guard.spend_cap", reason="over cap")]
     d = evaluate_composed(_ctx(), sources=sources)

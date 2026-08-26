@@ -197,7 +197,7 @@ def evaluate_composed(ctx, sources=None):
     for source in sources:
         decision = source.evaluate(ctx)
         collected.append(decision)
-        if decision.action == PolicyAction.BLOCK:
+        if decision.action in (PolicyAction.BLOCK, PolicyAction.APPROVAL):
             return decision  # short-circuit — later sources not called
 
     return merge_decisions(collected)
