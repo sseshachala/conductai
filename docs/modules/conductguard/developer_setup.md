@@ -24,7 +24,7 @@ Verify:
 
 ```bash
 conduct --version
-conductguard-mcp --version   # should print version, not "command not found"
+npx -y mcp-remote --help    # should print help; requires Node 18+
 ```
 
 ---
@@ -51,7 +51,7 @@ This:
 1. Pulls the current policy set from the server
 2. Writes the PreToolUse hook to `~/.conductguard/hook.py`
 3. Registers the hook in `~/.claude/settings.json` and Codex
-4. Registers the `conductguard-mcp` server entry in `~/.claude/settings.json`
+4. Registers the Conduct MCP server (via `npx mcp-remote`) in `~/.claude/settings.json`
 
 You should see output like:
 

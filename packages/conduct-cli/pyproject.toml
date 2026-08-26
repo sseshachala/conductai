@@ -35,9 +35,11 @@ Repository  = "https://github.com/sseshachala/conductai"
 
 [project.scripts]
 conduct           = "conduct_cli.main:main"
-conduct-mcp       = "conduct_cli.mcp_server:main"
-conductguard-mcp  = "conduct_cli.guardmcp:main"
 conductguard-post = "conduct_cli.hooks.posttooluse:main"
+# conduct-mcp / conductguard-mcp entry points retired in #1219 Phase 3 M3
+# (Option A). AI-tool configs now spawn `npx -y mcp-remote https://.../mcp`
+# instead — one server, one endpoint, no local policy eval, no dual binaries.
+# Native Python bridge tracked in #1229 for enterprise SBOM ask.
 
 [tool.setuptools.packages.find]
 where = ["src"]

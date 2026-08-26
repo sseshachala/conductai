@@ -52,7 +52,7 @@ conduct guard sync
 3. Fetches the developer's `clerk_user_id` for per-user budget enforcement
 4. Writes the hook script to `~/.conductguard/hook.py`
 5. Registers the hook entries in `~/.claude/settings.json` and Codex
-6. Registers the `conductguard-mcp` server in `~/.claude/settings.json`
+6. Registers the Conduct MCP server (via `npx mcp-remote`) in `~/.claude/settings.json`
 7. Validates the hook compiles correctly (py_compile check)
 
 The developer is now covered. No further configuration is needed.

@@ -1,105 +1,70 @@
-# ConductGuard — conductguard-mcp
+# ConductGuard — MCP
 
-`conductguard-mcp` is the ConductGuard MCP (Model Context Protocol) server. It enables AI tools that support MCP — such as Cursor and Gemini CLI — to participate in the same policy enforcement and telemetry pipeline as Claude Code.
-
----
-
-## Entry Point
-
-```bash
-conductguard-mcp
-```
-
-Installed automatically with the `conduct-cli` package:
-
-```bash
-pip install conduct-cli
-which conductguard-mcp   # /path/to/bin/conductguard-mcp
-```
+> **Retired binary — read this first.**
+> The `conductguard-mcp` and `conduct-mcp` stdio binaries are retired as of
+> #1219 Phase 3 M3. AI tools now bridge to the remote Conduct MCP endpoint
+> via Cloudflare's `mcp-remote` — one binary, one endpoint, one policy
+> source. Local policy evaluation is gone (was a governance hole — policy
+> is now always server-side, always current).
+>
+> **Enterprise SBOM ask?** Native Python stdio bridge tracked in #1229.
 
 ---
 
-## What It Does
+## What replaces it
 
-When an MCP-compatible AI tool calls a tool through `conductguard-mcp`, the server:
+`conduct mcp install` now writes an `mcp-remote` entry pointing at
+`https://api.conductai.ai/mcp` into every AI-tool config it detects
+(Claude Code, Cursor, Windsurf, VS Code Copilot, Codex).
 
-1. Receives the tool call request
-2. Checks spend budget (same as the hook's PreToolUse check)
-3. Evaluates the call against the cached policy set
-4. If blocked: returns an error response with the block message
-5. If allowed: forwards the call to the underlying tool, then logs the audit event
-
-This mirrors the hook-based flow for Claude Code, but over the MCP transport instead of stdin/stdout.
-
----
-
-## VS Code + GitHub Copilot
-
-Add to `.vscode/mcp.json` in your repo (commits with the repo so the whole team gets it):
-
-```json
-{
-  "servers": {
-    "conductguard": {
-      "type": "stdio",
-      "command": "conductguard-mcp",
-      "args": []
-    }
-  }
-}
-```
-
-Or install via CLI:
-
-```bash
-code --add-mcp '{"name":"conductguard","command":"conductguard-mcp","args":[]}'
-```
-
-GitHub Copilot will surface `guard_status`, `guard_check`, and `guard_sync` as callable tools. Policy enforcement and spend tracking work identically to Claude Code — same policy, same dashboard.
-
----
-
-## Registering with Cursor
-
-Add `conductguard-mcp` to your Cursor MCP config:
+Example generated config (Cursor `~/.cursor/mcp.json`):
 
 ```json
 {
   "mcpServers": {
-    "conductguard": {
-      "command": "conductguard-mcp",
-      "args": []
+    "conduct": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote", "https://api.conductai.ai/mcp",
+        "--header", "Authorization: Bearer <your-token>"
+      ]
     }
   }
 }
 ```
 
-Once registered, Cursor will call ConductGuard's MCP server for each tool invocation. Policy enforcement and spend tracking work identically to Claude Code.
+The AI tool spawns `npx -y mcp-remote`, which relays JSON-RPC over HTTPS
+to `/mcp`. Same tool catalogue (`guard_status`, `guard_check`,
+`guard_activity`, `conduct_list_projects`, and every Lens Executor tool)
+appears in every client automatically — adding a tool to the server
+registry adds it everywhere.
 
----
+## Install
 
-## MCP vs Hook — Same Enforcement
+```bash
+conduct login        # if not already
+conduct mcp install  # writes mcp-remote configs for every detected AI tool
+```
 
-Both paths (hook and MCP) read from the same local config cache and call the same API endpoints. A policy set in the ConductGuard dashboard applies to both Claude Code (via hook) and Cursor (via MCP) without any additional configuration.
+Restart the AI tool to pick up the new server.
 
----
+## Requirements
 
-## MCP is Not a Security Boundary
+- **Node.js 18+** — `npx` bootstraps mcp-remote per launch. If Node isn't
+  on your machine, the install command tells you so and points at #1229
+  for a native Python bridge.
 
-The MCP transport is convenience — it is not auth. The `conductguard-mcp` server authenticates using the `member_token` from `~/.conductguard/config.json`, the same token the hook uses. The API endpoint enforces auth independently on every request.
+## MCP is not a security boundary
 
----
-
-## Telemetry
-
-Events logged via `conductguard-mcp` appear in the ConductGuard dashboard alongside hook-sourced events. The `ai_tool` field distinguishes the source (e.g. `cursor` vs `claude-code`).
-
----
+The transport is convenience. Auth is enforced at `/mcp` on every
+request — a valid Bearer token resolves to a workspace + user. The
+mcp-remote bridge only ferries bytes.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| `conductguard-mcp: command not found` | Re-install `conduct-cli`; check PATH |
-| Cursor shows MCP connection error | Verify `~/.conductguard/config.json` exists and `member_token` is set |
-| Events not appearing in dashboard | Check `last_synced` in config; run `conduct guard sync` |
+| `No Conduct token found` from `conduct mcp install` | Run `conduct login` first |
+| `npx not on PATH` | Install Node.js 18+ |
+| AI tool shows "connection error" | Confirm `~/.conduct/config.json` has a fresh `agent_token`; re-run `conduct login` if expired |
+| Tool missing from AI tool's list | Restart the AI tool; the tool catalogue is fetched at handshake |

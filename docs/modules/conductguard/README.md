@@ -8,7 +8,7 @@
 | [Capability Inventory](CAPABILITY_INVENTORY.md) | Ground-truth reference for every shipped capability (file:line refs) |
 | [Developer Setup](developer_setup.md) | Install CLI, join a team, sync policies, hook location, troubleshooting |
 | [Hook & Tool Coverage](hook_coverage.md) | PreToolUse/PostToolUse mechanics, policy matching, AI tools covered |
-| [conductguard-mcp](conductguard_mcp.md) | MCP server for Cursor/Gemini, registration, how it mirrors hook enforcement |
+| [MCP](conductguard_mcp.md) | How Cursor / Copilot / Codex bridge to `/mcp` via `npx mcp-remote`; supersedes retired `conductguard-mcp` binary |
 | [Spend Controls](spend_controls.md) | Budget types, enforcement flow, Slack alerts, alert dedup, DB schema |
 | [Roles & Permissions](roles_permissions.md) | 4-role matrix, role resolution priority, frontend + API enforcement |
 | [Team Onboarding](team_onboarding.md) | Admin setup, developer sync flow, checklist |

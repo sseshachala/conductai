@@ -54,7 +54,7 @@ ConductGuard works by registering a **PreToolUse hook** and **PostToolUse hook**
 |---|---|
 | Claude Code | Full — PreToolUse + PostToolUse |
 | Codex CLI | Full — PreToolUse + PostToolUse |
-| Cursor | Via MCP server (`conductguard-mcp`) |
+| Cursor | Via MCP (`npx mcp-remote /mcp`; see [conductguard_mcp.md](conductguard_mcp.md)) |
 | Gemini CLI | Via MCP server |
 
 ---
@@ -78,7 +78,7 @@ ConductGuard works by registering a **PreToolUse hook** and **PostToolUse hook**
 - [Developer Setup](developer_setup.md)
 - [Hook & Tool Coverage](hook_coverage.md)
 - [Generated Enforcement Evidence Matrix](enforcement_coverage.generated.md)
-- [conductguard-mcp](conductguard_mcp.md)
+- [MCP / conductguard_mcp](conductguard_mcp.md)
 - [Spend Controls](spend_controls.md)
 - [Roles & Permissions](roles_permissions.md)
 - [Team Onboarding](team_onboarding.md)
