@@ -1,0 +1,32 @@
+{
+  "name": "mcp_new_lens_tool_call",
+  "description": "New /mcp tools/call for the Lens 'get_recent_events' tool. Empty workspace returns [] wrapped in structuredContent + text summary.",
+  "requires_db": true,
+  "request": {
+    "method": "POST",
+    "path": "/mcp",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer {token}"
+    },
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 22,
+      "method": "tools/call",
+      "params": {
+        "name": "get_recent_events",
+        "arguments": {"limit": 5}
+      }
+    }
+  },
+  "expected_response": {
+    "status": 200,
+    "body_match": {
+      "jsonrpc": "2.0",
+      "id": 22
+    },
+    "custom_assertions": [
+      {"kind": "result_has_content_type", "type": "text"}
+    ]
+  }
+}

@@ -35,6 +35,7 @@ from app.modules.guard.routers import knowledge_search as guard_knowledge_search
 from app.modules.glens.routers import chat as glens_chat
 from app.modules.glens.routers import lens_sessions as glens_lens_sessions
 from app.mcp import http as mcp_http
+from app.tools import registrations as _tool_registrations  # noqa: F401  # side-effect: populate default_registry
 from app.modules.telemetry import routes as telemetry_routes
 from app.routers.organizations import router as organizations_router
 from app.routers.workspaces import router as workspaces_router

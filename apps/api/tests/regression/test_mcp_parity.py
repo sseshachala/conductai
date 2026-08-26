@@ -28,6 +28,9 @@ MCP_FIXTURES_DB = [
     "mcp_tools_list",
     "mcp_tool_call_allow",
     "mcp_tool_call_unknown",
+    # #1219 Phase 3b Chunk A — Lens tools on the new /mcp endpoint
+    "mcp_new_lens_tools_list",
+    "mcp_new_lens_tool_call",
 ]
 
 
