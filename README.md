@@ -131,6 +131,16 @@ One policy, three enforcement surfaces.
 
 ---
 
+## Security & Trust
+
+- [SECURITY.md](./SECURITY.md) — vulnerability reporting policy, scope, coordinated disclosure, and safe harbor.
+- [Threat model](./docs/threat-model.md) — system context, trust boundaries, attacker goals, mitigations, and residual risks.
+- [Policy decision contract](./docs/policy-decision-contract.md) — `guard_check` decision semantics and fail-mode behavior.
+- [Audit log verification](./docs/audit-log-verification.md) — independent `prev_hash`/`entry_hash` chain verification procedure and example script.
+- [API versioning](./docs/api-versioning.md) — proxy/MCP compatibility, deprecation windows, and OpenAPI publication guidance.
+
+---
+
 ## License
 
 **[Apache License 2.0](./LICENSE)** — the entire repository, including the CLI, Guard, Router, Agent Booster, playbooks, and packs.
