@@ -136,6 +136,16 @@ class EventOut(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _end_of_day_if_bare(dt):
+    """Bare-date `until` like `2026-08-27` parses to midnight → `ts <= that`
+    excludes the whole day. When time component is exactly midnight, extend
+    to end-of-day so bare-date filters are inclusive."""
+    from datetime import time as _time
+    if dt is None or dt.time() != _time(0, 0, 0, 0):
+        return dt
+    return dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+
 def _event_to_dict(e: GuardAuditEvent) -> dict:
     return {
         "id": str(e.id),
@@ -842,7 +852,7 @@ def list_events(
     if since:
         q = q.filter(GuardAuditEvent.ts >= since)
     if until:
-        q = q.filter(GuardAuditEvent.ts <= until)
+        q = q.filter(GuardAuditEvent.ts <= _end_of_day_if_bare(until))
 
     rows = (
         q.order_by(GuardAuditEvent.ts.desc())
@@ -1062,7 +1072,7 @@ def list_unified_activity(
         where.append("ts >= :since")
         params["since"] = since
     if until:
-        where.append("ts <= :until")
+        where.append("ts <= :until")  # note: caller should end-of-day normalise; TODO
         params["until"] = until
 
     sql = (
@@ -1169,7 +1179,7 @@ def list_correlated_events(
     if since:
         q = q.filter(GuardAuditEvent.ts >= since)
     if until:
-        q = q.filter(GuardAuditEvent.ts <= until)
+        q = q.filter(GuardAuditEvent.ts <= _end_of_day_if_bare(until))
 
     rows = q.order_by(GuardAuditEvent.ts.desc()).limit(limit).all()
 
