@@ -137,6 +137,14 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const initialTab = (searchParams?.get("tab") as Tab) || "tokens"
   const [activeTab, setActiveTab] = useState<Tab>(TABS.includes(initialTab) ? initialTab : "tokens")
   const sourceFilter = searchParams?.get("source") || null
+  // #1252 — deep-link support: click a Lens session's cond_agt_lens_* → land
+  // on the Identities tab with ?id=<uuid> and highlight+scroll to the row.
+  const highlightId = searchParams?.get("id") || null
+  useEffect(() => {
+    if (activeTab !== "identities" || !highlightId) return
+    const row = document.getElementById(`identity-row-${highlightId}`)
+    if (row) row.scrollIntoView({ behavior: "smooth", block: "center" })
+  }, [activeTab, highlightId])
   const selectTab = (t: Tab, extraQuery: Record<string, string> = {}) => {
     setActiveTab(t)
     const params = new URLSearchParams({ tab: t, ...extraQuery })
@@ -965,8 +973,17 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                     const tier = TIER_STYLE[id.risk_tier ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)" }
                     const lc   = LIFECYCLE_STYLE[id.lifecycle_state ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)", label: id.lifecycle_state ?? "—" }
                     const busy = savingIdentity === id.id
+                    const isHighlighted = highlightId === id.id
                     return (
-                      <tr key={id.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <tr
+                        key={id.id}
+                        id={`identity-row-${id.id}`}
+                        style={{
+                          borderBottom: "1px solid var(--border)",
+                          background: isHighlighted ? "#fef3c7" : undefined,
+                          transition: "background 400ms ease-out",
+                        }}
+                      >
                         <td style={{ padding: "8px 12px" }}>
                           <div style={{ fontWeight: 500, color: "var(--text)" }}>{id.name}</div>
                           <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{id.token_prefix?.startsWith("okta_import") ? "external identity" : id.token_prefix}</div>
