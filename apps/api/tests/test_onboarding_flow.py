@@ -182,15 +182,15 @@ def db():
 
 
 # ---------------------------------------------------------------------------
-# Utility: resolve guard team_id for a workspace
+# Utility: check Guard install for a workspace
 # ---------------------------------------------------------------------------
 
-def _guard_team_id_for_workspace(db_session, workspace_id: str) -> str | None:
+def _guard_config_exists(db_session, workspace_id: str) -> bool:
     row = db_session.execute(
-        text("SELECT id FROM guard_teams WHERE workspace_id::text = :ws LIMIT 1"),
+        text("SELECT workspace_id FROM guard_config WHERE workspace_id::text = :ws LIMIT 1"),
         {"ws": workspace_id},
     ).fetchone()
-    return str(row.id) if row else None
+    return row is not None
 
 
 def _workspace_member_count(db_session, workspace_id: str) -> int:
@@ -221,11 +221,11 @@ def _cleanup_test_data(db_session, workspace_id: str) -> None:
         db_session.execute(text("DELETE FROM conduct_api_keys WHERE workspace_id = :ws"), {"ws": workspace_id})
         db_session.execute(text("DELETE FROM workspace_invites WHERE workspace_id = :ws"), {"ws": workspace_id})
         db_session.execute(text("DELETE FROM workspace_users WHERE workspace_id = :ws"), {"ws": workspace_id})
-        guard_team = db_session.execute(
-            text("SELECT id FROM guard_teams WHERE workspace_id::text = :ws LIMIT 1"), {"ws": workspace_id}
+        guard_config = db_session.execute(
+            text("SELECT workspace_id FROM guard_config WHERE workspace_id::text = :ws LIMIT 1"), {"ws": workspace_id}
         ).fetchone()
-        if guard_team:
-            db_session.execute(text("DELETE FROM guard_teams WHERE id = :tid"), {"tid": str(guard_team.id)})
+        if guard_config:
+            db_session.execute(text("DELETE FROM guard_config WHERE workspace_id = :ws"), {"ws": str(guard_config.workspace_id)})
         db_session.execute(text("DELETE FROM workspaces WHERE id = :ws"), {"ws": workspace_id})
         db_session.commit()
     except Exception as exc:
@@ -283,12 +283,12 @@ def test_full_onboarding_flow(db):
                 f"Expected name 'Engineering', got {admin_ws['name']!r}"
             )
 
-            # Verify Guard is installed (guard_teams row exists)
-            guard_team_id = _guard_team_id_for_workspace(db, workspace_id)
-            assert guard_team_id is not None, (
-                "Guard team was not auto-created for the workspace"
+            # Verify Guard is installed (guard_config row exists)
+            guard_config_exists = _guard_config_exists(db, workspace_id)
+            assert guard_config_exists, (
+                "Guard config was not auto-created for the workspace"
             )
-            print(f"[step 1] guard_team_id={guard_team_id!r}")
+            print(f"[step 1] guard_config_exists={guard_config_exists!r}")
 
             # Verify conduct-base skill pack was auto-installed for the workspace
             pack_installed = db.execute(
