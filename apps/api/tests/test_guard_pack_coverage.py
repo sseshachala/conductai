@@ -38,7 +38,7 @@ COVERAGE_ALLOWANCE = 66
 # case (expected: allow). Every rule that fires needs at least one
 # adjacent-but-benign fixture case so we catch false positives before
 # they ship. Lower as negative cases are added.
-NEGATIVE_CASE_ALLOWANCE = 82
+NEGATIVE_CASE_ALLOWANCE = 73
 
 
 def _load_seeded_rules() -> dict[str, set[str]]:

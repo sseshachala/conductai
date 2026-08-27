@@ -150,3 +150,87 @@ cases:
     file_path: p.py
     content: prompt = 'summarize this article in three bullet points'
   expected: allow
+
+# ── negative canaries (#1272 batch 2 — see docs/guard-fp-strategy.md) ────
+# All cases tagged [E] (docs/research writing) — the archetype most
+# common for FP on prompt-injection detectors: legitimate discussion of
+# the very attacks these rules exist to catch.
+- rule_id: prompt-inject-system-prompt-reveal
+  scenario: "[E] docs referencing prompt redaction without the reveal verb form"
+  tool_name: write
+  tool_input:
+    file_path: docs/security.md
+    content: "The developer redacted the model configuration from their debug logs before publishing the demo."
+  expected: allow
+
+- rule_id: prompt-inject-role-hijack
+  scenario: "[E] RBAC prose without role-play triggers"
+  tool_name: write
+  tool_input:
+    file_path: docs/rbac.md
+    content: "Role-based access control assigns permissions per group; changes go through code review."
+  expected: allow
+
+- rule_id: prompt-inject-jailbreak-personas
+  scenario: "[E] research prose about model safety without persona names"
+  tool_name: write
+  tool_input:
+    file_path: docs/safety.md
+    content: "Anthropic's constitutional AI research covers how models resist unsafe requests."
+  expected: allow
+
+- rule_id: prompt-inject-hypothetical-framing
+  scenario: "[E] paper prose about threat models"
+  tool_name: write
+  tool_input:
+    file_path: docs/threat-model.md
+    content: "The paper discusses privacy under different threat models observed in production."
+  expected: allow
+
+- rule_id: prompt-inject-authority-spoof
+  scenario: "[E] meeting notes mentioning administrator role"
+  tool_name: write
+  tool_input:
+    file_path: docs/notes.md
+    content: "The team lead met the administrator yesterday to review the quarterly access controls."
+  expected: allow
+
+- rule_id: prompt-inject-tool-disable
+  scenario: "[E] product copy about enabling moderation"
+  tool_name: write
+  tool_input:
+    file_path: docs/product.md
+    content: "User experience improves when we enable helpful moderation instead of blocking outright."
+  expected: allow
+
+- rule_id: prompt-inject-emotional-coercion
+  scenario: "[E] support training material"
+  tool_name: write
+  tool_input:
+    file_path: docs/support.md
+    content: "Customer support agents undergo training to recognize distress cues and route calls appropriately."
+  expected: allow
+
+- rule_id: prompt-inject-encoded-payload-marker
+  scenario: "[E] MIME docs mentioning base64 without decode verb"
+  tool_name: write
+  tool_input:
+    file_path: docs/mime.md
+    content: "The MIME standard specifies base64 encoding for binary email attachments."
+  expected: allow
+
+- rule_id: prompt-inject-refusal-suppress
+  scenario: "[E] style guide about saying 'no' clearly"
+  tool_name: write
+  tool_input:
+    file_path: docs/style.md
+    content: "The style guide asks writers to say 'no' clearly when they mean it, without hedging."
+  expected: allow
+
+- rule_id: prompt-inject-code-block-instruction
+  scenario: "[E] docs describing plain markdown fenced blocks"
+  tool_name: write
+  tool_input:
+    file_path: docs/markdown.md
+    content: "Documentation code blocks use fenced markdown without special labels for language hints."
+  expected: allow
