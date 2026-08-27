@@ -91,6 +91,8 @@ class GuardMemberConfig(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+    # Added by revision 0062 — model was missing this FK (#1284).
+    agent_identity_id = Column(String(36), ForeignKey("agent_identities.id"), nullable=True, index=True)
 
 
 class GuardSession(Base):
@@ -174,6 +176,9 @@ class GuardAuditEvent(Base):
     conductai_workflow = Column(String(255), nullable=True)
     conductai_workflow_id = Column(String(255), nullable=True)
     blast_radius = Column(JSONB, nullable=True)
+    # Added by revision 0056 — model was missing these columns (#1284).
+    os_info = Column(String(128), nullable=True)
+    hostname = Column(String(255), nullable=True)
     ts = Column(
         DateTime(timezone=True),
         nullable=False,
