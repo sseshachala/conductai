@@ -465,7 +465,7 @@ def _guarded_openai_completion(executor: Executor, provider: str, model: str, up
     keep iterating the tool-use loop unchanged.
     """
     import asyncio as _asyncio
-    from app.guard.gateway import guarded_llm_call as _guarded, GuardedLLMBlocked as _Blocked
+    from app.guard.gateway import guarded_llm_call as _guarded, GuardedLLMBlocked as _Blocked, LensUpstreamError as _Upstream
     from app.runtime.llm_client import LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage
 
     oai_messages = [{"role": "system", "content": system}, *messages]
@@ -495,6 +495,8 @@ def _guarded_openai_completion(executor: Executor, provider: str, model: str, up
         ))
     except _Blocked as blk:
         raise Exception(f"Guard blocked Lens call: {blk.detail}") from blk
+    except _Upstream as up:
+        raise Exception(f"LLM upstream error ({up.status}): {up.detail}") from up
 
     choice = ((raw.get("choices") or [{}])[0])
     message = choice.get("message") or {}
@@ -526,6 +528,10 @@ def _guarded_openai_completion(executor: Executor, provider: str, model: str, up
             input_tokens=int(u.get("prompt_tokens", 0) or 0),
             output_tokens=int(u.get("completion_tokens", 0) or 0),
         ),
+        # ponytail: OpenAIClient.make_assistant_turn reads _raw_content to
+        # emit the assistant message with paired `tool_calls`. Without this
+        # the next turn's role:tool messages have no parent → OpenAI 400.
+        _raw_content=message,
     )
 
 
@@ -780,7 +786,8 @@ async def glens_chat_stream(
                 error_type=_err_type,
                 exc_info=True,
             )
-            await event_q.put({"type": "error", "message": "Something went wrong. Please try again."})
+            _short = _err_detail if len(_err_detail) <= 200 else _err_detail[:200] + "…"
+            await event_q.put({"type": "error", "message": f"{_err_type}: {_short}"})
 
     async def generate():
         task = asyncio.create_task(_run_work())

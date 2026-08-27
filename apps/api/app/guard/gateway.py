@@ -249,7 +249,17 @@ async def guarded_llm_call(
                 or _err.get("type")
                 or "policy violation"
             )
-            raise GuardedLLMBlocked(
+            # Guard's own fail_closed uses error.type == "conduct_guard_proxy".
+            # Any other 4xx/5xx from upstream is a provider error, not a Guard
+            # block — must not be labelled as such (misleads users + audit).
+            _is_guard_block = _err.get("type") == "conduct_guard_proxy"
+            if _is_guard_block:
+                raise GuardedLLMBlocked(
+                    status=resp.status_code,
+                    detail=detail,
+                    payload=payload,
+                )
+            raise LensUpstreamError(
                 status=resp.status_code,
                 detail=detail,
                 payload=payload,
@@ -269,6 +279,21 @@ def _safe_loads(raw: bytes) -> dict:
         return _json.loads(raw or b"{}")
     except Exception:
         return {}
+
+
+class LensUpstreamError(Exception):
+    """Upstream provider (OpenAI/Anthropic/etc) returned a non-2xx.
+
+    Semantically distinct from GuardedLLMBlocked — this is a provider
+    error, not a policy denial. Callers should surface it as such and
+    NOT prefix it with 'Guard blocked'.
+    """
+
+    def __init__(self, *, status: int, detail: str, payload: dict | None = None) -> None:
+        self.status = status
+        self.detail = detail
+        self.payload = payload or {}
+        super().__init__(f"upstream HTTP {status}: {detail}")
 
 
 class GuardedLLMBlocked(Exception):
