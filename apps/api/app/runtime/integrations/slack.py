@@ -90,20 +90,27 @@ def post_approval_message(token: str, channel: str, text: str, run_id: str, call
     return post_message(token=token, channel=channel, text=text, blocks=blocks)
 
 
-def update_approval_message(token: str, channel: str, ts: str, decision: str, approver: str) -> dict:
-    """Replace Approve/Reject buttons with a decision stamp after the user clicks."""
+def update_approval_message(
+    token: str, channel: str, ts: str, decision: str, approver: str,
+    rule_id: str | None = None,
+) -> dict:
+    """Replace Approve/Reject buttons with a decision stamp after the user clicks.
+
+    `rule_id` — when present, appended to the stamp so users can tell WHICH
+    Guard rule they just cleared (each rule stays its own gate, so a single
+    action can produce multiple approval requests)."""
     emoji = "✅" if decision == "approved" else "❌"
     label = "Approved" if decision == "approved" else "Rejected"
+    suffix = f" · `{rule_id}`" if rule_id else ""
+    text = f"{emoji} *{label}* by @{approver}{suffix}"
+    plain = f"{label} by {approver}" + (f" ({rule_id})" if rule_id else "")
     blocks = [
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"{emoji} *{label}* by @{approver}"},
-        }
+        {"type": "section", "text": {"type": "mrkdwn", "text": text}},
     ]
     r = httpx.post(
         f"{BASE}/chat.update",
         headers=_headers(token),
-        json={"channel": channel, "ts": ts, "blocks": blocks, "text": f"{label} by {approver}"},
+        json={"channel": channel, "ts": ts, "blocks": blocks, "text": plain},
         timeout=15,
     )
     d = r.json()
