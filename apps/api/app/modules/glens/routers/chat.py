@@ -269,66 +269,6 @@ def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
     return page
 
 
-def _gated_client_create(client, executor: Executor, provider: str, model: str,
-                          messages: list[dict], system: str, tools: list, max_tokens: int):
-    """#1254 — every Phase-1 tool-select LLM call goes through the composable
-    policy engine (same as `_stream_synthesis` does for Phase 2) and lands a row
-    in guard_audit_events. Completes the Guard self-audit loop for GLens.
-
-    Returns the client response, or raises with a Guard-blocked message.
-    """
-    import time as _time
-    from app.guard.policy import evaluate_composed as _eval_composed
-    from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext as _PolicyContext
-    from app.guard.audit import record as _record_audit
-
-    payload = {"model": model, "messages": messages, "system": system,
-               "tools": [{"name": t.get("name")} for t in tools], "max_tokens": max_tokens}
-
-    ctx = _PolicyContext(
-        workspace_id=executor.workspace_id,
-        clerk_user_id=None,
-        agent_identity_id=None,
-        provider=provider, model=model,
-        body=payload, input_tokens=0, db=executor.db,
-    )
-    decision = _eval_composed(ctx)
-
-    if decision.action == _PolicyAction.BLOCK:
-        try:
-            _record_audit(
-                executor.workspace_id, None, "lens", provider, model,
-                "blocked", decision.rule_id, 0,
-                body=payload, response_bytes=None,
-                prompt_summary="lens.resolve_tools",
-                evaluated_rules=decision.matched_rules,
-                defense_score=decision.defense_score,
-            )
-        except Exception:
-            pass
-        raise Exception(f"Guard blocked Lens call: {decision.reason or decision.rule_id}")
-
-    t0 = _time.monotonic()
-    resp = client.create(model=model, messages=messages, system=system, tools=tools, max_tokens=max_tokens)
-    dur_ms = int((_time.monotonic() - t0) * 1000)
-
-    try:
-        _record_audit(
-            executor.workspace_id, None, "lens", provider, model,
-            "warned" if decision.action == _PolicyAction.WARN else "allowed",
-            decision.rule_id if decision.action == _PolicyAction.WARN else None,
-            dur_ms,
-            body=payload, response_bytes=None,  # SDK response — audit will estimate tokens
-            prompt_summary="lens.resolve_tools",
-            evaluated_rules=decision.matched_rules,
-            defense_score=decision.defense_score,
-        )
-    except Exception as e:
-        log.warning("lens.audit.failed", err=str(e), phase="resolve_tools")
-
-    return resp
-
-
 def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tuple[list[dict], str | None, list[tuple[str, dict]]]:
     """Phase 1: Execute tool calls. Returns (final_msgs, early_text, tool_calls_made)."""
     from app.runtime.llm_client import LLMToolUseBlock
@@ -343,7 +283,7 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
     tool_calls_made: list[tuple[str, dict]] = []
 
     for _ in range(5):
-        resp = _gated_client_create(client, executor, provider, model, msgs, system, TOOLS, 512)
+        resp = client.create(model=model, messages=msgs, system=system, tools=TOOLS, max_tokens=512)
         tool_blocks = [b for b in resp.content if isinstance(b, LLMToolUseBlock)]
         text = next((b.text for b in resp.content if hasattr(b, "text") and b.text), "")
 
