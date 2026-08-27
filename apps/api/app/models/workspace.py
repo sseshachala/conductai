@@ -22,7 +22,7 @@ class Workspace(Base):
 
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
     # Added by revision 0066 — model was missing it (#1284).
-    clerk_org_id = sa.Column(sa.Text(), nullable=True, index=True)
+    clerk_org_id = sa.Column(sa.Text(), nullable=True)
 
     # Authoritative pointer to the Security Automation project for this workspace.
     # See conductai#1005 — replaces .first() dispatch roulette for security_loop /
@@ -45,3 +45,12 @@ class Workspace(Base):
     workflows = relationship("Workflow", back_populates="workspace")
     integrations = relationship("Integration", back_populates="workspace")
     environments = relationship("Environment", back_populates="workspace")
+
+    __table_args__ = (
+        sa.Index(
+            "ix_workspaces_clerk_org_id",
+            "clerk_org_id",
+            unique=True,
+            postgresql_where=sa.text("clerk_org_id IS NOT NULL"),
+        ),
+    )
