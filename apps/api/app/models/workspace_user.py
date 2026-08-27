@@ -14,5 +14,7 @@ class WorkspaceUser(Base):
     role = Column(String(50), nullable=False, default="developer")  # admin / developer / security / viewer
     invited_by = Column(String(255), nullable=True)
     joined_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    # DB has this FK to roles.id (baseline); model was missing it (#1284).
+    role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="SET NULL"), nullable=True, index=True)
 
     workspace = relationship("Workspace", back_populates="members")

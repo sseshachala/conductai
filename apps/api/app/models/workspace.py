@@ -21,6 +21,8 @@ class Workspace(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    # Added by revision 0066 — model was missing it (#1284).
+    clerk_org_id = sa.Column(sa.Text(), nullable=True, index=True)
 
     # Authoritative pointer to the Security Automation project for this workspace.
     # See conductai#1005 — replaces .first() dispatch roulette for security_loop /
