@@ -70,20 +70,35 @@ def _seed_workflow_with_version(db, workspace_id: str, name: str):
 
 
 def _seed_run(db, workspace_id: str, ver_id, status="succeeded", when=None):
-    from app.models.run import Run
-    r = Run(
-        workflow_version_id=ver_id,
-        workspace_id=uuid.UUID(workspace_id),
-        triggered_by="test",
-        status=status,
-        started_at=when or _now(),
-        completed_at=(when or _now()) if status in ("succeeded", "failed", "cancelled") else None,
-        actual_turns=3,
-        state={},
+    """Raw INSERT — avoids ORM state pitfalls with Run's cascade
+    relationships. Same pattern as `_seed_event` in test_workflow_tools.py.
+    Returns a lightweight object with `.id` so callers can pass it to
+    `_tool_get_run`, etc."""
+    from sqlalchemy import text as sa_text
+    run_id = uuid.uuid4()
+    now_ts = _now()
+    completed = now_ts if status in ("succeeded", "failed", "cancelled") else None
+    db.execute(
+        sa_text(
+            "INSERT INTO runs "
+            "(id, workflow_version_id, workspace_id, triggered_by, status, "
+            " started_at, completed_at, actual_turns, state, created_at, attempt_count) "
+            "VALUES (:id, :vid, :wid, :tby, :st, :sa, :ca, :at, "
+            "        CAST(:state AS jsonb), :now, 0)"
+        ),
+        {
+            "id": run_id, "vid": ver_id, "wid": uuid.UUID(workspace_id),
+            "tby": "test", "st": status,
+            "sa": when or now_ts, "ca": completed,
+            "at": 3, "state": "{}", "now": now_ts,
+        },
     )
-    db.add(r)
-    db.flush()
     db.commit()
+
+    class _R:
+        pass
+    r = _R()
+    r.id = run_id
     return r
 
 
