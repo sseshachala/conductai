@@ -20,9 +20,15 @@ from app.modules.guard.models import (
 from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
 from app.modules.guard.embedding import embedding_client_for_workspace
 from app.models.workflow import Workflow, WorkflowVersion
-from app.models.run import Run
+from app.models.run import Run, RunEvent
+from app.models.integration import Integration
+from app.models.workspace_user import WorkspaceUser
+from app.models.audit_log import AuditLog
+from app.models.project import Project
+from app.models.watchdog_event import WatchdogEvent
 from app.modules.agent_identity.models import AgentIdentity
-from sqlalchemy import func as sa_func
+from app.modules.guard.models import GuardApprovalRequest
+from sqlalchemy import func as sa_func, or_ as sa_or
 
 log = structlog.get_logger(__name__)
 
@@ -1015,3 +1021,252 @@ class Executor:
             "outcome": r.outcome,
             "attempt_count": r.attempt_count,
         }
+
+    # ── Approvals (#1287) ─────────────────────────────────────────────────────
+
+    def _tool_list_pending_approvals(self, status: str = "pending", limit: int = 20):
+        """List HITL approval requests. status: pending | approved | rejected | timed_out | all."""
+        ws_uuid = uuid.UUID(self.workspace_id)
+        q = self.db.query(GuardApprovalRequest).filter(GuardApprovalRequest.workspace_id == ws_uuid)
+        status = (status or "pending").lower()
+        if status != "all":
+            q = q.filter(GuardApprovalRequest.status == status)
+        rows = q.order_by(GuardApprovalRequest.created_at.desc()).limit(min(limit, 100)).all()
+        return [
+            {"id": str(r.id), "status": r.status, "rule_id": r.rule_id, "tool_name": r.tool_name,
+             "requester_email": r.requester_email, "decided_by_email": r.decided_by_email,
+             "decided_at": r.decided_at.isoformat() if r.decided_at else None,
+             "created_at": r.created_at.isoformat() if r.created_at else None,
+             "timeout_at": r.timeout_at.isoformat() if r.timeout_at else None}
+            for r in rows
+        ]
+
+    def _tool_get_approval(self, id: str):
+        try:
+            rid = uuid.UUID(id)
+        except ValueError:
+            return {"error": "id must be a UUID"}
+        ws_uuid = uuid.UUID(self.workspace_id)
+        r = self.db.query(GuardApprovalRequest).filter(
+            GuardApprovalRequest.id == rid, GuardApprovalRequest.workspace_id == ws_uuid
+        ).first()
+        if not r:
+            return {"error": "Approval not found"}
+        return {"id": str(r.id), "status": r.status, "rule_id": r.rule_id, "tool_name": r.tool_name,
+                "tool_input": r.tool_input, "requester_email": r.requester_email,
+                "decided_by_email": r.decided_by_email,
+                "decided_at": r.decided_at.isoformat() if r.decided_at else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "timeout_at": r.timeout_at.isoformat() if r.timeout_at else None}
+
+    # ── Packs (#1288) ─────────────────────────────────────────────────────────
+
+    def _tool_list_installed_packs(self):
+        org_ws = _org_ws_subquery(self.db, self.workspace_id)
+        rows = (self.db.query(WorkspaceSkillPack)
+                .filter(WorkspaceSkillPack.workspace_id.in_(org_ws))
+                .order_by(WorkspaceSkillPack.installed_at.desc()).all())
+        return [{"pack_slug": r.pack_slug, "pinned_version": r.pinned_version,
+                 "installed_by": r.installed_by,
+                 "installed_at": r.installed_at.isoformat() if r.installed_at else None}
+                for r in rows]
+
+    def _tool_browse_marketplace(self, query: str | None = None, limit: int = 30):
+        q = self.db.query(SkillPack)
+        if query:
+            like = f"%{query.lower()}%"
+            q = q.filter(sa_or(
+                sa_func.lower(SkillPack.slug).like(like),
+                sa_func.lower(SkillPack.name).like(like),
+                sa_func.lower(SkillPack.description).like(like)))
+        rows = q.order_by(SkillPack.slug.asc(), SkillPack.version.desc()).limit(min(limit * 3, 200)).all()
+        seen, out = set(), []
+        for r in rows:
+            if r.slug in seen:
+                continue
+            seen.add(r.slug)
+            rules = r.rules if isinstance(r.rules, list) else []
+            out.append({"slug": r.slug, "version": r.version, "name": r.name,
+                        "description": r.description, "tier": r.tier,
+                        "rules_count": len(rules),
+                        "published_at": r.published_at.isoformat() if r.published_at else None})
+            if len(out) >= limit:
+                break
+        return out
+
+    def _tool_get_pack_details(self, slug: str):
+        r = self.db.query(SkillPack).filter(SkillPack.slug == slug).order_by(SkillPack.version.desc()).first()
+        if not r:
+            return {"error": f"Pack '{slug}' not found"}
+        rules = r.rules if isinstance(r.rules, list) else []
+        return {"slug": r.slug, "version": r.version, "name": r.name,
+                "description": r.description, "tier": r.tier,
+                "rules_count": len(rules), "rules": rules,
+                "published_at": r.published_at.isoformat() if r.published_at else None}
+
+    # ── Integrations (#1289) ──────────────────────────────────────────────────
+
+    def _tool_list_integrations(self):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        rows = self.db.query(Integration).filter(Integration.workspace_id == ws_uuid).all()
+        return [{"id": str(r.id), "service": r.service, "auth_method": r.auth_method,
+                 "handle": r.handle, "scopes": list(r.scopes) if r.scopes else [],
+                 "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
+                 "created_at": r.created_at.isoformat() if r.created_at else None}
+                for r in rows]
+
+    def _tool_get_integration_status(self, service: str):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        r = self.db.query(Integration).filter(
+            Integration.workspace_id == ws_uuid, Integration.service == service.lower()
+        ).first()
+        if not r:
+            return {"service": service, "configured": False}
+        return {"service": r.service, "configured": True, "auth_method": r.auth_method,
+                "handle": r.handle, "scopes": list(r.scopes) if r.scopes else [],
+                "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None}
+
+    # ── Team members (#1290) ──────────────────────────────────────────────────
+
+    def _tool_list_members(self, role: str | None = None, limit: int = 50):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        q = self.db.query(WorkspaceUser).filter(WorkspaceUser.workspace_id == ws_uuid)
+        if role:
+            q = q.filter(WorkspaceUser.role == role.lower())
+        rows = q.order_by(WorkspaceUser.joined_at.desc()).limit(min(limit, 200)).all()
+        return [{"clerk_user_id": r.clerk_user_id, "role": r.role, "invited_by": r.invited_by,
+                 "joined_at": r.joined_at.isoformat() if r.joined_at else None}
+                for r in rows]
+
+    def _tool_get_member(self, clerk_user_id: str):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        r = self.db.query(WorkspaceUser).filter(
+            WorkspaceUser.workspace_id == ws_uuid, WorkspaceUser.clerk_user_id == clerk_user_id
+        ).first()
+        if not r:
+            return {"error": "Member not found"}
+        return {"clerk_user_id": r.clerk_user_id, "role": r.role,
+                "role_id": str(r.role_id) if r.role_id else None,
+                "invited_by": r.invited_by,
+                "joined_at": r.joined_at.isoformat() if r.joined_at else None}
+
+    # ── Platform audit log (#1291) ────────────────────────────────────────────
+
+    def _tool_get_audit_events(self, actor_email: str | None = None, action: str | None = None,
+                                resource_type: str | None = None, since: str | None = None,
+                                until: str | None = None, limit: int = 25):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        q = self.db.query(AuditLog).filter(AuditLog.workspace_id == ws_uuid)
+        if actor_email:   q = q.filter(AuditLog.actor_email == actor_email)
+        if action:        q = q.filter(AuditLog.action == action)
+        if resource_type: q = q.filter(AuditLog.resource_type == resource_type)
+        if since:         q = q.filter(AuditLog.created_at >= since)
+        if until:         q = q.filter(AuditLog.created_at <= until)
+        rows = q.order_by(AuditLog.created_at.desc()).limit(min(limit, 100)).all()
+        return [{"id": str(r.id), "actor_email": r.actor_email, "actor_role": r.actor_role,
+                 "action": r.action, "resource_type": r.resource_type,
+                 "resource_id": r.resource_id, "metadata": r.meta,
+                 "created_at": r.created_at.isoformat() if r.created_at else None}
+                for r in rows]
+
+    def _tool_search_audit_log(self, q: str, limit: int = 25):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        like = f"%{q.lower()}%"
+        rows = (self.db.query(AuditLog)
+                .filter(AuditLog.workspace_id == ws_uuid,
+                        sa_or(sa_func.lower(AuditLog.action).like(like),
+                              sa_func.lower(AuditLog.actor_email).like(like),
+                              sa_func.lower(AuditLog.resource_type).like(like),
+                              sa_func.lower(AuditLog.resource_id).like(like)))
+                .order_by(AuditLog.created_at.desc()).limit(min(limit, 100)).all())
+        return [{"id": str(r.id), "actor_email": r.actor_email, "action": r.action,
+                 "resource_type": r.resource_type, "resource_id": r.resource_id,
+                 "created_at": r.created_at.isoformat() if r.created_at else None}
+                for r in rows]
+
+    # ── Projects (#1292) ──────────────────────────────────────────────────────
+
+    def _tool_list_projects(self, limit: int = 50):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        rows = (self.db.query(Project).filter(Project.workspace_id == ws_uuid)
+                .order_by(Project.created_at.desc()).limit(min(limit, 200)).all())
+        return [{"id": str(r.id), "name": r.name, "slug": r.slug,
+                 "project_type": r.project_type,
+                 "created_at": r.created_at.isoformat() if r.created_at else None}
+                for r in rows]
+
+    def _tool_get_project(self, id_or_slug: str):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        q = self.db.query(Project).filter(Project.workspace_id == ws_uuid)
+        try:
+            r = q.filter(Project.id == uuid.UUID(id_or_slug)).first()
+        except ValueError:
+            r = q.filter(Project.slug == id_or_slug).first()
+        if not r:
+            return {"error": "Project not found"}
+        return {"id": str(r.id), "name": r.name, "slug": r.slug,
+                "project_type": r.project_type,
+                "security_finding_id": r.security_finding_id,
+                "created_at": r.created_at.isoformat() if r.created_at else None}
+
+    # ── Observability alerts (#1293) ──────────────────────────────────────────
+
+    def _tool_list_alerts(self, severity: str | None = None, event_type: str | None = None,
+                           include_resolved: bool = False, since: str | None = None,
+                           limit: int = 25):
+        ws_uuid = uuid.UUID(self.workspace_id)
+        q = self.db.query(WatchdogEvent).filter(WatchdogEvent.workspace_id == ws_uuid)
+        if severity:
+            q = q.filter(WatchdogEvent.severity == severity.lower())
+        if event_type:
+            q = q.filter(WatchdogEvent.event_type == event_type)
+        if not include_resolved:
+            q = q.filter(WatchdogEvent.resolved_at.is_(None))
+        if since:
+            q = q.filter(WatchdogEvent.created_at >= since)
+        rows = q.order_by(WatchdogEvent.created_at.desc()).limit(min(limit, 100)).all()
+        return [{"id": str(r.id), "event_type": r.event_type, "severity": r.severity,
+                 "run_id": str(r.run_id) if r.run_id else None,
+                 "workflow_id": str(r.workflow_id) if r.workflow_id else None,
+                 "payload": r.payload,
+                 "created_at": r.created_at.isoformat() if r.created_at else None,
+                 "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None}
+                for r in rows]
+
+    def _tool_get_alert(self, id: str):
+        try:
+            aid = uuid.UUID(id)
+        except ValueError:
+            return {"error": "id must be a UUID"}
+        ws_uuid = uuid.UUID(self.workspace_id)
+        r = self.db.query(WatchdogEvent).filter(
+            WatchdogEvent.id == aid, WatchdogEvent.workspace_id == ws_uuid).first()
+        if not r:
+            return {"error": "Alert not found"}
+        return {"id": str(r.id), "event_type": r.event_type, "severity": r.severity,
+                "run_id": str(r.run_id) if r.run_id else None,
+                "workflow_id": str(r.workflow_id) if r.workflow_id else None,
+                "payload": r.payload,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None}
+
+    # ── Run logs (#1294) ──────────────────────────────────────────────────────
+
+    def _tool_list_run_events(self, run_id: str, kind: str | None = None, limit: int = 100):
+        try:
+            rid = uuid.UUID(run_id)
+        except ValueError:
+            return {"error": "run_id must be a UUID"}
+        org_ws = _org_ws_subquery(self.db, self.workspace_id)
+        run = self.db.query(Run).filter(
+            Run.id == rid, Run.workspace_id.in_(org_ws)).first()
+        if not run:
+            return {"error": "Run not found"}
+        q = self.db.query(RunEvent).filter(RunEvent.run_id == rid)
+        if kind:
+            q = q.filter(RunEvent.kind == kind)
+        rows = q.order_by(RunEvent.created_at.asc()).limit(min(limit, 500)).all()
+        return [{"id": str(r.id), "block_id": r.block_id, "kind": r.kind,
+                 "payload": r.payload,
+                 "created_at": r.created_at.isoformat() if r.created_at else None}
+                for r in rows]
