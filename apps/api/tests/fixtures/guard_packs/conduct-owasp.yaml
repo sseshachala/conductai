@@ -131,3 +131,18 @@ cases:
     file_path: f.py
     content: result = calculate(x, y)
   expected: allow
+
+# ── negative canaries (#1272 batch 1 — see docs/guard-fp-strategy.md) ────
+- rule_id: owasp_crypto_guard
+  scenario: "[E] docs referencing modern hashes only"
+  tool_name: write
+  tool_input:
+    file_path: docs/crypto.md
+    content: "Approved cryptographic hashes: SHA-256, BLAKE2, Argon2. Weak legacy names have been retired."
+  expected: allow
+- rule_id: no_sensitive_data_exfil
+  scenario: "[E] health check curl with no auth term"
+  tool_name: bash
+  tool_input:
+    command: "curl -f https://api.example.com/healthz"
+  expected: allow

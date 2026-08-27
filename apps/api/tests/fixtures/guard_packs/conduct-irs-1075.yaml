@@ -57,3 +57,12 @@ cases:
     file_path: p.py
     content: prompt = 'summarize this article'
   expected: allow
+
+# ── negative canaries (#1272 batch 1 — see docs/guard-fp-strategy.md) ────
+- rule_id: irs1075-no-fti-plain-log
+  scenario: "[D] logger call with no PII field name"
+  tool_name: write
+  tool_input:
+    file_path: audit.py
+    content: "logger.info('processing request ' + str(request.id))"
+  expected: allow

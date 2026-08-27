@@ -146,3 +146,35 @@ cases:
     scenario: GitHub PAT blocked
     prompt_text: "auth_token = <<CRED:GH_PAT>>"
     expected: block
+
+  # ── negative canaries (#1272 batch 1 — see docs/guard-fp-strategy.md) ───
+
+  - rule_id: proxy-audit-vision-input
+    scenario: "[E] doc listing image types without the data URI scheme"
+    prompt_text: "We support image/png, image/jpeg, image/gif, image/webp, image/bmp, image/tiff formats."
+    expected: allow
+
+  - rule_id: no-weak-crypto
+    scenario: "[A] comment describing migration away from MD5"
+    prompt_text: "# Migrated from MD5 to SHA-256 on 2024-03-01; see /docs/crypto-rotation for the audit trail."
+    expected: allow
+
+  - rule_id: no-eval
+    scenario: "[A] comment referencing eval without the call syntax"
+    prompt_text: "# We deprecated the eval function in favour of ast.literal_eval for user-supplied strings."
+    expected: allow
+
+  - rule_id: no-slack-token
+    scenario: "[E] doc describing Slack token prefix without a token value"
+    prompt_text: "Slack bot tokens start with the 'xoxb' prefix; retrieve them from your app config rather than hard-coding."
+    expected: allow
+
+  - rule_id: no-private-key
+    scenario: "[E] doc referencing SSH key file path without the header marker"
+    prompt_text: "Users store their SSH private key at ~/.ssh/id_rsa; back it up with a passphrase for offline recovery."
+    expected: allow
+
+  - rule_id: no-gh-pat-in-code
+    scenario: "[D] env-var reference replaces the literal PAT"
+    prompt_text: "token = os.environ['GITHUB_TOKEN']  # ghp-prefixed tokens are read from env, never checked in"
+    expected: allow
