@@ -6,9 +6,11 @@ Single entry point for a guarded LLM completion. Both the HTTP proxy handler
 router. Zero network hop between them.
 
 Composed of:
-- app.guard.policy.evaluate()    → Decision (rules + budgets)
-- app.guard.router.upstream()    → Stream (provider fanout)
-- app.guard.audit.record()       → hash-chain audit (scheduled as background task)
+- app.guard.policy.evaluate_composed()  → Decision (rules + budgets + throughput,
+                                          #1225 composable engine — was single-source
+                                          _policy.evaluate before #1254)
+- app.guard.router.upstream()           → Stream (provider fanout)
+- app.guard.audit.record()              → hash-chain audit (scheduled as background task)
 
 Extracted in #1218 Step 2. Behavior mirrors the pre-refactor _proxy() flow;
 the regression harness locks that in.
@@ -26,6 +28,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.guard import policy as _policy
 from app.guard import router as _router
 from app.guard.audit import record as _record_audit
+from app.guard.policy import evaluate_composed as _evaluate_composed
+from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext as _PolicyContext
 
 log = structlog.get_logger(__name__)
 
@@ -91,8 +95,33 @@ async def guarded_completion(
     parameter here; do not fork the composition."""
     started = time.monotonic()
 
-    decision_dict = _policy.evaluate(workspace_id, provider, model, body)
-    decision = _decision_from_dict(decision_dict)
+    # #1254 — composable policy engine (#1225). RulePolicySource inside
+    # DEFAULT_SOURCES still calls _policy.evaluate under the hood, so behavior
+    # is byte-identical to the pre-refactor _proxy() flow when ctx.db is None
+    # (SpendCap + ThroughputCap sources short-circuit ALLOW without a db).
+    # When callers eventually thread db + agent_identity_id in, spend caps
+    # and throughput caps activate for free.
+    _ctx = _PolicyContext(
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id or None,
+        agent_identity_id=None,
+        provider=provider,
+        model=model,
+        body=body,
+        input_tokens=0,
+        db=None,
+    )
+    _composed = _evaluate_composed(_ctx)
+    decision = Decision(
+        action=_composed.action.value,
+        rule_id=_composed.rule_id,
+        message=_composed.reason,
+        matched_rules=_composed.matched_rules,
+        defense_score=_composed.defense_score,
+        inject_guidance=_composed.inject_guidance,
+        guidance=_composed.guidance,
+        raw=None,
+    )
 
     if decision.action == "BLOCK":
         background.add_task(
@@ -137,3 +166,227 @@ async def guarded_completion(
         vendor_key=vendor_key,
         provider=provider,
     )
+
+
+async def guarded_llm_call(
+    *,
+    workspace_id: str,
+    provider: str,
+    model: str,
+    body: dict,
+    upstream_url: str,
+    upstream_path: str,
+    real_key: str,
+    auth_header_out: str = "Authorization",
+    bearer: bool = True,
+    ai_tool: str = "lens",
+    prompt_summary: str = "lens",
+    user_email: str | None = None,
+    clerk_user_id: str = "system:lens",
+    upstream_api_key: str | None = None,
+    vendor_key: str | None = None,
+    extra_headers: dict | None = None,
+) -> dict:
+    """In-process, non-streaming Lens sibling of `guarded_completion`.
+
+    Not a fork — this wraps `guarded_completion` (same policy engine, same
+    audit chain, same upstream router). It exists so in-process callers like
+    Lens can get the raw upstream JSON dict back and adapt it to their SDK
+    shape, instead of receiving a FastAPI JSONResponse meant for HTTP wire.
+
+    Zero self-HTTP hop: the underlying `_router.upstream` uses httpx directly.
+
+    Raises on BLOCK (policy denial) or upstream error.
+    """
+    import asyncio as _asyncio
+    import json as _json
+
+    from fastapi import BackgroundTasks as _BackgroundTasks
+    background = _BackgroundTasks()
+
+    resp = await guarded_completion(
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id,
+        ai_tool=ai_tool,
+        provider=provider,
+        model=model,
+        body=body,
+        upstream_url=upstream_url,
+        upstream_path=upstream_path,
+        real_key=real_key,
+        auth_header_out=auth_header_out,
+        bearer=bearer,
+        is_stream=False,
+        background=background,
+        prompt_summary=prompt_summary,
+        user_email=user_email,
+        upstream_api_key=upstream_api_key,
+        vendor_key=vendor_key,
+        extra_headers=extra_headers,
+    )
+
+    # Drive the scheduled audit writes now — no request lifecycle to run them for us.
+    try:
+        await background()
+    except Exception as e:
+        log.warning("guarded_llm_call.background_failed", err=str(e))
+
+    if isinstance(resp, JSONResponse):
+        raw_body = resp.body if isinstance(resp.body, (bytes, bytearray)) else b""
+        if resp.status_code >= 400:
+            payload = _safe_loads(raw_body)
+            raise GuardedLLMBlocked(
+                status=resp.status_code,
+                detail=payload.get("detail") or payload.get("message") or "policy violation",
+                payload=payload,
+            )
+        return _safe_loads(raw_body)
+
+    raise Exception(
+        "guarded_llm_call currently supports non-streaming responses only; "
+        "callers needing streams should call guarded_completion(is_stream=True) "
+        "and drive the StreamingResponse directly."
+    )
+
+
+def _safe_loads(raw: bytes) -> dict:
+    import json as _json
+    try:
+        return _json.loads(raw or b"{}")
+    except Exception:
+        return {}
+
+
+class GuardedLLMBlocked(Exception):
+    """Raised by `guarded_llm_call` when policy or router refuses the call."""
+
+    def __init__(self, *, status: int, detail: str, payload: dict) -> None:
+        super().__init__(f"Guard blocked ({status}): {detail}")
+        self.status = status
+        self.detail = detail
+        self.payload = payload
+
+
+
+def guarded_llm_stream(
+    *,
+    workspace_id: str,
+    provider: str,
+    model: str,
+    upstream_url: str,
+    api_key: str,
+    messages: list[dict],
+    system: str,
+    max_tokens: int,
+    on_token,
+    ai_tool: str = "lens",
+    clerk_user_id: str = "system:lens",
+    db=None,
+) -> str:
+    """Streaming, in-process sibling of `guarded_llm_call` for OpenAI-shape SSE.
+
+    Extracted from GLens `_stream_synthesis` in #1254 so any in-process caller
+    (Lens Phase 2, future agents) can drive a guard-enforced streaming
+    completion without reinventing the policy/audit dance.
+
+    Uses the composable engine (evaluate_composed, #1225). guarded_completion
+    was promoted to the same engine in this PR, so Phase 1 (guarded_llm_call
+    → guarded_completion) and Phase 2 (guarded_llm_stream) now share one
+    policy engine end-to-end.
+
+    Returns the accumulated full_text; raises on BLOCK.
+    """
+    import json as _json
+    import time as _time
+
+    import httpx as _httpx
+
+    from app.guard.audit import record as _record_audit
+    from app.guard.policy import evaluate_composed as _eval_composed
+    from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext as _PolicyContext
+
+    oai_messages = [{"role": "system", "content": system}, *messages]
+    payload: dict = {
+        "model": model,
+        "messages": oai_messages,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    t_start = _time.monotonic()
+    ctx = _PolicyContext(
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id,
+        agent_identity_id=None,
+        provider=provider,
+        model=model,
+        body=payload,
+        input_tokens=0,
+        db=db,
+    )
+    decision = _eval_composed(ctx)
+
+    if decision.action == _PolicyAction.BLOCK:
+        try:
+            _record_audit(
+                workspace_id, clerk_user_id, ai_tool, provider, model,
+                "blocked", decision.rule_id, 0,
+                body=payload, response_bytes=None,
+                prompt_summary=f"{ai_tool}.stream",
+                evaluated_rules=decision.matched_rules,
+                defense_score=decision.defense_score,
+            )
+        except Exception:
+            pass
+        raise Exception(
+            f"Guard blocked {ai_tool} call: {decision.reason or decision.rule_id}"
+        )
+
+    resp_bytes = bytearray()
+    full_text = ""
+    with _httpx.stream(
+        "POST",
+        f"{upstream_url}/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=60,
+    ) as r:
+        if r.status_code >= 400:
+            body = r.read().decode()[:500]
+            raise Exception(f"Upstream stream {r.status_code}: {body}")
+        for line in r.iter_lines():
+            line_bytes = line.encode() if isinstance(line, str) else line
+            resp_bytes.extend(line_bytes)
+            resp_bytes.extend(b"\n")
+            if not line or line == "data: [DONE]":
+                continue
+            if line.startswith("data: "):
+                try:
+                    chunk = _json.loads(line[6:])
+                    token = ((chunk.get("choices") or [{}])[0]).get("delta", {}).get("content") or ""
+                    if token:
+                        full_text += token
+                        on_token(token)
+                except Exception:
+                    pass
+
+    total_ms = int((_time.monotonic() - t_start) * 1000)
+
+    try:
+        _record_audit(
+            workspace_id, clerk_user_id, ai_tool, provider, model,
+            "warned" if decision.action == _PolicyAction.WARN else "allowed",
+            decision.rule_id if decision.action == _PolicyAction.WARN else None,
+            total_ms,
+            body=payload, response_bytes=bytes(resp_bytes),
+            prompt_summary=f"{ai_tool}.stream",
+            evaluated_rules=decision.matched_rules,
+            defense_score=decision.defense_score,
+        )
+    except Exception as e:
+        log.warning("guarded_llm_stream.audit_failed", err=str(e))
+
+    return full_text or ""

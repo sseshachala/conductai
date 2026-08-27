@@ -269,21 +269,123 @@ def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
     return page
 
 
-def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tuple[list[dict], str | None, list[tuple[str, dict]]]:
-    """Phase 1: Execute tool calls. Returns (final_msgs, early_text, tool_calls_made)."""
-    from app.runtime.llm_client import LLMToolUseBlock
+def _resolve_llm_config(executor: Executor):
+    """Return (provider, model, upstream_url, api_key) for the workspace's OpenAI-shape endpoint.
+    Same discovery order as the legacy _llm_client — settings first, per-workspace vault override."""
     from app.core.config import settings as _s
-
     provider = _s.conduct_inference_provider or "openai"
     model = _s.conduct_inference_model_name or "gpt-4o-mini"
-    endpoint = (_s.conduct_inference_endpoint_url or "").rstrip("/") or "(default)"
-    log.info("glens.llm_call", provider=provider, model=model, endpoint=endpoint)
+    endpoint = (_s.conduct_inference_endpoint_url or "").rstrip("/")
+    if endpoint and endpoint.endswith("/v1"):
+        endpoint = endpoint[:-3]
+    upstream_url = endpoint or "https://api.openai.com"
+    api_key = _s.conduct_inference_token_id or (_s.openai_api_key if provider == "openai" else "") or "unused"
+    if executor.db and executor.workspace_id:
+        try:
+            from app.modules.credentials.vault import get_credential
+            creds = get_credential(executor.db, executor.workspace_id, provider)
+            api_key = creds.get("api_key") or api_key
+        except Exception:
+            pass
+    return provider, model, upstream_url, api_key
+
+
+def _guarded_openai_completion(executor: Executor, provider: str, model: str, upstream_url: str,
+                                api_key: str, messages: list[dict], system: str,
+                                tools: list[dict] | None, max_tokens: int):
+    """#1254 — in-process guarded LLM call for Lens.
+
+    Runs the SAME code path the HTTP proxy uses (guarded_completion → policy →
+    upstream → audit) with zero self-HTTP hop, and adapts the OpenAI-shape
+    JSON response back into an LLMResponse (SDK shape) so _resolve_tools can
+    keep iterating the tool-use loop unchanged.
+    """
+    import asyncio as _asyncio
+    from app.guard.gateway import guarded_llm_call as _guarded, GuardedLLMBlocked as _Blocked
+    from app.runtime.llm_client import LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage
+
+    oai_messages = [{"role": "system", "content": system}, *messages]
+    payload: dict = {"model": model, "messages": oai_messages, "max_tokens": max_tokens}
+    if tools:
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t.get("description", ""),
+                    "parameters": t.get("input_schema", {"type": "object", "properties": {}}),
+                },
+            }
+            for t in tools
+        ]
+
+    try:
+        raw = _asyncio.run(_guarded(
+            workspace_id=executor.workspace_id,
+            provider=provider, model=model, body=payload,
+            upstream_url=upstream_url, upstream_path="/v1/chat/completions",
+            real_key=api_key, ai_tool="lens",
+            clerk_user_id="system:lens",
+            prompt_summary="lens.resolve_tools",
+        ))
+    except _Blocked as blk:
+        raise Exception(f"Guard blocked Lens call: {blk.detail}") from blk
+
+    choice = ((raw.get("choices") or [{}])[0])
+    message = choice.get("message") or {}
+    finish_reason = choice.get("finish_reason") or "stop"
+
+    content: list = []
+    text = message.get("content") or message.get("reasoning_content") or ""
+    if isinstance(text, str) and text.strip():
+        content.append(LLMTextBlock(text=text))
+    for tc in message.get("tool_calls") or []:
+        fn = tc.get("function") or {}
+        raw_args = fn.get("arguments") or "{}"
+        try:
+            parsed = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+        except Exception:
+            parsed = {}
+        content.append(LLMToolUseBlock(
+            id=tc.get("id", ""),
+            name=fn.get("name", ""),
+            input=parsed if isinstance(parsed, dict) else {},
+        ))
+
+    u = raw.get("usage") or {}
+    stop_map = {"tool_calls": "tool_use", "length": "max_tokens", "stop": "end_turn"}
+    return LLMResponse(
+        content=content,
+        stop_reason=stop_map.get(finish_reason, finish_reason or "end_turn"),
+        usage=LLMUsage(
+            input_tokens=int(u.get("prompt_tokens", 0) or 0),
+            output_tokens=int(u.get("completion_tokens", 0) or 0),
+        ),
+    )
+
+
+def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tuple[list[dict], str | None, list[tuple[str, dict]]]:
+    """Phase 1: Execute tool calls. Returns (final_msgs, early_text, tool_calls_made).
+
+    Each LLM turn goes through Guard's in-process `guarded_llm_call` (#1254) —
+    same policy + audit path as the HTTP proxy. The Lens-side `_llm_client`
+    is still constructed to reuse the client's provider-neutral message
+    formatters (`make_assistant_turn`, `make_tool_results_turn`); only the
+    upstream call itself is now Guard-mediated.
+    """
+    from app.runtime.llm_client import LLMToolUseBlock
+
+    provider, model, upstream_url, api_key = _resolve_llm_config(executor)
+    log.info("glens.llm_call", provider=provider, model=model, upstream=upstream_url)
     client = _llm_client(executor.db, executor.workspace_id)
     msgs = list(messages)
     tool_calls_made: list[tuple[str, dict]] = []
 
     for _ in range(5):
-        resp = client.create(model=model, messages=msgs, system=system, tools=TOOLS, max_tokens=512)
+        resp = _guarded_openai_completion(
+            executor, provider, model, upstream_url, api_key,
+            messages=msgs, system=system, tools=TOOLS, max_tokens=512,
+        )
         tool_blocks = [b for b in resp.content if isinstance(b, LLMToolUseBlock)]
         text = next((b.text for b in resp.content if hasattr(b, "text") and b.text), "")
 
@@ -306,141 +408,26 @@ def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_toke
                        lens_session_token: str | None = None) -> str:
     """Phase 2: stream the final synthesis. Guard-enforced end to end.
 
-    Policy evaluation runs BEFORE the LLM call via the composable engine
-    (#1225). The upstream HTTP stream is unchanged (works well for SSE).
-    After the stream closes, an audit event is recorded with source='lens'
-    so Lens spend + decisions land in the same hash chain as external agents.
+    Delegates to `app.guard.gateway.guarded_llm_stream` — same composable
+    policy engine, same audit chain, same upstream primitive. Extracted so
+    Phase 1 (`_resolve_tools`) and Phase 2 (this) both call the shared
+    Guard-flavored gateway instead of each maintaining its own copy.
     """
-    import httpx
-    import time as _time
-    from app.core.config import settings as _s
+    from app.guard.gateway import guarded_llm_stream
 
-    provider = _s.conduct_inference_provider or "openai"
-    model = _s.conduct_inference_model_name or "gpt-4o-mini"
-    endpoint = (_s.conduct_inference_endpoint_url or "").rstrip("/")
-    if endpoint and endpoint.endswith("/v1"):
-        endpoint = endpoint[:-3]
-    base_url = endpoint or "https://api.openai.com"
-    api_key = _s.conduct_inference_token_id or _s.openai_api_key or "unused"
-
-    if executor.db and executor.workspace_id:
-        try:
-            from app.modules.credentials.vault import get_credential
-            creds = get_credential(executor.db, executor.workspace_id, provider)
-            api_key = creds.get("api_key") or api_key
-        except Exception:
-            pass
-
-    oai_msgs = [{"role": "system", "content": system}] + msgs
-    payload = {"model": model, "messages": oai_msgs, "max_tokens": 1024, "stream": True}
-
-    # ── #1218 Step 3b.4 — Guard policy evaluation (dogfood) ──────────────
-    from app.guard.policy import evaluate_composed as _eval_composed
-    from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext as _PolicyContext
-    from app.guard.audit import record as _record_audit
-
-    # Timing markers for #1218 Step 3b.7 — measure the overhead of the in-process
-    # composable engine vs direct-to-OpenAI. Target: <10ms overhead on policy eval.
-    _t_call_start = _time.monotonic()
-    _ctx = _PolicyContext(
+    provider, model, upstream_url, api_key = _resolve_llm_config(executor)
+    log.info("glens.stream_synthesis", provider=provider, model=model, upstream=upstream_url)
+    text = guarded_llm_stream(
         workspace_id=executor.workspace_id,
-        clerk_user_id=None,  # Lens sessions are per-session, not per-user for audit purposes
-        agent_identity_id=None,
-        provider=provider,
-        model=model,
-        body=payload,
-        input_tokens=0,
+        provider=provider, model=model,
+        upstream_url=upstream_url, api_key=api_key,
+        messages=msgs, system=system, max_tokens=1024,
+        on_token=on_token,
+        ai_tool="lens",
+        clerk_user_id="system:lens",
         db=executor.db,
     )
-    _t_policy_start = _time.monotonic()
-    _decision = _eval_composed(_ctx)
-    _policy_ms = int((_time.monotonic() - _t_policy_start) * 1000)
-    log.info("lens.timing.policy_eval",
-             duration_ms=_policy_ms,
-             action=_decision.action.value,
-             source=_decision.source,
-             matched_rules=len(_decision.matched_rules))
-    if _decision.action == _PolicyAction.BLOCK:
-        log.warning("lens.guard.blocked", rule=_decision.rule_id, source=_decision.source)
-        # Record the block in the audit chain so Lens spend + decisions are visible
-        try:
-            _record_audit(
-                executor.workspace_id, None, "lens", provider, model,
-                "blocked", _decision.rule_id, 0,
-                body=payload, response_bytes=None,
-                prompt_summary="lens.synthesis",
-                evaluated_rules=_decision.matched_rules,
-                defense_score=_decision.defense_score,
-            )
-        except Exception:
-            pass
-        raise Exception(f"Guard blocked Lens call: {_decision.reason or _decision.rule_id}")
-
-    _started = _time.monotonic()
-    _first_token_ms: int | None = None
-    _resp_bytes = bytearray()
-    full_text = ""
-    with httpx.stream(
-        "POST", f"{base_url}/v1/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=60,
-    ) as r:
-        if r.status_code >= 400:
-            body = r.read().decode()[:500]
-            raise Exception(f"OpenAI stream {r.status_code}: {body}")
-        for line in r.iter_lines():
-            if isinstance(line, str):
-                line_bytes = line.encode()
-            else:
-                line_bytes = line
-            _resp_bytes.extend(line_bytes)
-            _resp_bytes.extend(b"\n")
-            if not line or line == "data: [DONE]":
-                continue
-            if line.startswith("data: "):
-                try:
-                    chunk = json.loads(line[6:])
-                    token = ((chunk.get("choices") or [{}])[0]).get("delta", {}).get("content") or ""
-                    if token:
-                        if _first_token_ms is None:
-                            _first_token_ms = int((_time.monotonic() - _t_call_start) * 1000)
-                        full_text += token
-                        on_token(token)
-                except Exception:
-                    pass
-
-    _stream_ms = int((_time.monotonic() - _started) * 1000)
-    _total_ms = int((_time.monotonic() - _t_call_start) * 1000)
-
-    # #1218 Step 3b.7 — one summary log line per Lens call. p50/p95 are
-    # aggregated downstream (Grafana / Loki / whatever the ops dashboard runs on).
-    log.info("lens.timing.summary",
-             policy_ms=_policy_ms,
-             stream_ms=_stream_ms,
-             total_ms=_total_ms,
-             first_token_ms=_first_token_ms,
-             tokens_generated=len(full_text.split()) if full_text else 0,
-             action=_decision.action.value,
-             model=model)
-
-    # Record audit event for a successful/warned Lens call — spend + hash chain
-    # entry, same as external agents.
-    try:
-        _record_audit(
-            executor.workspace_id, None, "lens", provider, model,
-            "warned" if _decision.action == _PolicyAction.WARN else "allowed",
-            _decision.rule_id if _decision.action == _PolicyAction.WARN else None,
-            _total_ms,
-            body=payload, response_bytes=bytes(_resp_bytes),
-            prompt_summary="lens.synthesis",
-            evaluated_rules=_decision.matched_rules,
-            defense_score=_decision.defense_score,
-        )
-    except Exception as e:
-        log.warning("lens.audit.failed", err=str(e))
-
-    return full_text or "Could not complete the analysis."
+    return text or "Could not complete the analysis."
 
 
 # ── Session helpers ───────────────────────────────────────────────────────────
