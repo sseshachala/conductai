@@ -466,11 +466,15 @@ function ChatInput({ onSubmit, disabled }: { onSubmit: (t: string) => void; disa
     if (t && !disabled) { onSubmit(t); setValue("") }
   }
 
+  const canSend = !disabled && value.trim().length > 0
   return (
     <div style={{
-      display: "flex",
-      gap: 10,
-      alignItems: "flex-end",
+      position: "relative",
+      border: "1px solid var(--border)",
+      borderRadius: 16,
+      background: "var(--surface-2)",
+      padding: "10px 14px",
+      transition: "border-color 120ms, box-shadow 120ms",
     }}>
       <textarea
         ref={ref}
@@ -481,35 +485,46 @@ function ChatInput({ onSubmit, disabled }: { onSubmit: (t: string) => void; disa
         placeholder="Ask about your governance data…"
         rows={2}
         style={{
-          flex: 1,
+          width: "100%",
           resize: "none",
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          padding: "10px 14px",
+          border: "none",
+          padding: 0,
+          paddingRight: 44,
           fontSize: 14,
-          background: "var(--surface-2)",
+          background: "transparent",
           color: "var(--text)",
           outline: "none",
           fontFamily: "inherit",
           lineHeight: 1.5,
+          display: "block",
         }}
       />
       <button
         onClick={submit}
-        disabled={disabled || !value.trim()}
+        disabled={!canSend}
+        aria-label="Send"
         style={{
-          padding: "10px 20px",
-          borderRadius: 10,
+          position: "absolute",
+          right: 8,
+          bottom: 8,
+          width: 32,
+          height: 32,
+          borderRadius: "50%",
           border: "none",
-          background: disabled || !value.trim() ? "var(--surface-3)" : "var(--accent)",
-          color: disabled || !value.trim() ? "var(--text-muted)" : "#fff",
-          fontSize: 14,
-          fontWeight: 600,
-          cursor: disabled || !value.trim() ? "not-allowed" : "pointer",
-          flexShrink: 0,
+          background: canSend ? "var(--text)" : "var(--surface-3, rgba(0,0,0,0.08))",
+          color: canSend ? "var(--surface)" : "var(--text-muted)",
+          cursor: canSend ? "pointer" : "not-allowed",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "background 120ms, color 120ms",
+          padding: 0,
         }}
       >
-        Send
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 19V5" />
+          <path d="M5 12l7-7 7 7" />
+        </svg>
       </button>
     </div>
   )
