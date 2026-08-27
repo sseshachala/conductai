@@ -37,6 +37,21 @@ class Run(Base):
     workflow_version = relationship("WorkflowVersion", back_populates="runs")
     events = relationship("RunEvent", back_populates="run", order_by="RunEvent.created_at", cascade="all, delete-orphan")
 
+    __table_args__ = (
+        sa.Index("ix_runs_workflow_version_id", "workflow_version_id"),
+        sa.Index("ix_runs_status", "status"),
+        sa.Index("ix_runs_created_at", "created_at"),
+        sa.Index("ix_runs_version_created", "workflow_version_id", "created_at"),
+        sa.Index(
+            "ix_runs_queue_pickup",
+            "status", "next_retry_at",
+            postgresql_where=sa.text("status IN ('pending', 'failed')"),
+        ),
+        sa.Index("ix_runs_workspace_id", "workspace_id"),
+        sa.Index("ix_runs_workspace_created", "workspace_id", sa.text("created_at DESC")),
+        sa.Index("ix_runs_workspace_status", "workspace_id", "status"),
+    )
+
 
 class RunEvent(Base):
     __tablename__ = "run_events"
@@ -49,3 +64,8 @@ class RunEvent(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     run = relationship("Run", back_populates="events")
+
+    __table_args__ = (
+        sa.Index("ix_run_events_run_id", "run_id"),
+        sa.Index("ix_run_events_run_created", "run_id", "created_at"),
+    )
