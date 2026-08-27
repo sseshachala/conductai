@@ -150,3 +150,69 @@ cases:
       file_path: game.py
       content: "player_score = calculate(match_outcome)"
     expected: allow
+
+  # ── negative canaries (#1272 batch 5 — see docs/guard-fp-strategy.md) ──
+  # [E] prose docs describing the regulation without triggering the regex.
+  - rule_id: eu-ai-no-emotion-recognition
+    scenario: "[E] EU AI Act reference prose"
+    tool_name: write
+    tool_input:
+      file_path: docs/eu-ai.md
+      content: "The EU AI Act restricts emotion recognition systems in high-risk workplace contexts."
+    expected: allow
+  - rule_id: eu-ai-no-biometric-categorization
+    scenario: "[E] Article 5 reference prose"
+    tool_name: write
+    tool_input:
+      file_path: docs/eu-ai.md
+      content: "Biometric categorization based on protected characteristics is prohibited under Article 5."
+    expected: allow
+  - rule_id: eu-ai-no-mass-surveillance
+    scenario: "[E] law enforcement carve-out reference"
+    tool_name: write
+    tool_input:
+      file_path: docs/eu-ai.md
+      content: "Public-space biometric identification is heavily restricted by law enforcement carve-outs."
+    expected: allow
+  - rule_id: eu-ai-human-oversight-required
+    scenario: "[E] Article 14 reference"
+    tool_name: write
+    tool_input:
+      file_path: docs/eu-ai.md
+      content: "High-risk AI systems require meaningful human oversight documented under Article 14."
+    expected: allow
+  - rule_id: eu-ai-transparency-disclosure
+    scenario: "[E] disclosure requirement prose"
+    tool_name: write
+    tool_input:
+      file_path: docs/eu-ai.md
+      content: "Providers must disclose that content interacts with an AI system when interaction begins."
+    expected: allow
+  - rule_id: eu-ai-pii-training-block
+    scenario: "[E] training-data minimisation prose"
+    tool_name: write
+    tool_input:
+      file_path: docs/eu-ai.md
+      content: "Training-data minimisation is required for personal data used in model development."
+    expected: allow
+  - rule_id: eu-ai-gpai-high-risk-use
+    scenario: "[E] downstream deployer prose"
+    tool_name: write
+    tool_input:
+      file_path: docs/eu-ai.md
+      content: "General-purpose AI providers document intended-use restrictions for downstream deployers."
+    expected: allow
+  - rule_id: eu-ai-audit-log-required
+    scenario: "[E] Annex IV reference"
+    tool_name: write
+    tool_input:
+      file_path: docs/eu-ai.md
+      content: "Logging requirements for high-risk systems are set out in Annex IV of the regulation."
+    expected: allow
+  - rule_id: eu-ai-no-manipulation
+    scenario: "[E] deceptive-design prohibition prose"
+    tool_name: write
+    tool_input:
+      file_path: docs/eu-ai.md
+      content: "Deceptive design that materially distorts behaviour to their detriment is prohibited."
+    expected: allow
