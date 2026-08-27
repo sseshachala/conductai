@@ -153,6 +153,7 @@ async def guarded_llm_call(
     ai_tool: str = "lens",
     prompt_summary: str = "lens",
     user_email: str | None = None,
+    clerk_user_id: str = "system:lens",
     upstream_api_key: str | None = None,
     vendor_key: str | None = None,
     extra_headers: dict | None = None,
@@ -176,7 +177,7 @@ async def guarded_llm_call(
 
     resp = await guarded_completion(
         workspace_id=workspace_id,
-        clerk_user_id="",
+        clerk_user_id=clerk_user_id,
         ai_tool=ai_tool,
         provider=provider,
         model=model,
@@ -235,3 +236,128 @@ class GuardedLLMBlocked(Exception):
         self.status = status
         self.detail = detail
         self.payload = payload
+
+
+
+def guarded_llm_stream(
+    *,
+    workspace_id: str,
+    provider: str,
+    model: str,
+    upstream_url: str,
+    api_key: str,
+    messages: list[dict],
+    system: str,
+    max_tokens: int,
+    on_token,
+    ai_tool: str = "lens",
+    clerk_user_id: str = "system:lens",
+    db=None,
+) -> str:
+    """Streaming, in-process sibling of `guarded_llm_call` for OpenAI-shape SSE.
+
+    Extracted from GLens `_stream_synthesis` in #1254 so any in-process caller
+    (Lens Phase 2, future agents) can drive a guard-enforced streaming
+    completion without reinventing the policy/audit dance.
+
+    ponytail: uses evaluate_composed (matches the current _stream_synthesis
+    behavior). `guarded_llm_call` wraps `guarded_completion`, which still uses
+    the older single-source `_policy.evaluate`. Unify when guarded_completion
+    is promoted to the composed engine.
+
+    Returns the accumulated full_text; raises on BLOCK.
+    """
+    import json as _json
+    import time as _time
+
+    import httpx as _httpx
+
+    from app.guard.audit import record as _record_audit
+    from app.guard.policy import evaluate_composed as _eval_composed
+    from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext as _PolicyContext
+
+    oai_messages = [{"role": "system", "content": system}, *messages]
+    payload: dict = {
+        "model": model,
+        "messages": oai_messages,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    t_start = _time.monotonic()
+    ctx = _PolicyContext(
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id,
+        agent_identity_id=None,
+        provider=provider,
+        model=model,
+        body=payload,
+        input_tokens=0,
+        db=db,
+    )
+    decision = _eval_composed(ctx)
+
+    if decision.action == _PolicyAction.BLOCK:
+        try:
+            _record_audit(
+                workspace_id, clerk_user_id, ai_tool, provider, model,
+                "blocked", decision.rule_id, 0,
+                body=payload, response_bytes=None,
+                prompt_summary=f"{ai_tool}.stream",
+                evaluated_rules=decision.matched_rules,
+                defense_score=decision.defense_score,
+            )
+        except Exception:
+            pass
+        raise Exception(
+            f"Guard blocked {ai_tool} call: {decision.reason or decision.rule_id}"
+        )
+
+    resp_bytes = bytearray()
+    full_text = ""
+    with _httpx.stream(
+        "POST",
+        f"{upstream_url}/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=60,
+    ) as r:
+        if r.status_code >= 400:
+            body = r.read().decode()[:500]
+            raise Exception(f"Upstream stream {r.status_code}: {body}")
+        for line in r.iter_lines():
+            line_bytes = line.encode() if isinstance(line, str) else line
+            resp_bytes.extend(line_bytes)
+            resp_bytes.extend(b"\n")
+            if not line or line == "data: [DONE]":
+                continue
+            if line.startswith("data: "):
+                try:
+                    chunk = _json.loads(line[6:])
+                    token = ((chunk.get("choices") or [{}])[0]).get("delta", {}).get("content") or ""
+                    if token:
+                        full_text += token
+                        on_token(token)
+                except Exception:
+                    pass
+
+    total_ms = int((_time.monotonic() - t_start) * 1000)
+
+    try:
+        _record_audit(
+            workspace_id, clerk_user_id, ai_tool, provider, model,
+            "warned" if decision.action == _PolicyAction.WARN else "allowed",
+            decision.rule_id if decision.action == _PolicyAction.WARN else None,
+            total_ms,
+            body=payload, response_bytes=bytes(resp_bytes),
+            prompt_summary=f"{ai_tool}.stream",
+            evaluated_rules=decision.matched_rules,
+            defense_score=decision.defense_score,
+        )
+    except Exception as e:
+        log.warning("guarded_llm_stream.audit_failed", err=str(e))
+
+    return full_text or ""
