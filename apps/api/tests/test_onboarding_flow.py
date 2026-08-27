@@ -420,7 +420,7 @@ def test_full_onboarding_flow(db):
             dev_client = _client_for(DEV_ID, workspace_id, role="developer", email=DEV_EMAIL)
             resp = dev_client.get(f"/guard/policies{team_id_param}")
             assert resp.status_code == 200, (
-                f"Editor GET /guard/policies expected 200, got {resp.status_code}: {resp.text}"
+                f"Developer GET /guard/policies expected 200, got {resp.status_code}: {resp.text}"
             )
             print(f"[step 4] developer GET /guard/policies → 200 (reads succeed)")
 
@@ -448,7 +448,7 @@ def test_full_onboarding_flow(db):
                 headers={"x-workspace-id": workspace_id},
             )
             assert resp.status_code == 403, (
-                f"Editor adding member should be blocked (403), got {resp.status_code}: {resp.text}"
+                f"Developer adding member should be blocked (403), got {resp.status_code}: {resp.text}"
             )
             print(f"[step 4] developer POST /projects/.../members → 403 (correctly blocked)")
 

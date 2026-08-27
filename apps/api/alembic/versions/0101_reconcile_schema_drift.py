@@ -283,13 +283,17 @@ def upgrade() -> None:
     )
 
     # ── 10. Set NOT NULL on users.workspace_id ────────────────────────────────
+    # Requires all existing users rows to already have a workspace_id value.
+    # On a fresh CI database (created by running all migrations) this is safe.
     op.alter_column("users", "workspace_id", existing_nullable=True, nullable=False)
 
 
 def downgrade() -> None:
     # Reverse of upgrade — recreate columns/indexes/constraints that were dropped.
-    # This is provided for completeness; rolling back this migration on a
-    # production system requires careful data handling.
+    # NOTE: The 18 orphan tables dropped in upgrade() are NOT recreated here
+    # because their original DDL lives in earlier migrations and they contain no
+    # application data worth preserving.  Rolling back this migration on a live
+    # database requires replaying migrations 0001–0100 from scratch.
     op.alter_column("users", "workspace_id", existing_nullable=False, nullable=True)
 
     op.drop_constraint("fk_runs_workspace_id", "runs", type_="foreignkey")
