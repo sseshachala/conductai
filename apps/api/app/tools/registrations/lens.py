@@ -296,6 +296,235 @@ _TOOLS: list[ToolDef] = [
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),
+    # ── Approvals (#1287) ─────────────────────────────────────────────────
+    ToolDef(
+        name="list_pending_approvals",
+        description="HITL approval queue. status = pending (default) | approved | rejected | timed_out | all.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "enum": ["pending", "approved", "rejected", "timed_out", "all"]},
+                "limit": _LIMIT,
+            },
+            "required": [],
+        },
+        impl=_impl("list_pending_approvals"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_approval",
+        description="One approval request with full tool_input payload.",
+        input_schema={
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "Approval UUID"}},
+            "required": ["id"],
+        },
+        impl=_impl("get_approval"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    # ── Packs (#1288) ─────────────────────────────────────────────────────
+    ToolDef(
+        name="list_installed_packs",
+        description="List installed skill packs for this workspace's org.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        impl=_impl("list_installed_packs"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="browse_marketplace",
+        description="Available skill packs in the catalog (latest version per slug). Optional query for substring match on slug/name/description.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Substring search"},
+                "limit": _LIMIT,
+            },
+            "required": [],
+        },
+        impl=_impl("browse_marketplace"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_pack_details",
+        description="One skill pack's latest version with the full rule list.",
+        input_schema={
+            "type": "object",
+            "properties": {"slug": {"type": "string", "description": "Pack slug"}},
+            "required": ["slug"],
+        },
+        impl=_impl("get_pack_details"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    # ── Integrations (#1289) ──────────────────────────────────────────────
+    ToolDef(
+        name="list_integrations",
+        description="All integrations (Slack, GitHub, Okta, Vercel, ...) configured for this workspace.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        impl=_impl("list_integrations"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_integration_status",
+        description="One integration by service. Returns configured=false if none.",
+        input_schema={
+            "type": "object",
+            "properties": {"service": {"type": "string", "description": "e.g. github, slack, okta, vercel"}},
+            "required": ["service"],
+        },
+        impl=_impl("get_integration_status"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    # ── Team members (#1290) ──────────────────────────────────────────────
+    ToolDef(
+        name="list_members",
+        description="Workspace members with role. Optional role filter (admin/developer/security/viewer).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "role": {"type": "string", "enum": ["admin", "developer", "security", "viewer"]},
+                "limit": _LIMIT,
+            },
+            "required": [],
+        },
+        impl=_impl("list_members"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_member",
+        description="One workspace member's role + join info by Clerk user id.",
+        input_schema={
+            "type": "object",
+            "properties": {"clerk_user_id": {"type": "string"}},
+            "required": ["clerk_user_id"],
+        },
+        impl=_impl("get_member"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    # ── Platform audit log (#1291) ────────────────────────────────────────
+    ToolDef(
+        name="get_audit_events",
+        description=(
+            "Platform audit events (invites, role changes, credential edits, run triggers). "
+            "Separate from Guard events — this is org-wide platform activity."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "actor_email": {"type": "string"},
+                "action": {"type": "string", "description": "e.g. run.triggered, invite.sent"},
+                "resource_type": {"type": "string"},
+                "since": _TS_SINCE, "until": _TS_UNTIL,
+                "limit": _LIMIT,
+            },
+            "required": [],
+        },
+        impl=_impl("get_audit_events"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="search_audit_log",
+        description="Substring search across audit action, actor_email, resource_type, resource_id.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "q": {"type": "string", "description": "Search query"},
+                "limit": _LIMIT,
+            },
+            "required": ["q"],
+        },
+        impl=_impl("search_audit_log"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    # ── Projects (#1292) ──────────────────────────────────────────────────
+    ToolDef(
+        name="list_projects",
+        description="Projects in this workspace.",
+        input_schema={
+            "type": "object",
+            "properties": {"limit": _LIMIT},
+            "required": [],
+        },
+        impl=_impl("list_projects"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_project",
+        description="One project by UUID or slug.",
+        input_schema={
+            "type": "object",
+            "properties": {"id_or_slug": {"type": "string"}},
+            "required": ["id_or_slug"],
+        },
+        impl=_impl("get_project"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    # ── Observability alerts (#1293) ──────────────────────────────────────
+    ToolDef(
+        name="list_alerts",
+        description=(
+            "Watchdog alerts (stale worker, credential expiry, silent playbook, "
+            "repeated failures). Excludes resolved unless include_resolved=true."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "severity": {"type": "string", "enum": ["info", "warning", "error"]},
+                "event_type": {"type": "string"},
+                "include_resolved": {"type": "boolean"},
+                "since": _TS_SINCE,
+                "limit": _LIMIT,
+            },
+            "required": [],
+        },
+        impl=_impl("list_alerts"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_alert",
+        description="One watchdog alert with full payload.",
+        input_schema={
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "Alert UUID"}},
+            "required": ["id"],
+        },
+        impl=_impl("get_alert"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    # ── Run logs (#1294) ──────────────────────────────────────────────────
+    ToolDef(
+        name="list_run_events",
+        description=(
+            "Events emitted during one workflow run — block_started/completed/failed, "
+            "approval_requested, etc. Use when the user asks 'what happened during run X'."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": "Run UUID"},
+                "kind": {"type": "string", "description": "Filter to one event kind"},
+                "limit": _LIMIT,
+            },
+            "required": ["run_id"],
+        },
+        impl=_impl("list_run_events"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
     ToolDef(
         name="get_blocked_workflows",
         description=(

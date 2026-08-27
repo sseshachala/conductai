@@ -144,6 +144,177 @@ TOOLS = [
         },
     },
     {
+        "name": "list_pending_approvals",
+        "description": "HITL approval queue. Use for 'what needs my approval', 'pending requests'. status defaults to 'pending'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "enum": ["pending", "approved", "rejected", "timed_out", "all"]},
+                "limit": {"type": "integer", "default": 20},
+            },
+        },
+    },
+    {
+        "name": "get_approval",
+        "description": "One approval request by id with the full tool_input payload.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "Approval UUID"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "list_installed_packs",
+        "description": "Installed skill packs for this workspace. Use for 'what packs are installed', 'do we have SOC2 pack'.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "browse_marketplace",
+        "description": "Available skill packs in the marketplace. Substring search on slug/name/description. Use for 'what packs are available', 'find a pack for HIPAA'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Substring search"},
+                "limit": {"type": "integer", "default": 20},
+            },
+        },
+    },
+    {
+        "name": "get_pack_details",
+        "description": "One skill pack's rules and metadata.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"slug": {"type": "string"}},
+            "required": ["slug"],
+        },
+    },
+    {
+        "name": "list_integrations",
+        "description": "Configured integrations (Slack, GitHub, Okta, ...). Use for 'what integrations are set up'.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_integration_status",
+        "description": "Status of one integration by service name. Use for 'is Slack connected', 'when did GitHub last sync'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"service": {"type": "string", "description": "e.g. github, slack, okta, vercel"}},
+            "required": ["service"],
+        },
+    },
+    {
+        "name": "list_members",
+        "description": "Workspace members with role. Optional role filter. Use for 'who is on the team', 'who are the admins'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "role": {"type": "string", "enum": ["admin", "developer", "security", "viewer"]},
+                "limit": {"type": "integer", "default": 50},
+            },
+        },
+    },
+    {
+        "name": "get_member",
+        "description": "One workspace member's role + join info.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"clerk_user_id": {"type": "string"}},
+            "required": ["clerk_user_id"],
+        },
+    },
+    {
+        "name": "get_audit_events",
+        "description": (
+            "Platform audit log — invites, role changes, credential edits, run triggers. "
+            "Separate from Guard events; this is org-wide platform activity. Filter by "
+            "actor_email/action/resource_type/time range."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "actor_email": {"type": "string"},
+                "action": {"type": "string", "description": "e.g. run.triggered, invite.sent, role.changed"},
+                "resource_type": {"type": "string"},
+                "since": {"type": "string", "description": "ISO date start"},
+                "until": {"type": "string", "description": "ISO date end"},
+                "limit": {"type": "integer", "default": 25},
+            },
+        },
+    },
+    {
+        "name": "search_audit_log",
+        "description": "Substring search across audit action, actor_email, resource_type, resource_id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "q": {"type": "string"},
+                "limit": {"type": "integer", "default": 25},
+            },
+            "required": ["q"],
+        },
+    },
+    {
+        "name": "list_projects",
+        "description": "Projects in this workspace. Use for 'what projects do we have'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "default": 50}},
+        },
+    },
+    {
+        "name": "get_project",
+        "description": "One project by UUID or slug.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id_or_slug": {"type": "string"}},
+            "required": ["id_or_slug"],
+        },
+    },
+    {
+        "name": "list_alerts",
+        "description": (
+            "Watchdog alerts — stale worker, credential expiry, silent playbook, "
+            "repeated failures. Use for 'what alerts are firing', 'unresolved warnings'. "
+            "Excludes resolved unless include_resolved=true."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "severity": {"type": "string", "enum": ["info", "warning", "error"]},
+                "event_type": {"type": "string"},
+                "include_resolved": {"type": "boolean"},
+                "since": {"type": "string", "description": "ISO date start"},
+                "limit": {"type": "integer", "default": 25},
+            },
+        },
+    },
+    {
+        "name": "get_alert",
+        "description": "One watchdog alert by id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "Alert UUID"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "list_run_events",
+        "description": (
+            "Events emitted during one workflow run. Use when the user asks "
+            "'what happened during run X', 'which blocks failed in this run', "
+            "'walk me through this run'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": "Run UUID"},
+                "kind": {"type": "string", "description": "Filter to one event kind"},
+                "limit": {"type": "integer", "default": 100},
+            },
+            "required": ["run_id"],
+        },
+    },
+    {
         "name": "get_blocked_workflows",
         "description": (
             "Workflows Guard has blocked, ranked by block count. Use for 'which workflow triggered a block', "
@@ -258,6 +429,37 @@ def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
             page = "/theguard/discovery"
         elif name in ("get_compliance_status", "get_framework_coverage"):
             page = "/theguard/compliance"
+        elif name in ("list_pending_approvals", "get_approval"):
+            page = "/theguard/approvals"
+            if args.get("status") and args["status"] != "all":
+                filters["status"] = args["status"]
+        elif name in ("list_installed_packs", "browse_marketplace", "get_pack_details"):
+            slug = args.get("slug")
+            page = f"/packs/{slug}" if slug else "/packs"
+        elif name in ("list_integrations", "get_integration_status"):
+            page = "/integrations"
+        elif name in ("list_members", "get_member"):
+            page = "/theguard/team"
+            if args.get("role"):
+                filters["role"] = args["role"]
+        elif name in ("get_audit_events", "search_audit_log"):
+            page = "/audit"
+            if args.get("actor_email"):   filters["actor"] = args["actor_email"]
+            if args.get("action"):        filters["action"] = args["action"]
+            if args.get("resource_type"): filters["resource_type"] = args["resource_type"]
+            if args.get("since"):         filters["since"] = args["since"]
+            if args.get("until"):         filters["until"] = args["until"]
+        elif name == "list_projects":
+            page = "/projects"
+        elif name == "get_project":
+            page = f"/projects/{args.get('id_or_slug')}" if args.get("id_or_slug") else "/projects"
+        elif name in ("list_alerts", "get_alert"):
+            page = "/observability/alerts"
+            if args.get("severity"):   filters["severity"] = args["severity"]
+            if args.get("event_type"): filters["event_type"] = args["event_type"]
+        elif name == "list_run_events":
+            rid = args.get("run_id")
+            page = f"/runs/{rid}" if rid else "/runs"
 
     if not filters and page == "/logs/guard":
         return None
