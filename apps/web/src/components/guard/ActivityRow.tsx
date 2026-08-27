@@ -316,9 +316,20 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
     >
       <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }} title={formatTs(ev.ts)}>{timeAgo(ev.ts)}</div>
       <div style={{ minWidth: 0, overflow: "hidden" }}>
-        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}
           title={ev.user_email ?? undefined}>
-          {ev.user_email ? ev.user_email.split("@")[0] : ev.conductai_workflow ?? "—"}
+          <span className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {ev.user_email ? ev.user_email.split("@")[0] : ev.conductai_workflow ?? "—"}
+          </span>
+          <span style={{
+            fontSize: 9, fontWeight: 700, letterSpacing: ".04em",
+            padding: "1px 4px", borderRadius: 3,
+            background: ev.user_email ? "var(--surface-2)" : "#e0e7ff",
+            color: ev.user_email ? "var(--text-muted)" : "#3730a3",
+            whiteSpace: "nowrap",
+          }}>
+            {ev.user_email ? "HUMAN" : "AGENT"}
+          </span>
         </div>
         {(ev.hook_session_id || ev.session_id) && (
           <div className="mono" style={{ fontSize: 9.5, color: "var(--text-muted)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
@@ -498,7 +509,7 @@ export function ActivityHeader({ compact = false }: { compact?: boolean }) {
       color: "var(--text-muted)",
     }}>
       <div>Time</div>
-      <div>Developer</div>
+      <div>Agent identity</div>
       {!compact && <div>Tool</div>}
       <div>Action</div>
       <div>Input</div>

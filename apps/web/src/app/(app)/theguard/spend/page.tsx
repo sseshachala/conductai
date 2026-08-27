@@ -813,7 +813,7 @@ function SpendContent() {
                 {savings.by_member.length > 0 && (
                   <>
                     <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 1fr 1fr 1fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                      {["Developer", "RTK tokens", "Booster tokens", "Combined tokens", "Total saved"].map((h, i) => (
+                      {["Agent identity", "RTK tokens", "Booster tokens", "Combined tokens", "Total saved"].map((h, i) => (
                         <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
                       ))}
                     </div>
@@ -845,7 +845,7 @@ function SpendContent() {
         </div>
         {/* Header row */}
         <div style={{ display: "grid", gridTemplateColumns: "1.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1.4fr 1.3fr", gap: 14, padding: "10px 20px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-          {["Developer", "Sessions", "Tokens", "Est. cost", "Saved", "Coverage", "Budget"].map((h, i) => (
+          {["Agent identity", "Sessions", "Tokens", "Est. cost", "Saved", "Coverage", "Budget"].map((h, i) => (
             <div key={i} className="eyebrow" style={{ fontSize: 10 }}>{h}</div>
           ))}
         </div>
