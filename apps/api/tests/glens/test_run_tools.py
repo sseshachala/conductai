@@ -56,14 +56,15 @@ def ws_and_executor():
 def _seed_workflow_with_version(db, workspace_id: str, name: str):
     from app.models.workflow import Workflow, WorkflowVersion
     wf = Workflow(
-        id=uuid.uuid4(), workspace_id=uuid.UUID(workspace_id), name=name,
+        workspace_id=uuid.UUID(workspace_id), name=name,
         default_mode="dag", guard_enabled=True, agent_identity_required=True,
         created_at=_now(), updated_at=_now(),
     )
     db.add(wf)
     db.flush()
-    ver = WorkflowVersion(id=uuid.uuid4(), workflow_id=wf.id, graph={"nodes": [], "edges": []}, created_at=_now())
+    ver = WorkflowVersion(workflow_id=wf.id, graph={"nodes": [], "edges": []}, created_at=_now())
     db.add(ver)
+    db.flush()
     db.commit()
     return wf, ver
 
@@ -71,17 +72,17 @@ def _seed_workflow_with_version(db, workspace_id: str, name: str):
 def _seed_run(db, workspace_id: str, ver_id, status="succeeded", when=None):
     from app.models.run import Run
     r = Run(
-        id=uuid.uuid4(),
         workflow_version_id=ver_id,
         workspace_id=uuid.UUID(workspace_id),
         triggered_by="test",
         status=status,
         started_at=when or _now(),
-        completed_at=when or _now() if status in ("succeeded", "failed", "cancelled") else None,
+        completed_at=(when or _now()) if status in ("succeeded", "failed", "cancelled") else None,
         actual_turns=3,
         state={},
     )
     db.add(r)
+    db.flush()
     db.commit()
     return r
 
