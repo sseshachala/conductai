@@ -238,9 +238,20 @@ async def guarded_llm_call(
         raw_body = resp.body if isinstance(resp.body, (bytes, bytearray)) else b""
         if resp.status_code >= 400:
             payload = _safe_loads(raw_body)
+            # fail_closed emits {"error": {"type": "conduct_guard_proxy",
+            # "message": "Blocked by Guard rule <id>: ..."}}; also handle
+            # OpenAI-shaped {"error": {"message": ...}} and flat variants.
+            _err = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+            detail = (
+                payload.get("detail")
+                or payload.get("message")
+                or _err.get("message")
+                or _err.get("type")
+                or "policy violation"
+            )
             raise GuardedLLMBlocked(
                 status=resp.status_code,
-                detail=payload.get("detail") or payload.get("message") or "policy violation",
+                detail=detail,
                 payload=payload,
             )
         return _safe_loads(raw_body)
