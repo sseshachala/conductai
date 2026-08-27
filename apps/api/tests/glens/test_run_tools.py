@@ -39,33 +39,58 @@ def ws_and_executor():
         yield db, str(ws_id), Executor(db, str(ws_id))
     finally:
         db.close()
+        # Raw SQL cleanup — avoids re-importing app.models.run / workflow at
+        # teardown time. test_token_paths.py leaks a MagicMock into
+        # sys.modules["app.models.run"], and re-importing here would pick it
+        # up and fail on `db2.query(Run)` coercion.
+        from sqlalchemy import text as sa_text
         with SessionLocal() as db2:
-            from app.models.run import Run
-            from app.models.workflow import Workflow, WorkflowVersion
-            db2.query(Run).filter(Run.workspace_id == ws_id).delete()
-            wf_ids = [wf.id for wf in db2.query(Workflow).filter(Workflow.workspace_id == ws_id).all()]
-            if wf_ids:
-                db2.query(WorkflowVersion).filter(WorkflowVersion.workflow_id.in_(wf_ids)).delete(synchronize_session=False)
-                db2.query(Workflow).filter(Workflow.workspace_id == ws_id).delete()
-            ws = db2.get(Workspace, ws_id)
-            if ws is not None:
-                db2.delete(ws)
+            db2.execute(sa_text("DELETE FROM runs WHERE workspace_id = :ws"), {"ws": ws_id})
+            db2.execute(sa_text(
+                "DELETE FROM workflow_versions "
+                "WHERE workflow_id IN (SELECT id FROM workflows WHERE workspace_id = :ws)"
+            ), {"ws": ws_id})
+            db2.execute(sa_text("DELETE FROM workflows WHERE workspace_id = :ws"), {"ws": ws_id})
+            db2.execute(sa_text("DELETE FROM workspaces WHERE id = :ws"), {"ws": ws_id})
             db2.commit()
 
 
 def _seed_workflow_with_version(db, workspace_id: str, name: str):
-    from app.models.workflow import Workflow, WorkflowVersion
-    wf = Workflow(
-        workspace_id=uuid.UUID(workspace_id), name=name,
-        default_mode="dag", guard_enabled=True, agent_identity_required=True,
-        created_at=_now(), updated_at=_now(),
+    """Raw INSERT — see _seed_run comment. test_token_paths.py leaks
+    MagicMocks into sys.modules for app.models.workflow / app.models.run,
+    so fresh imports here would fail on ORM coercion."""
+    from sqlalchemy import text as sa_text
+    wf_id = uuid.uuid4()
+    ver_id = uuid.uuid4()
+    now_ts = _now()
+    db.execute(
+        sa_text(
+            "INSERT INTO workflows "
+            "(id, workspace_id, name, default_mode, guard_enabled, "
+            " agent_identity_required, created_at, updated_at, is_template) "
+            "VALUES (:id, :ws, :nm, 'dag', TRUE, TRUE, :now, :now, FALSE)"
+        ),
+        {"id": wf_id, "ws": uuid.UUID(workspace_id), "nm": name, "now": now_ts},
     )
-    db.add(wf)
-    db.flush()
-    ver = WorkflowVersion(workflow_id=wf.id, graph={"nodes": [], "edges": []}, created_at=_now())
-    db.add(ver)
-    db.flush()
+    db.execute(
+        sa_text(
+            "INSERT INTO workflow_versions "
+            "(id, workflow_id, graph, created_at) "
+            "VALUES (:id, :wid, CAST(:graph AS jsonb), :now)"
+        ),
+        {"id": ver_id, "wid": wf_id, "graph": '{"nodes": [], "edges": []}', "now": now_ts},
+    )
     db.commit()
+
+    class _WF:
+        pass
+    class _V:
+        pass
+    wf = _WF()
+    wf.id = wf_id
+    wf.name = name
+    ver = _V()
+    ver.id = ver_id
     return wf, ver
 
 
