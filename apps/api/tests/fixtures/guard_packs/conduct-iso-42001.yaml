@@ -105,3 +105,60 @@ cases:
   tool_input:
     command: "pytest tests/ -k bias"
   expected: allow
+
+# ── negative canaries (#1272 batch 5 — see docs/guard-fp-strategy.md) ────
+- rule_id: iso42001-data-quality
+  scenario: "[E] data quality controls prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/iso.md
+    content: "Data quality controls include validation, labelling review, and drift monitoring."
+  expected: allow
+- rule_id: iso42001-responsible-use
+  scenario: "[E] system card guidance prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/iso.md
+    content: "Model providers document responsible-use guidance in the system card."
+  expected: allow
+- rule_id: iso42001-human-oversight
+  scenario: "[E] reviewer-approval workflow prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/iso.md
+    content: "Human reviewers approve consequential outputs before they leave the workflow."
+  expected: allow
+- rule_id: iso42001-impact-assessment
+  scenario: "[E] benign ls listing"
+  tool_name: bash
+  tool_input:
+    command: "ls -la"
+  expected: allow
+- rule_id: iso42001-access-control
+  scenario: "[E] least-privilege boundaries prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/iso.md
+    content: "Access controls follow least-privilege principles across all service boundaries."
+  expected: allow
+- rule_id: iso42001-supplier-ai-control
+  scenario: "[E] vendor risk assessment prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/iso.md
+    content: "Suppliers are vetted through the vendor risk assessment process before onboarding."
+  expected: allow
+- rule_id: iso42001-monitoring-required
+  scenario: "[E] inference monitoring prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/iso.md
+    content: "Monitoring is enabled for all inference workloads with alerting thresholds."
+  expected: allow
+- rule_id: iso42001-incident-capture
+  scenario: "[E] runbook incident capture prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/iso.md
+    content: "Incident capture follows the runbook template and includes post-mortem review."
+  expected: allow

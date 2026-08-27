@@ -119,3 +119,59 @@ cases:
     file_path: docs/providers.md
     content: "We evaluated third-party AI providers including perplexity.ai and groq.com; see the vendor assessment for the shortlist."
   expected: allow
+
+# ── negative canaries (#1272 batch 5 — see docs/guard-fp-strategy.md) ────
+- rule_id: nist-govern-policy-bypass
+  scenario: "[E] governance-in-pipeline prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/nist.md
+    content: "Governance controls are embedded into the deployment pipeline rather than added later."
+  expected: allow
+- rule_id: nist-govern-least-privilege
+  scenario: "[E] benign log listing"
+  tool_name: bash
+  tool_input:
+    command: "ls -la /var/log"
+  expected: allow
+- rule_id: nist-govern-human-oversight
+  scenario: "[E] consequential-decision review prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/nist.md
+    content: "Consequential decisions require human review before the model's recommendation is acted on."
+  expected: allow
+- rule_id: nist-map-high-risk-domain
+  scenario: "[E] MAP function prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/nist.md
+    content: "High-consequence domains follow additional pre-launch review under the MAP function."
+  expected: allow
+- rule_id: nist-map-unverified-data-source
+  scenario: "[E] data provenance prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/nist.md
+    content: "Data provenance is captured during ingestion and included in the model card."
+  expected: allow
+- rule_id: nist-measure-error-swallow
+  scenario: "[E] error-handling guidance"
+  tool_name: write
+  tool_input:
+    file_path: docs/nist.md
+    content: "Error handling should log the exception and surface a structured failure code."
+  expected: allow
+- rule_id: nist-manage-data-retention
+  scenario: "[E] retention documentation prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/nist.md
+    content: "Retention periods are documented per data category and reviewed annually."
+  expected: allow
+- rule_id: nist-govern-accountability
+  scenario: "[E] benign kubectl get"
+  tool_name: bash
+  tool_input:
+    command: "kubectl get pods"
+  expected: allow

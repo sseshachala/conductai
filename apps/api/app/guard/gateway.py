@@ -87,6 +87,7 @@ async def guarded_completion(
     conductai_workflow: str | None = None,
     conductai_workflow_id: str | None = None,
     hook_session_id: str | None = None,
+    agent_identity_id: str | None = None,
 ) -> StreamingResponse | JSONResponse:
     """Evaluate policy, dispatch to upstream if allowed, schedule audit.
 
@@ -104,7 +105,7 @@ async def guarded_completion(
     _ctx = _PolicyContext(
         workspace_id=workspace_id,
         clerk_user_id=clerk_user_id or None,
-        agent_identity_id=None,
+        agent_identity_id=agent_identity_id,
         provider=provider,
         model=model,
         body=body,
@@ -186,6 +187,7 @@ async def guarded_llm_call(
     upstream_api_key: str | None = None,
     vendor_key: str | None = None,
     extra_headers: dict | None = None,
+    agent_identity_id: str | None = None,
 ) -> dict:
     """In-process, non-streaming Lens sibling of `guarded_completion`.
 
@@ -223,6 +225,7 @@ async def guarded_llm_call(
         upstream_api_key=upstream_api_key,
         vendor_key=vendor_key,
         extra_headers=extra_headers,
+        agent_identity_id=agent_identity_id,
     )
 
     # Drive the scheduled audit writes now — no request lifecycle to run them for us.
@@ -282,6 +285,7 @@ def guarded_llm_stream(
     ai_tool: str = "lens",
     clerk_user_id: str = "system:lens",
     db=None,
+    agent_identity_id: str | None = None,
 ) -> str:
     """Streaming, in-process sibling of `guarded_llm_call` for OpenAI-shape SSE.
 
@@ -317,7 +321,7 @@ def guarded_llm_stream(
     ctx = _PolicyContext(
         workspace_id=workspace_id,
         clerk_user_id=clerk_user_id,
-        agent_identity_id=None,
+        agent_identity_id=agent_identity_id,
         provider=provider,
         model=model,
         body=payload,

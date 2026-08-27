@@ -66,3 +66,47 @@ cases:
     file_path: audit.py
     content: "logger.info('processing request ' + str(request.id))"
   expected: allow
+
+# ── negative canaries (#1272 batch 5 — see docs/guard-fp-strategy.md) ────
+- rule_id: irs1075-no-tax-return-data
+  scenario: "[E] IRS Pub 1075 reference prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/irs.md
+    content: "IRS Publication 1075 sets requirements for safeguarding federal information."
+  expected: allow
+- rule_id: irs1075-no-fti-external-endpoint
+  scenario: "[E] accreditation boundary prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/irs.md
+    content: "Federal information must not leave the accreditation boundary without controls."
+  expected: allow
+- rule_id: irs1075-no-fti-training-data
+  scenario: "[E] synthetic training data prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/irs.md
+    content: "Model training uses synthetic data with statistical properties matched to the population."
+  expected: allow
+- rule_id: irs1075-no-fti-unencrypted-write
+  scenario: "[E] encryption-at-rest prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/irs.md
+    content: "Storage requirements mandate encryption at rest across all backing services."
+  expected: allow
+- rule_id: irs1075-third-party-fti-processor
+  scenario: "[E] interconnection agreement prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/irs.md
+    content: "Third-party processors sign the interconnection agreement before receiving data."
+  expected: allow
+- rule_id: irs1075-fti-purpose-limitation
+  scenario: "[E] system security plan prose"
+  tool_name: write
+  tool_input:
+    file_path: docs/irs.md
+    content: "Purpose limitation is documented in the system security plan for each data use."
+  expected: allow

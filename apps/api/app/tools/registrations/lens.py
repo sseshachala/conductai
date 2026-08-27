@@ -297,6 +297,109 @@ _TOOLS: list[ToolDef] = [
         tags=_LENS_TAGS,
     ),
     ToolDef(
+        name="list_agent_identities",
+        description=(
+            "List agent identities in this workspace. status = active (default) | "
+            "deactivated | pending_review | expired | all. Returns id, name, "
+            "token_prefix, lifecycle_state, risk_tier, source, created_at, "
+            "deactivated_at, last_used_at, expires_at."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "deactivated", "pending_review", "expired", "all"],
+                },
+                "limit": _LIMIT,
+            },
+            "required": [],
+        },
+        impl=_impl("list_agent_identities"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_agent_identity_count",
+        description=(
+            "Exact COUNT of agent identities matching status. Use for 'how many "
+            "invalidated/active/expired identities' questions."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "deactivated", "pending_review", "expired", "all"],
+                },
+            },
+            "required": [],
+        },
+        impl=_impl("get_agent_identity_count"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_workflow_details",
+        description=(
+            "One workflow's full metadata + latest run status. Match by workflow_id "
+            "OR name. Use when the user asks 'what's the status of workflow X'."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": "string", "description": "Workflow UUID"},
+                "name": {"type": "string", "description": "Workflow name"},
+            },
+            "required": [],
+        },
+        impl=_impl("get_workflow_details"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="list_runs",
+        description=(
+            "Recent workflow runs across this workspace's org. Filters: "
+            "workflow_id, status (pending/running/paused/succeeded/failed/cancelled), "
+            "since/until (ISO ts). Returns run_id, workflow_id, workflow_name, "
+            "status, started_at, completed_at, triggered_by, actual_turns."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": "string", "description": "Filter to one workflow"},
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "running", "paused", "succeeded", "failed", "cancelled"],
+                },
+                "since": _TS_SINCE, "until": _TS_UNTIL,
+                "limit": _LIMIT,
+            },
+            "required": [],
+        },
+        impl=_impl("list_runs"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_run",
+        description=(
+            "One run's status + timings + outcome payload. Use when the user asks "
+            "'what happened in run <id>' or drills into a specific run."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": "Run UUID"},
+            },
+            "required": ["run_id"],
+        },
+        impl=_impl("get_run"),
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
         name="get_blocked_workflows",
         description=(
             "Workflows Guard has blocked, ranked by block count. Returns "

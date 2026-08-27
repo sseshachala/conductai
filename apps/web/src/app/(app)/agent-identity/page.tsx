@@ -70,6 +70,9 @@ interface LensSession {
   is_idle: boolean
   turns: number
   spend_usd: number
+  agent_identity_id: string | null
+  agent_identity_name: string | null
+  agent_identity_token_prefix: string | null
 }
 
 const TIER_STYLE: Record<string, { bg: string; fg: string }> = {
@@ -134,6 +137,14 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const initialTab = (searchParams?.get("tab") as Tab) || "tokens"
   const [activeTab, setActiveTab] = useState<Tab>(TABS.includes(initialTab) ? initialTab : "tokens")
   const sourceFilter = searchParams?.get("source") || null
+  // #1252 — deep-link support: click a Lens session's cond_agt_lens_* → land
+  // on the Identities tab with ?id=<uuid> and highlight+scroll to the row.
+  const highlightId = searchParams?.get("id") || null
+  useEffect(() => {
+    if (activeTab !== "identities" || !highlightId) return
+    const row = document.getElementById(`identity-row-${highlightId}`)
+    if (row) row.scrollIntoView({ behavior: "smooth", block: "center" })
+  }, [activeTab, highlightId])
   const selectTab = (t: Tab, extraQuery: Record<string, string> = {}) => {
     setActiveTab(t)
     const params = new URLSearchParams({ tab: t, ...extraQuery })
@@ -683,6 +694,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                     <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Last activity</th>
                     <th style={{ textAlign: "right", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Turns</th>
                     <th style={{ textAlign: "right", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Spend</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Agent identity</th>
                     <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Status</th>
                     <th style={{ padding: "8px 12px" }}></th>
                   </tr>
@@ -704,6 +716,19 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                         <td style={{ padding: "8px 12px", color: "var(--text-2)" }}>{fmt(s.updated_at)}</td>
                         <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-2)" }}>{s.turns}</td>
                         <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-2)", fontFamily: "monospace" }}>${s.spend_usd.toFixed(4)}</td>
+                        <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11, color: "var(--text-2)" }}>
+                          {s.agent_identity_token_prefix ? (
+                            <button
+                              onClick={() => selectTab("identities", { id: s.agent_identity_id! })}
+                              title={s.agent_identity_name ?? "View agent identity"}
+                              style={{ background: "none", border: "none", padding: 0, color: "var(--accent-text)", fontFamily: "monospace", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+                            >
+                              {s.agent_identity_token_prefix}
+                            </button>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)" }}>—</span>
+                          )}
+                        </td>
                         <td style={{ padding: "8px 12px" }}>
                           <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: statusBg, color: statusColor }}>{status}</span>
                         </td>
@@ -948,8 +973,17 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                     const tier = TIER_STYLE[id.risk_tier ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)" }
                     const lc   = LIFECYCLE_STYLE[id.lifecycle_state ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)", label: id.lifecycle_state ?? "—" }
                     const busy = savingIdentity === id.id
+                    const isHighlighted = highlightId === id.id
                     return (
-                      <tr key={id.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <tr
+                        key={id.id}
+                        id={`identity-row-${id.id}`}
+                        style={{
+                          borderBottom: "1px solid var(--border)",
+                          background: isHighlighted ? "#fef3c7" : undefined,
+                          transition: "background 400ms ease-out",
+                        }}
+                      >
                         <td style={{ padding: "8px 12px" }}>
                           <div style={{ fontWeight: 500, color: "var(--text)" }}>{id.name}</div>
                           <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{id.token_prefix?.startsWith("okta_import") ? "external identity" : id.token_prefix}</div>

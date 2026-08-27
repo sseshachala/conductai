@@ -19,7 +19,9 @@ from app.modules.guard.models import (
 )
 from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
 from app.modules.guard.embedding import embedding_client_for_workspace
-from app.models.workflow import Workflow
+from app.models.workflow import Workflow, WorkflowVersion
+from app.models.run import Run
+from app.modules.agent_identity.models import AgentIdentity
 from sqlalchemy import func as sa_func
 
 log = structlog.get_logger(__name__)
@@ -28,9 +30,12 @@ log = structlog.get_logger(__name__)
 class Executor:
     MIN_SIMILARITY_SCORE = 0.3
 
-    def __init__(self, db: Session, workspace_id: str):
+    def __init__(self, db: Session, workspace_id: str, agent_identity_id: str | None = None):
         self.db = db
         self.workspace_id = workspace_id
+        # Set on chat endpoints so guarded_llm_call/stream can attribute egress
+        # to the session-scoped AgentIdentity. None outside chat (tool registrations).
+        self.agent_identity_id = agent_identity_id
 
     def call(self, name: str, arguments: str) -> str:
         args = json.loads(arguments) if arguments else {}
@@ -835,3 +840,178 @@ class Executor:
             }
             for r in rows
         ]
+
+    # ── Agent identities (#1252) ──────────────────────────────────────────────
+
+    def _tool_list_agent_identities(self, status: str = "active", limit: int = 20):
+        """List agent identities in this workspace.
+
+        status: 'active' (default) | 'deactivated' | 'pending_review' | 'expired' | 'all'.
+        Returns id, name, token_prefix, lifecycle_state, risk_tier, source,
+        created_at, deactivated_at, last_used_at.
+        """
+        ws_uuid = uuid.UUID(self.workspace_id)
+        q = self.db.query(AgentIdentity).filter(AgentIdentity.workspace_id == ws_uuid)
+        status = (status or "active").lower()
+        if status != "all":
+            q = q.filter(AgentIdentity.lifecycle_state == status)
+        rows = q.order_by(AgentIdentity.created_at.desc()).limit(min(limit, 100)).all()
+        return [
+            {
+                "id": r.id,
+                "name": r.name,
+                "token_prefix": r.token_prefix,
+                "lifecycle_state": r.lifecycle_state,
+                "risk_tier": r.risk_tier,
+                "source": r.source,
+                "platform_of_origin": r.platform_of_origin,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "deactivated_at": r.deactivated_at.isoformat() if r.deactivated_at else None,
+                "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
+                "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+            }
+            for r in rows
+        ]
+
+    def _tool_get_agent_identity_count(self, status: str = "active"):
+        """Exact COUNT of agent identities matching lifecycle_state.
+
+        status: 'active' (default) | 'deactivated' | 'pending_review' | 'expired' | 'all'.
+        """
+        ws_uuid = uuid.UUID(self.workspace_id)
+        q = self.db.query(sa_func.count(AgentIdentity.id)).filter(
+            AgentIdentity.workspace_id == ws_uuid
+        )
+        status = (status or "active").lower()
+        if status != "all":
+            q = q.filter(AgentIdentity.lifecycle_state == status)
+        return {"count": int(q.scalar() or 0), "status": status}
+
+    # ── Workflow + runs (#1253) ───────────────────────────────────────────────
+
+    def _tool_get_workflow_details(self, workflow_id: str | None = None, name: str | None = None):
+        """One workflow: full metadata + latest run status. Match by workflow_id OR name."""
+        if not workflow_id and not name:
+            return {"error": "workflow_id or name required"}
+        org_ws = _org_ws_subquery(self.db, self.workspace_id)
+        q = self.db.query(Workflow).filter(Workflow.workspace_id.in_(org_ws))
+        if workflow_id:
+            try:
+                q = q.filter(Workflow.id == uuid.UUID(workflow_id))
+            except ValueError:
+                return {"error": "workflow_id must be a UUID"}
+        else:
+            q = q.filter(Workflow.name == name)
+        wf = q.first()
+        if not wf:
+            return {"error": "Workflow not found"}
+        latest_run = (
+            self.db.query(Run)
+            .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
+            .filter(WorkflowVersion.workflow_id == wf.id)
+            .order_by(Run.created_at.desc())
+            .first()
+        )
+        return {
+            "workflow_id": str(wf.id),
+            "name": wf.name,
+            "default_mode": wf.default_mode,
+            "guard_enabled": bool(wf.guard_enabled),
+            "agent_identity_required": bool(wf.agent_identity_required),
+            "archived": wf.archived_at is not None,
+            "playbook_slug": wf.playbook_slug,
+            "source_repo": wf.source_repo,
+            "created_at": wf.created_at.isoformat() if wf.created_at else None,
+            "updated_at": wf.updated_at.isoformat() if wf.updated_at else None,
+            "latest_run": None if not latest_run else {
+                "run_id": str(latest_run.id),
+                "status": latest_run.status,
+                "started_at": latest_run.started_at.isoformat() if latest_run.started_at else None,
+                "completed_at": latest_run.completed_at.isoformat() if latest_run.completed_at else None,
+                "actual_turns": latest_run.actual_turns,
+                "budget_exhausted": latest_run.budget_exhausted,
+            },
+        }
+
+    def _tool_list_runs(
+        self,
+        workflow_id: str | None = None,
+        status: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int = 20,
+    ):
+        """Recent runs across workflows in this workspace's org.
+
+        Filters: workflow_id, status (pending/running/paused/succeeded/failed/cancelled),
+        since/until (ISO ts). Returns id, workflow_id, workflow_name, status,
+        started_at, completed_at, triggered_by, actual_turns.
+        """
+        org_ws = _org_ws_subquery(self.db, self.workspace_id)
+        q = (
+            self.db.query(Run, Workflow.name.label("workflow_name"), Workflow.id.label("workflow_id"))
+            .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
+            .join(Workflow, WorkflowVersion.workflow_id == Workflow.id)
+            .filter(Run.workspace_id.in_(org_ws))
+        )
+        if workflow_id:
+            try:
+                q = q.filter(Workflow.id == uuid.UUID(workflow_id))
+            except ValueError:
+                return {"error": "workflow_id must be a UUID"}
+        if status:
+            q = q.filter(Run.status == status)
+        if since:
+            q = q.filter(Run.created_at >= since)
+        if until:
+            q = q.filter(Run.created_at <= until)
+        rows = q.order_by(Run.created_at.desc()).limit(min(limit, 100)).all()
+        return [
+            {
+                "run_id": str(r.Run.id),
+                "workflow_id": str(r.workflow_id),
+                "workflow_name": r.workflow_name,
+                "status": r.Run.status,
+                "triggered_by": r.Run.triggered_by,
+                "started_at": r.Run.started_at.isoformat() if r.Run.started_at else None,
+                "completed_at": r.Run.completed_at.isoformat() if r.Run.completed_at else None,
+                "actual_turns": r.Run.actual_turns,
+                "budget_exhausted": r.Run.budget_exhausted,
+            }
+            for r in rows
+        ]
+
+    def _tool_get_run(self, run_id: str):
+        """One run: status, timings, turns, and the outcome payload. Scoped to this workspace's org."""
+        try:
+            rid = uuid.UUID(run_id)
+        except ValueError:
+            return {"error": "run_id must be a UUID"}
+        org_ws = _org_ws_subquery(self.db, self.workspace_id)
+        row = (
+            self.db.query(Run, Workflow.name.label("workflow_name"), Workflow.id.label("workflow_id"))
+            .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
+            .join(Workflow, WorkflowVersion.workflow_id == Workflow.id)
+            .filter(Run.id == rid)
+            .filter(Run.workspace_id.in_(org_ws))
+            .first()
+        )
+        if not row:
+            return {"error": "Run not found"}
+        r = row.Run
+        return {
+            "run_id": str(r.id),
+            "workflow_id": str(row.workflow_id),
+            "workflow_name": row.workflow_name,
+            "status": r.status,
+            "triggered_by": r.triggered_by,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "paused_at": r.paused_at.isoformat() if r.paused_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "current_block_id": r.current_block_id,
+            "max_turns": r.max_turns,
+            "actual_turns": r.actual_turns,
+            "budget_exhausted": r.budget_exhausted,
+            "outcome": r.outcome,
+            "attempt_count": r.attempt_count,
+        }
