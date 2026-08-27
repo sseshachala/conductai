@@ -183,7 +183,7 @@ def _handle_guard_slack_decision(
             try:
                 token = (ws_creds or {}).get("token") or (ws_creds or {}).get("bot_token", "")
                 if token:
-                    update_approval_message(token, msg_channel, msg_ts, row.status, approver)
+                    update_approval_message(token, msg_channel, msg_ts, row.status, approver, rule_id=row.rule_id)
             except Exception as e:
                 log.warning("slack.guard_update_message_failed", error=str(e))
     except Exception as _exc:
