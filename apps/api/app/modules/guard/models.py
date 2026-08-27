@@ -2,7 +2,8 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func
+import sqlalchemy as sa
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, JSONB, UUID
 from pgvector.sqlalchemy import Vector
 
@@ -198,6 +199,22 @@ class GuardAuditEvent(Base):
     # non-eval audit paths (auth, approval, guard block) stay as-is
     evaluated_rules = Column(JSONB, nullable=True)   # list of {rule_id, severity, action, message}
     defense_score   = Column(Integer, nullable=True)  # weighted aggregate across matched rules
+
+    __table_args__ = (
+        Index("ix_guard_audit_events_source", "workspace_id", "source", "ts"),
+        Index(
+            "ix_guard_audit_events_provider",
+            "workspace_id", "provider", "ts",
+            postgresql_where=sa.text("provider IS NOT NULL"),
+        ),
+        Index("ix_guard_audit_events_entry_hash", "entry_hash"),
+        Index(
+            "ix_guard_audit_events_evaluated_rules_gin",
+            "evaluated_rules",
+            postgresql_using="gin",
+        ),
+        Index("ix_guard_audit_events_ws_ts", "workspace_id", sa.text("ts DESC")),
+    )
 
 
 class GuardSavings(Base):
