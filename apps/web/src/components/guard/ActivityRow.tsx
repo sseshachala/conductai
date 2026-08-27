@@ -509,7 +509,7 @@ export function ActivityHeader({ compact = false }: { compact?: boolean }) {
       color: "var(--text-muted)",
     }}>
       <div>Time</div>
-      <div>Agent identity</div>
+      <div>Actor</div>
       {!compact && <div>Tool</div>}
       <div>Action</div>
       <div>Input</div>
