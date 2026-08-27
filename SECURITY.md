@@ -21,7 +21,7 @@ If your deployment cannot upgrade quickly, open a private report and include you
 ## How to report a vulnerability (private)
 
 - **Preferred channel:** `security@conductai.ai`  
-- **Maintainer placeholder (replace if needed):** `TODO: set security contact for this repository`
+- **Maintainer override placeholder (if your fork/org uses a different inbox):** `security@YOUR-DOMAIN.example`
 
 Do **not** open public issues, discussions, or pull requests containing exploit details.
 

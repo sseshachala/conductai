@@ -62,9 +62,10 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from typing import Optional
 
 
-def row_hash(ts: str, tool_call: str | None, decision: str, prev_hash: str) -> str:
+def row_hash(ts: str, tool_call: Optional[str], decision: str, prev_hash: str) -> str:
     payload = f"{ts}|{tool_call or ''}|{decision}|{prev_hash}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 

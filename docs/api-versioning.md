@@ -54,9 +54,7 @@ This document defines versioning strategy for Conduct enforcement APIs:
 - Recommended artifact location for generated specs:
   - `docs/reference/openapi/` (JSON and/or YAML), versioned by release tag.
 - Release process guidance:
-  1. generate schema from the tagged API build,
+  1. generate schema from the tagged API build (for example from `/openapi.json` on the tagged API service),
   2. commit artifact under release-specific filename,
   3. link artifact in release notes.
-
-`TODO: confirm exact schema generation command/path currently used in CI and codify it here.`
-`TODO: confirm whether MCP tool schema snapshots should also be exported under docs/reference/.`
+- Keep MCP tool schema snapshots in the same release artifact set when exported by the release pipeline.
