@@ -34,6 +34,12 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures" / "guard_packs"
 # without documenting the reason in a linked follow-up issue.
 COVERAGE_ALLOWANCE = 66
 
+# One-way ratchet — number of covered rules that still lack a negative
+# case (expected: allow). Every rule that fires needs at least one
+# adjacent-but-benign fixture case so we catch false positives before
+# they ship. Lower as negative cases are added.
+NEGATIVE_CASE_ALLOWANCE = 95
+
 
 def _load_seeded_rules() -> dict[str, set[str]]:
     """Return {pack_name: {rule_id, ...}} for every conduct-*.json pack."""
@@ -63,6 +69,32 @@ def _load_covered_rules() -> dict[str, set[str]]:
     return out
 
 
+def _load_case_balance() -> dict[tuple[str, str], dict[str, int]]:
+    """Return {(pack, rule_id): {'positive': N, 'negative': N}}.
+
+    Positive = case with any expected action other than 'allow' (block, warn,
+    audit — the rule fires). Negative = case with expected: allow (rule
+    does NOT fire on adjacent-but-benign input — the false-positive canary).
+    """
+    out: dict[tuple[str, str], dict[str, int]] = {}
+    for f in sorted(FIXTURES_DIR.glob("*.yaml")):
+        doc = yaml.safe_load(f.read_text()) or {}
+        for c in doc.get("cases", []) or []:
+            if not isinstance(c, dict):
+                continue
+            expects = c.get("expects") or {}
+            rid = expects.get("rule_id") or c.get("rule_id")
+            if not rid:
+                continue
+            exp = expects.get("action") or c.get("expected")
+            rec = out.setdefault((f.stem, rid), {"positive": 0, "negative": 0})
+            if exp == "allow":
+                rec["negative"] += 1
+            elif exp:
+                rec["positive"] += 1
+    return out
+
+
 def _compute_gaps() -> list[tuple[str, str]]:
     seeded = _load_seeded_rules()
     covered = _load_covered_rules()
@@ -87,6 +119,28 @@ def test_pack_rule_coverage_does_not_regress():
         f"tests/fixtures/guard_packs/<pack>.yaml for the new rule, or "
         f"raise COVERAGE_ALLOWANCE with a linked issue. "
         f"By pack: {summary}. First 10 gaps: {gaps[:10]}"
+    )
+
+
+def test_covered_rules_have_negative_case():
+    """Every fixture-covered rule should have at least one negative case
+    (expected: allow). Without one the rule may over-fire on benign input
+    and the matrix has no signal — that is a false positive waiting to ship.
+    """
+    balance = _load_case_balance()
+    missing = [
+        (pack, rule) for (pack, rule), v in sorted(balance.items()) if v["negative"] == 0
+    ]
+    by_pack: dict[str, int] = {}
+    for pack, _ in missing:
+        by_pack[pack] = by_pack.get(pack, 0) + 1
+    summary = ", ".join(f"{p}={n}" for p, n in sorted(by_pack.items(), key=lambda x: -x[1]))
+    assert len(missing) <= NEGATIVE_CASE_ALLOWANCE, (
+        f"Guard pack negative-case coverage regressed: {len(missing)} covered "
+        f"rules lack a negative (expected: allow) case — allowance is "
+        f"{NEGATIVE_CASE_ALLOWANCE}. Add a benign-input case for the new "
+        f"rule so we catch false positives before they ship. "
+        f"By pack: {summary}. First 10 gaps: {missing[:10]}"
     )
 
 
