@@ -744,8 +744,6 @@ def check_permission(
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
 
     user_role = (row.role or "").strip().lower()
-    if user_role == "owner":
-        return "owner"
 
     has_perm = db.execute(
         _text("""
@@ -780,27 +778,40 @@ def check_permission(
             "guard.activity.view_own",
             "guard.spend.view_own",
         }
-        write_perms = {
+        developer_write_perms = {
             "platform.workflows.edit",
             "platform.workflows.run",
             "platform.marketplace.install",
             "platform.credentials.manage",
             "guard.policies.edit",
-            "guard.settings.edit",
-            "platform.workspace.edit",
-            "platform.members.manage",
+        }
+        security_write_perms = {
+            "platform.credentials.manage",
+            "guard.policies.edit",
+        }
+        security_only_perms = {
             "platform.audit_log.view",
             "guard.activity.view_all",
             "guard.activity.export",
             "guard.spend.view_all",
+            "guard.settings.edit",
+        }
+        admin_only_perms = {
+            "platform.workspace.edit",
+            "platform.members.manage",
             "guard.spend.budgets.edit",
         }
+        developer_perms = read_only_perms | developer_write_perms
+        security_perms = read_only_perms | security_write_perms | security_only_perms
+        admin_perms = developer_perms | security_perms | admin_only_perms
 
-        if user_role == "admin":
+        if user_role == "admin" and permission in admin_perms:
             return user_role
         if user_role == "viewer" and permission in read_only_perms:
             return user_role
-        if user_role in {"developer", "security"} and permission in (read_only_perms | write_perms):
+        if user_role == "developer" and permission in developer_perms:
+            return user_role
+        if user_role == "security" and permission in security_perms:
             return user_role
 
         raise HTTPException(status_code=403, detail=f"Missing permission: {permission}")
