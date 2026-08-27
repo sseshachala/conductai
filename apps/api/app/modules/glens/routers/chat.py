@@ -765,7 +765,17 @@ async def glens_chat_stream(
                 answer += link
             await event_q.put({"type": "done", "answer": answer})
         except Exception as e:
-            logger.error("glens.stream.failed", error=str(e))
+            # If it's a Guard block, surface the rule_id to logs + telemetry.
+            # #1286 wired Lens through the same policy engine as the HTTP
+            # proxy, so any rule that fires now affects Lens.
+            _err_type = type(e).__name__
+            _err_detail = str(e)
+            logger.error(
+                "glens.stream.failed",
+                error=_err_detail,
+                error_type=_err_type,
+                exc_info=True,
+            )
             await event_q.put({"type": "error", "message": "Something went wrong. Please try again."})
 
     async def generate():
