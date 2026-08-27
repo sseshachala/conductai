@@ -110,3 +110,12 @@ cases:
     file_path: cfg.py
     content: MAX_WORKERS = 4
   expected: allow
+
+# ── negative canaries (#1272 batch 1 — see docs/guard-fp-strategy.md) ────
+- rule_id: nist-manage-third-party-ai
+  scenario: "[E] docs mentioning a third-party provider without credentials context"
+  tool_name: write
+  tool_input:
+    file_path: docs/providers.md
+    content: "We evaluated third-party AI providers including perplexity.ai and groq.com; see the vendor assessment for the shortlist."
+  expected: allow
