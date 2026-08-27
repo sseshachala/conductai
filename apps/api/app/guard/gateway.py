@@ -6,9 +6,11 @@ Single entry point for a guarded LLM completion. Both the HTTP proxy handler
 router. Zero network hop between them.
 
 Composed of:
-- app.guard.policy.evaluate()    → Decision (rules + budgets)
-- app.guard.router.upstream()    → Stream (provider fanout)
-- app.guard.audit.record()       → hash-chain audit (scheduled as background task)
+- app.guard.policy.evaluate_composed()  → Decision (rules + budgets + throughput,
+                                          #1225 composable engine — was single-source
+                                          _policy.evaluate before #1254)
+- app.guard.router.upstream()           → Stream (provider fanout)
+- app.guard.audit.record()              → hash-chain audit (scheduled as background task)
 
 Extracted in #1218 Step 2. Behavior mirrors the pre-refactor _proxy() flow;
 the regression harness locks that in.
@@ -26,6 +28,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.guard import policy as _policy
 from app.guard import router as _router
 from app.guard.audit import record as _record_audit
+from app.guard.policy import evaluate_composed as _evaluate_composed
+from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext as _PolicyContext
 
 log = structlog.get_logger(__name__)
 
@@ -91,8 +95,33 @@ async def guarded_completion(
     parameter here; do not fork the composition."""
     started = time.monotonic()
 
-    decision_dict = _policy.evaluate(workspace_id, provider, model, body)
-    decision = _decision_from_dict(decision_dict)
+    # #1254 — composable policy engine (#1225). RulePolicySource inside
+    # DEFAULT_SOURCES still calls _policy.evaluate under the hood, so behavior
+    # is byte-identical to the pre-refactor _proxy() flow when ctx.db is None
+    # (SpendCap + ThroughputCap sources short-circuit ALLOW without a db).
+    # When callers eventually thread db + agent_identity_id in, spend caps
+    # and throughput caps activate for free.
+    _ctx = _PolicyContext(
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id or None,
+        agent_identity_id=None,
+        provider=provider,
+        model=model,
+        body=body,
+        input_tokens=0,
+        db=None,
+    )
+    _composed = _evaluate_composed(_ctx)
+    decision = Decision(
+        action=_composed.action.value,
+        rule_id=_composed.rule_id,
+        message=_composed.reason,
+        matched_rules=_composed.matched_rules,
+        defense_score=_composed.defense_score,
+        inject_guidance=_composed.inject_guidance,
+        guidance=_composed.guidance,
+        raw=None,
+    )
 
     if decision.action == "BLOCK":
         background.add_task(
@@ -260,10 +289,10 @@ def guarded_llm_stream(
     (Lens Phase 2, future agents) can drive a guard-enforced streaming
     completion without reinventing the policy/audit dance.
 
-    ponytail: uses evaluate_composed (matches the current _stream_synthesis
-    behavior). `guarded_llm_call` wraps `guarded_completion`, which still uses
-    the older single-source `_policy.evaluate`. Unify when guarded_completion
-    is promoted to the composed engine.
+    Uses the composable engine (evaluate_composed, #1225). guarded_completion
+    was promoted to the same engine in this PR, so Phase 1 (guarded_llm_call
+    → guarded_completion) and Phase 2 (guarded_llm_stream) now share one
+    policy engine end-to-end.
 
     Returns the accumulated full_text; raises on BLOCK.
     """
