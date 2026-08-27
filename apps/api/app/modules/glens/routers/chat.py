@@ -724,8 +724,12 @@ async def glens_chat_stream(
     session_id_str = str(session.id)
     executor = Executor(db, workspace_id, agent_identity_id=session.agent_identity_id)
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    system = _SYSTEM.format(today=today)
+    _now = datetime.now(timezone.utc)
+    today = _now.strftime("%Y-%m-%d")
+    # Pre-format the human-readable date so the LLM doesn't reformat and drift
+    # (gpt-4o-mini fabricated "August 26" when today was "2026-08-27").
+    today_display = _now.strftime("%A, %B %-d, %Y") + " UTC"
+    system = _SYSTEM.format(today=today, today_display=today_display)
     llm_messages = _build_llm_messages(session_messages)
 
     loop = asyncio.get_running_loop()
