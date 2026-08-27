@@ -105,6 +105,12 @@ async def upstream(
     headers = {
         "content-type": "application/json",
         "accept": "text/event-stream" if is_stream else "application/json",
+        # httpx auto-negotiates br/gzip/deflate but with stream=True the
+        # response body arrives already-decoded while `content-encoding: br`
+        # remains on the headers. Our manual `brotli.decompress(full)` then
+        # explodes on plaintext. Force uncompressed responses — Guard's
+        # proxy is CPU-bound already, wire-bytes savings are marginal.
+        "accept-encoding": "identity",
     }
 
     _requested_model = body.get("model") or ""
