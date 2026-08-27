@@ -58,6 +58,86 @@ const SKILL_LABELS: Record<string, string> = {
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
+function bucketByDay(sessions: GLensSession[]): { label: string; items: GLensSession[] }[] {
+  const startOfDay = (d: Date) => { const c = new Date(d); c.setHours(0, 0, 0, 0); return c.getTime() }
+  const today = startOfDay(new Date())
+  const buckets: Record<string, GLensSession[]> = { today: [], yesterday: [], prev7: [], older: [] }
+  for (const s of sessions) {
+    const diff = Math.floor((today - startOfDay(new Date(s.created_at))) / 86_400_000)
+    if (diff <= 0) buckets.today.push(s)
+    else if (diff === 1) buckets.yesterday.push(s)
+    else if (diff <= 7) buckets.prev7.push(s)
+    else buckets.older.push(s)
+  }
+  return [
+    { label: "Today", items: buckets.today },
+    { label: "Yesterday", items: buckets.yesterday },
+    { label: "Previous 7 days", items: buckets.prev7 },
+    { label: "Older", items: buckets.older },
+  ].filter(b => b.items.length > 0)
+}
+
+function SessionRow({
+  session, active, onSelect, onDelete,
+}: {
+  session: GLensSession
+  active: boolean
+  onSelect: () => void
+  onDelete: () => void
+}) {
+  const [hover, setHover] = useState(false)
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ position: "relative", marginBottom: 2 }}
+    >
+      <button
+        onClick={onSelect}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          padding: "7px 30px 7px 10px",
+          borderRadius: 6,
+          border: "none",
+          background: active ? "var(--accent-weak)" : hover ? "var(--surface-3, rgba(0,0,0,0.04))" : "transparent",
+          cursor: "pointer",
+          fontSize: 13,
+          color: active ? "var(--accent-text)" : "var(--text)",
+          fontWeight: active ? 600 : 400,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {session.title}
+      </button>
+      <button
+        onClick={onDelete}
+        aria-label="Delete conversation"
+        style={{
+          position: "absolute",
+          right: 6,
+          top: "50%",
+          transform: "translateY(-50%)",
+          padding: "2px 6px",
+          borderRadius: 4,
+          border: "none",
+          background: "transparent",
+          color: "var(--text-muted)",
+          cursor: "pointer",
+          fontSize: 14,
+          lineHeight: 1,
+          opacity: hover ? 1 : 0,
+          transition: "opacity 120ms",
+        }}
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
 function Sidebar({
   sessions,
   activeId,
@@ -71,9 +151,10 @@ function Sidebar({
   onDelete: (id: string) => void
   onNew: () => void
 }) {
+  const grouped = bucketByDay(sessions)
   return (
     <div style={{
-      width: 240,
+      width: 260,
       flexShrink: 0,
       borderRight: "1px solid var(--border)",
       display: "flex",
@@ -81,13 +162,28 @@ function Sidebar({
       background: "var(--surface-2)",
       height: "100%",
     }}>
-      <div style={{ padding: "16px 14px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--accent-text)" }}>Lens</span>
+      <div style={{ padding: "14px 12px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-text)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 10 }}>Lens</div>
         <button
           onClick={onNew}
-          style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-2)", cursor: "pointer", fontWeight: 600 }}
+          style={{
+            width: "100%",
+            fontSize: 13,
+            padding: "9px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "var(--surface)",
+            color: "var(--text)",
+            cursor: "pointer",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            justifyContent: "flex-start",
+          }}
         >
-          + New
+          <span style={{ fontSize: 15, lineHeight: 1 }}>+</span>
+          <span>New chat</span>
         </button>
       </div>
 
@@ -97,41 +193,27 @@ function Sidebar({
             No conversations yet
           </div>
         )}
-        {sessions.map(s => (
-          <div
-            key={s.id}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              marginBottom: 3,
-            }}
-          >
-            <button
-              onClick={() => onSelect(s.id)}
-              style={{
-                flex: 1,
-                textAlign: "left",
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: "1px solid " + (s.id === activeId ? "var(--accent)" : "transparent"),
-                background: s.id === activeId ? "var(--accent-weak)" : "transparent",
-                cursor: "pointer",
-                fontSize: 12,
-                color: s.id === activeId ? "var(--accent-text)" : "var(--text-2)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {s.title}
-            </button>
-            <button
-              onClick={() => onDelete(s.id)}
-              style={{ flexShrink: 0, padding: "4px 7px", borderRadius: 6, border: "none", background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 13 }}
-            >
-              ×
-            </button>
+        {grouped.map(bucket => (
+          <div key={bucket.label} style={{ marginBottom: 14 }}>
+            <div style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: "var(--text-muted)",
+              textTransform: "uppercase",
+              letterSpacing: ".08em",
+              padding: "4px 8px 6px",
+            }}>
+              {bucket.label}
+            </div>
+            {bucket.items.map(s => (
+              <SessionRow
+                key={s.id}
+                session={s}
+                active={s.id === activeId}
+                onSelect={() => onSelect(s.id)}
+                onDelete={() => onDelete(s.id)}
+              />
+            ))}
           </div>
         ))}
       </div>
@@ -754,25 +836,36 @@ export function GLensChatPage() {
         {/* Thread */}
         <div
           ref={threadRef}
-          style={{ flex: 1, overflowY: "auto", padding: "32px 48px" }}
+          style={{ flex: 1, overflowY: "auto", padding: hasThread ? "32px 48px" : "0", display: hasThread ? "block" : "flex", flexDirection: "column", justifyContent: "center" }}
         >
           {!hasThread && (
-            <div style={{ maxWidth: 600, margin: "0 auto", paddingTop: 80 }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>
-                What do you want to see?
+            <div style={{ maxWidth: 680, width: "100%", margin: "0 auto", padding: "32px 24px" }}>
+              <div style={{ textAlign: "center", marginBottom: 28 }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", marginBottom: 8, letterSpacing: "-0.01em" }}>
+                  What do you want to see?
+                </div>
+                <div style={{ fontSize: 14, color: "var(--text-muted)" }}>
+                  Ask about blocks, spend, sessions, team memory.
+                </div>
               </div>
-              <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 32 }}>
-                Ask about blocks, spend, sessions, team memory — build any view on demand.
+              <div style={{ marginBottom: 20 }}>
+                <ChatInput onSubmit={sendMessage} disabled={loading} />
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
                 {suggestions.map(s => (
                   <button
                     key={s}
                     onClick={() => sendMessage(s)}
                     style={{
-                      fontSize: 13, padding: "8px 14px", borderRadius: 20,
-                      border: "1px solid var(--border)", background: "var(--surface-2)",
-                      color: "var(--text-2)", cursor: "pointer",
+                      fontSize: 13,
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      color: "var(--text-2)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      lineHeight: 1.4,
                     }}
                   >
                     {s}
@@ -837,12 +930,14 @@ export function GLensChatPage() {
           </div>
         </div>
 
-        {/* Input */}
-        <div style={{ borderTop: "1px solid var(--border)", background: "var(--surface)", padding: "12px 48px 16px" }}>
-          <div style={{ maxWidth: 800, margin: "0 auto" }}>
-            <ChatInput onSubmit={sendMessage} disabled={loading} />
+        {/* Input — bottom-anchored once the thread has content */}
+        {hasThread && (
+          <div style={{ borderTop: "1px solid var(--border)", background: "var(--surface)", padding: "12px 48px 16px" }}>
+            <div style={{ maxWidth: 800, margin: "0 auto" }}>
+              <ChatInput onSubmit={sendMessage} disabled={loading} />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
