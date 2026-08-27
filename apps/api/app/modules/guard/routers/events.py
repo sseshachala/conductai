@@ -100,6 +100,7 @@ class UsageOut(BaseModel):
 class EventOut(BaseModel):
     id: str
     workspace_id: str
+    agent_identity_id: str | None = None
     clerk_user_id: str | None
     session_id: str | None
     hook_session_id: str | None = None
@@ -139,6 +140,7 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
     return {
         "id": str(e.id),
         "workspace_id": str(e.workspace_id),
+        "agent_identity_id": e.agent_identity_id,
         "clerk_user_id": e.clerk_user_id,
         "session_id": str(e.session_id) if e.session_id else None,
         "hook_session_id": e.hook_session_id,

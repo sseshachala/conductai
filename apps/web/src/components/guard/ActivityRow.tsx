@@ -36,6 +36,7 @@ export interface AuditEvent {
   hostname?: string | null
   hook_session_id?: string | null
   session_id?: string | null
+  agent_identity_id?: string | null
   entry_hash?: string | null
   policy_hash?: string | null
   // #1150 phase 2 — layered verdict envelope
@@ -317,19 +318,36 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
       <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }} title={formatTs(ev.ts)}>{timeAgo(ev.ts)}</div>
       <div style={{ minWidth: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}
-          title={ev.user_email ?? undefined}>
+          title={ev.user_email ?? ev.agent_identity_id ?? undefined}>
           <span className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {ev.user_email ? ev.user_email.split("@")[0] : ev.conductai_workflow ?? "—"}
           </span>
-          <span style={{
-            fontSize: 9, fontWeight: 700, letterSpacing: ".04em",
-            padding: "1px 4px", borderRadius: 3,
-            background: ev.user_email ? "var(--surface-2)" : "#e0e7ff",
-            color: ev.user_email ? "var(--text-muted)" : "#3730a3",
-            whiteSpace: "nowrap",
-          }}>
-            {ev.user_email ? "HUMAN" : "AGENT"}
-          </span>
+          {(() => {
+            const isHuman = !!ev.user_email
+            const pill = (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: ".04em",
+                padding: "1px 4px", borderRadius: 3,
+                background: isHuman ? "var(--surface-2)" : "#e0e7ff",
+                color: isHuman ? "var(--text-muted)" : "#3730a3",
+                whiteSpace: "nowrap",
+              }}>
+                {isHuman ? "HUMAN" : "AGENT"}
+              </span>
+            )
+            // AGENT rows with a known identity → deep-link to /agent-identity
+            // (uses the ?id=<uuid> highlight from PR #1286).
+            if (!isHuman && ev.agent_identity_id) {
+              return (
+                <a href={`/agent-identity?tab=identities&id=${ev.agent_identity_id}`}
+                   title={`View agent identity ${ev.agent_identity_id}`}
+                   style={{ textDecoration: "none" }}>
+                  {pill}
+                </a>
+              )
+            }
+            return pill
+          })()}
         </div>
         {(ev.hook_session_id || ev.session_id) && (
           <div className="mono" style={{ fontSize: 9.5, color: "var(--text-muted)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
