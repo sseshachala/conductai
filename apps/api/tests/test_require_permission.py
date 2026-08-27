@@ -19,8 +19,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.core.auth import check_permission
-
 
 # A valid UUID-format workspace_id (the regex in check_permission enforces this)
 _WS = "00000000-0000-0000-0000-000000000001"
@@ -78,8 +76,16 @@ def _make_db_no_member(owner_match: bool = False):
 
 
 def _call(db, permission, user_id=_UID, workspace_id=_WS, credentials=None):
-    """Call check_permission with test defaults."""
-    return check_permission(
+    """Call check_permission with test defaults.
+
+    Import check_permission lazily from the current sys.modules entry so that
+    unittest.mock.patch("app.core.auth._clerk_enabled", ...) always patches the
+    same module object whose __dict__ the function reads via globals().
+    """
+    import sys as _sys
+    import importlib as _il
+    _auth = _sys.modules.get("app.core.auth") or _il.import_module("app.core.auth")
+    return _auth.check_permission(
         user_id=user_id,
         workspace_id=workspace_id,
         credentials=credentials,

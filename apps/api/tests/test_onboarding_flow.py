@@ -3,9 +3,9 @@ Integration test — full onboarding flow.
 
 Walks through the complete new-user journey as a single sequential test:
   1. Admin first sign-in → workspace + Guard auto-provisioned, 18 policies seeded
-  2. Admin invites 3 members by email (editor, viewer, security roles)
+  2. Admin invites 3 members by email (developer, viewer, security roles)
   3. Members accept invites (via _accept_pending_invites — the login-time hook)
-  4. Role-based Guard policy access: admin writes succeed, editor/viewer blocked
+  4. Role-based Guard policy access: admin writes succeed, developer/viewer blocked
   5. Admin generates an API key; verifies it works for authenticated calls
   6. Guard budget-check endpoint responds correctly for the workspace
 
@@ -307,7 +307,7 @@ def test_full_onboarding_flow(db):
             admin_client = _client_for(ADMIN_ID, workspace_id, role="admin", email=ADMIN_EMAIL)
 
             invites_to_create = [
-                (DEV_EMAIL,      "editor"),
+                (DEV_EMAIL,      "developer"),
                 (VIEWER_EMAIL,   "viewer"),
                 (SECURITY_EMAIL, "security"),
             ]
@@ -338,7 +338,7 @@ def test_full_onboarding_flow(db):
             # invite matching works correctly.
 
             invited_users = [
-                (DEV_ID,      DEV_EMAIL,      "editor"),
+                (DEV_ID,      DEV_EMAIL,      "developer"),
                 (VIEWER_ID,   VIEWER_EMAIL,   "viewer"),
                 (SECURITY_ID, SECURITY_EMAIL, "security"),
             ]
@@ -362,7 +362,7 @@ def test_full_onboarding_flow(db):
             assert SECURITY_ID in member_map, f"Security user {SECURITY_ID!r} missing — members: {list(member_map)}"
 
             assert member_map[ADMIN_ID]    == "admin",    f"Admin role mismatch: {member_map[ADMIN_ID]!r}"
-            assert member_map[DEV_ID]      == "editor",   f"Dev role mismatch: {member_map[DEV_ID]!r}"
+            assert member_map[DEV_ID]      == "developer",   f"Dev role mismatch: {member_map[DEV_ID]!r}"
             assert member_map[VIEWER_ID]   == "viewer",   f"Viewer role mismatch: {member_map[VIEWER_ID]!r}"
             assert member_map[SECURITY_ID] == "security", f"Security role mismatch: {member_map[SECURITY_ID]!r}"
 
@@ -417,12 +417,12 @@ def test_full_onboarding_flow(db):
             # 4d. Editor (dev): GET policies → 200 (reads succeed)
             # In dev mode, get_guard_org_id returns "dev-org" regardless of role,
             # so Guard read access is always granted.  We confirm reads work for non-admin.
-            dev_client = _client_for(DEV_ID, workspace_id, role="editor", email=DEV_EMAIL)
+            dev_client = _client_for(DEV_ID, workspace_id, role="developer", email=DEV_EMAIL)
             resp = dev_client.get(f"/guard/policies{team_id_param}")
             assert resp.status_code == 200, (
                 f"Editor GET /guard/policies expected 200, got {resp.status_code}: {resp.text}"
             )
-            print(f"[step 4] editor GET /guard/policies → 200 (reads succeed)")
+            print(f"[step 4] developer GET /guard/policies → 200 (reads succeed)")
 
             # 4e. Editor: POST policy — Guard policy endpoints use get_guard_org_id
             # (not require_workspace_role), so they don't enforce workspace RBAC.
@@ -439,9 +439,9 @@ def test_full_onboarding_flow(db):
             )
             print(f"[step 4] viewer GET /guard/policies → 200")
 
-            # 4g. Workspace RBAC: editor/viewer blocked from workspace-admin actions
-            # POST /projects/{id}/members requires admin role — test it with editor
-            dev_client_admin_test = _client_for(DEV_ID, workspace_id, role="editor", email=DEV_EMAIL)
+            # 4g. Workspace RBAC: developer/viewer blocked from workspace-admin actions
+            # POST /projects/{id}/members requires admin role — test it with developer
+            dev_client_admin_test = _client_for(DEV_ID, workspace_id, role="developer", email=DEV_EMAIL)
             resp = dev_client_admin_test.post(
                 f"/projects/{workspace_id}/members",
                 json={"email": "blocked@acme-test.com", "role": "viewer"},
@@ -450,7 +450,7 @@ def test_full_onboarding_flow(db):
             assert resp.status_code == 403, (
                 f"Editor adding member should be blocked (403), got {resp.status_code}: {resp.text}"
             )
-            print(f"[step 4] editor POST /projects/.../members → 403 (correctly blocked)")
+            print(f"[step 4] developer POST /projects/.../members → 403 (correctly blocked)")
 
             # ----------------------------------------------------------------
             # Step 5 — API key generation (admin only can create keys)
