@@ -12,6 +12,8 @@ import sys
 import uuid
 from pathlib import Path
 
+import sqlite3
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -33,11 +35,15 @@ def client_and_db():
     """In-memory SQLite + FastAPI app with just the telemetry router mounted."""
     from app.core import database as db_mod
 
-    # StaticPool — all sessions share the same in-memory DB connection so the
-    # tables we create here are visible to the FastAPI request handler.
+    # Use a creator function so that StaticPool's single shared connection is
+    # created with check_same_thread=False.  Passing connect_args to create_engine
+    # is not always honoured by StaticPool in SQLAlchemy 2.x, which causes
+    # "SQLite objects created in a thread can only be used in that same thread"
+    # errors when FastAPI's TestClient dispatches requests in a background thread.
+    _conn = sqlite3.connect(":memory:", check_same_thread=False)
     engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
+        "sqlite://",
+        creator=lambda: _conn,
         poolclass=StaticPool,
     )
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -90,6 +96,8 @@ def client_and_db():
     app.dependency_overrides[db_mod.get_db] = _override_get_db
 
     yield TestClient(app), engine, ws_id, token
+
+    _conn.close()
 
 
 def _row_count(engine) -> int:
