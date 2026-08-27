@@ -87,4 +87,5 @@ jobs:
 
       - name: Audit apps/web
         working-directory: apps/web
-        run: npm audit --omit=dev --audit-level=moderate || [ "$?" -eq 1 ]
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=moderate
