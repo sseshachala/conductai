@@ -133,8 +133,9 @@ class LLMClient(Protocol):
         No tools, no tool_choice — streaming is text-only. If you need
         structured/tool output, use create() (non-streaming).
 
-        Currently implemented only by AnthropicClient. Other adapters raise
-        NotImplementedError until backfilled.
+        Implemented by AnthropicClient (native SDK) and OpenAIClient (raw
+        SSE via httpx — covers openai, perplexity, together, and any other
+        OpenAI-compatible /v1/chat/completions endpoint).
         """
         ...
 
