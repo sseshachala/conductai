@@ -206,7 +206,7 @@ function TeamMemoryContent() {
             borderBottom: "1px solid var(--border)",
             background: "var(--surface-2)",
           }}>
-            {["Developer", "Repo", "Summary", "Tool", "Tags", "Date"].map(h => (
+            {["Actor", "Repo", "Summary", "Tool", "Tags", "Date"].map(h => (
               <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
             ))}
           </div>
