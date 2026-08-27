@@ -306,6 +306,184 @@ class GuardedLLMBlocked(Exception):
         self.payload = payload
 
 
+def guarded_client_call(
+    *,
+    client,
+    workspace_id: str,
+    provider: str,
+    model: str,
+    messages: list[dict],
+    system: str,
+    tools: list[dict] | None = None,
+    max_tokens: int = 1024,
+    ai_tool: str = "lens",
+    clerk_user_id: str = "system:lens",
+    agent_identity_id: str | None = None,
+    prompt_summary: str = "",
+    user_email: str | None = None,
+):
+    """Policy-checked LLMClient.create — same policy engine as guarded_completion.
+
+    In-process, non-streaming. No self-HTTP hop. Audit written inline via
+    `record()` because there's no request lifecycle to defer to.
+
+    Vendor-neutral: `client` is any LLMClient (Anthropic/OpenAI/Perplexity/
+    Together/…). Env-var vendor selection + per-workspace credential vault
+    overrides come from the caller's `_llm_client()` factory."""
+    import time as _time
+    import json as _json
+    from app.guard.policy import evaluate_composed as _eval_composed
+    from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext as _PolicyContext
+
+    started = _time.monotonic()
+    body = {
+        "model": model, "messages": messages, "system": system,
+        "tools": tools, "max_tokens": max_tokens,
+    }
+
+    ctx = _PolicyContext(
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id or None,
+        agent_identity_id=agent_identity_id,
+        provider=provider,
+        model=model,
+        body=body,
+        input_tokens=0,
+        db=None,
+    )
+    composed = _eval_composed(ctx)
+
+    if composed.action == _PolicyAction.BLOCK:
+        try:
+            _record_audit(
+                workspace_id, clerk_user_id or "", ai_tool, provider, model,
+                "blocked", composed.rule_id,
+                int((_time.monotonic() - started) * 1000),
+                body=body, response_bytes=None,
+                prompt_summary=prompt_summary, user_email=user_email,
+            )
+        except Exception as e:
+            log.warning("guarded_client_call.audit_block_failed", err=str(e))
+        raise GuardedLLMBlocked(
+            status=403,
+            detail=f"Blocked by Guard rule {composed.rule_id}: {composed.reason or 'policy violation'}",
+            payload={},
+        )
+
+    resp = client.create(
+        model=model, messages=messages, system=system,
+        tools=tools, max_tokens=max_tokens,
+    )
+
+    try:
+        synth = _json.dumps({
+            "usage": {
+                "prompt_tokens": getattr(resp.usage, "input_tokens", 0),
+                "completion_tokens": getattr(resp.usage, "output_tokens", 0),
+            }
+        }).encode()
+        _record_audit(
+            workspace_id, clerk_user_id or "", ai_tool, provider, model,
+            "allowed", composed.rule_id,
+            int((_time.monotonic() - started) * 1000),
+            body=body, response_bytes=synth,
+            prompt_summary=prompt_summary, user_email=user_email,
+        )
+    except Exception as e:
+        log.warning("guarded_client_call.audit_allow_failed", err=str(e))
+
+    return resp
+
+
+def guarded_client_stream(
+    *,
+    client,
+    workspace_id: str,
+    provider: str,
+    model: str,
+    messages: list[dict],
+    system: str,
+    max_tokens: int = 1024,
+    on_token=None,
+    ai_tool: str = "lens",
+    clerk_user_id: str = "system:lens",
+    agent_identity_id: str | None = None,
+    prompt_summary: str = "",
+    user_email: str | None = None,
+) -> str:
+    """Policy-checked LLMClient.stream — text-only synthesis path.
+
+    Same policy engine as `guarded_completion` / `guarded_client_call`. Text
+    deltas flow through `on_token(delta)` as they arrive; the accumulated
+    full text is returned. Audit is written at the end (streaming path
+    doesn't give us exact output-token counts without SDK-specific hooks —
+    left as 0; a follow-up can post-tokenize)."""
+    import time as _time
+    from app.guard.policy import evaluate_composed as _eval_composed
+    from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext as _PolicyContext
+
+    started = _time.monotonic()
+    body = {
+        "model": model, "messages": messages, "system": system,
+        "max_tokens": max_tokens, "stream": True,
+    }
+
+    ctx = _PolicyContext(
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id or None,
+        agent_identity_id=agent_identity_id,
+        provider=provider,
+        model=model,
+        body=body,
+        input_tokens=0,
+        db=None,
+    )
+    composed = _eval_composed(ctx)
+
+    if composed.action == _PolicyAction.BLOCK:
+        try:
+            _record_audit(
+                workspace_id, clerk_user_id or "", ai_tool, provider, model,
+                "blocked", composed.rule_id,
+                int((_time.monotonic() - started) * 1000),
+                body=body, response_bytes=None,
+                prompt_summary=prompt_summary, user_email=user_email,
+            )
+        except Exception as e:
+            log.warning("guarded_client_stream.audit_block_failed", err=str(e))
+        raise GuardedLLMBlocked(
+            status=403,
+            detail=f"Blocked by Guard rule {composed.rule_id}: {composed.reason or 'policy violation'}",
+            payload={},
+        )
+
+    parts: list[str] = []
+    for delta in client.stream(
+        model=model, messages=messages, system=system, max_tokens=max_tokens
+    ):
+        if not delta:
+            continue
+        parts.append(delta)
+        if on_token is not None:
+            try:
+                on_token(delta)
+            except Exception as e:
+                log.warning("guarded_client_stream.on_token_failed", err=str(e))
+    text = "".join(parts)
+
+    try:
+        _record_audit(
+            workspace_id, clerk_user_id or "", ai_tool, provider, model,
+            "allowed", composed.rule_id,
+            int((_time.monotonic() - started) * 1000),
+            body=body, response_bytes=None,
+            prompt_summary=prompt_summary, user_email=user_email,
+        )
+    except Exception as e:
+        log.warning("guarded_client_stream.audit_allow_failed", err=str(e))
+
+    return text
+
 
 def guarded_llm_stream(
     *,

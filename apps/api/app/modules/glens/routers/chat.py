@@ -456,83 +456,36 @@ def _resolve_llm_config(executor: Executor):
 
 def _guarded_openai_completion(executor: Executor, provider: str, model: str, upstream_url: str,
                                 api_key: str, messages: list[dict], system: str,
-                                tools: list[dict] | None, max_tokens: int):
-    """#1254 — in-process guarded LLM call for Lens.
+                                tools: list[dict] | None, max_tokens: int,
+                                client=None):
+    """In-process guarded LLM call for Lens — routes through the LLMClient.
 
-    Runs the SAME code path the HTTP proxy uses (guarded_completion → policy →
-    upstream → audit) with zero self-HTTP hop, and adapts the OpenAI-shape
-    JSON response back into an LLMResponse (SDK shape) so _resolve_tools can
-    keep iterating the tool-use loop unchanged.
-    """
-    import asyncio as _asyncio
-    from app.guard.gateway import guarded_llm_call as _guarded, GuardedLLMBlocked as _Blocked, LensUpstreamError as _Upstream
-    from app.runtime.llm_client import LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage
+    Same composable policy engine as the HTTP proxy, no self-HTTP hop, no
+    adapter dance: `LLMClient.create()` already returns an SDK-shaped
+    LLMResponse so `_resolve_tools` can consume it directly.
 
-    oai_messages = [{"role": "system", "content": system}, *messages]
-    payload: dict = {"model": model, "messages": oai_messages, "max_tokens": max_tokens}
-    if tools:
-        payload["tools"] = [
-            {
-                "type": "function",
-                "function": {
-                    "name": t["name"],
-                    "description": t.get("description", ""),
-                    "parameters": t.get("input_schema", {"type": "object", "properties": {}}),
-                },
-            }
-            for t in tools
-        ]
+    Vendor-neutral — swap providers via env vars (`CONDUCT_INFERENCE_*`) or
+    per-workspace credential vault. Same knob as every other LLMClient
+    consumer on the platform."""
+    from app.guard.gateway import guarded_client_call, GuardedLLMBlocked as _Blocked
+
+    if client is None:
+        client = _llm_client(executor.db, executor.workspace_id)
 
     try:
-        raw = _asyncio.run(_guarded(
+        return guarded_client_call(
+            client=client,
             workspace_id=executor.workspace_id,
-            provider=provider, model=model, body=payload,
-            upstream_url=upstream_url, upstream_path="/v1/chat/completions",
-            real_key=api_key, ai_tool="lens",
+            provider=provider, model=model,
+            messages=messages, system=system,
+            tools=tools, max_tokens=max_tokens,
+            ai_tool="lens",
             clerk_user_id="system:lens",
             agent_identity_id=executor.agent_identity_id,
             prompt_summary="lens.resolve_tools",
-        ))
+        )
     except _Blocked as blk:
         raise Exception(f"Guard blocked Lens call: {blk.detail}") from blk
-    except _Upstream as up:
-        raise Exception(f"LLM upstream error ({up.status}): {up.detail}") from up
-
-    choice = ((raw.get("choices") or [{}])[0])
-    message = choice.get("message") or {}
-    finish_reason = choice.get("finish_reason") or "stop"
-
-    content: list = []
-    text = message.get("content") or message.get("reasoning_content") or ""
-    if isinstance(text, str) and text.strip():
-        content.append(LLMTextBlock(text=text))
-    for tc in message.get("tool_calls") or []:
-        fn = tc.get("function") or {}
-        raw_args = fn.get("arguments") or "{}"
-        try:
-            parsed = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
-        except Exception:
-            parsed = {}
-        content.append(LLMToolUseBlock(
-            id=tc.get("id", ""),
-            name=fn.get("name", ""),
-            input=parsed if isinstance(parsed, dict) else {},
-        ))
-
-    u = raw.get("usage") or {}
-    stop_map = {"tool_calls": "tool_use", "length": "max_tokens", "stop": "end_turn"}
-    return LLMResponse(
-        content=content,
-        stop_reason=stop_map.get(finish_reason, finish_reason or "end_turn"),
-        usage=LLMUsage(
-            input_tokens=int(u.get("prompt_tokens", 0) or 0),
-            output_tokens=int(u.get("completion_tokens", 0) or 0),
-        ),
-        # ponytail: OpenAIClient.make_assistant_turn reads _raw_content to
-        # emit the assistant message with paired `tool_calls`. Without this
-        # the next turn's role:tool messages have no parent → OpenAI 400.
-        _raw_content=message,
-    )
 
 
 def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tuple[list[dict], str | None, list[tuple[str, dict]]]:
@@ -579,25 +532,25 @@ def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_toke
                        lens_session_token: str | None = None) -> str:
     """Phase 2: stream the final synthesis. Guard-enforced end to end.
 
-    Delegates to `app.guard.gateway.guarded_llm_stream` — same composable
-    policy engine, same audit chain, same upstream primitive. Extracted so
-    Phase 1 (`_resolve_tools`) and Phase 2 (this) both call the shared
-    Guard-flavored gateway instead of each maintaining its own copy.
-    """
-    from app.guard.gateway import guarded_llm_stream
+    Routes through `guarded_client_stream` → `LLMClient.stream()`. Same
+    policy engine + audit as Phase 1. Vendor-neutral (env-var selection +
+    per-workspace credential vault, same as every other LLMClient
+    consumer)."""
+    from app.guard.gateway import guarded_client_stream
 
-    provider, model, upstream_url, api_key = _resolve_llm_config(executor)
-    log.info("glens.stream_synthesis", provider=provider, model=model, upstream=upstream_url)
-    text = guarded_llm_stream(
+    provider, model, _upstream_url, _api_key = _resolve_llm_config(executor)
+    log.info("glens.stream_synthesis", provider=provider, model=model)
+    client = _llm_client(executor.db, executor.workspace_id)
+    text = guarded_client_stream(
+        client=client,
         workspace_id=executor.workspace_id,
         provider=provider, model=model,
-        upstream_url=upstream_url, api_key=api_key,
         messages=msgs, system=system, max_tokens=1024,
         on_token=on_token,
         ai_tool="lens",
         clerk_user_id="system:lens",
-        db=executor.db,
         agent_identity_id=executor.agent_identity_id,
+        prompt_summary="lens.synthesis",
     )
     return text or "Could not complete the analysis."
 
