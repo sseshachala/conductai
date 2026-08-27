@@ -13,6 +13,7 @@ Usage in routes:
 """
 import contextvars
 import structlog
+import sys
 import threading
 from functools import lru_cache
 from typing import Annotated
@@ -377,7 +378,7 @@ def get_user_id(
     db: Session = Depends(get_db),
 ) -> str | None:
     """Returns the Clerk user_id (sub claim), 'dev' in local dev mode, or None for machine API tokens."""
-    if not globals()["_clerk_enabled"]():
+    if not sys.modules[__name__]._clerk_enabled():
         return DEV_USER_ID
 
     if not credentials:
@@ -444,7 +445,7 @@ def get_workspace_id(
     4. Dev workspace (when Clerk is not configured)
     """
     explicit_ws = ws_id or x_workspace_id
-    if not globals()["_clerk_enabled"]():
+    if not sys.modules[__name__]._clerk_enabled():
         return explicit_ws or DEV_WORKSPACE_ID
 
     if not credentials:
@@ -508,7 +509,7 @@ def get_user_workspace_role(
     Returns the authenticated user's role in the requested workspace.
     Raises 403 if the user is not a member. Skips check in dev mode.
     """
-    if not globals()["_clerk_enabled"]():
+    if not sys.modules[__name__]._clerk_enabled():
         return "admin"
 
     # workspace_id must be a valid UUID — Clerk user_ids (user_xxx) are not.
@@ -583,7 +584,7 @@ def get_guard_org_id(
 
     Accepts: Clerk Bearer JWT — returns org_id or sub claim.
     """
-    if not globals()["_clerk_enabled"]():
+    if not sys.modules[__name__]._clerk_enabled():
         return "dev-org"
 
     if not credentials:
@@ -602,7 +603,7 @@ def get_guard_hook_auth(
     db: Session = Depends(get_db),
 ) -> str:
     """Auth for hook/CLI endpoints. Accepts cond_agt_* agent token or Clerk JWT."""
-    if not globals()["_clerk_enabled"]():
+    if not sys.modules[__name__]._clerk_enabled():
         return "dev-org"
 
     if not credentials:
@@ -695,7 +696,7 @@ def check_permission(
     # _clerk_enabled at test time.  Python 3.11's LOAD_GLOBAL inline cache can
     # serve a stale pointer to the original function even after setattr() updates
     # the module __dict__; going through globals() forces a fresh dict read.
-    if not globals()["_clerk_enabled"]():
+    if not sys.modules[__name__]._clerk_enabled():
         return "admin"
 
     import re as _re
