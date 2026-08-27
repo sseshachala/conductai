@@ -70,6 +70,9 @@ interface LensSession {
   is_idle: boolean
   turns: number
   spend_usd: number
+  agent_identity_id: string | null
+  agent_identity_name: string | null
+  agent_identity_token_prefix: string | null
 }
 
 const TIER_STYLE: Record<string, { bg: string; fg: string }> = {
@@ -683,6 +686,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                     <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Last activity</th>
                     <th style={{ textAlign: "right", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Turns</th>
                     <th style={{ textAlign: "right", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Spend</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Agent identity</th>
                     <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Status</th>
                     <th style={{ padding: "8px 12px" }}></th>
                   </tr>
@@ -704,6 +708,19 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                         <td style={{ padding: "8px 12px", color: "var(--text-2)" }}>{fmt(s.updated_at)}</td>
                         <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-2)" }}>{s.turns}</td>
                         <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-2)", fontFamily: "monospace" }}>${s.spend_usd.toFixed(4)}</td>
+                        <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11, color: "var(--text-2)" }}>
+                          {s.agent_identity_token_prefix ? (
+                            <button
+                              onClick={() => selectTab("identities", { id: s.agent_identity_id! })}
+                              title={s.agent_identity_name ?? "View agent identity"}
+                              style={{ background: "none", border: "none", padding: 0, color: "var(--accent-text)", fontFamily: "monospace", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}
+                            >
+                              {s.agent_identity_token_prefix}
+                            </button>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)" }}>—</span>
+                          )}
+                        </td>
                         <td style={{ padding: "8px 12px" }}>
                           <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: statusBg, color: statusColor }}>{status}</span>
                         </td>

@@ -34,6 +34,11 @@ class LensSessionOut(BaseModel):
     is_idle: bool
     turns: int
     spend_usd: float
+    # #1252 — session-scoped AgentIdentity linkage. Null on pre-migration
+    # sessions that haven't taken a turn since 0090.
+    agent_identity_id: str | None
+    agent_identity_name: str | None
+    agent_identity_token_prefix: str | None
 
 
 class LensSessionRevokeOut(BaseModel):
@@ -63,6 +68,19 @@ def list_lens_sessions(
             GlensChatSession.token_revoked_at.is_(None),
         )
     sessions = q.order_by(GlensChatSession.updated_at.desc()).limit(200).all()
+
+    # Batch AgentIdentity lookup for cond_agt_lens_* linkage (#1252).
+    from app.modules.agent_identity.models import AgentIdentity
+    identity_ids = [s.agent_identity_id for s in sessions if s.agent_identity_id]
+    identity_by_id: dict[str, AgentIdentity] = {}
+    if identity_ids:
+        identity_by_id = {
+            ai.id: ai for ai in (
+                db.query(AgentIdentity)
+                .filter(AgentIdentity.id.in_(identity_ids))
+                .all()
+            )
+        }
 
     # Batch spend rollup — one query for all sessions in the returned page.
     session_ids = [str(s.id) for s in sessions]
@@ -96,6 +114,7 @@ def list_lens_sessions(
         is_idle = bool(s.updated_at and (now - s.updated_at) > DEFAULT_LOOKBACK)
         is_active = s.token_revoked_at is None and not is_idle
 
+        identity = identity_by_id.get(s.agent_identity_id) if s.agent_identity_id else None
         out.append(LensSessionOut(
             id=str(s.id),
             title=s.title,
@@ -106,6 +125,9 @@ def list_lens_sessions(
             is_idle=is_idle,
             turns=turns,
             spend_usd=spend_by_session.get(str(s.id), 0.0),
+            agent_identity_id=s.agent_identity_id,
+            agent_identity_name=identity.name if identity else None,
+            agent_identity_token_prefix=identity.token_prefix if identity else None,
         ))
     return out
 
