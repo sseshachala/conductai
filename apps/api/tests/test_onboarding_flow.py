@@ -386,7 +386,7 @@ def test_full_onboarding_flow(db):
             # ----------------------------------------------------------------
             print("\n[step 4] Role-based Guard policy access checks")
 
-            team_id_param = f"?team_id={guard_team_id}"
+            team_id_param = f"?team_id={workspace_id}"
 
             # 4a. Admin: GET policies → 200
             admin_client = _client_for(ADMIN_ID, workspace_id, role="admin", email=ADMIN_EMAIL)
@@ -398,7 +398,7 @@ def test_full_onboarding_flow(db):
 
             # 4b. Admin: POST custom policy → 201
             custom_policy_payload = {
-                "team_id": guard_team_id,
+                "team_id": workspace_id,
                 "rule_id": f"test-custom-{uuid.uuid4().hex[:6]}",
                 "description": "Integration test policy",
                 "match_pattern": r"test-pattern",
@@ -505,7 +505,7 @@ def test_full_onboarding_flow(db):
             _clear_overrides()
             plain_client = TestClient(app, raise_server_exceptions=True)
             resp = plain_client.get(
-                f"/guard/spend/budget-check?team_id={guard_team_id}&email={ADMIN_EMAIL}"
+                f"/guard/spend/budget-check?team_id={workspace_id}&email={ADMIN_EMAIL}"
             )
             assert resp.status_code == 200, (
                 f"GET /guard/spend/budget-check failed: {resp.status_code} {resp.text}"
