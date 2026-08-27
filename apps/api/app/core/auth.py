@@ -743,7 +743,9 @@ def check_permission(
             return "admin"
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
 
-    user_role = row.role
+    user_role = (row.role or "").strip().lower()
+    if user_role == "owner":
+        return "owner"
 
     has_perm = db.execute(
         _text("""
@@ -759,34 +761,51 @@ def check_permission(
         {"role": user_role, "perm": permission},
     ).fetchone()
 
-    if not has_perm:
-        # Fallback: if the RBAC tables are unseeded (migration 0044 not yet
-        # applied), grant access based on role tier so no env gets locked out.
-        seeded = db.execute(
-            _text("SELECT 1 FROM role_permissions LIMIT 1"),
-        ).fetchone()
-        if not seeded:
-            # Tables empty — derive access from role tier (mirrors the old
-            # require_workspace_role logic): admin=all, viewer=read-only,
-            # developer+security=read+write (conservative safe default).
-            read_only_perms = {
-                "platform.workflows.view", "platform.runs.view",
-                "platform.marketplace.browse", "platform.eval.view",
-                "guard.policies.view", "guard.activity.view_own",
-                "guard.spend.view_own",
-            }
-            if user_role == "admin":
-                return user_role
-            if user_role in ("developer", "security") and permission in read_only_perms:
-                return user_role
-            if user_role == "viewer" and permission in read_only_perms:
-                return user_role
-            # Write permissions need at least developer/security
-            if user_role in ("developer", "security"):
-                return user_role
-        raise HTTPException(status_code=403, detail=f"Permission denied: {permission}")
+    if has_perm:
+        return user_role
 
-    return user_role
+    # Fallback: if the RBAC tables are unseeded (migration 0044 not yet
+    # applied), grant access from a strict role→permission matrix so no env
+    # gets locked out while still denying unknown permissions.
+    seeded = db.execute(
+        _text("SELECT 1 FROM role_permissions LIMIT 1"),
+    ).fetchone()
+    if not seeded:
+        read_only_perms = {
+            "platform.workflows.view",
+            "platform.runs.view",
+            "platform.marketplace.browse",
+            "platform.eval.view",
+            "guard.policies.view",
+            "guard.activity.view_own",
+            "guard.spend.view_own",
+        }
+        write_perms = {
+            "platform.workflows.edit",
+            "platform.workflows.run",
+            "platform.marketplace.install",
+            "platform.credentials.manage",
+            "guard.policies.edit",
+            "guard.settings.edit",
+            "platform.workspace.edit",
+            "platform.members.manage",
+            "platform.audit_log.view",
+            "guard.activity.view_all",
+            "guard.activity.export",
+            "guard.spend.view_all",
+            "guard.spend.budgets.edit",
+        }
+
+        if user_role == "admin":
+            return user_role
+        if user_role == "viewer" and permission in read_only_perms:
+            return user_role
+        if user_role in {"developer", "security"} and permission in (read_only_perms | write_perms):
+            return user_role
+
+        raise HTTPException(status_code=403, detail=f"Missing permission: {permission}")
+
+    raise HTTPException(status_code=403, detail=f"Missing permission: {permission}")
 
 
 def require_permission(permission: str):

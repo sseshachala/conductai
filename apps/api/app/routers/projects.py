@@ -326,6 +326,11 @@ def list_projects(
             VALUES (:ws, :invite_code, :now)
             ON CONFLICT (workspace_id) DO NOTHING
         """), {"ws": str(project_id), "invite_code": invite_code, "now": now})
+        db.execute(text("""
+            INSERT INTO guard_teams (workspace_id, created_at)
+            VALUES (:ws, :now)
+            ON CONFLICT (workspace_id) DO NOTHING
+        """), {"ws": str(project_id), "now": now})
 
         # 4. Seed starter policies
         _seed_starter_policies(db, project_id, now)
@@ -627,6 +632,11 @@ def install_guard(
         VALUES (:ws, :invite_code, :now)
         ON CONFLICT (workspace_id) DO NOTHING
     """), {"ws": workspace_id, "invite_code": invite_code, "now": now})
+    db.execute(text("""
+        INSERT INTO guard_teams (workspace_id, created_at)
+        VALUES (:ws, :now)
+        ON CONFLICT (workspace_id) DO NOTHING
+    """), {"ws": workspace_id, "now": now})
     _seed_starter_policies(db, uuid.UUID(workspace_id), now)
     db.execute(text("""
         INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)

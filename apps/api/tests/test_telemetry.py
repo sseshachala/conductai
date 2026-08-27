@@ -15,7 +15,8 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from sqlalchemy.engine import create as sa_create
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -35,7 +36,7 @@ def client_and_db():
 
     # StaticPool — all sessions share the same in-memory DB connection so the
     # tables we create here are visible to the FastAPI request handler.
-    engine = create_engine(
+    engine = sa_create.create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
