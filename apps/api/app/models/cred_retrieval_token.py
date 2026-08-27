@@ -24,6 +24,9 @@ class CredRetrievalToken(Base):
     created_at = sa.Column(
         sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
     )
+    # Added by migration 0072 — rate limiting fields.
+    used_count = sa.Column(sa.Integer, nullable=False, server_default="0")
+    max_uses = sa.Column(sa.Integer, nullable=False, server_default="10")
 
     __table_args__ = (
         sa.Index("ix_cred_retrieval_tokens_token", "token"),
