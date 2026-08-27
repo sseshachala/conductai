@@ -140,7 +140,7 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
     return {
         "id": str(e.id),
         "workspace_id": str(e.workspace_id),
-        "agent_identity_id": e.agent_identity_id,
+        "agent_identity_id": getattr(e, "agent_identity_id", None),  # column not yet migrated on prod
         "clerk_user_id": e.clerk_user_id,
         "session_id": str(e.session_id) if e.session_id else None,
         "hook_session_id": e.hook_session_id,
