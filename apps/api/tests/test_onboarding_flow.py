@@ -182,15 +182,15 @@ def db():
 
 
 # ---------------------------------------------------------------------------
-# Utility: resolve Guard install row for a workspace
+# Utility: check Guard install for a workspace
 # ---------------------------------------------------------------------------
 
-def _guard_config_workspace_id(db_session, workspace_id: str) -> str | None:
+def _guard_config_exists(db_session, workspace_id: str) -> bool:
     row = db_session.execute(
         text("SELECT workspace_id FROM guard_config WHERE workspace_id::text = :ws LIMIT 1"),
         {"ws": workspace_id},
     ).fetchone()
-    return str(row.workspace_id) if row else None
+    return row is not None
 
 
 def _workspace_member_count(db_session, workspace_id: str) -> int:
@@ -284,11 +284,11 @@ def test_full_onboarding_flow(db):
             )
 
             # Verify Guard is installed (guard_config row exists)
-            guard_config_workspace_id = _guard_config_workspace_id(db, workspace_id)
-            assert guard_config_workspace_id is not None, (
+            guard_config_exists = _guard_config_exists(db, workspace_id)
+            assert guard_config_exists, (
                 "Guard config was not auto-created for the workspace"
             )
-            print(f"[step 1] guard_config_workspace_id={guard_config_workspace_id!r}")
+            print(f"[step 1] guard_config_exists={guard_config_exists!r}")
 
             # Verify conduct-base skill pack was auto-installed for the workspace
             pack_installed = db.execute(
