@@ -19,6 +19,10 @@ class GlensChatSession(Base):
     # #1218 Step 3b — Guard-enforced Lens with per-session blast-radius.
     token_hash       = Column(String(64), nullable=True, index=True)
     token_revoked_at = Column(DateTime(timezone=True), nullable=True)
+    # Session-scoped AgentIdentity minted at session start (migration 0090).
+    # Threaded through guarded_llm_call/stream so SpendCap + ThroughputCap
+    # apply to Lens usage.
+    agent_identity_id = Column(String(36), nullable=True)
     created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                           onupdate=lambda: datetime.now(timezone.utc))

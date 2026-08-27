@@ -144,6 +144,91 @@ TOOLS = [
         },
     },
     {
+        "name": "list_agent_identities",
+        "description": (
+            "List agent identities (long-lived AI actor tokens) in this workspace. Use for "
+            "'which agents/tokens do we have', 'show deactivated tokens', 'invalidated tokens', "
+            "'expired agent identities'. status defaults to 'active'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "deactivated", "pending_review", "expired", "all"],
+                    "description": "lifecycle_state filter",
+                },
+                "limit": {"type": "integer", "default": 20, "description": "Max rows (max 100)"},
+            },
+        },
+    },
+    {
+        "name": "get_agent_identity_count",
+        "description": (
+            "Exact COUNT of agent identities matching status. Use for 'how many invalidated/"
+            "active/expired identities/tokens' questions. Returns a single integer."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "deactivated", "pending_review", "expired", "all"],
+                },
+            },
+        },
+    },
+    {
+        "name": "get_workflow_details",
+        "description": (
+            "One workflow's full metadata + latest run status. Use when the user asks about "
+            "a specific workflow: 'what's the status of workflow X', 'when did X last run', "
+            "'is X archived'. Match by workflow_id OR name."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": "string", "description": "Workflow UUID"},
+                "name": {"type": "string", "description": "Workflow name"},
+            },
+        },
+    },
+    {
+        "name": "list_runs",
+        "description": (
+            "Recent workflow runs across this workspace's org. Use for 'show recent runs', "
+            "'what runs failed today', 'runs of workflow X'. Filter by workflow_id, status, "
+            "since/until."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": "string", "description": "Filter to one workflow"},
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "running", "paused", "succeeded", "failed", "cancelled"],
+                },
+                "since": {"type": "string", "description": "ISO date start"},
+                "until": {"type": "string", "description": "ISO date end"},
+                "limit": {"type": "integer", "default": 20, "description": "Max rows (max 100)"},
+            },
+        },
+    },
+    {
+        "name": "get_run",
+        "description": (
+            "One run's status + timings + outcome payload. Use when the user asks 'what "
+            "happened in run <id>' or drills into a specific run."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": "Run UUID"},
+            },
+            "required": ["run_id"],
+        },
+    },
+    {
         "name": "get_blocked_workflows",
         "description": (
             "Workflows Guard has blocked, ranked by block count. Use for 'which workflow triggered a block', "
@@ -250,6 +335,22 @@ def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
             if args.get("rule_id"):  filters["rule_id"] = args["rule_id"]
         elif name == "list_workflows":
             page = "/workflows"
+        elif name == "get_workflow_details":
+            wid = args.get("workflow_id")
+            page = f"/workflows/{wid}" if wid else "/workflows"
+        elif name in ("list_runs",):
+            page = "/runs"
+            if args.get("workflow_id"): filters["workflow_id"] = args["workflow_id"]
+            if args.get("status"):      filters["status"] = args["status"]
+            if args.get("since"):       filters["since"] = args["since"]
+            if args.get("until"):       filters["until"] = args["until"]
+        elif name == "get_run":
+            rid = args.get("run_id")
+            page = f"/runs/{rid}" if rid else "/runs"
+        elif name in ("list_agent_identities", "get_agent_identity_count"):
+            page = "/agent-identity"
+            if args.get("status") and args["status"] != "all":
+                filters["status"] = args["status"]
         elif name in ("get_spend_summary", "get_savings_summary", "get_budgets"):
             page = "/theguard/spend"
         elif name in ("list_policies", "get_guard_config"):
@@ -326,6 +427,7 @@ def _guarded_openai_completion(executor: Executor, provider: str, model: str, up
             upstream_url=upstream_url, upstream_path="/v1/chat/completions",
             real_key=api_key, ai_tool="lens",
             clerk_user_id="system:lens",
+            agent_identity_id=executor.agent_identity_id,
             prompt_summary="lens.resolve_tools",
         ))
     except _Blocked as blk:
@@ -426,6 +528,7 @@ def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_toke
         ai_tool="lens",
         clerk_user_id="system:lens",
         db=executor.db,
+        agent_identity_id=executor.agent_identity_id,
     )
     return text or "Could not complete the analysis."
 
@@ -539,10 +642,24 @@ async def glens_chat_stream(
     from app.modules.glens import tokens as _lens_tokens
     _lens_session_token = _lens_tokens.mint_for_session(db, session)
 
+    # Mint a session-scoped AgentIdentity so every Lens LLM egress carries a
+    # real `agent_identity_id` through PolicyContext (SpendCap +
+    # ThroughputCap activate on the composable engine). Idempotent: only
+    # mint if the session doesn't already have one. Plaintext token is
+    # discarded — Lens calls are in-process, no HTTP boundary needs it.
+    if not getattr(session, "agent_identity_id", None):
+        from app.modules.agent_identity.router import mint_agent_identity as _mint_ai
+        _identity, _plain = _mint_ai(
+            db, workspace_id, f"lens-session-{str(session.id)[:8]}"
+        )
+        session.agent_identity_id = _identity.id
+        db.add(session)
+        db.commit()
+
     session_messages = json.loads(session.messages)
     session_messages.append({"role": "user", "content": req.message})
     session_id_str = str(session.id)
-    executor = Executor(db, workspace_id)
+    executor = Executor(db, workspace_id, agent_identity_id=session.agent_identity_id)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     system = _SYSTEM.format(today=today)
