@@ -1374,7 +1374,7 @@ function GuardDashboard() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ background: "var(--surface-2)" }}>
-                  {["Developer", "Tool", "Machine", "IP", "OS", "Events", "Started"].map(h => (
+                  {["Actor", "Tool", "Machine", "IP", "OS", "Events", "Started"].map(h => (
                     <th key={h} style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600, color: "var(--text-3)", fontSize: 11 }}>{h}</th>
                   ))}
                 </tr>
@@ -1416,7 +1416,7 @@ function GuardDashboard() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: "var(--surface-2)" }}>
-                    {["Developer", "AI tools detected", "Hook installed", "MCP registered"].map(h => (
+                    {["Actor", "AI tools detected", "Hook installed", "MCP registered"].map(h => (
                       <th key={h} style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600, color: "var(--text-3)", fontSize: 11 }}>{h}</th>
                     ))}
                   </tr>

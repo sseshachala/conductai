@@ -205,7 +205,7 @@ function Soc2Report() {
             <thead>
               <tr>
                 <th style={{ width: "16%" }}>Date</th>
-                <th style={{ width: "18%" }}>Developer</th>
+                <th style={{ width: "18%" }}>Actor</th>
                 <th style={{ width: "12%" }}>Tool</th>
                 <th style={{ width: "10%" }}>Decision</th>
                 <th style={{ width: "20%" }}>Rule</th>

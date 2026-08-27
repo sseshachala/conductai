@@ -599,7 +599,7 @@ function ActivityContent() {
             gap: 12, padding: "10px 18px",
             borderBottom: "1px solid var(--border)", background: "var(--surface-2)",
           }}>
-            {["Developer", "Tool", "Started", "Events", "Violations", "Cost", "Saved", "Machine / IP", "OS"].map((h, i) => (
+            {["Actor", "Tool", "Started", "Events", "Violations", "Cost", "Saved", "Machine / IP", "OS"].map((h, i) => (
               <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
             ))}
           </div>
@@ -676,7 +676,7 @@ function ActivityContent() {
         ) : (
           <div className="card" style={{ overflow: "hidden" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1.2fr 0.6fr 0.6fr 0.7fr 0.6fr 0.9fr 0.5fr", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-              {["Developer", "Archetype", "Sessions", "Commits", "Autonomy", "Lines/hr", "Date", "Report"].map(h => (
+              {["Actor", "Archetype", "Sessions", "Commits", "Autonomy", "Lines/hr", "Date", "Report"].map(h => (
                 <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
               ))}
             </div>
@@ -751,7 +751,7 @@ function ActivityContent() {
                 background: "var(--surface-2)",
               }}
             >
-              {["Time", "Developer", "Tool", "Call", "Input", "Decision", "Rule", "Blast Radius"].map((h, i) => (
+              {["Time", "Actor", "Tool", "Call", "Input", "Decision", "Rule", "Blast Radius"].map((h, i) => (
                 <div
                   key={i}
                   className="eyebrow"
@@ -968,7 +968,7 @@ function ActivityContent() {
               background: "var(--surface-2)",
             }}
           >
-            {["Time", "Developer", "Tool", "Call", "Input", "Decision", "Rule", "Blast Radius"].map((h, i) => (
+            {["Time", "Actor", "Tool", "Call", "Input", "Decision", "Rule", "Blast Radius"].map((h, i) => (
               <div
                 key={i}
                 className="eyebrow"

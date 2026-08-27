@@ -421,7 +421,7 @@ function GovernanceEmbed({ data }: { data: Record<string, unknown> }) {
             <thead>
               <tr>
                 <th style={TH_STYLE}>Decision</th>
-                <th style={TH_STYLE}>Developer</th>
+                <th style={TH_STYLE}>Actor</th>
                 <th style={TH_STYLE}>Tool</th>
                 <th style={TH_STYLE}>Rule</th>
                 <th style={TH_STYLE}>Time</th>

@@ -145,7 +145,7 @@ function SessionReportsContent() {
                 borderBottom: "1px solid var(--border)",
                 background: "var(--surface-2)",
               }}>
-                {["Developer", "Archetype", "Sessions", "Commits", "Autonomy", "Lines/hr", "Date", "Report"].map(h => (
+                {["Actor", "Archetype", "Sessions", "Commits", "Autonomy", "Lines/hr", "Date", "Report"].map(h => (
                   <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
                 ))}
               </div>
