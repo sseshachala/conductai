@@ -137,3 +137,101 @@ async def guarded_completion(
         vendor_key=vendor_key,
         provider=provider,
     )
+
+
+async def guarded_llm_call(
+    *,
+    workspace_id: str,
+    provider: str,
+    model: str,
+    body: dict,
+    upstream_url: str,
+    upstream_path: str,
+    real_key: str,
+    auth_header_out: str = "Authorization",
+    bearer: bool = True,
+    ai_tool: str = "lens",
+    prompt_summary: str = "lens",
+    user_email: str | None = None,
+    upstream_api_key: str | None = None,
+    vendor_key: str | None = None,
+    extra_headers: dict | None = None,
+) -> dict:
+    """In-process, non-streaming Lens sibling of `guarded_completion`.
+
+    Not a fork — this wraps `guarded_completion` (same policy engine, same
+    audit chain, same upstream router). It exists so in-process callers like
+    Lens can get the raw upstream JSON dict back and adapt it to their SDK
+    shape, instead of receiving a FastAPI JSONResponse meant for HTTP wire.
+
+    Zero self-HTTP hop: the underlying `_router.upstream` uses httpx directly.
+
+    Raises on BLOCK (policy denial) or upstream error.
+    """
+    import asyncio as _asyncio
+    import json as _json
+
+    from fastapi import BackgroundTasks as _BackgroundTasks
+    background = _BackgroundTasks()
+
+    resp = await guarded_completion(
+        workspace_id=workspace_id,
+        clerk_user_id="",
+        ai_tool=ai_tool,
+        provider=provider,
+        model=model,
+        body=body,
+        upstream_url=upstream_url,
+        upstream_path=upstream_path,
+        real_key=real_key,
+        auth_header_out=auth_header_out,
+        bearer=bearer,
+        is_stream=False,
+        background=background,
+        prompt_summary=prompt_summary,
+        user_email=user_email,
+        upstream_api_key=upstream_api_key,
+        vendor_key=vendor_key,
+        extra_headers=extra_headers,
+    )
+
+    # Drive the scheduled audit writes now — no request lifecycle to run them for us.
+    try:
+        await background()
+    except Exception as e:
+        log.warning("guarded_llm_call.background_failed", err=str(e))
+
+    if isinstance(resp, JSONResponse):
+        raw_body = resp.body if isinstance(resp.body, (bytes, bytearray)) else b""
+        if resp.status_code >= 400:
+            payload = _safe_loads(raw_body)
+            raise GuardedLLMBlocked(
+                status=resp.status_code,
+                detail=payload.get("detail") or payload.get("message") or "policy violation",
+                payload=payload,
+            )
+        return _safe_loads(raw_body)
+
+    raise Exception(
+        "guarded_llm_call currently supports non-streaming responses only; "
+        "callers needing streams should call guarded_completion(is_stream=True) "
+        "and drive the StreamingResponse directly."
+    )
+
+
+def _safe_loads(raw: bytes) -> dict:
+    import json as _json
+    try:
+        return _json.loads(raw or b"{}")
+    except Exception:
+        return {}
+
+
+class GuardedLLMBlocked(Exception):
+    """Raised by `guarded_llm_call` when policy or router refuses the call."""
+
+    def __init__(self, *, status: int, detail: str, payload: dict) -> None:
+        super().__init__(f"Guard blocked ({status}): {detail}")
+        self.status = status
+        self.detail = detail
+        self.payload = payload

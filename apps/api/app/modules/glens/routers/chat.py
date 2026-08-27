@@ -269,21 +269,122 @@ def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
     return page
 
 
-def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tuple[list[dict], str | None, list[tuple[str, dict]]]:
-    """Phase 1: Execute tool calls. Returns (final_msgs, early_text, tool_calls_made)."""
-    from app.runtime.llm_client import LLMToolUseBlock
+def _resolve_llm_config(executor: Executor):
+    """Return (provider, model, upstream_url, api_key) for the workspace's OpenAI-shape endpoint.
+    Same discovery order as the legacy _llm_client — settings first, per-workspace vault override."""
     from app.core.config import settings as _s
-
     provider = _s.conduct_inference_provider or "openai"
     model = _s.conduct_inference_model_name or "gpt-4o-mini"
-    endpoint = (_s.conduct_inference_endpoint_url or "").rstrip("/") or "(default)"
-    log.info("glens.llm_call", provider=provider, model=model, endpoint=endpoint)
+    endpoint = (_s.conduct_inference_endpoint_url or "").rstrip("/")
+    if endpoint and endpoint.endswith("/v1"):
+        endpoint = endpoint[:-3]
+    upstream_url = endpoint or "https://api.openai.com"
+    api_key = _s.conduct_inference_token_id or (_s.openai_api_key if provider == "openai" else "") or "unused"
+    if executor.db and executor.workspace_id:
+        try:
+            from app.modules.credentials.vault import get_credential
+            creds = get_credential(executor.db, executor.workspace_id, provider)
+            api_key = creds.get("api_key") or api_key
+        except Exception:
+            pass
+    return provider, model, upstream_url, api_key
+
+
+def _guarded_openai_completion(executor: Executor, provider: str, model: str, upstream_url: str,
+                                api_key: str, messages: list[dict], system: str,
+                                tools: list[dict] | None, max_tokens: int):
+    """#1254 — in-process guarded LLM call for Lens.
+
+    Runs the SAME code path the HTTP proxy uses (guarded_completion → policy →
+    upstream → audit) with zero self-HTTP hop, and adapts the OpenAI-shape
+    JSON response back into an LLMResponse (SDK shape) so _resolve_tools can
+    keep iterating the tool-use loop unchanged.
+    """
+    import asyncio as _asyncio
+    from app.guard.gateway import guarded_llm_call as _guarded, GuardedLLMBlocked as _Blocked
+    from app.runtime.llm_client import LLMResponse, LLMTextBlock, LLMToolUseBlock, LLMUsage
+
+    oai_messages = [{"role": "system", "content": system}, *messages]
+    payload: dict = {"model": model, "messages": oai_messages, "max_tokens": max_tokens}
+    if tools:
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t.get("description", ""),
+                    "parameters": t.get("input_schema", {"type": "object", "properties": {}}),
+                },
+            }
+            for t in tools
+        ]
+
+    try:
+        raw = _asyncio.run(_guarded(
+            workspace_id=executor.workspace_id,
+            provider=provider, model=model, body=payload,
+            upstream_url=upstream_url, upstream_path="/v1/chat/completions",
+            real_key=api_key, ai_tool="lens",
+            prompt_summary="lens.resolve_tools",
+        ))
+    except _Blocked as blk:
+        raise Exception(f"Guard blocked Lens call: {blk.detail}") from blk
+
+    choice = ((raw.get("choices") or [{}])[0])
+    message = choice.get("message") or {}
+    finish_reason = choice.get("finish_reason") or "stop"
+
+    content: list = []
+    text = message.get("content") or message.get("reasoning_content") or ""
+    if isinstance(text, str) and text.strip():
+        content.append(LLMTextBlock(text=text))
+    for tc in message.get("tool_calls") or []:
+        fn = tc.get("function") or {}
+        raw_args = fn.get("arguments") or "{}"
+        try:
+            parsed = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+        except Exception:
+            parsed = {}
+        content.append(LLMToolUseBlock(
+            id=tc.get("id", ""),
+            name=fn.get("name", ""),
+            input=parsed if isinstance(parsed, dict) else {},
+        ))
+
+    u = raw.get("usage") or {}
+    stop_map = {"tool_calls": "tool_use", "length": "max_tokens", "stop": "end_turn"}
+    return LLMResponse(
+        content=content,
+        stop_reason=stop_map.get(finish_reason, finish_reason or "end_turn"),
+        usage=LLMUsage(
+            input_tokens=int(u.get("prompt_tokens", 0) or 0),
+            output_tokens=int(u.get("completion_tokens", 0) or 0),
+        ),
+    )
+
+
+def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tuple[list[dict], str | None, list[tuple[str, dict]]]:
+    """Phase 1: Execute tool calls. Returns (final_msgs, early_text, tool_calls_made).
+
+    Each LLM turn goes through Guard's in-process `guarded_llm_call` (#1254) —
+    same policy + audit path as the HTTP proxy. The Lens-side `_llm_client`
+    is still constructed to reuse the client's provider-neutral message
+    formatters (`make_assistant_turn`, `make_tool_results_turn`); only the
+    upstream call itself is now Guard-mediated.
+    """
+    from app.runtime.llm_client import LLMToolUseBlock
+
+    provider, model, upstream_url, api_key = _resolve_llm_config(executor)
+    log.info("glens.llm_call", provider=provider, model=model, upstream=upstream_url)
     client = _llm_client(executor.db, executor.workspace_id)
     msgs = list(messages)
     tool_calls_made: list[tuple[str, dict]] = []
 
     for _ in range(5):
-        resp = client.create(model=model, messages=msgs, system=system, tools=TOOLS, max_tokens=512)
+        resp = _guarded_openai_completion(
+            executor, provider, model, upstream_url, api_key,
+            messages=msgs, system=system, tools=TOOLS, max_tokens=512,
+        )
         tool_blocks = [b for b in resp.content if isinstance(b, LLMToolUseBlock)]
         text = next((b.text for b in resp.content if hasattr(b, "text") and b.text), "")
 
