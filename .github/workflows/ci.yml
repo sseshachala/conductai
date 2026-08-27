@@ -56,10 +56,11 @@ jobs:
         run: make schema-check
         working-directory: apps/api
       - name: Test
-        # `-m 'not matrix'` skips the full endpoint×role runtime probe
-        # (~600 tests). Static layers of test_endpoint_matrix still run here.
-        # Full matrix runs nightly — see .github/workflows/nightly.yml.
-        run: python -m pytest tests/ -q --ignore=tests/test_guard.py -m 'not matrix'
+        # #1265 — matrix marker no longer excluded, so the RBAC route×role
+        # runtime probe runs on every PR (catches auth regressions same-day
+        # instead of the 24h nightly window). Nightly still runs the full
+        # matrix as belt-and-suspenders — see .github/workflows/nightly.yml.
+        run: python -m pytest tests/ -q --ignore=tests/test_guard.py
         working-directory: apps/api
         env:
           DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
