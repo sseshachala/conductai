@@ -691,7 +691,11 @@ def check_permission(
     """
     from sqlalchemy import text as _text
 
-    if not _clerk_enabled():
+    # Use an explicit dict lookup so that unittest.mock.patch reliably replaces
+    # _clerk_enabled at test time.  Python 3.11's LOAD_GLOBAL inline cache can
+    # serve a stale pointer to the original function even after setattr() updates
+    # the module __dict__; going through globals() forces a fresh dict read.
+    if not globals()["_clerk_enabled"]():
         return "admin"
 
     import re as _re
