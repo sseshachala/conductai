@@ -81,3 +81,18 @@ cases:
     tool_input:
       command: "ls -la /tmp"
     expected: allow
+
+  # ── negative canaries (#1272 batch 1 — see docs/guard-fp-strategy.md) ──
+  - rule_id: endpoint-attack-private-key-read
+    scenario: "[E] warning comment mentioning SSH key path without a read verb"
+    tool_name: bash
+    tool_input:
+      command: "echo 'Never store your key at ~/.ssh/id_rsa without a passphrase — use ssh-agent instead.'"
+    expected: allow
+
+  - rule_id: endpoint-attack-cloud-cred-read
+    scenario: "[E] echo mentioning AWS credentials file location"
+    tool_name: bash
+    tool_input:
+      command: "echo 'AWS credentials live at ~/.aws/credentials — rotate them quarterly.'"
+    expected: allow

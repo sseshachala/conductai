@@ -97,3 +97,11 @@ cases:
     file_path: cfg.py
     content: MAX_RETRIES = 3
   expected: allow
+
+# ── negative canaries (#1272 batch 1 — see docs/guard-fp-strategy.md) ────
+- rule_id: iso42001-bias-testing
+  scenario: "[E] running the pack's own bias-audit test suite (mentions bias, no deploy)"
+  tool_name: bash
+  tool_input:
+    command: "pytest tests/ -k bias"
+  expected: allow
