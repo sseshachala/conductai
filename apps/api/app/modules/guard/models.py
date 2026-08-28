@@ -464,6 +464,10 @@ class DiscoveryScan(Base):
     started_at     = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     completed_at   = Column(DateTime(timezone=True), nullable=True)
 
+    __table_args__ = (
+        Index("ix_discovery_scans_workspace", "workspace_id"),
+    )
+
 
 class PolicyCertification(Base):
     __tablename__ = "policy_certifications"
@@ -498,6 +502,8 @@ class DiscoveredAgent(Base):
             "workspace_id", "framework", "source",
             name="uq_discovered_agents_workspace_framework_source",
         ),
+        Index("ix_discovered_agents_workspace", "workspace_id"),
+        Index("ix_discovered_agents_scan", "scan_id"),
     )
 
 

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 import sqlalchemy as sa
-from sqlalchemy import Column, String, DateTime, Text
+from sqlalchemy import Column, String, DateTime, Index, Text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
 
@@ -19,3 +19,8 @@ class AuditLog(Base):
     resource_id = Column(String(255), nullable=True)
     meta = Column("metadata", JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_audit_log_workspace_created", "workspace_id", "created_at"),
+        Index("ix_audit_log_workspace_action", "workspace_id", "action"),
+    )
