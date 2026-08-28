@@ -42,7 +42,7 @@ class PerplexityClient:
         tools: list[dict] | None = None,
         tool_choice: dict | None = None,
         max_tokens: int = 4096,
-        cache_system: bool = False,
+        cache_system: bool = True,
         idempotency_key: str | None = None,
         on_retry: Callable[[dict[str, Any]], None] | None = None,
         outer_attempt: int = 1,

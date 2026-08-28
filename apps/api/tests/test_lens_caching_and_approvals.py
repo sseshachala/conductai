@@ -1,41 +1,29 @@
 """Tests for Lens caching + approvals-tool broadening (2026-08-28 follow-up to #1347)."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
+# Import llm_client first so its re-exports resolve before we touch adapters.
+import app.runtime.llm_client  # noqa: F401
 
 
-def test_guarded_client_call_enables_cache_system():
-    """cache_system=True must flow into client.create so Anthropic caches
-    the system + tools block; OpenAI/Perplexity adapters no-op silently."""
-    from app.guard.gateway import guarded_client_call
+def test_adapter_default_enables_cache_system():
+    """Prompt caching is on by default at the adapter level — every caller
+    of LLMClient.create() gets it without opting in, so brain_block, Lens,
+    conductgen, sdd, workflows, team_memory all cache automatically on
+    Anthropic (silent no-op on other providers)."""
+    import inspect
+    from app.runtime.llm_client import LLMClient, AnthropicClient, OpenAIClient, PerplexityClient
 
-    captured = {}
-    fake_client = MagicMock()
-    fake_client.create.side_effect = lambda **kw: (captured.update(kw), MagicMock(usage=MagicMock(input_tokens=1, output_tokens=1)))[1]
-
-    with patch("app.guard.policy.evaluate_composed") as _eval, \
-         patch("app.guard.gateway._record_audit"):
-        from app.guard.policy_types import PolicyAction, PolicyDecision
-        _eval.return_value = PolicyDecision(action=PolicyAction.ALLOW, source="test")
-        guarded_client_call(
-            client=fake_client,
-            workspace_id="ws-1",
-            provider="anthropic",
-            model="claude-sonnet-4-6",
-            messages=[{"role": "user", "content": "hi"}],
-            system="You are helpful.",
-            tools=[{"name": "t", "description": "x", "input_schema": {"type": "object", "properties": {}}}],
+    for cls in (AnthropicClient, OpenAIClient, PerplexityClient, LLMClient):
+        sig = inspect.signature(cls.create)
+        assert sig.parameters["cache_system"].default is True, (
+            f"{cls.__name__}.create must default cache_system=True"
         )
-
-    assert captured.get("cache_system") is True
 
 
 def test_list_pending_approvals_supports_since_today():
-    """since='today' should filter created_at >= UTC start-of-day.
-    Verifies the SQLAlchemy filter chain runs cleanly with the new param."""
+    """since='today' should filter created_at >= UTC start-of-day."""
     from app.modules.glens.executor import Executor
 
     executor = Executor.__new__(Executor)
@@ -52,8 +40,7 @@ def test_list_pending_approvals_supports_since_today():
 
     result = executor._tool_list_pending_approvals(status="all", since="today", limit=10)
     assert result == []
-    # 3 filter calls: workspace_id, (status skipped for "all"), since
-    # workspace_id + since = 2 filters when status=all
+    # workspace_id + since (status skipped for "all") = 2 filter calls
     assert fake_query.filter.call_count == 2
 
 
@@ -72,7 +59,7 @@ def test_list_pending_approvals_supports_iso_date():
     executor.db.query.return_value = fake_query
 
     executor._tool_list_pending_approvals(status="pending", since="2026-08-28")
-    # workspace_id + status + since = 3 filters
+    # workspace_id + status + since = 3 filter calls
     assert fake_query.filter.call_count == 3
 
 
