@@ -153,6 +153,11 @@ class GuardNotificationChannel(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
+    __table_args__ = (
+        Index("idx_guard_notif_workspace_action", "workspace_id", "action"),
+        Index("idx_guard_notif_workspace_enabled", "workspace_id", "enabled"),
+    )
+
 
 class GuardAuditEvent(Base):
     __tablename__ = "guard_audit_events"
@@ -294,6 +299,19 @@ class GuardSpendBudget(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    __table_args__ = (
+        Index(
+            "uq_guard_spend_workspace_default", "workspace_id",
+            unique=True,
+            postgresql_where=sa.text("clerk_user_id IS NULL"),
+        ),
+        Index(
+            "uq_guard_spend_workspace_member", "workspace_id", "clerk_user_id",
+            unique=True,
+            postgresql_where=sa.text("clerk_user_id IS NOT NULL"),
+        ),
+    )
+
 
 class GuardRateLimit(Base):
     """Per-workspace / per-agent-identity RPM+TPM caps (#980).
@@ -321,6 +339,7 @@ class GuardRateLimit(Base):
 
     __table_args__ = (
         UniqueConstraint("workspace_id", "agent_identity_id", name="uq_guard_rate_limits_scope"),
+        Index("idx_guard_rate_limits_ws", "workspace_id"),
     )
 
 
@@ -416,6 +435,10 @@ class GuardRuleOverride(Base):
     expires_at       = Column(DateTime(timezone=True), nullable=True)
     use_audited_at    = Column(DateTime(timezone=True), nullable=True)
     expiry_audited_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_guard_rule_overrides_workspace", "workspace_id"),
+    )
 
 
 class GuardPolicyCache(Base):
@@ -544,6 +567,13 @@ class GuardKnowledgeIndex(Base):
 
     __table_args__ = (
         UniqueConstraint("workspace_id", "source_kind", "source_id", name="guard_knowledge_index_workspace_id_source_kind_source_id_key"),
+        Index("guard_knowledge_index_workspace_id_source_kind_idx", "workspace_id", "source_kind"),
+        Index(
+            "guard_knowledge_index_embedding_idx", "embedding",
+            postgresql_using="ivfflat",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+            postgresql_with={"lists": "100"},
+        ),
     )
 
 
@@ -574,6 +604,19 @@ class GuardApprovalRequest(Base):
 
     surface    = Column(String(50), nullable=False, default="unknown")
     session_id = Column(String(255), nullable=True)
+
+    __table_args__ = (
+        Index("idx_guard_approvals_ws_status", "workspace_id", "status", "created_at"),
+        Index("idx_guard_approvals_ws_requester", "workspace_id", "requester_email"),
+        Index(
+            "idx_guard_approvals_source_run", "source_run_id",
+            postgresql_where=sa.text("source_run_id IS NOT NULL"),
+        ),
+        Index(
+            "idx_guard_approvals_pending_timeout", "timeout_at",
+            postgresql_where=sa.text("status = 'pending'"),
+        ),
+    )
 
     source_run_id   = Column(UUID(as_uuid=True), ForeignKey("runs.id", ondelete="SET NULL"), nullable=True)
     source_block_id = Column(String(255), nullable=True)
