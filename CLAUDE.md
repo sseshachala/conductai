@@ -215,6 +215,21 @@ MCP tools (Agent Booster, any future Conduct MCP server) are transport, not auth
 ### No path traversal in file-reading tools
 Any tool that reads files by user-supplied path must resolve the path and verify it stays within the project root before reading. Pattern: `resolved.relative_to(root.resolve())` — raise/return error if this throws.
 
+### Schema changes require paired migrations in the same PR
+Every new or modified ORM declaration under `apps/api/app/models/` and `apps/api/app/modules/**/models.py` MUST ship with the paired Alembic migration in the same PR. No exceptions.
+
+**Applies to:** new `Column()`, new/modified `Index()`, new/modified `UniqueConstraint()`, new/modified `ForeignKey()`, `nullable=` flips, type changes, `server_default` changes.
+
+**Enforcement:**
+- CI runs `test_alembic_check_no_schema_drift` on every PR — merging with drift is blocked.
+- Every `Index()`, `UniqueConstraint()`, and `ForeignKey()` must have an explicit `name=` arg. Auto-generated names diverge between SQLAlchemy and Postgres, producing false drift ops.
+- Look up existing constraint names in `apps/api/alembic/versions/` before declaring — never guess. Migration files are the source of truth.
+
+**Never run `alembic revision --autogenerate` on this repo** — it proposes destructive `DROP INDEX` ops for every orphan (see PR #1280 for the failure mode). Use `alembic check` only to diagnose; hand-write migrations to fix.
+
+**Why:** The ~68 drift ops eliminated in Sessions 1-3 (PRs #1337–#1374) accumulated because model changes shipped without paired migrations for months. The drift regression test is now the gate that prevents this class of bug from re-entering.
+
+
 
 <!-- booster-verbosity:start -->
 Be concise. No filler. No preamble. State results directly. One sentence per idea. Code examples over explanations.
