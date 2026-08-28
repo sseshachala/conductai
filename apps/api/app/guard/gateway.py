@@ -371,9 +371,13 @@ def guarded_client_call(
             payload={},
         )
 
+    # cache_system opts in to Anthropic prompt caching for system + tools.
+    # OpenAI / Perplexity / Together adapters accept the arg and no-op silently
+    # (see adapters/*.py). Free savings on Anthropic, zero cost elsewhere.
     resp = client.create(
         model=model, messages=messages, system=system,
         tools=tools, max_tokens=max_tokens,
+        cache_system=True,
     )
 
     try:
