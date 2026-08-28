@@ -83,6 +83,7 @@ async def _stream_chunks(
             conductai_workflow=audit_args[12] if len(audit_args) > 12 else None,
             conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
             hook_session_id=audit_args[14] if len(audit_args) > 14 else None,
+            routing_meta=audit_args[15] if len(audit_args) > 15 else None,
         )
 
 
@@ -220,6 +221,7 @@ async def upstream(
         conductai_workflow=audit_args[12] if len(audit_args) > 12 else None,
         conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
         hook_session_id=audit_args[14] if len(audit_args) > 14 else None,
+        routing_meta=audit_args[15] if len(audit_args) > 15 else None,
     )
     _resp_headers = {
         k: v for k, v in resp.headers.items()

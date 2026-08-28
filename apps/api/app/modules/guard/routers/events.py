@@ -132,6 +132,7 @@ class EventOut(BaseModel):
     # #1150 phase 1 — layered verdict envelope (nullable for pre-migration rows)
     evaluated_rules: list[dict] | None = None
     defense_score: int | None = None
+    routing_meta: dict | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -178,6 +179,7 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "entry_hash": e.entry_hash,
         "evaluated_rules": e.evaluated_rules,
         "defense_score": e.defense_score,
+        "routing_meta": getattr(e, "routing_meta", None),
         "policy_hash": e.policy_hash,
         "goal_id": e.goal_id,
         "goal_name": e.goal_name,

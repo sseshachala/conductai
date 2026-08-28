@@ -110,3 +110,35 @@ def test_cross_provider_prefix_forwards_raw_string(client_and_capture):
     )
     assert r.status_code == 200, r.text
     assert forward_calls[0]["body"]["model"] == "anthropic/balanced"
+
+
+def test_routing_meta_is_threaded_into_audit_args(client_and_capture):
+    """When a tier-form is sent, audit_args[15] must carry the routing_meta dict
+    so guard_audit_events.routing_meta gets populated by the writer."""
+    client, forward_calls = client_and_capture
+    r = client.post(
+        "/proxy/openai/v1/chat/completions",
+        headers={"Authorization": "Bearer guard-mt-fake"},
+        json={"model": "balanced", "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert r.status_code == 200, r.text
+    audit_args = forward_calls[0]["audit_args"]
+    assert len(audit_args) >= 16, "audit_args must include routing_meta at position 15"
+    routing_meta = audit_args[15]
+    assert routing_meta is not None
+    assert routing_meta["tier_form"] == "balanced"
+    assert routing_meta["resolved_model"] == "gpt-4.1"
+    assert routing_meta["endpoint_provider"] == "openai"
+    assert routing_meta["resolution_source"] == "workspace_primitives"
+
+
+def test_routing_meta_is_none_for_concrete_model(client_and_capture):
+    client, forward_calls = client_and_capture
+    r = client.post(
+        "/proxy/openai/v1/chat/completions",
+        headers={"Authorization": "Bearer guard-mt-fake"},
+        json={"model": "gpt-4.1-mini", "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert r.status_code == 200, r.text
+    audit_args = forward_calls[0]["audit_args"]
+    assert audit_args[15] is None, "concrete model calls must leave routing_meta NULL"

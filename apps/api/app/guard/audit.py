@@ -122,6 +122,7 @@ def record(
     conductai_run_id: str | None = None, conductai_workflow: str | None = None,
     conductai_workflow_id: str | None = None, hook_session_id: str | None = None,
     evaluated_rules: list[dict] | None = None, defense_score: int | None = None,
+    routing_meta: dict | None = None,
 ) -> None:
     """Background task — best-effort audit write, never blocks the response.
 
@@ -146,7 +147,8 @@ def record(
                   cost_usd_after, input_summary, user_email,
                   conductai_run_id, conductai_workflow, conductai_workflow_id,
                   hook_session_id,
-                  evaluated_rules, defense_score
+                  evaluated_rules, defense_score,
+                  routing_meta
                 ) VALUES (
                   :ws, :uid, :ai, NULL,
                   'proxy', :prov, :model,
@@ -155,7 +157,8 @@ def record(
                   :cost, :summary, :email,
                   :run_id, :workflow, :workflow_id,
                   :hook_session_id,
-                  CAST(:eval AS jsonb), :score
+                  CAST(:eval AS jsonb), :score,
+                  CAST(:routing AS jsonb)
                 )
             """),
             {
@@ -174,6 +177,7 @@ def record(
                 "hook_session_id": hook_session_id,
                 "eval": json.dumps(evaluated_rules) if evaluated_rules else None,
                 "score": defense_score,
+                "routing": json.dumps(routing_meta) if routing_meta else None,
             },
         )
         db.commit()
