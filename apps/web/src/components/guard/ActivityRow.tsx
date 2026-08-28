@@ -42,6 +42,13 @@ export interface AuditEvent {
   // #1150 phase 2 — layered verdict envelope
   evaluated_rules?: Array<{ rule_id: string | null; severity?: string; action?: string }> | null
   defense_score?: number | null
+  routing_meta?: {
+    tier_form?: string | null
+    resolved_model?: string | null
+    endpoint_provider?: string | null
+    reason?: string | null
+    resolution_source?: string | null
+  } | null
 }
 
 const TOOL_COLORS: Record<string, string> = {
@@ -485,6 +492,19 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           <div>
             <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Model</span>
             <span className="mono" style={{ color: "var(--text-2)" }}>{[ev.provider, ev.model].filter(Boolean).join(" / ")}</span>
+          </div>
+        )}
+        {ev.routing_meta && (
+          <div>
+            <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Routed</span>
+            <span className="mono" style={{ color: "var(--text-2)" }}>
+              {ev.routing_meta.tier_form ?? "?"} → {ev.routing_meta.resolved_model ?? ev.model ?? "?"}
+            </span>
+            {ev.routing_meta.resolution_source && (
+              <span style={{ color: "var(--text-muted)", marginLeft: 6, fontSize: 11 }}>
+                via {ev.routing_meta.resolution_source.replace(/_/g, " ")}
+              </span>
+            )}
           </div>
         )}
         {ev.rule_id && (
