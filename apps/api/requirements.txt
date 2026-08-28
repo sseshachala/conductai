@@ -25,4 +25,3 @@ structlog==24.4.0
 sentry-sdk[fastapi]==2.68.0
 mcp>=1.28,<2  # v2 requires client rewrite — see #1169 for the migration plan
 pgvector==0.3.6
-schemathesis==4.4.4  # contract fuzz (#1260)

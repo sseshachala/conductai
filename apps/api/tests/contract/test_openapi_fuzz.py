@@ -50,11 +50,25 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
 os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
 import pytest
-import schemathesis
-from hypothesis import settings
-from schemathesis.specs.openapi.checks import unsupported_method
 
-from app.main import app
+# Schemathesis 4.4.4 requires pytest<9 but the repo pins pytest==9.1.1
+# (dependabot bumped it in #1202). Adding schemathesis to requirements.txt
+# breaks pip install across every CI job. Two paths to activate this test:
+#   1. Wait for schemathesis 5+ to support pytest 9 (upstream tracks it)
+#   2. Downgrade repo to pytest 8.4.x (repo-wide regression — needs its own PR)
+# Until then, the harness stays as scaffolding — the include-list pattern
+# and the check-exclusion documentation survive so activation is a 3-line diff.
+pytest.skip(
+    "blocked: schemathesis 4.4.4 needs pytest<9, repo pins pytest==9.1.1 (#1202). "
+    "Activate by pinning schemathesis>=5 (pytest 9 support) or downgrading pytest.",
+    allow_module_level=True,
+)
+
+import schemathesis  # noqa: E402
+from hypothesis import settings  # noqa: E402
+from schemathesis.specs.openapi.checks import unsupported_method  # noqa: E402
+
+from app.main import app  # noqa: E402
 
 # Checks we deliberately exclude:
 # - unsupported_method: FastAPI returns 422 for undeclared HTTP verbs (validation
