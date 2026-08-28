@@ -13,6 +13,19 @@
 
 </div>
 
+---
+
+## Ask Lens — natural language over your governance data
+
+**Lens** is Conduct's chat surface. It sits above every workspace as a Guard-enforced assistant — ask about blocked events, approvals, spend, rules, agent activity in plain English. Every tool call the assistant makes runs through Guard: same policy engine, same audit trail as a live agent.
+
+![Lens chat — asking "how many guard blocks today", grounded in real audit data](apps/web/public/guard-docs/lens-chat.png)
+
+- **One chat for the whole platform.** Guard, workflows, rules, compliance — one input, no context switching.
+- **Grounded in your data.** Not a wrapper around ChatGPT. Every answer comes from your workspace's audit log, policy state, and run history.
+- **Guard-enforced.** Lens's LLM calls go through the same policy engine as your agents. Same rules, same limits, same audit chain.
+- **Drilldowns built in.** Ask "who got blocked today" — get a table with per-row links to the full audit record.
+
 Two product surfaces, one repo, one policy:
 
 - **Conduct Guard** — the policy engine. Decides `block / warn / audit / inject` for every AI action **before** it executes, backed by signed configuration and a hash-chained audit log.
