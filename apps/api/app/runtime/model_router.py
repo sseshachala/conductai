@@ -115,7 +115,7 @@ def _load_primitives(db: Session, workspace_id: str) -> tuple[str, dict[str, dic
         DEFAULT_TIER_MAPS,
         _read_stored,
     )
-    row = db.get(WorkspaceLLMPrimitives, workspace_id) if workspace_id else None
+    row = db.get(WorkspaceLLMPrimitives, workspace_id) if (db and workspace_id) else None
     if row is None:
         return DEFAULT_PREFERRED_PROVIDER, {k: dict(v) for k, v in DEFAULT_TIER_MAPS.items()}
     tier_map = _read_stored(row.tier_map)
