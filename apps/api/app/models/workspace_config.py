@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -19,4 +19,5 @@ class WorkspaceConfig(Base):
 
     __table_args__ = (
         UniqueConstraint("workspace_id", "key", name="uq_workspace_config_ws_key"),
+        Index("ix_workspace_config_workspace_id", "workspace_id"),
     )

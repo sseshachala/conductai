@@ -507,6 +507,10 @@ class PolicyCertification(Base):
     policy_version = Column(Text, nullable=True)    # version_hash snapshot
     certified_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
+    __table_args__ = (
+        Index("ix_policy_cert_ws_pack_ts", "workspace_id", "pack_slug", sa.text("certified_at DESC")),
+    )
+
 
 class DiscoveredAgent(Base):
     __tablename__ = "discovered_agents"

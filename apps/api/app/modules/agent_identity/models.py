@@ -56,4 +56,9 @@ class AgentIdentity(Base):
             unique=True,
             postgresql_where=text("source_id IS NOT NULL"),
         ),
+        Index(
+            "ix_agent_identities_refresh_token_hash", "refresh_token_hash",
+            unique=True,
+            postgresql_where=text("refresh_token_hash IS NOT NULL"),
+        ),
     )
