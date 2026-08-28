@@ -113,8 +113,14 @@ class Executor:
         until: str | None = None,
         rule_id: str | None = None,
     ):
+        from datetime import datetime, timezone
         if decision:
             decision = {"block": "blocked", "warn": "warned", "audit": "audited", "allow": "allowed"}.get(decision, decision)
+        # Accept "today" as a since shortcut (mirrors _tool_list_pending_approvals)
+        if since and since.strip().lower() == "today":
+            since = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        if until and until.strip().lower() == "today":
+            until = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59, microsecond=999999)
         org_ws = _org_ws_subquery(self.db, self.workspace_id)
         q = self.db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id.in_(org_ws))
         if decision:
@@ -127,7 +133,7 @@ class Executor:
             q = q.filter(GuardAuditEvent.ts <= until)
         rows = q.order_by(GuardAuditEvent.ts.desc()).limit(min(limit, 100)).all()
         return [
-            {"ts": e.ts.isoformat(), "decision": e.decision, "user_email": e.user_email,
+            {"id": str(e.id), "ts": e.ts.isoformat(), "decision": e.decision, "user_email": e.user_email,
              "ai_tool": e.ai_tool, "rule_id": e.rule_id, "tool_name": e.tool_name}
             for e in rows
         ]

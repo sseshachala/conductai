@@ -300,14 +300,68 @@ function renderInline(text: string): React.ReactNode[] {
   })
 }
 
+function isTableSeparator(line: string): boolean {
+  // e.g. "| --- | --- |" or "|:---|---:|"
+  return /^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$/.test(line)
+}
+
+function parseRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "")
+  return trimmed.split("|").map(c => c.trim())
+}
+
+function renderTable(header: string[], rows: string[][], key: number): React.ReactNode {
+  return (
+    <div key={key} style={{ overflowX: "auto", margin: "8px 0" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--border)" }}>
+            {header.map((h, i) => (
+              <th key={i} style={{ textAlign: "left", padding: "6px 10px", color: "var(--text-muted)", fontWeight: 600, fontSize: 11.5, textTransform: "uppercase", letterSpacing: ".04em" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri} style={{ borderBottom: ri < rows.length - 1 ? "1px solid var(--border)" : "none" }}>
+              {row.map((cell, ci) => (
+                <td key={ci} style={{ padding: "6px 10px", color: "var(--text)", verticalAlign: "top" }}>{renderInline(cell)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function renderMd(text: string): React.ReactNode[] {
-  return text.split("\n").map((line, i) => {
+  const lines = text.split("\n")
+  const out: React.ReactNode[] = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    // Detect markdown table: current line starts with | AND next line is separator
+    if (line.trim().startsWith("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      const header = parseRow(line)
+      const rows: string[][] = []
+      let j = i + 2
+      while (j < lines.length && lines[j].trim().startsWith("|") && !isTableSeparator(lines[j])) {
+        rows.push(parseRow(lines[j]))
+        j++
+      }
+      out.push(renderTable(header, rows, i))
+      i = j
+      continue
+    }
     const bullet = line.match(/^[*-]\s+(.+)/)
     const content = bullet ? bullet[1] : line
     const parts = renderInline(content)
-    if (bullet) return <div key={i} style={{ paddingLeft: 12, position: "relative" }}><span style={{ position: "absolute", left: 0 }}>•</span>{parts}</div>
-    return <div key={i} style={{ minHeight: line ? undefined : "0.6em" }}>{parts}</div>
-  })
+    if (bullet) out.push(<div key={i} style={{ paddingLeft: 12, position: "relative" }}><span style={{ position: "absolute", left: 0 }}>•</span>{parts}</div>)
+    else out.push(<div key={i} style={{ minHeight: line ? undefined : "0.6em" }}>{parts}</div>)
+    i++
+  }
+  return out
 }
 
 function AnswerBubble({ text, skill, drilldown, followups, onFollowup, understoodAs }: { text: string; skill?: string; drilldown?: { path: string }; followups?: string[]; onFollowup?: (q: string) => void; understoodAs?: string }) {
