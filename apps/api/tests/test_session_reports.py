@@ -31,67 +31,27 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
 os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
-_STUBS = [
-    "structlog", "redis", "sentry_sdk",
-    "app.runtime.llm_client", "app.runtime.model_router",
-    # "app.routers.runs" intentionally omitted: all tests here are skipped so
-    # there is no need to stub this at collection time, and installing a
-    # MagicMock here permanently breaks every later test that imports app.main
-    # (FastAPI cannot mount a MagicMock as a router → 500 on all routes).
-    "app.core.crypto",
-]
-for _m in _STUBS:
-    sys.modules.setdefault(_m, MagicMock())
-
-# ── All tests are skipped — DB setup is deferred to avoid polluting sys.modules ──
-# importlib.reload(app.core.database) at module level during pytest collection
-# replaces app.core.database with a fresh module whose Base class differs from
-# the one models were defined against, breaking every subsequent test that uses
-# TestClient or mock DB sessions (500s, FK errors, mapper init failures).
-# The reload is now inside _setup_db() and only runs if a test actually executes.
-
-pytestmark = pytest.mark.skip(reason="Cross-test sys.modules pollution: reloading db module can't fix inconsistent Base between Workspace/SessionReport. Needs pytest-forked or refactor to not stub sys.modules elsewhere.")
-
-# Placeholders so class bodies below don't raise NameError at collection time.
-SessionLocal = None
-Workspace = None
-SessionReport = None
-_DB_OK = False
+# Real modules imported directly — env vars above are sufficient. SQLAlchemy
+# engine creation doesn't open a connection; only queries do. Tests that need
+# a live DB check _db_reachable() and skip if none.
+from app.core.database import SessionLocal
+from app.models.workspace import Workspace
+from app.models.environment import Environment  # noqa: F401 — needed for FK
+from app.modules.guard.models import SessionReport
 
 
-def _setup_db():
-    """Reload app.core.database to get the real SessionLocal.
-
-    Called lazily (only when a test actually runs, not at collection time)
-    to avoid poisoning sys.modules for the rest of the test suite.
-    """
-    import importlib
-    for _dead in ("app.core.config", "app.core.database", "app.models"):
-        if hasattr(sys.modules.get(_dead), "_mock_name"):
-            del sys.modules[_dead]
-    import app.core.config as _real_cfg
-    importlib.reload(_real_cfg)
-    import app.core.database as _real_db
-    importlib.reload(_real_db)
-    global SessionLocal, Workspace, SessionReport, _DB_OK
-    SessionLocal = _real_db.SessionLocal
-    import app.models  # noqa — registers all ORM tables
-    from app.models.environment import Environment  # noqa — needed for workflows FK
-    from app.models.workspace import Workspace as _Workspace
-    from app.modules.guard.models import SessionReport as _SessionReport
-    Workspace = _Workspace
-    SessionReport = _SessionReport
+def _db_reachable() -> bool:
+    """True iff a SELECT 1 succeeds against the configured DB."""
     from sqlalchemy import text
     try:
         with SessionLocal() as s:
             s.execute(text("SELECT 1"))
-        _DB_OK = True
+        return True
     except Exception:
-        _DB_OK = False
+        return False
 
 
-def _db_reachable() -> bool:
-    return _DB_OK
+pytestmark = pytest.mark.skipif(not _db_reachable(), reason="Postgres not reachable")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

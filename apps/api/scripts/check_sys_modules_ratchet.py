@@ -60,7 +60,8 @@ ALLOWLIST = {
     "tests/test_guard_savings.py",
     "tests/test_guard_spend_month_window.py",
     "tests/test_llm_cache_integration.py",
-    "tests/test_session_reports.py",
+    # tests/test_session_reports.py — removed from allowlist 2026-08-28,
+    # rewritten to import real modules directly (env vars + skipif on DB).
     "tests/test_team_os.py",
     "tests/test_token_paths.py",
     "tests/test_workspace_seed.py",
