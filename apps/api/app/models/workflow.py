@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, String, DateTime, ForeignKey, Integer
+import sqlalchemy as sa
+from sqlalchemy import Boolean, Column, String, DateTime, ForeignKey, Integer, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -51,6 +52,24 @@ class Workflow(Base):
     versions = relationship("WorkflowVersion", foreign_keys="WorkflowVersion.workflow_id", back_populates="workflow", cascade="all, delete-orphan")
     current_version = relationship("WorkflowVersion", foreign_keys=[current_version_id])
 
+    __table_args__ = (
+        Index("ix_workflows_workspace_id", "workspace_id"),
+        Index("ix_workflows_project_id", "project_id"),
+        Index("ix_workflows_workspace_playbook_slug", "workspace_id", "playbook_slug"),
+        Index(
+            "ix_workflows_hook_label",
+            "github_hook_repo", "github_hook_label",
+            postgresql_where=sa.text("github_hook_label IS NOT NULL"),
+        ),
+        Index("ix_workflows_archived_at", "archived_at"),
+        Index(
+            "workflows_project_playbook_uniq",
+            "project_id", "playbook_slug",
+            unique=True,
+            postgresql_where=sa.text("project_id IS NOT NULL AND playbook_slug IS NOT NULL"),
+        ),
+    )
+
 
 class WorkflowVersion(Base):
     __tablename__ = "workflow_versions"
@@ -74,3 +93,7 @@ class WorkflowVersion(Base):
 
     workflow = relationship("Workflow", foreign_keys=[workflow_id], back_populates="versions")
     runs = relationship("Run", back_populates="workflow_version", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_workflow_versions_workflow_id", "workflow_id"),
+    )

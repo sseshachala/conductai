@@ -160,12 +160,53 @@ class OpenAIClient:
         system: str,
         max_tokens: int = 4096,
     ) -> Iterator[str]:
-        """Streaming not yet implemented for openai. TODO: backfill when needed."""
-        raise NotImplementedError(
-            "stream() not implemented for openai adapter yet — currently only AnthropicClient. "
-            "File an issue if you need this."
-        )
-        yield  # unreachable — makes function a generator for type-checkers
+        """Streaming create — yields text deltas from OpenAI's SSE stream.
+
+        No retry loop (matches Anthropic.stream — streaming is fire-and-forget;
+        on failure, the caller surfaces the exception). No tools.
+
+        Works for every OpenAI-compatible upstream (openai, perplexity,
+        together, groq, any /v1/chat/completions endpoint that speaks SSE)."""
+        import httpx as _httpx
+
+        oai_messages = [{"role": "system", "content": system}, *messages]
+        payload = {
+            "model": model,
+            "messages": oai_messages,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+            **self._default_headers,
+        }
+        url = f"{self._base_url or 'https://api.openai.com'}/v1/chat/completions"
+
+        with _httpx.stream("POST", url, headers=headers, json=payload, timeout=_httpx.Timeout(600.0)) as resp:
+            if resp.status_code >= 400:
+                # Body isn't streamed yet on error — read it eagerly.
+                body = b""
+                for _chunk in resp.iter_bytes():
+                    body += _chunk
+                raise Exception(f"OpenAI {resp.status_code}: {body[:500].decode(errors='replace')}")
+            for line in resp.iter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    return
+                try:
+                    obj = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                choices = obj.get("choices") or []
+                if not choices:
+                    continue
+                delta = (choices[0].get("delta") or {}).get("content")
+                if delta:
+                    yield delta
 
     def make_assistant_turn(self, response: LLMResponse) -> list[dict]:
         # OpenAI expects assistant text and tool_calls on the assistant message.

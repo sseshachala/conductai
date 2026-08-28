@@ -2,6 +2,7 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 
+import sqlalchemy as sa
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, JSONB, UUID
 from pgvector.sqlalchemy import Vector
@@ -40,7 +41,7 @@ class GuardConfig(Base):
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
     invite_code = Column(Text, nullable=False)
     slug = Column(Text, nullable=True)
-    alert_channel = Column(String(100), nullable=True)
+    alert_channel = Column(Text, nullable=True)
     enforcement_mode = Column(String(20), nullable=False, default="warn")
     fail_mode = Column(String(20), nullable=False, default="fail_closed")  # fail_open | fail_closed (CLI behavior on outage)
     notify_on_block = Column(Boolean, nullable=False, default=True)
@@ -170,7 +171,7 @@ class GuardAuditEvent(Base):
     tokens_saved = Column(Integer, nullable=True)
     cost_usd_before = Column(Float, nullable=True)
     cost_usd_after = Column(Float, nullable=True)
-    tool_use_id = Column(String(255), nullable=True, index=True)
+    tool_use_id = Column(Text, nullable=True, index=True)
     hook_session_id = Column(Text, nullable=True, index=True)  # raw string session_id from hook stdin
     conductai_run_id = Column(String(255), nullable=True)
     conductai_workflow = Column(String(255), nullable=True)
@@ -199,6 +200,22 @@ class GuardAuditEvent(Base):
     evaluated_rules = Column(JSONB, nullable=True)   # list of {rule_id, severity, action, message}
     defense_score   = Column(Integer, nullable=True)  # weighted aggregate across matched rules
 
+    __table_args__ = (
+        Index("ix_guard_audit_events_source", "workspace_id", "source", "ts"),
+        Index(
+            "ix_guard_audit_events_provider",
+            "workspace_id", "provider", "ts",
+            postgresql_where=sa.text("provider IS NOT NULL"),
+        ),
+        Index("ix_guard_audit_events_entry_hash", "entry_hash"),
+        Index(
+            "ix_guard_audit_events_evaluated_rules_gin",
+            "evaluated_rules",
+            postgresql_using="gin",
+        ),
+        Index("ix_guard_audit_events_ws_ts", "workspace_id", sa.text("ts DESC")),
+    )
+
 
 class GuardSavings(Base):
     """Per-developer RTK + Agent Booster token savings snapshot, pushed by `conduct guard sync`."""
@@ -206,8 +223,8 @@ class GuardSavings(Base):
     __tablename__ = "guard_savings"
 
     id = Column(Integer, primary_key=True)
-    workspace_id = Column(String, nullable=False, index=True)
-    member_email = Column(String, nullable=False)
+    workspace_id = Column(Text, nullable=False, index=True)
+    member_email = Column(Text, nullable=False)
     rtk_saved_tokens = Column(BigInteger, nullable=False, default=0)
     rtk_savings_pct = Column(Float, nullable=False, default=0.0)
     rtk_total_commands = Column(Integer, nullable=False, default=0)
@@ -224,11 +241,11 @@ class GuardDeveloperTools(Base):
     __tablename__ = "guard_developer_tools"
 
     id = Column(Integer, primary_key=True)
-    workspace_id = Column(String, nullable=False, index=True)
-    user_email = Column(String, nullable=False)
-    detected_tools = Column(JSON, nullable=False, default=list)   # ["claude-code", "vscode", ...]
-    mcp_registered = Column(JSON, nullable=False, default=list)   # tools where conduct-mcp is wired
-    hook_registered = Column(JSON, nullable=False, default=list)  # tools where Guard hook is wired
+    workspace_id = Column(Text, nullable=False, index=True)
+    user_email = Column(Text, nullable=False)
+    detected_tools = Column(JSONB, nullable=False, default=list)   # ["claude-code", "vscode", ...]
+    mcp_registered = Column(JSONB, nullable=False, default=list)   # tools where conduct-mcp is wired
+    hook_registered = Column(JSONB, nullable=False, default=list)  # tools where Guard hook is wired
     reported_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (

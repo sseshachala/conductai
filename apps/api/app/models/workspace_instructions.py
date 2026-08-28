@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -30,5 +30,5 @@ class WorkspaceInstructions(Base):
     updated_by = Column(String(255), nullable=True)  # email of admin who published
 
     __table_args__ = (
-        UniqueConstraint("workspace_id", name="uq_workspace_instructions_workspace"),
+        Index("ix_workspace_instructions_workspace_id", "workspace_id", unique=True),
     )

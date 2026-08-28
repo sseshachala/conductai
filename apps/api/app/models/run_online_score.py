@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
-from sqlalchemy import Boolean, Column, Integer, Numeric, String
+from sqlalchemy import Boolean, Column, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.core.database import Base
@@ -49,7 +49,7 @@ class RunFixtureCandidate(Base):
     anon_state            = Column(JSONB, nullable=True)
     expected_outcome_type = Column(String(255), nullable=True)
     status                = Column(String(50), nullable=False, default="pending", index=True)
-    promoted_pr_url       = Column(String, nullable=True)
+    promoted_pr_url       = Column(Text, nullable=True)
     promoted_by           = Column(String(255), nullable=True)
     created_at            = Column(
         sa.DateTime(timezone=True),
