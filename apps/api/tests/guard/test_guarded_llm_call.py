@@ -47,9 +47,15 @@ def test_blocked_call_raises_guarded_llm_blocked():
     from app.guard.gateway import guarded_llm_call, GuardedLLMBlocked
 
     async def _fake_completion(**kwargs):
+        # Guard-block shape must carry error.type == "conduct_guard_proxy"
+        # (gateway uses this marker to distinguish Guard denials from
+        # generic upstream 4xx/5xx which get LensUpstreamError instead).
         return JSONResponse(
             status_code=403,
-            content={"detail": "Blocked by Guard rule R-42: policy violation"},
+            content={
+                "detail": "Blocked by Guard rule R-42: policy violation",
+                "error": {"type": "conduct_guard_proxy", "message": "R-42"},
+            },
         )
 
     with patch("app.guard.gateway.guarded_completion", side_effect=_fake_completion):

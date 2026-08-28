@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, Table
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, Text, Table, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -24,6 +24,19 @@ class Role(Base):
     created_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     permissions  = relationship("Permission", secondary=role_permissions_table, back_populates="roles")
+
+    __table_args__ = (
+        Index(
+            "uq_roles_system_name", "name",
+            unique=True,
+            postgresql_where=text("workspace_id IS NULL"),
+        ),
+        Index(
+            "uq_roles_workspace_name", "workspace_id", "name",
+            unique=True,
+            postgresql_where=text("workspace_id IS NOT NULL"),
+        ),
+    )
 
 
 class Permission(Base):

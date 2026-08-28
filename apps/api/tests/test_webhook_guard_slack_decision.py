@@ -44,6 +44,7 @@ def test_guard_approve_flow_wires_apply_decision_and_slack_update():
         id="aab035d3-9ce8-4037-a92a-7cfb456da60d",
         workspace_id="ws-1",
         status="pending",
+        rule_id="R-42",  # required by update_approval_message payload
     )
 
     db = MagicMock()
