@@ -365,7 +365,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
                     <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Environment</label>
                     {environments.length === 0 ? (
                       <div style={{ fontSize: 12, color: "var(--warn)", background: "var(--warn-bg)", border: "1px solid var(--warn-bd)", borderRadius: 9, padding: "8px 12px" }}>
-                        No environments. <a href="/settings" style={{ textDecoration: "underline", fontWeight: 600 }}>Create one first</a>.
+                        No vaults. <a href="/settings" style={{ textDecoration: "underline", fontWeight: 600 }}>Create one first</a>.
                       </div>
                     ) : (
                       <select value={selectedEnvId} onChange={e => setSelectedEnvId(e.target.value)} style={ni}>

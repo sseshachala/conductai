@@ -159,7 +159,7 @@ export default function AgentSettingsPage() {
                 <p className="eyebrow" style={{ marginBottom: 8 }}>Environment</p>
                 {environments.length === 0 ? (
                   <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    No environments configured. Add one in workspace Settings.
+                    No vaults configured. Add one in workspace Settings.
                   </p>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
