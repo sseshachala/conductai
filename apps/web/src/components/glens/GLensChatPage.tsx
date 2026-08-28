@@ -295,7 +295,7 @@ function renderInline(text: string): React.ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/).map((p, j) => {
     if (p.startsWith("**")) return <strong key={j}>{p.slice(2, -2)}</strong>
     const link = p.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
-    if (link) return <a key={j} href={link[2]} style={{ color: "var(--accent, #6366f1)", textDecoration: "underline" }}>{link[1]}</a>
+    if (link) return <a key={j} href={link[2]} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent, #6366f1)", textDecoration: "underline" }}>{link[1]}</a>
     return p
   })
 }

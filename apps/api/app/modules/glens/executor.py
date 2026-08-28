@@ -134,7 +134,7 @@ class Executor:
         rows = q.order_by(GuardAuditEvent.ts.desc()).limit(min(limit, 100)).all()
         return [
             {"id": str(e.id), "ts": e.ts.isoformat(), "decision": e.decision, "user_email": e.user_email,
-             "ai_tool": e.ai_tool, "rule_id": e.rule_id, "tool_name": e.tool_name}
+             "ai_tool": e.ai_tool, "rule_id": e.rule_id, "tool_call": e.tool_call}
             for e in rows
         ]
 

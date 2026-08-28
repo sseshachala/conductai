@@ -18,7 +18,7 @@ def test_get_recent_events_since_today_normalises_to_utc_midnight():
     fake_row.user_email = "u@example.com"
     fake_row.ai_tool = "claude-code"
     fake_row.rule_id = "no-pii"
-    fake_row.tool_name = "bash"
+    fake_row.tool_call = "bash"
 
     fake_query = MagicMock()
     fake_query.filter.return_value = fake_query
@@ -40,7 +40,7 @@ def test_get_recent_events_since_today_normalises_to_utc_midnight():
         "user_email": "u@example.com",
         "ai_tool": "claude-code",
         "rule_id": "no-pii",
-        "tool_name": "bash",
+        "tool_call": "bash",
     }]
 
 
