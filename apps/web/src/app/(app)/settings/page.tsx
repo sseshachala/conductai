@@ -11,11 +11,13 @@ import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
 import PreferencesPanel from "@/components/settings/PreferencesPanel"
 import ProxySettings from "@/components/settings/ProxySettings"
+import LLMPrimitivesPanel from "@/components/settings/LLMPrimitivesPanel"
 
-type Tab = "credentials" | "members" | "preferences" | "proxy"
+type Tab = "credentials" | "llm_primitives" | "members" | "preferences" | "proxy"
 
 const TAB_LABELS: Record<Tab, string> = {
   credentials: "Vault",
+  llm_primitives: "LLM Model Primitives",
   preferences: "Appearance",
   members: "Members & roles",
   proxy: "Proxy",
@@ -162,7 +164,7 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
 // ── Main settings page ────────────────────────────────────────────────────────
 
 function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolean; workspaceId: string; getToken: (() => Promise<string | null>) | null }) {
-  const tabs = (["credentials", "preferences", "proxy", ...(isAdmin ? ["members"] : [])] as Tab[])
+  const tabs = (["credentials", "llm_primitives", "preferences", "proxy", ...(isAdmin ? ["members"] : [])] as Tab[])
   const [activeTab, setActiveTab] = useState<Tab>("credentials")
   const [showTip, setShowTip] = useState(false)
 
@@ -217,6 +219,9 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
 
         <div role="tabpanel" id="tabpanel-credentials" aria-labelledby="tab-credentials" hidden={activeTab !== "credentials"}>
           <EnvironmentsManager isAdmin={isAdmin} />
+        </div>
+        <div role="tabpanel" id="tabpanel-llm_primitives" aria-labelledby="tab-llm_primitives" hidden={activeTab !== "llm_primitives"}>
+          <LLMPrimitivesPanel workspaceId={workspaceId} isAdmin={isAdmin} />
         </div>
         <div role="tabpanel" id="tabpanel-preferences" aria-labelledby="tab-preferences" hidden={activeTab !== "preferences"}>
           <PreferencesPanel />
