@@ -33,7 +33,14 @@ class SecurityPolicy(Base):
     updated_at = sa.Column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
     )
+    # Added by migration 0014 — category grouping.
+    category = sa.Column(sa.String(100), nullable=True)
+    # Added by migration 0015 — compliance pack membership.
+    pack_id = sa.Column(sa.String(100), nullable=True)
+    # Added by migration 0009 — soft delete.
+    archived_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         sa.Index("ix_security_policies_workspace", "workspace_id"),
+        sa.Index("ix_security_policies_pack_id", "pack_id"),
     )

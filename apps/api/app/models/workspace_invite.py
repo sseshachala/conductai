@@ -29,6 +29,8 @@ class WorkspaceInvite(Base):
     accepted_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
     status = sa.Column(sa.String(20), nullable=False, server_default="pending")
     expires_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
+    # Added by migration 0067 — Clerk org invitation tracking (used by projects.py revoke path).
+    clerk_invitation_id = sa.Column(sa.Text, nullable=True)
 
     __table_args__ = (
         sa.UniqueConstraint("workspace_id", "invited_email", name="uq_workspace_invite_email"),
