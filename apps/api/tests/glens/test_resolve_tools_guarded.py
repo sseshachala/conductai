@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-# Import llm_client first so its re-exports run before adapter loads.
 import app.runtime.llm_client  # noqa: F401
 
 
@@ -34,18 +33,16 @@ def test_delegates_to_guarded_client_call_with_caller_payload():
         captured.update(kwargs)
         return fake_response
 
-    with patch.object(_chat, "_llm_client", return_value=MagicMock()), \
-         patch("app.guard.gateway.guarded_client_call", side_effect=_fake_call):
+    with patch("app.guard.gateway.guarded_client_call", side_effect=_fake_call):
         client = MagicMock()
         result = _chat._guarded_openai_completion(
             _fake_executor(),
             provider="openai", model="gpt-4o-mini",
-            upstream_url="ignored", api_key="ignored",
+            client=client,
             messages=[{"role": "user", "content": "hi"}],
             system="You are helpful.",
             tools=[{"name": "get_x", "input_schema": {"type": "object", "properties": {}}}],
             max_tokens=512,
-            client=client,
         )
 
     assert result is fake_response
@@ -69,15 +66,13 @@ def test_blocked_call_raises_with_readable_message():
             payload={},
         )
 
-    with patch.object(_chat, "_llm_client", return_value=MagicMock()), \
-         patch("app.guard.gateway.guarded_client_call", side_effect=_fake_call):
+    with patch("app.guard.gateway.guarded_client_call", side_effect=_fake_call):
         try:
             _chat._guarded_openai_completion(
                 _fake_executor(),
                 provider="openai", model="gpt-4o-mini",
-                upstream_url="ignored", api_key="ignored",
-                messages=[], system="", tools=None, max_tokens=1,
                 client=MagicMock(),
+                messages=[], system="", tools=None, max_tokens=1,
             )
         except Exception as e:
             msg = str(e)
@@ -91,16 +86,38 @@ def test_agent_identity_id_threaded_through():
     from app.modules.glens.routers import chat as _chat
 
     captured: dict = {}
-    with patch.object(_chat, "_llm_client", return_value=MagicMock()), \
-         patch("app.guard.gateway.guarded_client_call",
+    with patch("app.guard.gateway.guarded_client_call",
                side_effect=lambda **kw: (captured.update(kw), MagicMock())[1]):
         ex = _fake_executor()
         ex.agent_identity_id = "ai-42"
         _chat._guarded_openai_completion(
             ex, provider="openai", model="gpt-4o-mini",
-            upstream_url="ignored", api_key="ignored",
-            messages=[], system="", tools=None, max_tokens=1,
             client=MagicMock(),
+            messages=[], system="", tools=None, max_tokens=1,
         )
 
     assert captured["agent_identity_id"] == "ai-42"
+
+
+def test_llm_config_reads_workspace_primitives():
+    """PR C — Lens picks up provider+model from workspace primitives, not env vars."""
+    from app.modules.glens.routers import chat as _chat
+
+    fake_client = MagicMock()
+
+    def fake_resolve(**kwargs):
+        assert kwargs["workspace_id"] == "ws-1"
+        assert kwargs["routing_preference"] == "balanced"
+        return "anthropic", "claude-sonnet-4-6", "workspace anthropic: tier_map[balanced]"
+
+    with patch("app.runtime.model_router.resolve_for_workspace", side_effect=fake_resolve), \
+         patch("app.runtime.llm_client.client_for", return_value=fake_client), \
+         patch("app.core.credentials.get_credential", side_effect=Exception("no creds")):
+        ex = MagicMock()
+        ex.workspace_id = "ws-1"
+        ex.db = MagicMock()
+        client, provider, model = _chat._llm_config(ex)
+
+    assert client is fake_client
+    assert provider == "anthropic"
+    assert model == "claude-sonnet-4-6"

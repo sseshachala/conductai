@@ -80,13 +80,6 @@ class Settings(BaseSettings):
     # Guard proxy — public URL of this server's /proxy endpoint
     conduct_proxy_url: str = "https://api.conductai.ai/proxy"
 
-    # Inference — Qwen3 on Modal (platform-level, powers GLens + NLP policy authoring)
-    conduct_inference_endpoint_url: str = ""   # e.g. https://org--model-name.modal.run/v1
-    conduct_inference_model_name: str = "gpt-4o-mini"
-    conduct_inference_provider: str = "openai"  # openai | together
-    conduct_inference_token_id: str = ""      # Modal token ID
-    conduct_inference_token_secret: str = "" # Modal token secret
-
     # reCAPTCHA v3 — used to verify anonymous playbook submissions
     recaptcha_secret_key: str = ""
     recaptcha_min_score: float = 0.5
@@ -97,6 +90,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"  # tolerate stray legacy env vars so app boots cleanly
 
 
 settings = Settings()

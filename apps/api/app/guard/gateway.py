@@ -328,8 +328,9 @@ def guarded_client_call(
     `record()` because there's no request lifecycle to defer to.
 
     Vendor-neutral: `client` is any LLMClient (Anthropic/OpenAI/Perplexity/
-    Together/…). Env-var vendor selection + per-workspace credential vault
-    overrides come from the caller's `_llm_client()` factory."""
+    Together/…). Provider + model + api_key come from the caller's LLM
+    config factory, which reads workspace primitives + vault (see
+    workspace_llm_primitives and app.core.credentials.get_credential)."""
     import time as _time
     import json as _json
     from app.guard.policy import evaluate_composed as _eval_composed
