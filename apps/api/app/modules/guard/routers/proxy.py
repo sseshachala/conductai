@@ -105,6 +105,45 @@ AGENT_TOKEN_PREFIX  = "cond_agt_"  # new unified Agent ID token
 API_TOKEN_PREFIX    = "cond_api_"  # long-lived machine token — no GMC link
 
 
+# ── Tier-form model strings (PR B.5 of #1347) ─────────────────────────────────
+# Callers may send `"balanced"` or `"openai/cheap"` instead of a concrete model
+# ID. Proxy resolves via workspace primitives before the request hits Guard
+# policy or upstream. Non-tier strings pass through unchanged (backward compat).
+_TIER_FORMS = {"cheap", "balanced", "smart", "quality", "speed", "cost", "auto"}
+
+
+def _resolve_tier_form(db: Session, workspace_id: str, endpoint_provider: str, model_field: object) -> str | None:
+    """If model_field is a tier name (bare or `<endpoint_provider>/<tier>`),
+    resolve via workspace primitives and return the concrete model ID.
+    Return None if it is already a concrete model (pass-through).
+
+    Cross-provider forms (e.g. `"anthropic/balanced"` sent to /openai) are
+    ignored — the endpoint provider is authoritative."""
+    if not isinstance(model_field, str) or not model_field.strip():
+        return None
+    m = model_field.strip().lower()
+    if m in _TIER_FORMS:
+        tier = m
+    elif "/" in m:
+        prefix, _, tail = m.partition("/")
+        if prefix != endpoint_provider or tail not in _TIER_FORMS:
+            return None
+        tier = tail
+    else:
+        return None
+    try:
+        from app.runtime.model_router import resolve_for_workspace
+        _, resolved, _ = resolve_for_workspace(
+            db=db,
+            workspace_id=workspace_id,
+            routing_preference=tier,
+            explicit_provider=endpoint_provider,
+        )
+        return resolved
+    except Exception:
+        return None
+
+
 def _workspace_proxy_url(db: Session, workspace_id: str) -> str:
     return settings.conduct_proxy_url
 
@@ -348,6 +387,20 @@ async def _proxy(
             return _fail_closed(400, "Body must be valid JSON")
 
         model = body.get("model", "unknown")
+        # PR B.5 — resolve tier-form model strings ("balanced") via workspace
+        # primitives before Guard policy or upstream see the request.
+        _tier_form_before = model if isinstance(model, str) else None
+        _resolved_tier = _resolve_tier_form(db, workspace_id, provider, model)
+        if _resolved_tier:
+            model = _resolved_tier
+            body["model"] = _resolved_tier
+            log.info(
+                "proxy.tier_resolved",
+                workspace_id=workspace_id,
+                provider=provider,
+                tier_form=_tier_form_before,
+                resolved_model=_resolved_tier,
+            )
         ai_tool = request.headers.get("x-conduct-ai-tool") or _infer_ai_tool(request)
 
         # 4a. Resolve user email for audit rows
