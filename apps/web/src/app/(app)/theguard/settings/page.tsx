@@ -180,7 +180,7 @@ function NotificationsCard({
         <div style={{ fontWeight: 650, fontSize: 14.5 }}>Slack channels by action</div>
         {environments.length > 0 && (
           <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
-            Environment
+            Vault
             <select
               value={selectedEnvId}
               onChange={e => setSelectedEnvId(e.target.value)}
@@ -982,7 +982,7 @@ function SettingsContent() {
               <p style={{ fontSize: 12, color: "var(--info)" }}>
                 No Slack credentials yet?{" "}
                 <a href="/settings/environments" style={{ color: "var(--info)", textDecoration: "underline" }}>
-                  Add them in Settings &rarr; Environments
+                  Add them in Settings &rarr; Vault
                 </a>
                 .
               </p>
