@@ -68,6 +68,9 @@ jobs:
       - name: Auth coverage
         run: python scripts/check_auth_coverage.py
         working-directory: apps/api
+      - name: sys.modules-stub ratchet (#1075)
+        run: python scripts/check_sys_modules_ratchet.py
+        working-directory: apps/api
       - name: Skill pack validation
         run: python scripts/validate_all_skill_packs.py
         working-directory: apps/api
