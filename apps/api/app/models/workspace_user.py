@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy import Column, String, DateTime, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -18,3 +18,7 @@ class WorkspaceUser(Base):
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="SET NULL"), nullable=True, index=True)
 
     workspace = relationship("Workspace", back_populates="members")
+
+    __table_args__ = (
+        Index("ix_workspace_users_clerk_user_id", "clerk_user_id"),
+    )
