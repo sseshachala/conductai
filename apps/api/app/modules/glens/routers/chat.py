@@ -43,9 +43,11 @@ TOOLS = [
     {
         "name": "get_recent_events",
         "description": (
-            "Fetch recent Guard audit events with details (who, what tool, which rule, decision, timestamp). "
-            "Use for 'what happened', 'who got blocked', 'show recent activity'. "
-            "Keep limit<=10 unless user explicitly asks for more."
+            "Fetch recent Guard audit events with details (id, ts, decision, user_email, ai_tool, rule_id, tool_name). "
+            "Use for 'what happened', 'who got blocked', 'show recent activity', 'show me blocks'. "
+            "When user asks 'show me' or lists 3+ events, format as a markdown table with columns Time | User | Tool | Rule | Decision | Link, "
+            "using the returned id to build [View](/logs/guard?id=<id>) in the Link column. "
+            "Pass since='today' to filter to today's events. Keep limit<=10 unless user asks for more."
         ),
         "input_schema": {
             "type": "object",
