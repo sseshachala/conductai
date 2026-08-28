@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text
+from sqlalchemy import Column, String, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -16,6 +16,10 @@ class Project(Base):
     project_type = Column(String(32), nullable=False, default="user")
     security_finding_id = Column(String(36), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "slug", name="uq_projects_slug_workspace"),
+    )
 
     workspace = relationship("Workspace", back_populates="projects", foreign_keys=[workspace_id])
     workflows = relationship("Workflow", back_populates="project")

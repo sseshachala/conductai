@@ -20,3 +20,7 @@ class ModelRoutingPolicy(Base):
     model_id = sa.Column(sa.Text(), nullable=False)
     reason = sa.Column(sa.Text(), nullable=False, server_default="")
     enabled = sa.Column(sa.Boolean(), nullable=False, server_default="true")
+
+    __table_args__ = (
+        sa.UniqueConstraint("category", "preference", name="uq_routing_category_preference"),
+    )
