@@ -31,37 +31,6 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
 os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
-_log_mock = MagicMock()
-_log_mock.get_logger = MagicMock(return_value=MagicMock())
-_log_mock.contextvars = MagicMock()
-sys.modules["structlog"] = _log_mock
-sys.modules.setdefault("redis", MagicMock())
-sys.modules.setdefault("sentry_sdk", MagicMock())
-
-_cfg_stub = MagicMock()
-_cfg_stub.settings = MagicMock(
-    sentry_dsn=None,
-    sqlalchemy_database_url="sqlite:///:memory:",
-    encryption_key="test-key-32-bytes-long-xxxxxxxx!",
-    allowed_egress_hosts=[],
-    clerk_secret_key = "REDACTED",
-    clerk_frontend_api="clerk.example.com",
-    environment="test",
-    log_level="INFO",
-    api_base_url="https://api.conductai.ai",
-    conduct_proxy_url="",
-    cli_api_key="",
-    cli_workspace_id="",
-    redis_url="redis://localhost:6379",
-    default_max_cost_usd=5.0,
-)
-# Use setdefault so we don't overwrite modules already imported by conftest.py
-# (conftest imports app.core.auth which pulls in app.core.config and
-# app.core.database; replacing them permanently at collection time corrupts every
-# test that runs after this file is collected, even tests in other files).
-sys.modules.setdefault("app.core.config", _cfg_stub)
-sys.modules.setdefault("app.core.database", MagicMock())
-
 _venv_site = APPS_API / ".venv" / "lib"
 for _p in _venv_site.glob("python*/site-packages"):
     if str(_p) not in sys.path:

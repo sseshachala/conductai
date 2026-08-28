@@ -123,6 +123,21 @@ def _clerk_enabled() -> bool:
     return bool(settings.clerk_secret_key and settings.clerk_frontend_api)
 
 
+def _clerk_enabled_dispatch() -> bool:
+    """Dispatched form of ``_clerk_enabled`` for auth dependencies.
+
+    Looks up ``_clerk_enabled`` through ``sys.modules`` so ``mock.patch.object``
+    on the module attribute is respected inside test bodies. Falls back to the
+    local closure when the module has been evicted from ``sys.modules`` (some
+    tests evict app.core.auth to force re-import — see #1317). Without the
+    fallback the sys.modules lookup raises ``KeyError``.
+    """
+    mod = sys.modules.get(__name__)
+    if mod is None:
+        return _clerk_enabled()
+    return mod._clerk_enabled()
+
+
 @lru_cache(maxsize=512)
 def get_clerk_user_email(user_id: str) -> str | None:
     """Fetch the primary email address for a Clerk user via the Clerk REST API.
@@ -378,7 +393,7 @@ def get_user_id(
     db: Session = Depends(get_db),
 ) -> str | None:
     """Returns the Clerk user_id (sub claim), 'dev' in local dev mode, or None for machine API tokens."""
-    if not sys.modules[__name__]._clerk_enabled():
+    if not _clerk_enabled_dispatch():
         return DEV_USER_ID
 
     if not credentials:
@@ -445,7 +460,7 @@ def get_workspace_id(
     4. Dev workspace (when Clerk is not configured)
     """
     explicit_ws = ws_id or x_workspace_id
-    if not sys.modules[__name__]._clerk_enabled():
+    if not _clerk_enabled_dispatch():
         return explicit_ws or DEV_WORKSPACE_ID
 
     if not credentials:
@@ -509,7 +524,7 @@ def get_user_workspace_role(
     Returns the authenticated user's role in the requested workspace.
     Raises 403 if the user is not a member. Skips check in dev mode.
     """
-    if not sys.modules[__name__]._clerk_enabled():
+    if not _clerk_enabled_dispatch():
         return "admin"
 
     # workspace_id must be a valid UUID — Clerk user_ids (user_xxx) are not.
@@ -584,7 +599,7 @@ def get_guard_org_id(
 
     Accepts: Clerk Bearer JWT — returns org_id or sub claim.
     """
-    if not sys.modules[__name__]._clerk_enabled():
+    if not _clerk_enabled_dispatch():
         return "dev-org"
 
     if not credentials:
@@ -603,7 +618,7 @@ def get_guard_hook_auth(
     db: Session = Depends(get_db),
 ) -> str:
     """Auth for hook/CLI endpoints. Accepts cond_agt_* agent token or Clerk JWT."""
-    if not sys.modules[__name__]._clerk_enabled():
+    if not _clerk_enabled_dispatch():
         return "dev-org"
 
     if not credentials:
@@ -696,7 +711,7 @@ def check_permission(
     # _clerk_enabled at test time.  Python 3.11's LOAD_GLOBAL inline cache can
     # serve a stale pointer to the original function even after setattr() updates
     # the module __dict__; going through globals() forces a fresh dict read.
-    if not sys.modules[__name__]._clerk_enabled():
+    if not _clerk_enabled_dispatch():
         return "admin"
 
     import re as _re
