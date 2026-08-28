@@ -493,6 +493,13 @@ class DiscoveredAgent(Base):
     first_seen_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     last_seen_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "framework", "source",
+            name="uq_discovered_agents_workspace_framework_source",
+        ),
+    )
+
 
 class GuardVerifyRun(Base):
     """Persisted result of a Guard Verify adversarial test battery execution."""
@@ -530,7 +537,7 @@ class GuardKnowledgeIndex(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("workspace_id", "source_kind", "source_id", name="uq_guard_knowledge_source"),
+        UniqueConstraint("workspace_id", "source_kind", "source_id", name="guard_knowledge_index_workspace_id_source_kind_source_id_key"),
     )
 
 
