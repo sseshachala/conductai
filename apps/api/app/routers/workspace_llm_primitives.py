@@ -69,14 +69,10 @@ class LLMPrimitivesUpdate(BaseModel):
     tier_map: dict[str, dict[str, str]] = Field(default_factory=dict)
 
 
-def _normalise_stored(raw: Any) -> dict[str, dict[str, str]]:
-    """Accept either the nested schema or the legacy flat one for a smooth
-    transition; return the nested form."""
-    if not isinstance(raw, dict) or not raw:
+def _read_stored(raw: Any) -> dict[str, dict[str, str]]:
+    """Coerce the JSONB payload back into {provider: {tier: model}}."""
+    if not isinstance(raw, dict):
         return {}
-    # legacy flat: {"cheap": "...", "balanced": "...", "smart": "..."}
-    if all(isinstance(v, str) for v in raw.values()):
-        return {"anthropic": {k: v for k, v in raw.items() if isinstance(v, str)}}
     out: dict[str, dict[str, str]] = {}
     for provider, tiers in raw.items():
         if not isinstance(tiers, dict):
@@ -109,7 +105,7 @@ def get_llm_primitives(
         return _defaults()
     return LLMPrimitivesOut(
         preferred_provider=row.preferred_provider,
-        tier_map=_normalise_stored(row.tier_map),
+        tier_map=_read_stored(row.tier_map),
         updated_at=row.updated_at,
     )
 
@@ -168,6 +164,6 @@ def put_llm_primitives(
     db.refresh(row)
     return LLMPrimitivesOut(
         preferred_provider=row.preferred_provider,
-        tier_map=_normalise_stored(row.tier_map),
+        tier_map=_read_stored(row.tier_map),
         updated_at=row.updated_at,
     )
