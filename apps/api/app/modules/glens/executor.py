@@ -1024,13 +1024,26 @@ class Executor:
 
     # ── Approvals (#1287) ─────────────────────────────────────────────────────
 
-    def _tool_list_pending_approvals(self, status: str = "pending", limit: int = 20):
-        """List HITL approval requests. status: pending | approved | rejected | timed_out | all."""
+    def _tool_list_pending_approvals(self, status: str = "pending", limit: int = 20, since: str | None = None):
+        """List HITL approval requests. status: pending | approved | rejected | timed_out | all.
+        since: 'today' or 'YYYY-MM-DD' → filters created_at >= that date UTC."""
+        from datetime import datetime, timezone, timedelta
         ws_uuid = uuid.UUID(self.workspace_id)
         q = self.db.query(GuardApprovalRequest).filter(GuardApprovalRequest.workspace_id == ws_uuid)
         status = (status or "pending").lower()
         if status != "all":
             q = q.filter(GuardApprovalRequest.status == status)
+        if since:
+            s = since.strip().lower()
+            if s == "today":
+                cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            else:
+                try:
+                    cutoff = datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except ValueError:
+                    cutoff = None
+            if cutoff:
+                q = q.filter(GuardApprovalRequest.created_at >= cutoff)
         rows = q.order_by(GuardApprovalRequest.created_at.desc()).limit(min(limit, 100)).all()
         return [
             {"id": str(r.id), "status": r.status, "rule_id": r.rule_id, "tool_name": r.tool_name,
