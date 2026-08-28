@@ -1763,7 +1763,7 @@ function EnvDropdown({
             onClick={() => { onChange(""); setOpen(false) }}
             className={`w-full text-left px-3 py-2 text-xs text-stone-400 hover:bg-stone-50 ${!selectedEnvId ? "bg-stone-50 font-medium" : ""}`}
           >
-            — no environment —
+            — no vault —
           </button>
 
           {environments.map(env => (
@@ -1799,7 +1799,7 @@ function EnvDropdown({
 
           <div className="border-t border-stone-100 px-3 py-2">
             <a href="/settings" className="text-[10px] text-violet-600 hover:underline font-medium">
-              Manage integrations →
+              Manage Vault →
             </a>
           </div>
         </div>
@@ -1856,7 +1856,7 @@ function EnvironmentPanel({
             <span className="text-sm font-medium text-stone-900">{env.name}</span>
           </div>
         ) : (
-          <p className="text-xs text-stone-400">No environment assigned — use the dropdown above to set one.</p>
+          <p className="text-xs text-stone-400">No vault assigned — use the dropdown above to set one.</p>
         )}
       </div>
 
