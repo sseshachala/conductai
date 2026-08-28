@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, CheckConstraint, event
+from sqlalchemy import Column, String, DateTime, CheckConstraint, Index, event
 from sqlalchemy.orm import validates
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
@@ -34,6 +34,8 @@ class WatchdogEvent(Base):
             f"severity IN ({', '.join(repr(s) for s in WATCHDOG_SEVERITIES)})",
             name="ck_watchdog_events_severity",
         ),
+        Index("ix_watchdog_events_workspace_id", "workspace_id"),
+        Index("ix_watchdog_events_created_at", "created_at"),
     )
 
     @validates("event_type")
