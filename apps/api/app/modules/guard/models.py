@@ -199,6 +199,10 @@ class GuardAuditEvent(Base):
     # non-eval audit paths (auth, approval, guard block) stay as-is
     evaluated_rules = Column(JSONB, nullable=True)   # list of {rule_id, severity, action, message}
     defense_score   = Column(Integer, nullable=True)  # weighted aggregate across matched rules
+    # PR B.6 (#1347) — persisted routing decision for LLM proxy calls.
+    # Only populated when the caller sent a tier form ("balanced" etc.);
+    # NULL when a concrete model ID was forwarded straight through.
+    routing_meta    = Column(JSONB, nullable=True)
 
     __table_args__ = (
         Index("ix_guard_audit_events_source", "workspace_id", "source", "ts"),

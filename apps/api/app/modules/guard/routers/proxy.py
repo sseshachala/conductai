@@ -117,20 +117,29 @@ def _apply_tier_resolution(
     workspace_id: str,
     endpoint_provider: str,
     body: dict,
-) -> tuple[str, str | None]:
-    """Rewrite body["model"] if it is a tier form. Returns (effective_model, original_tier_form).
+) -> tuple[str, dict | None]:
+    """Rewrite body["model"] if it is a tier form. Returns (effective_model, routing_meta).
 
-    original_tier_form is populated only when a substitution occurred (for audit
-    logging). When None, model was already concrete and body is unchanged."""
+    routing_meta is a dict populated only when a substitution occurred, ready
+    to persist into guard_audit_events.routing_meta. When None, model was
+    already concrete and body is unchanged."""
     original = body.get("model", "unknown")
-    resolved = _resolve_tier_form(db, workspace_id, endpoint_provider, original)
-    if not resolved:
+    result = _resolve_tier_form(db, workspace_id, endpoint_provider, original)
+    if not result:
         return original, None
+    resolved, reason = result
     body["model"] = resolved
-    return resolved, original if isinstance(original, str) else None
+    meta = {
+        "tier_form": original if isinstance(original, str) else None,
+        "resolved_model": resolved,
+        "endpoint_provider": endpoint_provider,
+        "reason": reason,
+        "resolution_source": "workspace_primitives",
+    }
+    return resolved, meta
 
 
-def _resolve_tier_form(db: Session, workspace_id: str, endpoint_provider: str, model_field: object) -> str | None:
+def _resolve_tier_form(db: Session, workspace_id: str, endpoint_provider: str, model_field: object) -> tuple[str, str] | None:
     """If model_field is a tier name (bare or `<endpoint_provider>/<tier>`),
     resolve via workspace primitives and return the concrete model ID.
     Return None if it is already a concrete model (pass-through).
@@ -151,13 +160,13 @@ def _resolve_tier_form(db: Session, workspace_id: str, endpoint_provider: str, m
         return None
     try:
         from app.runtime.model_router import resolve_for_workspace
-        _, resolved, _ = resolve_for_workspace(
+        _, resolved, reason = resolve_for_workspace(
             db=db,
             workspace_id=workspace_id,
             routing_preference=tier,
             explicit_provider=endpoint_provider,
         )
-        return resolved
+        return (resolved, reason)
     except Exception:
         return None
 
@@ -404,14 +413,15 @@ async def _proxy(
         except Exception:
             return _fail_closed(400, "Body must be valid JSON")
 
-        model, _tier_form_before = _apply_tier_resolution(db, workspace_id, provider, body)
-        if _tier_form_before and _tier_form_before != model:
+        model, _routing_meta = _apply_tier_resolution(db, workspace_id, provider, body)
+        if _routing_meta:
             log.info(
                 "proxy.tier_resolved",
                 workspace_id=workspace_id,
                 provider=provider,
-                tier_form=_tier_form_before,
+                tier_form=_routing_meta.get("tier_form"),
                 resolved_model=model,
+                reason=_routing_meta.get("reason"),
             )
         ai_tool = request.headers.get("x-conduct-ai-tool") or _infer_ai_tool(request)
 
@@ -529,7 +539,7 @@ async def _proxy(
         is_stream=is_stream,
         extra_headers=extra_headers,
         background=background,
-        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, _audit_decision, _audit_rule_id, started, body, prompt_summary, _user_email, _run_id, _workflow, _workflow_id, _hook_session_id),
+        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, _audit_decision, _audit_rule_id, started, body, prompt_summary, _user_email, _run_id, _workflow, _workflow_id, _hook_session_id, _routing_meta),
         upstream_api_key=_upstream_key,
         vendor_key=_vault_key_val,
         provider=provider,
