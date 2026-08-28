@@ -45,7 +45,11 @@ jobs:
       matrix:
         image:
           - { name: "api", dockerfile: "apps/api/Dockerfile", context: "apps/api" }
-          - { name: "web", dockerfile: "apps/web/Dockerfile", context: "apps/web" }
+          # context is repo root because apps/web/src/app/(marketing)/docs/page.tsx
+          # imports docs/reference/*.md via a ../../../../../../docs/... webpack
+          # asset/source import — that path only resolves when the build context
+          # includes the repo-root docs/ dir.
+          - { name: "web", dockerfile: "apps/web/Dockerfile", context: "." }
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
