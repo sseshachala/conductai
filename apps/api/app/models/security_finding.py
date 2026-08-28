@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -14,7 +14,7 @@ class SecurityFinding(Base):
     workspace_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     # Scanner project that produced this finding — lineage only.
     # Fix routing still uses ``repo_full_name``. See conductai#1005.
-    source_project_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    source_project_id = Column(UUID(as_uuid=True), nullable=True)
     tool = Column(String, nullable=False)           # claude-code | codex | cursor | copilot | manual
     severity = Column(String, nullable=False)       # critical | high | medium | low | info
     type = Column(String, nullable=False)           # injection | path-traversal | secret-leak | auth-bypass | crypto | other
@@ -34,4 +34,8 @@ class SecurityFinding(Base):
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_security_findings_status", "workspace_id", "status"),
     )
