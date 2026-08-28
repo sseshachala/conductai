@@ -161,6 +161,28 @@ run_one "perplexity" "/perplexity/chat/completions" \
   "" \
   '{"model":"sonar","max_tokens":40,"messages":[{"role":"user","content":"Reply: SMOKE_OK"}]}'
 
+# ── tier-form runs (PR B.5) ──────────────────────────────────────────────
+# Send `"balanced"` instead of a concrete model ID and verify the proxy
+# resolves via workspace primitives before forwarding upstream.
+
+echo "═══ tier-form model strings ═══════════════════════"
+
+run_one "anthropic" "/v1/messages" \
+  "-H \"x-api-key: guard-mt-$MEMBER_TOKEN\"" \
+  "-H \"anthropic-version: 2023-06-01\"" \
+  '{"model":"balanced","max_tokens":40,"messages":[{"role":"user","content":"Reply: SMOKE_OK"}]}'
+
+run_one "openai" "/openai/v1/chat/completions" \
+  "-H \"Authorization: Bearer guard-mt-$MEMBER_TOKEN\"" \
+  "" \
+  '{"model":"cheap","max_tokens":40,"messages":[{"role":"user","content":"Reply: SMOKE_OK"}]}'
+
+run_one "perplexity" "/perplexity/chat/completions" \
+  "-H \"Authorization: Bearer guard-mt-$MEMBER_TOKEN\"" \
+  "" \
+  '{"model":"balanced","max_tokens":40,"messages":[{"role":"user","content":"Reply: SMOKE_OK"}]}'
+
+
 echo "═══════════════════════════════════════════════════"
 echo "Summary: $PASS pass · $FAIL fail · $SKIP skip"
 exit $(( FAIL > 0 ? 1 : 0 ))
