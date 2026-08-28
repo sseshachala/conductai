@@ -81,6 +81,9 @@ ALLOWLIST = {
     # Playbook catalog (intentionally public — no user data returned)
     "routers/playbooks.py::list_playbooks",
     "routers/playbooks.py::get_playbook",
+    # Skill pack catalog (intentionally public — marketplace browsing, no user data)
+    # Registered on two paths (/packs/available + /packs/catalog), single function
+    "routers/compliance.py::list_pack_catalog",
     # Project templates (intentionally public — no user data)
     "routers/projects.py::list_templates",
     # Admin approve (auth via X-Admin-Secret HMAC — internal ops endpoint)
