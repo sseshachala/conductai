@@ -405,6 +405,10 @@ class WorkspaceSkillPack(Base):
     installed_by    = Column(Text, nullable=True)   # clerk_user_id
     installed_at    = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
+    __table_args__ = (
+        Index("ix_workspace_skill_packs_workspace", "workspace_id"),
+    )
+
 
 class WorkspaceCustomRule(Base):
     """Per-workspace custom guard rules. Replaces the legacy guard_policies
@@ -421,6 +425,10 @@ class WorkspaceCustomRule(Base):
     created_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
                           onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_workspace_custom_rules_workspace", "workspace_id"),
+    )
 
 
 class GuardRuleOverride(Base):
