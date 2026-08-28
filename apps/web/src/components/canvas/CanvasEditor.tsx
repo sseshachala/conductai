@@ -576,7 +576,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const startRun = useCallback(async (dryRun: boolean) => {
     // Client-side quick checks first
     if (!selectedEnvId) {
-      setValidationErrors([{ blockId: "__env__", label: "Environment", message: "Select an environment before running — add one in Settings → Environments" }])
+      setValidationErrors([{ blockId: "__env__", label: "Vault", message: "Select a vault before running — add one in Settings → Vault" }])
       return
     }
     const localErrors = validateNodes(nodes)
@@ -685,13 +685,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           // Translate known GitHub errors into actionable user-facing text
           const friendly = (() => {
             if (issueRes.status === 404) {
-              return `No GitHub credential connected for this workspace. Add one in Settings → Environments and reload.`
+              return `No GitHub credential connected for this workspace. Add one in Settings → Vault and reload.`
             }
             if (/Resource not accessible by personal access token/i.test(serverDetail)) {
-              return `Your GitHub token does not have permission to read issues on ${repo}. Fine-grained PAT: grant Repository → ${repo} and Permissions → Issues (Read). Classic PAT: include the 'repo' scope (private) or 'public_repo' scope (public). Then reconnect in Settings → Environments.`
+              return `Your GitHub token does not have permission to read issues on ${repo}. Fine-grained PAT: grant Repository → ${repo} and Permissions → Issues (Read). Classic PAT: include the 'repo' scope (private) or 'public_repo' scope (public). Then reconnect in Settings → Vault.`
             }
             if (/Bad credentials/i.test(serverDetail)) {
-              return `GitHub rejected your token as invalid or expired. Reconnect in Settings → Environments.`
+              return `GitHub rejected your token as invalid or expired. Reconnect in Settings → Vault.`
             }
             if (/API rate limit exceeded/i.test(serverDetail)) {
               return `GitHub API rate limit hit. Wait a few minutes or use an authenticated token with higher limits.`
@@ -1421,9 +1421,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
         <div className="shrink-0 border-t border-amber-200 bg-amber-50 px-5 py-2.5 flex items-center gap-2">
           <span className="text-amber-600 text-sm">⚠</span>
           <p className="text-xs text-amber-800 flex-1">
-            <span className="font-semibold">No environment assigned</span> — credentials won&apos;t be available when this workflow runs.{" "}
+            <span className="font-semibold">No vault assigned</span> — credentials won&apos;t be available when this workflow runs.{" "}
             Select one from the dropdown above, or{" "}
-            <a href="/settings" className="underline font-medium hover:text-amber-900">add an environment in Settings</a> first.
+            <a href="/settings" className="underline font-medium hover:text-amber-900">add a vault in Settings</a> first.
           </p>
         </div>
       )}
@@ -1575,7 +1575,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
               </p>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
-              The agent will execute against your connected repo using your environment credentials.
+              The agent will execute against your connected repo using your vault credentials.
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-stone-700">PR number <span className="text-stone-400 font-normal">(optional — overrides test payload)</span></label>

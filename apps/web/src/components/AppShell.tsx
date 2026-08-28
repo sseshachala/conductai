@@ -153,7 +153,7 @@ const PALETTE_COMMANDS = [
   { group: "GOVERN", label: "Guard · Activity", href: "/theguard/activity", icon: "Shield" as const },
   { group: "WORKSPACE", label: "Integrations", href: "/integrations", icon: "Gear" as const },
   { group: "WORKSPACE", label: "Agent ID", href: "/agent-identity", icon: "Gear" as const },
-  { group: "WORKSPACE", label: "Settings · Environments", href: "/settings", icon: "Gear" as const },
+  { group: "WORKSPACE", label: "Settings · Vault", href: "/settings", icon: "Gear" as const },
 ]
 
 export default function AppShell({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {

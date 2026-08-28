@@ -15,7 +15,7 @@ import ProxySettings from "@/components/settings/ProxySettings"
 type Tab = "credentials" | "members" | "preferences" | "proxy"
 
 const TAB_LABELS: Record<Tab, string> = {
-  credentials: "Environments",
+  credentials: "Vault",
   preferences: "Appearance",
   members: "Members & roles",
   proxy: "Proxy",

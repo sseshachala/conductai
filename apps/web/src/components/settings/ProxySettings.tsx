@@ -71,7 +71,7 @@ export default function ProxySettings({ workspaceId }: Props) {
   async function push() {
     if (!pushEnvId) return
     if (!upstream) {
-      setPushError("Save a proxy URL first before pushing to an environment.")
+      setPushError("Save a proxy URL first before pushing to a vault.")
       setTimeout(() => setPushError(""), 3000)
       return
     }
@@ -103,7 +103,7 @@ export default function ProxySettings({ workspaceId }: Props) {
       <div style={{ flex: "0 0 560px" }}>
         <p style={{ fontSize: 13, color: "var(--text-3)", marginBottom: 24, lineHeight: 1.6 }}>
           Guard intercepts LLM traffic and enforces policies before forwarding.
-          Configure your upstream gateway once, then push to any environment.
+          Configure your upstream gateway once, then push to any vault.
         </p>
 
         {/* Conduct Proxy URL — read only */}
@@ -173,10 +173,10 @@ export default function ProxySettings({ workspaceId }: Props) {
         {/* Push to environment */}
         <div>
           <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: ".06em", display: "block", marginBottom: 8 }}>
-            Push to Environment
+            Push to Vault
           </label>
           <p style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
-            Copies the upstream URL and key into an environment's variables so workflows running in that environment use this gateway.
+            Copies the upstream URL and key into a vault's variables so workflows running with that vault use this gateway.
           </p>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <select

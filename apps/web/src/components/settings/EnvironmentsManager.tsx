@@ -4,106 +4,20 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { environments as environmentsApi, credentials } from "@/lib/api"
-import {
-  SERVICE_DETECTION,
-  affectedServices,
-  type ServiceFieldDef,
-  type ServiceDetection,
-} from "@/lib/service-key-map"
 
 interface Environment {
   id: string
   name: string
   created_at: string
   allowed_hosts?: string[] | null
-  connectedServices?: string[]
 }
 
-interface Credential {
-  handle: string
-  service: string
-  auth_method: string
-  fields: string[]
+interface EnvVar { key: string; value: string; handle?: string }
+
+// Canonical env var names are uppercase by convention (POSIX + 12-factor).
+function normalizeKey(raw: string): string {
+  return raw.trim().toUpperCase()
 }
-
-interface FieldDef {
-  key: string
-  label: string
-  placeholder: string
-  secret?: boolean
-  optional?: boolean
-}
-
-interface ServiceDef {
-  value: string
-  label: string
-  description: string
-  color: string
-  abbr: string
-  fields: FieldDef[]
-}
-
-const SERVICES: ServiceDef[] = [
-  {
-    value: "github", label: "GitHub", abbr: "GH",
-    description: "Create branches and pull requests",
-    color: "bg-stone-900 text-white",
-    fields: [{ key: "token", label: "Personal access token", placeholder: "ghp_… or gho_…" }],
-  },
-  {
-    value: "slack", label: "Slack", abbr: "SL",
-    description: "Post messages and approval requests",
-    color: "bg-purple-600 text-white",
-    fields: [{ key: "token", label: "Bot token", placeholder: "xoxb-…" }],
-  },
-  {
-    value: "linear", label: "Linear", abbr: "LN",
-    description: "Fetch issues and post comments",
-    color: "bg-indigo-600 text-white",
-    fields: [{ key: "api_key", label: "API key", placeholder: "lin_api_…" }],
-  },
-  {
-    value: "digitalocean", label: "DigitalOcean", abbr: "DO",
-    description: "Provision and manage droplets",
-    color: "bg-blue-500 text-white",
-    fields: [{ key: "token", label: "Personal access token", placeholder: "dop_v1_…" }],
-  },
-  {
-    value: "anthropic", label: "Anthropic", abbr: "AI",
-    description: "Bring your own API key — agents use this instead of the platform key",
-    color: "bg-amber-600 text-white",
-    fields: [{ key: "api_key", label: "API key", placeholder: "sk-ant-…" }],
-  },
-  {
-    value: "email", label: "Email", abbr: "EM",
-    description: "Send notifications via Resend or SendGrid",
-    color: "bg-emerald-600 text-white",
-    fields: [
-      { key: "resend_api_key", label: "Resend API key (recommended)", placeholder: "re_…" },
-      { key: "sendgrid_api_key", label: "SendGrid API key (alternative)", placeholder: "SG.…", optional: true },
-      { key: "from_name", label: "From name", placeholder: "e.g. Acme Alerts", secret: false },
-      { key: "from_email", label: "From email address", placeholder: "e.g. alerts@acme.com", secret: false },
-    ],
-  },
-]
-
-interface Integration {
-  id: string
-  name: string
-  desc: string
-  credKey: string
-  color: string
-}
-
-const INTEGRATIONS: Integration[] = [
-  { id: "github",       name: "GitHub",       desc: "Clone, branch, push, open & merge PRs, add secrets",  credKey: "GITHUB_TOKEN",         color: "#1c1917" },
-  { id: "slack",        name: "Slack",        desc: "Post messages, DMs, approval buttons, Guard alerts",   credKey: "SLACK_BOT_TOKEN",      color: "#7c3aed" },
-  { id: "linear",       name: "Linear",       desc: "Create and update issues, post comments, query cycles", credKey: "LINEAR_API_KEY",       color: "#5b5bd6" },
-  { id: "vercel",       name: "Vercel",       desc: "Deploy projects, manage env vars, read deployment logs", credKey: "VERCEL_TOKEN",        color: "#1c1917" },
-  { id: "railway",      name: "Railway",      desc: "Deploy services, run migrations, read metrics",         credKey: "RAILWAY_TOKEN",       color: "#7c4dff" },
-  { id: "digitalocean", name: "DigitalOcean", desc: "Provision droplets, manage DNS and databases",          credKey: "DIGITALOCEAN_TOKEN",  color: "#0ea5e9" },
-  { id: "email",        name: "Email",        desc: "Send transactional and alert emails via Resend",        credKey: "RESEND_API_KEY",      color: "#059669" },
-]
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
@@ -122,78 +36,33 @@ export default function EnvironmentsManager({ isAdmin = true }: { isAdmin?: bool
   return <EnvironmentsManagerInner isAdmin={isAdmin} />
 }
 
-interface EnvVar { key: string; value: string; handle?: string }
-
-// Canonical env var names are uppercase by convention (POSIX + 12-factor).
-// Stored as upper so the Guard proxy + runtime get consistent lookups instead
-// of having to fall back to lower on every read.
-function normalizeKey(raw: string): string {
-  return raw.trim().toUpperCase()
-}
-
 function EnvironmentsManagerInner({ isAdmin }: { isAdmin: boolean }) {
   const { activeWorkspace } = useWorkspace()
   const { authFetch } = useAuthFetch()
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [listLoading, setListLoading] = useState(true)
-  const [active, setActive] = useState(0)
-  const [envVars, setEnvVars] = useState<EnvVar[]>([])
-  const [varsLoading, setVarsLoading] = useState(false)
-  const [settingKey, setSettingKey] = useState<string | null>(null)
-  const [inputValue, setInputValue] = useState("")
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState("")
+  const [activeId, setActiveId] = useState<string | null>(null)
   const [showNewEnv, setShowNewEnv] = useState(false)
   const [newEnvName, setNewEnvName] = useState("")
   const [creatingEnv, setCreatingEnv] = useState(false)
   const [createError, setCreateError] = useState("")
-  const [viewingDetail, setViewingDetail] = useState(false)
   const loadingRef = useRef(false)
-
-  // Thin adapter so sub-components that still expect buildHeaders continue to work.
-  // authFetch already injects auth + workspace headers, so we only add Content-Type when requested.
-  const buildHeaders = useCallback(async (contentType = false): Promise<Record<string, string>> => {
-    const headers: Record<string, string> = {}
-    const wsId = activeWorkspace?.id
-    if (wsId) headers["X-Workspace-Id"] = wsId
-    return headers
-  }, [activeWorkspace])
 
   const loadEnvironments = useCallback(async () => {
     if (loadingRef.current) return
     loadingRef.current = true
     try {
       const envs: Environment[] = await environmentsApi.list(authFetch)
-      const enriched = await Promise.all(envs.map(async env => {
-        try {
-          const creds: Credential[] = await credentials.byEnvironment(authFetch, env.id)
-          return { ...env, connectedServices: creds.map(c => c.service) }
-        } catch { return env }
-      }))
-      setEnvironments(enriched.map((env, i) => ({ ...env, allowed_hosts: envs[i]?.allowed_hosts ?? null })))
+      setEnvironments(envs)
+      if (envs.length > 0 && !activeId) setActiveId(envs[0].id)
     } catch { /* silent */ }
     finally {
       loadingRef.current = false
       setListLoading(false)
     }
-  }, [buildHeaders])
-
-  const loadVarsForEnv = useCallback(async (envId: string) => {
-    setVarsLoading(true)
-    try {
-      const data = await credentials.envVars.get(authFetch, envId)
-      setEnvVars(Array.isArray(data) ? data : [])
-    } catch { setEnvVars([]) }
-    finally { setVarsLoading(false) }
-  }, [buildHeaders])
+  }, [activeId, authFetch])
 
   useEffect(() => { loadEnvironments() }, [loadEnvironments])
-
-  useEffect(() => {
-    if (environments.length > 0) {
-      loadVarsForEnv(environments[active]?.id ?? "")
-    }
-  }, [active, environments, loadVarsForEnv])
 
   async function addEnv() {
     const name = newEnvName.trim()
@@ -211,42 +80,9 @@ function EnvironmentsManagerInner({ isAdmin }: { isAdmin: boolean }) {
         const body = await res.json().catch(() => ({}))
         setCreateError(body?.detail ?? `Create failed (${res.status})`)
       }
-    } catch { setCreateError("Network error — could not create environment.") }
+    } catch { setCreateError("Network error — could not create vault.") }
     finally { setCreatingEnv(false) }
   }
-
-  async function saveCredential(credKey: string, value: string) {
-    const env = environments[active]
-    if (!env) return
-    setSaving(true)
-    setSaveError("")
-    try {
-      const updated = envVars.some(v => v.key === credKey)
-        ? envVars.map(v => v.key === credKey ? { ...v, value } : v)
-        : [...envVars, { key: credKey, value }]
-      const res = await credentials.envVars.update(authFetch, env.id, updated.map(v => ({ key: v.key, value: v.value })) as unknown as Record<string, unknown>)
-      if (!res.ok) throw new Error("Save failed")
-      setEnvVars(updated)
-      setSettingKey(null)
-      setInputValue("")
-    } catch { setSaveError("Save failed") }
-    finally { setSaving(false) }
-  }
-
-  function isSet(credKey: string): boolean {
-    return envVars.some(v => v.key === credKey && v.value)
-  }
-
-  function maskedFor(credKey: string): string {
-    const v = envVars.find(v => v.key === credKey)
-    if (!v?.value) return ""
-    return v.value.length > 8 ? v.value.slice(0, 4) + "••••••••" : "••••••••"
-  }
-
-  const env = environments[active]
-  const required = INTEGRATIONS.length
-  const setCount = INTEGRATIONS.filter(it => isSet(it.credKey)).length
-  const missing = required - setCount
 
   if (listLoading) {
     return (
@@ -258,22 +94,10 @@ function EnvironmentsManagerInner({ isAdmin }: { isAdmin: boolean }) {
     )
   }
 
-  if (viewingDetail && env) {
-    return (
-      <EnvironmentDetail
-        environment={env}
-        buildHeaders={buildHeaders}
-        authFetch={authFetch}
-        onBack={() => setViewingDetail(false)}
-        isAdmin={isAdmin}
-      />
-    )
-  }
-
   if (environments.length === 0) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center", padding: "40px 0", textAlign: "center" }}>
-        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No environments yet.</p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No vaults yet.</p>
         {showNewEnv ? (
           <>
             <div style={{ display: "flex", gap: 8, maxWidth: 380 }}>
@@ -289,23 +113,23 @@ function EnvironmentsManagerInner({ isAdmin }: { isAdmin: boolean }) {
             {createError && <p style={{ fontSize: 12, color: "var(--err)", marginTop: 4 }}>{createError}</p>}
           </>
         ) : (
-          <button className="btn btn-primary btn-sm" onClick={() => setShowNewEnv(true)}>+ New environment</button>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowNewEnv(true)}>+ New vault</button>
         )}
       </div>
     )
   }
 
+  const activeEnv = environments.find(e => e.id === activeId) ?? environments[0]
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-        {environments.map((e, i) => {
-          const on = i === active
-          const miss = 0
+        {environments.map(e => {
+          const on = e.id === activeEnv.id
           return (
-            <button key={e.name} onClick={() => setActive(i)} className="chip" style={{ height: 32, cursor: "pointer", fontWeight: 600, gap: 7,
+            <button key={e.id} onClick={() => setActiveId(e.id)} className="chip" style={{ height: 32, cursor: "pointer", fontWeight: 600, gap: 7,
               background: on ? "var(--accent-weak)" : "var(--surface)", borderColor: on ? "var(--accent-ring)" : "var(--border)", color: on ? "var(--accent-text)" : "var(--text-2)" }}>
               {e.name}
-              {miss > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--warn)", background: "var(--warn-bg)", borderRadius: 20, padding: "0 6px", lineHeight: "15px" }}>{miss} needed</span>}
             </button>
           )
         })}
@@ -314,7 +138,7 @@ function EnvironmentsManagerInner({ isAdmin }: { isAdmin: boolean }) {
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <input autoFocus value={newEnvName} onChange={e => setNewEnvName(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") addEnv(); if (e.key === "Escape") { setShowNewEnv(false); setNewEnvName("") } }}
-                placeholder="Environment name"
+                placeholder="Vault name"
                 style={{ height: 32, border: "1px solid var(--border)", borderRadius: 8, padding: "0 10px", fontSize: 13, color: "var(--text)", background: "var(--surface)", outline: "none" }} />
               <button onClick={addEnv} disabled={creatingEnv || !newEnvName.trim()} className="btn btn-primary btn-sm" style={{ height: 32, opacity: (creatingEnv || !newEnvName.trim()) ? 0.4 : 1 }}>
                 {creatingEnv ? "…" : "Create"}
@@ -324,270 +148,27 @@ function EnvironmentsManagerInner({ isAdmin }: { isAdmin: boolean }) {
             {createError && <p style={{ fontSize: 12, color: "var(--err)", margin: "4px 0 0" }}>{createError}</p>}
           </>
         ) : (
-          <button onClick={() => setShowNewEnv(true)} className="btn btn-ghost btn-sm" style={{ height: 32 }}>+ New environment</button>
+          <button onClick={() => setShowNewEnv(true)} className="btn btn-ghost btn-sm" style={{ height: 32 }}>+ New vault</button>
         )}
       </div>
 
-      {env && (
-        <div className="card" style={{ padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12,
-          background: missing > 0 ? "var(--warn-bg)" : "var(--surface-2)", borderColor: missing > 0 ? "var(--warn-bd)" : "var(--border)" }}>
-          <div style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
-            {missing > 0
-              ? <><b style={{ color: "var(--text)" }}>{env.name}</b> needs {missing} of {required} variables filled in.</>
-              : <><b style={{ color: "var(--text)" }}>{env.name}</b> has all {required} credentials set.</>}
-          </div>
-          <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: missing > 0 ? "var(--warn)" : "var(--ok)", flexShrink: 0 }}>{setCount}/{required} set</span>
-          <button onClick={() => setViewingDetail(true)} className="btn btn-ghost btn-sm" style={{ flexShrink: 0, fontSize: 12 }}>
-            Manage variables →
-          </button>
-        </div>
-      )}
-
-      {varsLoading ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {[1, 2, 3].map(i => <div key={i} style={{ height: 112, borderRadius: 12, background: "var(--surface-2)", border: "1px solid var(--border)", opacity: 0.7 }} />)}
-        </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))", gap: 14 }}>
-          {INTEGRATIONS.map(it => {
-            const on = isSet(it.credKey)
-            const isEditing = settingKey === it.credKey
-            return (
-              <div key={it.id} className="card" style={{ padding: "16px 18px", borderColor: on ? "var(--ok-bd)" : "var(--border)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  <div style={{ width: 38, height: 38, borderRadius: 10, background: it.color, color: "#fff", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{it.name[0]}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 650, fontSize: 14.5 }}>{it.name}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{it.desc}</div>
-                  </div>
-                  {on
-                    ? <span className="sbadge ok"><span className="dot" style={{ background: "var(--ok)" }} />Set</span>
-                    : <span className="sbadge warn"><span className="dot" style={{ background: "var(--warn)" }} />Needs value</span>}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, background: "var(--surface-2)", border: "1px solid var(--border)", marginBottom: 12 }}>
-                  <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>{it.credKey}</span>
-                  <span className="mono" style={{ marginLeft: "auto", fontSize: 11.5, color: on ? "var(--text-3)" : "var(--warn)" }}>
-                    {on ? (maskedFor(it.credKey) || "••••••••") : "not set"}
-                  </span>
-                </div>
-                {isEditing ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <input
-                      autoFocus
-                      type="password"
-                      value={inputValue}
-                      onChange={e => setInputValue(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") saveCredential(it.credKey, inputValue); if (e.key === "Escape") { setSettingKey(null); setInputValue("") } }}
-                      placeholder={`Paste ${it.credKey}`}
-                      className="mono"
-                      style={{ fontSize: 12, padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", width: "100%", boxSizing: "border-box" }}
-                    />
-                    {saveError && <span style={{ fontSize: 11.5, color: "var(--err)" }}>{saveError}</span>}
-                    <div style={{ display: "flex", gap: 7 }}>
-                      <button className="btn btn-primary btn-sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => saveCredential(it.credKey, inputValue)} disabled={saving || !inputValue.trim()}>
-                        {saving ? "Saving…" : "Save"}
-                      </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => { setSettingKey(null); setInputValue(""); setSaveError("") }}>Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button className={"btn btn-sm " + (on ? "btn-ghost" : "btn-primary")} style={{ width: "100%", justifyContent: "center" }}
-                    onClick={() => { setSettingKey(it.credKey); setInputValue("") }}>
-                    {on ? "Rotate value" : `Set ${it.credKey}`}
-                  </button>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <EnvironmentDetail
+        key={activeEnv.id}
+        environment={activeEnv}
+        authFetch={authFetch}
+        isAdmin={isAdmin}
+      />
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Test connections panel
-// ---------------------------------------------------------------------------
-
-type TestResult = { ok: boolean; detail: string } | "testing" | "idle"
-
-function resultDetail(body: Record<string, unknown>): string {
-  if (body.user  && body.team)  return `${body.team} · ${body.user}`
-  if (body.user)                return `Connected as ${body.user}`
-  if (body.email)               return `Connected: ${body.email}`
-  return "Connected"
-}
-
-function TestConnectionsPanel({
-  vars,
-  buildHeaders,
-  authFetch,
-  autoRun,
-}: {
-  vars: EnvVar[]
-  buildHeaders: (contentType?: boolean) => Promise<Record<string, string>>
-  authFetch: (url: string, opts?: RequestInit) => Promise<Response>
-  autoRun?: { services: string[]; at: number } | null
-}) {
-  const [manualSel, setManualSel] = useState<Record<string, Record<string, string>>>({})
-  const [results,   setResults]   = useState<Record<string, TestResult>>({})
-
-  const varKeys = vars.filter(v => v.value).map(v => v.key)
-
-  useEffect(() => {
-    if (!autoRun?.services.length) return
-    const t = setTimeout(() => {
-      autoRun.services.forEach(service => {
-        const svc = SERVICE_DETECTION[service]
-        if (!svc) return
-        const hasAnyKey = svc.fields.some(f => f.envKeys.some(k => vars.some(v => v.key === k && v.value)))
-        if (hasAnyKey) runTest(service)
-      })
-    }, 200)
-    return () => clearTimeout(t)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRun?.at])
-
-  function autoKey(field: ServiceFieldDef): string {
-    return field.envKeys.find(k => vars.some(v => v.key === k && v.value)) ?? ""
-  }
-
-  function selectedKey(service: string, field: ServiceFieldDef): string {
-    return manualSel[service]?.[field.fieldKey] ?? autoKey(field)
-  }
-
-  function varValue(key: string): string {
-    return vars.find(v => v.key === key)?.value ?? ""
-  }
-
-  function buildCreds(service: string): Record<string, string> {
-    const svc = SERVICE_DETECTION[service]
-    const creds: Record<string, string> = {}
-    for (const field of svc.fields) {
-      const key = selectedKey(service, field)
-      const val = varValue(key)
-      if (val) creds[field.fieldKey] = val
-    }
-    return creds
-  }
-
-  function isTestable(service: string): boolean {
-    const svc = SERVICE_DETECTION[service]
-    if (service === "email") {
-      const creds = buildCreds(service)
-      return !!(creds.resend_api_key || creds.sendgrid_api_key)
-    }
-    return svc.fields.filter(f => f.required).every(f => !!varValue(selectedKey(service, f)))
-  }
-
-  async function runTest(service: string) {
-    setResults(prev => ({ ...prev, [service]: "testing" }))
-    try {
-      const res = await credentials.test(authFetch, { service, credentials: buildCreds(service) })
-      const body = await res.json() as Record<string, unknown>
-      if (body.ok) {
-        setResults(prev => ({ ...prev, [service]: { ok: true, detail: resultDetail(body) } }))
-      } else {
-        setResults(prev => ({ ...prev, [service]: { ok: false, detail: (body.error as string) ?? "Connection failed" } }))
-      }
-    } catch {
-      setResults(prev => ({ ...prev, [service]: { ok: false, detail: "Request failed" } }))
-    }
-  }
-
-  return (
-    <div style={{ marginTop: 24 }}>
-      <div style={{ marginBottom: 12 }}>
-        <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>Test connections</p>
-        <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-          Verify each credential is valid. Values are sent directly to the provider — nothing is stored or re-encrypted.
-        </p>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-        {Object.entries(SERVICE_DETECTION).map(([service, svc]) => {
-          const result  = results[service] ?? "idle"
-          const testing = result === "testing"
-          const ok      = result !== "idle" && result !== "testing" && result.ok
-          const err     = result !== "idle" && result !== "testing" && !result.ok
-          const testable = isTestable(service)
-
-          return (
-            <div key={service} className="card" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10,
-              borderColor: ok ? "var(--ok-bd)" : err ? "var(--err-bd)" : "var(--border)",
-              background: ok ? "var(--ok-bg, var(--surface-2))" : err ? "var(--err-bg)" : "var(--surface)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 7, background: svc.color.includes("bg-stone") ? "#1c1917" : svc.color.includes("bg-purple") ? "#7c3aed" : svc.color.includes("bg-indigo") ? "#4f46e5" : svc.color.includes("bg-blue") ? "#2563eb" : svc.color.includes("bg-emerald") ? "#059669" : svc.color.includes("bg-amber") ? "#d97706" : "#4f46e5",
-                  color: "#fff", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
-                  {svc.abbr}
-                </span>
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{svc.label}</span>
-                {ok && <span className="sbadge ok" style={{ marginLeft: "auto" }}>✓ OK</span>}
-                {err && <span className="sbadge err" style={{ marginLeft: "auto" }}>✗ Failed</span>}
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {svc.fields.map(field => {
-                  const auto    = autoKey(field)
-                  const current = selectedKey(service, field)
-                  const hasVal  = !!varValue(current)
-
-                  return (
-                    <div key={field.fieldKey}>
-                      <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 3 }}>{field.label}</p>
-                      {auto && manualSel[service]?.[field.fieldKey] === undefined ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                          <span className="mono" style={{ fontSize: 10.5, background: "var(--surface-2)", color: "var(--text-3)", padding: "2px 6px", borderRadius: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>
-                            {auto}
-                          </span>
-                          <button onClick={() => setManualSel(prev => ({ ...prev, [service]: { ...prev[service], [field.fieldKey]: "" } }))}
-                            style={{ fontSize: 10, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }} title="Change">✎</button>
-                        </div>
-                      ) : (
-                        <select value={current}
-                          onChange={e => setManualSel(prev => ({ ...prev, [service]: { ...prev[service], [field.fieldKey]: e.target.value } }))}
-                          className="mono"
-                          style={{ width: "100%", fontSize: 10.5, border: `1px ${hasVal ? "solid" : "dashed"} var(--border)`, borderRadius: 5, padding: "3px 6px", color: hasVal ? "var(--text-2)" : "var(--text-muted)", background: "var(--surface)", outline: "none" }}>
-                          <option value="">— pick a var —</option>
-                          {varKeys.map(k => <option key={k} value={k}>{k}</option>)}
-                        </select>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-
-              {ok  && <p style={{ fontSize: 11.5, color: "var(--ok)", fontWeight: 500 }}>{(result as {ok:boolean;detail:string}).detail}</p>}
-              {err && <p style={{ fontSize: 11.5, color: "var(--err)" }}>{(result as {ok:boolean;detail:string}).detail}</p>}
-
-              <button onClick={() => runTest(service)} disabled={!testable || testing}
-                className={testable && !testing ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
-                style={{ marginTop: "auto", justifyContent: "center", opacity: (!testable || testing) ? 0.5 : 1, cursor: (!testable || testing) ? "not-allowed" : "pointer" }}>
-                {testing ? "Testing…" : testable ? "Test connection" : "Add key to test"}
-              </button>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Environment detail — simple key-value env var editor
-// ---------------------------------------------------------------------------
 
 function EnvironmentDetail({
   environment,
-  buildHeaders,
   authFetch,
-  onBack,
   isAdmin,
 }: {
   environment: Environment
-  buildHeaders: (contentType?: boolean) => Promise<Record<string, string>>
   authFetch: (url: string, opts?: RequestInit) => Promise<Response>
-  onBack: () => void
   isAdmin: boolean
 }) {
   const [vars, setVars] = useState<EnvVar[]>([])
@@ -601,17 +182,11 @@ function EnvironmentDetail({
   const [showNew, setShowNew] = useState(false)
   const [showPaste, setShowPaste] = useState(false)
   const [pasteText, setPasteText] = useState("")
-  const [testTrigger, setTestTrigger] = useState<{ services: string[]; at: number } | null>(null)
   const [confirmVarIndex, setConfirmVarIndex] = useState<number | null>(null)
   const [pendingImport, setPendingImport] = useState<{ vars: EnvVar[]; newCount: number; updateCount: number } | null>(null)
   const [confirmVarValue, setConfirmVarValue] = useState("")
   const [confirmHost, setConfirmHost] = useState<string | null>(null)
   const [confirmHostValue, setConfirmHostValue] = useState("")
-
-  function triggerTestsForKeys(keys: string[]) {
-    const services = affectedServices(keys)
-    if (services.length) setTestTrigger({ services, at: Date.now() })
-  }
 
   const [hosts, setHosts] = useState<string[]>(environment.allowed_hosts ?? [])
   const [hostInput, setHostInput] = useState("")
@@ -645,18 +220,17 @@ function EnvironmentDetail({
       const data = await credentials.envVars.get(authFetch, environment.id)
       setVars(Array.isArray(data) ? data : [])
     } finally { setLoading(false) }
-  }, [buildHeaders, environment.id])
+  }, [authFetch, environment.id])
 
   useEffect(() => { load() }, [load])
 
-  async function saveAll(updated: EnvVar[], changedKeys?: string[]) {
+  async function saveAll(updated: EnvVar[]) {
     setSaving(true); setError(""); setSaved(false)
     try {
       const res = await credentials.envVars.update(authFetch, environment.id, updated.map(v => ({ key: v.key, value: v.value })) as unknown as Record<string, unknown>)
       if (!res.ok) throw new Error("Save failed")
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-      if (changedKeys?.length) triggerTestsForKeys(changedKeys)
     } catch { setError("Save failed") } finally { setSaving(false) }
   }
 
@@ -679,7 +253,6 @@ function EnvironmentDetail({
     setVars(updated)
     setNewKey(""); setNewValue(""); setShowNew(false)
     saveAll(updated)
-    triggerTestsForKeys([key])
   }
 
   function parseEnvText(text: string): EnvVar[] {
@@ -690,7 +263,7 @@ function EnvironmentDetail({
       const eq = line.indexOf("=")
       if (eq === -1) continue
       const key = normalizeKey(line.slice(0, eq))
-      const value = line.slice(eq + 1).trim().replace(/^["']|["']$/g, "")
+      const value = line.slice(eq + 1).trim().replace(/^["\x27]|["\x27]$/g, "")
       if (key) parsed.push({ key, value })
     }
     return parsed
@@ -713,7 +286,6 @@ function EnvironmentDetail({
     if (!pendingImport) return
     setVars(pendingImport.vars)
     saveAll(pendingImport.vars)
-    triggerTestsForKeys(pendingImport.vars.map(p => p.key))
     setPendingImport(null)
     setPasteText("")
     setShowPaste(false)
@@ -722,7 +294,6 @@ function EnvironmentDetail({
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
-        <button onClick={onBack} style={{ color: "var(--text-muted)", background: "none", border: "none", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>←</button>
         <span style={{ width: 32, height: 32, borderRadius: 8, background: "var(--accent-weak)", color: "var(--accent-text)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
           {environment.name.slice(0, 2).toUpperCase()}
         </span>
@@ -731,7 +302,7 @@ function EnvironmentDetail({
           <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: 0 }}>{vars.length} variable{vars.length !== 1 ? "s" : ""}</p>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => { setShowPaste(p => !p); setError("") }} className="btn btn-ghost btn-sm">Paste .env</button>
+          <button onClick={() => { setShowPaste(p => !p); setError("") }} className="btn btn-ghost btn-sm">Paste dotenv</button>
           <button onClick={() => saveAll(vars)} disabled={saving} className="btn btn-primary btn-sm" style={{ opacity: saving ? 0.5 : 1 }}>
             {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
           </button>
@@ -740,7 +311,7 @@ function EnvironmentDetail({
 
       {showPaste && (
         <div className="card" style={{ padding: "14px 16px", background: "var(--surface-2)", marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-          <p style={{ fontSize: 12, color: "var(--text-2)" }}>Paste the contents of your <code className="mono" style={{ fontSize: 11 }}>.env</code> file. Existing keys will be overwritten; new keys will be added.</p>
+          <p style={{ fontSize: 12, color: "var(--text-2)" }}>Paste the contents of your dotenv file. Existing keys will be overwritten; new keys will be added.</p>
           <textarea
             autoFocus
             value={pasteText}
@@ -781,7 +352,7 @@ function EnvironmentDetail({
         {loading ? (
           <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "20px 16px" }}>Loading…</p>
         ) : vars.length === 0 ? (
-          <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "20px 16px" }}>No variables yet — add one or import a .env file.</p>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "20px 16px" }}>No variables yet — add one or paste a dotenv file.</p>
         ) : (
           vars.map((v, i) => (
             <div key={v.key || i} style={{ borderBottom: i < vars.length - 1 ? "1px solid var(--border)" : "none" }}>
@@ -875,13 +446,11 @@ function EnvironmentDetail({
         ) : (
           <div style={{ borderTop: "1px solid var(--border)", padding: "8px 16px" }}>
             <button onClick={() => setShowNew(true)} style={{ fontSize: 12.5, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>
-              + Add Environment Variable
+              + Add variable
             </button>
           </div>
         ))}
       </div>
-
-      {!loading && <TestConnectionsPanel vars={vars} buildHeaders={buildHeaders} authFetch={authFetch} autoRun={testTrigger} />}
 
       <div style={{ marginTop: 24 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>

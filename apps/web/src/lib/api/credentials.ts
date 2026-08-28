@@ -7,7 +7,6 @@ export const credentials = {
   create: (f: AuthFetch, body: Record<string, unknown>) => post(f, base(), body),
   remove: (f: AuthFetch, handle: string) => del(f, `${base()}/${handle}`),
   reveal: (f: AuthFetch, handle: string) => json<any>(f, `${base()}/reveal/${handle}`),
-  test: (f: AuthFetch, body: Record<string, unknown>) => post(f, `${base()}/test`, body),
   byEnvironment: (f: AuthFetch, envId: string) =>
     json<any[]>(f, `${base()}/by-environment/${envId}`),
 
