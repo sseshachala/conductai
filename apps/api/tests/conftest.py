@@ -58,8 +58,37 @@ import pytest  # noqa: E402
 @pytest.fixture
 def real_require_permission():
     """Opt-in: restore the real require_permission for a test that actually
-    needs to exercise RBAC enforcement. Reverts on teardown."""
+    needs to exercise RBAC enforcement.
+
+    Routers have already baked in the permissive closure at collection time
+    (see docstring at top of file). Restoring the factory alone doesn't help
+    existing routes — we walk app.router.routes and swap each dep.call
+    tagged with __conduct_permission__ back to the real check closure.
+
+    Reverts on teardown so subsequent tests keep the permissive default.
+    """
+    from app.main import app as _app
+
     _auth_mod.require_permission = _ORIG_REQUIRE_PERMISSION
+
+    _swapped = []
+
+    def _walk(dependant):
+        for dep in dependant.dependencies:
+            perm = getattr(dep.call, "__conduct_permission__", None)
+            if perm:
+                _swapped.append((dep, dep.call))
+                dep.call = _ORIG_REQUIRE_PERMISSION(perm)
+            _walk(dep)
+
+    for route in _app.router.routes:
+        d = getattr(route, "dependant", None)
+        if d is not None:
+            _walk(d)
+
     yield
+
+    for dep, original in _swapped:
+        dep.call = original
     _auth_mod.require_permission = _permissive_permission
 
