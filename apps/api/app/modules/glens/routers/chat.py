@@ -288,26 +288,38 @@ def _load_system_prompt() -> str:
 _SYSTEM = _load_system_prompt()
 
 
-# ── LLM client factory ────────────────────────────────────────────────────────
+# ── LLM config resolution (PR C of #1347) ─────────────────────────────────────
 
-def _llm_client(db=None, workspace_id: str | None = None):
+def _llm_config(executor):
+    """Resolve (client, provider, model) for a Lens session from the workspace
+    primitives (issue #1347) and the workspace vault.
+
+    - provider + model come from workspace_llm_primitives; falls back to
+      seeded defaults if the workspace has no row yet.
+    - api_key is looked up in the workspace vault by provider handle;
+      falls back to "unused" (which the client turns into a 401 on first
+      call — an operator-fixable error, not silent misuse of a stale key).
+    """
+    from app.runtime.model_router import resolve_for_workspace
     from app.runtime.llm_client import client_for
-    from app.core.config import settings
-    provider = settings.conduct_inference_provider or "openai"
-    endpoint = (settings.conduct_inference_endpoint_url or "").rstrip("/")
-    if endpoint and endpoint.endswith("/v1"):
-        endpoint = endpoint[:-3]
-    api_key = settings.conduct_inference_token_id or (
-        settings.openai_api_key if provider == "openai" else ""
-    ) or "unused"
-    if db and workspace_id:
+    from app.core.credentials import get_credential
+
+    provider, model, reason = resolve_for_workspace(
+        db=executor.db,
+        workspace_id=executor.workspace_id,
+        routing_preference="balanced",
+    )
+
+    api_key = "unused"
+    if executor.db and executor.workspace_id:
         try:
-            from app.modules.credentials.vault import get_credential
-            creds = get_credential(db, workspace_id, provider)
+            creds = get_credential(executor.db, executor.workspace_id, provider)
             api_key = creds.get("api_key") or api_key
         except Exception:
             pass
-    return client_for(provider, api_key=api_key, base_url=endpoint or None)
+
+    log.debug("glens.llm_resolved", provider=provider, model=model, reason=reason)
+    return client_for(provider, api_key=api_key), provider, model
 
 
 # ── Core tool loop ────────────────────────────────────────────────────────────
@@ -433,44 +445,14 @@ def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
     return page
 
 
-def _resolve_llm_config(executor: Executor):
-    """Return (provider, model, upstream_url, api_key) for the workspace's OpenAI-shape endpoint.
-    Same discovery order as the legacy _llm_client — settings first, per-workspace vault override."""
-    from app.core.config import settings as _s
-    provider = _s.conduct_inference_provider or "openai"
-    model = _s.conduct_inference_model_name or "gpt-4o-mini"
-    endpoint = (_s.conduct_inference_endpoint_url or "").rstrip("/")
-    if endpoint and endpoint.endswith("/v1"):
-        endpoint = endpoint[:-3]
-    upstream_url = endpoint or "https://api.openai.com"
-    api_key = _s.conduct_inference_token_id or (_s.openai_api_key if provider == "openai" else "") or "unused"
-    if executor.db and executor.workspace_id:
-        try:
-            from app.modules.credentials.vault import get_credential
-            creds = get_credential(executor.db, executor.workspace_id, provider)
-            api_key = creds.get("api_key") or api_key
-        except Exception:
-            pass
-    return provider, model, upstream_url, api_key
-
-
-def _guarded_openai_completion(executor: Executor, provider: str, model: str, upstream_url: str,
-                                api_key: str, messages: list[dict], system: str,
-                                tools: list[dict] | None, max_tokens: int,
-                                client=None):
+def _guarded_openai_completion(executor: Executor, provider: str, model: str,
+                                client, messages: list[dict], system: str,
+                                tools: list[dict] | None, max_tokens: int):
     """In-process guarded LLM call for Lens — routes through the LLMClient.
 
-    Same composable policy engine as the HTTP proxy, no self-HTTP hop, no
-    adapter dance: `LLMClient.create()` already returns an SDK-shaped
-    LLMResponse so `_resolve_tools` can consume it directly.
-
-    Vendor-neutral — swap providers via env vars (`CONDUCT_INFERENCE_*`) or
-    per-workspace credential vault. Same knob as every other LLMClient
-    consumer on the platform."""
+    Same composable policy engine as the HTTP proxy, no self-HTTP hop.
+    Provider + model come from _llm_config() (workspace primitives)."""
     from app.guard.gateway import guarded_client_call, GuardedLLMBlocked as _Blocked
-
-    if client is None:
-        client = _llm_client(executor.db, executor.workspace_id)
 
     try:
         return guarded_client_call(
@@ -499,15 +481,14 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
     """
     from app.runtime.llm_client import LLMToolUseBlock
 
-    provider, model, upstream_url, api_key = _resolve_llm_config(executor)
-    log.info("glens.llm_call", provider=provider, model=model, upstream=upstream_url)
-    client = _llm_client(executor.db, executor.workspace_id)
+    client, provider, model = _llm_config(executor)
+    log.info("glens.llm_call", provider=provider, model=model)
     msgs = list(messages)
     tool_calls_made: list[tuple[str, dict]] = []
 
     for _ in range(5):
         resp = _guarded_openai_completion(
-            executor, provider, model, upstream_url, api_key,
+            executor, provider, model, client,
             messages=msgs, system=system, tools=TOOLS, max_tokens=512,
         )
         tool_blocks = [b for b in resp.content if isinstance(b, LLMToolUseBlock)]
@@ -538,9 +519,8 @@ def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_toke
     consumer)."""
     from app.guard.gateway import guarded_client_stream
 
-    provider, model, _upstream_url, _api_key = _resolve_llm_config(executor)
+    client, provider, model = _llm_config(executor)
     log.info("glens.stream_synthesis", provider=provider, model=model)
-    client = _llm_client(executor.db, executor.workspace_id)
     text = guarded_client_stream(
         client=client,
         workspace_id=executor.workspace_id,
