@@ -237,7 +237,7 @@ def _cleanup_test_data(db_session, workspace_id: str) -> None:
 # The integration test
 # ---------------------------------------------------------------------------
 
-def test_full_onboarding_flow(db):
+def test_full_onboarding_flow(db, real_require_permission):
     """
     Full onboarding flow: workspace creation → invites → accept → role checks → API keys.
     """
