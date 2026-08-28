@@ -1,7 +1,7 @@
 """Phase 3c schema drift reconciliation — JSON→JSONB + users.workspace_id NOT NULL
 
-Revision ID: 0102
-Revises: 0101
+Revision ID: 0105
+Revises: 0104
 Create Date: 2026-08-27
 
 Two functional fixes:
@@ -24,8 +24,8 @@ Two functional fixes:
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0102"
-down_revision = "0101"
+revision = "0105"
+down_revision = "0104"
 branch_labels = None
 depends_on = None
 
