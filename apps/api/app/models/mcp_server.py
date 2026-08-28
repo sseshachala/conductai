@@ -11,8 +11,16 @@ class McpServer(Base):
     __tablename__ = "mcp_servers"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
-    environment_id = Column(UUID(as_uuid=True), ForeignKey("environments.id"), nullable=True)
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE", name="mcp_servers_workspace_id_fkey"),
+        nullable=False,
+    )
+    environment_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("environments.id", ondelete="SET NULL", name="mcp_servers_environment_id_fkey"),
+        nullable=True,
+    )
     name = Column(String, nullable=False)
     url = Column(Text, nullable=False)
     transport = Column(String, nullable=False, default="http")

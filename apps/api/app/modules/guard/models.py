@@ -93,7 +93,12 @@ class GuardMemberConfig(Base):
         default=lambda: datetime.now(timezone.utc),
     )
     # Added by revision 0062 — model was missing this FK (#1284).
-    agent_identity_id = Column(String(36), ForeignKey("agent_identities.id"), nullable=True, index=True)
+    agent_identity_id = Column(
+        String(36),
+        ForeignKey("agent_identities.id", ondelete="SET NULL", name="fk_guard_member_config_agent_identity"),
+        nullable=True,
+        index=True,
+    )
 
 
 class GuardSession(Base):
