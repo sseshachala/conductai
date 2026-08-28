@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, UniqueConstraint, Boolean
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Index, UniqueConstraint, Boolean
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -21,7 +21,7 @@ class Integration(Base):
     environment_id = Column(UUID(as_uuid=True), ForeignKey("environments.id"), nullable=True)
     # Okta JWT auth (#1056). okta_issuer indexed — reverse lookup from an
     # unverified JWT `iss` to the workspace that trusts it. NULL on non-Okta rows.
-    okta_issuer = Column(String(500), nullable=True, index=True)
+    okta_issuer = Column(String(500), nullable=True)
     okta_audience = Column(String(500), nullable=True)
     okta_auth_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
 
@@ -30,4 +30,7 @@ class Integration(Base):
 
     __table_args__ = (
         UniqueConstraint("workspace_id", "handle", "environment_id", name="uq_integrations_workspace_handle_env"),
+        Index("ix_integrations_workspace_id", "workspace_id"),
+        Index("ix_integrations_workspace_environment", "workspace_id", "environment_id"),
+        Index("idx_integrations_okta_issuer", "okta_issuer"),
     )

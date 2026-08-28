@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
-from sqlalchemy import Column, String, Integer, Text, DateTime
+from sqlalchemy import Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -47,4 +47,9 @@ class PlaybookSubmission(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_playbook_submissions_slug", "slug"),
+        Index("ix_playbook_submissions_status", "status"),
     )

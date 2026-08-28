@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -34,4 +34,6 @@ class McpServer(Base):
 
     __table_args__ = (
         UniqueConstraint("workspace_id", "name", name="uq_mcp_server_name_per_workspace"),
+        Index("ix_mcp_servers_workspace", "workspace_id"),
+        Index("ix_mcp_servers_environment", "environment_id"),
     )
