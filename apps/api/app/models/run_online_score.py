@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
-from sqlalchemy import Boolean, Column, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Column, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.core.database import Base
@@ -32,6 +32,11 @@ class RunOnlineScore(Base):
         sa.DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_run_online_scores_grade", "grade"),
+        Index("ix_run_online_scores_scored_at", "scored_at"),
     )
 
 

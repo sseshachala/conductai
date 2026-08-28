@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, Float, DateTime, ForeignKey
+from sqlalchemy import Column, String, Text, Float, DateTime, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from pgvector.sqlalchemy import Vector
 from app.core.database import Base
@@ -25,3 +25,14 @@ class TeamSessionMemory(Base):
     confidence = Column(Float, nullable=False, default=0.5)
     visibility = Column(String(20), nullable=False, default="team")
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_tsm_workspace_repo", "workspace_id", "repo_full_name"),
+        Index(
+            "ix_tsm_hnsw", "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+            postgresql_with={"m": "16", "ef_construction": "64"},
+            postgresql_where=text("embedding IS NOT NULL"),
+        ),
+    )

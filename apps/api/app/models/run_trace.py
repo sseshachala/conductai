@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 import sqlalchemy as sa
-from sqlalchemy import Column, String, DateTime, Integer, Text, ForeignKey
+from sqlalchemy import Column, String, DateTime, Integer, Text, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -23,5 +23,10 @@ class RunTrace(Base):
     output_tokens = Column(Integer, nullable=True)
     duration_ms = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_run_traces_run_id", "run_id"),
+        Index("ix_run_traces_run_id_block_turn", "run_id", "block_id", "turn"),
+    )
 
     run = relationship("Run", backref="traces")

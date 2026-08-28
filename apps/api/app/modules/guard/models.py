@@ -371,6 +371,11 @@ class SessionReport(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
+    __table_args__ = (
+        Index("ix_session_reports_workspace", "workspace_id"),
+        Index("ix_session_reports_email", "developer_email"),
+    )
+
 
 # ── Skill Pack Model ───────────────────────────────────────────────────────────
 

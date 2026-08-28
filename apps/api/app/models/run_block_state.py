@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
-from sqlalchemy import Column, String, Boolean, Integer, DateTime, ForeignKey
+from sqlalchemy import Column, String, Boolean, Integer, DateTime, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.core.database import Base
@@ -36,4 +36,8 @@ class RunBlockState(Base):
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_run_block_states_run_id", "run_id"),
     )
