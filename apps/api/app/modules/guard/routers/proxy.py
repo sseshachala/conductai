@@ -112,6 +112,24 @@ API_TOKEN_PREFIX    = "cond_api_"  # long-lived machine token — no GMC link
 _TIER_FORMS = {"cheap", "balanced", "smart", "quality", "speed", "cost", "auto"}
 
 
+def _apply_tier_resolution(
+    db: Session,
+    workspace_id: str,
+    endpoint_provider: str,
+    body: dict,
+) -> tuple[str, str | None]:
+    """Rewrite body["model"] if it is a tier form. Returns (effective_model, original_tier_form).
+
+    original_tier_form is populated only when a substitution occurred (for audit
+    logging). When None, model was already concrete and body is unchanged."""
+    original = body.get("model", "unknown")
+    resolved = _resolve_tier_form(db, workspace_id, endpoint_provider, original)
+    if not resolved:
+        return original, None
+    body["model"] = resolved
+    return resolved, original if isinstance(original, str) else None
+
+
 def _resolve_tier_form(db: Session, workspace_id: str, endpoint_provider: str, model_field: object) -> str | None:
     """If model_field is a tier name (bare or `<endpoint_provider>/<tier>`),
     resolve via workspace primitives and return the concrete model ID.
@@ -386,20 +404,14 @@ async def _proxy(
         except Exception:
             return _fail_closed(400, "Body must be valid JSON")
 
-        model = body.get("model", "unknown")
-        # PR B.5 — resolve tier-form model strings ("balanced") via workspace
-        # primitives before Guard policy or upstream see the request.
-        _tier_form_before = model if isinstance(model, str) else None
-        _resolved_tier = _resolve_tier_form(db, workspace_id, provider, model)
-        if _resolved_tier:
-            model = _resolved_tier
-            body["model"] = _resolved_tier
+        model, _tier_form_before = _apply_tier_resolution(db, workspace_id, provider, body)
+        if _tier_form_before and _tier_form_before != model:
             log.info(
                 "proxy.tier_resolved",
                 workspace_id=workspace_id,
                 provider=provider,
                 tier_form=_tier_form_before,
-                resolved_model=_resolved_tier,
+                resolved_model=model,
             )
         ai_tool = request.headers.get("x-conduct-ai-tool") or _infer_ai_tool(request)
 

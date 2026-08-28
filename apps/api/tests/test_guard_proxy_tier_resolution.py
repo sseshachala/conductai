@@ -68,3 +68,53 @@ def test_empty_or_non_string_input(stub_router):
     assert _resolve_tier_form(db=None, workspace_id="ws", endpoint_provider="openai", model_field=None) is None
     assert _resolve_tier_form(db=None, workspace_id="ws", endpoint_provider="openai", model_field=42) is None
     assert stub_router == []
+
+
+# ── _apply_tier_resolution — mirrors the _proxy() insertion point ──────────
+
+from app.modules.guard.routers.proxy import _apply_tier_resolution
+
+
+def test_apply_concrete_model_leaves_body_unchanged(stub_router):
+    body = {"model": "gpt-4.1", "messages": []}
+    model, tier_form = _apply_tier_resolution(db=None, workspace_id="ws", endpoint_provider="openai", body=body)
+    assert model == "gpt-4.1"
+    assert tier_form is None
+    assert body["model"] == "gpt-4.1"
+    assert stub_router == []
+
+
+def test_apply_bare_tier_rewrites_body_and_returns_tier_form(stub_router):
+    body = {"model": "balanced", "messages": []}
+    model, tier_form = _apply_tier_resolution(db=None, workspace_id="ws", endpoint_provider="openai", body=body)
+    assert model == "gpt-4.1"
+    assert tier_form == "balanced"
+    assert body["model"] == "gpt-4.1"
+    # order matters: helper must call resolver before mutating body
+    assert stub_router[0]["explicit_provider"] == "openai"
+
+
+def test_apply_provider_prefixed_tier(stub_router):
+    body = {"model": "anthropic/smart", "messages": []}
+    model, tier_form = _apply_tier_resolution(db=None, workspace_id="ws", endpoint_provider="anthropic", body=body)
+    assert model == "claude-opus-4-7"
+    assert tier_form == "anthropic/smart"
+    assert body["model"] == "claude-opus-4-7"
+
+
+def test_apply_cross_provider_prefix_is_ignored(stub_router):
+    body = {"model": "anthropic/balanced", "messages": []}
+    model, tier_form = _apply_tier_resolution(db=None, workspace_id="ws", endpoint_provider="openai", body=body)
+    # endpoint provider is authoritative; cross-provider prefix returns None
+    assert model == "anthropic/balanced"
+    assert tier_form is None
+    assert body["model"] == "anthropic/balanced"
+    assert stub_router == []
+
+
+def test_apply_missing_model_field_returns_unknown(stub_router):
+    body = {"messages": []}
+    model, tier_form = _apply_tier_resolution(db=None, workspace_id="ws", endpoint_provider="openai", body=body)
+    assert model == "unknown"
+    assert tier_form is None
+    assert "model" not in body
