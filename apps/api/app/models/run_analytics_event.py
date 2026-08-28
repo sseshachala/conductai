@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
-from sqlalchemy import Column, Integer, Numeric, String, Text
+from sqlalchemy import Column, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -40,4 +40,9 @@ class RunAnalyticsEvent(Base):
         sa.DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_run_analytics_events_playbook_slug_created_at", "playbook_slug", "created_at"),
+        Index("ix_run_analytics_events_workspace_id_created_at", "workspace_id", "created_at"),
     )
