@@ -31,7 +31,7 @@ from app.models.workflow import Workflow, WorkflowVersion
 from app.schemas.workflow import WorkflowCreate, WorkflowUpdate, WorkflowOut, WorkflowDetailOut
 from app.compiler.compiler import compile_workflow
 from app.compiler.stream import stream_compile_block
-from app.runtime.model_router import resolve as resolve_model
+from app.runtime.model_router import resolve_for_workspace as resolve_model
 from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates, pricing_note
 from app.runtime.input_contract import InputContractError, validate_run_start_inputs, validate_required_inputs
 from app.runtime.run_contract import enrich_run_state_contract
@@ -1457,7 +1457,7 @@ def estimate_workflow_cost(
             routing_pref = data.get("routingPreference") or "balanced"
             explicit_model = data.get("model") or None
             explicit_provider = data.get("provider") or None
-            provider, model, _ = resolve_model(workflow.playbook_slug, routing_pref, explicit_model, explicit_provider)
+            provider, model, _ = resolve_model(db, str(workflow.workspace_id), routing_pref, explicit_model, explicit_provider)
             rates, pricing_version = get_model_rates(provider, model, pricing_snapshot)
             llm_models_used.add(f"{provider}:{model}")
             if llm_pricing_note is None:

@@ -1,178 +1,142 @@
-"""
-ModelRouter — V1 rules-based provider + model selection.
+"""ModelRouter — resolves (provider, model, reason) from workspace primitives.
 
-Resolves (playbook_slug, block_task_category, routing_preference) -> (provider, model_id, reason).
+Reads WorkspaceLLMPrimitives (issue #1347) and answers "given a caller\'s
+routing preference, which provider+model do we use for this workspace?"
 
-Design principles:
-- Deterministic: same inputs always produce same output
-- Never raises: returns a safe default on any unexpected input
-- Logged: always returns a reason string for the run trace
+The pure resolve() takes primitives already loaded, so it stays testable
+without a DB. resolve_for_workspace() is the DB-fetching wrapper the
+runtime callers use.
 
-V2 will replace the static policy with outcome-scored selection once
-enough run data accumulates per (playbook_slug × model) combination.
-See issue #314.
+Priority (highest first):
+  1. explicit_model on the block — user pinned a specific model
+  2. explicit_provider on the block — use workspace tier_map for that
+     provider, else that provider\'s global fallback
+  3. workspace.preferred_provider + workspace.tier_map[preferred_provider]
+  4. Global fallback (anthropic sonnet)
 """
 from __future__ import annotations
 
 import structlog
+from sqlalchemy.orm import Session
 
 log = structlog.get_logger(__name__)
 
-# ── Provider + model IDs ─────────────────────────────────────────────────────
-
-SONNET   = "claude-sonnet-4-6"
-OPUS     = "claude-opus-4-7"
-HAIKU    = "claude-haiku-4-5-20251001"
-GPT_41   = "gpt-4.1"
-GPT_41_M = "gpt-4.1-mini"
-SONAR          = "sonar"
-SONAR_PRO      = "sonar-pro"
-SONAR_REASONING = "sonar-reasoning-pro"
-
+# ── Canonical provider slugs (kept as-is; adapters key on these) ─────────────
 ANTHROPIC  = "anthropic"
 OPENAI     = "openai"
 PERPLEXITY = "perplexity"
+TOGETHER   = "together"
 
-# ── Task categories (derived from playbook slug) ──────────────────────────────
+_KNOWN_PROVIDERS = {ANTHROPIC, OPENAI, PERPLEXITY, TOGETHER}
 
-_SLUG_TO_CATEGORY: dict[str, str] = {
-    "autopilot_quick":        "code_implementation",
-    "autopilot_full":         "code_implementation",
-    "autopilot_approved":     "code_implementation",
-    "dependency_updater":     "code_implementation",
-    "security_patch_updater": "code_implementation",
-    "pr_reviewer":            "code_review",
-    "copilot_reviewer":       "code_review",
-    "security_scanner":       "security",
-    "issue_triage":           "triage",
-    "ci_notify":              "triage",
-    "flaky_test_detective":   "triage",
-    "release_notes":          "summarization",
-    "release_readiness":      "code_review",
-    "incident_responder":     "reasoning",
-    "postmortem_drafter":     "summarization",
-    "docs_drift_detector":    "summarization",
-    "terraform_reviewer":     "reasoning",
+# ── Global fallbacks (used when primitives + tier_map miss) ──────────────────
+# One model per provider — sensible balanced choice, used when the tier map
+# does not have an entry for the requested tier. Not a substitute for the
+# workspace primitives; only kicks in for legacy callers / empty maps.
+_PROVIDER_FALLBACK: dict[str, str] = {
+    ANTHROPIC:  "claude-sonnet-4-6",
+    OPENAI:     "gpt-4.1-mini",
+    PERPLEXITY: "sonar",
+    TOGETHER:   "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+}
+_GLOBAL_FALLBACK: tuple[str, str, str] = (ANTHROPIC, _PROVIDER_FALLBACK[ANTHROPIC], "global fallback")
+
+# ── Tier normalisation ───────────────────────────────────────────────────────
+# Callers pass routing_preference from block config. Historical preference
+# names (quality/speed/cost/auto) map onto the primitives tier keys.
+_PREF_TO_TIER: dict[str, str] = {
+    "cheap":    "cheap",
+    "balanced": "balanced",
+    "smart":    "smart",
+    # legacy names
+    "quality":  "smart",
+    "speed":    "cheap",
+    "cost":     "cheap",
+    "auto":     "balanced",
 }
 
-# ── Static policy table: category → (quality, balanced, speed, cost) ─────────
-# Each tuple: (provider, model). Preference index: 0=quality 1=balanced 2=speed 3=cost.
 
-_PREFS = ("quality", "balanced", "speed", "cost")
-
-_POLICY: dict[str, list[tuple[str, str]]] = {
-    "code_implementation": [(ANTHROPIC, OPUS),   (ANTHROPIC, SONNET), (ANTHROPIC, SONNET), (OPENAI, GPT_41_M)],
-    "code_review":         [(ANTHROPIC, OPUS),   (ANTHROPIC, SONNET), (OPENAI, GPT_41_M),  (OPENAI, GPT_41_M)],
-    "security":            [(ANTHROPIC, OPUS),   (ANTHROPIC, OPUS),   (ANTHROPIC, SONNET), (ANTHROPIC, SONNET)],
-    "triage":              [(ANTHROPIC, SONNET), (OPENAI, GPT_41_M),  (OPENAI, GPT_41_M),  (OPENAI, GPT_41_M)],
-    "summarization":       [(ANTHROPIC, SONNET), (OPENAI, GPT_41_M),  (OPENAI, GPT_41_M),  (OPENAI, GPT_41_M)],
-    "reasoning":           [(ANTHROPIC, OPUS),   (ANTHROPIC, SONNET), (ANTHROPIC, SONNET), (OPENAI, GPT_41_M)],
-}
-
-_GLOBAL_DEFAULT = (ANTHROPIC, SONNET, "default: balanced model")
-
-_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
-    ANTHROPIC: {
-        "code_implementation": (SONNET, "anthropic override: balanced default for code implementation"),
-        "code_review":         (SONNET, "anthropic override: balanced default for code review"),
-        "security":            (OPUS,   "anthropic override: strongest model for security"),
-        "triage":              (SONNET, "anthropic override: balanced default for triage"),
-        "summarization":       (SONNET, "anthropic override: balanced default for summarization"),
-        "reasoning":           (SONNET, "anthropic override: balanced default for reasoning"),
-        "unknown":             (SONNET, "anthropic override: balanced default model"),
-    },
-    OPENAI: {
-        "code_implementation": (GPT_41_M, "openai override: efficient model for code implementation"),
-        "code_review":         (GPT_41_M, "openai override: efficient model for code review"),
-        "security":            (GPT_41,   "openai override: strongest available OpenAI model for security"),
-        "triage":              (GPT_41_M, "openai override: efficient model for triage"),
-        "summarization":       (GPT_41_M, "openai override: efficient model for summarization"),
-        "reasoning":           (GPT_41,   "openai override: strongest available OpenAI model for reasoning"),
-        "unknown":             (GPT_41_M, "openai override: balanced default model"),
-    },
-    PERPLEXITY: {
-        "code_implementation": (SONAR_PRO,      "perplexity override: sonar-pro for code tasks"),
-        "code_review":         (SONAR_PRO,      "perplexity override: sonar-pro for code review"),
-        "security":            (SONAR_PRO,      "perplexity override: sonar-pro for security scanning"),
-        "triage":              (SONAR,          "perplexity override: sonar for triage"),
-        "summarization":       (SONAR,          "perplexity override: sonar for summarization"),
-        "reasoning":           (SONAR_REASONING, "perplexity override: sonar-reasoning-pro for reasoning"),
-        "unknown":             (SONAR,          "perplexity override: sonar default"),
-    },
-}
+def _normalise_tier(pref: str | None) -> str:
+    return _PREF_TO_TIER.get((pref or "balanced").strip().lower(), "balanced")
 
 
 def _infer_provider(model: str) -> str:
     m = (model or "").lower()
-    if m.startswith("gpt-"):
+    if m.startswith("gpt-") or m.startswith("o1") or m.startswith("o3") or m.startswith("o4"):
         return OPENAI
     if m.startswith("sonar"):
         return PERPLEXITY
+    if m.startswith("meta-llama/") or m.startswith("mistralai/") or m.startswith("Qwen/"):
+        return TOGETHER
     return ANTHROPIC
 
 
 def resolve(
-    playbook_slug: str | None,
+    preferred_provider: str,
+    tier_map: dict[str, dict[str, str]],
     routing_preference: str | None,
     explicit_model: str | None = None,
     explicit_provider: str | None = None,
-) -> tuple[str, str]:
-    """
-    Return (provider, model_id, routing_reason).
-
-    Priority:
-    1. explicit_model on the block — user pinned a specific model
-    2. explicit_provider on the block — user pinned a provider, router picks a safe model for it
-    3. Static policy lookup: (task_category, routing_preference)
-    4. Category default
-    5. Global default (sonnet)
-    """
+) -> tuple[str, str, str]:
+    """Pure resolver — no DB access. See module docstring for priority."""
     try:
-        # 1. Pinned model
         if explicit_model:
             return _infer_provider(explicit_model), explicit_model, "user-pinned model"
 
-        pref = (routing_preference or "balanced").lower()
-        if pref == "auto":
-            pref = "balanced"
+        tier = _normalise_tier(routing_preference)
 
-        # 2. Resolve category from slug
-        category = _SLUG_TO_CATEGORY.get(playbook_slug or "", "") if playbook_slug else ""
+        req_provider = (explicit_provider or "").strip().lower()
+        if req_provider in _KNOWN_PROVIDERS:
+            model = (tier_map.get(req_provider) or {}).get(tier)
+            if model:
+                return req_provider, model, f"explicit provider {req_provider}: tier_map[{tier}]"
+            fallback = _PROVIDER_FALLBACK[req_provider]
+            return req_provider, fallback, f"explicit provider {req_provider}: fallback (no tier_map[{tier}])"
 
-        requested_provider = (explicit_provider or "").lower().strip()
-        if requested_provider in (ANTHROPIC, OPENAI, PERPLEXITY):
-            category_key = category or "unknown"
-            model, reason = _PROVIDER_MODEL_DEFAULTS[requested_provider].get(
-                category_key,
-                _PROVIDER_MODEL_DEFAULTS[requested_provider]["unknown"],
-            )
-            log.debug(
-                "model_router.provider_override",
-                slug=playbook_slug,
-                pref=pref,
-                category=category_key,
-                provider=requested_provider,
-                model=model,
-            )
-            return requested_provider, model, reason
+        provider = (preferred_provider or ANTHROPIC).strip().lower()
+        if provider not in _KNOWN_PROVIDERS:
+            provider = ANTHROPIC
 
-        if category and category in _POLICY:
-            idx = _PREFS.index(pref) if pref in _PREFS else 1
-            provider, model = _POLICY[category][idx]
-            reason = f"{category}/{pref}: {provider} {model}"
-        else:
-            # Unknown slug — fall back by preference only
-            pref_defaults: dict[str, tuple[str, str, str]] = {
-                "quality":  (ANTHROPIC, OPUS,   "quality preference: strongest model"),
-                "balanced": (ANTHROPIC, SONNET, "balanced preference: default model"),
-                "speed":    (OPENAI,    GPT_41_M, "speed preference: efficient model"),
-                "cost":     (OPENAI,    GPT_41_M, "cost preference: efficient model"),
-            }
-            provider, model, reason = pref_defaults.get(pref, _GLOBAL_DEFAULT)
-
-        log.debug("model_router.resolved", slug=playbook_slug, pref=pref, category=category, provider=provider, model=model)
-        return provider, model, reason
+        model = (tier_map.get(provider) or {}).get(tier)
+        if model:
+            return provider, model, f"workspace {provider}: tier_map[{tier}]"
+        return provider, _PROVIDER_FALLBACK[provider], f"workspace {provider}: fallback (no tier_map[{tier}])"
 
     except Exception as e:
         log.warning("model_router.error", error=str(e))
-        return ANTHROPIC, SONNET, "fallback: routing error"
+        return _GLOBAL_FALLBACK
+
+
+def _load_primitives(db: Session, workspace_id: str) -> tuple[str, dict[str, dict[str, str]]]:
+    """Fetch workspace primitives, applying the same defaults as the API."""
+    from app.models.workspace_llm_primitives import WorkspaceLLMPrimitives
+    from app.routers.workspace_llm_primitives import (
+        DEFAULT_PREFERRED_PROVIDER,
+        DEFAULT_TIER_MAPS,
+        _read_stored,
+    )
+    row = db.get(WorkspaceLLMPrimitives, workspace_id) if (db and workspace_id) else None
+    if row is None:
+        return DEFAULT_PREFERRED_PROVIDER, {k: dict(v) for k, v in DEFAULT_TIER_MAPS.items()}
+    tier_map = _read_stored(row.tier_map)
+    if not tier_map:
+        tier_map = {k: dict(v) for k, v in DEFAULT_TIER_MAPS.items()}
+    return (row.preferred_provider or DEFAULT_PREFERRED_PROVIDER), tier_map
+
+
+def resolve_for_workspace(
+    db: Session,
+    workspace_id: str,
+    routing_preference: str | None,
+    explicit_model: str | None = None,
+    explicit_provider: str | None = None,
+) -> tuple[str, str, str]:
+    """Runtime entry point — reads workspace primitives, delegates to resolve()."""
+    preferred_provider, tier_map = _load_primitives(db, workspace_id)
+    return resolve(
+        preferred_provider=preferred_provider,
+        tier_map=tier_map,
+        routing_preference=routing_preference,
+        explicit_model=explicit_model,
+        explicit_provider=explicit_provider,
+    )

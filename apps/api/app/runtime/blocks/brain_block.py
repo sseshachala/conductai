@@ -21,7 +21,7 @@ from app.runtime.llm_client import (
     OpenAIClient,
     PerplexityClient,
 )
-from app.runtime.model_router import resolve as _router_resolve
+from app.runtime.model_router import resolve_for_workspace as _router_resolve
 from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 
 log = structlog.get_logger(__name__)
@@ -347,7 +347,7 @@ def _execute_brain(
     routing_pref = block["data"].get("routingPreference") or "balanced"
     explicit_model = block["data"].get("model") or None
     explicit_provider = block["data"].get("provider") or None
-    provider, model_id, routing_reason = _router_resolve(playbook_slug, routing_pref, explicit_model, explicit_provider)
+    provider, model_id, routing_reason = _router_resolve(db, workspace_id, routing_pref, explicit_model, explicit_provider)
     log.debug("brain.model_selected", block_id=block["id"], provider=provider, model=model_id, reason=routing_reason)
 
     # Fetch credentials from broker for session creation (SSH key, sandbox API keys).
