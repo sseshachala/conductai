@@ -203,6 +203,14 @@ class GuardAuditEvent(Base):
     # Only populated when the caller sent a tier form ("balanced" etc.);
     # NULL when a concrete model ID was forwarded straight through.
     routing_meta    = Column(JSONB, nullable=True)
+    # Added by revision 0102 (#1340) — was already read by _event_to_dict via
+    # getattr hotfix (#1338). Declaring on ORM closes schema drift.
+    # ondelete=SET NULL: audit history must survive identity deletion.
+    agent_identity_id = Column(
+        String(36),
+        ForeignKey("agent_identities.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
         Index("ix_guard_audit_events_source", "workspace_id", "source", "ts"),
@@ -218,6 +226,7 @@ class GuardAuditEvent(Base):
             postgresql_using="gin",
         ),
         Index("ix_guard_audit_events_ws_ts", "workspace_id", sa.text("ts DESC")),
+        Index("ix_guard_audit_events_agent_identity_id", "agent_identity_id"),
     )
 
 
