@@ -30,27 +30,46 @@ def test_batch_b_tools_registered():
 
 # ── #1414 Workspace KPIs ─────────────────────────────────────────────────────
 
+# CI sometimes sees `Run.created_at` / `GuardAuditEvent.cost_usd_after` as a
+# MagicMock (leaks from earlier test suites monkeypatching model modules).
+# `MagicMock >= datetime` raises TypeError, so the workspace KPI tests need
+# stub column objects that return truthy filter expressions regardless of
+# what state the SQLAlchemy mappers are in.
+
+class _FakeCol:
+    def __eq__(self, _other): return "eq_expr"
+    def __ge__(self, _other): return "ge_expr"
+    def isnot(self, _other): return "isnot_expr"
+
+
+class _FakeRun:
+    workspace_id = _FakeCol()
+    created_at = _FakeCol()
+
+
+class _FakeGuardAuditEvent:
+    workspace_id = _FakeCol()
+    decision = _FakeCol()
+    ts = _FakeCol()
+    cost_usd_after = _FakeCol()
+    agent_identity_id = _FakeCol()
+
+
 def test_get_workspace_kpis_returns_expected_shape():
     class _Q:
-        def __init__(self, count_val=0, all_val=None):
-            self._count = count_val
-            self._all = all_val or []
         def filter(self, *_a, **_k): return self
         def order_by(self, *_a, **_k): return self
         def distinct(self): return self
-        def count(self): return self._count
-        def all(self): return self._all
+        def count(self): return 0
+        def all(self): return []
 
     class _DB:
-        def query(self, *_a, **_k):
-            # First call returns the block-count query, subsequent calls
-            # return empty queries. Order matters only for readability
-            # here — the function does 4 queries. We overload query() to
-            # simulate every one returning "no data".
-            return _Q()
+        def query(self, *_a, **_k): return _Q()
         def close(self): pass
 
-    with patch("app.core.database.SessionLocal", return_value=_DB()):
+    with patch("app.core.database.SessionLocal", return_value=_DB()), \
+         patch("app.models.run.Run", _FakeRun), \
+         patch("app.modules.guard.models.GuardAuditEvent", _FakeGuardAuditEvent):
         from app.tools.registrations.lens import get_workspace_kpis
         out = get_workspace_kpis(_CTX, time_window="last_24h")
 
@@ -76,7 +95,9 @@ def test_get_workspace_kpis_window_last_7d():
         def query(self, *_a, **_k): return _Q()
         def close(self): pass
 
-    with patch("app.core.database.SessionLocal", return_value=_DB()):
+    with patch("app.core.database.SessionLocal", return_value=_DB()), \
+         patch("app.models.run.Run", _FakeRun), \
+         patch("app.modules.guard.models.GuardAuditEvent", _FakeGuardAuditEvent):
         from app.tools.registrations.lens import get_workspace_kpis
         out = get_workspace_kpis(_CTX, time_window="last_7d")
 
