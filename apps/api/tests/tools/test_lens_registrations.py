@@ -24,6 +24,14 @@ def _executor_tool_methods() -> set[str]:
     }
 
 
+def _legacy_registrations() -> list[ToolDef]:
+    """Tools wired via `_impl(name)` — those need a matching Executor
+    `_tool_*` method. New tools (post-#1281) register free functions
+    directly and skip Executor entirely; they're exempt from this check.
+    """
+    return [t for t in lens_reg._TOOLS if getattr(t.impl, "__name__", "").startswith("lens_impl_")]
+
+
 def test_every_executor_tool_has_registration():
     method_names = _executor_tool_methods()
     registered_names = {t.name for t in lens_reg._TOOLS}
@@ -32,10 +40,14 @@ def test_every_executor_tool_has_registration():
     assert not missing, f"Executor tools without registrations: {sorted(missing)}"
 
 
-def test_registrations_target_real_executor_methods():
+def test_legacy_registrations_target_real_executor_methods():
+    """Registrations built via `_impl(name)` must map to a real
+    `Executor._tool_{name}`. Free-function registrations are exempt (they
+    hold their own impl in the ToolDef)."""
     method_names = _executor_tool_methods()
-    unknown = {t.name for t in lens_reg._TOOLS} - method_names
-    assert not unknown, f"Registrations point at missing Executor methods: {sorted(unknown)}"
+    legacy_names = {t.name for t in _legacy_registrations()}
+    unknown = legacy_names - method_names
+    assert not unknown, f"Legacy registrations point at missing Executor methods: {sorted(unknown)}"
 
 
 def test_default_registry_contains_all_lens_tools():

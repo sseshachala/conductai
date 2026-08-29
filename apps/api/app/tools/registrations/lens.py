@@ -679,6 +679,116 @@ _TOOLS: list[ToolDef] = [
 ]
 
 
+# ── #1295 + #1420 governance rollup tools ────────────────────────────────────
+# First tools registered under the new convention: free functions (no
+# Executor._tool_* shim). Impls import _compute_framework_coverage from the
+# governance router — a pure computation, safe to import.
+
+def _run_framework_coverage(workspace_id: str):
+    from app.core.database import SessionLocal
+    from app.routers.governance import _compute_framework_coverage
+    db = SessionLocal()
+    try:
+        return _compute_framework_coverage(db, workspace_id)
+    finally:
+        db.close()
+
+
+def get_governance_summary(ctx):
+    """Full framework coverage matrix — installed + bonus + rules totals."""
+    return _run_framework_coverage(ctx.workspace_id).model_dump()
+
+
+def get_soc2_status(ctx, framework: str = "SOC2"):
+    """Rollup for a single compliance framework. Defaults to SOC2. Returns
+    installed status + rules + controls + recommended pack for uninstalled."""
+    from app.routers.governance import RECOMMENDED_PACK
+    result = _run_framework_coverage(ctx.workspace_id)
+    fw = framework.upper()
+    for row in result.installed:
+        if row.framework == fw:
+            return {"status": "installed", **row.model_dump()}
+    for row in result.bonus:
+        if row.framework == fw:
+            return {"status": "bonus", **row.model_dump()}
+    return {
+        "status": "not_covered",
+        "framework": fw,
+        "rules_count": 0,
+        "controls": [],
+        "packs": [],
+        "recommended_pack": RECOMMENDED_PACK.get(fw),
+    }
+
+
+def get_ai_rollout_status(ctx):
+    """AI rollout instructions published for the workspace — published flag,
+    content length, version, last update, publisher."""
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.models.workspace_instructions import WorkspaceInstructions
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        row = db.query(WorkspaceInstructions).filter(
+            WorkspaceInstructions.workspace_id == ws_uuid
+        ).first()
+        if row is None:
+            return {
+                "published": False,
+                "content_length": 0,
+                "version": None,
+                "updated_at": None,
+                "updated_by": None,
+            }
+        return {
+            "published": True,
+            "content_length": len(row.content or ""),
+            "version": row.version,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            "updated_by": row.updated_by,
+        }
+    finally:
+        db.close()
+
+
+_TOOLS.extend([
+    ToolDef(
+        name="get_governance_summary",
+        description="Full framework coverage matrix — installed frameworks, bonus (cross-tag) coverage, and rules totals.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        impl=get_governance_summary,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_soc2_status",
+        description="Rollup for one compliance framework (defaults to SOC2). Returns installed status + rules + controls + recommended pack.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "framework": {
+                    "type": "string",
+                    "description": "Framework name: SOC2, HIPAA, OWASP, PCI_DSS, ISO_42001, GDPR, EU_AI_ACT, NIST, NIS2, DORA.",
+                },
+            },
+            "required": [],
+        },
+        impl=get_soc2_status,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_ai_rollout_status",
+        description="AI rollout instructions published for the workspace — published flag, content length, version, last update.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        impl=get_ai_rollout_status,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+])
+
+
 def register(replace: bool = False) -> None:
     """Register all Lens tools into the default registry. Idempotent when
     replace=True (used only in tests that reload)."""
