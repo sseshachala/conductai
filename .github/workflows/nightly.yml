@@ -173,7 +173,8 @@ jobs:
         # apps/web is an npm workspace — install at repo root.
         run: npm ci
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium firefox
+        # webkit required by smoke-mobile-iphone (iPhone 14 device uses WebKit engine).
+        run: npx playwright install --with-deps chromium firefox webkit
         working-directory: apps/web
       - name: Run Playwright
         run: npm run test:e2e
