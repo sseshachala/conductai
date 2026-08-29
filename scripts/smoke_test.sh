@@ -92,6 +92,26 @@ fi
 echo "  ok: ${#TIER1_CMDS[@]} subcommands" | run_and_tee
 echo "" | run_and_tee
 
+# ── Step 0b: Tier 2 — read-only calls that must talk to the API ─────────────
+# Validates auth (whoami first) and confirms the workspace responds.
+# credentials skipped: requires --environment name we don't have universally.
+echo "── Step 0b: Tier 2 — read-only API sweep ──" | run_and_tee
+TIER2_CMDS=(whoami projects playbooks environments token agents sessions)
+TIER2_FAILS=()
+for c in "${TIER2_CMDS[@]}"; do
+  if ! conduct "$c" >/dev/null 2>&1; then
+    TIER2_FAILS+=("$c")
+    echo "  FAIL: conduct $c" | run_and_tee
+    conduct "$c" 2>&1 | head -5 | run_and_tee
+  fi
+done
+if [[ ${#TIER2_FAILS[@]} -gt 0 ]]; then
+  echo "Tier 2 failed on: ${TIER2_FAILS[*]}" | run_and_tee
+  exit 1
+fi
+echo "  ok: ${#TIER2_CMDS[@]} read-only calls" | run_and_tee
+echo "" | run_and_tee
+
 # ── Step 1: Reset project ──────────────────────────────────────────────────────
 echo "── Step 1: Reset project '$PROJECT' ──" | run_and_tee
 conduct reset "$PROJECT" --yes 2>&1 | run_and_tee
