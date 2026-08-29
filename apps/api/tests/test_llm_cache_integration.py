@@ -16,6 +16,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+
+# pytest-forked: each test runs in its own subprocess so this file's module-
+# level sys.modules stubs stay isolated. See epic #1075 — proper long-term
+# fix is to remove the stubs (needs test-body rewrite to use real modules).
+pytestmark = pytest.mark.forked
 # ── Stub executor before brain_block imports it ───────────────────────────────
 _executor_stub = ModuleType("app.runtime.executor")
 _executor_stub._emit = MagicMock()

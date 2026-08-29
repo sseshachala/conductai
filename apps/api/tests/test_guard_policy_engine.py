@@ -4,6 +4,12 @@ Wave 3 — Guard policy_engine.py pure-function tests.
 No DB, no FastAPI, no real pydantic-settings. All DB interactions are mocked
 via MagicMock sessions so the functions themselves are exercised in isolation.
 """
+# pytest-forked: each test runs in its own subprocess so this file's module-
+# level sys.modules stubs stay isolated. See epic #1075 — proper long-term
+# fix is to remove the stubs (needs test-body rewrite to use real modules).
+import pytest
+pytestmark = pytest.mark.forked
+
 import os
 import sys
 import types
