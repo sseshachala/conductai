@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
-import AppShell from "@/components/AppShell"
-import { TabBar } from "@/components/TabBar"
+import { SettingsShell, type SettingsTab } from "@/components/SettingsShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
@@ -15,13 +14,13 @@ import LLMPrimitivesPanel from "@/components/settings/LLMPrimitivesPanel"
 
 type Tab = "credentials" | "llm_primitives" | "members" | "preferences" | "proxy"
 
-const TAB_LABELS: Record<Tab, string> = {
-  credentials: "Vault",
-  llm_primitives: "LLM Model Primitives",
-  preferences: "Appearance",
-  members: "Members & roles",
-  proxy: "Proxy",
-}
+const TABS: readonly SettingsTab<Tab>[] = [
+  { key: "credentials",    label: "Vault" },
+  { key: "llm_primitives", label: "LLM Model Primitives" },
+  { key: "preferences",    label: "Appearance" },
+  { key: "proxy",          label: "Proxy" },
+  { key: "members",        label: "Members & roles", adminOnly: true },
+]
 
 export default function SettingsPage() {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -164,11 +163,8 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
 // ── Main settings page ────────────────────────────────────────────────────────
 
 function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolean; workspaceId: string; getToken: (() => Promise<string | null>) | null }) {
-  const tabs = (["credentials", "llm_primitives", "preferences", "proxy", ...(isAdmin ? ["members"] : [])] as Tab[])
-  const [activeTab, setActiveTab] = useState<Tab>("credentials")
   const [showTip, setShowTip] = useState(false)
 
-  // Only show tip if user hasn't dismissed it before
   useEffect(() => {
     if (typeof window !== "undefined") {
       setShowTip(localStorage.getItem("conduct_settings_tip_dismissed") !== "1")
@@ -182,8 +178,23 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
     setShowTip(false)
   }
 
+  const panels: Partial<Record<Tab, React.ReactNode>> = {
+    credentials:    <EnvironmentsManager isAdmin={isAdmin} />,
+    llm_primitives: <LLMPrimitivesPanel workspaceId={workspaceId} isAdmin={isAdmin} />,
+    preferences:    <PreferencesPanel />,
+    proxy:          <ProxySettings workspaceId={workspaceId} getToken={getToken} />,
+    members:        <MembersManager />,
+  }
+
   return (
-    <AppShell>
+    <SettingsShell<Tab>
+      title="Settings"
+      description="Connect tools, manage environments, members, appearance, and API access."
+      tabs={TABS}
+      isAdmin={isAdmin}
+      panels={panels}
+      initialTab="credentials"
+    >
       {showTip && (
         <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 50, maxWidth: 380, width: "100%", borderRadius: 12, background: "var(--warn-bg)", border: "1px solid var(--warn-bd)", padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 12 }}>
           <span style={{ color: "var(--warn)", flexShrink: 0 }}>⚠</span>
@@ -201,40 +212,7 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
           </button>
         </div>
       )}
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "40px 24px" }}>
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: 25, fontWeight: 680, letterSpacing: "-.02em", color: "var(--text)", margin: 0 }}>
-            Settings
-          </h1>
-          <p style={{ fontSize: 14, color: "var(--text-3)", marginTop: 5, margin: "5px 0 0" }}>
-            Connect tools, manage environments, members, appearance, and API access.
-          </p>
-        </div>
-
-        {isAdmin && <OrgNameEditor getToken={getToken} />}
-
-        <div style={{ marginBottom: 24 }}>
-          <TabBar tabs={tabs} labels={TAB_LABELS} activeTab={activeTab} onSelect={setActiveTab} />
-        </div>
-
-        <div role="tabpanel" id="tabpanel-credentials" aria-labelledby="tab-credentials" hidden={activeTab !== "credentials"}>
-          <EnvironmentsManager isAdmin={isAdmin} />
-        </div>
-        <div role="tabpanel" id="tabpanel-llm_primitives" aria-labelledby="tab-llm_primitives" hidden={activeTab !== "llm_primitives"}>
-          <LLMPrimitivesPanel workspaceId={workspaceId} isAdmin={isAdmin} />
-        </div>
-        <div role="tabpanel" id="tabpanel-preferences" aria-labelledby="tab-preferences" hidden={activeTab !== "preferences"}>
-          <PreferencesPanel />
-        </div>
-        {isAdmin && (
-          <div role="tabpanel" id="tabpanel-members" aria-labelledby="tab-members" hidden={activeTab !== "members"}>
-            <MembersManager />
-          </div>
-        )}
-        <div role="tabpanel" id="tabpanel-proxy" aria-labelledby="tab-proxy" hidden={activeTab !== "proxy"}>
-          <ProxySettings workspaceId={workspaceId} getToken={getToken} />
-        </div>
-      </div>
-    </AppShell>
+      {isAdmin && <OrgNameEditor getToken={getToken} />}
+    </SettingsShell>
   )
 }
