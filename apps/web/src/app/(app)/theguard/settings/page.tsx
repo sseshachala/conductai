@@ -12,6 +12,7 @@ import { useGuardRole } from "@/hooks/useGuardRole"
 import { useTokenGuardrails, patchTokenGuardrails } from "@/hooks/useTokenGuardrails"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
+import { SettingsShell, type SettingsTab } from "@/components/SettingsShell"
 import { SlackIntegrationPicker } from "@/components/SlackIntegrationPicker"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,19 +28,24 @@ interface TeamPrefs {
   advisory_mode: boolean
 }
 
+// ─── Tab shape — mirrors workspace /settings via <SettingsShell> (issue #1359) ─
 
-// ─── Section header (reused across all groupings) ─────────────────────────────
+type GuardSettingsTab =
+  | "enforcement"
+  | "notifications"
+  | "guardrails"
+  | "rate_limits"
+  | "connections"
+  | "sync"
 
-function SectionHeader({ title, hint }: { title: string; hint?: string }) {
-  return (
-    <div style={{ margin: "28px 0 12px" }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em" }}>
-        {title}
-      </div>
-      {hint && <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{hint}</div>}
-    </div>
-  )
-}
+const GUARD_SETTINGS_TABS: readonly SettingsTab<GuardSettingsTab>[] = [
+  { key: "enforcement",   label: "Enforcement" },
+  { key: "notifications", label: "Notifications" },
+  { key: "guardrails",    label: "Cost & performance" },
+  { key: "rate_limits",   label: "Rate limits", adminOnly: true },
+  { key: "connections",   label: "Connections" },
+  { key: "sync",          label: "Sync status" },
+]
 
 
 
@@ -753,24 +759,14 @@ function SettingsContent() {
           {error}
         </div>
       ) : (
-        <>
-          {/* View-only notice */}
-          {!isAdmin && resolvedRole !== null && (
-            <div style={{
-              borderRadius: 8,
-              border: "1px solid var(--border)",
-              background: "var(--surface-2)",
-              padding: "10px 16px",
-              fontSize: 12,
-              color: "var(--text-3)",
-              marginBottom: 24,
-            }}>
-              View only — contact your admin to make changes.
-            </div>
-          )}
-
-          {/* Status ribbon — sync + resync side by side */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <SettingsShell<GuardSettingsTab>
+          wrapInAppShell={false}
+          tabs={GUARD_SETTINGS_TABS}
+          isAdmin={isAdmin}
+          initialTab="enforcement"
+          panels={{
+            sync: (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
               <div className="card" style={{ padding: "18px 20px", minWidth: 0 }}>
                 <div className="eyebrow" style={{ marginBottom: 12 }}>Sync status</div>
                 {toolCoverage === null ? (
@@ -820,10 +816,10 @@ function SettingsContent() {
                   {resyncing ? "Syncing…" : resyncDone ? "Synced" : "Re-sync"}
                 </button>
               </div>
-          </div>
-
-          <SectionHeader title="Enforcement" hint="How Guard decides and when it fails safely" />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 20, alignItems: "stretch" }}>
+              </div>
+            ),
+            enforcement: (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 20, alignItems: "stretch" }}>
               <div className="card" style={{ padding: "18px 20px", minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, gap: 8 }}>
                   <div className="eyebrow">Agent guard <span style={{ color: "var(--text-muted)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>· workspace default</span></div>
@@ -966,10 +962,10 @@ function SettingsContent() {
                   </div>
                 </label>
               </div>
-          </div>
-
-          <SectionHeader title="Notifications" hint="Route policy events per action tier. Add multiple Slack channels — each one gets pinged whenever a rule with that action fires." />
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              </div>
+            ),
+            notifications: (
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <NotificationsCard workspaceId={wsId ?? null} isAdmin={isAdmin} />
             <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>
               <p style={{ fontSize: 12, fontWeight: 600, color: "var(--info)", marginBottom: 6 }}>Setup checklist</p>
@@ -987,10 +983,10 @@ function SettingsContent() {
                 .
               </p>
             </div>
-          </div>
-
-          <SectionHeader title="Cost & performance" hint="Token guardrails detected and enforced across your workspace" />
-          <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
+              </div>
+            ),
+            guardrails: (
+              <div className="card" style={{ overflow: "hidden" }}>
             <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1065,18 +1061,12 @@ function SettingsContent() {
                   />
                 </div>
               ))}
-            </div>
-          </div>
-
-          {isAdmin && (
-            <>
-              <SectionHeader title="Rate Limits" hint="Requests-per-minute and tokens-per-minute caps on proxy traffic. Blocks return 429 with x-guard reason." />
-              <RateLimitsCard isAdmin={isAdmin} />
-            </>
-          )}
-
-          <SectionHeader title="Connections" hint="MCP servers and integrations" />
-          <div className="card" style={{ marginTop: 20, padding: "14px 20px", display: "flex", alignItems: "center", gap: 12 }}>
+              </div>
+              </div>
+            ),
+            rate_limits: <RateLimitsCard isAdmin={isAdmin} />,
+            connections: (
+              <div className="card" style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
@@ -1089,10 +1079,24 @@ function SettingsContent() {
             <a href="/integrations" className="btn btn-ghost btn-sm" style={{ textDecoration: "none" }}>
               Manage MCP →
             </a>
-          </div>
-
-          {/* Automation — hidden until operation cleanup complete */}
-        </>
+              </div>
+            ),
+          }}
+        >
+          {!isAdmin && resolvedRole !== null && (
+            <div style={{
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              padding: "10px 16px",
+              fontSize: 12,
+              color: "var(--text-3)",
+              marginBottom: 24,
+            }}>
+              View only — contact your admin to make changes.
+            </div>
+          )}
+        </SettingsShell>
       )}
     </GuardShell>
   )
