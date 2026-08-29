@@ -69,6 +69,29 @@ NON_PR_AGENTS=(
   echo ""
 } | run_and_tee
 
+# ── Step 0: Tier 1 — every subcommand's --help must exit 0 ──────────────────
+# Catches import breaks, argparse drift, missing deps before we touch the API.
+# Source of truth: `sub.add_parser("...")` in packages/conduct-cli/src/conduct_cli/main.py
+echo "── Step 0: Tier 1 — CLI --help sweep ──" | run_and_tee
+TIER1_CMDS=(
+  agents create credentials delete emit environments install install-all
+  login mcp playbooks projects reset run sessions set skill switch test token whoami
+)
+TIER1_FAILS=()
+conduct --help >/dev/null 2>&1 || { echo "conduct --help failed" | run_and_tee; exit 1; }
+for c in "${TIER1_CMDS[@]}"; do
+  if ! conduct "$c" --help >/dev/null 2>&1; then
+    TIER1_FAILS+=("$c")
+    echo "  FAIL: conduct $c --help" | run_and_tee
+  fi
+done
+if [[ ${#TIER1_FAILS[@]} -gt 0 ]]; then
+  echo "Tier 1 failed on: ${TIER1_FAILS[*]}" | run_and_tee
+  exit 1
+fi
+echo "  ok: ${#TIER1_CMDS[@]} subcommands" | run_and_tee
+echo "" | run_and_tee
+
 # ── Step 1: Reset project ──────────────────────────────────────────────────────
 echo "── Step 1: Reset project '$PROJECT' ──" | run_and_tee
 conduct reset "$PROJECT" --yes 2>&1 | run_and_tee
@@ -76,7 +99,12 @@ echo "" | run_and_tee
 
 # ── Step 2: Install all agents ────────────────────────────────────────────────
 echo "── Step 2: Install all agents ──" | run_and_tee
-timeout 300 conduct install-all --project "$PROJECT" --repo "$REPO" 2>&1 | run_and_tee || true
+timeout 300 conduct install-all --project "$PROJECT" --repo "$REPO" 2>&1 | run_and_tee
+echo "" | run_and_tee
+
+# ── Step 2b: Confirm what actually landed in the workspace ───────────────────
+echo "── Step 2b: Installed agents ──" | run_and_tee
+conduct agents 2>&1 | run_and_tee || true
 echo "" | run_and_tee
 
 # ── Step 3a: Non-PR agents ────────────────────────────────────────────────────
