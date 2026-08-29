@@ -511,13 +511,18 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
     """Phase 1: Execute tool calls. Returns (final_msgs, early_text, tool_calls_made).
 
     Each LLM turn goes through Guard's in-process `guarded_llm_call` (#1254) —
-    same policy + audit path as the HTTP proxy. Tool dispatch itself now
-    goes through `lens_adapter.dispatch` (#1227) so Lens shares the same
-    ToolRegistry as the MCP HTTP/stdio surfaces.
+    same policy + audit path as the HTTP proxy. Tool dispatch itself goes
+    through `lens_adapter.dispatch` (#1227) so Lens shares the same
+    ToolRegistry as the MCP HTTP/stdio surfaces. When the LLM emits N
+    tool_use blocks in a single turn (Lens commonly does 2-4), they run
+    concurrently via `dispatch_tool_blocks` — SQLAlchemy handles concurrent
+    sessions on separate connections so this scales cleanly to any tool
+    count the DB pool can sustain.
     """
     from app.mcp.lens_adapter import dispatch as lens_dispatch
     from app.mcp.server import MCPContext
     from app.runtime.llm_client import LLMToolUseBlock
+    from app.runtime.tool_dispatch import dispatch_tool_blocks
 
     client, provider, model = _llm_config(executor)
     log.info("glens.llm_call", provider=provider, model=model)
@@ -529,6 +534,9 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
         clerk_user_id="system:lens",
         surface="lens",
     )
+
+    def _bound_dispatcher(name: str, args_json: str) -> str:
+        return lens_dispatch(name, args_json, lens_ctx)
 
     for _ in range(5):
         resp = _guarded_openai_completion(
@@ -542,12 +550,14 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
             return msgs, text or "I couldn't find relevant data to answer that.", tool_calls_made
 
         msgs.extend(client.make_assistant_turn(resp))
-        results = []
-        for block in tool_blocks:
-            tool_calls_made.append((block.name, block.input))
-            result = lens_dispatch(block.name, json.dumps(block.input), lens_ctx)
-            log.debug("glens.tool", name=block.name, result_len=len(result))
-            results.append((block.id, result))
+        for b in tool_blocks:
+            tool_calls_made.append((b.name, b.input))
+        results = dispatch_tool_blocks(tool_blocks, _bound_dispatcher)
+        for name_and_input, (_id, result) in zip(
+            [(b.name, b.input) for b in tool_blocks],
+            results,
+        ):
+            log.debug("glens.tool", name=name_and_input[0], result_len=len(result))
         msgs.extend(client.make_tool_results_turn(results))
 
     return msgs, None, tool_calls_made
