@@ -11,14 +11,16 @@ import MembersManager from "@/components/settings/MembersManager"
 import PreferencesPanel from "@/components/settings/PreferencesPanel"
 import ProxySettings from "@/components/settings/ProxySettings"
 import LLMPrimitivesPanel from "@/components/settings/LLMPrimitivesPanel"
+import RateLimitsPanel from "@/components/settings/RateLimitsPanel"
 
-type Tab = "credentials" | "llm_primitives" | "members" | "preferences" | "proxy"
+type Tab = "credentials" | "llm_primitives" | "members" | "preferences" | "proxy" | "rate_limits"
 
 const TABS: readonly SettingsTab<Tab>[] = [
   { key: "credentials",    label: "Vault" },
   { key: "llm_primitives", label: "LLM Model Primitives" },
   { key: "preferences",    label: "Appearance" },
   { key: "proxy",          label: "Proxy" },
+  { key: "rate_limits",    label: "Rate limits", adminOnly: true },
   { key: "members",        label: "Members & roles", adminOnly: true },
 ]
 
@@ -183,6 +185,7 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
     llm_primitives: <LLMPrimitivesPanel workspaceId={workspaceId} isAdmin={isAdmin} />,
     preferences:    <PreferencesPanel />,
     proxy:          <ProxySettings workspaceId={workspaceId} getToken={getToken} />,
+    rate_limits:    <RateLimitsPanel isAdmin={isAdmin} />,
     members:        <MembersManager />,
   }
 
