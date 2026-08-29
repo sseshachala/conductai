@@ -789,6 +789,292 @@ _TOOLS.extend([
 ])
 
 
+# ── #1281 batch B — join-heavy read tools ────────────────────────────────────
+# Workspace KPIs (#1414), Discovery (#1415), Vault metadata (#1417), autopilot
+# activity (#1296). All free-function ToolDefs per the new convention.
+
+def _window_start(time_window: str):
+    """Resolve a symbolic time window to a UTC datetime lower bound."""
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    if time_window == "last_7d":
+        return now - timedelta(days=7)
+    if time_window == "mtd":
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return now - timedelta(hours=24)  # last_24h default
+
+
+def get_workspace_kpis(ctx, time_window: str = "last_24h"):
+    """Rollup counters for the workspace over a time window.
+
+    Returns: blocked_calls (Guard blocks in window), spend (proxy cost sum),
+    runs {total/succeeded/failed} (workflow runs in window), active_agents
+    (distinct agent identities in window).
+    """
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.modules.guard.models import GuardAuditEvent
+    from app.models.run import Run
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        since = _window_start(time_window)
+
+        blocked_calls = (
+            db.query(GuardAuditEvent)
+            .filter(
+                GuardAuditEvent.workspace_id == ws_uuid,
+                GuardAuditEvent.decision == "block",
+                GuardAuditEvent.ts >= since,
+            )
+            .count()
+        )
+
+        spend_rows = (
+            db.query(GuardAuditEvent.cost_usd_after)
+            .filter(
+                GuardAuditEvent.workspace_id == ws_uuid,
+                GuardAuditEvent.ts >= since,
+                GuardAuditEvent.cost_usd_after.isnot(None),
+            )
+            .all()
+        )
+        spend_total = sum((r[0] or 0.0) for r in spend_rows)
+
+        runs = (
+            db.query(Run)
+            .filter(Run.workspace_id == ws_uuid, Run.created_at >= since)
+            .all()
+        )
+        run_status: dict[str, int] = {}
+        for r in runs:
+            run_status[r.status] = run_status.get(r.status, 0) + 1
+
+        active_agents = (
+            db.query(GuardAuditEvent.agent_identity_id)
+            .filter(
+                GuardAuditEvent.workspace_id == ws_uuid,
+                GuardAuditEvent.ts >= since,
+                GuardAuditEvent.agent_identity_id.isnot(None),
+            )
+            .distinct()
+            .count()
+        )
+
+        return {
+            "time_window": time_window,
+            "since": since.isoformat(),
+            "blocked_calls": blocked_calls,
+            "spend": {"amount_usd": round(spend_total, 6), "currency": "USD"},
+            "runs": {
+                "total": sum(run_status.values()),
+                "succeeded": run_status.get("succeeded", 0),
+                "failed": run_status.get("failed", 0),
+                "by_status": run_status,
+            },
+            "active_agents": active_agents,
+        }
+    finally:
+        db.close()
+
+
+def list_discovered_agents(ctx, framework: str | None = None, since: str | None = None):
+    """Discovered AI agents in the workspace — name, framework, source,
+    risk_score, under_guard, proxy_routed. Optional framework filter (e.g.
+    'langchain', 'crewai') and since ISO-8601 lower bound on last_seen_at.
+    """
+    import uuid as _uuid
+    from datetime import datetime
+    from app.core.database import SessionLocal
+    from app.modules.guard.models import DiscoveredAgent
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        q = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id == ws_uuid)
+        if framework:
+            q = q.filter(DiscoveredAgent.framework == framework)
+        if since:
+            try:
+                q = q.filter(DiscoveredAgent.last_seen_at >= datetime.fromisoformat(since))
+            except ValueError:
+                pass
+        rows = q.order_by(DiscoveredAgent.last_seen_at.desc()).all()
+        return {
+            "count": len(rows),
+            "agents": [
+                {
+                    "name": r.name,
+                    "framework": r.framework,
+                    "source": r.source,
+                    "location": r.location,
+                    "risk_score": r.risk_score,
+                    "under_guard": r.under_guard,
+                    "proxy_routed": r.proxy_routed,
+                    "first_seen_at": r.first_seen_at.isoformat() if r.first_seen_at else None,
+                    "last_seen_at": r.last_seen_at.isoformat() if r.last_seen_at else None,
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        db.close()
+
+
+def list_credentials(ctx, environment_id: str | None = None, service: str | None = None):
+    """Vault inventory — service + handle + auth_method + scopes + last_used_at
+    per Integration row. NEVER returns encrypted_credentials or any raw
+    secret material.
+
+    Optional filters: environment_id (Vault UUID), service
+    (github / slack / linear / …).
+    """
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.models.integration import Integration
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        q = db.query(Integration).filter(Integration.workspace_id == ws_uuid)
+        if service:
+            q = q.filter(Integration.service == service)
+        if environment_id:
+            try:
+                q = q.filter(Integration.environment_id == _uuid.UUID(environment_id))
+            except ValueError:
+                pass
+        rows = q.order_by(Integration.created_at.desc()).all()
+        return {
+            "count": len(rows),
+            "credentials": [
+                {
+                    "id": str(r.id),
+                    "service": r.service,
+                    "handle": r.handle,
+                    "auth_method": r.auth_method,
+                    "scopes": r.scopes or [],
+                    "environment_id": str(r.environment_id) if r.environment_id else None,
+                    "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        db.close()
+
+
+def get_autopilot_activity(ctx, since: str | None = None, limit: int = 50, status: str | None = None):
+    """Feed of autopilot-driven security activity. Synthesized from
+    SecurityFinding rows scoped to this workspace, ordered by updated_at
+    desc. Optional since (ISO-8601 lower bound on updated_at), status
+    (open/triaging/fixed/dismissed), limit (default 50, max 500).
+    """
+    import uuid as _uuid
+    from datetime import datetime
+    from app.core.database import SessionLocal
+    from app.models.security_finding import SecurityFinding
+    limit = min(max(int(limit or 50), 1), 500)
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        q = db.query(SecurityFinding).filter(SecurityFinding.workspace_id == ws_uuid)
+        if status:
+            q = q.filter(SecurityFinding.status == status)
+        if since:
+            try:
+                q = q.filter(SecurityFinding.updated_at >= datetime.fromisoformat(since))
+            except ValueError:
+                pass
+        rows = q.order_by(SecurityFinding.updated_at.desc()).limit(limit).all()
+        return {
+            "count": len(rows),
+            "findings": [
+                {
+                    "id": str(r.id),
+                    "tool": r.tool,
+                    "severity": r.severity,
+                    "type": r.type,
+                    "file": r.file,
+                    "line": r.line,
+                    "description": r.description,
+                    "status": r.status,
+                    "repo_full_name": r.repo_full_name,
+                    "run_id": r.run_id,
+                    "github_issue_url": r.github_issue_url,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        db.close()
+
+
+_TOOLS.extend([
+    ToolDef(
+        name="get_workspace_kpis",
+        description="Workspace rollup — blocked calls, spend, workflow runs, active agents over a time window (last_24h / last_7d / mtd).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "time_window": {"type": "string", "description": "'last_24h' (default) / 'last_7d' / 'mtd'."},
+            },
+            "required": [],
+        },
+        impl=get_workspace_kpis,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="list_discovered_agents",
+        description="AI agents discovered in this workspace by the discovery daemon. Optional framework filter (langchain/crewai/…) and since lower bound.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "framework": {"type": "string"},
+                "since": {"type": "string", "description": "ISO-8601 lower bound on last_seen_at"},
+            },
+            "required": [],
+        },
+        impl=list_discovered_agents,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="list_credentials",
+        description="Vault inventory — metadata only. Returns service, handle, auth_method, scopes, environment, last_used_at. NEVER returns the secret value.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "environment_id": {"type": "string", "description": "Filter by environment (Vault) UUID."},
+                "service": {"type": "string", "description": "Filter by service slug (github/slack/…)"},
+            },
+            "required": [],
+        },
+        impl=list_credentials,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_autopilot_activity",
+        description="Autopilot feed — recent SecurityFinding rows (open/triaging/fixed/dismissed). Optional since (ISO-8601) + status filter + limit (default 50, max 500).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "since": {"type": "string", "description": "ISO-8601 lower bound on updated_at"},
+                "status": {"type": "string", "description": "Filter: open/triaging/fixed/dismissed"},
+                "limit": {"type": "integer", "minimum": 1},
+            },
+            "required": [],
+        },
+        impl=get_autopilot_activity,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+])
+
+
 def register(replace: bool = False) -> None:
     """Register all Lens tools into the default registry. Idempotent when
     replace=True (used only in tests that reload)."""
