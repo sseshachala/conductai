@@ -37,6 +37,9 @@ jobs:
       DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
       REDIS_URL: redis://localhost:6379
       ENCRYPTION_KEY: test-key-32-bytes-long-xxxxxxxx!
+      # Next dev on :3000 fetches API on :8000 → different origin. Without this,
+      # CORSMiddleware rejects every browser fetch and pages render "Failed to fetch".
+      ALLOWED_ORIGINS: http://localhost:3000
       # Clerk sandbox — role projects only run when all four are present.
       # Add missing secrets in Settings → Secrets and variables → Actions.
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_TEST_PUBLISHABLE_KEY }}
