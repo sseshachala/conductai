@@ -7,71 +7,80 @@
 
 # Conduct
 
-**Runtime governance for AI agents — one policy enforces across every LLM call, every shell tool, every teammate's AI session.**
-
-![Conduct — live run trace showing agent executing an issue-to-PR agent template](apps/web/public/guard-docs/dashboard.png)
+**Governance for AI agents. Ship in 60 seconds.**
 
 </div>
 
+```bash
+pip install conduct-cli
+conduct login
+conduct sync
+```
+
+Every Claude Code, Cursor, Copilot, and Codex session on that machine is now governed. Blocks, warnings, and a hash-chained audit trail show up at [conductai.ai](https://conductai.ai).
+
+Prefer to self-host?
+
+```bash
+git clone https://github.com/sseshachala/conductai && cd conductai && docker compose up
+# API: localhost:8000  ·  Canvas UI: localhost:3000
+```
+
+![Conduct dashboard — live run trace of an issue-to-PR agent](apps/web/public/guard-docs/dashboard.png)
+
 ---
 
-## Ask Lens — natural language over your governance data
+## What Conduct is
 
-**Lens** is Conduct's chat surface. It sits above every workspace as a Guard-enforced assistant — ask about blocked events, approvals, spend, rules, agent activity in plain English. Every tool call the assistant makes runs through Guard: same policy engine, same audit trail as a live agent.
+A control plane for AI agents. One policy decides `block / warn / audit / inject` for every LLM call, every shell tool, every MCP invocation, before the action runs. Same policy applies to a scheduled agent, a developer running Cursor, and a chat session on the platform.
 
-![Lens chat — asking "how many guard blocks today", grounded in real audit data](apps/web/public/guard-docs/lens-chat.png)
+Three surfaces, one policy:
 
-- **One chat for the whole platform.** Guard, workflows, rules, compliance — one input, no context switching.
-- **Grounded in your data.** Not a wrapper around ChatGPT. Every answer comes from your workspace's audit log, policy state, and run history.
-- **Guard-enforced.** Lens's LLM calls go through the same policy engine as your agents. Same rules, same limits, same audit chain.
-- **Drilldowns built in.** Ask "who got blocked today" — get a table with per-row links to the full audit record.
+| Surface | What it does |
+|---|---|
+| **Guard** | Policy engine. Signed config, hash-chained audit, fail-closed. |
+| **Router** | LLM proxy. Any SDK (Anthropic, OpenAI, Perplexity) points at it. |
+| **Lens** | Chat surface. Ask your workspace anything, every tool call runs through Guard. |
 
-Two product surfaces, one repo, one policy:
+---
 
-- **Conduct Guard** — the policy engine. Decides `block / warn / audit / inject` for every AI action **before** it executes, backed by signed configuration and a hash-chained audit log.
-- **Conduct Router** — the LLM proxy. Point any provider SDK (Anthropic, OpenAI, Perplexity) at Router and every request runs through Guard on the way to the upstream provider.
+## Ask Lens
+
+![Lens chat — "how many guard blocks today", grounded in real audit data](apps/web/public/guard-docs/lens-chat.png)
+
+Lens is the chat surface for the whole platform. One input covers Guard activity, workflow state, compliance status, agent spend. Answers come from your workspace data, not a general model. Ask "who got blocked today" and get a table with per-row drilldown links. Lens itself runs through Guard, so the assistant is bound by the same rules as the agents it reports on.
 
 ---
 
 ## Governance, not observability
 
-Runtime firewalls like [Straiker](https://www.straiker.ai/) and [Lakera](https://www.lakera.ai/) tell you what an agent **did**. Guard controls what an agent **can do** — with cryptographic proof.
+Runtime firewalls like [Straiker](https://www.straiker.ai/) and [Lakera](https://www.lakera.ai/) tell you what an agent **did**. Conduct decides what it **can do**.
 
-|                        | Runtime firewalls          | Conduct Guard              |
-|------------------------|----------------------------|----------------------------|
-| Timing                 | After the action           | **Before** the action      |
-| Config integrity       | Trust the pack             | **Workspace-signed**       |
-| Audit                  | Log stream                 | **SHA-256 hash chain**     |
-| Coverage               | LLM calls only             | LLM **and** shell / MCP    |
-| Failure mode           | Fail-open (soft)           | **Fail-closed** by default |
+|                    | Runtime firewalls | Conduct Guard          |
+|--------------------|-------------------|------------------------|
+| Timing             | After the action  | **Before** the action  |
+| Config integrity   | Trust the pack    | **Workspace-signed**   |
+| Audit              | Log stream        | **SHA-256 hash chain** |
+| Coverage           | LLM calls only    | LLM, shell, MCP        |
+| Failure mode       | Fail-open         | **Fail-closed**        |
 
-**The three-pillar moat:**
+Three properties make the audit trail hold up in a room with an auditor:
 
-1. **Signed configuration** — every workspace signs its active policy set. Every Guard check verifies the signature before enforcing. A tampered pack — pushed by anyone, at any layer — is rejected before it can decide anything.
-2. **Hash-chained audit** — every decision appends to a SHA-256 chain rooted at workspace genesis. Any missing or altered entry breaks the chain and is caught on one-click verification. Evidence you can hand to an auditor.
-3. **Policy-first, not detection-first** — rules decide before the action executes, with structured reasons. Not anomaly detection after the fact.
+1. **Signed config.** Every workspace signs its active policy set. Every Guard check verifies the signature before enforcing. A tampered pack is rejected before it can decide anything.
+2. **Hash-chained audit.** Every decision appends to a SHA-256 chain rooted at workspace genesis. Missing or altered entries break the chain. Verifiable in one click.
+3. **Policy-first, not detection-first.** Rules decide before the action runs, with structured reasons. Not anomaly scoring after the fact.
 
-## Discovery — the free wedge
+---
 
-New here? Start with **Discovery mode**: read-only visibility into every AI action your team takes for 14 days. No policy to author, nothing to install upstream, no cost. When you're ready to enforce, promote a rule from what Discovery already saw.
+## Start free with Discovery
+
+Discovery mode is read-only visibility into every AI action your team takes for 14 days. No policy to author, no upstream install, no cost. When you see something worth blocking, promote a rule from what Discovery already saw.
 
 → [conductai.ai/sign-up](https://conductai.ai/sign-up)
 
 ---
 
-## Quick start
-
-```bash
-git clone https://github.com/sseshachala/conductai
-cd conductai
-docker compose up
-```
-
-- API on `http://localhost:8000` (Guard + Router live at `/guard/*` and `/proxy/*`)
-- Canvas UI on `http://localhost:3000`
-- Redis worker + Postgres come up in the same stack
-
-Point any provider SDK at Router:
+## Router — one endpoint for any SDK
 
 ```bash
 curl https://api.conductai.ai/proxy/anthropic/v1/messages \
@@ -80,15 +89,7 @@ curl https://api.conductai.ai/proxy/anthropic/v1/messages \
   -d '{"model":"claude-sonnet-4-6","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-Or wrap your CLI hooks with Guard:
-
-```bash
-pip install conduct-cli
-conduct login
-conduct sync        # installs hook + MCP, pulls policies
-```
-
-Now every Claude Code, Cursor, Copilot, ChatGPT, or Codex session on that machine is governed by the same active packs.
+Every request runs through Guard (policy, budget, audit) before it reaches the upstream provider. Works with any SDK that speaks the provider's HTTP API.
 
 ---
 
@@ -96,17 +97,17 @@ Now every Claude Code, Cursor, Copilot, ChatGPT, or Codex session on that machin
 
 | Component               | Path                                          |
 |-------------------------|-----------------------------------------------|
-| **Guard runtime**       | `apps/api/app/modules/guard/`                 |
-| **Router (proxy)**      | `apps/api/app/modules/guard/routers/proxy.py` |
-| **Compliance packs**    | `apps/api/app/modules/guard/skill_packs/`     |
-| **Canvas UI**           | `apps/web/`                                   |
-| **Playbook DSL loader** | `apps/api/app/dsl/`                           |
-| **Playbook library**    | `apps/api/playbooks/` (22 pre-built)          |
-| **CLI**                 | `packages/conduct-cli/`                       |
+| Guard runtime           | `apps/api/app/modules/guard/`                 |
+| Router (proxy)          | `apps/api/app/modules/guard/routers/proxy.py` |
+| Compliance packs        | `apps/api/app/modules/guard/skill_packs/`     |
+| Canvas UI               | `apps/web/`                                   |
+| Playbook DSL loader     | `apps/api/app/dsl/`                           |
+| Playbook library        | `apps/api/playbooks/` (22 pre-built)          |
+| CLI                     | `packages/conduct-cli/`                       |
 
-**20+ compliance packs ship out of the box:** OWASP, SOC 2 CC7.3, HIPAA §164.312, PCI DSS 4.0, EU AI Act Art. 15/16, NIST AI RMF, ISO 42001, and framework-specific packs for Python, Node, and Terraform.
+**20+ compliance packs out of the box:** OWASP, SOC 2 CC7.3, HIPAA §164.312, PCI DSS 4.0, EU AI Act Art. 15/16, NIST AI RMF, ISO 42001, plus Python, Node, and Terraform.
 
-**22 pre-built playbooks:** Issue → PR, code review, incident response, prod deploy gate, CI/CD triage, security scanner triage, Slack digest, and more. Each is one YAML file; edit-and-run.
+**22 pre-built playbooks:** issue-to-PR, code review, incident response, prod deploy gate, CI/CD triage, security scanner triage, Slack digest. One YAML file each. Edit and run.
 
 ---
 
