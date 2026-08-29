@@ -963,10 +963,10 @@ function AppShellInnerContent({
               href="/logs/guard"
               label="Logs"
               icon={<Icons.Pulse />}
-              active={pathname.startsWith("/logs") || pathname.startsWith("/runs") || pathname.startsWith("/observability")}
+              active={pathname.startsWith("/logs") || pathname.startsWith("/runs")}
               collapsed={collapsed}
             />
-            {(pathname.startsWith("/logs") || pathname.startsWith("/runs") || pathname.startsWith("/observability")) && !collapsed && (
+            {(pathname.startsWith("/logs") || pathname.startsWith("/runs")) && !collapsed && (
               <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                 {[
                   { label: "Guard", href: "/logs/guard" },
@@ -997,6 +997,13 @@ function AppShellInnerContent({
                 })}
               </div>
             )}
+            <SideNavItem
+              href="/observability"
+              label="Observability"
+              icon={<Icons.Spark />}
+              active={pathname === "/observability" || pathname.startsWith("/observability/")}
+              collapsed={collapsed}
+            />
           </div>
         </nav>
 
