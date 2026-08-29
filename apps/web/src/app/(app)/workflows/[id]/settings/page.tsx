@@ -115,7 +115,14 @@ export default function AgentSettingsPage() {
   return (
     <div style={{ flex: 1, overflow: "auto" }}>
         <div style={{ maxWidth: 672, margin: "0 auto", padding: "40px 24px" }}>
-          <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--text)", marginBottom: 24 }}>Workflow Settings</h2>
+          <div style={{ marginBottom: 24 }}>
+            <h1 style={{ fontSize: 25, fontWeight: 680, letterSpacing: "-.02em", color: "var(--text)", margin: 0 }}>
+              Workflow settings
+            </h1>
+            <p style={{ fontSize: 14, color: "var(--text-3)", margin: "5px 0 0" }}>
+              Execution mode, environment, turn budget, and deletion. Rename from the workflows list.
+            </p>
+          </div>
 
           {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
