@@ -1,4 +1,18 @@
-"""GLens tool executor — maps tool names to DB queries, called inside the agent loop."""
+"""Namespace for the 44 Lens tool impls (`_tool_*` methods).
+
+Dispatch happens in `app.mcp.lens_adapter.dispatch`, which reads the
+`ToolRegistry`. The registry's `_impl(name)` wrapper in
+`app/tools/registrations/lens.py` instantiates one of these per call and
+invokes the matching `_tool_{method_name}`. The class survives only
+because each tool needs `db` + `workspace_id` — it holds no dispatch
+logic, no state beyond those two + `agent_identity_id` (used by
+guarded_llm_call for egress attribution).
+
+If we ever need to add Lens-specific request-scoped state (caches,
+timing, etc.) the class becomes useful again. Deleting it now would be
+speculative; see #1219 Phase 4 for the "flatten into free functions"
+follow-up.
+"""
 import json
 import uuid
 from datetime import datetime, timezone
@@ -42,14 +56,6 @@ class Executor:
         # Set on chat endpoints so guarded_llm_call/stream can attribute egress
         # to the session-scoped AgentIdentity. None outside chat (tool registrations).
         self.agent_identity_id = agent_identity_id
-
-    # Tool dispatch used to happen here via `call(name, arguments)`. That path
-    # is now `app.mcp.lens_adapter.dispatch`, which reads the same
-    # ToolRegistry the MCP HTTP/stdio adapters use (#1227). The 44 `_tool_*`
-    # methods below remain as impls — the registry's `_impl(method_name)`
-    # wrapper in `app/tools/registrations/lens.py` instantiates an Executor
-    # per call and dispatches to the matching `_tool_*`. Phase 4 flattens
-    # these into free functions.
 
     # ── Spend / events ────────────────────────────────────────────────────────
 
