@@ -99,6 +99,7 @@ class LLMClient(Protocol):
         tool_choice: dict | None = None,
         max_tokens: int = 4096,
         cache_system: bool = True,
+        cache_tools: bool = True,
         idempotency_key: str | None = None,
         on_retry: Callable[[dict[str, Any]], None] | None = None,
     ) -> LLMResponse:
@@ -116,6 +117,11 @@ class LLMClient(Protocol):
             max_tokens:   Max tokens for this response
             cache_system: When True, adapter wraps system prompt with cache_control so
                           turns 2-N in an agentic loop read from cache (~10% cost)
+            cache_tools:  When True, adapter caches the tool catalogue too — Anthropic
+                          applies cache_control ephemeral to the last tool in the array,
+                          which caches the whole prefix (system prompt + all tools).
+                          Big win for Lens (~10 KB of tool schemas) and long agent loops.
+                          OpenAI adapter ignores this flag (their prompt cache is automatic).
         """
         ...
 
