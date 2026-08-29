@@ -1,14 +1,19 @@
+# Build context is REPO ROOT (see .github/workflows/container-security.yml).
+# apps/web/src/app/(marketing)/docs/page.tsx imports docs/reference/*.md via
+# ../../../../../../docs/... — needs the repo-root docs/ dir in the build tree.
 FROM node:20-alpine AS base
 WORKDIR /app
-COPY package*.json ./
+COPY apps/web/package*.json ./
 RUN npm install
 
 FROM base AS dev
-COPY . .
+COPY apps/web/ .
+COPY docs/ /docs/
 CMD ["npm", "run", "dev"]
 
 FROM base AS builder
-COPY . .
+COPY apps/web/ .
+COPY docs/ /docs/
 RUN npm run build
 
 FROM node:20-alpine AS prod
