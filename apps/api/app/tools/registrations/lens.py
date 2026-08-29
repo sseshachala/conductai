@@ -1,17 +1,44 @@
-"""Lens Executor tool registrations for the default ToolRegistry.
+"""Lens tool registrations for the default ToolRegistry.
 
-Each ToolDef.impl opens a SessionLocal, instantiates Executor bound to the
-caller's workspace, and dispatches to the matching `_tool_*` method. Every
-tool goes through MCPCore's policy gate before this impl runs, so we call
-`_tool_*` directly (bypassing Executor.call's second guard eval) — one
-policy source of truth per request.
+Every ToolDef here surfaces on the MCP HTTP surface, the stdio surface,
+and Lens chat via app.mcp.lens_adapter — same policy gate everywhere.
+Dispatch is enforced by MCPCore for MCP callers and by lens_adapter for
+Lens chat callers (both run the composable policy engine).
 
-Tools are read-only over Guard DB state; three of them (search_memory,
+── Adding a new Lens tool ────────────────────────────────────────────
+
+**New tools skip Executor** (team convention, 2026-08-29 / #1281 sweep).
+Write the impl as a free function in this module (or a companion module
+under app/modules/glens/) and point ToolDef.impl at it directly:
+
+    def get_soc2_status(ctx, framework: str = "SOC2"):
+        from app.core.database import SessionLocal
+        from app.modules.governance.rollup import compute_framework_coverage
+        db = SessionLocal()
+        try:
+            return compute_framework_coverage(db, ctx.workspace_id, framework=framework)
+        finally:
+            db.close()
+
+    _TOOLS.append(ToolDef(
+        name="get_soc2_status",
+        description="Framework coverage % + gaps for SOC2 / HIPAA / NIST AI RMF / EU AI Act.",
+        input_schema={"type": "object", "properties": {"framework": {"type": "string"}}},
+        impl=get_soc2_status,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ))
+
+── Legacy tools (44 tools, via Executor) ─────────────────────────────
+
+The 44 tools registered below via `_impl(method_name)` still route
+through `Executor._tool_{method_name}` (see app/modules/glens/executor.py).
+Kept as-is post-#1422 — no big-bang migration. New tools use the free-
+function pattern above so the codebase gradually flattens without churn.
+
+Read-only over Guard DB state; three of them (search_memory,
 search_sessions, search_knowledge) call the embedding provider and one
 (get_governance_narrative) calls the LLM — marked open_world for those.
-
-Adding a new Lens tool: add the method to Executor, add a ToolDef here.
-That's it.
 """
 from __future__ import annotations
 
