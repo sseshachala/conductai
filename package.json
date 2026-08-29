@@ -1,9 +1,13 @@
 {
   "name": "conductai",
   "private": true,
-  "workspaces": ["apps/web"],
+  "workspaces": [
+    "apps/web"
+  ],
   "devDependencies": {
-    "turbo": "^2.5.0"
+    "eslint": "^9.39.5",
+    "turbo": "^2.5.0",
+    "typescript": "^5.9.3"
   },
   "packageManager": "npm@10.9.0"
 }
