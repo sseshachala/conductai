@@ -76,7 +76,12 @@ echo "" | run_and_tee
 
 # ── Step 2: Install all agents ────────────────────────────────────────────────
 echo "── Step 2: Install all agents ──" | run_and_tee
-timeout 300 conduct install-all --project "$PROJECT" --repo "$REPO" 2>&1 | run_and_tee || true
+timeout 300 conduct install-all --project "$PROJECT" --repo "$REPO" 2>&1 | run_and_tee
+echo "" | run_and_tee
+
+# ── Step 2b: Confirm what actually landed in the workspace ───────────────────
+echo "── Step 2b: Installed agents ──" | run_and_tee
+conduct agents 2>&1 | run_and_tee || true
 echo "" | run_and_tee
 
 # ── Step 3a: Non-PR agents ────────────────────────────────────────────────────
