@@ -789,6 +789,222 @@ _TOOLS.extend([
 ])
 
 
+# ── #1281 batch A — small-lookup read tools ──────────────────────────────────
+# Playbooks (#1413), sync state (#1416), LLM primitives (#1418), rate limits
+# (#1419). All free-function ToolDefs per the new convention.
+
+def list_playbooks(ctx, category: str | None = None):
+    """Playbook catalog — builtin templates + user-submitted templates.
+    Optional category filter (e.g. 'incident_response', 'ci_cd')."""
+    from app.core.database import SessionLocal
+    from app.routers.playbooks import _TEMPLATE_PLAYBOOKS, _PLAYBOOK_META
+    from app.models.workflow import Workflow
+
+    entries: list[dict] = []
+    for slug in _TEMPLATE_PLAYBOOKS:
+        meta = _PLAYBOOK_META.get(slug)
+        if not meta:
+            continue
+        if category and meta.get("category") != category:
+            continue
+        entries.append({
+            "slug": slug,
+            "name": slug.replace("_", " ").title(),
+            "description": meta.get("description"),
+            "category": meta.get("category", "Other"),
+            "tags": meta.get("tags", []),
+            "featured": meta.get("featured", False),
+            "source": "builtin",
+        })
+    db = SessionLocal()
+    try:
+        db_playbooks = (
+            db.query(Workflow)
+            .filter(Workflow.workspace_id == ctx.workspace_id, Workflow.is_template == True)  # noqa: E712
+            .all()
+        )
+        for wf in db_playbooks:
+            entries.append({
+                "slug": wf.playbook_slug or str(wf.id),
+                "name": wf.name,
+                "description": "",
+                "category": "custom",
+                "tags": [],
+                "featured": False,
+                "source": "user",
+            })
+    finally:
+        db.close()
+    return {"count": len(entries), "playbooks": entries}
+
+
+def get_playbook(ctx, slug: str):
+    """Playbook detail — name, description, blocks, inputs, YAML source."""
+    from app.routers.playbooks import get_playbook as _get_playbook_route
+    try:
+        return _get_playbook_route(slug)
+    except Exception as e:
+        return {"error": str(e), "slug": slug}
+
+
+def list_machines_sync_state(ctx, filter: str = "all"):
+    """Per-machine sync state — user_email, detected tools, mcp_registered,
+    hook_registered, last_sync_at, in_sync. filter=out_of_sync returns only
+    machines missing a tool registration.
+
+    GuardDeveloperTools.workspace_id is Text, not UUID, so we pass a string
+    directly (no uuid conversion).
+    """
+    from app.core.database import SessionLocal
+    from app.modules.guard.models import GuardDeveloperTools
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(GuardDeveloperTools)
+            .filter(GuardDeveloperTools.workspace_id == ctx.workspace_id)
+            .order_by(GuardDeveloperTools.reported_at.desc())
+            .all()
+        )
+        out: list[dict] = []
+        for r in rows:
+            detected = list(r.detected_tools or [])
+            mcp_reg = list(r.mcp_registered or [])
+            hook_reg = list(r.hook_registered or [])
+            in_sync = all(t in mcp_reg or t in hook_reg for t in detected)
+            if filter == "out_of_sync" and in_sync:
+                continue
+            out.append({
+                "user_email": r.user_email,
+                "detected_tools": detected,
+                "mcp_registered": mcp_reg,
+                "hook_registered": hook_reg,
+                "last_sync_at": r.reported_at.isoformat() if r.reported_at else None,
+                "in_sync": in_sync,
+            })
+        return {"count": len(out), "machines": out}
+    finally:
+        db.close()
+
+
+def get_llm_primitives(ctx):
+    """Workspace LLM routing config — preferred provider + per-tier models
+    (cheap / balanced / smart). API keys are never returned; those live in
+    Vault."""
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.models.workspace_llm_primitives import WorkspaceLLMPrimitives
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        row = db.query(WorkspaceLLMPrimitives).filter(
+            WorkspaceLLMPrimitives.workspace_id == ws_uuid
+        ).first()
+        if row is None:
+            return {
+                "configured": False,
+                "preferred_provider": "anthropic",
+                "tier_map": {},
+                "updated_at": None,
+            }
+        return {
+            "configured": True,
+            "preferred_provider": row.preferred_provider,
+            "tier_map": row.tier_map or {},
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+    finally:
+        db.close()
+
+
+def get_rate_limits(ctx):
+    """Workspace rate limits — default RPM/TPM plus any per-agent overrides.
+    Blocks return 429 with x-guard reason when either cap trips."""
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.modules.guard.models import GuardRateLimit
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        rows = db.query(GuardRateLimit).filter(GuardRateLimit.workspace_id == ws_uuid).all()
+        default_row = next((r for r in rows if r.agent_identity_id is None), None)
+        overrides = [
+            {
+                "agent_identity_id": r.agent_identity_id,
+                "rpm": r.rpm,
+                "tpm": r.tpm,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            }
+            for r in rows if r.agent_identity_id is not None
+        ]
+        return {
+            "default": {
+                "rpm": default_row.rpm if default_row else None,
+                "tpm": default_row.tpm if default_row else None,
+                "updated_at": default_row.updated_at.isoformat() if default_row and default_row.updated_at else None,
+            },
+            "overrides": overrides,
+            "override_count": len(overrides),
+        }
+    finally:
+        db.close()
+
+
+_TOOLS.extend([
+    ToolDef(
+        name="list_playbooks",
+        description="Playbook catalog — builtin templates + user-submitted templates. Optional category filter (e.g. 'incident_response', 'ci_cd').",
+        input_schema={
+            "type": "object",
+            "properties": {"category": {"type": "string", "description": "Filter by category slug."}},
+            "required": [],
+        },
+        impl=list_playbooks,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_playbook",
+        description="Playbook detail — name, description, blocks, inputs, YAML source.",
+        input_schema={
+            "type": "object",
+            "properties": {"slug": {"type": "string", "description": "Playbook slug (e.g. 'incident_response')."}},
+            "required": ["slug"],
+        },
+        impl=get_playbook,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="list_machines_sync_state",
+        description="Per-machine Guard sync state — detected tools vs MCP/hook registrations. filter=out_of_sync returns only unsynced machines.",
+        input_schema={
+            "type": "object",
+            "properties": {"filter": {"type": "string", "description": "'all' (default) or 'out_of_sync'."}},
+            "required": [],
+        },
+        impl=list_machines_sync_state,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_llm_primitives",
+        description="Workspace LLM routing config — preferred provider + per-tier models. API keys are never returned.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        impl=get_llm_primitives,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+    ToolDef(
+        name="get_rate_limits",
+        description="Workspace rate limits — default RPM/TPM plus any per-agent overrides.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        impl=get_rate_limits,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+])
+
+
 # ── #1281 batch B — join-heavy read tools ────────────────────────────────────
 # Workspace KPIs (#1414), Discovery (#1415), Vault metadata (#1417), autopilot
 # activity (#1296). All free-function ToolDefs per the new convention.
