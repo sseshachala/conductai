@@ -43,52 +43,13 @@ class Executor:
         # to the session-scoped AgentIdentity. None outside chat (tool registrations).
         self.agent_identity_id = agent_identity_id
 
-    def call(self, name: str, arguments: str) -> str:
-        args = json.loads(arguments) if arguments else {}
-        fn = getattr(self, f"_tool_{name}", None)
-        if not fn:
-            return json.dumps({"error": f"Unknown tool: {name}"})
-
-        # #1218 Step 4 — per-tool guard_check.
-        # Each tool invocation goes through the composable engine as a
-        # synthetic "tool call" so prompt-injection can't fan out unchecked
-        # once the endpoint-level require_permission has passed.
-        try:
-            from app.guard.policy import evaluate_composed as _eval_composed
-            from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext as _PolicyContext
-
-            _tool_ctx = _PolicyContext(
-                workspace_id=self.workspace_id,
-                provider="lens",
-                model="tool",
-                body={"tool_name": name, "arguments": args},
-                extras={"kind": "lens_tool", "tool_name": name},
-            )
-            _tool_decision = _eval_composed(_tool_ctx)
-            if _tool_decision.action == _PolicyAction.BLOCK:
-                log.warning("glens.executor.blocked",
-                            tool=name,
-                            rule=_tool_decision.rule_id,
-                            source=_tool_decision.source)
-                return json.dumps({
-                    "error": (
-                        f"Blocked by Guard rule {_tool_decision.rule_id}: "
-                        f"{_tool_decision.reason or 'policy violation'}"
-                    ),
-                    "blocked_by": _tool_decision.source,
-                    "rule_id": _tool_decision.rule_id,
-                })
-        except Exception as e:
-            # Guard check itself failed — fail-open per current spend/rate
-            # source conventions. Log so ops can catch a persistent failure.
-            log.warning("glens.executor.guard_check_failed",
-                        tool=name, err=str(e))
-
-        try:
-            return json.dumps(fn(**args))
-        except Exception as e:
-            log.warning("glens.executor.error", tool=name, error=str(e))
-            return json.dumps({"error": str(e)})
+    # Tool dispatch used to happen here via `call(name, arguments)`. That path
+    # is now `app.mcp.lens_adapter.dispatch`, which reads the same
+    # ToolRegistry the MCP HTTP/stdio adapters use (#1227). The 44 `_tool_*`
+    # methods below remain as impls — the registry's `_impl(method_name)`
+    # wrapper in `app/tools/registrations/lens.py` instantiates an Executor
+    # per call and dispatches to the matching `_tool_*`. Phase 4 flattens
+    # these into free functions.
 
     # ── Spend / events ────────────────────────────────────────────────────────
 
