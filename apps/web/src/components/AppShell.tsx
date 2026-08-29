@@ -197,6 +197,14 @@ function AppShellInnerContent({
   const [wsOpen, setWsOpen] = useState(false)
   const wsRef = useRef<HTMLDivElement>(null)
 
+  // Workspace footer group (Integrations / Agent ID / Settings) — collapsed
+  // by default; auto-expands when any of its routes is active.
+  const workspaceRouteActive =
+    pathname.startsWith("/integrations") ||
+    pathname.startsWith("/agent-identity") ||
+    pathname.startsWith("/settings")
+  const [workspaceGroupOpen, setWorkspaceGroupOpen] = useState(false)
+
   // User menu (not used in new design — kept for UserMenu component)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -1024,27 +1032,52 @@ function AppShellInnerContent({
               ›
             </button>
           )}
-          <SideNavItem
-            href="/integrations"
-            label="Integrations"
-            icon={<Icons.Plug />}
-            active={pathname.startsWith("/integrations")}
-            collapsed={collapsed}
-          />
-          <SideNavItem
-            href="/agent-identity"
-            label="Agent ID"
-            icon={<Icons.Lock />}
-            active={pathname.startsWith("/agent-identity")}
-            collapsed={collapsed}
-          />
-          <SideNavItem
-            href="/settings"
-            label="Settings"
-            icon={<Icons.Gear />}
-            active={pathname.startsWith("/settings")}
-            collapsed={collapsed}
-          />
+          {/* Workspace group — collapsible header. In the icon-only rail
+              (collapsed sidebar) items always render; in the expanded rail
+              they render only when the group is open or a workspace route
+              is active. */}
+          {!collapsed && (
+            <button
+              type="button"
+              onClick={() => setWorkspaceGroupOpen(v => !v)}
+              aria-expanded={workspaceGroupOpen || workspaceRouteActive}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                width: "100%", padding: "8px 10px", marginBottom: 2,
+                background: "transparent", border: "none", cursor: "pointer",
+                fontSize: 10, fontWeight: 700, letterSpacing: ".12em",
+                textTransform: "uppercase", color: "var(--text-muted)",
+              }}
+            >
+              <span>Workspace</span>
+              <span aria-hidden style={{ fontSize: 11, transition: "transform .15s", transform: (workspaceGroupOpen || workspaceRouteActive) ? "rotate(90deg)" : "rotate(0deg)" }}>›</span>
+            </button>
+          )}
+          {(collapsed || workspaceGroupOpen || workspaceRouteActive) && (
+            <>
+              <SideNavItem
+                href="/integrations"
+                label="Integrations"
+                icon={<Icons.Plug />}
+                active={pathname.startsWith("/integrations")}
+                collapsed={collapsed}
+              />
+              <SideNavItem
+                href="/agent-identity"
+                label="Agent ID"
+                icon={<Icons.Lock />}
+                active={pathname.startsWith("/agent-identity")}
+                collapsed={collapsed}
+              />
+              <SideNavItem
+                href="/settings"
+                label="Settings"
+                icon={<Icons.Gear />}
+                active={pathname.startsWith("/settings")}
+                collapsed={collapsed}
+              />
+            </>
+          )}
         </div>
       </aside>
 
