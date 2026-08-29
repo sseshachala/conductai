@@ -49,13 +49,15 @@ class OpenAIClient:
         tool_choice: dict | None = None,
         max_tokens: int = 4096,
         cache_system: bool = True,
+        cache_tools: bool = True,
         idempotency_key: str | None = None,
         on_retry: Callable[[dict[str, Any]], None] | None = None,
         outer_attempt: int = 1,
     ) -> LLMResponse:
         # OpenAI Chat Completions expects the system prompt as a system message.
-        # cache_system is Anthropic-specific; ignored here.
-        _ = cache_system
+        # cache_system + cache_tools are Anthropic-specific; OpenAI's prompt
+        # cache is automatic on identical prefixes (no markers needed).
+        _ = cache_system, cache_tools
 
         oai_messages = [{"role": "system", "content": system}, *messages]
         payload: dict[str, Any] = {

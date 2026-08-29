@@ -55,6 +55,7 @@ class AnthropicClient:
         tool_choice: dict | None = None,
         max_tokens: int = 4096,
         cache_system: bool = True,
+        cache_tools: bool = True,
         idempotency_key: str | None = None,
         on_retry: Callable[[dict[str, Any]], None] | None = None,
         outer_attempt: int = 1,
@@ -77,7 +78,17 @@ class AnthropicClient:
             kwargs["system"] = system
 
         if tools:
-            kwargs["tools"] = tools
+            # Anthropic prompt caching: a single cache_control marker on the LAST
+            # tool in the array caches the whole request prefix (system + tools).
+            # ~10 KB of Lens tool schemas costs ~90% less on cache hit. Deep-copy
+            # only the last tool so we don't mutate the caller's list.
+            if cache_tools and tools:
+                cached = list(tools)
+                cached[-1] = {**cached[-1], "cache_control": {"type": "ephemeral"}}
+                kwargs["tools"] = cached
+                extra_headers["anthropic-beta"] = "prompt-caching-2024-07-31"
+            else:
+                kwargs["tools"] = tools
         if tool_choice:
             kwargs["tool_choice"] = tool_choice
 
