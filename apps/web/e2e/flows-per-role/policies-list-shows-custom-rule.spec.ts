@@ -11,5 +11,7 @@ test("policies list shows seeded custom rule", async ({ page, context }) => {
   ])
   await page.goto("/theguard/policies")
   await expect(page.locator("main, [role=main], body").first()).toBeVisible({ timeout: 10_000 })
+  // Page defaults to Security tab — the seeded custom rule lives under the Custom tab.
+  await page.getByRole("button", { name: /^Custom\d+$/ }).click()
   await expect(page.getByText(/e2e-block-rm-rf/).first()).toBeVisible({ timeout: 10_000 })
 })
