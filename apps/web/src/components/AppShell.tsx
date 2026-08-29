@@ -120,8 +120,6 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/logs')) return ['Logs']
   if (pathname.startsWith('/runs')) return ['Runs']
   if (pathname.startsWith('/observability')) return ['Observability']
-  if (pathname.startsWith('/eval')) return ['Quality']
-  if (pathname.startsWith('/benchmark')) return ['Benchmark']
   if (pathname === '/workflows') return ['Agents']
   if (pathname.startsWith('/workflows/new')) return ['Canvas', 'New agent']
   if (pathname.startsWith('/workflows/')) return ['Canvas']
@@ -999,20 +997,6 @@ function AppShellInnerContent({
                 })}
               </div>
             )}
-            <SideNavItem
-              href="/eval"
-              label="Quality"
-              icon={<Icons.Star />}
-              active={pathname.startsWith("/eval")}
-              collapsed={collapsed}
-            />
-            <SideNavItem
-              href="/benchmark"
-              label="Benchmark"
-              icon={<Icons.Trophy />}
-              active={pathname.startsWith("/benchmark")}
-              collapsed={collapsed}
-            />
           </div>
         </nav>
 
