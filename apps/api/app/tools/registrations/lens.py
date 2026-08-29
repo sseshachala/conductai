@@ -1419,6 +1419,33 @@ def list_agent_health(ctx):
             .order_by(func.max(Run.created_at).desc().nullslast())
             .all()
         )
+
+        # Per-workflow last_run_status — same pattern as insights.get_dashboard.
+        wf_ids = [row.wf_id for row in agg]
+        last_status_map: dict[str, str] = {}
+        if wf_ids:
+            max_run_sq = (
+                db.query(
+                    WorkflowVersion.workflow_id.label("wf_id"),
+                    func.max(Run.created_at).label("max_at"),
+                )
+                .join(Run, Run.workflow_version_id == WorkflowVersion.id)
+                .filter(WorkflowVersion.workflow_id.in_(wf_ids))
+                .group_by(WorkflowVersion.workflow_id)
+                .subquery()
+            )
+            last_runs = (
+                db.query(WorkflowVersion.workflow_id.label("wf_id"), Run.status)
+                .join(Run, Run.workflow_version_id == WorkflowVersion.id)
+                .join(
+                    max_run_sq,
+                    (WorkflowVersion.workflow_id == max_run_sq.c.wf_id)
+                    & (Run.created_at == max_run_sq.c.max_at),
+                )
+                .all()
+            )
+            last_status_map = {str(r.wf_id): r.status for r in last_runs}
+
         agents = []
         for row in agg:
             rc = row.run_count or 0
@@ -1432,6 +1459,7 @@ def list_agent_health(ctx):
                 "succeeded_count": sc,
                 "failed_count": fc,
                 "success_rate": round((sc / rc) * 100, 1) if rc else 0.0,
+                "last_run_status": last_status_map.get(str(row.wf_id)),
                 "last_run_at": row.last_run_at.isoformat() if row.last_run_at else None,
             })
         return {"count": len(agents), "agents": agents}
@@ -1828,7 +1856,6 @@ def get_playbook_scorecards(ctx, days: int = 30):
         db.close()
 
 
-_LIMIT_SMALL = {"type": "integer", "minimum": 1, "description": "Max rows to return"}
 _DAYS_WINDOW = {"type": "integer", "minimum": 1, "maximum": 365, "description": "Window in days"}
 _TIME_WINDOW = {
     "type": "string",
@@ -1847,7 +1874,7 @@ _TOOLS.extend([
     ToolDef(
         name="list_attention_runs",
         description="Runs needing attention — failed, paused, or cancelled — newest first. Matches /dashboard needs_attention block.",
-        input_schema={"type": "object", "properties": {"limit": _LIMIT_SMALL}, "required": []},
+        input_schema={"type": "object", "properties": {"limit": _LIMIT}, "required": []},
         impl=list_attention_runs,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
@@ -1873,7 +1900,7 @@ _TOOLS.extend([
         description="Guard policy hit leaderboard — blocked-only rule_id counts over the last N days. Matches /dashboard guard_snapshot.top_policy_hits.",
         input_schema={
             "type": "object",
-            "properties": {"limit": _LIMIT_SMALL, "days": _DAYS_WINDOW},
+            "properties": {"limit": _LIMIT, "days": _DAYS_WINDOW},
             "required": [],
         },
         impl=get_top_policy_hits,

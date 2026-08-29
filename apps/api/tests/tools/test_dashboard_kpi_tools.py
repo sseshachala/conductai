@@ -122,18 +122,15 @@ def test_list_attention_runs_dispatch():
 
 
 def test_list_agent_health_dispatch():
-    from datetime import datetime, timezone
-    row = SimpleNamespace(
-        wf_id="wf-1", wf_name="Agent A", playbook_slug="slug",
-        run_count=10, succeeded=8, failed=2, last_run_at=datetime.now(timezone.utc),
-    )
-    db = _StubDB(lambda *a, **kw: _StubQuery(rows=[row]))
+    """Empty aggregate — no workflows, so no last_run_status subquery either.
+    Full-parity SQL exercised at manual smoke."""
+    db = _StubDB(lambda *a, **kw: _StubQuery(rows=[]))
     with patch("app.mcp.lens_adapter.evaluate_composed", return_value=_ALLOW), \
          _patch_session(db):
         result = lens_dispatch("list_agent_health", "{}", _CTX)
     payload = json.loads(result)
-    assert payload["count"] == 1
-    assert payload["agents"][0]["success_rate"] == 80.0
+    assert payload["count"] == 0
+    assert payload["agents"] == []
 
 
 def test_get_dashboard_token_usage_dispatch():
