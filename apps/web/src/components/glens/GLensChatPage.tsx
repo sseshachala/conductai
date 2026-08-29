@@ -8,6 +8,7 @@ import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
 import { GlensPageBubble } from "@/components/glens/GlensPageBubble"
 import { GenericTableBubble } from "@/components/glens/GenericTableBubble"
 import { BlocksBubble } from "@/components/glens/BlocksBubble"
+import { FeedbackButtons } from "@/components/glens/FeedbackButtons"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -398,9 +399,6 @@ function AnswerBubble({ text, skill, drilldown, followups, onFollowup, understoo
             </div>
           )}
         </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4, marginRight: -4 }}>
-          <CopyButton text={text} />
-        </div>
         {followups && followups.length > 0 && onFollowup && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
             {followups.map(q => (
@@ -509,6 +507,31 @@ function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "md" })
       )}
       {copied ? "Copied" : "Copy"}
     </button>
+  )
+}
+
+// ── Message footer (copy + thumbs) ────────────────────────────────────────────
+// Rendered after every assistant bubble (except loading + in-flight streaming).
+// Universal: past-session restore, live answers, structured bubbles all get
+// the same affordance in the same place. Feedback requires a sessionId; copy
+// only requires text.
+
+function MessageFooter({ text, sessionId, messageId }: { text?: string; sessionId: string | null; messageId: string }) {
+  if (!text && !sessionId) return null
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "flex-start",
+        gap: 4,
+        marginTop: 2,
+        marginBottom: 12,
+        paddingLeft: 4,
+      }}
+    >
+      {text ? <CopyButton text={text} /> : null}
+      {sessionId ? <FeedbackButtons sessionId={sessionId} messageId={messageId} /> : null}
+    </div>
   )
 }
 
@@ -1029,43 +1052,44 @@ export function GLensChatPage() {
               )
               if (msg.kind === "loading") return <LoadingBubble key={i} label={msg.label} />
               if (msg.kind === "streaming") return <AnswerBubble key={i} text={msg.text} skill="governance" />
-              if (msg.kind === "answer") return <AnswerBubble key={i} text={msg.text} skill={msg.skill} drilldown={msg.drilldown} followups={msg.followups} onFollowup={sendMessage} understoodAs={msg.understoodAs} />
-              if (msg.kind === "dashboard") return <DashboardBubble key={i} spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} />
-              if (msg.kind === "blocks") return (
-                <BlocksBubble key={i} answer={msg.answer} blocks={msg.blocks as any} warning={msg.warning} skill={msg.skill} understoodAs={msg.understoodAs} />
+              // Per-message copy text + stable id so feedback rows upsert on
+              // the same (session, message, user) key across re-renders.
+              const copyText =
+                msg.kind === "answer" ? msg.text :
+                msg.kind === "blocks" ? msg.answer :
+                msg.kind === "table"  ? msg.answer :
+                msg.kind === "page"   ? msg.answer :
+                msg.kind === "policy_confirm" ? msg.answer :
+                undefined
+              const messageId = String(i)
+              return (
+                <div key={i}>
+                  {msg.kind === "answer" && <AnswerBubble text={msg.text} skill={msg.skill} drilldown={msg.drilldown} followups={msg.followups} onFollowup={sendMessage} understoodAs={msg.understoodAs} />}
+                  {msg.kind === "dashboard" && <DashboardBubble spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} />}
+                  {msg.kind === "blocks" && <BlocksBubble answer={msg.answer} blocks={msg.blocks as any} warning={msg.warning} skill={msg.skill} understoodAs={msg.understoodAs} />}
+                  {msg.kind === "table" && <GenericTableBubble answer={msg.answer} columns={msg.columns as any} rows={msg.rows as any} warning={msg.warning} skill={msg.skill} drilldown={msg.drilldown} understoodAs={msg.understoodAs} />}
+                  {msg.kind === "page" && <GlensPageBubble answer={msg.answer} pageKind={msg.pageKind as any} data={msg.pageData} warning={msg.warning} />}
+                  {msg.kind === "policy_confirm" && (
+                    <PolicyConfirmBubble
+                      answer={msg.answer}
+                      action={msg.action}
+                      skill={msg.skill}
+                      draft={msg.draft}
+                      mapping={msg.mapping}
+                      targetRuleId={msg.targetRuleId}
+                      sessionId={msg.sessionId}
+                      authFetch={authFetch}
+                      warning={msg.warning}
+                      onResult={text => setMessages(prev => [
+                        ...prev.slice(0, i),
+                        { role: "assistant", kind: "answer", text, skill: msg.skill },
+                        ...prev.slice(i + 1),
+                      ])}
+                    />
+                  )}
+                  <MessageFooter text={copyText} sessionId={activeId} messageId={messageId} />
+                </div>
               )
-              if (msg.kind === "table") return (
-                <GenericTableBubble key={i} answer={msg.answer} columns={msg.columns as any} rows={msg.rows as any} warning={msg.warning} skill={msg.skill} drilldown={msg.drilldown} understoodAs={msg.understoodAs} />
-              )
-              if (msg.kind === "page") return (
-                <GlensPageBubble
-                  key={i}
-                  answer={msg.answer}
-                  pageKind={msg.pageKind as any}
-                  data={msg.pageData}
-                  warning={msg.warning}
-                />
-              )
-              if (msg.kind === "policy_confirm") return (
-                <PolicyConfirmBubble
-                  key={i}
-                  answer={msg.answer}
-                  action={msg.action}
-                  skill={msg.skill}
-                  draft={msg.draft}
-                  mapping={msg.mapping}
-                  targetRuleId={msg.targetRuleId}
-                  sessionId={msg.sessionId}
-                  authFetch={authFetch}
-                  warning={msg.warning}
-                  onResult={text => setMessages(prev => [
-                    ...prev.slice(0, i),
-                    { role: "assistant", kind: "answer", text, skill: msg.skill },
-                    ...prev.slice(i + 1),
-                  ])}
-                />
-              )
-              return null
             })}
           </div>
         </div>
