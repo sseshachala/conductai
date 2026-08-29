@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render } from "@testing-library/react"
-import { screen, waitFor } from "@testing-library/dom"
+import { render, screen, waitFor } from "@testing-library/react"
 import { GuardRoleClerkProvider, useGuardRoleContext } from "../GuardRoleContext"
 
 const mocks = vi.hoisted(() => ({

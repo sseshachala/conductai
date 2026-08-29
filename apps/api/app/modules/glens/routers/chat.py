@@ -854,35 +854,6 @@ def get_session(
     }
 
 
-class SessionTitleUpdate(BaseModel):
-    title: str
-
-
-@router.patch("/sessions/{session_id}", response_model=SessionOut)
-def rename_session(
-    session_id: str,
-    body: SessionTitleUpdate,
-    _: str = Depends(require_permission("guard.activity.view_own")),
-    workspace_id: str = Depends(get_workspace_id),
-    db: Session = Depends(get_db),
-):
-    ws_uuid = _parse_workspace_id(workspace_id)
-    session = _get_session(db, session_id, ws_uuid)
-    title = body.title.strip()
-    if not title:
-        raise HTTPException(status_code=400, detail="Title cannot be empty")
-    session.title = title[:120]
-    session.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(session)
-    return SessionOut(
-        id=str(session.id),
-        title=session.title,
-        created_at=session.created_at.isoformat(),
-        has_dashboard=False,
-    )
-
-
 @router.delete("/sessions/{session_id}", status_code=204)
 def delete_session(
     session_id: str,

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render } from "@testing-library/react"
-import { screen } from "@testing-library/dom"
+import { render, screen } from "@testing-library/react"
 import type { GuardRole } from "@/hooks/useGuardRole"
 import { GuardShell, GUARD_TABS } from "../GuardShell"
 
