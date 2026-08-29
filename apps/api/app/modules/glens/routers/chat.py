@@ -19,14 +19,24 @@ from app.core.database import get_db
 from app.modules.glens.executor import Executor
 from app.modules.glens.models import GlensChatSession
 from app.modules.guard.models import GuardConfig, GuardSpendBudget, WorkspaceCustomRule
+from app.tools import registrations as _tool_registrations  # noqa: F401  # side-effect: populate default_registry before TOOLS derives
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/glens", tags=["glens"])
 
 
 # ── Tools exposed to the LLM ─────────────────────────────────────────────────
+#
+# TOOLS is DERIVED from `default_registry` — every ToolDef tagged 'lens' becomes
+# an entry the LLM can invoke. `_LEGACY_TOOLS` below carries the hand-tuned
+# descriptions from the pre-#1281 catalog; those override the ToolDef.description
+# for the ~21 tools that had detailed formatting instructions. New tools use
+# their ToolDef.description straight from registrations/lens.py.
+#
+# Result: one source of truth for the tool catalog. Adding a new ToolDef ⇒ the
+# LLM sees it immediately.
 
-TOOLS = [
+_LEGACY_TOOLS = [
     {
         "name": "get_event_count",
         "description": "Count Guard audit events. Use for 'how many blocks/warnings/allows' questions. Returns a single integer.",
@@ -281,6 +291,31 @@ TOOLS = [
         },
     },
 ]
+
+# Detailed descriptions from the hand-tuned catalog (index by tool name).
+_LEGACY_DESCRIPTIONS: dict[str, str] = {t["name"]: t["description"] for t in _LEGACY_TOOLS}
+
+
+def _lens_tools_for_llm() -> list[dict]:
+    """Project every 'lens'-tagged ToolDef in default_registry into the LLM's
+    function-calling shape. Detailed descriptions from _LEGACY_DESCRIPTIONS
+    override the ToolDef.description for the 21 tools that had specialised
+    formatting instructions; new tools use their ToolDef.description straight
+    from registrations/lens.py."""
+    from app.tools.registry import default_registry
+
+    return [
+        {
+            "name": t.name,
+            "description": _LEGACY_DESCRIPTIONS.get(t.name, t.description),
+            "input_schema": t.input_schema,
+        }
+        for t in default_registry.list(tag="lens")
+    ]
+
+
+TOOLS = _lens_tools_for_llm()
+
 
 def _load_system_prompt() -> str:
     from pathlib import Path
