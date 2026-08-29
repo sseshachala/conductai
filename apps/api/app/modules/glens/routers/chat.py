@@ -476,17 +476,24 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
     """Phase 1: Execute tool calls. Returns (final_msgs, early_text, tool_calls_made).
 
     Each LLM turn goes through Guard's in-process `guarded_llm_call` (#1254) —
-    same policy + audit path as the HTTP proxy. The Lens-side `_llm_client`
-    is still constructed to reuse the client's provider-neutral message
-    formatters (`make_assistant_turn`, `make_tool_results_turn`); only the
-    upstream call itself is now Guard-mediated.
+    same policy + audit path as the HTTP proxy. Tool dispatch itself now
+    goes through `lens_adapter.dispatch` (#1227) so Lens shares the same
+    ToolRegistry as the MCP HTTP/stdio surfaces.
     """
+    from app.mcp.lens_adapter import dispatch as lens_dispatch
+    from app.mcp.server import MCPContext
     from app.runtime.llm_client import LLMToolUseBlock
 
     client, provider, model = _llm_config(executor)
     log.info("glens.llm_call", provider=provider, model=model)
     msgs = list(messages)
     tool_calls_made: list[tuple[str, dict]] = []
+
+    lens_ctx = MCPContext(
+        workspace_id=executor.workspace_id,
+        clerk_user_id="system:lens",
+        surface="lens",
+    )
 
     for _ in range(5):
         resp = _guarded_openai_completion(
@@ -503,7 +510,7 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
         results = []
         for block in tool_blocks:
             tool_calls_made.append((block.name, block.input))
-            result = executor.call(block.name, json.dumps(block.input))
+            result = lens_dispatch(block.name, json.dumps(block.input), lens_ctx)
             log.debug("glens.tool", name=block.name, result_len=len(result))
             results.append((block.id, result))
         msgs.extend(client.make_tool_results_turn(results))
