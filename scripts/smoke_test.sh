@@ -15,12 +15,14 @@ set -euo pipefail
 PROJECT=""
 REPO=""
 PR=""
+TIER3=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --project) PROJECT="$2"; shift 2 ;;
     --repo)    REPO="$2";    shift 2 ;;
     --pr)      PR="$2";      shift 2 ;;
+    --tier3)   TIER3=1;      shift ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -74,8 +76,9 @@ NON_PR_AGENTS=(
 # Source of truth: `sub.add_parser("...")` in packages/conduct-cli/src/conduct_cli/main.py
 echo "── Step 0: Tier 1 — CLI --help sweep ──" | run_and_tee
 TIER1_CMDS=(
-  agents create credentials delete emit environments install install-all
-  login mcp playbooks projects reset run sessions set skill switch test token whoami
+  agents create credentials delete emit environments guard import-cedar install install-all
+  login mcp memory playbooks projects reset run session-report sessions set skill switch sync
+  test test-guard test-security test-security-verify token verify whoami
 )
 TIER1_FAILS=()
 conduct --help >/dev/null 2>&1 || { echo "conduct --help failed" | run_and_tee; exit 1; }
@@ -130,8 +133,37 @@ else
   echo "" | run_and_tee
 fi
 
+# ── Step 4: Tier 3 — mutating commands against scratch project (opt-in) ─────
+# Only run when --tier3 is passed. Nightly workflow points at the TESTING
+# workspace where scratch projects are safe to create/destroy.
+EXIT_C=0
+if [[ $TIER3 -eq 1 ]]; then
+  STAMP=$(date +%s)
+  SCRATCH_PROJECT="smoke-tier3-${STAMP}"
+  SCRATCH_ENV="smoke-tier3-env-${STAMP}"
+  cleanup_tier3() {
+    echo "── Tier 3 cleanup: removing scratch project/env ──" | run_and_tee
+    conduct delete environment "$SCRATCH_ENV" --yes 2>&1 | run_and_tee || true
+    conduct delete "$SCRATCH_PROJECT" --yes 2>&1 | run_and_tee || true
+  }
+  trap cleanup_tier3 EXIT
+
+  echo "── Step 4: Tier 3 — mutating commands (scratch: $SCRATCH_PROJECT) ──" | run_and_tee
+  {
+    conduct create "$SCRATCH_PROJECT" 2>&1 &&
+    conduct create environment "$SCRATCH_ENV" 2>&1 &&
+    conduct set credential --environment "$SCRATCH_ENV" --key SMOKE_TEST_KEY --value "smoke-value-${STAMP}" 2>&1 &&
+    conduct emit finding --severity info --type smoke-test --description "Tier 3 smoke test finding ${STAMP}" --repo "$REPO" 2>&1 &&
+    conduct session-report --developer "smoke-tier3-${STAMP}" 2>&1
+  } | run_and_tee || EXIT_C=$?
+  echo "" | run_and_tee
+else
+  echo "── Step 4: Tier 3 — SKIPPED (pass --tier3 against a scratch workspace) ──" | run_and_tee
+  echo "" | run_and_tee
+fi
+
 # ── Footer ────────────────────────────────────────────────────────────────────
-EXIT_CODE=$(( EXIT_A || EXIT_B ))
+EXIT_CODE=$(( EXIT_A || EXIT_B || EXIT_C ))
 {
   echo "================================================================"
   echo "  Finished : $(date)"
