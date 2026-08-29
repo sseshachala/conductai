@@ -84,10 +84,11 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          # apps/web is an npm workspace — root package-lock.json is authoritative.
+          cache-dependency-path: package-lock.json
       - name: Install dependencies
+        # Install at repo root; apps/web is a workspace.
         run: npm ci
-        working-directory: apps/web
       - name: Typecheck
         run: npm run typecheck
         working-directory: apps/web
