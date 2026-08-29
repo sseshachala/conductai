@@ -14,6 +14,10 @@ on:
       pr:
         description: 'PR number (optional)'
         default: ''
+      tier3:
+        description: 'Enable Tier 3 (mutating scratch project/env/creds — TESTING workspace only)'
+        type: boolean
+        default: true
 
 jobs:
   smoke:
@@ -25,6 +29,7 @@ jobs:
       PROJECT:  ${{ github.event.inputs.project || 'DevOps' }}
       REPO:     ${{ github.event.inputs.repo    || 'sseshachala/conductai' }}
       PR:       ${{ github.event.inputs.pr      || '' }}
+      TIER3:    ${{ github.event.inputs.tier3   || 'true' }}
 
     steps:
       - name: Checkout
@@ -54,10 +59,12 @@ jobs:
         run: |
           PR_FLAG=""
           [[ -n "$PR" ]] && PR_FLAG="--pr $PR"
+          TIER3_FLAG=""
+          [[ "$TIER3" == "true" ]] && TIER3_FLAG="--tier3"
           bash scripts/smoke_test.sh \
             --project "$PROJECT" \
             --repo    "$REPO" \
-            $PR_FLAG
+            $PR_FLAG $TIER3_FLAG
         continue-on-error: true  # upload report even on failure
 
       - name: Upload report
