@@ -448,10 +448,8 @@ function LoadingBubble({ label }: { label?: string }) {
 
 // ── Copy button (shared) ──────────────────────────────────────────────────────
 
-function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "md" }) {
+function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
-  const iconSize = size === "sm" ? 12 : 14
-  const padding = size === "sm" ? "4px 8px" : "5px 10px"
 
   const handleCopy = async () => {
     try {
@@ -478,13 +476,13 @@ function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "md" })
       type="button"
       onClick={handleCopy}
       aria-label={copied ? "Copied" : "Copy response"}
+      title={copied ? "Copied" : "Copy"}
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 4,
-        padding,
-        fontSize: 11,
-        fontWeight: 500,
+        justifyContent: "center",
+        width: 26,
+        height: 26,
         color: copied ? "var(--ok, #10b981)" : "var(--text-muted)",
         background: "transparent",
         border: "1px solid transparent",
@@ -496,16 +494,15 @@ function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "md" })
       onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
     >
       {copied ? (
-        <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="20 6 9 17 4 12" />
         </svg>
       ) : (
-        <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
       )}
-      {copied ? "Copied" : "Copy"}
     </button>
   )
 }
@@ -523,10 +520,11 @@ function MessageFooter({ text, sessionId, messageId }: { text?: string; sessionI
       style={{
         display: "flex",
         justifyContent: "flex-start",
-        gap: 4,
-        marginTop: 2,
+        alignItems: "center",
+        gap: 0,
+        marginTop: 4,
         marginBottom: 12,
-        paddingLeft: 4,
+        marginLeft: -4,
       }}
     >
       {text ? <CopyButton text={text} /> : null}

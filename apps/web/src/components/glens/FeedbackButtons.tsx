@@ -63,11 +63,13 @@ export function FeedbackButtons({
       onClick={() => _submit(v)}
       disabled={saving}
       aria-label={v === "up" ? "Helpful" : "Not helpful"}
+      title={v === "up" ? "Helpful" : "Not helpful"}
       style={{
         display: "inline-flex",
         alignItems: "center",
-        padding: "4px 8px",
-        fontSize: 11,
+        justifyContent: "center",
+        width: 26,
+        height: 26,
         color: active
           ? (v === "up" ? "var(--ok, #10b981)" : "var(--warn, #d97706)")
           : "var(--text-muted)",
@@ -81,12 +83,12 @@ export function FeedbackButtons({
       onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
     >
       {v === "up" ? (
-        <svg width={12} height={12} viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width={14} height={14} viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M7 10v12" />
           <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H7V10l5-9 2 1.4a2 2 0 0 1 .88 2.48Z" />
         </svg>
       ) : (
-        <svg width={12} height={12} viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width={14} height={14} viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M17 14V2" />
           <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H17v12l-5 9-2-1.4a2 2 0 0 1-.88-2.48Z" />
         </svg>
@@ -95,8 +97,8 @@ export function FeedbackButtons({
   )
 
   return (
-    <div style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
-      <div style={{ display: "inline-flex", gap: 2 }}>
+    <div style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+      <div style={{ display: "inline-flex", gap: 0 }}>
         {iconBtn("up", verdict === "up")}
         {iconBtn("down", verdict === "down")}
       </div>
