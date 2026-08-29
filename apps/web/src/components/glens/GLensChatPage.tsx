@@ -79,62 +79,137 @@ function bucketByDay(sessions: GLensSession[]): { label: string; items: GLensSes
 }
 
 function SessionRow({
-  session, active, onSelect, onDelete,
+  session, active, onSelect, onDelete, onRename,
 }: {
   session: GLensSession
   active: boolean
   onSelect: () => void
   onDelete: () => void
+  onRename: (title: string) => void
 }) {
   const [hover, setHover] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(session.title)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editing])
+
+  function commit() {
+    const trimmed = draft.trim()
+    if (trimmed && trimmed !== session.title) onRename(trimmed)
+    setEditing(false)
+  }
+
+  function cancel() {
+    setDraft(session.title)
+    setEditing(false)
+  }
+
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{ position: "relative", marginBottom: 2 }}
     >
-      <button
-        onClick={onSelect}
-        style={{
-          width: "100%",
-          textAlign: "left",
-          padding: "7px 30px 7px 10px",
-          borderRadius: 6,
-          border: "none",
-          background: active ? "var(--accent-weak)" : hover ? "var(--surface-3, rgba(0,0,0,0.04))" : "transparent",
-          cursor: "pointer",
-          fontSize: 13,
-          color: active ? "var(--accent-text)" : "var(--text)",
-          fontWeight: active ? 600 : 400,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {session.title}
-      </button>
-      <button
-        onClick={onDelete}
-        aria-label="Delete conversation"
-        style={{
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => {
+            if (e.key === "Enter") { e.preventDefault(); commit() }
+            if (e.key === "Escape") { e.preventDefault(); cancel() }
+          }}
+          style={{
+            width: "100%",
+            padding: "7px 10px",
+            borderRadius: 6,
+            border: "1px solid var(--accent)",
+            background: "var(--surface)",
+            color: "var(--text)",
+            fontSize: 13,
+            outline: "none",
+            fontFamily: "inherit",
+          }}
+        />
+      ) : (
+        <button
+          onClick={onSelect}
+          onDoubleClick={() => setEditing(true)}
+          style={{
+            width: "100%",
+            textAlign: "left",
+            padding: "7px 52px 7px 10px",
+            borderRadius: 6,
+            border: "none",
+            background: active ? "var(--accent-weak)" : hover ? "var(--surface-3, rgba(0,0,0,0.04))" : "transparent",
+            cursor: "pointer",
+            fontSize: 13,
+            color: active ? "var(--accent-text)" : "var(--text)",
+            fontWeight: active ? 600 : 400,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {session.title}
+        </button>
+      )}
+      {!editing && (
+        <div style={{
           position: "absolute",
-          right: 6,
+          right: 4,
           top: "50%",
           transform: "translateY(-50%)",
-          padding: "2px 6px",
-          borderRadius: 4,
-          border: "none",
-          background: "transparent",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: 14,
-          lineHeight: 1,
+          display: "flex",
+          gap: 2,
           opacity: hover ? 1 : 0,
           transition: "opacity 120ms",
-        }}
-      >
-        ×
-      </button>
+        }}>
+          <button
+            onClick={() => { setDraft(session.title); setEditing(true) }}
+            aria-label="Rename conversation"
+            title="Rename"
+            style={{
+              padding: "3px 5px",
+              borderRadius: 4,
+              border: "none",
+              background: "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              lineHeight: 0,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+            </svg>
+          </button>
+          <button
+            onClick={onDelete}
+            aria-label="Delete conversation"
+            title="Delete"
+            style={{
+              padding: "2px 6px",
+              borderRadius: 4,
+              border: "none",
+              background: "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: 14,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -144,15 +219,65 @@ function Sidebar({
   activeId,
   onSelect,
   onDelete,
+  onRename,
   onNew,
+  collapsed,
+  onToggle,
 }: {
   sessions: GLensSession[]
   activeId: string | null
   onSelect: (id: string) => void
   onDelete: (id: string) => void
+  onRename: (id: string, title: string) => void
   onNew: () => void
+  collapsed: boolean
+  onToggle: () => void
 }) {
   const grouped = bucketByDay(sessions)
+
+  if (collapsed) {
+    return (
+      <div style={{
+        width: 52,
+        flexShrink: 0,
+        borderRight: "1px solid var(--border)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        background: "var(--surface-2)",
+        height: "100%",
+        padding: "12px 0",
+        gap: 8,
+      }}>
+        <button
+          onClick={onToggle}
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+          style={{
+            width: 32, height: 32, borderRadius: 6, border: "none",
+            background: "transparent", color: "var(--text-muted)",
+            cursor: "pointer", fontSize: 16, lineHeight: 1,
+          }}
+        >
+          ›
+        </button>
+        <button
+          onClick={onNew}
+          aria-label="New chat"
+          title="New chat"
+          style={{
+            width: 32, height: 32, borderRadius: 6,
+            border: "1px solid var(--border)",
+            background: "var(--surface)", color: "var(--text)",
+            cursor: "pointer", fontSize: 16, lineHeight: 1,
+          }}
+        >
+          +
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div style={{
       width: 260,
@@ -164,7 +289,21 @@ function Sidebar({
       height: "100%",
     }}>
       <div style={{ padding: "14px 12px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-text)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 10 }}>Lens</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-text)", textTransform: "uppercase", letterSpacing: ".08em" }}>Lens</div>
+          <button
+            onClick={onToggle}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+            style={{
+              padding: "4px 6px", borderRadius: 6, border: "none",
+              background: "transparent", cursor: "pointer",
+              color: "var(--text-muted)", fontSize: 14, lineHeight: 1,
+            }}
+          >
+            ‹
+          </button>
+        </div>
         <button
           onClick={onNew}
           style={{
@@ -213,6 +352,7 @@ function Sidebar({
                 active={s.id === activeId}
                 onSelect={() => onSelect(s.id)}
                 onDelete={() => onDelete(s.id)}
+                onRename={(title) => onRename(s.id, title)}
               />
             ))}
           </div>
@@ -768,6 +908,15 @@ export function GLensChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    return window.localStorage.getItem("glens.sidebar.collapsed") === "1"
+  })
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem("glens.sidebar.collapsed", sidebarCollapsed ? "1" : "0")
+  }, [sidebarCollapsed])
 
   const threadRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -846,6 +995,15 @@ export function GLensChatPage() {
     await authFetch(`${API}/glens/sessions/${id}`, { method: "DELETE" }).catch(() => {})
     setSessions(prev => prev.filter(s => s.id !== id))
     if (activeId === id) startNew()
+  }
+
+  async function renameSession(id: string, title: string) {
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, title } : s))
+    await authFetch(`${API}/glens/sessions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    }).catch(() => {})
   }
 
   function _applyData(data: Record<string, unknown>, text: string) {
@@ -988,7 +1146,10 @@ export function GLensChatPage() {
         activeId={activeId}
         onSelect={selectSession}
         onDelete={deleteSession}
+        onRename={renameSession}
         onNew={startNew}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(v => !v)}
       />
 
       {/* Chat area */}
