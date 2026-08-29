@@ -1,9 +1,0 @@
-{
-  "extends": "next",
-  "rules": {
-    "react/no-unescaped-entities": "warn",
-    "react-hooks/exhaustive-deps": "warn",
-    "react-hooks/rules-of-hooks": "error",
-    "@next/next/no-img-element": "warn"
-  }
-}

@@ -35,7 +35,7 @@ const clerkHandler = clerkMiddleware(async (auth, req) => {
   }
 })
 
-export default function middleware(req: NextRequest, evt: unknown) {
+export default function proxy(req: NextRequest, evt: unknown) {
   if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
     if (process.env.NODE_ENV === "production") {
       // Refuse to serve protected routes without auth in production
