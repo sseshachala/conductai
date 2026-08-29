@@ -1291,6 +1291,85 @@ _TOOLS.extend([
 ])
 
 
+# ── #1439 batch — /dashboard + /observability KPI parity ─────────────────────
+# Free-function ToolDefs mirroring the router-side computations so Lens chat
+# and MCP callers can read every card on those pages. See #1439 for the roadmap.
+
+def get_dashboard_outcomes(ctx, time_window: str = "last_7d"):
+    """Outcome rollup for the workspace over a time window — matches the
+    header of /dashboard: PRs opened, issues triaged, reviews completed,
+    incidents investigated, plus succeeded/failed automation counts.
+    """
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.models.run import Run
+    from app.models.workflow import Workflow, WorkflowVersion
+    from app.routers.insights import _outcome_type
+
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        since = _window_start(time_window)
+
+        rows = (
+            db.query(Run, Workflow.playbook_slug.label("slug"))
+            .join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id)
+            .join(Workflow, Workflow.id == WorkflowVersion.workflow_id)
+            .filter(Workflow.workspace_id == ws_uuid, Run.created_at >= since)
+            .all()
+        )
+
+        prs = issues = reviews = incidents = ok = fail = 0
+        for run, slug in rows:
+            if run.status == "succeeded":
+                ok += 1
+                ot = _outcome_type(run, slug)
+                if ot == "pr_opened":
+                    prs += 1
+                elif ot == "issue_triaged":
+                    issues += 1
+                elif ot == "review_completed":
+                    reviews += 1
+                elif ot == "incident_investigated":
+                    incidents += 1
+            elif run.status == "failed":
+                fail += 1
+
+        return {
+            "time_window": time_window,
+            "since": since.isoformat(),
+            "prs_opened": prs,
+            "issues_triaged": issues,
+            "reviews_completed": reviews,
+            "incidents_investigated": incidents,
+            "successful_automations": ok,
+            "failed_automations": fail,
+        }
+    finally:
+        db.close()
+
+
+_TOOLS.extend([
+    ToolDef(
+        name="get_dashboard_outcomes",
+        description="Workspace outcome rollup — PRs opened, issues triaged, reviews completed, incidents investigated, succeeded/failed automations. Matches the /dashboard header.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "time_window": {
+                    "type": "string",
+                    "description": "One of last_24h, last_7d (default), mtd.",
+                },
+            },
+            "required": [],
+        },
+        impl=get_dashboard_outcomes,
+        annotations=_READ_ONLY,
+        tags=_LENS_TAGS,
+    ),
+])
+
+
 def register(replace: bool = False) -> None:
     """Register all Lens tools into the default registry. Idempotent when
     replace=True (used only in tests that reload)."""
