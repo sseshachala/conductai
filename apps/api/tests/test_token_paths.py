@@ -19,6 +19,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+
+# pytest-forked: each test runs in its own subprocess so this file's module-
+# level sys.modules stubs stay isolated. See epic #1075 — proper long-term
+# fix is to remove the stubs (needs test-body rewrite to use real modules).
+pytestmark = pytest.mark.forked
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 HERE = Path(__file__).resolve()
