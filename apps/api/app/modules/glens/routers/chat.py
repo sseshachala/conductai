@@ -395,17 +395,32 @@ def _has_data(final_msgs: list[dict]) -> bool:
 def _extract_confirm_envelope(final_msgs: list[dict]) -> dict | None:
     """First tool result whose JSON body has confirm_required=True.
     Surfaces the actor envelope (from require_confirmation) to the SSE 'done'
-    event so the frontend can render ActionConfirmBubble instead of prose."""
-    for m in final_msgs:
-        if m.get("role") != "tool":
-            continue
-        content = m.get("content", "")
+    event so the frontend can render ActionConfirmBubble instead of prose.
+
+    OpenAI/Perplexity shape:  {"role": "tool", "content": "<json>"}
+    Anthropic shape:          {"role": "user", "content": [{"type": "tool_result", "content": "<json>"}, ...]}
+    """
+    def _match(raw) -> dict | None:
         try:
-            r = json.loads(content) if isinstance(content, str) else content
+            r = json.loads(raw) if isinstance(raw, str) else raw
         except Exception:
-            continue
+            return None
         if isinstance(r, dict) and r.get("confirm_required") and r.get("approval_request_id"):
             return r
+        return None
+
+    for m in final_msgs:
+        content = m.get("content", "")
+        if m.get("role") == "tool":
+            hit = _match(content)
+            if hit:
+                return hit
+        elif m.get("role") == "user" and isinstance(content, list):
+            for blk in content:
+                if isinstance(blk, dict) and blk.get("type") == "tool_result":
+                    hit = _match(blk.get("content", ""))
+                    if hit:
+                        return hit
     return None
 
 

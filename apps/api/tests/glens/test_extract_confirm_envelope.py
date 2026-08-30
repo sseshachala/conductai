@@ -52,3 +52,13 @@ def test_skips_unparseable_tool_content_then_matches():
 def test_requires_both_flag_and_id():
     msgs = [{"role": "tool", "content": json.dumps({"confirm_required": True})}]
     assert _extract_confirm_envelope(msgs) is None
+
+
+def test_anthropic_tool_result_shape():
+    """Anthropic batches tool results as {role: user, content: [{type: tool_result, content: ...}]}."""
+    msgs = [
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1", "content": json.dumps(ENVELOPE)},
+        ]},
+    ]
+    assert _extract_confirm_envelope(msgs) == ENVELOPE
