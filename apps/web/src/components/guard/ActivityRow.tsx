@@ -342,12 +342,17 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
                 {isHuman ? "HUMAN" : "AGENT"}
               </span>
             )
-            // AGENT rows with a known identity → deep-link to /agent-identity
-            // (uses the ?id=<uuid> highlight from PR #1286).
-            if (!isHuman && ev.agent_identity_id) {
+            // AGENT rows always link to /agent-identity — deep-link with
+            // ?id=<uuid> when the identity is known (highlight from PR #1286),
+            // fall back to the identities list otherwise (#1471).
+            if (!isHuman) {
+              const href = ev.agent_identity_id
+                ? `/agent-identity?tab=identities&id=${ev.agent_identity_id}`
+                : "/agent-identity?tab=identities"
               return (
-                <a href={`/agent-identity?tab=identities&id=${ev.agent_identity_id}`}
-                   title={`View agent identity ${ev.agent_identity_id}`}
+                <a href={href}
+                   title={ev.agent_identity_id ? `View agent identity ${ev.agent_identity_id}` : "View agent identities"}
+                   onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()}
                    style={{ textDecoration: "none" }}>
                   {pill}
                 </a>
@@ -395,11 +400,26 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
               : formatToolCall(ev.tool_call)}
         </span>
         {ev.source === "proxy" && <ProxyPill />}
-        {ev.source === "brain_block" && (
-          <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: ".06em", padding: "1px 5px", borderRadius: 3, background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
-            AGENT
-          </span>
-        )}
+        {ev.source === "brain_block" && (() => {
+          const pill = (
+            <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: ".06em", padding: "1px 5px", borderRadius: 3, background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
+              AGENT
+            </span>
+          )
+          // #1471 — link the brain_block AGENT badge to the specific identity
+          // when known; fall back to the agent identity list otherwise.
+          const href = ev.agent_identity_id
+            ? `/agent-identity?tab=identities&id=${ev.agent_identity_id}`
+            : "/agent-identity?tab=identities"
+          return (
+            <a href={href}
+               title={ev.agent_identity_id ? `View agent identity ${ev.agent_identity_id}` : "View agent identities"}
+               onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()}
+               style={{ textDecoration: "none" }}>
+              {pill}
+            </a>
+          )
+        })()}
         {ev.source === "local_audit" && <LocalRiskPill />}
       </div>
       <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
