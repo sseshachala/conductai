@@ -37,7 +37,7 @@ def test_get_governance_summary_dispatch():
     fake_result = FrameworksOut(installed=[], bonus=[], total_rules=0, rules_with_framework=0)
 
     with patch("app.mcp.lens_adapter.evaluate_composed", return_value=_ALLOW), \
-         patch("app.tools.registrations.lens._run_framework_coverage",
+         patch("app.tools.registrations.lens.governance._run_framework_coverage",
                return_value=fake_result) as mock_helper:
         result = lens_dispatch("get_governance_summary", "{}", _CTX)
 
@@ -58,7 +58,7 @@ def test_get_soc2_status_installed_row():
         bonus=[], total_rules=42, rules_with_framework=42,
     )
     with patch("app.mcp.lens_adapter.evaluate_composed", return_value=_ALLOW), \
-         patch("app.tools.registrations.lens._run_framework_coverage", return_value=fake):
+         patch("app.tools.registrations.lens.governance._run_framework_coverage", return_value=fake):
         result = lens_dispatch("get_soc2_status", "{}", _CTX)
     payload = json.loads(result)
     assert payload["status"] == "installed"
@@ -73,7 +73,7 @@ def test_get_soc2_status_not_covered_returns_recommended_pack():
     from app.routers.governance import FrameworksOut
     empty = FrameworksOut(installed=[], bonus=[], total_rules=0, rules_with_framework=0)
     with patch("app.mcp.lens_adapter.evaluate_composed", return_value=_ALLOW), \
-         patch("app.tools.registrations.lens._run_framework_coverage", return_value=empty):
+         patch("app.tools.registrations.lens.governance._run_framework_coverage", return_value=empty):
         result = lens_dispatch("get_soc2_status", '{"framework": "HIPAA"}', _CTX)
     payload = json.loads(result)
     assert payload["status"] == "not_covered"
