@@ -3,3 +3,4 @@ populate `default_action_registry` (and paired `default_registry.ToolDef`
 entries via `app.tools.registrations.lens`).
 """
 from app.modules.glens.actor.registrations import decide_approval  # noqa: F401
+from app.modules.glens.actor.registrations import run_workflow  # noqa: F401

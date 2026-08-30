@@ -48,4 +48,31 @@ TOOLS: list[ToolDef] = [
         annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
         tags=_ACTOR_TAGS,
     ),
+    ToolDef(
+        name="run_workflow",
+        description=(
+            "Trigger a workflow run by playbook slug, workflow ID, or name. "
+            "Two-step: returns a pending action for the user to confirm; the "
+            "confirm click inserts the Run and enqueues it via the same code "
+            "path `conduct run` uses. Guard policy platform.workflows.run "
+            "still applies."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name_or_id": {
+                    "type": "string",
+                    "description": "Workflow UUID, playbook slug, or workflow name (case-insensitive).",
+                },
+                "inputs": {
+                    "type": "object",
+                    "description": "Optional key/value overrides for run initial_state.",
+                },
+            },
+            "required": ["name_or_id"],
+        },
+        impl=_actor_impl("run_workflow"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=False),
+        tags=_ACTOR_TAGS,
+    ),
 ]
