@@ -9,7 +9,10 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid as _uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -22,6 +25,53 @@ from app.modules.guard.approval import (
     sweep_if_timed_out,
 )
 from app.modules.guard.models import GuardApprovalRequest
+
+
+def _idempotency_key(tool_name: str, resolved_input: dict[str, Any]) -> str:
+    """Stable per-(tool, input) key used to dedupe pending proposals within
+    a session. `_warnings` and `_execute_result` are computed post-facto so
+    they are stripped before hashing."""
+    scrub = {k: v for k, v in resolved_input.items() if not k.startswith("_")}
+    payload = json.dumps({"tool": tool_name, "input": scrub}, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode()).hexdigest()[:32]
+
+
+def _find_existing_pending(
+    db: Session,
+    *,
+    workspace_id: str,
+    session_id: str | None,
+    tool_name: str,
+    idem_key: str,
+) -> GuardApprovalRequest | None:
+    """Look for an unexpired PENDING row matching the same session + tool +
+    idempotency key. Session-scoped so unrelated sessions don't collide."""
+    try:
+        ws = _uuid.UUID(workspace_id)
+    except ValueError:
+        return None
+
+    q = (
+        db.query(GuardApprovalRequest)
+        .filter(
+            GuardApprovalRequest.workspace_id == ws,
+            GuardApprovalRequest.tool_name == tool_name,
+            GuardApprovalRequest.status == "pending",
+            GuardApprovalRequest.timeout_at > datetime.now(timezone.utc),
+        )
+    )
+    if session_id is not None:
+        q = q.filter(GuardApprovalRequest.session_id == session_id)
+    else:
+        q = q.filter(GuardApprovalRequest.session_id.is_(None))
+
+    # Filter idem_key in Python — tool_input is JSONB and we stash the key in
+    # a private field. Fetching a handful of rows per (workspace, session,
+    # tool) is fine at Lens volume.
+    for row in q.order_by(GuardApprovalRequest.created_at.desc()).limit(10).all():
+        if (row.tool_input or {}).get("_idem_key") == idem_key:
+            return row
+    return None
 
 
 class ConfirmError(Exception):
@@ -105,11 +155,29 @@ def require_confirmation(
         # the confirm route is the enforcement point.
         pass
 
+    # Session-scoped idempotency (#1470). Re-proposing the exact same action
+    # in the same session returns the ORIGINAL envelope + row, so the LLM
+    # can call `run_workflow` twice without losing the ActionConfirmBubble
+    # or creating duplicate pending rows.
+    idem_key = _idempotency_key(spec.name, proposal.resolved_input)
+    existing = _find_existing_pending(
+        ctx.db,
+        workspace_id=ctx.workspace_id,
+        session_id=ctx.session_id,
+        tool_name=spec.name,
+        idem_key=idem_key,
+    )
+    if existing is not None:
+        envelope = build_confirm_envelope(existing)
+        envelope["guard_decision"] = guard_decision
+        envelope["deduped"] = True
+        return envelope
+
     # Persist the pending approval. `surface='lens'` (or the inbound MCP
     # surface) tags where the proposal came from. Rule_id is a synthetic
     # marker so approvals-list callers can distinguish Lens-proposed from
     # policy-paused rows.
-    persisted_input = {**proposal.resolved_input}
+    persisted_input = {**proposal.resolved_input, "_idem_key": idem_key}
     if guard_warnings:
         persisted_input["_warnings"] = guard_warnings
 
