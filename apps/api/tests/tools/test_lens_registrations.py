@@ -57,9 +57,20 @@ def test_default_registry_contains_all_lens_tools():
 
 
 def test_all_lens_tools_are_read_only():
+    # Actor-tagged tools are intentionally mutating (see #1297); they go
+    # through the two-step confirm flow rather than the read invariant.
     for t in lens_reg._TOOLS:
+        if "actor" in t.tags:
+            continue
         assert t.annotations.read_only, f"{t.name} should be read_only"
         assert not t.annotations.destructive, f"{t.name} must not be destructive"
+
+
+def test_actor_tools_are_not_read_only():
+    actor_tools = [t for t in lens_reg._TOOLS if "actor" in t.tags]
+    assert actor_tools, "expected at least one actor-tagged tool (#1297)"
+    for t in actor_tools:
+        assert not t.annotations.read_only, f"actor tool {t.name} must not be read_only"
 
 
 def test_open_world_tools_are_the_expected_three():
