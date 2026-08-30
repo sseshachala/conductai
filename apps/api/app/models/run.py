@@ -15,6 +15,11 @@ class Run(Base):
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     triggered_by = Column(String(255), nullable=True)  # user_id / 'webhook' / 'schedule'
     agent_role_id = Column(String(36), nullable=True)
+    # Nullable — only Lens-originated runs (from _execute_run_workflow) set this
+    # so the SSE session channel can push run.* events back into the chat bubble
+    # that started the run (#1480). No FK: session deletion must not cascade
+    # run history.
+    session_id = Column(UUID(as_uuid=True), nullable=True)
     status = Column(String(50), nullable=False, default="pending")  # pending/running/paused/succeeded/failed/cancelled
     started_at = Column(DateTime(timezone=True), nullable=True)
     paused_at = Column(DateTime(timezone=True), nullable=True)
@@ -50,6 +55,7 @@ class Run(Base):
         sa.Index("ix_runs_workspace_id", "workspace_id"),
         sa.Index("ix_runs_workspace_created", "workspace_id", sa.text("created_at DESC")),
         sa.Index("ix_runs_workspace_status", "workspace_id", "status"),
+        sa.Index("ix_runs_session_id", "session_id"),
     )
 
 
