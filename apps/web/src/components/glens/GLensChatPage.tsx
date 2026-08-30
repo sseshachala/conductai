@@ -33,6 +33,7 @@ type Message =
   | { role: "assistant"; kind: "loading"; label?: string }
   | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string }
   | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string; warning?: string }
+  | { role: "assistant"; kind: "action_confirm"; toolName: string; approvalRequestId: string; summary: string; warnings?: string[]; expiresAt?: string }
   | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
   | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
 
@@ -821,6 +822,94 @@ function PolicyConfirmBubble({
   )
 }
 
+function ActionConfirmBubble({
+  toolName,
+  approvalRequestId,
+  summary,
+  warnings,
+  expiresAt,
+  authFetch,
+  onResult,
+}: {
+  toolName: string
+  approvalRequestId: string
+  summary: string
+  warnings?: string[]
+  expiresAt?: string
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>
+  onResult: (text: string) => void
+}) {
+  const [status, setStatus] = useState<"pending" | "loading" | "done">("pending")
+
+  async function post(action: "confirm" | "cancel") {
+    setStatus("loading")
+    try {
+      const res = await authFetch(`${API}/glens/actions/${approvalRequestId}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        onResult(`Failed to ${action}: ${err.detail ?? res.status}`)
+      } else {
+        const data = await res.json()
+        if (action === "confirm") {
+          const label = data.tool_name ?? toolName
+          onResult(`${label} executed successfully.`)
+        } else {
+          onResult(`Action cancelled.`)
+        }
+      }
+    } catch {
+      onResult("Network error. Please try again.")
+    }
+    setStatus("done")
+  }
+
+  const isMutation = toolName !== "decide_approval"  // heuristic — decide is itself an approve/reject
+
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16, width: "100%" }}>
+      <div style={{ maxWidth: "80%", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "4px 14px 14px 14px", padding: "16px 20px" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Action · {toolName}</div>
+        <div style={{ fontSize: 14, color: "var(--text)", marginBottom: 12, lineHeight: 1.5 }}>{summary}</div>
+
+        {warnings && warnings.length > 0 && (
+          <div style={{ fontSize: 12, color: "var(--warn, #f59e0b)", marginBottom: 12, padding: "8px 12px", background: "var(--warn-bg, #fef3c7)", borderRadius: 6 }}>
+            {warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+          </div>
+        )}
+
+        {status === "pending" && (
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button
+              onClick={() => post("confirm")}
+              style={{
+                padding: "8px 20px", borderRadius: 8, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                background: "var(--accent)", color: "#fff",
+              }}
+            >
+              Confirm
+            </button>
+            <button
+              onClick={() => post("cancel")}
+              style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", fontSize: 13, cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+            {expiresAt && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                Expires {new Date(expiresAt).toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+        )}
+        {status === "loading" && <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Working…</div>}
+      </div>
+    </div>
+  )
+}
+
 // ─── Input ────────────────────────────────────────────────────────────────────
 
 function ChatInput({ onSubmit, disabled }: { onSubmit: (t: string) => void; disabled: boolean }) {
@@ -1017,6 +1106,15 @@ export function GLensChatPage() {
         text: (data.answer as string) ?? "I need more detail to proceed.",
         skill: (data.skill as string) ?? "rules",
         followups: data.followups as string[] | undefined,
+      }])
+    } else if (data.confirm_required && data.approval_request_id) {
+      setMessages(prev => [...prev.slice(0, -1), {
+        role: "assistant", kind: "action_confirm",
+        toolName: data.tool_name as string,
+        approvalRequestId: data.approval_request_id as string,
+        summary: (data.summary as string) ?? "Confirm this action?",
+        warnings: (data.warnings as string[] | undefined) ?? [],
+        expiresAt: data.expires_at as string | undefined,
       }])
     } else if (data.confirm_required) {
       setMessages(prev => [...prev.slice(0, -1), {
@@ -1219,6 +1317,7 @@ export function GLensChatPage() {
                 msg.kind === "table"  ? msg.answer :
                 msg.kind === "page"   ? msg.answer :
                 msg.kind === "policy_confirm" ? msg.answer :
+                        msg.kind === "action_confirm" ? msg.summary :
                 undefined
               const messageId = String(i)
               return (
@@ -1228,6 +1327,21 @@ export function GLensChatPage() {
                   {msg.kind === "blocks" && <BlocksBubble answer={msg.answer} blocks={msg.blocks as any} warning={msg.warning} skill={msg.skill} understoodAs={msg.understoodAs} />}
                   {msg.kind === "table" && <GenericTableBubble answer={msg.answer} columns={msg.columns as any} rows={msg.rows as any} warning={msg.warning} skill={msg.skill} drilldown={msg.drilldown} understoodAs={msg.understoodAs} />}
                   {msg.kind === "page" && <GlensPageBubble answer={msg.answer} pageKind={msg.pageKind as any} data={msg.pageData} warning={msg.warning} />}
+                  {msg.kind === "action_confirm" && (
+                    <ActionConfirmBubble
+                      toolName={msg.toolName}
+                      approvalRequestId={msg.approvalRequestId}
+                      summary={msg.summary}
+                      warnings={msg.warnings}
+                      expiresAt={msg.expiresAt}
+                      authFetch={authFetch}
+                      onResult={text => setMessages(prev => [
+                        ...prev.slice(0, i),
+                        { role: "assistant", kind: "answer", text },
+                        ...prev.slice(i + 1),
+                      ])}
+                    />
+                  )}
                   {msg.kind === "policy_confirm" && (
                     <PolicyConfirmBubble
                       answer={msg.answer}

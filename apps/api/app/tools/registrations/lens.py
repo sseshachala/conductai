@@ -1950,9 +1950,93 @@ _TOOLS.extend([
 ])
 
 
+# ── #1297 — actor substrate — mutating tools via ActionSpec ─────────────────
+# The actor substrate lives in app.modules.glens.actor. Each mutating tool
+# registers an ActionSpec (drives the confirm flow) AND a paired ToolDef
+# (LLM-facing surface). Same fan-out as read tools: Lens chat + MCP HTTP +
+# MCP stdio + LensAdapter, gated by the same policy engine.
+#
+# The ToolDef.impl calls into the actor substrate — it does not perform the
+# mutation directly. The mutation only happens when the user hits
+# POST /glens/actions/{id}/confirm on the resulting pending action.
+
+_ACTOR_TAGS = ("lens", "actor")
+
+
+def _actor_impl(action_name: str):
+    """Build a ctx-accepting impl that proposes a mutating action via the
+    actor substrate. Returns the confirm envelope OR a blocked result."""
+
+    def _impl(ctx, **kwargs):
+        from app.core.database import SessionLocal
+        from app.modules.glens.actor.helpers import require_confirmation
+        from app.modules.glens.actor.registry import default_action_registry
+        from app.modules.glens.actor.types import ActionCtx
+
+        spec = default_action_registry.get(action_name)
+        if spec is None:
+            return {"error": f"actor spec not registered: {action_name}"}
+
+        db = SessionLocal()
+        try:
+            action_ctx = ActionCtx(
+                db=db,
+                workspace_id=ctx.workspace_id,
+                clerk_user_id=getattr(ctx, "clerk_user_id", None),
+                user_email=getattr(ctx, "user_email", None),
+                session_id=getattr(ctx, "session_id", None),
+                agent_identity_id=None,
+                surface=getattr(ctx, "surface", "lens") or "lens",
+            )
+            return require_confirmation(action_ctx, spec, kwargs)
+        finally:
+            db.close()
+
+    _impl.__name__ = f"actor_impl_{action_name}"
+    return _impl
+
+
+_TOOLS.extend([
+    ToolDef(
+        name="decide_approval",
+        description=(
+            "Approve or reject a pending Guard approval request. Two-step: "
+            "returns a pending action for the user to confirm; the confirm "
+            "click writes the decision to guard_approval_requests and resumes "
+            "any paused workflow run. Semantically identical to the Slack "
+            "Approve/Reject buttons."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "approval_request_id": {
+                    "type": "string",
+                    "description": "UUID of the pending approval to decide.",
+                },
+                "decision": {
+                    "type": "string",
+                    "enum": ["approved", "rejected"],
+                    "description": "Whether to approve or reject the request.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Required when rejecting. Surfaced in audit + notifications.",
+                },
+            },
+            "required": ["approval_request_id", "decision"],
+        },
+        impl=_actor_impl("decide_approval"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
+        tags=_ACTOR_TAGS,
+    ),
+])
+
+
 def register(replace: bool = False) -> None:
     """Register all Lens tools into the default registry. Idempotent when
     replace=True (used only in tests that reload)."""
+    # Actor ActionSpecs register via side-effect import.
+    from app.modules.glens.actor import registrations as _actor_regs  # noqa: F401
     default_registry.register_all(_TOOLS, replace=replace)
 
 
