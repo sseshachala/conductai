@@ -64,8 +64,13 @@ def register(replace: bool = False) -> None:
     can resolve their spec at first dispatch.
     """
     # Actor ActionSpec side-effect import — populates default_action_registry
-    # BEFORE any actor ToolDef.impl might be called.
-    from app.modules.glens.actor import registrations as _actor_regs  # noqa: F401
+    # before any actor ToolDef.impl runs. Guarded because the actor package
+    # lands in a separate PR (#1456); when it isn't present, no actor
+    # ToolDefs exist yet either, so skipping the import is safe.
+    try:
+        from app.modules.glens.actor import registrations as _actor_regs  # noqa: F401
+    except ModuleNotFoundError:
+        pass
     default_registry.register_all(_ALL_TOOLS, replace=replace)
 
 
