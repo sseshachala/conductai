@@ -392,6 +392,23 @@ def _has_data(final_msgs: list[dict]) -> bool:
     return False
 
 
+def _extract_confirm_envelope(final_msgs: list[dict]) -> dict | None:
+    """First tool result whose JSON body has confirm_required=True.
+    Surfaces the actor envelope (from require_confirmation) to the SSE 'done'
+    event so the frontend can render ActionConfirmBubble instead of prose."""
+    for m in final_msgs:
+        if m.get("role") != "tool":
+            continue
+        content = m.get("content", "")
+        try:
+            r = json.loads(content) if isinstance(content, str) else content
+        except Exception:
+            continue
+        if isinstance(r, dict) and r.get("confirm_required") and r.get("approval_request_id"):
+            return r
+    return None
+
+
 def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
     """Build a grounded drilldown URL from the tool calls the LLM actually made."""
     page = "/logs/guard"
@@ -734,6 +751,7 @@ async def glens_chat_stream(
             # Phase 1: resolve tool calls (fast, non-streaming)
             final_msgs, early_text, tool_calls = await asyncio.to_thread(_resolve_tools, llm_messages, system, executor)
             drilldown = _build_drilldown(tool_calls) if _has_data(final_msgs) else None
+            confirm_envelope = _extract_confirm_envelope(final_msgs)
 
             if early_text:
                 answer = early_text
@@ -744,7 +762,7 @@ async def glens_chat_stream(
                 for char in answer:
                     await event_q.put({"type": "token", "text": char})
                     await asyncio.sleep(0)
-                await event_q.put({"type": "done", "answer": answer})
+                await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope})
                 return
 
             # Phase 2: stream synthesis (tools already resolved)
@@ -760,7 +778,7 @@ async def glens_chat_stream(
                     await event_q.put({"type": "token", "text": char})
                     await asyncio.sleep(0)
                 answer += link
-            await event_q.put({"type": "done", "answer": answer})
+            await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope})
         except Exception as e:
             # If it's a Guard block, surface the rule_id to logs + telemetry.
             # #1286 wired Lens through the same policy engine as the HTTP
@@ -799,7 +817,10 @@ async def glens_chat_stream(
                     capped = session_messages[-50:]
                     background_tasks.add_task(_bg_save_session, session_id_str, capped, None)
 
-                    yield f"data: {json.dumps({'type': 'done', 'session_id': session_id_str, 'skill': 'governance', 'answer': answer})}\n\n"
+                    done_payload = {"type": "done", "session_id": session_id_str, "skill": "governance", "answer": answer}
+                    if evt.get("confirm_envelope"):
+                        done_payload.update(evt["confirm_envelope"])
+                    yield f"data: {json.dumps(done_payload)}\n\n"
                     break
         except asyncio.TimeoutError:
             yield f"data: {json.dumps({'type': 'error', 'message': 'Request timed out. Please try again.'})}\n\n"
