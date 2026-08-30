@@ -23,7 +23,7 @@ from app.tools.types import ToolAnnotations, ToolDef
 from app.tools.registrations.lens._shared import _actor_impl, _ACTOR_TAGS
 
 
-def _confirm_pending_action_impl(ctx, pending_action_id: str) -> dict[str, Any]:
+def _confirm_pending_action_impl(ctx, approval_request_id: str) -> dict[str, Any]:
     """LLM-callable confirm — same server logic as the ActionConfirmBubble
     button. Enforces proposer identity + session_id match so a compromised
     LLM in another session can't decide this one's pending actions."""
@@ -35,7 +35,7 @@ def _confirm_pending_action_impl(ctx, pending_action_id: str) -> dict[str, Any]:
         try:
             payload = dispatch_confirm(
                 db,
-                action_id=pending_action_id,
+                action_id=approval_request_id,
                 workspace_id=ctx.workspace_id,
                 clerk_user_id=getattr(ctx, "clerk_user_id", None),
                 user_email=getattr(ctx, "user_email", None),
@@ -50,7 +50,7 @@ def _confirm_pending_action_impl(ctx, pending_action_id: str) -> dict[str, Any]:
 
 
 def _cancel_pending_action_impl(
-    ctx, pending_action_id: str, reason: str | None = None,
+    ctx, approval_request_id: str, reason: str | None = None,
 ) -> dict[str, Any]:
     """LLM-callable cancel — same server logic as the Cancel button."""
     from app.core.database import SessionLocal
@@ -61,7 +61,7 @@ def _cancel_pending_action_impl(
         try:
             payload = dispatch_cancel(
                 db,
-                action_id=pending_action_id,
+                action_id=approval_request_id,
                 workspace_id=ctx.workspace_id,
                 clerk_user_id=getattr(ctx, "clerk_user_id", None),
                 user_email=getattr(ctx, "user_email", None),
@@ -150,12 +150,12 @@ TOOLS: list[ToolDef] = [
         input_schema={
             "type": "object",
             "properties": {
-                "pending_action_id": {
+                "approval_request_id": {
                     "type": "string",
-                    "description": "UUID of the pending action (from the confirmation envelope's approval_request_id).",
+                    "description": "UUID from the confirmation envelope's approval_request_id field. Reply-yes intent → pass the envelope's approval_request_id here.",
                 },
             },
-            "required": ["pending_action_id"],
+            "required": ["approval_request_id"],
         },
         impl=_confirm_pending_action_impl,
         annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
@@ -171,16 +171,16 @@ TOOLS: list[ToolDef] = [
         input_schema={
             "type": "object",
             "properties": {
-                "pending_action_id": {
+                "approval_request_id": {
                     "type": "string",
-                    "description": "UUID of the pending action to cancel.",
+                    "description": "UUID from the confirmation envelope's approval_request_id field.",
                 },
                 "reason": {
                     "type": "string",
                     "description": "Optional reason surfaced in audit + notifications.",
                 },
             },
-            "required": ["pending_action_id"],
+            "required": ["approval_request_id"],
         },
         impl=_cancel_pending_action_impl,
         annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
