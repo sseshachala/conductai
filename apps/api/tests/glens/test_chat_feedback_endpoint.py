@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.modules.glens.routers.chat import FeedbackIn, submit_feedback
+from app.modules.glens.routers.feedback import FeedbackIn, submit_feedback
 
 
 _WS = "00000000-0000-0000-0000-000000000000"

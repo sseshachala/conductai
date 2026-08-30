@@ -33,6 +33,11 @@ from app.modules.guard.routers import memory_search as guard_memory_search
 from app.modules.guard.routers import verify as guard_verify
 from app.modules.guard.routers import knowledge_search as guard_knowledge_search
 from app.modules.glens.routers import chat as glens_chat
+from app.modules.glens.routers import config as glens_config
+from app.modules.glens.routers import feedback as glens_feedback
+from app.modules.glens.routers import opener as glens_opener
+from app.modules.glens.routers import policy as glens_policy
+from app.modules.glens.routers import sessions as glens_sessions
 from app.modules.glens.actor import routes as glens_actor_routes
 from app.modules.glens.routers import lens_sessions as glens_lens_sessions
 from app.mcp import http as mcp_http
@@ -156,6 +161,11 @@ app.include_router(guard_discovery.router)
 app.include_router(guard_verify.router)
 app.include_router(guard_knowledge_search.router)
 app.include_router(glens_chat.router)
+app.include_router(glens_sessions.router)
+app.include_router(glens_feedback.router)
+app.include_router(glens_opener.router)
+app.include_router(glens_policy.router)
+app.include_router(glens_config.router)
 app.include_router(glens_actor_routes.router)
 app.include_router(glens_lens_sessions.router)
 app.include_router(mcp_http.router)
