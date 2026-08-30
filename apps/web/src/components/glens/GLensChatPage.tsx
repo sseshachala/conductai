@@ -856,7 +856,13 @@ function ActionConfirmBubble({
         const data = await res.json()
         if (action === "confirm") {
           const label = data.tool_name ?? toolName
-          onResult(`${label} executed successfully.`)
+          const runId = data.result?.run_id as string | undefined
+          if (runId) {
+            const wfName = data.result?.workflow_name ?? label
+            onResult(`Run started for **${wfName}**. [View run →](/runs/${runId})`)
+          } else {
+            onResult(`${label} executed successfully.`)
+          }
         } else {
           onResult(`Action cancelled.`)
         }
