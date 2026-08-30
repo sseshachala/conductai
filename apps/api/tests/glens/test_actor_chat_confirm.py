@@ -170,3 +170,30 @@ def test_enforce_ownership_lenient_when_row_has_no_session():
 
     row = SimpleNamespace(requester_user_id="user_abc", session_id=None)
     _enforce_ownership(row, clerk_user_id="user_abc", session_id=None)
+
+
+def test_agent_proposed_row_can_be_confirmed_by_any_human():
+    """#1475 HITL: Lens session proposes as an agent identity, a real human
+    clicks Confirm. Ownership check must NOT require user equality when
+    the row was proposed by an agent."""
+    from app.modules.glens.actor.helpers import _enforce_ownership
+
+    row = SimpleNamespace(
+        requester_user_id="system:lens",
+        requester_agent_ident="ai_lens_session_1",
+        session_id=None,
+    )
+    _enforce_ownership(row, clerk_user_id="user_real_human", session_id=None)
+
+
+def test_agent_proposed_by_synthetic_user_id_also_lenient():
+    """Belt-and-braces: even without requester_agent_ident, a 'system:*'
+    requester_user_id marks the row as agent-proposed."""
+    from app.modules.glens.actor.helpers import _enforce_ownership
+
+    row = SimpleNamespace(
+        requester_user_id="system:lens",
+        requester_agent_ident=None,
+        session_id=None,
+    )
+    _enforce_ownership(row, clerk_user_id="user_real_human", session_id=None)

@@ -235,10 +235,28 @@ def _enforce_ownership(
     clerk_user_id: str | None,
     session_id: str | None,
 ) -> None:
-    """The proposer must own the pending action. Session_id must match when
-    both sides carry one — protects against a compromised LLM in a different
-    session confirming actions from this session."""
-    if row.requester_user_id and clerk_user_id and row.requester_user_id != clerk_user_id:
+    """Enforce that only an authorized decider can act on the pending row.
+
+    Two proposer classes:
+      1. Human-proposed (real clerk_user_id) — same human must decide, matches
+         the pre-actor-substrate model.
+      2. Agent-proposed (requester_agent_ident set, or synthetic user id like
+         'system:lens') — this is HITL: an agent proposes, a human approves.
+         Route auth already gated the caller via `platform.approvals.decide`,
+         so any workspace user with that permission may decide.
+
+    Session_id still matches when both sides carry one — protects against a
+    compromised LLM in a different session confirming this session's rows.
+    """
+    is_agent_proposed = bool(getattr(row, "requester_agent_ident", None)) or (
+        isinstance(row.requester_user_id, str) and row.requester_user_id.startswith("system:")
+    )
+    if (
+        not is_agent_proposed
+        and row.requester_user_id
+        and clerk_user_id
+        and row.requester_user_id != clerk_user_id
+    ):
         raise ConfirmError(403, "only the proposer can decide this action")
     if row.session_id and session_id and row.session_id != session_id:
         raise ConfirmError(403, "action belongs to a different chat session")
