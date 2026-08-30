@@ -37,6 +37,7 @@ from app.modules.glens.routers import config as glens_config
 from app.modules.glens.routers import feedback as glens_feedback
 from app.modules.glens.routers import opener as glens_opener
 from app.modules.glens.routers import policy as glens_policy
+from app.modules.glens.routers import session_stream as glens_session_stream
 from app.modules.glens.routers import sessions as glens_sessions
 from app.modules.glens.actor import routes as glens_actor_routes
 from app.modules.glens.routers import lens_sessions as glens_lens_sessions
@@ -162,6 +163,7 @@ app.include_router(guard_verify.router)
 app.include_router(guard_knowledge_search.router)
 app.include_router(glens_chat.router)
 app.include_router(glens_sessions.router)
+app.include_router(glens_session_stream.router)
 app.include_router(glens_feedback.router)
 app.include_router(glens_opener.router)
 app.include_router(glens_policy.router)
