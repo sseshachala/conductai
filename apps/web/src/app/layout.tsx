@@ -139,20 +139,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   if (clerkEnabled) {
     return (
-      <ClerkProvider afterSignInUrl="/workflows" afterSignUpUrl="/setup">
-        <html lang="en">
-          <head>
-            {jsonLd}
-            <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-          </head>
-          <body>
+      <html lang="en">
+        <head>
+          {jsonLd}
+          <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        </head>
+        <body><ClerkProvider signInFallbackRedirectUrl="/workflows" signUpFallbackRedirectUrl="/setup">
             {children}
             <script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" async></script>
             <script src="https://narratr.ai/embed.js" data-brand="conductai" async></script>
-          </body>
-        </html>
-      </ClerkProvider>
-    )
+          </ClerkProvider></body>
+      </html>
+    );
   }
   return (
     <html lang="en">

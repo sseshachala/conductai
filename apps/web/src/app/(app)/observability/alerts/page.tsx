@@ -366,5 +366,5 @@ export default function AlertsPage() {
         )}
       </div>
     </AppShell>
-  )
+  );
 }

@@ -358,11 +358,11 @@ function NotificationsCard({
                 </div>
               )}
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }
 
 

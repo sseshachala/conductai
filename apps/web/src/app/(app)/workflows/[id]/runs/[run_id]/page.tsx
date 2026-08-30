@@ -653,7 +653,7 @@ export default function RunDetailPage() {
         </div>
       </div>
     </AppShell>
-  )
+  );
 }
 
 function statusKey(status: string): string {
