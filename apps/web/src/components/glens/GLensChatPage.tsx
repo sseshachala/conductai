@@ -840,6 +840,7 @@ function ActionConfirmBubble({
   onResult: (text: string) => void
 }) {
   const [status, setStatus] = useState<"pending" | "loading" | "done">("pending")
+  const [idCopied, setIdCopied] = useState(false)
 
   async function post(action: "confirm" | "cancel") {
     setStatus("loading")
@@ -872,7 +873,34 @@ function ActionConfirmBubble({
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16, width: "100%" }}>
       <div style={{ maxWidth: "80%", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "4px 14px 14px 14px", padding: "16px 20px" }}>
         <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Action · {toolName}</div>
-        <div style={{ fontSize: 14, color: "var(--text)", marginBottom: 12, lineHeight: 1.5 }}>{summary}</div>
+        <div style={{ fontSize: 14, color: "var(--text)", marginBottom: 10, lineHeight: 1.5 }}>{summary}</div>
+
+        {/* Approval request identifier (#1468) — visible so the user knows which pending
+             action a natural-language "yes" is confirming when multiple are outstanding. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 11, color: "var(--text-muted)" }}>
+          <span style={{ textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 600 }}>ID</span>
+          <code style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: "var(--text-2)", fontSize: 11 }}>
+            {approvalRequestId.slice(0, 8)}…{approvalRequestId.slice(-4)}
+          </code>
+          <button
+            type="button"
+            title={idCopied ? "Copied" : "Copy full ID"}
+            onClick={() => {
+              navigator.clipboard.writeText(approvalRequestId).then(
+                () => { setIdCopied(true); setTimeout(() => setIdCopied(false), 1200) },
+                () => {},
+              )
+            }}
+            style={{
+              padding: "2px 6px", borderRadius: 4, border: "none",
+              background: idCopied ? "var(--accent-weak, rgba(59,130,246,0.12))" : "transparent",
+              color: idCopied ? "var(--accent-text, #2563eb)" : "var(--text-muted)",
+              cursor: "pointer", fontSize: 11, lineHeight: 1,
+            }}
+          >
+            {idCopied ? "✓" : "⧉"}
+          </button>
+        </div>
 
         {warnings && warnings.length > 0 && (
           <div style={{ fontSize: 12, color: "var(--warn, #f59e0b)", marginBottom: 12, padding: "8px 12px", background: "var(--warn-bg, #fef3c7)", borderRadius: 6 }}>
