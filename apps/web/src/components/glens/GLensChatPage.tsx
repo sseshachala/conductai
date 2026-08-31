@@ -1006,17 +1006,42 @@ function RunBubble({
   workflowName,
   initialStatus,
   stream,
+  authFetch,
 }: {
   runId: string
   workflowName: string
   initialStatus: string
   stream: LensSessionStream | null
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>
 }) {
   const [status, setStatus] = useState(initialStatus)
   const [error, setError] = useState<string | null>(null)
+  // If an SSE update lands before the bootstrap fetch resolves, the fetch
+  // result is stale — don't overwrite the fresher event.
+  const gotUpdate = useRef(false)
+
+  // Mount-race fix: the worker publishes run.status_changed as soon as it
+  // picks up the run — often BEFORE this component mounts and subscribes.
+  // On short runs both "running" and terminal events can fire before the
+  // subscription attaches, leaving the pill stuck at "pending" forever.
+  // Fetch current status once on mount so the pill catches up regardless
+  // of when SSE events landed.
+  useEffect(() => {
+    let cancelled = false
+    authFetch(`${API}/runs/${runId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled || !data?.status || gotUpdate.current) return
+        setStatus(data.status)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId])
 
   useLensEvent(stream, "run", runId, (evt) => {
     if (evt.type !== "run.status_changed") return
+    gotUpdate.current = true
     const nextStatus = (evt.payload?.status as string | undefined) ?? status
     setStatus(nextStatus)
     const evtErr = evt.payload?.error as string | undefined
@@ -1503,6 +1528,7 @@ export function GLensChatPage() {
                       workflowName={msg.workflowName}
                       initialStatus={msg.initialStatus}
                       stream={lensStream}
+                      authFetch={authFetch}
                     />
                   )}
                   {msg.kind === "policy_confirm" && (
