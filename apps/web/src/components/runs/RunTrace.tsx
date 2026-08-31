@@ -824,6 +824,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
     if (!ev.block_id) continue
 
     if (ev.kind === "block_started") {
+      if (blockMap[ev.block_id]) continue
       const row: BlockRow = {
         blockId: ev.block_id,
         label: (ev.payload.label as string) || ev.block_id,
@@ -872,6 +873,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       blockMap[ev.block_id].failure = failure
       blockMap[ev.block_id].nextAction = nextAction
     } else if (ev.kind === "block_skipped") {
+      if (blockMap[ev.block_id]) continue
       const row: BlockRow = {
         blockId: ev.block_id,
         label: (ev.payload.label as string) || ev.block_id,
