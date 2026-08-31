@@ -848,9 +848,30 @@ function ActionConfirmBubble({
 }) {
   const [status, setStatus] = useState<"pending" | "loading" | "done">("pending")
   const [idCopied, setIdCopied] = useState(false)
+  // Server-side status snapshot fetched on mount so a restored bubble for
+  // an already-decided action renders in the resolved state instead of
+  // showing active Confirm/Cancel buttons for something that already ran.
+  const [serverStatus, setServerStatus] = useState<"pending" | "approved" | "rejected" | "timed_out" | null>(null)
+  const [serverResult, setServerResult] = useState<Record<string, unknown> | null>(null)
   // Dedupe: whichever source (POST response or SSE event) reports resolution
   // first wins. Race is fine because the payload shape is identical.
   const handledRef = useRef(false)
+
+  // On mount, fetch the current status from the server. Skip when a
+  // decision has already been dispatched in this render (handledRef set).
+  useEffect(() => {
+    let cancelled = false
+    authFetch(`${API}/glens/actions/${approvalRequestId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled || !data?.status) return
+        setServerStatus(data.status as typeof serverStatus)
+        if (data.result) setServerResult(data.result as Record<string, unknown>)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [approvalRequestId])
 
   const finishText = (text: string) => {
     if (handledRef.current) return
@@ -966,7 +987,28 @@ function ActionConfirmBubble({
           </div>
         )}
 
-        {status === "pending" && (
+        {(serverStatus === "approved" || serverStatus === "rejected" || serverStatus === "timed_out") && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)" }}>
+            <span style={{
+              fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 999,
+              background:
+                serverStatus === "approved" ? "var(--ok-bg, #dcfce7)" :
+                serverStatus === "rejected" ? "var(--err-bg, #fee2e2)" :
+                "var(--surface-3, #f3f4f6)",
+              color:
+                serverStatus === "approved" ? "var(--ok-text, #166534)" :
+                serverStatus === "rejected" ? "var(--err-text, #991b1b)" :
+                "var(--text-muted)",
+              textTransform: "capitalize",
+            }}>{serverStatus === "timed_out" ? "Expired" : serverStatus}</span>
+            {serverStatus === "approved" && (serverResult?.run_id as string | undefined) && (
+              <a href={`/runs/${serverResult!.run_id}`} style={{ color: "var(--accent)", textDecoration: "none" }}>
+                View run →
+              </a>
+            )}
+          </div>
+        )}
+        {status === "pending" && (serverStatus === null || serverStatus === "pending") && (
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <button
               onClick={() => post("confirm")}
