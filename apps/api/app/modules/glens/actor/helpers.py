@@ -372,6 +372,12 @@ def dispatch_confirm(
 
     _publish_action_event(row, "action.confirmed", result=result)
 
+    # #1480 Gap 2 — persist a run_started envelope to the originating chat
+    # session so RunBubble rehydrates on refresh. Natural-language confirm
+    # path does this via chat.py's _extract_run_started_envelope; the
+    # button-click path (this function) needs it done explicitly.
+    _persist_run_started_envelope(db, row, result)
+
     return {
         "executed": True,
         "cached": False,
@@ -416,3 +422,35 @@ def dispatch_cancel(
         "action_id": str(row.id),
         "tool_name": row.tool_name,
     }
+
+
+def _persist_run_started_envelope(db: Session, row, result: Any) -> None:
+    """Append a run_started envelope to the originating Lens chat session so
+    the RunBubble rehydrates on refresh. No-op unless the row has a session_id
+    and the execute result contains a run_id. Fail-open — persistence must not
+    break the confirm.
+    """
+    if not row.session_id or not isinstance(result, dict) or not result.get("run_id"):
+        return
+    import json as _json
+    import uuid as _uuid
+    from app.modules.glens.models import GlensChatSession
+    try:
+        sess = db.query(GlensChatSession).filter(
+            GlensChatSession.id == _uuid.UUID(str(row.session_id))
+        ).first()
+        if sess is None:
+            return
+        messages = _json.loads(sess.messages or "[]")
+        envelope = {
+            "run_started": {
+                "run_id": str(result["run_id"]),
+                "workflow_name": result.get("workflow_name") or row.tool_name or "workflow",
+                "status": result.get("status") or "pending",
+            }
+        }
+        messages.append({"role": "assistant", "content": _json.dumps(envelope)})
+        sess.messages = _json.dumps(messages)
+        db.commit()
+    except Exception:
+        db.rollback()
