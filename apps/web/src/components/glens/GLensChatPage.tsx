@@ -997,6 +997,13 @@ function ActionConfirmBubble({
 }
 
 // ─── Run bubble ──────────────────────────────────────────────────────────────
+
+type RunBlockState = {
+  id: string
+  status: "pending" | "running" | "succeeded" | "failed"
+  label?: string
+  error?: string
+}
 // #1480 PR 5 — live run status inline in chat. Subscribes to run.status_changed
 // events on the session stream and updates its pill in place. Always renders
 // the "View run →" link so the user can jump to the run detail page.
@@ -1016,6 +1023,9 @@ function RunBubble({
 }) {
   const [status, setStatus] = useState(initialStatus)
   const [error, setError] = useState<string | null>(null)
+  // Per-block timeline (#1480 PR 7). Order is insertion order (Map preserves
+  // it), which matches the DAG execution order the worker publishes in.
+  const [blocks, setBlocks] = useState<Map<string, RunBlockState>>(new Map())
   // If an SSE update lands before the bootstrap fetch resolves, the fetch
   // result is stale — don't overwrite the fresher event.
   const gotUpdate = useRef(false)
@@ -1040,12 +1050,31 @@ function RunBubble({
   }, [runId])
 
   useLensEvent(stream, "run", runId, (evt) => {
-    if (evt.type !== "run.status_changed") return
     gotUpdate.current = true
-    const nextStatus = (evt.payload?.status as string | undefined) ?? status
-    setStatus(nextStatus)
-    const evtErr = evt.payload?.error as string | undefined
-    if (evtErr) setError(evtErr)
+    if (evt.type === "run.status_changed") {
+      const nextStatus = (evt.payload?.status as string | undefined) ?? status
+      setStatus(nextStatus)
+      const evtErr = evt.payload?.error as string | undefined
+      if (evtErr) setError(evtErr)
+      return
+    }
+    // Block-level events (#1480 PR 7 timeline)
+    const blockId = evt.payload?.block_id as string | undefined
+    if (!blockId) return
+    const label = evt.payload?.label as string | undefined
+    const errMsg = evt.payload?.error as string | undefined
+    setBlocks(prev => {
+      const next = new Map(prev)
+      const cur = next.get(blockId) ?? { id: blockId, status: "pending" }
+      if (evt.type === "run.block_started") {
+        next.set(blockId, { ...cur, status: "running", label: label ?? cur.label })
+      } else if (evt.type === "run.block_completed") {
+        next.set(blockId, { ...cur, status: "succeeded" })
+      } else if (evt.type === "run.block_failed") {
+        next.set(blockId, { ...cur, status: "failed", error: errMsg ?? cur.error })
+      }
+      return next
+    })
   })
 
   const pillColor = (() => {
@@ -1073,6 +1102,29 @@ function RunBubble({
         {error && (
           <div style={{ fontSize: 12, color: "var(--err-text, #991b1b)", background: "var(--err-bg, #fee2e2)", padding: "8px 12px", borderRadius: 6 }}>
             {error}
+          </div>
+        )}
+        {blocks.size > 0 && (
+          <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+            {Array.from(blocks.values()).map(b => (
+              <div key={b.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, padding: "4px 0", color: "var(--text-2)" }}>
+                <span style={{
+                  display: "inline-block", width: 14, textAlign: "center",
+                  color: b.status === "succeeded" ? "var(--ok-text, #166534)"
+                       : b.status === "failed"    ? "var(--err-text, #991b1b)"
+                       : b.status === "running"   ? "var(--accent-text, #2563eb)"
+                       : "var(--text-muted)",
+                }}>{b.status === "succeeded" ? "✓" : b.status === "failed" ? "✗" : b.status === "running" ? "●" : "○"}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, color: "var(--text)" }}>{b.label ?? b.id}</div>
+                  {b.error && (
+                    <div style={{ fontSize: 11, color: "var(--err-text, #991b1b)", marginTop: 2 }}>
+                      {b.error}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

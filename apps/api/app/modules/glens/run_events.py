@@ -1,4 +1,4 @@
-"""Publish run.* events on the Lens session channel (#1480 PR 5).
+"""Publish run.* events on the Lens session channel (#1480 PR 5 + PR 7).
 
 Only Lens-originated runs (run.session_id is not NULL) push events —
 every other run trigger (workflow UI, CLI, webhooks, scheduler) leaves
@@ -8,10 +8,8 @@ Runtime call sites:
 - executor.py at status → "running"  (worker picks up the run)
 - executor.py at status → "failed"   (worker crash / uncaught exception)
 - dag_runner.py at status → "succeeded" | "failed" (normal completion)
-
-Block-level events (run.block_started / run.block_completed) are a
-follow-up — this PR wires the coarse status transitions only, which
-already unlocks live pill updates on the <RunBubble>.
+- dag_runner.py at each block start / complete / fail (#1480 PR 7 —
+  timeline surface inside <RunBubble>)
 """
 from __future__ import annotations
 
@@ -40,4 +38,32 @@ def publish_run_status(run: Run, *, error: str | None = None) -> None:
         "run.status_changed",
         entity={"type": "run", "id": str(run.id)},
         payload=payload,
+    )
+
+
+def publish_run_block_event(
+    run: Run,
+    block_id: str,
+    event_type: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    """Tee a block-level event to the Lens session stream so the <RunBubble>
+    timeline (#1480 PR 7) can render step-by-step progress inline.
+
+    event_type is one of `run.block_started`, `run.block_completed`, or
+    `run.block_failed`. `block_id` is always included in the payload so
+    subscribers can key on it in their per-block reducer.
+
+    No-op when the run has no session_id (non-Lens runs). Fail-open via
+    publish_session_event."""
+    if not getattr(run, "session_id", None):
+        return
+    body: dict[str, Any] = {"block_id": block_id}
+    if payload:
+        body.update(payload)
+    publish_session_event(
+        str(run.session_id),
+        event_type,
+        entity={"type": "run", "id": str(run.id)},
+        payload=body,
     )
