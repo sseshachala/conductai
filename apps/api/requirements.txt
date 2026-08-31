@@ -23,6 +23,6 @@ pyyaml==6.0.2
 jsonschema~=4.23
 jinja2~=3.1
 structlog==24.4.0
-sentry-sdk[fastapi]==2.68.0
+sentry-sdk[fastapi]==2.68.1
 mcp>=1.28,<2  # v2 requires client rewrite — see #1169 for the migration plan
 pgvector==0.3.6
