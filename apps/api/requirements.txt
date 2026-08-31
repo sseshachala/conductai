@@ -11,7 +11,7 @@ openai==1.51.0
 python-dotenv==1.2.2
 httpx==0.27.2
 brotli==1.2.0
-cryptography>=50.0.0,<51
+cryptography>=50.0.1,<51
 PyJWT[crypto]>=2.13.0
 modal~=0.64
 paramiko>=4.0.0,<5
