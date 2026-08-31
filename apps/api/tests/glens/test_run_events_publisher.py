@@ -68,3 +68,44 @@ def test_no_publish_when_session_id_attr_missing() -> None:
     with patch("app.modules.glens.run_events.publish_session_event") as mock_pub:
         publish_run_status(run)
     mock_pub.assert_not_called()
+
+
+
+# ── publish_run_block_event (#1480 PR 7 — block-level timeline) ────────────
+
+from app.modules.glens.run_events import publish_run_block_event
+
+
+def test_block_event_no_op_when_run_has_no_session_id() -> None:
+    run = _run(session_id=None)
+    with patch("app.modules.glens.run_events.publish_session_event") as mock_pub:
+        publish_run_block_event(run, "b-1", "run.block_started")
+    mock_pub.assert_not_called()
+
+
+def test_block_event_puts_block_id_in_payload() -> None:
+    run = _run()
+    with patch("app.modules.glens.run_events.publish_session_event") as mock_pub:
+        publish_run_block_event(run, "b-1", "run.block_started", {"label": "discover"})
+    kwargs = mock_pub.call_args.kwargs
+    assert kwargs["payload"] == {"block_id": "b-1", "label": "discover"}
+    assert kwargs["entity"] == {"type": "run", "id": "run-xyz"}
+
+
+def test_block_event_defaults_payload_to_block_id_only() -> None:
+    run = _run()
+    with patch("app.modules.glens.run_events.publish_session_event") as mock_pub:
+        publish_run_block_event(run, "b-1", "run.block_completed")
+    assert mock_pub.call_args.kwargs["payload"] == {"block_id": "b-1"}
+
+
+def test_block_event_error_payload_shape() -> None:
+    run = _run()
+    with patch("app.modules.glens.run_events.publish_session_event") as mock_pub:
+        publish_run_block_event(run, "b-1", "run.block_failed", {
+            "error": "boom", "reason_code": "EXECUTION_ERROR",
+        })
+    kwargs = mock_pub.call_args.kwargs
+    assert kwargs["payload"] == {
+        "block_id": "b-1", "error": "boom", "reason_code": "EXECUTION_ERROR",
+    }
