@@ -836,6 +836,7 @@ function ActionConfirmBubble({
   stream,
   onResult,
   onRunStarted,
+  onRetry,
 }: {
   toolName: string
   approvalRequestId: string
@@ -846,6 +847,9 @@ function ActionConfirmBubble({
   stream: LensSessionStream | null
   onResult: (text: string) => void
   onRunStarted?: (runId: string, workflowName: string, initialStatus: string) => void
+  // Regression 4 fix — invoked when the user retries a failed run from the
+  // decided-approved bubble. Parent spawns a new RunBubble for the new run id.
+  onRetry?: (newRunId: string, workflowName: string) => void
 }) {
   const [status, setStatus] = useState<"pending" | "loading" | "done">("pending")
   const [idCopied, setIdCopied] = useState(false)
@@ -891,6 +895,17 @@ function ActionConfirmBubble({
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedRunId])
+
+  // Regression 3 fix — subscribe to run events for this bubble's run so
+  // Cancel/Retry/Approve/Reject buttons reflect current run status instead of
+  // the stale snapshot from mount. Refetches runData on any run.* event.
+  useLensEvent(stream, "run", resolvedRunId ?? "", (_evt) => {
+    if (!resolvedRunId) return
+    authFetch(`${API}/runs/${resolvedRunId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (data) setRunData(data as RunMeta) })
+      .catch(() => {})
+  })
 
   // #1511 — auto-open the panel when a decided-approved bubble with a run
   // becomes visible, so the demo flow drops straight into the run detail.
@@ -1022,13 +1037,19 @@ function ActionConfirmBubble({
     const initial_state: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(runStateRec)) {
       if (k.startsWith("__")) continue
-      // We don't have the block-ID Map here, so filter only underscore-prefixed
-      // trigger + non-object values that look like inputs. Server-side validation
-      // will catch anything that slips through.
+      // Same heuristic as RunBubble's retry: keep single-underscore meta keys
+      // (_trigger) and scalars; drop object-typed non-underscore keys (likely
+      // block outputs). Server-side validate_run_start_inputs is the backstop.
       if (typeof v === "object" && v !== null && !k.startsWith("_")) continue
       initial_state[k] = v
     }
-    _postRunAction(`${API}/workflows/${runData!.workflow_id}/runs`, { initial_state })
+    _postRunAction(`${API}/workflows/${runData!.workflow_id}/runs`, { initial_state }, (data) => {
+      // Regression 4 fix — spawn a new RunBubble instead of leaving the new
+      // run orphaned. Without this the Retry button stays visible and the
+      // user might spam-click it, spawning a run per click.
+      const newId = data.id as string | undefined
+      if (newId && onRetry) onRetry(newId, (runData?.workflow_id as string | undefined) ?? "workflow")
+    })
   }
 
   return (
@@ -1266,7 +1287,12 @@ function RunBubble({
           if (gotUpdate.current === false) {
             const seeded = new Map<string, RunBlockState>()
             for (const [key, val] of Object.entries(st)) {
-              if (key.startsWith("__")) continue
+              // Regression 2 fix: skip system keys (__foo) AND meta keys
+              // (_trigger, _workspace, etc.). Single-underscore prefix means
+              // "run metadata, not a block output" by convention. Without
+              // this, _trigger got treated as a block on restore and the
+              // retry filter (#1547) then dropped it, losing webhook context.
+              if (key.startsWith("_")) continue
               const failed = val && typeof val === "object" && "error" in (val as Record<string, unknown>)
               seeded.set(key, {
                 id: key,
@@ -2060,6 +2086,10 @@ export function GLensChatPage() {
                         { role: "assistant", kind: "run", runId, workflowName: wfName, initialStatus },
                         ...prev.slice(i + 1),
                       ]) : undefined}
+                      onRetry={(newRunId, wfName) => setMessages(prev => [
+                        ...prev,
+                        { role: "assistant", kind: "run", runId: newRunId, workflowName: wfName, initialStatus: "pending" },
+                      ])}
                     />
                   )}
                   {msg.kind === "run" && (
