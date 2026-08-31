@@ -52,6 +52,10 @@ interface Props {
   getToken?: (() => Promise<string | null>) | null
   onSseConnected?: () => void
   onSseEnded?: () => void
+  // #1512 followup — Lens embed lives inside a scrollable chat container.
+  // Auto-scroll on every SSE event yanks the container around and reads as
+  // flicker to the user. Canvas page still uses the auto-scroll default.
+  embedded?: boolean
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -683,7 +687,7 @@ async function buildHeaders(getToken?: (() => Promise<string | null>) | null, wo
   return h
 }
 
-export default function RunTrace({ workflowId, runId, initialStatus, initialMeta, maxTurns, getToken, onSseConnected, onSseEnded }: Props) {
+export default function RunTrace({ workflowId, runId, initialStatus, initialMeta, maxTurns, getToken, onSseConnected, onSseEnded, embedded = false }: Props) {
   const { activeWorkspace } = useWorkspace()
   const [events, setEvents] = useState<RunEvent[]>([])
   const [status, setStatus] = useState(initialStatus)
@@ -787,7 +791,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId, runId, done])
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }, [events])
+  useEffect(() => { if (!embedded) bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }, [events, embedded])
 
   // ── Build block rows from events ──────────────────────────────────────────
 

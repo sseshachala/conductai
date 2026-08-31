@@ -376,6 +376,7 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
             }}
             maxTurns={run.max_turns ?? null}
             getToken={getToken}
+            embedded={embedded}
             onSseConnected={() => { setSseActive(true); if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }}
             onSseEnded={() => {
               setSseActive(false)
