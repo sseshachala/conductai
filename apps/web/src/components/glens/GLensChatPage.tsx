@@ -11,7 +11,7 @@ import { GlensPageBubble } from "@/components/glens/GlensPageBubble"
 import { GenericTableBubble } from "@/components/glens/GenericTableBubble"
 import { BlocksBubble } from "@/components/glens/BlocksBubble"
 import { FeedbackButtons } from "@/components/glens/FeedbackButtons"
-import RunDetailPanel from "@/components/runs/RunDetailPanel"
+import RunDetailPanel, { type RunMeta } from "@/components/runs/RunDetailPanel"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1095,7 +1095,15 @@ function RunBubble({
   const [now, setNow] = useState<number>(() => Date.now())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // #1506 — top-level expand toggle for the embedded RunDetailPanel
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(() => {
+    // #1508 follow-up — persist expand state across refresh, per runId.
+    // localStorage (not sessionStorage) so re-opening the tab keeps context.
+    try { return typeof window !== "undefined" && window.localStorage.getItem(`lens:panelOpen:${runId}`) === "1" }
+    catch { return false }
+  })
+  // #1508 follow-up — cache the /runs/{id} response so the embedded
+  // RunDetailPanel can skip its own initial fetch (initialRun prop).
+  const [runData, setRunData] = useState<RunMeta | null>(null)
   // If an SSE update lands before the bootstrap fetch resolves, the fetch
   // result is stale — don't overwrite the fresher event.
   const gotUpdate = useRef(false)
@@ -1112,6 +1120,7 @@ function RunBubble({
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
         if (cancelled) return
+        if (data) setRunData(data as RunMeta)
         if (data?.state) {
           const st = data.state as Record<string, unknown>
           setRunState(st)
@@ -1153,6 +1162,7 @@ function RunBubble({
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
         if (cancelled || !data) return
+        setRunData(data as RunMeta)
         if (data.state) setRunState(data.state as Record<string, unknown>)
         if (data.outcome) setOutcome(data.outcome as { type?: string; artifact_url?: string })
         if (data.completed_at) setCompletedAt(new Date(data.completed_at as string).getTime())
@@ -1174,6 +1184,12 @@ function RunBubble({
   useEffect(() => {
     if (status === "paused") setPanelOpen(true)
   }, [status])
+
+  // #1508 follow-up — mirror panelOpen to localStorage so refresh restores it.
+  useEffect(() => {
+    try { window.localStorage.setItem(`lens:panelOpen:${runId}`, panelOpen ? "1" : "0") }
+    catch { /* private-mode / quota — best-effort */ }
+  }, [panelOpen, runId])
 
   useLensEvent(stream, "run", runId, (evt) => {
     gotUpdate.current = true
@@ -1414,7 +1430,7 @@ function RunBubble({
         )}
         {panelOpen && workflowId && (
           <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
-            <RunDetailPanel workflowId={workflowId} runId={runId} embedded />
+            <RunDetailPanel workflowId={workflowId} runId={runId} embedded initialRun={runData ?? undefined} />
           </div>
         )}
       </div>
