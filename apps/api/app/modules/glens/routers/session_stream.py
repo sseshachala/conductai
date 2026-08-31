@@ -53,6 +53,82 @@ def _sse_frame(entry_id: str, data: str) -> str:
     return f"data: {data}\n\n"
 
 
+async def _stream_events(
+    session_id: str,
+    last_event_id: str | None,
+    is_disconnected,
+):
+    """Async generator that drives the SSE body for one Lens session.
+
+    Extracted from the endpoint so it can be unit-tested against a real
+    Redis without going through httpx / ASGITransport (which buffers
+    streaming responses — see PR 6 for the incident).
+
+    Ordering: subscribe FIRST so events published during replay queue on
+    pub/sub — otherwise a race can drop events landing between the
+    XREAD and the SUBSCRIBE.
+
+    `is_disconnected` is a zero-arg awaitable returning bool — the
+    endpoint passes `request.is_disconnected` from FastAPI's Request;
+    tests pass a stub.
+    """
+    stream_key = _stream_key(session_id)
+    channel_key = _channel_key(session_id)
+
+    r = aioredis.from_url(settings.redis_url, decode_responses=True)
+    pubsub = r.pubsub()
+    try:
+        await pubsub.subscribe(channel_key)
+
+        if last_event_id:
+            try:
+                replay = await r.xread({stream_key: last_event_id})
+                for _, entries in replay:
+                    for entry_id, fields in entries:
+                        body = fields.get("body")
+                        if not body:
+                            continue
+                        envelope = json.dumps({"id": entry_id, **json.loads(body)})
+                        yield _sse_frame(entry_id, envelope)
+            except Exception as exc:
+                log.warning(
+                    "glens.stream.replay_failed",
+                    session_id=session_id,
+                    last_event_id=last_event_id,
+                    error=str(exc),
+                )
+
+        loop = asyncio.get_event_loop()
+        last_activity = loop.time()
+
+        while True:
+            if await is_disconnected():
+                break
+
+            msg = await pubsub.get_message(
+                ignore_subscribe_messages=True,
+                timeout=PUBSUB_POLL_SECONDS,
+            )
+            if msg is not None:
+                raw = msg.get("data") or ""
+                try:
+                    envelope = json.loads(raw)
+                    yield _sse_frame(envelope.get("id", ""), raw)
+                except Exception:
+                    pass
+                last_activity = loop.time()
+            elif loop.time() - last_activity > IDLE_KEEPALIVE_SECONDS:
+                yield ": keepalive\n\n"
+                last_activity = loop.time()
+    finally:
+        try:
+            await pubsub.unsubscribe(channel_key)
+            await pubsub.close()
+            await r.close()
+        except Exception:
+            pass
+
+
 @router.get("/sessions/{session_id}/stream")
 async def glens_session_stream(
     session_id: str,
@@ -72,75 +148,8 @@ async def glens_session_stream(
     ws_uuid = _parse_workspace_id(workspace_id)
     _get_session(db, session_id, ws_uuid)  # 404 if not in workspace
 
-    stream_key = _stream_key(session_id)
-    channel_key = _channel_key(session_id)
-
-    async def event_stream():
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
-        pubsub = r.pubsub()
-        try:
-            # Subscribe FIRST so events published during replay queue on
-            # pub/sub — otherwise a race can drop events landing between
-            # the XREAD and the SUBSCRIBE.
-            await pubsub.subscribe(channel_key)
-
-            # Replay from Last-Event-Id if the client is reconnecting.
-            if last_event_id:
-                try:
-                    replay = await r.xread({stream_key: last_event_id})
-                    for _, entries in replay:
-                        for entry_id, fields in entries:
-                            body = fields.get("body")
-                            if not body:
-                                continue
-                            # Wrap the stored body with the stream id so
-                            # the client sees the same envelope shape it
-                            # gets from live pub/sub messages.
-                            envelope = json.dumps({"id": entry_id, **json.loads(body)})
-                            yield _sse_frame(entry_id, envelope)
-                except Exception as exc:
-                    log.warning(
-                        "glens.stream.replay_failed",
-                        session_id=session_id,
-                        last_event_id=last_event_id,
-                        error=str(exc),
-                    )
-
-            # Live pub/sub loop.
-            loop = asyncio.get_event_loop()
-            last_activity = loop.time()
-
-            while True:
-                if await request.is_disconnected():
-                    break
-
-                msg = await pubsub.get_message(
-                    ignore_subscribe_messages=True,
-                    timeout=PUBSUB_POLL_SECONDS,
-                )
-                if msg is not None:
-                    raw = msg.get("data") or ""
-                    try:
-                        envelope = json.loads(raw)
-                        yield _sse_frame(envelope.get("id", ""), raw)
-                    except Exception:
-                        # Malformed publish — skip, don't crash the stream.
-                        pass
-                    last_activity = loop.time()
-                elif loop.time() - last_activity > IDLE_KEEPALIVE_SECONDS:
-                    # Comment frame — clients ignore, proxies see traffic.
-                    yield ": keepalive\n\n"
-                    last_activity = loop.time()
-        finally:
-            try:
-                await pubsub.unsubscribe(channel_key)
-                await pubsub.close()
-                await r.close()
-            except Exception:
-                pass
-
     return StreamingResponse(
-        event_stream(),
+        _stream_events(session_id, last_event_id, request.is_disconnected),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
