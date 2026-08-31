@@ -134,6 +134,12 @@ def _execute_run_workflow(ctx: ActionCtx, resolved: dict[str, Any]) -> dict[str,
         status="pending",
         state=initial_state,
         max_turns=getattr(workflow, "default_max_turns", None) or 20,
+        # #1480 PR 14 — thread the originating Lens session through so the
+        # worker's publish_run_status / publish_run_block_event calls have
+        # somewhere to route SSE events. Without this the RunBubble in
+        # chat never gets the block timeline because publisher no-ops on
+        # session_id=NULL.
+        session_id=ctx.session_id,
     )
     ctx.db.add(run)
     ctx.db.commit()
