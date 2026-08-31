@@ -160,7 +160,12 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
         if (brainNode?.data?.model) setAgentModel(brainNode.data.model)
       }
       setLoading(false)
-      if (runData && !isTerminal(runData.status)) {
+      // #1519 — skip the 4s poll when embedded. Each poll rewrites `run`
+      // which re-renders StatRow + block timeline and reads as flicker inside
+      // the Lens bubble. RunTrace has its own SSE for block-level updates;
+      // StatRow (tokens/cost/duration) stays with mount-time values until the
+      // user reopens the panel or the run finishes.
+      if (runData && !isTerminal(runData.status) && !embedded) {
         pollRef.current = setInterval(async () => { await fetchRun() }, 4000)
       }
     }
@@ -385,7 +390,9 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
             onSseEnded={() => {
               setSseActive(false)
               if (!run || isTerminal(run.status)) return
-              if (!pollRef.current) {
+              // #1519 — don't restart the fallback poll when embedded; same
+              // flicker source as the mount poll above.
+              if (!pollRef.current && !embedded) {
                 pollRef.current = setInterval(async () => { await fetchRun() }, 4000)
               }
             }}

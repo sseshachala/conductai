@@ -805,7 +805,10 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   // scrollable ancestor, and only if the target is off-screen. On the canvas
   // page that's the window; inside the embedded panel it's the panel's own
   // overflow container (#1518). Never touches the parent Lens chat.
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }) }, [events])
+  // #1519 — instant, no smooth animation. Each SSE event snapped the
+  // container smoothly which read as constant motion / flicker inside the
+  // embedded panel. Instant snap = new content visible, no perceived motion.
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "auto", block: "nearest" }) }, [events])
 
   // ── Build block rows from events ──────────────────────────────────────────
   // #1516 — memoize so blockRows references are stable across renders that
