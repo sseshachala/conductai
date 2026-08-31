@@ -789,6 +789,14 @@ async def glens_chat_stream(
             confirm_envelope = _extract_confirm_envelope(final_msgs)
             run_started_envelope = _extract_run_started_envelope(final_msgs)
 
+            # #1480 PR 14 — skip prose streaming entirely when we have a
+            # run_started envelope. <RunBubble> IS the answer; streaming
+            # "Run triggered successfully!" underneath would flash for
+            # ~500ms before the frontend replaces it with the bubble.
+            if run_started_envelope:
+                await event_q.put({"type": "done", "answer": "", "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope})
+                return
+
             if early_text:
                 answer = early_text
                 tool_results = [msg.get("content", "") for msg in final_msgs if msg.get("role") == "tool"]
