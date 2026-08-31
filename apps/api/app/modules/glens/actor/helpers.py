@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.modules.glens.actor.types import ActionCtx, ActionSpec
+from app.modules.glens.events import publish_session_event
 from app.modules.guard.approval import (
     apply_decision,
     can_decide,
@@ -25,6 +26,32 @@ from app.modules.guard.approval import (
     sweep_if_timed_out,
 )
 from app.modules.guard.models import GuardApprovalRequest
+
+
+def _publish_action_event(row: GuardApprovalRequest, event_type: str, *, result: Any = None, cached: bool = False) -> None:
+    """Tee an action.* event to the row's originating Lens session so any
+    open session-stream connection can update its bubble reactively.
+
+    No-op when the row has no session_id (HTTP actor calls without chat
+    context — nothing to route to). Fail-open inside publish_session_event
+    means Redis outages never fail the decide operation.
+    """
+    if not row.session_id:
+        return
+    payload: dict[str, Any] = {
+        "tool_name": row.tool_name,
+        "status": row.status,
+    }
+    if result is not None:
+        payload["result"] = result
+    if cached:
+        payload["cached"] = True
+    publish_session_event(
+        row.session_id,
+        event_type,
+        entity={"type": "approval", "id": str(row.id)},
+        payload=payload,
+    )
 
 
 def _idempotency_key(tool_name: str, resolved_input: dict[str, Any]) -> str:
@@ -285,13 +312,17 @@ def dispatch_confirm(
 
     # Idempotent success — already executed, return cached result.
     if row.status == "approved" and (row.tool_input or {}).get("_execute_result") is not None:
+        cached_result = row.tool_input.get("_execute_result")
+        # Re-publish so cross-tab subscribers that missed the first event
+        # (e.g. tab opened after the confirm) still see the resolution.
+        _publish_action_event(row, "action.confirmed", result=cached_result, cached=True)
         return {
             "executed": True,
             "cached": True,
             "action_id": str(row.id),
             "tool_name": row.tool_name,
             "status": row.status,
-            "result": row.tool_input.get("_execute_result"),
+            "result": cached_result,
         }
 
     if row.status != "pending":
@@ -339,6 +370,8 @@ def dispatch_confirm(
     row.tool_input = {**(row.tool_input or {}), "_execute_result": result}
     db.commit()
 
+    _publish_action_event(row, "action.confirmed", result=result)
+
     return {
         "executed": True,
         "cached": False,
@@ -375,6 +408,9 @@ def dispatch_cancel(
         decider_user_id=clerk_user_id,
         reason=reason or f"lens.actor.cancelled:{row.tool_name}",
     )
+
+    _publish_action_event(row, "action.cancelled")
+
     return {
         "cancelled": True,
         "action_id": str(row.id),
