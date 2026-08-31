@@ -2426,7 +2426,7 @@ export default function DocsPage() {
     <div className="min-h-screen bg-stone-50">
       {/* Tab bar */}
       <div className="bg-white border-b border-stone-200 px-6">
-        <div className="max-w-5xl mx-auto flex gap-0">
+        <div className="max-w-5xl mx-auto flex gap-0 items-center">
           {TABS.map(tab => (
             <button
               key={tab.id}
@@ -2440,6 +2440,15 @@ export default function DocsPage() {
               {tab.label}
             </button>
           ))}
+          <a
+            href="https://github.com/sseshachala/conductai/tree/main/docs#readme"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto px-4 py-3 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors"
+            title="Full documentation on GitHub — Start, Reference, Concepts, Automate, Examples, Policy, Integrations, ADRs"
+          >
+            Full docs on GitHub ↗
+          </a>
         </div>
       </div>
 
