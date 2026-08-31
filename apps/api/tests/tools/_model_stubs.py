@@ -94,6 +94,10 @@ class FakeWorkflow:
     name = FakeCol()
     workspace_id = FakeCol()
     playbook_slug = FakeCol()
+    archived_at = FakeCol()
+    is_template = FakeCol()
+    updated_at = FakeCol()
+    created_at = FakeCol()
 
 
 class FakeWorkflowVersion:
@@ -114,8 +118,14 @@ class FakeGuardAuditEvent:
     rule_id = FakeCol()
     ts = FakeCol()
     cost_usd_after = FakeCol()
+    cost_usd_before = FakeCol()
+    tokens_before = FakeCol()
+    tokens_after = FakeCol()
     agent_identity_id = FakeCol()
     clerk_user_id = FakeCol()
+    session_id = FakeCol()
+    conductai_workflow_id = FakeCol()
+    user_email = FakeCol()
 
 
 class FakeRunAnalyticsEvent:
@@ -161,6 +171,7 @@ class FakeWatchdogEvent:
     workflow_id = FakeCol()
     payload = FakeCol()
     created_at = FakeCol()
+    resolved_at = FakeCol()
 
 
 # Map of (dotted patch target, fake class). Extend when a new model shows up.
@@ -199,6 +210,8 @@ class StubQuery:
     def count(self): return self._count
     def scalar(self): return self._scalar
     def first(self): return self._first
+    def one(self): return self._first
+    def one_or_none(self): return self._first
 
 
 class StubDB:
