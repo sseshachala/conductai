@@ -173,7 +173,11 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
   // parent (Lens RunBubble, iframe host, etc.) controls the container.
   const Wrapper = ({ children }: { children: React.ReactNode }) =>
     embedded
-      ? <>{children}</>
+      // #1518 — own scroll container when embedded. Panel content grows inside
+      // a bounded max-height so streaming block events don't yank the parent
+      // Lens chat around. scrollIntoView({ block: "nearest" }) inside RunTrace
+      // now targets THIS container, not the whole page.
+      ? <div style={{ maxHeight: "70vh", overflowY: "auto", padding: "4px 2px" }}>{children}</div>
       : <div style={{ maxWidth: 1120, margin: "0 auto", padding: "28px 24px" }}>{children}</div>
 
   if (loading) return (

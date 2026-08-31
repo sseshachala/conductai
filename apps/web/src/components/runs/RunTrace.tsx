@@ -801,7 +801,11 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId, runId, done])
 
-  useEffect(() => { if (!embedded) bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }, [events, embedded])
+  // #1518 — safe on both surfaces. `block: "nearest"` only scrolls the closest
+  // scrollable ancestor, and only if the target is off-screen. On the canvas
+  // page that's the window; inside the embedded panel it's the panel's own
+  // overflow container (#1518). Never touches the parent Lens chat.
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }) }, [events])
 
   // ── Build block rows from events ──────────────────────────────────────────
   // #1516 — memoize so blockRows references are stable across renders that
