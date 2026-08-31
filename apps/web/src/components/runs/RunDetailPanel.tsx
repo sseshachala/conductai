@@ -44,6 +44,10 @@ export interface RunMeta {
   paused_at: string | null
   current_block_id: string | null
   workflow_version_id: string
+  // Optional convenience field — /runs/{id} returns it (RunWithWorkflowOut),
+  // /workflows/{wf}/runs/{id} does not. Used by ActionConfirmBubble (#1511)
+  // to embed <RunDetailPanel> without a redundant workflow_id lookup.
+  workflow_id?: string
   state?: Record<string, unknown> | null
   max_turns?: number | null
   actual_turns?: number | null
