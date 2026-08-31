@@ -11,6 +11,7 @@ import { GlensPageBubble } from "@/components/glens/GlensPageBubble"
 import { GenericTableBubble } from "@/components/glens/GenericTableBubble"
 import { BlocksBubble } from "@/components/glens/BlocksBubble"
 import { FeedbackButtons } from "@/components/glens/FeedbackButtons"
+import RunDetailPanel from "@/components/runs/RunDetailPanel"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1093,6 +1094,8 @@ function RunBubble({
   const [completedAt, setCompletedAt] = useState<number | null>(null)
   const [now, setNow] = useState<number>(() => Date.now())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // #1506 — top-level expand toggle for the embedded RunDetailPanel
+  const [panelOpen, setPanelOpen] = useState(false)
   // If an SSE update lands before the bootstrap fetch resolves, the fetch
   // result is stale — don't overwrite the fresher event.
   const gotUpdate = useRef(false)
@@ -1164,6 +1167,12 @@ function RunBubble({
     if (status !== "running" && status !== "pending") return
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
+  }, [status])
+
+  // #1506 — auto-open the full detail panel when the run pauses for approval,
+  // so the Approvals tab is one click away without hunting for a chevron.
+  useEffect(() => {
+    if (status === "paused") setPanelOpen(true)
   }, [status])
 
   useLensEvent(stream, "run", runId, (evt) => {
@@ -1252,6 +1261,18 @@ function RunBubble({
               {formatElapsed(startedAt, completedAt ?? now)}
             </span>
           )}
+          <button
+            onClick={() => setPanelOpen(o => !o)}
+            aria-label={panelOpen ? "Collapse run detail" : "Expand run detail"}
+            aria-expanded={panelOpen}
+            style={{
+              background: "transparent", border: "1px solid var(--border)",
+              borderRadius: 6, padding: "2px 8px", fontSize: 11,
+              color: "var(--text-2)", cursor: "pointer", lineHeight: 1.4,
+            }}
+          >
+            {panelOpen ? "▾ Collapse" : "▸ Expand"}
+          </button>
           <a href={`/runs/${runId}`} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>
             View run →
           </a>
@@ -1276,7 +1297,7 @@ function RunBubble({
             {actionErr}
           </div>
         )}
-        {workflowId && (status === "pending" || status === "running" || status === "paused" || status === "failed") && (
+        {!panelOpen && workflowId && (status === "pending" || status === "running" || status === "paused" || status === "failed") && (
           <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
             {(status === "pending" || status === "running") && (
               <button
@@ -1389,6 +1410,11 @@ function RunBubble({
                 </div>
               )
             })}
+          </div>
+        )}
+        {panelOpen && workflowId && (
+          <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+            <RunDetailPanel workflowId={workflowId} runId={runId} embedded />
           </div>
         )}
       </div>
