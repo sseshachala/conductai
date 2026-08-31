@@ -853,4 +853,5 @@ def get_workspace_run(
         project_id=str(proj_id) if proj_id else None,
         project_name=proj_name,
         state=run.state,
+        outcome=run.outcome,
     )

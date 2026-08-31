@@ -998,6 +998,17 @@ function ActionConfirmBubble({
 
 // ─── Run bubble ──────────────────────────────────────────────────────────────
 
+function formatElapsed(startMs: number, endMs: number): string {
+  const secs = Math.max(0, Math.round((endMs - startMs) / 1000))
+  if (secs < 60) return `${secs}s`
+  const mins = Math.floor(secs / 60)
+  const rem = secs % 60
+  if (mins < 60) return rem ? `${mins}m ${rem}s` : `${mins}m`
+  const hrs = Math.floor(mins / 60)
+  const rmin = mins % 60
+  return rmin ? `${hrs}h ${rmin}m` : `${hrs}h`
+}
+
 type RunBlockState = {
   id: string
   status: "pending" | "running" | "succeeded" | "failed"
@@ -1030,6 +1041,10 @@ function RunBubble({
   // block outputs inline (#1480 PR 9). Refetch on demand if a block the
   // user expands isn't in the cache yet.
   const [runState, setRunState] = useState<Record<string, unknown> | null>(null)
+  const [outcome, setOutcome] = useState<{ type?: string; artifact_url?: string } | null>(null)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [completedAt, setCompletedAt] = useState<number | null>(null)
+  const [now, setNow] = useState<number>(() => Date.now())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // If an SSE update lands before the bootstrap fetch resolves, the fetch
   // result is stale — don't overwrite the fresher event.
@@ -1048,6 +1063,9 @@ function RunBubble({
       .then(data => {
         if (cancelled) return
         if (data?.state) setRunState(data.state as Record<string, unknown>)
+        if (data?.outcome) setOutcome(data.outcome as { type?: string; artifact_url?: string })
+        if (data?.started_at) setStartedAt(new Date(data.started_at as string).getTime())
+        if (data?.completed_at) setCompletedAt(new Date(data.completed_at as string).getTime())
         if (data?.status && !gotUpdate.current) setStatus(data.status)
       })
       .catch(() => {})
@@ -1055,22 +1073,29 @@ function RunBubble({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId])
 
-  // Refetch state when a block completes so the freshly-added output is
-  // available if the user expands it.
+  // Refetch state + outcome + timing when a block completes / status changes.
   useEffect(() => {
-    // Only refetch when at least one block has completed since last fetch.
     const anyCompleted = Array.from(blocks.values()).some(b => b.status === "succeeded" || b.status === "failed")
-    if (!anyCompleted) return
+    if (!anyCompleted && status !== "succeeded" && status !== "failed") return
     let cancelled = false
     authFetch(`${API}/runs/${runId}`)
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
-        if (cancelled || !data?.state) return
-        setRunState(data.state as Record<string, unknown>)
+        if (cancelled || !data) return
+        if (data.state) setRunState(data.state as Record<string, unknown>)
+        if (data.outcome) setOutcome(data.outcome as { type?: string; artifact_url?: string })
+        if (data.completed_at) setCompletedAt(new Date(data.completed_at as string).getTime())
       })
       .catch(() => {})
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
+
+  // Client-side elapsed clock — tick every second while the run is active.
+  useEffect(() => {
+    if (status !== "running" && status !== "pending") return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
   }, [status])
 
   useLensEvent(stream, "run", runId, (evt) => {
@@ -1119,10 +1144,25 @@ function RunBubble({
             fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 999,
             background: pillColor.bg, color: pillColor.fg, textTransform: "capitalize",
           }}>{status}</span>
+          {startedAt && (
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              {formatElapsed(startedAt, completedAt ?? now)}
+            </span>
+          )}
           <a href={`/runs/${runId}`} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>
             View run →
           </a>
         </div>
+        {outcome?.artifact_url && (
+          <div style={{ marginBottom: 10, padding: "8px 12px", background: "var(--ok-bg, #dcfce7)", borderRadius: 6, fontSize: 12 }}>
+            <span style={{ color: "var(--ok-text, #166534)", fontWeight: 600 }}>
+              {outcome.type ? outcome.type.replace(/_/g, " ") : "artifact"}:
+            </span>{" "}
+            <a href={outcome.artifact_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "none", wordBreak: "break-all" }}>
+              {outcome.artifact_url}
+            </a>
+          </div>
+        )}
         {error && (
           <div style={{ fontSize: 12, color: "var(--err-text, #991b1b)", background: "var(--err-bg, #fee2e2)", padding: "8px 12px", borderRadius: 6 }}>
             {error}
