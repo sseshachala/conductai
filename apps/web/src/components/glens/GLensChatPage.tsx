@@ -1199,9 +1199,12 @@ function RunBubble({
   }, [runId])
 
   // Refetch state + outcome + timing when a block completes / status changes.
+  // #1480 Gap 1 — deps include terminalCount so we refetch on EVERY block
+  // completion, not just the first. That refreshes tokens/cost mid-run so the
+  // embedded RunDetailPanel StatRow updates live (kills #1543 stopgap).
+  const terminalCount = Array.from(blocks.values()).filter(b => b.status === "succeeded" || b.status === "failed").length
   useEffect(() => {
-    const anyCompleted = Array.from(blocks.values()).some(b => b.status === "succeeded" || b.status === "failed")
-    if (!anyCompleted && status !== "succeeded" && status !== "failed") return
+    if (terminalCount === 0 && status !== "succeeded" && status !== "failed") return
     let cancelled = false
     authFetch(`${API}/runs/${runId}`)
       .then(r => (r.ok ? r.json() : null))
@@ -1215,7 +1218,7 @@ function RunBubble({
       .catch(() => {})
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status])
+  }, [status, terminalCount])
 
   // Client-side elapsed clock — tick every second while the run is active.
   useEffect(() => {

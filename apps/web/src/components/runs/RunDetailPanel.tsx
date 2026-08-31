@@ -79,6 +79,10 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
   const { authFetch } = useAuthFetch()
 
   const [run, setRun] = useState<RunMeta | null>(initialRun ?? null)
+  // #1480 Gap 1 — re-sync when parent (RunBubble) pushes a fresher initialRun
+  // after block_completed events. Without this the embedded panel is stuck at
+  // whatever run state was seeded at mount and tokens/cost/status don't move.
+  useEffect(() => { if (initialRun) setRun(initialRun) }, [initialRun])
   const [workflowName, setWorkflowName] = useState<string | null>(null)
   const [projectName, setProjectName] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
