@@ -854,9 +854,44 @@ function ActionConfirmBubble({
   // showing active Confirm/Cancel buttons for something that already ran.
   const [serverStatus, setServerStatus] = useState<"pending" | "approved" | "rejected" | "timed_out" | null>(null)
   const [serverResult, setServerResult] = useState<Record<string, unknown> | null>(null)
+  // #1511 — expand toggle + fetched workflow_id so we can embed <RunDetailPanel>
+  // when the action resolved into a run. localStorage keeps expand state across
+  // refresh, keyed by approvalRequestId (per-bubble).
+  const [panelOpen, setPanelOpen] = useState(() => {
+    try { return typeof window !== "undefined" && window.localStorage.getItem(`lens:actionPanelOpen:${approvalRequestId}`) === "1" }
+    catch { return false }
+  })
+  const [runData, setRunData] = useState<RunMeta | null>(null)
   // Dedupe: whichever source (POST response or SSE event) reports resolution
   // first wins. Race is fine because the payload shape is identical.
   const handledRef = useRef(false)
+
+  // #1511 — mirror panelOpen to localStorage so refresh restores expand state.
+  useEffect(() => {
+    try { window.localStorage.setItem(`lens:actionPanelOpen:${approvalRequestId}`, panelOpen ? "1" : "0") }
+    catch { /* best-effort */ }
+  }, [panelOpen, approvalRequestId])
+
+  // #1511 — once we know the run_id (via server snapshot or dispatch), fetch
+  // /runs/{id} to grab workflow_id + a full run seed. RunDetailPanel needs
+  // workflowId, and passing runData as initialRun skips its own initial fetch.
+  const resolvedRunId = (serverResult?.run_id as string | undefined) ?? null
+  useEffect(() => {
+    if (!resolvedRunId) return
+    let cancelled = false
+    authFetch(`${API}/runs/${resolvedRunId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (!cancelled && data) setRunData(data as RunMeta) })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedRunId])
+
+  // #1511 — auto-open the panel when a decided-approved bubble with a run
+  // becomes visible, so the demo flow drops straight into the run detail.
+  useEffect(() => {
+    if (serverStatus === "approved" && resolvedRunId) setPanelOpen(true)
+  }, [serverStatus, resolvedRunId])
 
   // On mount, fetch the current status from the server. Skip when a
   // decision has already been dispatched in this render (handledRef set).
@@ -1007,6 +1042,16 @@ function ActionConfirmBubble({
                 View run →
               </a>
             )}
+          </div>
+        )}
+        {panelOpen && serverStatus === "approved" && runData?.workflow_id && resolvedRunId && (
+          <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+            <RunDetailPanel
+              workflowId={runData.workflow_id as string}
+              runId={resolvedRunId}
+              embedded
+              initialRun={runData}
+            />
           </div>
         )}
         {status === "pending" && (serverStatus === null || serverStatus === "pending") && (
