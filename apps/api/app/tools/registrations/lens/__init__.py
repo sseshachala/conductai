@@ -36,6 +36,7 @@ from app.tools.registrations.lens import (
     ops,
     policies,
     primitives,
+    runs,
     workflows,
     workspace,
 )
@@ -45,6 +46,7 @@ _ALL_TOOLS = [
     *guard_core.TOOLS,
     *policies.TOOLS,
     *workflows.TOOLS,
+    *runs.TOOLS,
     *workspace.TOOLS,
     *marketplace.TOOLS,
     *ops.TOOLS,
