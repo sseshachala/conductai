@@ -1473,6 +1473,17 @@ export function GLensChatPage() {
         skill: (data.skill as string) ?? "rules",
         followups: data.followups as string[] | undefined,
       }])
+    } else if (data.run_started) {
+      // Natural-language confirm path (#1480 PR 11): user typed "yes" and
+      // the LLM called confirm_pending_action which returned a run_id.
+      // Render <RunBubble> — same live surface the button-click path gets.
+      const rs = data.run_started as { run_id: string; workflow_name: string; status: string }
+      setMessages(prev => [...prev.slice(0, -1), {
+        role: "assistant", kind: "run",
+        runId: rs.run_id,
+        workflowName: rs.workflow_name,
+        initialStatus: rs.status ?? "pending",
+      }])
     } else if (data.confirm_required && data.approval_request_id) {
       setMessages(prev => [...prev.slice(0, -1), {
         role: "assistant", kind: "action_confirm",
