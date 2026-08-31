@@ -1858,8 +1858,16 @@ def test_trigger(
                 raise HTTPException(status_code=403, detail=f"[ConductGuard] {_r.get('message') or _r.get('rule_id')}")
     except HTTPException:
         raise
-    except Exception:
-        pass  # ponytail: fail-open — Guard engine error must never block a run
+    except Exception as _guard_err:
+        # ponytail: fail-open on engine error so a Guard outage can't wedge every run,
+        # but log the bypass so operators can see when enforcement was silently skipped.
+        log.warning(
+            "guard.engine_error.fail_open",
+            workflow_id=str(workflow_id),
+            workspace_id=str(workspace_id),
+            surface="proxy",
+            error=str(_guard_err),
+        )
 
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,
