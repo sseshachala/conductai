@@ -1193,6 +1193,13 @@ def _execute_dag(
                 db.commit()
             except Exception:
                 pass
+            # #1480 PR 14 — surface the pause on the Lens session stream so
+            # <RunBubble> can render Approve/Reject buttons inline.
+            try:
+                from app.modules.glens.run_events import publish_run_status
+                publish_run_status(run)
+            except Exception:
+                pass
             _payload = {
                 "block_id": ap.block_id,
                 "message": ap.message,

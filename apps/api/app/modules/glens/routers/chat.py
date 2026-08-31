@@ -428,6 +428,53 @@ def _extract_confirm_envelope(final_msgs: list[dict]) -> dict | None:
     return None
 
 
+def _extract_run_started_envelope(final_msgs: list[dict]) -> dict | None:
+    """First tool result whose JSON body reports a successful run kickoff
+    (executed=True + result.run_id set). Surfaces the run metadata to the
+    SSE 'done' event so the frontend can render <RunBubble> inline —
+    same live surface the button-click path gets via ActionConfirmBubble
+    (#1480 PR 11).
+
+    Fires when the LLM took the natural-language confirm path
+    (`confirm_pending_action` tool) instead of the user clicking Confirm.
+
+    Same two shapes as `_extract_confirm_envelope`:
+      OpenAI/Perplexity: {"role": "tool", "content": "<json>"}
+      Anthropic:         {"role": "user", "content": [{"type": "tool_result", "content": "<json>"}, ...]}
+    """
+    def _match(raw) -> dict | None:
+        try:
+            r = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            return None
+        if not isinstance(r, dict):
+            return None
+        if not r.get("executed"):
+            return None
+        result = r.get("result")
+        if not isinstance(result, dict) or not result.get("run_id"):
+            return None
+        return {
+            "run_id": result["run_id"],
+            "workflow_name": result.get("workflow_name") or r.get("tool_name") or "workflow",
+            "status": result.get("status") or "pending",
+        }
+
+    for m in final_msgs:
+        content = m.get("content", "")
+        if m.get("role") == "tool":
+            hit = _match(content)
+            if hit:
+                return hit
+        elif m.get("role") == "user" and isinstance(content, list):
+            for blk in content:
+                if isinstance(blk, dict) and blk.get("type") == "tool_result":
+                    hit = _match(blk.get("content", ""))
+                    if hit:
+                        return hit
+    return None
+
+
 def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
     """Build a grounded drilldown URL from the tool calls the LLM actually made."""
     page = "/logs/guard"
@@ -740,6 +787,15 @@ async def glens_chat_stream(
             final_msgs, early_text, tool_calls = await asyncio.to_thread(_resolve_tools, llm_messages, system, executor)
             drilldown = _build_drilldown(tool_calls) if _has_data(final_msgs) else None
             confirm_envelope = _extract_confirm_envelope(final_msgs)
+            run_started_envelope = _extract_run_started_envelope(final_msgs)
+
+            # #1480 PR 14 — skip prose streaming entirely when we have a
+            # run_started envelope. <RunBubble> IS the answer; streaming
+            # "Run triggered successfully!" underneath would flash for
+            # ~500ms before the frontend replaces it with the bubble.
+            if run_started_envelope:
+                await event_q.put({"type": "done", "answer": "", "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope})
+                return
 
             if early_text:
                 answer = early_text
@@ -750,7 +806,7 @@ async def glens_chat_stream(
                 for char in answer:
                     await event_q.put({"type": "token", "text": char})
                     await asyncio.sleep(0)
-                await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope})
+                await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope})
                 return
 
             # Phase 2: stream synthesis (tools already resolved)
@@ -766,7 +822,7 @@ async def glens_chat_stream(
                     await event_q.put({"type": "token", "text": char})
                     await asyncio.sleep(0)
                 answer += link
-            await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope})
+            await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope})
         except Exception as e:
             # If it's a Guard block, surface the rule_id to logs + telemetry.
             # #1286 wired Lens through the same policy engine as the HTTP
@@ -805,6 +861,8 @@ async def glens_chat_stream(
                     persisted: dict[str, Any] = {"answer": answer, "skill": "governance"}
                     if evt.get("confirm_envelope"):
                         persisted["confirm_envelope"] = evt["confirm_envelope"]
+                    if evt.get("run_started_envelope"):
+                        persisted["run_started"] = evt["run_started_envelope"]
                     session_messages.append({
                         "role": "assistant",
                         "content": json.dumps(persisted),
@@ -815,6 +873,8 @@ async def glens_chat_stream(
                     done_payload = {"type": "done", "session_id": session_id_str, "skill": "governance", "answer": answer}
                     if evt.get("confirm_envelope"):
                         done_payload.update(evt["confirm_envelope"])
+                    if evt.get("run_started_envelope"):
+                        done_payload["run_started"] = evt["run_started_envelope"]
                     yield f"data: {json.dumps(done_payload)}\n\n"
                     break
         except asyncio.TimeoutError:

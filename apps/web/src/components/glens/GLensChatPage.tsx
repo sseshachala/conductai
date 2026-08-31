@@ -1025,12 +1025,14 @@ function RunBubble({
   initialStatus,
   stream,
   authFetch,
+  onRetry,
 }: {
   runId: string
   workflowName: string
   initialStatus: string
   stream: LensSessionStream | null
   authFetch: (url: string, options?: RequestInit) => Promise<Response>
+  onRetry?: (newRunId: string, workflowName: string) => void
 }) {
   const [status, setStatus] = useState(initialStatus)
   const [error, setError] = useState<string | null>(null)
@@ -1042,6 +1044,9 @@ function RunBubble({
   // user expands isn't in the cache yet.
   const [runState, setRunState] = useState<Record<string, unknown> | null>(null)
   const [outcome, setOutcome] = useState<{ type?: string; artifact_url?: string } | null>(null)
+  const [workflowId, setWorkflowId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [actionErr, setActionErr] = useState<string | null>(null)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [completedAt, setCompletedAt] = useState<number | null>(null)
   const [now, setNow] = useState<number>(() => Date.now())
@@ -1083,6 +1088,7 @@ function RunBubble({
             if (seeded.size > 0) setBlocks(prev => prev.size === 0 ? seeded : prev)
           }
         }
+        if (data?.workflow_id) setWorkflowId(data.workflow_id as string)
         if (data?.outcome) setOutcome(data.outcome as { type?: string; artifact_url?: string })
         if (data?.started_at) setStartedAt(new Date(data.started_at as string).getTime())
         if (data?.completed_at) setCompletedAt(new Date(data.completed_at as string).getTime())
@@ -1146,11 +1152,46 @@ function RunBubble({
     })
   })
 
+  async function _postAction(url: string, body?: unknown, onOk?: (data: Record<string, unknown>) => void) {
+    if (busy || !workflowId) return
+    setBusy(true); setActionErr(null)
+    try {
+      const res = await authFetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setActionErr((err as { detail?: string }).detail ?? `Request failed (${res.status})`)
+        setBusy(false)
+        return
+      }
+      const data = await res.json().catch(() => ({}))
+      onOk?.(data as Record<string, unknown>)
+    } catch {
+      setActionErr("Network error")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cancelRun = () => _postAction(`${API}/workflows/${workflowId}/runs/${runId}/cancel`)
+  const decideRun = (decision: "approved" | "rejected") =>
+    _postAction(`${API}/workflows/${workflowId}/runs/${runId}/approve`, { decision })
+  const retryRun = () =>
+    _postAction(`${API}/workflows/${workflowId}/runs`, {}, (data) => {
+      const newId = data.id as string | undefined
+      if (newId && onRetry) onRetry(newId, workflowName)
+    })
+
   const pillColor = (() => {
     switch (status) {
       case "succeeded": return { bg: "var(--ok-bg, #dcfce7)", fg: "var(--ok-text, #166534)" }
       case "failed":    return { bg: "var(--err-bg, #fee2e2)", fg: "var(--err-text, #991b1b)" }
       case "running":   return { bg: "var(--accent-weak, rgba(59,130,246,0.12))", fg: "var(--accent-text, #2563eb)" }
+      case "paused":    return { bg: "var(--warn-bg, #fef3c7)", fg: "var(--warn, #f59e0b)" }
+      case "cancelled": return { bg: "var(--surface-3, #f3f4f6)", fg: "var(--text-muted)" }
       default:          return { bg: "var(--surface-3, #f3f4f6)", fg: "var(--text-muted)" }
     }
   })()
@@ -1186,6 +1227,67 @@ function RunBubble({
         {error && (
           <div style={{ fontSize: 12, color: "var(--err-text, #991b1b)", background: "var(--err-bg, #fee2e2)", padding: "8px 12px", borderRadius: 6 }}>
             {error}
+          </div>
+        )}
+        {actionErr && (
+          <div style={{ fontSize: 12, color: "var(--err-text, #991b1b)", background: "var(--err-bg, #fee2e2)", padding: "6px 10px", borderRadius: 6, marginBottom: 8 }}>
+            {actionErr}
+          </div>
+        )}
+        {workflowId && (status === "pending" || status === "running" || status === "paused" || status === "failed") && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            {(status === "pending" || status === "running") && (
+              <button
+                onClick={cancelRun}
+                disabled={busy}
+                style={{
+                  padding: "6px 14px", borderRadius: 6, border: "1px solid var(--border)",
+                  background: "transparent", color: "var(--text-2)",
+                  fontSize: 12, cursor: busy ? "wait" : "pointer",
+                }}
+              >
+                Cancel
+              </button>
+            )}
+            {status === "paused" && (
+              <>
+                <button
+                  onClick={() => decideRun("approved")}
+                  disabled={busy}
+                  style={{
+                    padding: "6px 14px", borderRadius: 6, border: "none",
+                    background: "var(--accent)", color: "#fff",
+                    fontSize: 12, fontWeight: 600, cursor: busy ? "wait" : "pointer",
+                  }}
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => decideRun("rejected")}
+                  disabled={busy}
+                  style={{
+                    padding: "6px 14px", borderRadius: 6, border: "1px solid var(--border)",
+                    background: "transparent", color: "var(--text-2)",
+                    fontSize: 12, cursor: busy ? "wait" : "pointer",
+                  }}
+                >
+                  Reject
+                </button>
+              </>
+            )}
+            {status === "failed" && onRetry && (
+              <button
+                onClick={retryRun}
+                disabled={busy}
+                style={{
+                  padding: "6px 14px", borderRadius: 6, border: "none",
+                  background: "var(--accent)", color: "#fff",
+                  fontSize: 12, fontWeight: 600, cursor: busy ? "wait" : "pointer",
+                }}
+              >
+                Retry
+              </button>
+            )}
           </div>
         )}
         {blocks.size > 0 && (
@@ -1473,6 +1575,17 @@ export function GLensChatPage() {
         skill: (data.skill as string) ?? "rules",
         followups: data.followups as string[] | undefined,
       }])
+    } else if (data.run_started) {
+      // Natural-language confirm path (#1480 PR 11): user typed "yes" and
+      // the LLM called confirm_pending_action which returned a run_id.
+      // Render <RunBubble> — same live surface the button-click path gets.
+      const rs = data.run_started as { run_id: string; workflow_name: string; status: string }
+      setMessages(prev => [...prev.slice(0, -1), {
+        role: "assistant", kind: "run",
+        runId: rs.run_id,
+        workflowName: rs.workflow_name,
+        initialStatus: rs.status ?? "pending",
+      }])
     } else if (data.confirm_required && data.approval_request_id) {
       setMessages(prev => [...prev.slice(0, -1), {
         role: "assistant", kind: "action_confirm",
@@ -1721,6 +1834,10 @@ export function GLensChatPage() {
                       initialStatus={msg.initialStatus}
                       stream={lensStream}
                       authFetch={authFetch}
+                      onRetry={(newRunId, wfName) => setMessages(prev => [
+                        ...prev,
+                        { role: "assistant", kind: "run", runId: newRunId, workflowName: wfName, initialStatus: "pending" },
+                      ])}
                     />
                   )}
                   {msg.kind === "policy_confirm" && (
