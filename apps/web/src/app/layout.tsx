@@ -139,7 +139,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   if (clerkEnabled) {
     return (
-      <ClerkProvider afterSignInUrl="/workflows" afterSignUpUrl="/setup">
+      <ClerkProvider signInFallbackRedirectUrl="/workflows" signUpFallbackRedirectUrl="/setup">
         <html lang="en">
           <head>
             {jsonLd}
@@ -152,7 +152,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </body>
         </html>
       </ClerkProvider>
-    )
+    );
   }
   return (
     <html lang="en">

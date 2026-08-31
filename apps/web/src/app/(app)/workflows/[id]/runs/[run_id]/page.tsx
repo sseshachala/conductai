@@ -15,5 +15,5 @@ export default function RunDetailPage() {
     <AppShell>
       <RunDetailPanel workflowId={workflowId} runId={runId} />
     </AppShell>
-  )
+  );
 }
