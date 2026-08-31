@@ -1005,13 +1005,6 @@ function AppShellInnerContent({
                 })}
               </div>
             )}
-            <SideNavItem
-              href="/observability"
-              label="Observability"
-              icon={<Icons.Spark />}
-              active={pathname === "/observability" || pathname.startsWith("/observability/")}
-              collapsed={collapsed}
-            />
           </div>
         </nav>
 
