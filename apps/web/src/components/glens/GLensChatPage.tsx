@@ -3,6 +3,8 @@ import { API } from "@/lib/api"
 
 import { useEffect, useRef, useState } from "react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { useLensEvent } from "@/hooks/useLensEvent"
+import { useLensSessionStream, type LensSessionStream } from "@/hooks/useLensSessionStream"
 import { GlensDashboard } from "@/components/glens/GlensDashboard"
 import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
 import { GlensPageBubble } from "@/components/glens/GlensPageBubble"
@@ -829,6 +831,7 @@ function ActionConfirmBubble({
   warnings,
   expiresAt,
   authFetch,
+  stream,
   onResult,
 }: {
   toolName: string
@@ -837,10 +840,44 @@ function ActionConfirmBubble({
   warnings?: string[]
   expiresAt?: string
   authFetch: (url: string, options?: RequestInit) => Promise<Response>
+  stream: LensSessionStream | null
   onResult: (text: string) => void
 }) {
   const [status, setStatus] = useState<"pending" | "loading" | "done">("pending")
   const [idCopied, setIdCopied] = useState(false)
+  // Dedupe: whichever source (POST response or SSE event) reports resolution
+  // first wins. Race is fine because the payload shape is identical.
+  const handledRef = useRef(false)
+
+  const finish = (text: string) => {
+    if (handledRef.current) return
+    handledRef.current = true
+    setStatus("done")
+    onResult(text)
+  }
+
+  const messageForConfirmed = (payload: Record<string, unknown> | undefined, fallbackTool: string): string => {
+    const result = (payload?.result ?? {}) as Record<string, unknown>
+    const label = (payload?.tool_name as string | undefined) ?? fallbackTool
+    const runId = result.run_id as string | undefined
+    if (runId) {
+      const wfName = (result.workflow_name as string | undefined) ?? label
+      return `Run started for **${wfName}**. [View run →](/runs/${runId})`
+    }
+    return `${label} executed successfully.`
+  }
+
+  // #1480 PR 4 — react to action.confirmed / action.cancelled events on the
+  // session stream. Fires for cross-tab confirms, Slack-side approvals, or
+  // any decide path that touches this row. `stream` is null when the SSE
+  // feature flag is off — subscription is a silent no-op then.
+  useLensEvent(stream, "approval", approvalRequestId, (evt) => {
+    if (evt.type === "action.confirmed") {
+      finish(messageForConfirmed(evt.payload, toolName))
+    } else if (evt.type === "action.cancelled") {
+      finish("Action cancelled.")
+    }
+  })
 
   async function post(action: "confirm" | "cancel") {
     setStatus("loading")
@@ -851,26 +888,22 @@ function ActionConfirmBubble({
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        onResult(`Failed to ${action}: ${err.detail ?? res.status}`)
+        finish(`Failed to ${action}: ${err.detail ?? res.status}`)
+        return
+      }
+      // When the SSE stream is live, it will call `finish` with the
+      // event-derived message; the POST body is redundant then. When SSE
+      // is off (flag disabled) or subscribed too late, fall through and
+      // use the response body directly. `finish` deduplicates either way.
+      const data = await res.json()
+      if (action === "confirm") {
+        finish(messageForConfirmed(data as Record<string, unknown>, toolName))
       } else {
-        const data = await res.json()
-        if (action === "confirm") {
-          const label = data.tool_name ?? toolName
-          const runId = data.result?.run_id as string | undefined
-          if (runId) {
-            const wfName = data.result?.workflow_name ?? label
-            onResult(`Run started for **${wfName}**. [View run →](/runs/${runId})`)
-          } else {
-            onResult(`${label} executed successfully.`)
-          }
-        } else {
-          onResult(`Action cancelled.`)
-        }
+        finish("Action cancelled.")
       }
     } catch {
-      onResult("Network error. Please try again.")
+      finish("Network error. Please try again.")
     }
-    setStatus("done")
   }
 
   const isMutation = toolName !== "decide_approval"  // heuristic — decide is itself an approve/reject
@@ -1028,6 +1061,10 @@ export function GLensChatPage() {
 
   const [sessions, setSessions] = useState<GLensSession[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  // #1480 PR 4 — SSE session stream. Returns null when the feature flag
+  // (NEXT_PUBLIC_LENS_SSE_SURFACE) is off or no active session yet; bubbles
+  // that opt in via useLensEvent silently degrade to the existing REST flow.
+  const lensStream = useLensSessionStream(activeId)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS)
@@ -1369,6 +1406,7 @@ export function GLensChatPage() {
                       warnings={msg.warnings}
                       expiresAt={msg.expiresAt}
                       authFetch={authFetch}
+                      stream={lensStream}
                       onResult={text => setMessages(prev => [
                         ...prev.slice(0, i),
                         { role: "assistant", kind: "answer", text },
