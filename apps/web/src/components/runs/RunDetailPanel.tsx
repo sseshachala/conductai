@@ -6,6 +6,10 @@ import Link from "next/link"
 import RunTrace from "@/components/runs/RunTrace"
 import ConversationTrace from "@/components/runs/ConversationTrace"
 import { statusStyle, formatTrigger, duration, isTerminal, isActive, isAwaiting, effectiveStatus } from "@/lib/runUtils"
+import RunSummaryTab from "@/components/runs/tabs/RunSummaryTab"
+import RunFilesTab from "@/components/runs/tabs/RunFilesTab"
+import RunApprovalsTab from "@/components/runs/tabs/RunApprovalsTab"
+import RunCostTab from "@/components/runs/tabs/RunCostTab"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 
@@ -29,7 +33,7 @@ class TabErrorBoundary extends Component<{ children: React.ReactNode }, { hasErr
   }
 }
 
-interface RunMeta {
+export interface RunMeta {
   id: string
   status: string
   governance?: { blocked?: boolean } | null
@@ -339,48 +343,7 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false }: 
       <div>
         {/* Summary */}
         {activeTab === "summary" && (
-          <TabErrorBoundary><div>
-            {/* 2-col meta grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 40px", maxWidth: 720 }}>
-              {([
-                ["Triggered by", formatTrigger(run.triggered_by), true],
-                ["Started",      run.started_at ? new Date(run.started_at).toLocaleString() : "—", false],
-                ["Completed",    run.completed_at ? new Date(run.completed_at).toLocaleString() : "—", false],
-                ["Version",      run.workflow_version_id?.slice(0, 8) ?? "—", true],
-                ["Project",      projectName ?? "—", false],
-                ["Repository",   run.repo ?? "—", true],
-              ] as [string, string, boolean][]).map(([label, value, mono]) => (
-                <div key={label} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
-                  <div className={mono ? "mono" : ""} style={{ fontSize: 13.5, fontWeight: 550 }}>{value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Approval notice */}
-            {isAwaiting(run.status) && (
-              <div className="card" style={{ marginTop: 24, padding: "16px 18px", display: "flex", gap: 13, alignItems: "flex-start", maxWidth: 720 }}>
-                <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "grid", placeItems: "center", background: "var(--warn-bg)", color: "var(--warn)" }}>
-                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <circle cx={12} cy={12} r={10} /><polyline points="12 6 12 12 16 14" />
-                  </svg>
-                </span>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>Paused on approval</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>This run is waiting on a human decision in the <b>Approvals</b> tab before the run continues.</div>
-                </div>
-              </div>
-            )}
-
-            {/* PR links */}
-            {(issueNum || (prNum && prUrl)) && (
-              <div style={{ marginTop: 20, display: "flex", flexWrap: "wrap", gap: 10 }}>
-                {issueNum && <span className="chip">{`Issue #${issueNum}${issueTitle ? ` — ${issueTitle}` : ""}`}</span>}
-                {prNum && prUrl && <a href={prUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--accent-text)", fontWeight: 600, textDecoration: "none" }}>PR #{prNum} →</a>}
-              </div>
-            )}
-          </div>
-          </TabErrorBoundary>
+          <TabErrorBoundary><RunSummaryTab run={run} projectName={projectName} /></TabErrorBoundary>
         )}
 
         {/* Trace (timeline) */}
@@ -420,246 +383,26 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false }: 
         )}
 
         {/* Files */}
-        {activeTab === "files" && <TabErrorBoundary>{(() => {
-          const state = (run.state ?? {}) as Record<string, unknown>
-          const blocks = Object.entries(state).filter(([k]) => !k.startsWith("__") && !k.startsWith("_"))
-          const allPrUrls: {url: string; num?: number; block: string; prState?: string | null}[] = []
-          const allFiles: {file: string; block: string}[] = []
-          let diffStat = ""
-          for (const [blockId, val] of blocks) {
-            const v = val as Record<string, unknown>
-            if (v?.pr_url) allPrUrls.push({ url: v.pr_url as string, num: v.pr_number as number | undefined, block: blockId, prState: (v?.pr_state as string) || (v?.pr_merged ? "merged" : v?.pr_closed ? "closed" : null) })
-            if (Array.isArray(v?.files_changed)) {
-              for (const f of v.files_changed as string[]) allFiles.push({ file: f, block: blockId })
-            }
-            if (v?.diff_stat && !diffStat) diffStat = v.diff_stat as string
-          }
-          if (prUrl && !allPrUrls.find(p => p.url === prUrl)) allPrUrls.push({ url: prUrl, num: prNum, block: "trigger", prState: null })
-
-          if (allPrUrls.length === 0 && allFiles.length === 0 && !diffStat) return (
-            <div style={{ textAlign: "center", padding: "48px 0" }}>
-              <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>No file artifacts yet</p>
-              <p style={{ fontSize: 13, color: "var(--text-muted)" }}>PRs opened and files changed will appear here once the run completes.</p>
-            </div>
-          )
-          return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              {allPrUrls.length > 0 && (
-                <div>
-                  <p className="eyebrow" style={{ marginBottom: 10 }}>Pull request</p>
-                  {allPrUrls.map((pr, i) => (
-                    <div key={i} className="card" style={{ padding: "15px 18px", display: "flex", alignItems: "center", gap: 12, marginBottom: i < allPrUrls.length - 1 ? 8 : 0 }}>
-                      <span style={{ width: 32, height: 32, borderRadius: 8, background: "var(--text)", color: "var(--surface)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx={18} cy={18} r={3}/><circle cx={6} cy={6} r={3}/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1={6} y1={9} x2={6} y2={21}/></svg>
-                      </span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 650, fontSize: 14 }}>{pr.num ? `#${pr.num} · Pull Request` : "Pull Request"}</div>
-                        <div className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>{pr.prState ?? "open"}</div>
-                      </div>
-                      <a href={pr.url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ color: "var(--accent-text)", borderColor: "var(--accent-ring, var(--border))", textDecoration: "none" }}>Open →</a>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {allFiles.length > 0 && (
-                <div>
-                  <p className="eyebrow" style={{ marginBottom: 10 }}>Diff summary</p>
-                  <div className="card" style={{ overflow: "hidden" }}>
-                    {allFiles.map(({ file }, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", borderBottom: i < allFiles.length - 1 ? "1px solid var(--border)" : "none" }}>
-                        <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ color: "var(--text-muted)", flexShrink: 0 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        <span className="mono" style={{ fontSize: 12.5, flex: 1 }}>{file}</span>
-                      </div>
-                    ))}
-                    {diffStat && (
-                      <div style={{ padding: "10px 16px", fontSize: 12, color: "var(--text-muted)", background: "var(--surface-2)" }}>{diffStat}</div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {!allFiles.length && diffStat && (
-                <div>
-                  <p className="eyebrow" style={{ marginBottom: 8 }}>Diff Summary</p>
-                  <pre className="card mono" style={{ background: "var(--surface-3)", fontSize: 12, padding: "14px 16px", overflowX: "auto", whiteSpace: "pre-wrap", color: "var(--text-2)" }}>{diffStat}</pre>
-                </div>
-              )}
-            </div>
-          )
-        })()}</TabErrorBoundary>}
+        {activeTab === "files" && (
+          <TabErrorBoundary><RunFilesTab run={run} /></TabErrorBoundary>
+        )}
 
         {/* Approvals */}
         {activeTab === "approvals" && (
-          <TabErrorBoundary><div>
-            {isAwaiting(run.status) ? (
-              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                  <span className="chip bk-approval" style={{ height: 21, fontSize: 9.5, fontWeight: 800, letterSpacing: ".07em", textTransform: "uppercase" }}>Approval</span>
-                  <span style={{ fontWeight: 650, fontSize: 14 }}>Awaiting review</span>
-                </div>
-                <div style={{ padding: 18 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 16 }}>
-                    <span className="dot pulse" style={{ background: "var(--warn)" }} />
-                    <span style={{ fontSize: 13.5, color: "var(--text-2)" }}>The run is paused and waiting for a human decision before it continues.</span>
-                  </div>
-                  {run.trigger_summary && (
-                    <div className="card" style={{ padding: "12px 14px", background: "var(--surface-2)", marginBottom: 16 }}>
-                      <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>{run.trigger_summary}</div>
-                    </div>
-                  )}
-                  {(() => {
-                    const st = run.state as Record<string, unknown> | null
-                    const g = st?.__pending_guard_approval as
-                      | { rule_id?: string; message?: string; approval_url?: string; approval_id?: string }
-                      | undefined
-                    if (!g?.rule_id) return null
-                    return (
-                      <div className="card" style={{ padding: "12px 14px", background: "var(--warn-bg)", marginBottom: 16 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--warn)", marginBottom: 4 }}>
-                          Triggered by Guard rule
-                        </div>
-                        <div style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12, color: "var(--text)" }}>{g.rule_id}</div>
-                        {g.message && (
-                          <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 4 }}>{g.message}</div>
-                        )}
-                        {g.approval_url && (
-                          <div style={{ marginTop: 8, fontSize: 12 }}>
-                            <a href={g.approval_url} style={{ color: "var(--accent)", textDecoration: "underline" }}>
-                              Open in /theguard/approvals →
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })()}
-                  <div style={{ display: "flex", gap: 9 }}>
-                    <button
-                      className="btn btn-accent"
-                      disabled={approvingRun}
-                      onClick={() => handleApproval("approved")}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-                    >
-                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12"/></svg>
-                      Approve &amp; continue
-                    </button>
-                    <button
-                      className="btn btn-ghost"
-                      disabled={approvingRun}
-                      onClick={() => handleApproval("rejected")}
-                      style={{ color: "var(--err)", borderColor: "var(--err-bd)", display: "inline-flex", alignItems: "center", gap: 6 }}
-                    >
-                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : approvalDecision ? (
-              <div className="card" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 12 }}>
-                <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "grid", placeItems: "center", background: approvalDecision === "approved" ? "var(--ok-bg)" : "var(--err-bg)", color: approvalDecision === "approved" ? "var(--ok)" : "var(--err)" }}>
-                  {approvalDecision === "approved"
-                    ? <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}><polyline points="20 6 9 17 4 12"/></svg>
-                    : <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>}
-                </span>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 13.5, textTransform: "capitalize" }}>{approvalDecision}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>just now</div>
-                </div>
-              </div>
-            ) : (() => {
-              const state = run.state as Record<string, unknown> | null
-              const approvals = Object.entries(state ?? {})
-                .filter(([k]) => k.startsWith("__approval_"))
-                .map(([k, v]) => {
-                  const blockId = k.replace("__approval_", "")
-                  const blockState = (state ?? {})[blockId] as Record<string, unknown> | undefined
-                  const displayLabel = (blockState?.label ?? blockState?.name ?? blockId) as string
-                  return { blockId, displayLabel, decision: v as string }
-                })
-              return approvals.length > 0 ? (
-                <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                  {approvals.map(({ blockId, displayLabel, decision }, i) => (
-                    <div key={blockId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
-                      <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>{displayLabel}</span>
-                      <span className={`sbadge ${decision === "approved" ? "ok" : "err"}`}>{decision}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ textAlign: "center", padding: "48px 0" }}>
-                  <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No approval decisions recorded for this run.</p>
-                </div>
-              )
-            })()}
-          </div>
+          <TabErrorBoundary>
+            <RunApprovalsTab
+              run={run}
+              approvalDecision={approvalDecision}
+              approvingRun={approvingRun}
+              onApproval={handleApproval}
+            />
           </TabErrorBoundary>
         )}
 
         {/* Cost */}
-        {activeTab === "cost" && <TabErrorBoundary>{(() => {
-          const state = (run.state ?? {}) as Record<string, unknown>
-          const blocks = Object.entries(state).filter(([k]) => !k.startsWith("__") && !k.startsWith("_"))
-          let totalInput = 0, totalOutput = 0, totalCost = 0
-          const rows: {block: string; label: string; input: number; output: number; cost: number; turns: number}[] = []
-          for (const [blockId, val] of blocks) {
-            const v = val as Record<string, unknown>
-            const input  = (v?.input_tokens  as number) || 0
-            const output = (v?.output_tokens as number) || 0
-            const cost   = (v?.cost_usd      as number) || 0
-            const turns  = (v?.turns         as number) || 0
-            const label  = (v?.label ?? v?.name ?? blockId) as string
-            if (input || output || cost) {
-              rows.push({ block: blockId, label, input, output, cost, turns })
-              totalInput  += input
-              totalOutput += output
-              totalCost   += cost
-            }
-          }
-          if (rows.length === 0) return (
-            <div style={{ textAlign: "center", padding: "48px 0" }}>
-              <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)", marginBottom: 6 }}>No cost data yet</p>
-              <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Token usage is recorded once the run completes.</p>
-            </div>
-          )
-          return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              {/* Totals grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                {[
-                  { label: "Total cost",    value: `$${totalCost.toFixed(2)}`,         color: "var(--text)"     },
-                  { label: "Input tokens",  value: totalInput.toLocaleString(),          color: "var(--info)" },
-                  { label: "Output tokens", value: totalOutput.toLocaleString(),         color: "var(--accent-text)"  },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className="card" style={{ padding: "14px 18px" }}>
-                    <p className="eyebrow" style={{ marginBottom: 8 }}>{label}</p>
-                    <p style={{ fontSize: 26, fontWeight: 700, color, letterSpacing: "-.01em" }}>{value}</p>
-                  </div>
-                ))}
-              </div>
-              {/* Per-block breakdown */}
-              <div>
-                <p className="eyebrow" style={{ marginBottom: 8 }}>Per block</p>
-                <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                  {/* Header row */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 0.7fr 1fr", padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                    {["Block", "Input", "Output", "Turns", "Cost"].map((h, i) => (
-                      <span key={h} className="eyebrow" style={{ textAlign: i ? "right" : "left" }}>{h}</span>
-                    ))}
-                  </div>
-                  {rows.map((r, i) => (
-                    <div key={r.block} style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 0.7fr 1fr", padding: "10px 16px", borderTop: i ? "1px solid var(--border)" : "none" }}>
-                      <span style={{ fontSize: 12, color: "var(--text-2)" }}>{r.label}</span>
-                      <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.input.toLocaleString()}</span>
-                      <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.output.toLocaleString()}</span>
-                      <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "right" }}>{r.turns}</span>
-                      <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textAlign: "right" }}>${r.cost.toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-                <p style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8 }}>Pricing: $3/1M input · $15/1M output (claude-sonnet-4-6)</p>
-              </div>
-            </div>
-          )
-        })()}</TabErrorBoundary>}
+        {activeTab === "cost" && (
+          <TabErrorBoundary><RunCostTab run={run} /></TabErrorBoundary>
+        )}
       </div>
     </Wrapper>
   )
