@@ -8,9 +8,12 @@ Docs are organized **by goal, not by file shape**. Pick a section below.
 
 ## Start by goal
 
-- **I want to run Conduct locally** → [Operate → Developer setup](modules/conductguard/developer_setup.md)
+- **I'm brand new — get me running** → [Start](start.md)
+- **I want to run Conduct locally on the codebase** → [Operate → Developer setup](modules/conductguard/developer_setup.md)
 - **I want to write a playbook** → [Concepts → Playbooks](mental-models/08-playbooks.md) + [Playbook DSL ADR](adr/ADR-0004-playbook-dsl-versus-external-orchestration-frameworks.md)
+- **I want to see 37 working examples** → [Examples](examples.md)
 - **I want to govern AI tool usage on my team** → [Operate → ConductGuard Quickstart](modules/conductguard/QUICKSTART.md)
+- **I want to wire Conduct into CI, MCP, or my own tools** → [Automate](automate.md)
 - **I want to understand the architecture** → [Orientation → ARCHITECTURE](ARCHITECTURE.md)
 - **I want to add a policy rule / compliance pack** → [Policy → Enforcement coverage](modules/conductguard/enforcement_coverage.generated.md)
 - **I want to integrate a third-party tool** → [Integrations](#integrations)
@@ -21,9 +24,9 @@ Docs are organized **by goal, not by file shape**. Pick a section below.
 
 New to Conduct. Get from zero to a working install.
 
-- [Developer setup](modules/conductguard/developer_setup.md) — local dev environment, dependencies, first run
+- [Start](start.md) — install `conduct-cli`, log in, install 30+ playbooks, first agent run, first `playbook.yaml`
+- [Developer setup](modules/conductguard/developer_setup.md) — local dev environment, dependencies, first run against the Conduct codebase
 - [ConductGuard Quickstart](modules/conductguard/QUICKSTART.md) — install Guard, sync policy, first governed AI tool call
-- *(planned)* Install, first playbook — see #1523 for CLI local-first work
 
 ---
 
@@ -87,8 +90,8 @@ Running Conduct. Day-two ops: onboard a team, respond to an incident, tune a rul
 
 Wire Conduct into your other tools. CI, MCP, agents.
 
-- [ConductGuard MCP](modules/conductguard/conductguard_mcp.md) — MCP server for AI clients (Claude Code, Cursor, Codex)
-- *(planned)* CLI JSON output, exit codes, agent integration — see #1523
+- [Automate](automate.md) — CLI, MCP, CI, hooks, HTTP API, webhooks
+- [ConductGuard MCP](modules/conductguard/conductguard_mcp.md) — MCP server spec (Claude Code, Cursor, Codex)
 
 ---
 
@@ -118,7 +121,7 @@ Third-party systems Conduct plugs into.
 
 ## Examples
 
-*(gap — planned)* One card per playbook in [`apps/api/playbooks/`](../apps/api/playbooks/). For now, browse the directory directly — 22 playbooks covering GitHub PR review, Slack triage, incident response, CI security, and more.
+- [Examples](examples.md) — 37 pre-built playbooks grouped by what they do: code review, security scan + auto-fix, dependencies, incidents, releases, AI governance, autopilot, testing, docs, NetOps.
 
 ---
 
