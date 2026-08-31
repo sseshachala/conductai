@@ -1026,6 +1026,11 @@ function RunBubble({
   // Per-block timeline (#1480 PR 7). Order is insertion order (Map preserves
   // it), which matches the DAG execution order the worker publishes in.
   const [blocks, setBlocks] = useState<Map<string, RunBlockState>>(new Map())
+  // Cached run.state from /runs/{id} — populated on mount, used to render
+  // block outputs inline (#1480 PR 9). Refetch on demand if a block the
+  // user expands isn't in the cache yet.
+  const [runState, setRunState] = useState<Record<string, unknown> | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // If an SSE update lands before the bootstrap fetch resolves, the fetch
   // result is stale — don't overwrite the fresher event.
   const gotUpdate = useRef(false)
@@ -1041,13 +1046,32 @@ function RunBubble({
     authFetch(`${API}/runs/${runId}`)
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
-        if (cancelled || !data?.status || gotUpdate.current) return
-        setStatus(data.status)
+        if (cancelled) return
+        if (data?.state) setRunState(data.state as Record<string, unknown>)
+        if (data?.status && !gotUpdate.current) setStatus(data.status)
       })
       .catch(() => {})
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId])
+
+  // Refetch state when a block completes so the freshly-added output is
+  // available if the user expands it.
+  useEffect(() => {
+    // Only refetch when at least one block has completed since last fetch.
+    const anyCompleted = Array.from(blocks.values()).some(b => b.status === "succeeded" || b.status === "failed")
+    if (!anyCompleted) return
+    let cancelled = false
+    authFetch(`${API}/runs/${runId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled || !data?.state) return
+        setRunState(data.state as Record<string, unknown>)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
 
   useLensEvent(stream, "run", runId, (evt) => {
     gotUpdate.current = true
@@ -1106,25 +1130,61 @@ function RunBubble({
         )}
         {blocks.size > 0 && (
           <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-            {Array.from(blocks.values()).map(b => (
-              <div key={b.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, padding: "4px 0", color: "var(--text-2)" }}>
-                <span style={{
-                  display: "inline-block", width: 14, textAlign: "center",
-                  color: b.status === "succeeded" ? "var(--ok-text, #166534)"
-                       : b.status === "failed"    ? "var(--err-text, #991b1b)"
-                       : b.status === "running"   ? "var(--accent-text, #2563eb)"
-                       : "var(--text-muted)",
-                }}>{b.status === "succeeded" ? "✓" : b.status === "failed" ? "✗" : b.status === "running" ? "●" : "○"}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, color: "var(--text)" }}>{b.label ?? b.id}</div>
-                  {b.error && (
-                    <div style={{ fontSize: 11, color: "var(--err-text, #991b1b)", marginTop: 2 }}>
-                      {b.error}
+            {Array.from(blocks.values()).map(b => {
+              const isExpanded = expanded.has(b.id)
+              const blockOutput = runState?.[b.id]
+              const hasOutput = blockOutput !== undefined && b.status !== "pending" && b.status !== "running"
+              return (
+                <div key={b.id} style={{ padding: "4px 0" }}>
+                  <div
+                    onClick={hasOutput ? () => setExpanded(prev => {
+                      const next = new Set(prev)
+                      if (next.has(b.id)) next.delete(b.id); else next.add(b.id)
+                      return next
+                    }) : undefined}
+                    style={{
+                      display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12,
+                      color: "var(--text-2)", cursor: hasOutput ? "pointer" : "default",
+                    }}
+                  >
+                    <span style={{
+                      display: "inline-block", width: 14, textAlign: "center",
+                      color: b.status === "succeeded" ? "var(--ok-text, #166534)"
+                           : b.status === "failed"    ? "var(--err-text, #991b1b)"
+                           : b.status === "running"   ? "var(--accent-text, #2563eb)"
+                           : "var(--text-muted)",
+                    }}>{b.status === "succeeded" ? "✓" : b.status === "failed" ? "✗" : b.status === "running" ? "●" : "○"}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, color: "var(--text)" }}>
+                        {b.label ?? b.id}
+                        {hasOutput && (
+                          <span style={{ marginLeft: 8, fontSize: 10, color: "var(--text-muted)" }}>
+                            {isExpanded ? "▾" : "▸"}
+                          </span>
+                        )}
+                      </div>
+                      {b.error && (
+                        <div style={{ fontSize: 11, color: "var(--err-text, #991b1b)", marginTop: 2 }}>
+                          {b.error}
+                        </div>
+                      )}
                     </div>
+                  </div>
+                  {isExpanded && hasOutput && (
+                    <pre style={{
+                      margin: "6px 0 6px 22px", padding: "8px 10px",
+                      background: "var(--surface-3, rgba(0,0,0,0.03))",
+                      border: "1px solid var(--border)", borderRadius: 6,
+                      fontSize: 11, overflow: "auto", maxHeight: 240,
+                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                      color: "var(--text-2)",
+                    }}>
+                      {JSON.stringify(blockOutput, null, 2)}
+                    </pre>
                   )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

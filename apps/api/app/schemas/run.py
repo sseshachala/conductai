@@ -204,3 +204,8 @@ class RunWithWorkflowOut(RunOut):
     workflow_name: str
     project_id: Optional[str] = None
     project_name: Optional[str] = None
+    # Accumulated block outputs — populated by the dag_runner as each block
+    # completes. Included here (#1480 PR 9) so the Lens <RunBubble> can
+    # expand a block inline without a second fetch. Same auth boundary
+    # already applies (require_permission("platform.runs.view")).
+    state: Optional[dict[str, Any]] = None
