@@ -865,6 +865,11 @@ function ActionConfirmBubble({
   // Dedupe: whichever source (POST response or SSE event) reports resolution
   // first wins. Race is fine because the payload shape is identical.
   const handledRef = useRef(false)
+  // #1480 Gap 4 — action controls for the run this bubble kicked off, shown
+  // in the decided-approved state so the user doesn't have to hunt for the
+  // sibling RunBubble to cancel or retry.
+  const [runBusy, setRunBusy] = useState(false)
+  const [runActionErr, setRunActionErr] = useState<string | null>(null)
 
   // #1511 — mirror panelOpen to localStorage so refresh restores expand state.
   useEffect(() => {
@@ -984,6 +989,48 @@ function ActionConfirmBubble({
 
   const isMutation = toolName !== "decide_approval"  // heuristic — decide is itself an approve/reject
 
+  async function _postRunAction(url: string, body?: unknown, onOk?: (data: Record<string, unknown>) => void) {
+    if (runBusy || !runData?.workflow_id || !resolvedRunId) return
+    setRunBusy(true); setRunActionErr(null)
+    try {
+      const res = await authFetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setRunActionErr((err as { detail?: string }).detail ?? `Request failed (${res.status})`)
+        return
+      }
+      const data = await res.json().catch(() => ({}))
+      onOk?.(data as Record<string, unknown>)
+    } catch {
+      setRunActionErr("Network error")
+    } finally {
+      setRunBusy(false)
+    }
+  }
+
+  const runStatus = runData?.status ?? null
+  const runCancel = () => _postRunAction(`${API}/workflows/${runData!.workflow_id}/runs/${resolvedRunId}/cancel`)
+  const runDecide = (decision: "approved" | "rejected") =>
+    _postRunAction(`${API}/workflows/${runData!.workflow_id}/runs/${resolvedRunId}/approve`, { decision })
+  const runRetry = () => {
+    // #1480 Gap 3 parity — reuse original inputs, strip block outputs + system keys.
+    const runStateRec = (runData?.state ?? {}) as Record<string, unknown>
+    const initial_state: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(runStateRec)) {
+      if (k.startsWith("__")) continue
+      // We don't have the block-ID Map here, so filter only underscore-prefixed
+      // trigger + non-object values that look like inputs. Server-side validation
+      // will catch anything that slips through.
+      if (typeof v === "object" && v !== null && !k.startsWith("_")) continue
+      initial_state[k] = v
+    }
+    _postRunAction(`${API}/workflows/${runData!.workflow_id}/runs`, { initial_state })
+  }
+
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16, width: "100%" }}>
       <div style={{ maxWidth: "80%", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "4px 14px 14px 14px", padding: "16px 20px" }}>
@@ -1042,6 +1089,49 @@ function ActionConfirmBubble({
                 View run →
               </a>
             )}
+          </div>
+        )}
+        {serverStatus === "approved" && runData?.workflow_id && resolvedRunId &&
+         (runStatus === "pending" || runStatus === "running" || runStatus === "paused" || runStatus === "failed") && (
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            {(runStatus === "pending" || runStatus === "running") && (
+              <button onClick={runCancel} disabled={runBusy}
+                style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid var(--border)",
+                         background: "transparent", color: "var(--text-2)",
+                         fontSize: 12, cursor: runBusy ? "wait" : "pointer" }}>
+                Cancel run
+              </button>
+            )}
+            {runStatus === "paused" && (
+              <>
+                <button onClick={() => runDecide("approved")} disabled={runBusy}
+                  style={{ padding: "6px 14px", borderRadius: 6, border: "none",
+                           background: "var(--accent)", color: "#fff",
+                           fontSize: 12, fontWeight: 600, cursor: runBusy ? "wait" : "pointer" }}>
+                  Approve run
+                </button>
+                <button onClick={() => runDecide("rejected")} disabled={runBusy}
+                  style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid var(--border)",
+                           background: "transparent", color: "var(--text-2)",
+                           fontSize: 12, cursor: runBusy ? "wait" : "pointer" }}>
+                  Reject run
+                </button>
+              </>
+            )}
+            {runStatus === "failed" && (
+              <button onClick={runRetry} disabled={runBusy}
+                style={{ padding: "6px 14px", borderRadius: 6, border: "none",
+                         background: "var(--accent)", color: "#fff",
+                         fontSize: 12, fontWeight: 600, cursor: runBusy ? "wait" : "pointer" }}>
+                Retry run
+              </button>
+            )}
+          </div>
+        )}
+        {runActionErr && (
+          <div style={{ fontSize: 12, color: "var(--err-text, #991b1b)", background: "var(--err-bg, #fee2e2)",
+                        padding: "6px 10px", borderRadius: 6, marginTop: 8 }}>
+            {runActionErr}
           </div>
         )}
         {panelOpen && serverStatus === "approved" && runData?.workflow_id && resolvedRunId && (
