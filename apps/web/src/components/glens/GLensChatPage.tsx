@@ -36,6 +36,7 @@ type Message =
   | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string }
   | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string; warning?: string }
   | { role: "assistant"; kind: "action_confirm"; toolName: string; approvalRequestId: string; summary: string; warnings?: string[]; expiresAt?: string }
+  | { role: "assistant"; kind: "run"; runId: string; workflowName: string; initialStatus: string }
   | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
   | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
 
@@ -833,6 +834,7 @@ function ActionConfirmBubble({
   authFetch,
   stream,
   onResult,
+  onRunStarted,
 }: {
   toolName: string
   approvalRequestId: string
@@ -842,6 +844,7 @@ function ActionConfirmBubble({
   authFetch: (url: string, options?: RequestInit) => Promise<Response>
   stream: LensSessionStream | null
   onResult: (text: string) => void
+  onRunStarted?: (runId: string, workflowName: string, initialStatus: string) => void
 }) {
   const [status, setStatus] = useState<"pending" | "loading" | "done">("pending")
   const [idCopied, setIdCopied] = useState(false)
@@ -849,22 +852,38 @@ function ActionConfirmBubble({
   // first wins. Race is fine because the payload shape is identical.
   const handledRef = useRef(false)
 
-  const finish = (text: string) => {
+  const finishText = (text: string) => {
     if (handledRef.current) return
     handledRef.current = true
     setStatus("done")
     onResult(text)
   }
 
-  const messageForConfirmed = (payload: Record<string, unknown> | undefined, fallbackTool: string): string => {
+  const finishRun = (runId: string, workflowName: string, initialStatus: string) => {
+    if (handledRef.current) return
+    handledRef.current = true
+    setStatus("done")
+    if (onRunStarted) {
+      onRunStarted(runId, workflowName, initialStatus)
+    } else {
+      // Flag OFF or no run-bubble callback wired — fall back to text link.
+      onResult(`Run started for **${workflowName}**. [View run →](/runs/${runId})`)
+    }
+  }
+
+  const dispatchConfirmed = (payload: Record<string, unknown> | undefined, fallbackTool: string) => {
     const result = (payload?.result ?? {}) as Record<string, unknown>
     const label = (payload?.tool_name as string | undefined) ?? fallbackTool
     const runId = result.run_id as string | undefined
     if (runId) {
       const wfName = (result.workflow_name as string | undefined) ?? label
-      return `Run started for **${wfName}**. [View run →](/runs/${runId})`
+      // Initial status from the run row when we have it; "pending" otherwise
+      // (the worker will emit run.status_changed within seconds).
+      const initialStatus = (result.status as string | undefined) ?? "pending"
+      finishRun(runId, wfName, initialStatus)
+    } else {
+      finishText(`${label} executed successfully.`)
     }
-    return `${label} executed successfully.`
   }
 
   // #1480 PR 4 — react to action.confirmed / action.cancelled events on the
@@ -873,9 +892,9 @@ function ActionConfirmBubble({
   // feature flag is off — subscription is a silent no-op then.
   useLensEvent(stream, "approval", approvalRequestId, (evt) => {
     if (evt.type === "action.confirmed") {
-      finish(messageForConfirmed(evt.payload, toolName))
+      dispatchConfirmed(evt.payload, toolName)
     } else if (evt.type === "action.cancelled") {
-      finish("Action cancelled.")
+      finishText("Action cancelled.")
     }
   })
 
@@ -888,21 +907,21 @@ function ActionConfirmBubble({
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        finish(`Failed to ${action}: ${err.detail ?? res.status}`)
+        finishText(`Failed to ${action}: ${err.detail ?? res.status}`)
         return
       }
-      // When the SSE stream is live, it will call `finish` with the
+      // When the SSE stream is live, it will call `finish*` with the
       // event-derived message; the POST body is redundant then. When SSE
       // is off (flag disabled) or subscribed too late, fall through and
-      // use the response body directly. `finish` deduplicates either way.
+      // use the response body directly. `handledRef` deduplicates either way.
       const data = await res.json()
       if (action === "confirm") {
-        finish(messageForConfirmed(data as Record<string, unknown>, toolName))
+        dispatchConfirmed(data as Record<string, unknown>, toolName)
       } else {
-        finish("Action cancelled.")
+        finishText("Action cancelled.")
       }
     } catch {
-      finish("Network error. Please try again.")
+      finishText("Network error. Please try again.")
     }
   }
 
@@ -972,6 +991,65 @@ function ActionConfirmBubble({
           </div>
         )}
         {status === "loading" && <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Working…</div>}
+      </div>
+    </div>
+  )
+}
+
+// ─── Run bubble ──────────────────────────────────────────────────────────────
+// #1480 PR 5 — live run status inline in chat. Subscribes to run.status_changed
+// events on the session stream and updates its pill in place. Always renders
+// the "View run →" link so the user can jump to the run detail page.
+
+function RunBubble({
+  runId,
+  workflowName,
+  initialStatus,
+  stream,
+}: {
+  runId: string
+  workflowName: string
+  initialStatus: string
+  stream: LensSessionStream | null
+}) {
+  const [status, setStatus] = useState(initialStatus)
+  const [error, setError] = useState<string | null>(null)
+
+  useLensEvent(stream, "run", runId, (evt) => {
+    if (evt.type !== "run.status_changed") return
+    const nextStatus = (evt.payload?.status as string | undefined) ?? status
+    setStatus(nextStatus)
+    const evtErr = evt.payload?.error as string | undefined
+    if (evtErr) setError(evtErr)
+  })
+
+  const pillColor = (() => {
+    switch (status) {
+      case "succeeded": return { bg: "var(--ok-bg, #dcfce7)", fg: "var(--ok-text, #166534)" }
+      case "failed":    return { bg: "var(--err-bg, #fee2e2)", fg: "var(--err-text, #991b1b)" }
+      case "running":   return { bg: "var(--accent-weak, rgba(59,130,246,0.12))", fg: "var(--accent-text, #2563eb)" }
+      default:          return { bg: "var(--surface-3, #f3f4f6)", fg: "var(--text-muted)" }
+    }
+  })()
+
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16, width: "100%" }}>
+      <div style={{ maxWidth: "80%", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "4px 14px 14px 14px", padding: "16px 20px" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Run · {workflowName}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 999,
+            background: pillColor.bg, color: pillColor.fg, textTransform: "capitalize",
+          }}>{status}</span>
+          <a href={`/runs/${runId}`} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>
+            View run →
+          </a>
+        </div>
+        {error && (
+          <div style={{ fontSize: 12, color: "var(--err-text, #991b1b)", background: "var(--err-bg, #fee2e2)", padding: "8px 12px", borderRadius: 6 }}>
+            {error}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1412,6 +1490,19 @@ export function GLensChatPage() {
                         { role: "assistant", kind: "answer", text },
                         ...prev.slice(i + 1),
                       ])}
+                      onRunStarted={lensStream ? (runId, wfName, initialStatus) => setMessages(prev => [
+                        ...prev.slice(0, i),
+                        { role: "assistant", kind: "run", runId, workflowName: wfName, initialStatus },
+                        ...prev.slice(i + 1),
+                      ]) : undefined}
+                    />
+                  )}
+                  {msg.kind === "run" && (
+                    <RunBubble
+                      runId={msg.runId}
+                      workflowName={msg.workflowName}
+                      initialStatus={msg.initialStatus}
+                      stream={lensStream}
                     />
                   )}
                   {msg.kind === "policy_confirm" && (
