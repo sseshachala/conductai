@@ -27,6 +27,19 @@ from app.runtime.exceptions import ApprovalRequired, ClarificationRequired  # no
 from app.runtime.llm_client import GuardProxyBlocked, LLMUpstreamError
 
 
+def _tee_block(run, block_id: str, event_type: str, extra: dict | None = None) -> None:
+    """Tee a block-level event to the Lens session stream (#1480 PR 7).
+
+    No-op when run.session_id is None (non-Lens runs). Fail-open so a
+    Redis outage or import glitch never breaks the worker.
+    """
+    try:
+        from app.modules.glens.run_events import publish_run_block_event
+        publish_run_block_event(run, block_id, event_type, extra)
+    except Exception:
+        pass
+
+
 def _classify_failure(
     exc: Exception,
     block_id: str | None = None,
@@ -1020,6 +1033,10 @@ def _execute_dag(
             "label": block["data"].get("label", ""),
             "attempt_id": _attempt_id,
         })
+        _tee_block(run, block_id, "run.block_started", {
+            "type": block_type,
+            "label": block["data"].get("label", ""),
+        })
 
         compiled = version.compiled_artifacts or {}
 
@@ -1066,6 +1083,10 @@ def _execute_dag(
                     "for_each": True,
                     "items_count": len(results_list),
                 })
+                _tee_block(run, block_id, "run.block_completed", {
+                    "for_each": True,
+                    "items_count": len(results_list),
+                })
                 continue  # skip the normal single-execution path
 
             # ── per-block retry + fallback_block ─────────────────────────────
@@ -1088,6 +1109,7 @@ def _execute_dag(
                         log.error("block.output_failed", block_id=block_id, error=str(out_err))
                         result = {"sent": False, "error": str(out_err)}
                         _emit(db, run_id, block_id, "block_completed", {"output": result, "warning": str(out_err)})
+                        _tee_block(run, block_id, "run.block_completed", {"warning": str(out_err)})
                         state[block_id] = result
                         state["__last_output"] = json.dumps(result, default=str)
                         _logic_routes_version = _lrv_ref[0]
@@ -1103,6 +1125,9 @@ def _execute_dag(
                                 fallback=fallback_block_id, error=str(_block_err))
                     _emit(db, run_id, block_id, "block_failed", {
                         "error": str(_block_err), "fallback_block": fallback_block_id
+                    })
+                    _tee_block(run, block_id, "run.block_failed", {
+                        "error": str(_block_err), "fallback_block": fallback_block_id,
                     })
                     state[block_id] = {"error": str(_block_err), "fallback_triggered": True}
                     state["__next_block"] = fallback_block_id
@@ -1127,6 +1152,7 @@ def _execute_dag(
                 "output": result,
                 "attempt_id": _attempt_id,
             })
+            _tee_block(run, block_id, "run.block_completed", None)
 
             # Visibility: if any {{block.field}} refs in this block's inputs
             # failed to resolve, surface them so users don't only find out
@@ -1195,6 +1221,11 @@ def _execute_dag(
                 "reason_code": fail_summary["code"],
                 "next_action": fail_summary["next_action"],
             })
+            _tee_block(run, block_id, "run.block_failed", {
+                "error": fail_summary["message"],
+                "reason_code": fail_summary["code"],
+                "next_action": fail_summary["next_action"],
+            })
             break
 
         except Exception as e:
@@ -1212,6 +1243,11 @@ def _execute_dag(
             _emit(db, run_id, block_id, "block_failed", {
                 "error": fail_summary["message"],
                 "failure": fail_summary,
+                "reason_code": fail_summary["code"],
+                "next_action": fail_summary["next_action"],
+            })
+            _tee_block(run, block_id, "run.block_failed", {
+                "error": fail_summary["message"],
                 "reason_code": fail_summary["code"],
                 "next_action": fail_summary["next_action"],
             })
@@ -1251,6 +1287,13 @@ def _execute_dag(
     run.outcome = _detect_outcome(real_slug, state, run.status)
     try:
         db.commit()
+    except Exception:
+        pass
+
+    # #1480 PR 5 — tee terminal transition to Lens session stream when Lens-originated.
+    try:
+        from app.modules.glens.run_events import publish_run_status
+        publish_run_status(run, error=fail_error if failed else None)
     except Exception:
         pass
 

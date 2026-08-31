@@ -231,6 +231,9 @@ def execute_run(run_id: str):
         run.attempt_count = (run.attempt_count or 0) + 1
         db.commit()
         _emit(db, run_id, None, "run_started", {"node_count": len((version.graph or {}).get("nodes", []))})
+        # #1480 PR 5 — tee to Lens session stream when Lens-originated.
+        from app.modules.glens.run_events import publish_run_status
+        publish_run_status(run)
 
         # Accumulated state — includes previous run segment outputs on resume
         state: dict[str, Any] = dict(run.state or {})
@@ -427,6 +430,12 @@ def execute_run(run_id: str):
                 db.commit()
                 _emit_run_analytics(run, None, {}, db, outcome="failed", error=str(e))
                 _enqueue_online_eval(str(run.id))
+                # #1480 PR 5 — surface worker crash on Lens session stream.
+                try:
+                    from app.modules.glens.run_events import publish_run_status
+                    publish_run_status(run, error=str(e))
+                except Exception:
+                    pass
         except Exception:
             pass
     finally:

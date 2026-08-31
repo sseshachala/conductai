@@ -3,6 +3,8 @@ import { API } from "@/lib/api"
 
 import { useEffect, useRef, useState } from "react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { useLensEvent } from "@/hooks/useLensEvent"
+import { useLensSessionStream, type LensSessionStream } from "@/hooks/useLensSessionStream"
 import { GlensDashboard } from "@/components/glens/GlensDashboard"
 import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
 import { GlensPageBubble } from "@/components/glens/GlensPageBubble"
@@ -34,6 +36,7 @@ type Message =
   | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string }
   | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string; warning?: string }
   | { role: "assistant"; kind: "action_confirm"; toolName: string; approvalRequestId: string; summary: string; warnings?: string[]; expiresAt?: string }
+  | { role: "assistant"; kind: "run"; runId: string; workflowName: string; initialStatus: string }
   | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
   | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
 
@@ -829,7 +832,9 @@ function ActionConfirmBubble({
   warnings,
   expiresAt,
   authFetch,
+  stream,
   onResult,
+  onRunStarted,
 }: {
   toolName: string
   approvalRequestId: string
@@ -837,10 +842,61 @@ function ActionConfirmBubble({
   warnings?: string[]
   expiresAt?: string
   authFetch: (url: string, options?: RequestInit) => Promise<Response>
+  stream: LensSessionStream | null
   onResult: (text: string) => void
+  onRunStarted?: (runId: string, workflowName: string, initialStatus: string) => void
 }) {
   const [status, setStatus] = useState<"pending" | "loading" | "done">("pending")
   const [idCopied, setIdCopied] = useState(false)
+  // Dedupe: whichever source (POST response or SSE event) reports resolution
+  // first wins. Race is fine because the payload shape is identical.
+  const handledRef = useRef(false)
+
+  const finishText = (text: string) => {
+    if (handledRef.current) return
+    handledRef.current = true
+    setStatus("done")
+    onResult(text)
+  }
+
+  const finishRun = (runId: string, workflowName: string, initialStatus: string) => {
+    if (handledRef.current) return
+    handledRef.current = true
+    setStatus("done")
+    if (onRunStarted) {
+      onRunStarted(runId, workflowName, initialStatus)
+    } else {
+      // Flag OFF or no run-bubble callback wired — fall back to text link.
+      onResult(`Run started for **${workflowName}**. [View run →](/runs/${runId})`)
+    }
+  }
+
+  const dispatchConfirmed = (payload: Record<string, unknown> | undefined, fallbackTool: string) => {
+    const result = (payload?.result ?? {}) as Record<string, unknown>
+    const label = (payload?.tool_name as string | undefined) ?? fallbackTool
+    const runId = result.run_id as string | undefined
+    if (runId) {
+      const wfName = (result.workflow_name as string | undefined) ?? label
+      // Initial status from the run row when we have it; "pending" otherwise
+      // (the worker will emit run.status_changed within seconds).
+      const initialStatus = (result.status as string | undefined) ?? "pending"
+      finishRun(runId, wfName, initialStatus)
+    } else {
+      finishText(`${label} executed successfully.`)
+    }
+  }
+
+  // #1480 PR 4 — react to action.confirmed / action.cancelled events on the
+  // session stream. Fires for cross-tab confirms, Slack-side approvals, or
+  // any decide path that touches this row. `stream` is null when the SSE
+  // feature flag is off — subscription is a silent no-op then.
+  useLensEvent(stream, "approval", approvalRequestId, (evt) => {
+    if (evt.type === "action.confirmed") {
+      dispatchConfirmed(evt.payload, toolName)
+    } else if (evt.type === "action.cancelled") {
+      finishText("Action cancelled.")
+    }
+  })
 
   async function post(action: "confirm" | "cancel") {
     setStatus("loading")
@@ -851,26 +907,22 @@ function ActionConfirmBubble({
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        onResult(`Failed to ${action}: ${err.detail ?? res.status}`)
+        finishText(`Failed to ${action}: ${err.detail ?? res.status}`)
+        return
+      }
+      // When the SSE stream is live, it will call `finish*` with the
+      // event-derived message; the POST body is redundant then. When SSE
+      // is off (flag disabled) or subscribed too late, fall through and
+      // use the response body directly. `handledRef` deduplicates either way.
+      const data = await res.json()
+      if (action === "confirm") {
+        dispatchConfirmed(data as Record<string, unknown>, toolName)
       } else {
-        const data = await res.json()
-        if (action === "confirm") {
-          const label = data.tool_name ?? toolName
-          const runId = data.result?.run_id as string | undefined
-          if (runId) {
-            const wfName = data.result?.workflow_name ?? label
-            onResult(`Run started for **${wfName}**. [View run →](/runs/${runId})`)
-          } else {
-            onResult(`${label} executed successfully.`)
-          }
-        } else {
-          onResult(`Action cancelled.`)
-        }
+        finishText("Action cancelled.")
       }
     } catch {
-      onResult("Network error. Please try again.")
+      finishText("Network error. Please try again.")
     }
-    setStatus("done")
   }
 
   const isMutation = toolName !== "decide_approval"  // heuristic — decide is itself an approve/reject
@@ -939,6 +991,242 @@ function ActionConfirmBubble({
           </div>
         )}
         {status === "loading" && <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Working…</div>}
+      </div>
+    </div>
+  )
+}
+
+// ─── Run bubble ──────────────────────────────────────────────────────────────
+
+function formatElapsed(startMs: number, endMs: number): string {
+  const secs = Math.max(0, Math.round((endMs - startMs) / 1000))
+  if (secs < 60) return `${secs}s`
+  const mins = Math.floor(secs / 60)
+  const rem = secs % 60
+  if (mins < 60) return rem ? `${mins}m ${rem}s` : `${mins}m`
+  const hrs = Math.floor(mins / 60)
+  const rmin = mins % 60
+  return rmin ? `${hrs}h ${rmin}m` : `${hrs}h`
+}
+
+type RunBlockState = {
+  id: string
+  status: "pending" | "running" | "succeeded" | "failed"
+  label?: string
+  error?: string
+}
+// #1480 PR 5 — live run status inline in chat. Subscribes to run.status_changed
+// events on the session stream and updates its pill in place. Always renders
+// the "View run →" link so the user can jump to the run detail page.
+
+function RunBubble({
+  runId,
+  workflowName,
+  initialStatus,
+  stream,
+  authFetch,
+}: {
+  runId: string
+  workflowName: string
+  initialStatus: string
+  stream: LensSessionStream | null
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>
+}) {
+  const [status, setStatus] = useState(initialStatus)
+  const [error, setError] = useState<string | null>(null)
+  // Per-block timeline (#1480 PR 7). Order is insertion order (Map preserves
+  // it), which matches the DAG execution order the worker publishes in.
+  const [blocks, setBlocks] = useState<Map<string, RunBlockState>>(new Map())
+  // Cached run.state from /runs/{id} — populated on mount, used to render
+  // block outputs inline (#1480 PR 9). Refetch on demand if a block the
+  // user expands isn't in the cache yet.
+  const [runState, setRunState] = useState<Record<string, unknown> | null>(null)
+  const [outcome, setOutcome] = useState<{ type?: string; artifact_url?: string } | null>(null)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [completedAt, setCompletedAt] = useState<number | null>(null)
+  const [now, setNow] = useState<number>(() => Date.now())
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // If an SSE update lands before the bootstrap fetch resolves, the fetch
+  // result is stale — don't overwrite the fresher event.
+  const gotUpdate = useRef(false)
+
+  // Mount-race fix: the worker publishes run.status_changed as soon as it
+  // picks up the run — often BEFORE this component mounts and subscribes.
+  // On short runs both "running" and terminal events can fire before the
+  // subscription attaches, leaving the pill stuck at "pending" forever.
+  // Fetch current status once on mount so the pill catches up regardless
+  // of when SSE events landed.
+  useEffect(() => {
+    let cancelled = false
+    authFetch(`${API}/runs/${runId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled) return
+        if (data?.state) setRunState(data.state as Record<string, unknown>)
+        if (data?.outcome) setOutcome(data.outcome as { type?: string; artifact_url?: string })
+        if (data?.started_at) setStartedAt(new Date(data.started_at as string).getTime())
+        if (data?.completed_at) setCompletedAt(new Date(data.completed_at as string).getTime())
+        if (data?.status && !gotUpdate.current) setStatus(data.status)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId])
+
+  // Refetch state + outcome + timing when a block completes / status changes.
+  useEffect(() => {
+    const anyCompleted = Array.from(blocks.values()).some(b => b.status === "succeeded" || b.status === "failed")
+    if (!anyCompleted && status !== "succeeded" && status !== "failed") return
+    let cancelled = false
+    authFetch(`${API}/runs/${runId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled || !data) return
+        if (data.state) setRunState(data.state as Record<string, unknown>)
+        if (data.outcome) setOutcome(data.outcome as { type?: string; artifact_url?: string })
+        if (data.completed_at) setCompletedAt(new Date(data.completed_at as string).getTime())
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
+
+  // Client-side elapsed clock — tick every second while the run is active.
+  useEffect(() => {
+    if (status !== "running" && status !== "pending") return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [status])
+
+  useLensEvent(stream, "run", runId, (evt) => {
+    gotUpdate.current = true
+    if (evt.type === "run.status_changed") {
+      const nextStatus = (evt.payload?.status as string | undefined) ?? status
+      setStatus(nextStatus)
+      const evtErr = evt.payload?.error as string | undefined
+      if (evtErr) setError(evtErr)
+      return
+    }
+    // Block-level events (#1480 PR 7 timeline)
+    const blockId = evt.payload?.block_id as string | undefined
+    if (!blockId) return
+    const label = evt.payload?.label as string | undefined
+    const errMsg = evt.payload?.error as string | undefined
+    setBlocks(prev => {
+      const next = new Map(prev)
+      const cur = next.get(blockId) ?? { id: blockId, status: "pending" }
+      if (evt.type === "run.block_started") {
+        next.set(blockId, { ...cur, status: "running", label: label ?? cur.label })
+      } else if (evt.type === "run.block_completed") {
+        next.set(blockId, { ...cur, status: "succeeded" })
+      } else if (evt.type === "run.block_failed") {
+        next.set(blockId, { ...cur, status: "failed", error: errMsg ?? cur.error })
+      }
+      return next
+    })
+  })
+
+  const pillColor = (() => {
+    switch (status) {
+      case "succeeded": return { bg: "var(--ok-bg, #dcfce7)", fg: "var(--ok-text, #166534)" }
+      case "failed":    return { bg: "var(--err-bg, #fee2e2)", fg: "var(--err-text, #991b1b)" }
+      case "running":   return { bg: "var(--accent-weak, rgba(59,130,246,0.12))", fg: "var(--accent-text, #2563eb)" }
+      default:          return { bg: "var(--surface-3, #f3f4f6)", fg: "var(--text-muted)" }
+    }
+  })()
+
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16, width: "100%" }}>
+      <div style={{ maxWidth: "80%", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "4px 14px 14px 14px", padding: "16px 20px" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Run · {workflowName}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 999,
+            background: pillColor.bg, color: pillColor.fg, textTransform: "capitalize",
+          }}>{status}</span>
+          {startedAt && (
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              {formatElapsed(startedAt, completedAt ?? now)}
+            </span>
+          )}
+          <a href={`/runs/${runId}`} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>
+            View run →
+          </a>
+        </div>
+        {outcome?.artifact_url && (
+          <div style={{ marginBottom: 10, padding: "8px 12px", background: "var(--ok-bg, #dcfce7)", borderRadius: 6, fontSize: 12 }}>
+            <span style={{ color: "var(--ok-text, #166534)", fontWeight: 600 }}>
+              {outcome.type ? outcome.type.replace(/_/g, " ") : "artifact"}:
+            </span>{" "}
+            <a href={outcome.artifact_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "none", wordBreak: "break-all" }}>
+              {outcome.artifact_url}
+            </a>
+          </div>
+        )}
+        {error && (
+          <div style={{ fontSize: 12, color: "var(--err-text, #991b1b)", background: "var(--err-bg, #fee2e2)", padding: "8px 12px", borderRadius: 6 }}>
+            {error}
+          </div>
+        )}
+        {blocks.size > 0 && (
+          <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+            {Array.from(blocks.values()).map(b => {
+              const isExpanded = expanded.has(b.id)
+              const blockOutput = runState?.[b.id]
+              const hasOutput = blockOutput !== undefined && b.status !== "pending" && b.status !== "running"
+              return (
+                <div key={b.id} style={{ padding: "4px 0" }}>
+                  <div
+                    onClick={hasOutput ? () => setExpanded(prev => {
+                      const next = new Set(prev)
+                      if (next.has(b.id)) next.delete(b.id); else next.add(b.id)
+                      return next
+                    }) : undefined}
+                    style={{
+                      display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12,
+                      color: "var(--text-2)", cursor: hasOutput ? "pointer" : "default",
+                    }}
+                  >
+                    <span style={{
+                      display: "inline-block", width: 14, textAlign: "center",
+                      color: b.status === "succeeded" ? "var(--ok-text, #166534)"
+                           : b.status === "failed"    ? "var(--err-text, #991b1b)"
+                           : b.status === "running"   ? "var(--accent-text, #2563eb)"
+                           : "var(--text-muted)",
+                    }}>{b.status === "succeeded" ? "✓" : b.status === "failed" ? "✗" : b.status === "running" ? "●" : "○"}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, color: "var(--text)" }}>
+                        {b.label ?? b.id}
+                        {hasOutput && (
+                          <span style={{ marginLeft: 8, fontSize: 10, color: "var(--text-muted)" }}>
+                            {isExpanded ? "▾" : "▸"}
+                          </span>
+                        )}
+                      </div>
+                      {b.error && (
+                        <div style={{ fontSize: 11, color: "var(--err-text, #991b1b)", marginTop: 2 }}>
+                          {b.error}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {isExpanded && hasOutput && (
+                    <pre style={{
+                      margin: "6px 0 6px 22px", padding: "8px 10px",
+                      background: "var(--surface-3, rgba(0,0,0,0.03))",
+                      border: "1px solid var(--border)", borderRadius: 6,
+                      fontSize: 11, overflow: "auto", maxHeight: 240,
+                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                      color: "var(--text-2)",
+                    }}>
+                      {JSON.stringify(blockOutput, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1028,6 +1316,10 @@ export function GLensChatPage() {
 
   const [sessions, setSessions] = useState<GLensSession[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  // #1480 PR 4 — SSE session stream. Returns null when the feature flag
+  // (NEXT_PUBLIC_LENS_SSE_SURFACE) is off or no active session yet; bubbles
+  // that opt in via useLensEvent silently degrade to the existing REST flow.
+  const lensStream = useLensSessionStream(activeId)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS)
@@ -1369,11 +1661,26 @@ export function GLensChatPage() {
                       warnings={msg.warnings}
                       expiresAt={msg.expiresAt}
                       authFetch={authFetch}
+                      stream={lensStream}
                       onResult={text => setMessages(prev => [
                         ...prev.slice(0, i),
                         { role: "assistant", kind: "answer", text },
                         ...prev.slice(i + 1),
                       ])}
+                      onRunStarted={lensStream ? (runId, wfName, initialStatus) => setMessages(prev => [
+                        ...prev.slice(0, i),
+                        { role: "assistant", kind: "run", runId, workflowName: wfName, initialStatus },
+                        ...prev.slice(i + 1),
+                      ]) : undefined}
+                    />
+                  )}
+                  {msg.kind === "run" && (
+                    <RunBubble
+                      runId={msg.runId}
+                      workflowName={msg.workflowName}
+                      initialStatus={msg.initialStatus}
+                      stream={lensStream}
+                      authFetch={authFetch}
                     />
                   )}
                   {msg.kind === "policy_confirm" && (
