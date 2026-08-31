@@ -1,6 +1,6 @@
 "use client"
 
-import { Component, useEffect, useRef, useState } from "react"
+import { Component, useEffect, useState } from "react"
 import { useAuth } from "@clerk/nextjs"
 import Link from "next/link"
 import RunTrace from "@/components/runs/RunTrace"
@@ -91,7 +91,6 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
   const [approvalDecision, setApprovalDecision] = useState<"approved" | "rejected" | null>(null)
   const [approvingRun, setApprovingRun] = useState(false)
   const [sseActive, setSseActive] = useState(false)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   async function fetchRun() {
     try {
@@ -116,7 +115,6 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
     try {
       await authFetch(`${API}/workflows/${workflowId}/runs/${runId}/cancel`, { method: "POST", headers: { "Content-Type": "application/json" } })
       setRun(prev => prev ? { ...prev, status: "cancelled" } : prev)
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     } finally { setStopping(false) }
   }
 
@@ -134,12 +132,6 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
       setApprovalDecision(decision)
     } finally { setApprovingRun(false) }
   }
-
-  useEffect(() => {
-    if (run && isTerminal(run.status) && pollRef.current) {
-      clearInterval(pollRef.current); pollRef.current = null
-    }
-  }, [run?.status])
 
   useEffect(() => {
     if (!isLoaded) return
@@ -160,17 +152,12 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
         if (brainNode?.data?.model) setAgentModel(brainNode.data.model)
       }
       setLoading(false)
-      // #1519 — skip the 4s poll when embedded. Each poll rewrites `run`
-      // which re-renders StatRow + block timeline and reads as flicker inside
-      // the Lens bubble. RunTrace has its own SSE for block-level updates;
-      // StatRow (tokens/cost/duration) stays with mount-time values until the
-      // user reopens the panel or the run finishes.
-      if (runData && !isTerminal(runData.status) && !embedded) {
-        pollRef.current = setInterval(async () => { await fetchRun() }, 4000)
-      }
+      // #1524 — no mount-time poll. StatRow tokens/cost update at SSE end
+      // (onSseEnded → one-shot fetchRun below). Duration stays live via
+      // <LiveDuration/> which owns its own 1s ticker and does not re-render
+      // the parent panel.
     }
     load()
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId, runId, isLoaded])
 
@@ -310,12 +297,12 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
       {/* StatRow metric bar */}
       <div className="card" style={{ display: "flex", padding: 0, overflow: "hidden", marginBottom: 22 }}>
         {([
-          ["Duration",     duration(run.started_at, run.completed_at), false],
+          ["Duration",     <LiveDuration key="dur" startedAt={run.started_at} completedAt={run.completed_at} status={run.status} />, false],
           ["Turns",        run.actual_turns ? `${run.actual_turns}${run.max_turns ? ` / ${run.max_turns} est.` : ""}` : run.max_turns ? `— / ${run.max_turns} est.` : "—", false],
           ["Tokens",       statTokensDisplay, false],
           ["Est. cost",    statCostDisplay, false],
           ["Triggered by", formatTrigger(run.triggered_by), true],
-        ] as [string, string, boolean][]).map(([label, value, mono], i, arr) => (
+        ] as [string, React.ReactNode, boolean][]).map(([label, value, mono], i, arr) => (
           <div key={label} style={{
             flex: i === arr.length - 1 ? 1.4 : 1,
             padding: "16px 20px",
@@ -386,15 +373,14 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
             maxTurns={run.max_turns ?? null}
             getToken={getToken}
             embedded={embedded}
-            onSseConnected={() => { setSseActive(true); if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }}
+            onSseConnected={() => setSseActive(true)}
             onSseEnded={() => {
               setSseActive(false)
               if (!run || isTerminal(run.status)) return
-              // #1519 — don't restart the fallback poll when embedded; same
-              // flicker source as the mount poll above.
-              if (!pollRef.current && !embedded) {
-                pollRef.current = setInterval(async () => { await fetchRun() }, 4000)
-              }
+              // #1524 — one-shot fetch to grab final status/tokens/cost when
+              // SSE closes. No interval restart: the 4s repoll was the main
+              // flicker source in the canvas panel.
+              void fetchRun()
             }}
           />
           </TabErrorBoundary>
@@ -440,4 +426,18 @@ function statusKey(status: string): string {
   if (status === "paused") return "warn"
   if (status === "cancelled") return "idle"
   return "idle"
+}
+
+// #1524 — owns its own 1s tick so the "Duration" cell stays live without
+// re-rendering StatRow / tokens / cost / tabs on every second.
+function LiveDuration({ startedAt, completedAt, status }: {
+  startedAt: string | null; completedAt: string | null; status: string
+}) {
+  const [, setNow] = useState(0)
+  useEffect(() => {
+    if (completedAt || !isActive(status)) return
+    const id = setInterval(() => setNow(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [completedAt, status])
+  return <>{duration(startedAt, completedAt, status)}</>
 }
