@@ -353,8 +353,13 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
                 <a href={href}
                    title={ev.agent_identity_id ? `View agent identity ${ev.agent_identity_id}` : "View agent identities"}
                    onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()}
-                   style={{ textDecoration: "none" }}>
+                   style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
                   {pill}
+                  {ev.agent_identity_id && (
+                    <span className="mono" style={{ fontSize: 9.5, color: "var(--text-muted)" }}>
+                      {ev.agent_identity_id.slice(0, 10)}
+                    </span>
+                  )}
                 </a>
               )
             }
@@ -415,8 +420,13 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
             <a href={href}
                title={ev.agent_identity_id ? `View agent identity ${ev.agent_identity_id}` : "View agent identities"}
                onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()}
-               style={{ textDecoration: "none" }}>
+               style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
               {pill}
+              {ev.agent_identity_id && (
+                <span className="mono" style={{ fontSize: 9, color: "var(--text-muted)" }}>
+                  {ev.agent_identity_id.slice(0, 10)}
+                </span>
+              )}
             </a>
           )
         })()}
