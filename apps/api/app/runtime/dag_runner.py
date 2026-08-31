@@ -1254,6 +1254,13 @@ def _execute_dag(
     except Exception:
         pass
 
+    # #1480 PR 5 — tee terminal transition to Lens session stream when Lens-originated.
+    try:
+        from app.modules.glens.run_events import publish_run_status
+        publish_run_status(run, error=fail_error if failed else None)
+    except Exception:
+        pass
+
     if failed and not fail_summary and fail_error:
         fail_summary = _classify_failure(RuntimeError(fail_error), None)
 
