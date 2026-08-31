@@ -11,6 +11,7 @@ import { GlensPageBubble } from "@/components/glens/GlensPageBubble"
 import { GenericTableBubble } from "@/components/glens/GenericTableBubble"
 import { BlocksBubble } from "@/components/glens/BlocksBubble"
 import { FeedbackButtons } from "@/components/glens/FeedbackButtons"
+import RunDetailPanel, { type RunMeta } from "@/components/runs/RunDetailPanel"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1093,6 +1094,16 @@ function RunBubble({
   const [completedAt, setCompletedAt] = useState<number | null>(null)
   const [now, setNow] = useState<number>(() => Date.now())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // #1506 — top-level expand toggle for the embedded RunDetailPanel
+  const [panelOpen, setPanelOpen] = useState(() => {
+    // #1508 follow-up — persist expand state across refresh, per runId.
+    // localStorage (not sessionStorage) so re-opening the tab keeps context.
+    try { return typeof window !== "undefined" && window.localStorage.getItem(`lens:panelOpen:${runId}`) === "1" }
+    catch { return false }
+  })
+  // #1508 follow-up — cache the /runs/{id} response so the embedded
+  // RunDetailPanel can skip its own initial fetch (initialRun prop).
+  const [runData, setRunData] = useState<RunMeta | null>(null)
   // If an SSE update lands before the bootstrap fetch resolves, the fetch
   // result is stale — don't overwrite the fresher event.
   const gotUpdate = useRef(false)
@@ -1109,6 +1120,7 @@ function RunBubble({
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
         if (cancelled) return
+        if (data) setRunData(data as RunMeta)
         if (data?.state) {
           const st = data.state as Record<string, unknown>
           setRunState(st)
@@ -1150,6 +1162,7 @@ function RunBubble({
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
         if (cancelled || !data) return
+        setRunData(data as RunMeta)
         if (data.state) setRunState(data.state as Record<string, unknown>)
         if (data.outcome) setOutcome(data.outcome as { type?: string; artifact_url?: string })
         if (data.completed_at) setCompletedAt(new Date(data.completed_at as string).getTime())
@@ -1165,6 +1178,18 @@ function RunBubble({
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [status])
+
+  // #1506 — auto-open the full detail panel when the run pauses for approval,
+  // so the Approvals tab is one click away without hunting for a chevron.
+  useEffect(() => {
+    if (status === "paused") setPanelOpen(true)
+  }, [status])
+
+  // #1508 follow-up — mirror panelOpen to localStorage so refresh restores it.
+  useEffect(() => {
+    try { window.localStorage.setItem(`lens:panelOpen:${runId}`, panelOpen ? "1" : "0") }
+    catch { /* private-mode / quota — best-effort */ }
+  }, [panelOpen, runId])
 
   useLensEvent(stream, "run", runId, (evt) => {
     gotUpdate.current = true
@@ -1252,6 +1277,18 @@ function RunBubble({
               {formatElapsed(startedAt, completedAt ?? now)}
             </span>
           )}
+          <button
+            onClick={() => setPanelOpen(o => !o)}
+            aria-label={panelOpen ? "Collapse run detail" : "Expand run detail"}
+            aria-expanded={panelOpen}
+            style={{
+              background: "transparent", border: "1px solid var(--border)",
+              borderRadius: 6, padding: "2px 8px", fontSize: 11,
+              color: "var(--text-2)", cursor: "pointer", lineHeight: 1.4,
+            }}
+          >
+            {panelOpen ? "▾ Collapse" : "▸ Expand"}
+          </button>
           <a href={`/runs/${runId}`} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>
             View run →
           </a>
@@ -1276,7 +1313,7 @@ function RunBubble({
             {actionErr}
           </div>
         )}
-        {workflowId && (status === "pending" || status === "running" || status === "paused" || status === "failed") && (
+        {!panelOpen && workflowId && (status === "pending" || status === "running" || status === "paused" || status === "failed") && (
           <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
             {(status === "pending" || status === "running") && (
               <button
@@ -1389,6 +1426,11 @@ function RunBubble({
                 </div>
               )
             })}
+          </div>
+        )}
+        {panelOpen && workflowId && (
+          <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+            <RunDetailPanel workflowId={workflowId} runId={runId} embedded initialRun={runData ?? undefined} />
           </div>
         )}
       </div>

@@ -29,7 +29,7 @@ class TabErrorBoundary extends Component<{ children: React.ReactNode }, { hasErr
   }
 }
 
-interface RunMeta {
+export interface RunMeta {
   id: string
   status: string
   governance?: { blocked?: boolean } | null
@@ -57,18 +57,25 @@ export interface RunDetailPanelProps {
    * The parent (e.g. Lens RunBubble) supplies its own container.
    */
   embedded?: boolean
+  /**
+   * Seed the panel with a run record the caller already fetched (e.g. Lens
+   * RunBubble hits /runs/{id} on mount). When provided, the panel skips its
+   * initial fetch and renders immediately. Polling still runs for
+   * non-terminal runs so any missing fields fill in on the next tick.
+   */
+  initialRun?: RunMeta
 }
 
-export default function RunDetailPanel({ workflowId, runId, embedded = false }: RunDetailPanelProps) {
+export default function RunDetailPanel({ workflowId, runId, embedded = false, initialRun }: RunDetailPanelProps) {
   const { getToken, isLoaded } = useAuth()
   const { authFetch } = useAuthFetch()
 
-  const [run, setRun] = useState<RunMeta | null>(null)
+  const [run, setRun] = useState<RunMeta | null>(initialRun ?? null)
   const [workflowName, setWorkflowName] = useState<string | null>(null)
   const [projectName, setProjectName] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [agentModel, setAgentModel] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!initialRun)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [stopping, setStopping] = useState(false)
@@ -129,8 +136,10 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false }: 
   useEffect(() => {
     if (!isLoaded) return
     async function load() {
+      // #1508 follow-up — skip the initial fetchRun when the parent seeded us
+      // with a run record; polling still starts below for non-terminal runs.
       const [runData, wfRes] = await Promise.all([
-        fetchRun(),
+        initialRun ? Promise.resolve(initialRun) : fetchRun(),
         authFetch(`${API}/workflows/${workflowId}`),
       ])
       if (wfRes.ok) {
