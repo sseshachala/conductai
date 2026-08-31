@@ -86,8 +86,11 @@ def publish_session_event(
     if payload:
         body["payload"] = payload
 
-    r = client or _redis()
     try:
+        # Construct the Redis client inside the try so an unreachable Redis
+        # (from_url succeeds but pool init fails, or a mocked-to-raise
+        # from_url in tests) still fails open — see docstring.
+        r = client or _redis()
         # XADD returns the auto-generated stream id (e.g. "1699999999999-0")
         entry_id = r.xadd(
             _stream_key(sid),

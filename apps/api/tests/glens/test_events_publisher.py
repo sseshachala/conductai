@@ -99,3 +99,16 @@ def test_uuid_session_id_accepted() -> None:
     r = _mock_redis()
     publish_session_event(uuid.UUID(_SESSION), "run.status_changed", client=r)
     assert r.xadd.call_args.args[0] == f"stream:session:{_SESSION}"
+
+
+def test_fail_open_when_redis_from_url_itself_raises() -> None:
+    """Regression test: earlier version constructed the Redis client OUTSIDE
+    the try/except, so a mocked-to-raise `redis.from_url` (as used by
+    executor lifecycle tests) blew past the fail-open handler and crashed
+    the caller. Every failure mode inside publish_session_event MUST be
+    swallowed."""
+    from unittest.mock import patch
+
+    with patch("app.modules.glens.events.redis.from_url", side_effect=RuntimeError("redis down")):
+        entry_id = publish_session_event(_SESSION, "action.confirmed")
+    assert entry_id == ""
