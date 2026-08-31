@@ -84,9 +84,6 @@ _XFAIL_TOOLS = {
     # a row exists. Extend StubQuery.one() to return an aggregate-shaped stub
     # when the impl is aggregation-heavy.
     "get_spend_summary": "StubQuery.one() semantic mismatch on aggregate SELECT",
-    # Class E — real robustness bug surfaced by the smoke test; #1488
-    "get_dora_metrics": "REAL BUG #1488: totals.total dereferenced when .first() returns None",
-    "get_analytics_summary": "REAL BUG #1488: totals.total dereferenced when .first() returns None",
     # Class F — order-dependent leak from earlier test files in tests/tools/;
     # tools pass in isolation but fail when suite runs before this file leaks
     # SessionLocal/MagicMock state. See feedback_lens_tool_tests_ci_leak.md.

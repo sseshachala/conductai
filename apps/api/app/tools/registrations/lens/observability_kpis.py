@@ -92,8 +92,8 @@ def get_dora_metrics(ctx, days: int = 30):
             )
             .first()
         )
-        total = totals.total or 0
-        succeeded = int(totals.succeeded or 0)
+        total = (totals.total if totals else 0) or 0
+        succeeded = int((totals.succeeded if totals else 0) or 0)
         failed = total - succeeded
         trigger_rows = (
             db.query(
@@ -124,7 +124,7 @@ def get_dora_metrics(ctx, days: int = 30):
             "total_runs": total,
             "deployment_frequency": round(succeeded / days, 4),
             "change_failure_rate": round(failed / total, 4) if total else 0.0,
-            "avg_duration_ms": float(totals.avg_duration) if totals.avg_duration else None,
+            "avg_duration_ms": float(totals.avg_duration) if totals and totals.avg_duration else None,
             "by_trigger": by_trigger,
         }
     finally:
@@ -155,8 +155,8 @@ def get_analytics_summary(ctx, days: int = 30):
             RunAnalyticsEvent.created_at >= cutoff,
         ).first()
 
-        total = totals.total or 0
-        succeeded = int(totals.succeeded or 0)
+        total = (totals.total if totals else 0) or 0
+        succeeded = int((totals.succeeded if totals else 0) or 0)
         failed = total - succeeded
         top = _playbook_stats(db, ws_hash, cutoff)[:5]
         return {
@@ -165,10 +165,10 @@ def get_analytics_summary(ctx, days: int = 30):
             "succeeded": succeeded,
             "failed": failed,
             "success_rate": round(succeeded / total, 3) if total else 0.0,
-            "total_cost_usd": float(totals.total_cost or 0),
-            "total_input_tokens": int(totals.total_input or 0),
-            "total_output_tokens": int(totals.total_output or 0),
-            "avg_duration_ms": float(totals.avg_duration) if totals.avg_duration else None,
+            "total_cost_usd": float((totals.total_cost if totals else 0) or 0),
+            "total_input_tokens": int((totals.total_input if totals else 0) or 0),
+            "total_output_tokens": int((totals.total_output if totals else 0) or 0),
+            "avg_duration_ms": float(totals.avg_duration) if totals and totals.avg_duration else None,
             "top_playbooks": [p.model_dump() if hasattr(p, "model_dump") else dict(p) for p in top],
         }
     finally:
