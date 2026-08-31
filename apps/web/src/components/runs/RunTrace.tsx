@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { memo, useEffect, useMemo, useRef, useState } from "react"
 import { duration as formatDuration } from "@/lib/runUtils"
 import { API } from "@/lib/api"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -285,7 +285,7 @@ function cardStyle(row: BlockRow): React.CSSProperties {
   return { flex: 1, padding: "12px 15px" }
 }
 
-function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
+const BlockRowView = memo(function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
   const isTimedOut = row.timedOut === true
   const [expanded, setExpanded] = useState(row.status === "failed")
   const [diffExpanded, setDiffExpanded] = useState(false)
@@ -584,7 +584,17 @@ function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
       </div>
     </div>
   )
-}
+}, (prev, next) => (
+  prev.isLast === next.isLast &&
+  prev.row.blockId === next.row.blockId &&
+  prev.row.status === next.row.status &&
+  prev.row.startedAt === next.row.startedAt &&
+  prev.row.completedAt === next.row.completedAt &&
+  prev.row.error === next.row.error &&
+  prev.row.output === next.row.output &&
+  prev.row.toolCalls === next.row.toolCalls &&
+  prev.row.budgetExhausted === next.row.budgetExhausted
+))
 
 // ── Run terminal row ──────────────────────────────────────────────────────────
 
@@ -794,11 +804,16 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
   useEffect(() => { if (!embedded) bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }, [events, embedded])
 
   // ── Build block rows from events ──────────────────────────────────────────
+  // #1516 — memoize so blockRows references are stable across renders that
+  // didn't change events (parent re-render, panel poll). Without this, every
+  // render allocates new BlockRow objects and BlockRowView reruns even when
+  // its content is identical — the CSS pulse animation restarts each time
+  // and the Steps tab visibly flickers on every parent update.
+  const blockRows: BlockRow[] = useMemo(() => {
+    const rows: BlockRow[] = []
+    const blockMap: Record<string, BlockRow> = {}
 
-  const blockRows: BlockRow[] = []
-  const blockMap: Record<string, BlockRow> = {}
-
-  for (const ev of events) {
+    for (const ev of events) {
     if (!ev.block_id) continue
 
     if (ev.kind === "block_started") {
@@ -810,7 +825,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         startedAt: ev.created_at,
       }
       blockMap[ev.block_id] = row
-      blockRows.push(row)
+      rows.push(row)
     } else if (ev.kind === "block_completed" && blockMap[ev.block_id]) {
       const out = ev.payload.output as Record<string, unknown> | undefined
       blockMap[ev.block_id].status = "completed"
@@ -858,7 +873,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         output: { skipped: true, reason: ev.payload.reason },
       }
       blockMap[ev.block_id] = row
-      blockRows.push(row)
+      rows.push(row)
     } else if (ev.kind === "brain_budget_exhausted" && blockMap[ev.block_id]) {
       blockMap[ev.block_id].budgetExhausted = {
         turns: ev.payload.turns as number,
@@ -883,7 +898,10 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
       blockMap[ev.block_id].status = "running"
       blockMap[ev.block_id].output = { status: "approval_required" }
     }
-  }
+    }
+
+    return rows
+  }, [events])
 
   const runFailed = events.find(e => e.kind === "run_failed")
   const runCompleted = events.find(e => e.kind === "run_completed")
