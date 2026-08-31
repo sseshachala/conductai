@@ -2,7 +2,20 @@
 
 Conduct is a YAML playbook platform that turns AI agents into reusable team automations — with a FastAPI backend, Next.js canvas UI, Redis worker, cross-provider LLM proxy (Guard), and 22+ pre-built playbooks covering GitHub, Slack, CI/CD, and incident response.
 
-Docs are organized **by goal, not by file shape**. Pick a section below.
+Docs are organized **by goal, not by file shape**. Pick your path below.
+
+---
+
+## By persona
+
+- **Solo dev evaluating** — `pip install conduct-cli`, run one playbook end-to-end.
+  → [Start](start.md) → [Examples](examples.md) → [Automate](automate.md)
+
+- **Team lead onboarding a team** — bring Guard to the whole team, wire in CI, install a pack of playbooks.
+  → [ConductGuard Quickstart](modules/conductguard/QUICKSTART.md) → [Team onboarding](modules/conductguard/team_onboarding.md) → [Automate](automate.md) → [Examples](examples.md)
+
+- **Security buyer doing due diligence** — trust boundaries, hash-chained audit, compliance coverage, fail modes.
+  → [Threat model](threat-model.md) → [Audit log verification](audit-log-verification.md) → [Guard rule packs](reference/guard-rule-packs.md) → [Enforcement coverage](modules/conductguard/enforcement_coverage.generated.md) → [ADR-0001 (trust boundaries)](adr/ADR-0001-guard-enforcement-surfaces-and-trust-boundaries.md) → [ADR-0003 (fail-open vs fail-closed)](adr/ADR-0003-fail-open-versus-fail-closed-semantics.md)
 
 ---
 
@@ -39,6 +52,8 @@ Stable contracts and vocabulary. Read these when you need the *exact* answer.
 - [Policy decision contract](policy-decision-contract.md) — allow / warn / block / audit semantics
 - [Guard token model](specs/GUARD_TOKEN_MODEL.md) — token types (`cond_agt_*`, `cond_run_*`, `cond_cred_*`), lifetimes, scopes
 - [Guard capability inventory](modules/conductguard/CAPABILITY_INVENTORY.md) — what Guard does, mapped to controls
+- [Guard rule packs](reference/guard-rule-packs.md) — every rule in every shipping pack (183 rules across 15 packs)
+- [Playbook block reference](reference/blocks.md) — every block type, required fields, examples
 
 ---
 
