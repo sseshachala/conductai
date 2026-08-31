@@ -1291,11 +1291,24 @@ function RunBubble({
   const cancelRun = () => _postAction(`${API}/workflows/${workflowId}/runs/${runId}/cancel`)
   const decideRun = (decision: "approved" | "rejected") =>
     _postAction(`${API}/workflows/${workflowId}/runs/${runId}/approve`, { decision })
-  const retryRun = () =>
-    _postAction(`${API}/workflows/${workflowId}/runs`, {}, (data) => {
+  const retryRun = () => {
+    // #1480 Gap 3 — reuse the original run's inputs. runState + blocks give
+    // us enough to reconstruct: strip out per-block outputs (keys equal to
+    // block IDs) and system-added keys (__foo). What remains is _trigger +
+    // any top-level input fields the workflow was originally started with.
+    const initial_state: Record<string, unknown> = {}
+    if (runState) {
+      for (const [k, v] of Object.entries(runState)) {
+        if (k.startsWith("__")) continue        // system-added
+        if (blocks.has(k)) continue             // block output
+        initial_state[k] = v
+      }
+    }
+    _postAction(`${API}/workflows/${workflowId}/runs`, { initial_state }, (data) => {
       const newId = data.id as string | undefined
       if (newId && onRetry) onRetry(newId, workflowName)
     })
+  }
 
   const pillColor = (() => {
     switch (status) {
