@@ -9,6 +9,7 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends
@@ -797,9 +798,16 @@ async def glens_chat_stream(
 
                 elif evt.get("type") == "done":
                     answer = evt["answer"]
+                    # Persist envelopes alongside the answer so session
+                    # restore (#1480 PR 12) can rehydrate the right bubble
+                    # kind — otherwise refresh loses ActionConfirmBubble /
+                    # RunBubble and shows the LLM's prose only.
+                    persisted: dict[str, Any] = {"answer": answer, "skill": "governance"}
+                    if evt.get("confirm_envelope"):
+                        persisted["confirm_envelope"] = evt["confirm_envelope"]
                     session_messages.append({
                         "role": "assistant",
-                        "content": json.dumps({"answer": answer, "skill": "governance"}),
+                        "content": json.dumps(persisted),
                     })
                     capped = session_messages[-50:]
                     background_tasks.add_task(_bg_save_session, session_id_str, capped, None)

@@ -1062,7 +1062,27 @@ function RunBubble({
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
         if (cancelled) return
-        if (data?.state) setRunState(data.state as Record<string, unknown>)
+        if (data?.state) {
+          const st = data.state as Record<string, unknown>
+          setRunState(st)
+          // #1480 PR 12 — seed the block timeline from persisted run.state
+          // so a restored RunBubble shows completed blocks immediately
+          // instead of waiting for new SSE events (which never come for
+          // an already-completed run).
+          if (gotUpdate.current === false) {
+            const seeded = new Map<string, RunBlockState>()
+            for (const [key, val] of Object.entries(st)) {
+              if (key.startsWith("__")) continue
+              const failed = val && typeof val === "object" && "error" in (val as Record<string, unknown>)
+              seeded.set(key, {
+                id: key,
+                status: failed ? "failed" : "succeeded",
+                error: failed ? String((val as Record<string, unknown>).error) : undefined,
+              })
+            }
+            if (seeded.size > 0) setBlocks(prev => prev.size === 0 ? seeded : prev)
+          }
+        }
         if (data?.outcome) setOutcome(data.outcome as { type?: string; artifact_url?: string })
         if (data?.started_at) setStartedAt(new Date(data.started_at as string).getTime())
         if (data?.completed_at) setCompletedAt(new Date(data.completed_at as string).getTime())
@@ -1386,6 +1406,26 @@ export function GLensChatPage() {
               thread.push({ role: "assistant", kind: "table", rows: rendered.rows, answer: p.answer ?? "", skill: p.skill ?? "governance", columns: p.columns })
             } else if (rendered.blocks?.length) {
               thread.push({ role: "assistant", kind: "blocks", blocks: rendered.blocks, answer: p.answer ?? "", skill: p.skill ?? "governance" })
+            } else if (p.confirm_envelope?.approval_request_id) {
+              // #1480 PR 12 — rehydrate ActionConfirmBubble from persisted envelope
+              const ce = p.confirm_envelope
+              thread.push({
+                role: "assistant", kind: "action_confirm",
+                toolName: ce.tool_name,
+                approvalRequestId: ce.approval_request_id,
+                summary: ce.summary ?? "Confirm this action?",
+                warnings: ce.warnings ?? [],
+                expiresAt: ce.expires_at,
+              })
+            } else if (p.run_started?.run_id) {
+              // #1480 PR 12 — rehydrate RunBubble from persisted envelope
+              const rs = p.run_started
+              thread.push({
+                role: "assistant", kind: "run",
+                runId: rs.run_id,
+                workflowName: rs.workflow_name ?? "workflow",
+                initialStatus: rs.status ?? "pending",
+              })
             } else {
               const text = p.answer || p.question
               if (text) thread.push({ role: "assistant", kind: "answer", text, skill: p.skill })
