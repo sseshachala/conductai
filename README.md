@@ -145,6 +145,18 @@ One policy, three enforcement surfaces.
 
 ---
 
+## Documentation
+
+Full docs live under [`docs/`](./docs/README.md) — organized by goal (Start · Reference · Concepts · Orientation · Operate · Automate · Policy · Integrations · Examples · ADRs).
+
+Quick paths:
+
+- **New to Conduct** → [Start](./docs/start.md)
+- **See what's possible** → [Examples — 37 playbooks](./docs/examples.md)
+- **Write a playbook** → [Block reference](./docs/reference/blocks.md)
+- **Wire into CI, MCP, tools** → [Automate](./docs/automate.md)
+- **Governance & compliance** → [Guard rule packs — 183 rules](./docs/reference/guard-rule-packs.md)
+
 ## Security & Trust
 
 - [SECURITY.md](./SECURITY.md) — vulnerability reporting policy, scope, coordinated disclosure, and safe harbor.
