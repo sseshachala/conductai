@@ -275,8 +275,9 @@ def _seed_pending_approval(db) -> None:
 
 def _seed_playbook_run(db) -> None:
     now = REF - timedelta(minutes=22)
-    if not db.get(Workflow, WORKFLOW_ID):
-        db.add(Workflow(
+    wf = db.get(Workflow, WORKFLOW_ID)
+    if wf is None:
+        wf = Workflow(
             id=WORKFLOW_ID,
             workspace_id=DEV_WORKSPACE_ID,
             name="pr-reviewer",
@@ -286,7 +287,9 @@ def _seed_playbook_run(db) -> None:
             agent_identity_required=True,
             created_at=REF - timedelta(days=14),
             updated_at=now,
-        ))
+        )
+        db.add(wf)
+        db.flush()  # so subsequent db.get(WorkflowVersion,...) FK is valid
     if not db.get(WorkflowVersion, WF_VERSION_ID):
         db.add(WorkflowVersion(
             id=WF_VERSION_ID,
@@ -308,7 +311,7 @@ def _seed_playbook_run(db) -> None:
             created_at=REF - timedelta(days=14),
             published_at=REF - timedelta(days=14),
         ))
-        wf = db.get(Workflow, WORKFLOW_ID)
+        db.flush()
         wf.current_version_id = WF_VERSION_ID
 
     if not db.get(Run, RUN_ID):
@@ -362,6 +365,7 @@ def _seed_discovery(db) -> None:
         started_at=started,
         completed_at=started + timedelta(minutes=2),
     ))
+    db.flush()  # so DiscoveredAgent FK is valid
     agents = [
         ("claude-code-workstation-01", "claude-code", "process", "/usr/local/bin/claude",       True,  True,  10),
         ("cursor-mac-01",              "cursor",      "process", "/Applications/Cursor.app",    True,  False, 20),
