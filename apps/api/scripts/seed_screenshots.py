@@ -17,11 +17,21 @@ What it seeds (keyed by the IMG-* IDs in the facelift plan):
 
 Prerequisites:
   export DATABASE_URL=postgresql://...    # required
-  python apps/api/scripts/seed_e2e_workspace.py   # workspace must exist first
+  # Local dev only — workspace must exist first:
+  python apps/api/scripts/seed_e2e_workspace.py
+  # Prod / staging — pass an existing workspace UUID via --workspace-id
 
 Usage:
-  python apps/api/scripts/seed_screenshots.py            # seed
-  python apps/api/scripts/seed_screenshots.py --wipe     # wipe screenshot rows, then reseed
+  # Local dev (default workspace, default localhost URLs)
+  python apps/api/scripts/seed_screenshots.py
+  python apps/api/scripts/seed_screenshots.py --wipe
+
+  # Prod / staging — target a specific workspace and print prod URLs
+  python apps/api/scripts/seed_screenshots.py \\
+      --workspace-id 8f2a1c50-... \\
+      --created-by user_2h5abc... \\
+      --base-url https://app.conductai.ai \\
+      --wipe
 
 Idempotent — uses fixed UUIDs under the 77777777-... namespace so --wipe
 targets only screenshot rows without touching real data.
@@ -38,7 +48,7 @@ HERE = Path(__file__).resolve()
 APPS_API = HERE.parent.parent
 sys.path.insert(0, str(APPS_API))
 
-from app.core.auth import DEV_USER_ID, DEV_WORKSPACE_ID  # noqa: E402
+from app.core.auth import DEV_USER_ID as _DEFAULT_USER, DEV_WORKSPACE_ID as _DEFAULT_WORKSPACE  # noqa: E402
 from app.core.database import SessionLocal  # noqa: E402
 from app.models.run import Run, RunEvent  # noqa: E402
 from app.models.workflow import Workflow, WorkflowVersion  # noqa: E402
@@ -50,6 +60,15 @@ from app.modules.guard.models import (  # noqa: E402
     GuardAuditEvent,
     WorkspaceCustomRule,
 )
+
+# ── target workspace ──────────────────────────────────────────────────────────
+# Set by main() from --workspace-id, defaults to WORKSPACE_ID.
+# Every _seed_* function references this global so the script works against
+# both local dev (default) and prod (with a real workspace UUID).
+
+WORKSPACE_ID: uuid.UUID | str = _DEFAULT_WORKSPACE
+CREATED_BY: str = _DEFAULT_USER
+
 
 # ── deterministic ids ─────────────────────────────────────────────────────────
 
@@ -144,7 +163,7 @@ def wipe(db) -> None:
     for rule in RULES:
         counts[f"rule:{rule['rule_id']}"] = (
             db.query(WorkspaceCustomRule)
-            .filter_by(workspace_id=DEV_WORKSPACE_ID, rule_id=rule["rule_id"])
+            .filter_by(workspace_id=WORKSPACE_ID, rule_id=rule["rule_id"])
             .delete(synchronize_session=False)
         )
     db.commit()
@@ -157,16 +176,16 @@ def wipe(db) -> None:
 
 def _seed_rules(db) -> None:
     for rule in RULES:
-        key = (DEV_WORKSPACE_ID, rule["rule_id"])
+        key = (WORKSPACE_ID, rule["rule_id"])
         if db.get(WorkspaceCustomRule, key):
             continue
         db.add(WorkspaceCustomRule(
-            workspace_id=DEV_WORKSPACE_ID,
+            workspace_id=WORKSPACE_ID,
             rule_id=rule["rule_id"],
             persona="agent",
             body=rule,
             enabled=True,
-            created_by=DEV_USER_ID,
+            created_by=CREATED_BY,
             created_at=REF - timedelta(days=30),
             updated_at=REF - timedelta(days=7),
         ))
@@ -180,8 +199,8 @@ def _audit_event(
     ts = REF - timedelta(minutes=minutes_ago)
     return GuardAuditEvent(
         id=id,
-        workspace_id=DEV_WORKSPACE_ID,
-        clerk_user_id=DEV_USER_ID,
+        workspace_id=WORKSPACE_ID,
+        clerk_user_id=CREATED_BY,
         user_email=USER_EMAIL,
         ai_tool=ai_tool,
         tool_call=tool_call,
@@ -254,14 +273,14 @@ def _seed_pending_approval(db) -> None:
         return
     db.add(GuardApprovalRequest(
         id=APPROVAL_ID,
-        workspace_id=DEV_WORKSPACE_ID,
+        workspace_id=WORKSPACE_ID,
         rule_id="production-change-v4",
         rule_pack="conduct-base",
         rule_message="Production deployment outside approved change window",
         tool_name="deploy_production",
         tool_input={"environment": "production", "service": "payments-api"},
         requester_email=USER_EMAIL,
-        requester_user_id=DEV_USER_ID,
+        requester_user_id=CREATED_BY,
         requester_agent_ident=AGENTS["claude"],
         surface="hook",
         session_id="hook_sess_screenshot_01",
@@ -279,7 +298,7 @@ def _seed_playbook_run(db) -> None:
     if wf is None:
         wf = Workflow(
             id=WORKFLOW_ID,
-            workspace_id=DEV_WORKSPACE_ID,
+            workspace_id=WORKSPACE_ID,
             name="pr-reviewer",
             default_mode="dag",
             playbook_slug="pr-reviewer",
@@ -318,7 +337,7 @@ def _seed_playbook_run(db) -> None:
         db.add(Run(
             id=RUN_ID,
             workflow_version_id=WF_VERSION_ID,
-            workspace_id=DEV_WORKSPACE_ID,
+            workspace_id=WORKSPACE_ID,
             triggered_by="github_webhook",
             status="succeeded",
             started_at=now,
@@ -356,7 +375,7 @@ def _seed_discovery(db) -> None:
     started = REF - timedelta(hours=3)
     db.add(DiscoveryScan(
         id=DISCOVERY_ID,
-        workspace_id=DEV_WORKSPACE_ID,
+        workspace_id=WORKSPACE_ID,
         triggered_by="cli",
         status="complete",
         agents_found=4,
@@ -374,7 +393,7 @@ def _seed_discovery(db) -> None:
     ]
     for name, framework, source, location, under_guard, proxy, risk in agents:
         db.add(DiscoveredAgent(
-            workspace_id=DEV_WORKSPACE_ID,
+            workspace_id=WORKSPACE_ID,
             scan_id=DISCOVERY_ID,
             name=name,
             framework=framework,
@@ -390,10 +409,10 @@ def _seed_discovery(db) -> None:
     print(f"  discovery: 1 scan + {len(agents)} agents (IMG-10)")
 
 
-def seed(db) -> None:
-    if not db.get(Workspace, DEV_WORKSPACE_ID):
-        print(f"ERROR: workspace {DEV_WORKSPACE_ID} does not exist.")
-        print("Run: python apps/api/scripts/seed_e2e_workspace.py")
+def seed(db, base_url: str = "http://localhost:3000") -> None:
+    if not db.get(Workspace, WORKSPACE_ID):
+        print(f"ERROR: workspace {WORKSPACE_ID} does not exist.")
+        print("Pass an existing workspace via --workspace-id, or run seed_e2e_workspace.py for local dev.")
         sys.exit(2)
 
     _seed_rules(db)
@@ -403,27 +422,51 @@ def seed(db) -> None:
     _seed_discovery(db)
     db.commit()
     print()
-    print("  Screenshot URLs (Docker dev, localhost:3000):")
-    print(f"    Guard audit          → /guard/audit")
-    print(f"    Audit receipt IMG-04 → /guard/audit/{EVENT_IDS['img01_block']}")
-    print(f"    Pending approvals    → /guard/approvals")
-    print(f"    Playbook run IMG-07  → /runs/{RUN_ID}")
-    print(f"    Discovery IMG-10     → /guard/discovery/{DISCOVERY_ID}")
-    print(f"    Policy definitions   → /guard/policies")
+    print(f"  Workspace: {WORKSPACE_ID}")
+    print(f"  Screenshot URLs ({base_url}):")
+    print(f"    Guard audit          → {base_url}/audit")
+    print(f"    Audit receipt IMG-04 → {base_url}/audit/{EVENT_IDS['img01_block']}")
+    print(f"    Pending approvals    → {base_url}/theguard/approvals")
+    print(f"    Playbook run IMG-07  → {base_url}/runs/{RUN_ID}")
+    print(f"    Discovery IMG-10     → {base_url}/theguard/discovery/{DISCOVERY_ID}")
+    print(f"    Policy definitions   → {base_url}/theguard/policies")
 
 
 def main() -> None:
+    global WORKSPACE_ID, CREATED_BY
     parser = argparse.ArgumentParser(description="Seed canonical website-facelift screenshot data")
+    parser.add_argument(
+        "--workspace-id",
+        default=str(_DEFAULT_WORKSPACE),
+        help=f"Target workspace UUID (default: {_DEFAULT_WORKSPACE} — local dev workspace)",
+    )
+    parser.add_argument(
+        "--created-by",
+        default=_DEFAULT_USER,
+        help="Clerk user ID recorded as created_by on seeded rules (default: local dev user)",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:3000",
+        help="Base URL to print alongside screenshot URLs (default: http://localhost:3000)",
+    )
     parser.add_argument("--wipe", action="store_true", help="Wipe screenshot rows first (idempotent re-seed)")
     args = parser.parse_args()
+
+    try:
+        WORKSPACE_ID = uuid.UUID(args.workspace_id)
+    except ValueError:
+        print(f"ERROR: --workspace-id must be a valid UUID, got: {args.workspace_id}")
+        sys.exit(1)
+    CREATED_BY = args.created_by
 
     db = SessionLocal()
     try:
         if args.wipe:
-            print("Wiping existing screenshot rows...")
+            print(f"Wiping existing screenshot rows for workspace {WORKSPACE_ID}...")
             wipe(db)
-        print("Seeding screenshot data...")
-        seed(db)
+        print(f"Seeding screenshot data into workspace {WORKSPACE_ID}...")
+        seed(db, base_url=args.base_url.rstrip("/"))
         print("Done.")
     except Exception:
         db.rollback()
