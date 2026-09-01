@@ -1881,6 +1881,11 @@ def test_trigger(
     # __manual: True signals a manual/schedule trigger — bypasses trigger-shape validation.
     run_inputs: dict = payload.pop("inputs", {})
     is_manual_flag: bool = bool(payload.pop("__manual", False))
+    # #1515 P1 — canvas Run → Lens session convergence.
+    # lens_attach=True auto-mints a bare Lens session (or reuses lens_session_id)
+    # so the run appears as a RunBubble in that session. Silent no-op for CLI/webhook.
+    lens_attach: bool = bool(payload.pop("lens_attach", False))
+    lens_session_id_raw = payload.pop("lens_session_id", None)
 
     # Always load the playbook's built-in test_trigger.payload, then merge any
     # caller-supplied overrides on top. This lets --repo override the repo fields
@@ -2014,6 +2019,33 @@ def test_trigger(
             },
         )
 
+    # #1515 P1 — resolve the Lens session (existing or fresh) before insert
+    # so Run.session_id is set at creation. Publisher no-ops on NULL, so this
+    # is the seam that makes RunBubble receive SSE events.
+    lens_session_id: _uuid.UUID | None = None
+    if lens_attach or lens_session_id_raw:
+        from app.modules.glens.models import GlensChatSession
+        if lens_session_id_raw:
+            try:
+                lens_session_id = _uuid.UUID(str(lens_session_id_raw))
+            except ValueError:
+                raise HTTPException(status_code=422, detail="lens_session_id must be a UUID")
+            sess = db.query(GlensChatSession).filter(
+                GlensChatSession.id == lens_session_id,
+                GlensChatSession.workspace_id == _uuid.UUID(workspace_id),
+            ).first()
+            if not sess:
+                raise HTTPException(status_code=404, detail="lens_session_id not found in workspace")
+        else:
+            sess = GlensChatSession(
+                workspace_id=_uuid.UUID(workspace_id),
+                title=f"Run: {workflow.name}"[:120],
+                messages="[]",
+            )
+            db.add(sess)
+            db.flush()
+            lens_session_id = sess.id
+
     run = Run(
         workflow_version_id=version.id,
         workspace_id=workflow.workspace_id,
@@ -2021,9 +2053,39 @@ def test_trigger(
         status="pending",
         state=_initial_state,
         max_turns=suggested_turns,
+        session_id=lens_session_id,
     )
     db.add(run)
     db.commit()
+
+    # #1515 P1 — append run_started envelope so RunBubble rehydrates on
+    # session load (matches the actor helpers.py path). Fail-open: envelope
+    # failure must not fail the run creation.
+    if lens_session_id is not None:
+        try:
+            import json as _json_env
+            from app.modules.glens.models import GlensChatSession as _GCS
+            _sess = db.query(_GCS).filter(_GCS.id == lens_session_id).first()
+            if _sess is not None:
+                _messages = _json_env.loads(_sess.messages or "[]")
+                _messages.append({
+                    "role": "assistant",
+                    "content": _json_env.dumps({
+                        "run_started": {
+                            "run_id": str(run.id),
+                            "workflow_name": workflow.name,
+                            "status": run.status,
+                        }
+                    }),
+                })
+                _sess.messages = _json_env.dumps(_messages)
+                db.commit()
+        except Exception as _env_err:
+            db.rollback()
+            log.warning(
+                "workflow.test_triggered.envelope_failed",
+                run_id=str(run.id), session_id=str(lens_session_id), error=str(_env_err),
+            )
 
     try:
         r = _redis_mod.from_url(_settings.redis_url, decode_responses=True)
@@ -2036,7 +2098,12 @@ def test_trigger(
         raise HTTPException(status_code=503, detail="Run created but queue is unavailable")
 
     log.info("workflow.test_triggered", workflow_id=str(workflow_id), run_id=str(run.id), playbook_slug=workflow.playbook_slug)
-    return {"ok": True, "run_id": str(run.id), "max_turns": suggested_turns}
+    return {
+        "ok": True,
+        "run_id": str(run.id),
+        "max_turns": suggested_turns,
+        "session_id": str(lens_session_id) if lens_session_id else None,
+    }
 
 
 class SyncRequest(BaseModel):
