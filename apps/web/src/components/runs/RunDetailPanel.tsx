@@ -169,11 +169,13 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
   // parent (Lens RunBubble, iframe host, etc.) controls the container.
   const Wrapper = ({ children }: { children: React.ReactNode }) =>
     embedded
-      // #1518 — own scroll container when embedded. Panel content grows inside
-      // a bounded max-height so streaming block events don't yank the parent
-      // Lens chat around. scrollIntoView({ block: "nearest" }) inside RunTrace
-      // now targets THIS container, not the whole page.
-      ? <div style={{ maxHeight: "70vh", overflowY: "auto", padding: "4px 2px" }}>{children}</div>
+      // Panel flows at natural height inside the Lens RunBubble — no internal
+      // scroll container, no scrollbar flicker as content grows. The Lens
+      // chat parent already has its own scroll. #1518's bounded scroll box
+      // was there to isolate RunTrace's scrollIntoView({block:"nearest"});
+      // that stays intact — scrollIntoView with nearest is a no-op when the
+      // element is already in view, which it will be as content grows inline.
+      ? <div style={{ padding: "4px 2px" }}>{children}</div>
       : <div style={{ maxWidth: 1120, margin: "0 auto", padding: "28px 24px" }}>{children}</div>
 
   if (loading) return (
