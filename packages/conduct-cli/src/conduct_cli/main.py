@@ -2697,8 +2697,16 @@ def cmd_run(args):
         body["__max_turns"] = args.max_turns
     elif suggested > 20:
         body["__max_turns"] = suggested
+    # #1515 P2 — opt-in Lens attach. Backend auto-mints a session; response
+    # returns session_id. CLI stays terminal-native by default.
+    if getattr(args, "lens", False):
+        body["lens_attach"] = True
     run = api.req("POST", f"{server}/workflows/{workflow_id}/trigger", json_h, body)
     run_id = run.get("run_id") or run.get("id")
+    lens_sid = run.get("session_id")
+    if lens_sid:
+        ui_url = server.replace("api.", "app.").rstrip("/") if "api." in server else server.rstrip("/")
+        print(f"  {GRAY}lens: {ui_url}/lens/{lens_sid}{RESET}\n")
     _stream_run(server, workflow_id, run_id, workspace_id, token)
 
 
@@ -3427,6 +3435,8 @@ def main():
     run_p.add_argument("--project",   metavar="name",  help="Narrow to a specific project")
     run_p.add_argument("--input",     action="append", metavar="key=value", help="Runtime input (repeatable)")
     run_p.add_argument("--max-turns", dest="max_turns", type=int, metavar="N", help="Max agentic turns (default: auto)")
+    run_p.add_argument("--lens",      dest="lens", action="store_true",
+                       help="Attach the run to a fresh Lens session; prints /lens/<id> URL on success (#1515 P2)")
 
     # conduct switch [workspace]
     switch_p = sub.add_parser("switch", help="Switch active workspace (or list workspaces)")
