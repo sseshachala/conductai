@@ -899,7 +899,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
 
   const performTestTrigger = useCallback(async (payload: Record<string, unknown>, headers: Record<string, string>) => {
     const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-    const res = await workflows.trigger(authFetch, workflowId, payload)
+    // #1515 P1 — canvas Run lands in a Lens session with RunBubble.
+    // Backend auto-mints a session when lens_attach=true and no lens_session_id is supplied.
+    const res = await workflows.trigger(authFetch, workflowId, { ...payload, lens_attach: true })
     if (res.status === 422) {
       const errBody = await res.json().catch(() => null)
       if (errBody?.detail?.error === "missing_required_inputs") {
@@ -914,7 +916,11 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     setTestRunStatus("pending")
     setLastRunSummary({ status: "pending", created_at: new Date().toISOString(), run_id: data.run_id })
     setActiveView("definition")
-  }, [workflowId, TEST_RUN_KEY])
+    // #1515 P1 — redirect to the Lens session so the RunBubble renders with live SSE.
+    if (data.session_id) {
+      router.push(`/lens/${data.session_id}`)
+    }
+  }, [workflowId, TEST_RUN_KEY, router])
 
   const startTestTrigger = useCallback(async () => {
     setTestTriggerModal(false)
