@@ -372,12 +372,12 @@ class TestBuiltinPolicies:
     # ── Production gates ──────────────────────────────────────────────────────
     def test_approve_prod_deploy(self, builtin_policy_path):
         _, action, rule_id, _ = _check_policy("bash", {"command": "deploy to production"})
-        assert action == "warn"
+        assert action == "approval"
         assert rule_id == "approve-prod-deploy"
 
     def test_approve_db_migration(self, builtin_policy_path):
         _, action, rule_id, _ = _check_policy("bash", {"command": "alembic upgrade head"})
-        assert action == "warn"
+        assert action == "approval"
         assert rule_id == "approve-db-migration-prod"
 
     # ── Vision / OCR ──────────────────────────────────────────────────────────
