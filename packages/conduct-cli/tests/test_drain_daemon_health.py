@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 import conduct_cli.hooks.base as base
 
 
@@ -250,6 +252,7 @@ def test_refresh_policy_works_without_workspace_id(tmp_path):
     assert policy_path.read_bytes() == fake_policy
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows fs ignores POSIX mode bits — Path.chmod stays at 0o666")
 def test_restrict_to_owner_posix_calls_chmod(tmp_path):
     """On POSIX, restrict_to_owner delegates to Path.chmod(0o600)."""
     f = tmp_path / "config.json"
