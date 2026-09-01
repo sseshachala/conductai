@@ -76,14 +76,18 @@ def test_switch_exact_name_updates_configs(tmp_path, capsys):
 
     args = _make_args(workspace="Marketing")
 
-    fake_policy = {"version": "2", "rules": [{"rule_id": "r1", "action": "audit"}]}
+    def _api_req(method, url, hdrs, body=None, timeout=30):
+        if method == "GET" and url.endswith("/projects"):
+            return _fake_workspaces()
+        if method == "POST" and url.endswith("/auth/switch-workspace"):
+            return {"agent_token": "cond_agt_remint_new", "expires_in": 28800}
+        raise AssertionError(f"unexpected call {method} {url}")
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
         patch("pathlib.Path.home", return_value=tmp_path),
-        patch.object(m.api, "req", return_value=_fake_workspaces()),
-        patch.object(g, "_req", return_value=fake_policy),
-        patch.object(g, "_save_policy") as mock_save_policy,
+        patch.object(m.api, "req", side_effect=_api_req),
+        patch.object(m._guard, "cmd_guard_sync") as mock_guard_sync,
     ):
         m.cmd_switch(args)
 
@@ -95,7 +99,10 @@ def test_switch_exact_name_updates_configs(tmp_path, capsys):
     assert updated_cfg["workspace"] == "ab1b2c3d-0000-0000-0000-000000000002"
     assert updated_cfg["workspace_id"] == "ab1b2c3d-0000-0000-0000-000000000002"
 
-    mock_save_policy.assert_called_once_with(fake_policy)
+    # cmd_switch's contract with guard: fire cmd_guard_sync after the switch so
+    # the new workspace's policy propagates. Internals of that sync are guard.py's
+    # concern, not this test's — patching through them was flaky on CI.
+    mock_guard_sync.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -342,8 +349,9 @@ def test_switch_remints_agent_token_via_endpoint(tmp_path, monkeypatch, capsys):
     assert "token_expires_at" in updated_cfg
 
 
-def test_switch_falls_back_gracefully_when_remint_fails(tmp_path, monkeypatch, capsys):
-    """If the switch-workspace endpoint 401s (older server), config-only switch still applies."""
+def test_switch_hard_exits_when_remint_fails(tmp_path, monkeypatch, capsys):
+    """If the switch-workspace endpoint fails, hard-exit — a stale token pointing at the
+    wrong workspace is worse than making the user re-login."""
     from conduct_cli import main as m
     from conduct_cli import guard as g
 
@@ -369,14 +377,16 @@ def test_switch_falls_back_gracefully_when_remint_fails(tmp_path, monkeypatch, c
         patch.object(g, "_req", return_value={"version": "1", "rules": []}),
         patch.object(g, "_save_policy"),
     ):
-        m.cmd_switch(args)
+        with pytest.raises(SystemExit) as exc:
+            m.cmd_switch(args)
+        assert exc.value.code == 1
 
-    updated_cfg = json.loads(cfg_path.read_text())
-    # Token unchanged (fallback preserves the original) but workspace_id updated
-    assert updated_cfg["agent_token"] == "cond_agt_ORIGINAL"
-    assert updated_cfg["workspace_id"] == "ab1b2c3d-0000-0000-0000-000000000002"
     out = capsys.readouterr().out
-    assert "falling back to config-only switch" in out
+    assert "token re-mint failed" in out
+    # Config untouched — no partial write when re-mint fails
+    unchanged = json.loads(cfg_path.read_text())
+    assert unchanged["agent_token"] == "cond_agt_ORIGINAL"
+    assert unchanged["workspace"] == "ef0a7e36-0000-0000-0000-000000000001"
 
 
 # ---------------------------------------------------------------------------

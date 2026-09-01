@@ -244,7 +244,7 @@ def _byte_reader(data: bytes):
 def _stream_urlopen(sse_bytes: bytes):
     mock_resp = _byte_reader(sse_bytes)
 
-    def fake_urlopen(request):
+    def fake_urlopen(request, **_kw):
         return mock_resp
 
     return patch("urllib.request.urlopen", side_effect=fake_urlopen)
