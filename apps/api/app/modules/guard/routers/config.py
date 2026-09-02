@@ -47,6 +47,7 @@ class ConfigOut(BaseModel):
     automation_warnings: list[str] = []
     deny_on_error: bool = True
     advisory_mode: bool = False
+    notify_on_fail_open: bool = True
     spend_limit_usd: float | None = None
 
     class Config:
@@ -64,6 +65,7 @@ class ConfigPatch(BaseModel):
     automation_workflow_trigger: bool | None = None
     deny_on_error: bool | None = None
     advisory_mode: bool | None = None
+    notify_on_fail_open: bool | None = None
 
 
 class InstallStatusOut(BaseModel):
@@ -114,6 +116,9 @@ def _config_to_out(cfg: GuardConfig) -> ConfigOut:
         notify_on_budget=cfg.notify_on_budget,
         automation_security_scan=bool(cfg.automation_security_scan),
         automation_workflow_trigger=bool(cfg.automation_workflow_trigger),
+        deny_on_error=getattr(cfg, "deny_on_error", True),
+        advisory_mode=bool(getattr(cfg, "advisory_mode", False)),
+        notify_on_fail_open=bool(getattr(cfg, "notify_on_fail_open", True)),
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
     )
@@ -258,8 +263,18 @@ def patch_config(
     body: ConfigPatch,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.settings.edit")),
 ):
-    """Update Guard notification/channel settings for the workspace."""
+    """Update Guard notification/channel settings for the workspace.
+
+    Requires ``guard.settings.edit`` (admin). Prior versions of this
+    endpoint had no explicit permission dependency — any authenticated
+    caller in the workspace could flip fail_mode / deny_on_error /
+    enforcement_mode. Sibling endpoints (persona, runtime-persona) have
+    always enforced this permission; the general PATCH did not, until
+    #1520 PR 2. This closes that gap for every field the endpoint
+    accepts, not just notify_on_fail_open.
+    """
     from fastapi import HTTPException
     config = _get_or_create_config(db, workspace_id)
     if body.alert_channel is not None:
@@ -291,6 +306,8 @@ def patch_config(
         config.automation_workflow_trigger = body.automation_workflow_trigger
     if body.deny_on_error is not None:
         config.deny_on_error = body.deny_on_error
+    if body.notify_on_fail_open is not None:
+        config.notify_on_fail_open = body.notify_on_fail_open
     if body.advisory_mode is not None:
         config.advisory_mode = body.advisory_mode
     config.updated_at = datetime.now(timezone.utc)

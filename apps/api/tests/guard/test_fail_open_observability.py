@@ -22,8 +22,16 @@ WS = "fd4b6608-f320-44b8-af22-fc579bd53600"
 WEBHOOK = "https://hooks.slack.com/services/T00/B00/XXX"
 
 
-def _counter_value(workspace_id: str, surface: str) -> float:
-    return GUARD_ENGINE_ERRORS.labels(workspace_id=workspace_id, surface=surface)._value.get()
+def _counter_value(surface: str) -> float:
+    """Read the counter via the public exposition API. workspace_id is not
+    a label (see metrics.py docstring), and using the private ``_value``
+    attribute is not covered by prometheus-client's compatibility promise."""
+    from prometheus_client import generate_latest
+
+    for line in generate_latest().decode().splitlines():
+        if line.startswith("guard_engine_errors_total{") and f'surface="{surface}"' in line:
+            return float(line.split()[-1])
+    return 0.0
 
 
 @pytest.fixture(autouse=True)
@@ -33,16 +41,26 @@ def _reset_state():
     foa._reset_dedup_for_tests()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_from_customer_alert():
+    """PR 1 tests own the internal-alert path only. PR 2's customer alerter
+    (wired into record_fail_open in the same module) has its own coverage
+    in test_fail_open_customer_alert.py — no-op it here so httpx.post
+    call counts reflect the internal path alone."""
+    with patch("app.modules.guard.observability.fail_open_alert._also_notify_customer"):
+        yield
+
+
 def test_counter_increments_and_posts_once(monkeypatch):
     monkeypatch.setenv(foa._ALERT_WEBHOOK_ENV, WEBHOOK)
-    before = _counter_value(WS, "proxy")
+    before = _counter_value("proxy")
 
     with patch("app.modules.guard.observability.fail_open_alert.httpx.post") as post:
         with patch("app.modules.guard.observability.fail_open_alert.resolve_workspace_context") as rwc:
             rwc.return_value = MagicMock(workspace_name="Acme Robotics", org_name="Acme Inc.")
             foa.record_fail_open(MagicMock(), workspace_id=WS, surface="proxy", error=RuntimeError("redis down"))
 
-    assert _counter_value(WS, "proxy") == before + 1
+    assert _counter_value("proxy") == before + 1
     assert post.call_count == 1
     payload = post.call_args.kwargs["json"]
     assert "Acme Robotics" in payload["text"]
@@ -53,7 +71,7 @@ def test_counter_increments_and_posts_once(monkeypatch):
 
 def test_rate_limit_dedupes_second_event_within_window(monkeypatch):
     monkeypatch.setenv(foa._ALERT_WEBHOOK_ENV, WEBHOOK)
-    before = _counter_value(WS, "proxy")
+    before = _counter_value("proxy")
 
     with patch("app.modules.guard.observability.fail_open_alert.httpx.post") as post:
         with patch("app.modules.guard.observability.fail_open_alert.resolve_workspace_context") as rwc:
@@ -63,7 +81,7 @@ def test_rate_limit_dedupes_second_event_within_window(monkeypatch):
             foa.record_fail_open(MagicMock(), workspace_id=WS, surface="proxy", error=RuntimeError("z"))
 
     # Counter fires every time, but Slack posts only once per window.
-    assert _counter_value(WS, "proxy") == before + 3
+    assert _counter_value("proxy") == before + 3
     assert post.call_count == 1
 
 
@@ -81,12 +99,12 @@ def test_different_surface_does_not_dedup(monkeypatch):
 
 def test_unset_webhook_skips_post_but_still_increments(monkeypatch):
     monkeypatch.delenv(foa._ALERT_WEBHOOK_ENV, raising=False)
-    before = _counter_value(WS, "proxy")
+    before = _counter_value("proxy")
 
     with patch("app.modules.guard.observability.fail_open_alert.httpx.post") as post:
         foa.record_fail_open(MagicMock(), workspace_id=WS, surface="proxy", error=RuntimeError("x"))
 
-    assert _counter_value(WS, "proxy") == before + 1
+    assert _counter_value("proxy") == before + 1
     assert post.call_count == 0
 
 
