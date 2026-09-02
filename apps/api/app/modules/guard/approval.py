@@ -31,6 +31,15 @@ log = structlog.get_logger(__name__)
 DEFAULT_TIMEOUT_SEC = 1800
 _VALID_APPROVAL_TYPES = {"peer", "any_admin", "any_security", "any_authorized"}
 
+# Belt-and-braces cap. The column was promoted to BigInteger in migration
+# 0109; the clamp keeps writes safe in any env where the migration hasn't
+# run yet (fresh test DBs, downgrade paths).
+_LATENCY_MS_MAX = 2**63 - 1
+
+
+def _clamp_latency_ms(created_at: datetime, now: datetime) -> int:
+    return min(int((now - created_at).total_seconds() * 1000), _LATENCY_MS_MAX)
+
 
 def _base_url() -> str:
     return (os.environ.get("CONDUCT_WEB_URL") or "https://conductai.ai").rstrip("/")
@@ -328,7 +337,7 @@ def sweep_if_timed_out(db: Session, row: GuardApprovalRequest, *, now: datetime 
         return row
     row.status = "timed_out"
     row.decided_at = ts
-    row.latency_ms = int((ts - row.created_at).total_seconds() * 1000)
+    row.latency_ms = _clamp_latency_ms(row.created_at, ts)
     db.commit()
     db.refresh(row)
     log.info("guard.approval.timed_out", request_id=str(row.id), workspace_id=str(row.workspace_id))
@@ -394,7 +403,7 @@ def apply_decision(
     row.decided_by_user_id = decider_user_id
     row.decided_reason = reason
     row.decided_at = ts
-    row.latency_ms = int((ts - row.created_at).total_seconds() * 1000)
+    row.latency_ms = _clamp_latency_ms(row.created_at, ts)
 
     try:
         prev_h, entry_h = chain_hash_for_insert(
