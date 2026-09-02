@@ -9,6 +9,61 @@ import { API } from "@/lib/api/client"
 import { GlensDashboard } from "@/components/glens/GlensDashboard"
 import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
 
+function SessionIdBadge({ sessionId }: { sessionId: string }) {
+  const [copied, setCopied] = useState<"" | "id" | "url">("")
+
+  async function copy(text: string, kind: "id" | "url") {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(kind)
+      setTimeout(() => setCopied(""), 1500)
+    } catch {
+      // ponytail: silent fail on clipboard denial — user sees no state change, can select manually
+    }
+  }
+
+  const shareUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/lens/${sessionId}` : ""
+
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginLeft: 16 }}>
+      <button
+        type="button"
+        onClick={() => copy(sessionId, "id")}
+        title={`Session ID: ${sessionId} (click to copy)`}
+        style={{
+          fontFamily: "var(--font-mono, ui-monospace, monospace)",
+          fontSize: 12,
+          color: "var(--text-muted)",
+          background: "var(--surface-2)",
+          border: "1px solid var(--border-subtle)",
+          borderRadius: 4,
+          padding: "2px 8px",
+          cursor: "pointer",
+        }}
+      >
+        {copied === "id" ? "copied ✓" : sessionId.slice(0, 8)}
+      </button>
+      <button
+        type="button"
+        onClick={() => copy(shareUrl, "url")}
+        title="Copy shareable link"
+        style={{
+          fontSize: 12,
+          color: "var(--text-muted)",
+          background: "transparent",
+          border: "1px solid var(--border-subtle)",
+          borderRadius: 4,
+          padding: "2px 8px",
+          cursor: "pointer",
+        }}
+      >
+        {copied === "url" ? "copied ✓" : "share link"}
+      </button>
+    </div>
+  )
+}
+
 interface LensSessionResponse {
   session_id: string
   ready: boolean
@@ -84,7 +139,7 @@ export default function LensSessionPage() {
           padding: "32px 24px 64px",
         }}
       >
-        <div style={{ marginBottom: 28 }}>
+        <div style={{ marginBottom: 28, display: "flex", alignItems: "center" }}>
           <Link
             href="/lens"
             style={{
@@ -98,6 +153,7 @@ export default function LensSessionPage() {
           >
             ← Back to Lens
           </Link>
+          {sessionId && <SessionIdBadge sessionId={sessionId} />}
         </div>
 
         {loadingSpec && (
