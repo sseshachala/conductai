@@ -29,17 +29,19 @@ SSE_MAX_DURATION  = 300  # reconnect after 5 min
 
 
 def _org_ws_subquery(db, workspace_id: str):
-    """Return a subquery of all workspace IDs in the same org.
+    """Return a subquery containing only the requested workspace_id.
 
-    Falls back to a single-workspace filter when the workspace has no org_id.
+    Historically this helper broadened queries to every workspace in the same
+    org (or every workspace the current user owned when no org was set). That
+    broadening silently mixed data across tenants on every list endpoint — see
+    issue #1564. Strict single-workspace scoping is the only safe default.
+
+    Legitimate cross-workspace rollups (e.g. an org-admin "all workspaces
+    spend" view) must be built as explicit /org/* endpoints gated on
+    `guard.*.view_all` permissions — never as silent broadening here.
     """
     import uuid as _uuid
     ws_uuid = _uuid.UUID(workspace_id)
-    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
-    if ws and ws.org_id:
-        return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
-    if ws and ws.owner_id:
-        return db.query(Workspace.id).filter(Workspace.owner_id == ws.owner_id)
     return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 

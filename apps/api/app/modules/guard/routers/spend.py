@@ -24,19 +24,11 @@ router = APIRouter(prefix="/guard/spend", tags=["guard"])
 
 
 def _org_ws_subquery(db: Session, workspace_id: str):
-    """Return a subquery of all workspace IDs in the same org.
-
-    Falls back to a single-workspace filter when the workspace has no org_id.
-    """
+    """Strict single-workspace scoping. See issue #1564."""
     try:
         ws_uuid = uuid.UUID(workspace_id)
     except ValueError:
         return db.query(Workspace.id).filter(Workspace.id == None)  # noqa: E711 — safe empty subquery
-    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
-    if ws and ws.org_id:
-        return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
-    if ws and ws.owner_id:
-        return db.query(Workspace.id).filter(Workspace.owner_id == ws.owner_id)
     return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 

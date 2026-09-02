@@ -214,16 +214,14 @@ def _ws_uuid(workspace_id: str) -> uuid.UUID:
 
 
 def _org_ws_subquery(db: Session, workspace_id: str):
-    """Return a subquery of all workspace IDs in the same org.
+    """Strict single-workspace scoping. See issue #1564.
 
-    Falls back to a single-workspace filter when the workspace has no org_id.
+    Previously this broadened queries to every workspace in the same org or
+    (fallback) every workspace the current user owned — silently leaking data
+    across tenants on every list endpoint. Legit org-wide rollups must ship as
+    explicit /org/* endpoints gated on `guard.*.view_all` permissions.
     """
     ws_uuid = _ws_uuid(workspace_id)
-    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
-    if ws and ws.org_id:
-        return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
-    if ws and ws.owner_id:
-        return db.query(Workspace.id).filter(Workspace.owner_id == ws.owner_id)
     return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 
