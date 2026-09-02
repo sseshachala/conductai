@@ -647,7 +647,7 @@ class GuardApprovalRequest(Base):
     decided_by_user_id = Column(String(255), nullable=True)
     decided_reason     = Column(Text, nullable=True)
     decided_at         = Column(DateTime(timezone=True), nullable=True)
-    latency_ms         = Column(Integer, nullable=True)
+    latency_ms         = Column(BigInteger, nullable=True)
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     timeout_at = Column(DateTime(timezone=True), nullable=False)
