@@ -25,12 +25,8 @@ router = APIRouter(prefix="/compliance", tags=["compliance"])
 
 
 def _org_ws_subquery(db: Session, workspace_id: str):
+    """Strict single-workspace scoping. See issue #1564."""
     ws_uuid = uuid.UUID(workspace_id)
-    ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
-    if ws and ws.org_id:
-        return db.query(Workspace.id).filter(Workspace.org_id == ws.org_id)
-    if ws and ws.owner_id:
-        return db.query(Workspace.id).filter(Workspace.owner_id == ws.owner_id)
     return db.query(Workspace.id).filter(Workspace.id == ws_uuid)
 
 
