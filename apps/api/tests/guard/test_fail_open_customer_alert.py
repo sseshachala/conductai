@@ -33,11 +33,11 @@ def _mk_db(notify_on_fail_open: bool = True):
     return db
 
 
-def _mk_channel(channel_ref: str = "#security"):
-    """One slack channel record — matches shape returned by resolve_channels."""
+def _mk_channel(channel_ref: str = "#security", channel_type: str = "slack"):
+    """One channel record — matches shape returned by resolve_channels."""
     return SimpleNamespace(
-        id="ch-1",
-        channel_type="slack",
+        id=f"ch-{channel_type}",
+        channel_type=channel_type,
         channel_ref=channel_ref,
         integration_id=None,
         enabled=True,
@@ -199,3 +199,103 @@ def test_customer_message_omits_error_class_and_trace_id():
     assert "trace_id" not in text_msg
     assert "RuntimeError" not in text_msg
     assert "Exception" not in text_msg
+
+
+# ── Multi-transport fanout (all 4 channels equal citizens) ────────────────
+
+def test_fanout_hits_slack_when_slack_channel_configured():
+    db = _mk_db()
+    with patch("app.modules.guard.routers.notifications.resolve_channels",
+               return_value=[_mk_channel(channel_type="slack")]), \
+         patch("app.modules.guard.routers.events._fanout_slack") as slack, \
+         patch("app.modules.guard.routers.events._fanout_webhook") as webhook, \
+         patch("app.modules.guard.routers.events._fanout_pagerduty") as pd, \
+         patch("app.modules.guard.routers.events._fanout_email") as email, \
+         patch("app.modules.guard.observability.customer_alert.resolve_workspace_context") as rwc:
+        rwc.return_value = MagicMock(workspace_name="Acme", org_name=None)
+        ca.notify_customer_fail_open(db, workspace_id=WS)
+
+    assert slack.call_count == 1
+    assert webhook.call_count == 0
+    assert pd.call_count == 0
+    assert email.call_count == 0
+
+
+def test_fanout_hits_webhook_when_webhook_channel_configured():
+    db = _mk_db()
+    with patch("app.modules.guard.routers.notifications.resolve_channels",
+               return_value=[_mk_channel(channel_ref="https://x.example/hook", channel_type="webhook")]), \
+         patch("app.modules.guard.routers.events._fanout_slack") as slack, \
+         patch("app.modules.guard.routers.events._fanout_webhook") as webhook, \
+         patch("app.modules.guard.routers.events._fanout_pagerduty") as pd, \
+         patch("app.modules.guard.routers.events._fanout_email") as email, \
+         patch("app.modules.guard.observability.customer_alert.resolve_workspace_context") as rwc:
+        rwc.return_value = MagicMock(workspace_name="Acme", org_name=None)
+        ca.notify_customer_fail_open(db, workspace_id=WS)
+
+    assert slack.call_count == 0
+    assert webhook.call_count == 1
+    payload = webhook.call_args.args[1]
+    assert payload["event"] == "guard.fail_open"
+    assert payload["workspace_name"] == "Acme"
+    assert payload["count"] == 1
+
+
+def test_fanout_hits_pagerduty_when_pd_channel_configured():
+    db = _mk_db()
+    with patch("app.modules.guard.routers.notifications.resolve_channels",
+               return_value=[_mk_channel(channel_ref="pd-routing-key", channel_type="pagerduty")]), \
+         patch("app.modules.guard.routers.events._fanout_slack") as slack, \
+         patch("app.modules.guard.routers.events._fanout_webhook") as webhook, \
+         patch("app.modules.guard.routers.events._fanout_pagerduty") as pd, \
+         patch("app.modules.guard.routers.events._fanout_email") as email, \
+         patch("app.modules.guard.observability.customer_alert.resolve_workspace_context") as rwc:
+        rwc.return_value = MagicMock(workspace_name="Acme", org_name=None)
+        ca.notify_customer_fail_open(db, workspace_id=WS)
+
+    assert pd.call_count == 1
+    # _fanout_pagerduty(channels, action, rule_id, message)
+    args = pd.call_args.args
+    assert args[1] == "fail_open"
+    assert args[2] == "guard.engine_error"
+
+
+def test_fanout_hits_email_when_email_channel_configured():
+    db = _mk_db()
+    with patch("app.modules.guard.routers.notifications.resolve_channels",
+               return_value=[_mk_channel(channel_ref="alerts@acme.example", channel_type="email")]), \
+         patch("app.modules.guard.routers.events._fanout_slack") as slack, \
+         patch("app.modules.guard.routers.events._fanout_webhook") as webhook, \
+         patch("app.modules.guard.routers.events._fanout_pagerduty") as pd, \
+         patch("app.modules.guard.routers.events._fanout_email") as email, \
+         patch("app.modules.guard.observability.customer_alert.resolve_workspace_context") as rwc:
+        rwc.return_value = MagicMock(workspace_name="Acme", org_name=None)
+        ca.notify_customer_fail_open(db, workspace_id=WS)
+
+    assert email.call_count == 1
+    kwargs = email.call_args.kwargs
+    assert "Guard fail-open" in kwargs["subject"]
+    assert "Acme" in kwargs["html"]
+
+
+def test_fanout_hits_all_when_mixed_channels_configured():
+    db = _mk_db()
+    mixed = [
+        _mk_channel(channel_ref="#s", channel_type="slack"),
+        _mk_channel(channel_ref="https://x", channel_type="webhook"),
+        _mk_channel(channel_ref="rk", channel_type="pagerduty"),
+        _mk_channel(channel_ref="a@x", channel_type="email"),
+    ]
+    with patch("app.modules.guard.routers.notifications.resolve_channels", return_value=mixed), \
+         patch("app.modules.guard.routers.events._fanout_slack") as slack, \
+         patch("app.modules.guard.routers.events._fanout_webhook") as webhook, \
+         patch("app.modules.guard.routers.events._fanout_pagerduty") as pd, \
+         patch("app.modules.guard.routers.events._fanout_email") as email, \
+         patch("app.modules.guard.observability.customer_alert.resolve_workspace_context") as rwc:
+        rwc.return_value = MagicMock(workspace_name="Acme", org_name=None)
+        ca.notify_customer_fail_open(db, workspace_id=WS)
+
+    assert slack.call_count == 1
+    assert webhook.call_count == 1
+    assert pd.call_count == 1
+    assert email.call_count == 1
