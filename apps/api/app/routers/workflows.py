@@ -1868,6 +1868,8 @@ def test_trigger(
             surface="proxy",
             error=str(_guard_err),
         )
+        from app.modules.guard.observability import record_fail_open
+        record_fail_open(db, workspace_id=workspace_id, surface="proxy", error=_guard_err)
 
     workflow = db.query(Workflow).filter(
         Workflow.id == workflow_id,

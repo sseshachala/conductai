@@ -122,6 +122,11 @@ def evaluate(workspace_id: str, provider: str, model: str, body: dict) -> dict:
             rules = compute_policy(db, uuid.UUID(policy_ws_id), "proxy")
         except Exception as e:
             log.warning("guard.proxy.policy_load_failed", err=str(e))
+            try:
+                from app.modules.guard.observability import record_fail_open
+                record_fail_open(db, workspace_id=policy_ws_id, surface="proxy", error=e)
+            except Exception:
+                pass
             from app.modules.guard.models import GuardConfig as _GuardConfig
             cfg = db.query(_GuardConfig).filter(_GuardConfig.workspace_id == uuid.UUID(policy_ws_id)).first()
             deny = cfg.deny_on_error if cfg else True
