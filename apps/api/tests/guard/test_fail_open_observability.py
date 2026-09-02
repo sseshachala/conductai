@@ -33,6 +33,16 @@ def _reset_state():
     foa._reset_dedup_for_tests()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_from_customer_alert():
+    """PR 1 tests own the internal-alert path only. PR 2's customer alerter
+    (wired into record_fail_open in the same module) has its own coverage
+    in test_fail_open_customer_alert.py — no-op it here so httpx.post
+    call counts reflect the internal path alone."""
+    with patch("app.modules.guard.observability.fail_open_alert._also_notify_customer"):
+        yield
+
+
 def test_counter_increments_and_posts_once(monkeypatch):
     monkeypatch.setenv(foa._ALERT_WEBHOOK_ENV, WEBHOOK)
     before = _counter_value(WS, "proxy")

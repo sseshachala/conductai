@@ -25,6 +25,7 @@ interface TeamPrefs {
   automation_security_scan: boolean
   automation_workflow_trigger: boolean
   deny_on_error: boolean
+  notify_on_fail_open: boolean
   advisory_mode: boolean
 }
 
@@ -431,6 +432,7 @@ function SettingsContent() {
     automation_security_scan: false,
     automation_workflow_trigger: false,
     deny_on_error: true,
+    notify_on_fail_open: true,
     advisory_mode: false,
   })
   const [loading, setLoading] = useState(false)
@@ -441,6 +443,7 @@ function SettingsContent() {
   const [enforcementMode, setEnforcementMode] = useState<"block" | "warn" | "audit">("warn")
   const [failMode, setFailMode] = useState<"fail_open" | "fail_closed">("fail_open")
   const [denyOnError, setDenyOnError] = useState(true)
+  const [notifyOnFailOpen, setNotifyOnFailOpen] = useState(true)
   const [enforcementError, setEnforcementError] = useState<string | null>(null)
 
   // Re-sync state
@@ -474,11 +477,13 @@ function SettingsContent() {
         automation_security_scan: data.automation_security_scan ?? false,
         automation_workflow_trigger: data.automation_workflow_trigger ?? false,
         deny_on_error: data.deny_on_error ?? true,
+        notify_on_fail_open: data.notify_on_fail_open ?? true,
         advisory_mode: data.advisory_mode ?? false,
       })
       if (data.enforcement_mode) setEnforcementMode(data.enforcement_mode as "block" | "warn" | "audit")
       if (data.fail_mode) setFailMode(data.fail_mode as "fail_open" | "fail_closed")
       if (data.deny_on_error !== undefined) setDenyOnError(data.deny_on_error)
+      if (data.notify_on_fail_open !== undefined) setNotifyOnFailOpen(data.notify_on_fail_open)
       setLastFetched(new Date())
       // Load sync coverage in parallel — non-fatal
       guard.developerTools.list(authFetch, wsId)
@@ -788,6 +793,22 @@ function SettingsContent() {
                     <div style={{ fontWeight: 600, fontSize: 13 }}>Fail closed on error</div>
                     <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
                       Block the request and write an audit entry if the policy engine throws. Recommended. Disable only if you prefer fail-open during policy engine incidents.
+                    </div>
+                  </div>
+                </label>
+                <label style={{ display: "flex", gap: 11, alignItems: "flex-start", cursor: isAdmin ? "pointer" : "default", marginTop: 14 }}
+                  onClick={async () => {
+                    if (!isAdmin) return
+                    const next = !notifyOnFailOpen
+                    setNotifyOnFailOpen(next)
+                    try { await patchConfig({ notify_on_fail_open: next } as never) }
+                    catch { setNotifyOnFailOpen(!next) }
+                  }}>
+                  <GuardToggle on={notifyOnFailOpen} onClick={() => {}} disabled={!isAdmin} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>Notify on fail-open</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                      Post a Slack warning to your workspace channel when Guard could not evaluate policy and allowed the request through. Requires a Slack webhook configured for the workspace.
                     </div>
                   </div>
                 </label>

@@ -102,6 +102,11 @@ def record_fail_open(
     except Exception as exc:  # noqa: BLE001
         log.warning("guard.fail_open.counter_failed", err=str(exc))
 
+    # Customer WARNING fires alongside the internal ERROR — different
+    # audiences, different framing (#1520 PR 2). Rate-limited independently
+    # in customer_alert._should_post.
+    _also_notify_customer(db, ws_id)
+
     webhook = os.environ.get(_ALERT_WEBHOOK_ENV, "").strip()
     if not webhook:
         return
@@ -136,6 +141,16 @@ def record_fail_open(
         # Slack itself failed. Log at WARN; do not retry — the outage that
         # triggered fail-open may also be affecting outbound network.
         log.warning("guard.fail_open.slack_post_failed", err=str(exc), surface=surface)
+
+
+def _also_notify_customer(db: Session | None, workspace_id: str) -> None:
+    """Split out so record_fail_open() has one clean control-flow path.
+    Customer notification is best-effort and never raises."""
+    from app.modules.guard.observability.customer_alert import notify_customer_fail_open
+    try:
+        notify_customer_fail_open(db, workspace_id=workspace_id)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("guard.fail_open.customer_notify_failed", err=str(exc))
 
 
 def _reset_dedup_for_tests() -> None:

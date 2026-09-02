@@ -135,44 +135,40 @@ def test_none_db_is_safe():
     assert post.call_count == 0
 
 
-def test_record_fail_open_end_to_end_fires_both_posts(monkeypatch):
-    """Integrated wire-through: one record_fail_open() call must fire BOTH
-    the internal ops alert AND the customer WARNING when both are configured
-    (env var set + config row has slack_webhook_url + notify_on_fail_open=True).
-
-    Gap-fill test — the isolated per-module tests stub the other side out;
-    this one exercises the real record_fail_open path with a single httpx
-    patch that captures every call, then partitions by webhook URL. That
-    way the shared httpx module doesn't confuse per-module patches.
-    """
+def test_record_fail_open_wires_through_to_customer_notify():
+    """Integrated wire-through: one record_fail_open() call must delegate
+    to the customer notify path (via _also_notify_customer). Uses a spy
+    pattern on _also_notify_customer so the assertion is independent of
+    the shared-httpx-module patching gotcha — per-module isolated tests
+    already cover the httpx.post fanout for each poster in depth."""
     from app.modules.guard.observability import fail_open_alert as foa
 
-    internal_webhook = "https://hooks.slack.com/internal/x/y"
-    customer_webhook = "https://hooks.slack.com/x/y/z"  # matches _mk_db default
-
-    monkeypatch.setenv(foa._ALERT_WEBHOOK_ENV, internal_webhook)
     foa._reset_dedup_for_tests()
     ca._reset_dedup_for_tests()
 
-    db = _mk_db(slack_webhook_url=customer_webhook)
+    db = _mk_db()
 
-    with patch("httpx.post") as post, \
-         patch("app.modules.guard.observability.fail_open_alert.resolve_workspace_context") as rwc_i, \
-         patch("app.modules.guard.observability.customer_alert.resolve_workspace_context") as rwc_c:
-        rwc_i.return_value = MagicMock(workspace_name="Acme", org_name="Acme Inc.")
-        rwc_c.return_value = MagicMock(workspace_name="Acme", org_name=None)
-
+    with patch("app.modules.guard.observability.fail_open_alert._also_notify_customer") as spy:
         foa.record_fail_open(db, workspace_id=WS, surface="proxy", error=RuntimeError("boom"))
 
-    # Partition the two calls by which webhook URL they targeted.
-    calls_by_url = {c.args[0]: c for c in post.call_args_list}
-    assert internal_webhook in calls_by_url, "internal ops post did not fire"
-    assert customer_webhook in calls_by_url, "customer WARNING post did not fire"
-    assert len(post.call_args_list) == 2, f"expected exactly 2 posts, got {len(post.call_args_list)}"
+    assert spy.call_count == 1, "record_fail_open must delegate to customer notify path exactly once"
+    called_db, called_ws = spy.call_args.args
+    assert called_db is db
+    assert called_ws == WS
 
-    internal_text = calls_by_url[internal_webhook].kwargs["json"]["text"]
-    customer_text = calls_by_url[customer_webhook].kwargs["json"]["text"]
-    assert ":rotating_light:" in internal_text
-    assert ":warning:" in customer_text
-    assert "RuntimeError" in internal_text        # internal shows error class
-    assert "RuntimeError" not in customer_text    # customer never sees it
+
+def test_customer_message_omits_error_class_and_trace_id():
+    """Audience-defining regression guard. The customer WARNING must never
+    leak internal error details or a trace id — that's what makes it
+    different from the internal ERROR alert."""
+    payload = ca._build_message(workspace_name="Acme", count=3)
+    text = payload["text"]
+
+    assert ":warning:" in text
+    assert "Acme" in text
+    assert "3 requests" in text
+    assert "/theguard/settings" in text
+    # These MUST NOT leak into a customer-facing post
+    assert "trace_id" not in text
+    assert "RuntimeError" not in text
+    assert "Exception" not in text
