@@ -1,9 +1,10 @@
-"""Customer-facing WARNING alert when Guard falls open (#1520 PR 2).
+"""Customer-facing WARNING alert when Guard falls open (#1520 PR 2 + PR 3).
 
 Companion to the internal ERROR alert in ``fail_open_alert.py``:
 
 - Internal alert  → Conduct ops, `CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK`, per-surface
-- Customer alert  → workspace's own `GuardConfig.slack_webhook_url`, per-workspace
+- Customer alert  → workspace's own Slack, routed through the
+  ``guard_notification_channels`` table under action="fail_open"
 
 The customer post is intentionally quieter than the internal one — 15-min
 aggregate window, no error class or trace_id, no per-surface split. The
@@ -11,9 +12,8 @@ audience can't act on which surface failed; they need to know their rules
 were not enforced and where to change the fail-mode.
 
 Skipped when:
-  - `GuardConfig.notify_on_fail_open` is False (customer opt-out)
-  - `GuardConfig.slack_webhook_url` is empty (no channel configured)
-  - the config row itself is missing
+  - ``GuardConfig.notify_on_fail_open`` is False (customer opt-out)
+  - no ``fail_open`` channels configured in the "Slack channels by action" UI
   - inside the 15-min rate-limit window
 """
 from __future__ import annotations
@@ -22,7 +22,6 @@ import os
 import time
 import uuid
 
-import httpx
 import structlog
 from sqlalchemy.orm import Session
 
@@ -31,7 +30,6 @@ from app.modules.guard.observability.name_cache import resolve_workspace_context
 log = structlog.get_logger(__name__)
 
 _RATE_LIMIT_SEC = 900  # 15 minutes per workspace
-_HTTP_TIMEOUT_SEC = 3.0
 
 # (workspace_id,) -> (window_start_monotonic, event_count_in_window)
 _dedup: dict[str, tuple[float, int]] = {}
@@ -68,40 +66,37 @@ def _should_post(workspace_id: str) -> tuple[bool, int]:
     return True, count  # carry the prior window's count in the message
 
 
-def _build_message(*, workspace_name: str, count: int) -> dict:
+def _build_message(*, workspace_name: str, count: int) -> str:
     settings_url = f"{_settings_base_url()}/theguard/settings"
     events_line = (
         f"*{count} requests* in the last 15 min"
         if count > 1
         else "*1 request* just now"
     )
-    return {
-        "text": (
-            f":warning: *Guard could not evaluate policy* on {events_line} in *{workspace_name}*.\n"
-            f"Per your fail-open default, these requests were allowed through. "
-            f"Guard rules were not enforced for the affected calls.\n"
-            f"To change this behavior, set your workspace to fail-closed in "
-            f"<{settings_url}|Guard Settings>."
-        ),
-    }
+    return (
+        f":warning: *Guard could not evaluate policy* on {events_line} in *{workspace_name}*.\n"
+        f"Per your fail-open default, these requests were allowed through. "
+        f"Guard rules were not enforced for the affected calls.\n"
+        f"To change this behavior, set your workspace to fail-closed in "
+        f"<{settings_url}|Guard Settings>."
+    )
 
 
-def _load_config(db: Session, workspace_id: str):
-    """Load GuardConfig with only the fields we need. Returns None on any
-    failure so the alert path never raises from the customer branch."""
+def _notify_on_fail_open_enabled(db: Session, workspace_id: str) -> bool:
+    """Read the per-workspace opt-out flag. Defaults to True so a config
+    lookup failure never silences transparency."""
     from sqlalchemy import text
     try:
         row = db.execute(
-            text(
-                "SELECT notify_on_fail_open, slack_webhook_url "
-                "FROM guard_config WHERE workspace_id = :ws"
-            ),
+            text("SELECT notify_on_fail_open FROM guard_config WHERE workspace_id = :ws"),
             {"ws": workspace_id},
         ).fetchone()
     except Exception as exc:  # noqa: BLE001
         log.warning("guard.fail_open.customer_config_lookup_failed", err=str(exc))
-        return None
-    return row
+        return True  # fail-open on the opt-out check itself
+    if row is None:
+        return True
+    return bool(getattr(row, "notify_on_fail_open", True))
 
 
 def notify_customer_fail_open(
@@ -112,20 +107,27 @@ def notify_customer_fail_open(
     """Best-effort customer WARNING post. Never raises.
 
     Rate-limited per workspace (not per surface) — the customer sees one
-    channel, one message, aggregated.
+    channel, one message, aggregated. Routes through the per-action Slack
+    fanout the workspace already configures for block/warn/audit/approval.
     """
     if db is None:
         return
 
     ws_id = str(workspace_id)
 
-    cfg = _load_config(db, ws_id)
-    if cfg is None:
+    if not _notify_on_fail_open_enabled(db, ws_id):
         return
-    if not getattr(cfg, "notify_on_fail_open", True):
+
+    # Resolve channels via the same mechanism block/warn/audit/approval use.
+    # If nothing is configured for `fail_open`, silently skip — customers
+    # opt in by adding a channel in "Slack channels by action".
+    try:
+        from app.modules.guard.routers.notifications import resolve_channels
+        channels = resolve_channels(db, ws_id, "fail_open")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("guard.fail_open.customer_resolve_channels_failed", err=str(exc))
         return
-    webhook = (getattr(cfg, "slack_webhook_url", None) or "").strip()
-    if not webhook:
+    if not channels:
         return
 
     post_now, count = _should_post(ws_id)
@@ -139,12 +141,13 @@ def notify_customer_fail_open(
         log.warning("guard.fail_open.customer_context_failed", err=str(exc))
         workspace_name = ws_id
 
-    payload = _build_message(workspace_name=workspace_name, count=count)
+    text_msg = _build_message(workspace_name=workspace_name, count=count)
 
     try:
-        httpx.post(webhook, json=payload, timeout=_HTTP_TIMEOUT_SEC)
+        from app.modules.guard.routers.events import _fanout_slack
+        _fanout_slack(db, ws_id, channels, text_msg)
     except Exception as exc:  # noqa: BLE001
-        log.warning("guard.fail_open.customer_slack_post_failed", err=str(exc))
+        log.warning("guard.fail_open.customer_fanout_failed", err=str(exc))
 
 
 def _reset_dedup_for_tests() -> None:

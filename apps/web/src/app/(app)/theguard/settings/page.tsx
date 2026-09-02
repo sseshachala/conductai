@@ -48,16 +48,18 @@ const GUARD_SETTINGS_TABS: readonly SettingsTab<GuardSettingsTab>[] = [
 
 // ─── #1142 Phase 1 — per-action notifications card ────────────────────────────
 
-const NOTIF_ACTIONS: Array<{ k: "block" | "warn" | "audit" | "approval"; label: string; hint: string }> = [
-  { k: "block",    label: "Block",    hint: "loud by default — send to a security channel" },
-  { k: "warn",     label: "Warn",     hint: "quiet — a heads-up to a dev channel" },
-  { k: "audit",    label: "Audit",    hint: "silent by default — leave empty to skip" },
-  { k: "approval", label: "Approval", hint: "notify approvers when a rule requires human sign-off" },
+type NotifActionKey = "block" | "warn" | "audit" | "approval" | "fail_open"
+const NOTIF_ACTIONS: Array<{ k: NotifActionKey; label: string; hint: string }> = [
+  { k: "block",     label: "Block",     hint: "loud by default — send to a security channel" },
+  { k: "warn",      label: "Warn",      hint: "quiet — a heads-up to a dev channel" },
+  { k: "audit",     label: "Audit",     hint: "silent by default — leave empty to skip" },
+  { k: "approval",  label: "Approval",  hint: "notify approvers when a rule requires human sign-off" },
+  { k: "fail_open", label: "Fail-open", hint: "customer heads-up when Guard could not evaluate policy (allowed through per your default)" },
 ]
 
 interface NotifChannel {
   id: string
-  action: "block" | "warn" | "audit" | "approval"
+  action: NotifActionKey
   channel_type: string
   channel_ref: string
   enabled: boolean
@@ -111,7 +113,7 @@ function NotificationsCard({
 
   useEffect(() => { void load() }, [load])
 
-  async function handleAdd(action: "block" | "warn" | "audit" | "approval") {
+  async function handleAdd(action: NotifActionKey) {
     if (!workspaceId || !addChannel.trim()) return
     try {
       let body: {
