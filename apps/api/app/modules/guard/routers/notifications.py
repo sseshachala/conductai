@@ -41,7 +41,7 @@ log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/guard/notifications", tags=["guard-notifications"])
 
 
-ACTIONS = ("block", "warn", "audit", "approval", "fail_open")
+ACTIONS = ("block", "warn", "audit", "approval", "fail_open", "drift")
 CHANNEL_TYPES = ("slack", "email", "pagerduty", "webhook")
 
 
@@ -62,7 +62,7 @@ class ChannelOut(BaseModel):
 
 
 class ChannelCreate(BaseModel):
-    action: Literal["block", "warn", "audit", "approval", "fail_open"]
+    action: Literal["block", "warn", "audit", "approval", "fail_open", "drift"]
     channel_type: Literal["slack", "webhook", "pagerduty", "email"] = "slack"
     integration_id: str | None = None
     channel_ref: str = Field(..., min_length=1, max_length=2048)

@@ -48,13 +48,14 @@ const GUARD_SETTINGS_TABS: readonly SettingsTab<GuardSettingsTab>[] = [
 
 // ─── #1142 Phase 1 — per-action notifications card ────────────────────────────
 
-type NotifActionKey = "block" | "warn" | "audit" | "approval" | "fail_open"
+type NotifActionKey = "block" | "warn" | "audit" | "approval" | "fail_open" | "drift"
 const NOTIF_ACTIONS: Array<{ k: NotifActionKey; label: string; hint: string }> = [
   { k: "block",     label: "Block",     hint: "loud by default — send to a security channel" },
   { k: "warn",      label: "Warn",      hint: "quiet — a heads-up to a dev channel" },
   { k: "audit",     label: "Audit",     hint: "silent by default — leave empty to skip" },
   { k: "approval",  label: "Approval",  hint: "notify approvers when a rule requires human sign-off" },
   { k: "fail_open", label: "Fail-open", hint: "customer heads-up when Guard could not evaluate policy (allowed through per your default)" },
+  { k: "drift",     label: "Drift",     hint: "token usage anomalies detected against your guardrails" },
 ]
 
 interface NotifChannel {

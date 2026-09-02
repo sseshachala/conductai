@@ -71,7 +71,7 @@ export interface GuardEnforcementCoverage {
   exception_expired: boolean
 }
 
-export type NotificationAction = "block" | "warn" | "audit" | "approval" | "fail_open"
+export type NotificationAction = "block" | "warn" | "audit" | "approval" | "fail_open" | "drift"
 export type NotificationChannelType = "slack" | "email" | "pagerduty" | "webhook"
 
 export interface NotificationChannel {
