@@ -98,7 +98,14 @@ def record_fail_open(
     """
     ws_id = str(workspace_id)
     try:
-        GUARD_ENGINE_ERRORS.labels(workspace_id=ws_id, surface=surface).inc()
+        # workspace_id intentionally NOT a label — see metrics.py module
+        # docstring. Workspace context lives in the Slack post + structlog
+        # line just below.
+        from app.core.config import settings as _settings
+        GUARD_ENGINE_ERRORS.labels(
+            surface=surface,
+            env=getattr(_settings, "environment", "unknown"),
+        ).inc()
     except Exception as exc:  # noqa: BLE001
         log.warning("guard.fail_open.counter_failed", err=str(exc))
 
