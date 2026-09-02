@@ -183,7 +183,7 @@ function NotificationsCard({
             <path d="M14.5 2v20M9.5 2v20M2 14.5h20M2 9.5h20" />
           </svg>
         </span>
-        <div style={{ fontWeight: 650, fontSize: 14.5 }}>Slack channels by action</div>
+        <div style={{ fontWeight: 650, fontSize: 14.5 }}>Notifications</div>
         {environments.length > 0 && (
           <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
             Vault
