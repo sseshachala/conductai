@@ -93,6 +93,13 @@ _STATIC = Path(__file__).parent / "static"
 async def favicon():
     return FileResponse(_STATIC / "favicon.png", media_type="image/png")
 
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+    from starlette.responses import Response
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 if not _origins:
     log.warning("cors.no_origins_configured", msg="ALLOWED_ORIGINS is empty — all cross-origin requests blocked. Set ALLOWED_ORIGINS in .env to enable CORS.")
