@@ -162,12 +162,42 @@ def record_savings(
                     f"*ConductGuard drift detected* in workspace *{body.workspace_id}*:\n"
                     + "\n".join(drifts)
                 )
-                # Route via the per-action fanout — customers configure
-                # the drift channel in /theguard/settings > Notifications.
-                # Silent when no channels are set (opt-in model).
+                # Fanout to every transport configured for `drift`. Same
+                # 4-way split events.py:230-250 uses for block/warn/audit/
+                # approval, so webhook / PagerDuty / email are equal
+                # citizens with Slack.
                 channels = resolve_channels(db, body.workspace_id, "drift")
                 if channels:
-                    _fanout_slack(db, body.workspace_id, channels, text)
+                    from app.modules.guard.routers.events import (
+                        _fanout_webhook,
+                        _fanout_pagerduty,
+                        _fanout_email,
+                    )
+                    by_type: dict[str, list] = {"slack": [], "webhook": [], "pagerduty": [], "email": []}
+                    for c in channels:
+                        by_type.setdefault(c.channel_type, []).append(c)
+
+                    if by_type["slack"]:
+                        _fanout_slack(db, body.workspace_id, by_type["slack"], text)
+                    if by_type["webhook"]:
+                        _fanout_webhook(by_type["webhook"], {
+                            "event": "guard.drift_detected",
+                            "workspace_id": body.workspace_id,
+                            "drifts": drifts,
+                            "message": text,
+                        })
+                    if by_type["pagerduty"]:
+                        _fanout_pagerduty(by_type["pagerduty"], "drift", "guard.token_drift", text)
+                    if by_type["email"]:
+                        _fanout_email(
+                            db, body.workspace_id, by_type["email"],
+                            subject=f"[Guard drift] Guardrail state changed in {body.workspace_id}",
+                            html=(
+                                f"<p><strong>ConductGuard drift detected</strong> in workspace "
+                                f"<code>{body.workspace_id}</code>.</p>"
+                                + "<ul>" + "".join(f"<li>{d}</li>" for d in drifts) + "</ul>"
+                            ),
+                        )
 
             team.guardrail_snapshot = {
                 **prev_snap,

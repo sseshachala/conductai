@@ -143,9 +143,48 @@ def notify_customer_fail_open(
 
     text_msg = _build_message(workspace_name=workspace_name, count=count)
 
+    # Fanout to every transport the workspace has configured for `fail_open`.
+    # Mirrors the block/warn/audit/approval split in events.py:230-250 so a
+    # customer who configured a webhook or PagerDuty for fail_open actually
+    # receives the alert there, not just Slack.
+    by_type: dict[str, list] = {"slack": [], "webhook": [], "pagerduty": [], "email": []}
+    for c in channels:
+        by_type.setdefault(c.channel_type, []).append(c)
+
     try:
-        from app.modules.guard.routers.events import _fanout_slack
-        _fanout_slack(db, ws_id, channels, text_msg)
+        from app.modules.guard.routers.events import (
+            _fanout_slack,
+            _fanout_webhook,
+            _fanout_pagerduty,
+            _fanout_email,
+        )
+
+        if by_type["slack"]:
+            _fanout_slack(db, ws_id, by_type["slack"], text_msg)
+        if by_type["webhook"]:
+            _fanout_webhook(by_type["webhook"], {
+                "event": "guard.fail_open",
+                "workspace_id": ws_id,
+                "workspace_name": workspace_name,
+                "count": count,
+                "message": text_msg,
+            })
+        if by_type["pagerduty"]:
+            _fanout_pagerduty(by_type["pagerduty"], "fail_open", "guard.engine_error", text_msg)
+        if by_type["email"]:
+            _fanout_email(
+                db, ws_id, by_type["email"],
+                subject=f"[Guard fail-open] Policy not evaluated in {workspace_name}",
+                html=(
+                    f"<p><strong>Guard could not evaluate policy</strong> on "
+                    f"<strong>{count}</strong> request(s) in the last 15 min in "
+                    f"<strong>{workspace_name}</strong>.</p>"
+                    f"<p>Per your fail-open default, these requests were allowed through. "
+                    f"Guard rules were not enforced for the affected calls.</p>"
+                    f"<p>To change this behavior, set your workspace to fail-closed in "
+                    f"Guard Settings.</p>"
+                ),
+            )
     except Exception as exc:  # noqa: BLE001
         log.warning("guard.fail_open.customer_fanout_failed", err=str(exc))
 
