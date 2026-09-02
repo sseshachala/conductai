@@ -13,7 +13,7 @@ were not enforced and where to change the fail-mode.
 
 Skipped when:
   - ``GuardConfig.notify_on_fail_open`` is False (customer opt-out)
-  - no ``fail_open`` channels configured in the "Slack channels by action" UI
+  - no ``fail_open`` channels configured in the "Notifications" UI
   - inside the 15-min rate-limit window
 """
 from __future__ import annotations
@@ -120,7 +120,7 @@ def notify_customer_fail_open(
 
     # Resolve channels via the same mechanism block/warn/audit/approval use.
     # If nothing is configured for `fail_open`, silently skip — customers
-    # opt in by adding a channel in "Slack channels by action".
+    # opt in by adding a channel in "Notifications".
     try:
         from app.modules.guard.routers.notifications import resolve_channels
         channels = resolve_channels(db, ws_id, "fail_open")
