@@ -49,7 +49,6 @@ class GuardConfig(Base):
     resync_requested_at = Column(DateTime(timezone=True), nullable=True)
     token_guardrails = Column(JSONB, nullable=True)
     guardrail_snapshot = Column(JSONB, nullable=True)
-    slack_webhook_url = Column(String(2048), nullable=True)
     slack_integration_id = Column(UUID(as_uuid=True), nullable=True)
     alert_slack_integration_id = Column(UUID(as_uuid=True), nullable=True)
     automation_security_scan = Column(Boolean, nullable=False, default=False)

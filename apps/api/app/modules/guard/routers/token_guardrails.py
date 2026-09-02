@@ -36,7 +36,6 @@ class TokenGuardrailsOut(BaseModel):
     structured_retrieval: bool
     metrics_budgets: bool
     manual_keys: list[str]
-    slack_webhook_url: Optional[str] = None
     slack_integration_id: Optional[str] = None
 
 
@@ -45,7 +44,6 @@ class TokenGuardrailsPatch(BaseModel):
     prompt_caching: Optional[bool] = None
     model_routing: Optional[bool] = None
     prompt_splitting: Optional[bool] = None
-    slack_webhook_url: Optional[str] = None
     slack_integration_id: Optional[str] = None
 
 
@@ -70,22 +68,6 @@ def _check_guardrail_drift(
     if prev.get("metrics_budgets") and not current_snapshot.get("metrics_budgets"):
         drifts.append("⚠️ Spend budget removed — Metrics & budgets guardrail inactive")
     return drifts
-
-
-def _post_slack_drift(webhook_url: str, workspace_name: str, drifts: list[str]):
-    if not webhook_url or not drifts:
-        return
-    text = (
-        f"*ConductGuard drift detected* in workspace *{workspace_name}*:\n"
-        + "\n".join(drifts)
-    )
-    try:
-        # httpx rejects file://, gopher://, etc. by default — safer than urllib
-        # for user-supplied webhook URLs (closes bandit B310).
-        import httpx
-        httpx.post(webhook_url, json={"text": text}, timeout=5)
-    except Exception:
-        pass
 
 
 # ── Auto-detection helper ─────────────────────────────────────────────────────
@@ -170,7 +152,6 @@ def _build_guardrail_state(db: Session, workspace_id: str) -> dict:
             structured_retrieval=has_booster,
             metrics_budgets=metrics_budgets,
             manual_keys=_MANUAL_KEYS,
-            slack_webhook_url=team.slack_webhook_url,
             slack_integration_id=str(team.slack_integration_id) if team.slack_integration_id else None,
         ),
     }
@@ -205,8 +186,6 @@ def patch_token_guardrails(
         manual["prompt_splitting"] = body.prompt_splitting
     team.token_guardrails = manual
 
-    if body.slack_webhook_url is not None:
-        team.slack_webhook_url = body.slack_webhook_url
     if body.slack_integration_id is not None:
         team.slack_integration_id = uuid.UUID(body.slack_integration_id)
 

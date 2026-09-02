@@ -136,7 +136,8 @@ def record_savings(
         import uuid as _uuid
         from app.modules.guard.models import GuardConfig
         from app.modules.guard.routers.token_guardrails import _check_guardrail_drift
-        from app.modules.guard.routers.events import _send_guard_slack
+        from app.modules.guard.routers.notifications import resolve_channels
+        from app.modules.guard.routers.events import _fanout_slack
 
         team = db.query(GuardConfig).filter(
             GuardConfig.workspace_id == _uuid.UUID(body.workspace_id)
@@ -161,7 +162,12 @@ def record_savings(
                     f"*ConductGuard drift detected* in workspace *{body.workspace_id}*:\n"
                     + "\n".join(drifts)
                 )
-                _send_guard_slack(db, team, text)
+                # Route via the per-action fanout — customers configure
+                # the drift channel in /theguard/settings > Notifications.
+                # Silent when no channels are set (opt-in model).
+                channels = resolve_channels(db, body.workspace_id, "drift")
+                if channels:
+                    _fanout_slack(db, body.workspace_id, channels, text)
 
             team.guardrail_snapshot = {
                 **prev_snap,
