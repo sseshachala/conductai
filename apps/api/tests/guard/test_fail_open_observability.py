@@ -23,7 +23,19 @@ WEBHOOK = "https://hooks.slack.com/services/T00/B00/XXX"
 
 
 def _counter_value(workspace_id: str, surface: str) -> float:
-    return GUARD_ENGINE_ERRORS.labels(workspace_id=workspace_id, surface=surface)._value.get()
+    """Read the counter via the public exposition API instead of the private
+    ``_value`` attribute. Prometheus-client does not cover ``_value`` under
+    its compatibility promise, so the private path can vanish on upgrade."""
+    from prometheus_client import generate_latest
+
+    prefix = (
+        f'guard_engine_errors_total{{surface="{surface}",'
+        f'workspace_id="{workspace_id}"}} '
+    )
+    for line in generate_latest().decode().splitlines():
+        if line.startswith(prefix):
+            return float(line[len(prefix):].split()[0])
+    return 0.0
 
 
 @pytest.fixture(autouse=True)
