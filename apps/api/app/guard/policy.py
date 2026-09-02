@@ -125,8 +125,12 @@ def evaluate(workspace_id: str, provider: str, model: str, body: dict) -> dict:
             try:
                 from app.modules.guard.observability import record_fail_open
                 record_fail_open(db, workspace_id=policy_ws_id, surface="proxy", error=e)
-            except Exception:
-                pass
+            except Exception as _obs_err:
+                # record_fail_open() is designed never to raise. If it does,
+                # that itself is a bug in the observability module. Log at
+                # WARN so we notice; do not re-raise (the outer path is
+                # already in a fail-open branch and must not error out).
+                log.warning("guard.observability.record_fail_open_failed", err=str(_obs_err))
             from app.modules.guard.models import GuardConfig as _GuardConfig
             cfg = db.query(_GuardConfig).filter(_GuardConfig.workspace_id == uuid.UUID(policy_ws_id)).first()
             deny = cfg.deny_on_error if cfg else True
