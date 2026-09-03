@@ -1,226 +1,185 @@
-"use client"
+import Link from "next/link"
 
-import { useState } from "react"
-import { CtaLink } from "@/components/marketing/CtaLink"
+export const metadata = {
+  title: "Open Source — Conduct",
+  description:
+    "The components that matter most for trust are open. Four Apache-2.0 components: conduct-cli, Guard runtime core, Playbook DSL compiler, and Agent Booster MCP.",
+}
 
-/* ─── Page ──────────────────────────────────────────────────────────────── */
+const OSS_COMPONENTS = [
+  {
+    name: "conduct-cli",
+    license: "Apache-2.0",
+    repo: "github.com/conductai/conduct",
+    path: "packages/conduct-cli/",
+    pypi: "conduct-cli",
+    purpose: "Agent lifecycle management, Guard sync, policy testing. Runs on developer machines and in CI/CD.",
+  },
+  {
+    name: "Guard runtime core",
+    license: "Apache-2.0",
+    repo: "github.com/conductai/conduct",
+    path: "apps/api/app/guard/",
+    pypi: null,
+    purpose: "Core enforcement engine: rule evaluation, decision scoring, hash-chained audit trail. Runs inside the Conduct API server.",
+  },
+  {
+    name: "Playbook DSL compiler",
+    license: "Apache-2.0",
+    repo: "github.com/conductai/conduct",
+    path: "apps/api/app/compiler/",
+    pypi: null,
+    purpose: "Compiles YAML playbook definitions into executable DAG runs. Shared by all 39 shipped playbooks.",
+  },
+  {
+    name: "Agent Booster MCP",
+    license: "Apache-2.0",
+    repo: "github.com/conductai/conduct",
+    path: "tools/booster/",
+    pypi: null,
+    purpose: "Developer productivity tools (semantic search, smart read, test coverage) for Claude Code and Cursor. Runs locally or on Vercel.",
+  },
+]
 
 export default function OpenSourcePage() {
   return (
-    <>
-      <HeroSection />
-      <ProjectsSection />
-      <CtaSection />
-    </>
-  )
-}
+    <div className="min-h-screen bg-white">
+      <main className="max-w-5xl mx-auto px-6">
 
-/* ─── Hero ──────────────────────────────────────────────────────────────── */
-
-function HeroSection() {
-  return (
-    <section className="max-w-5xl mx-auto px-6 pt-20 pb-12 text-center">
-      <div className="inline-flex items-center gap-2 bg-stone-100 text-stone-600 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
-        <span className="w-1.5 h-1.5 rounded-full bg-stone-400 inline-block" />
-        Open Source
-      </div>
-      <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-5">
-        Open Source
-      </h1>
-      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed">
-        Apache 2.0. Free for everyone — individuals, teams, and companies — for commercial and non-commercial use, with an explicit patent grant from contributors.
-      </p>
-    </section>
-  )
-}
-
-/* ─── Projects ──────────────────────────────────────────────────────────── */
-
-function ProjectsSection() {
-  return (
-    <section className="max-w-5xl mx-auto px-6 pb-20 flex flex-col gap-8">
-      <ProjectCard
-        name="Conduct Guard"
-        tagline="Runtime policy enforcement for AI agents"
-        description="Guard sits at the LLM call and shell tool boundary — block, warn, audit, or inject before an action executes. Ships with 15 compliance packs (OWASP, SOC 2, HIPAA, PCI, EU AI Act), a canvas UI, YAML playbook DSL, and hash-chained audit trail. Apache 2.0 — free for commercial and non-commercial use, with an explicit patent grant."
-        install={["git clone https://github.com/sseshachala/conductai", "docker compose up"]}
-        githubUrl="https://github.com/sseshachala/conductai"
-        guardRelation="This is Guard itself — the policy engine, packs, canvas, and hash chain. Self-host for full control, or use the hosted product."
-        badgeColor="bg-stone-900 text-white"
-        badgeLabel="Platform"
-      />
-      <ProjectCard
-        name="Conduct Router"
-        tagline="LLM proxy with per-agent tokens, retries, and audit"
-        description="Router is the Guard-aware LLM proxy — every model call runs through it. Per-agent tokens (cond_agt_*), provider fallback, retry-on-upstream-error, spend metering, and full request/response audit. Sits in the same repo as Guard; deploy together or use the proxy standalone in front of any AI SDK."
-        install={["git clone https://github.com/sseshachala/conductai", "docker compose up grouter"]}
-        githubUrl="https://github.com/sseshachala/conductai"
-        guardRelation="Router is the enforcement point Guard uses at runtime — every LLM call is checked against active packs before the upstream request goes out."
-        badgeColor="bg-indigo-100 text-indigo-700"
-        badgeLabel="Proxy"
-      />
-      <ProjectCard
-        name="Agent Booster"
-        tagline="Context-efficient reads for Claude Code"
-        description="Agent Booster intercepts Read and Grep calls and returns only the relevant symbol slices — cutting token usage 60-90% on large codebases."
-        install="pip install agent-booster"
-        githubUrl="https://github.com/sseshachala/agent-booster"
-        guardRelation="Agent Booster runs inside your AI coding session. Guard governs what that session can do. Together: token-efficient AND policy-enforced."
-        badgeColor="bg-violet-100 text-violet-700"
-        badgeLabel="Python"
-      />
-      <ProjectCard
-        name="RTK — Rust Token Killer"
-        tagline="60-90% token savings on dev operations"
-        description="A transparent CLI proxy that filters verbose command output (build errors, test results, git diffs) down to signal-only. Works with any AI coding tool."
-        install={["cargo install rtk", "brew install rtk"]}
-        githubUrl="https://github.com/sseshachala/rtk"
-        guardRelation="RTK reduces the token surface area of every shell command. Guard enforces policy on every shell command. Complementary layers."
-        badgeColor="bg-orange-100 text-orange-700"
-        badgeLabel="Rust"
-      />
-    </section>
-  )
-}
-
-function ProjectCard({
-  name,
-  tagline,
-  description,
-  install,
-  githubUrl,
-  guardRelation,
-  badgeColor,
-  badgeLabel,
-}: {
-  name: string
-  tagline: string
-  description: string
-  install: string | string[]
-  githubUrl: string
-  guardRelation: string
-  badgeColor: string
-  badgeLabel: string
-}) {
-  const anchorId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-  const installLines = Array.isArray(install) ? install : [install]
-
-  return (
-    <div id={anchorId} className="border border-stone-200 rounded-xl bg-white overflow-hidden scroll-mt-24">
-      {/* Header */}
-      <div className="px-8 pt-8 pb-6 border-b border-stone-100">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h2 className="text-2xl font-black text-stone-900 tracking-tight">{name}</h2>
-              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeColor}`}>
-                {badgeLabel}
-              </span>
-            </div>
-            <p className="text-stone-500 text-sm font-medium">{tagline}</p>
+        {/* Hero */}
+        <section className="pt-20 pb-16 text-center">
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-4">
+            Open Source
+          </p>
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
+            Open where trust matters.
+          </h1>
+          <p className="text-lg text-stone-500 max-w-2xl mx-auto leading-relaxed mb-10">
+            The components that determine whether Guard is trustworthy are open. The enforcement engine,
+            the audit trail, and the CLI are Apache-2.0 — readable, auditable, and forkable.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <a
+              href="https://github.com/conductai/conduct"
+              className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+            >
+              View the open-source runtime →
+            </a>
+            <Link
+              href="/sign-up"
+              className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
+            >
+              Start Discovery — 14 days free
+            </Link>
           </div>
-          <a
-            href={githubUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 border border-stone-200 rounded-lg px-4 py-2 text-sm font-semibold text-stone-700 hover:border-stone-300 hover:shadow-sm transition-all flex-shrink-0"
-          >
-            <GitHubIcon />
-            GitHub
-          </a>
-        </div>
-      </div>
+        </section>
 
-      {/* Body */}
-      <div className="px-8 py-6 grid md:grid-cols-2 gap-8">
-        <div className="flex flex-col gap-5">
-          <p className="text-stone-600 text-sm leading-relaxed">{description}</p>
+        {/* Component table */}
+        <section className="mb-20">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">4 open-source components</h2>
+          <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
+            These are the exact components open-sourced as of the last audit (2026-09-01). All four are Apache-2.0.
+            The hosted product (SaaS at conductai.ai) runs the same code.
+          </p>
 
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-2">Install</p>
-            <div className="bg-stone-950 rounded-xl p-4 space-y-1.5">
-              {installLines.map((line, i) => (
-                <CopyableLine key={i} value={line} />
-              ))}
+          {/* Desktop table */}
+          <div className="hidden sm:block border border-stone-200 rounded-2xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-stone-50 border-b border-stone-200">
+                  <th className="text-left px-5 py-3 text-xs font-mono font-bold uppercase tracking-widest text-stone-400 w-1/4">Component</th>
+                  <th className="text-left px-5 py-3 text-xs font-mono font-bold uppercase tracking-widest text-stone-400 w-24">Licence</th>
+                  <th className="text-left px-5 py-3 text-xs font-mono font-bold uppercase tracking-widest text-stone-400 w-1/4">Repository path</th>
+                  <th className="text-left px-5 py-3 text-xs font-mono font-bold uppercase tracking-widest text-stone-400">Purpose</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {OSS_COMPONENTS.map((c) => (
+                  <tr key={c.name} className="hover:bg-stone-50 transition-colors">
+                    <td className="px-5 py-4 font-mono font-bold text-stone-900 text-xs align-top">
+                      {c.name}
+                      {c.pypi && (
+                        <p className="text-[10px] text-stone-400 font-normal mt-0.5">PyPI: {c.pypi}</p>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 align-top">
+                      <span className="text-xs font-mono border border-emerald-200 bg-emerald-50 text-emerald-700 rounded px-2 py-0.5">
+                        {c.license}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 font-mono text-xs text-stone-500 align-top break-all">
+                      {c.path}
+                    </td>
+                    <td className="px-5 py-4 text-xs text-stone-600 leading-relaxed align-top">
+                      {c.purpose}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-4">
+            {OSS_COMPONENTS.map((c) => (
+              <div key={c.name} className="border border-stone-200 rounded-xl p-5 bg-white">
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <p className="font-mono font-bold text-stone-900 text-sm">{c.name}</p>
+                  <span className="text-[10px] font-mono border border-emerald-200 bg-emerald-50 text-emerald-700 rounded px-2 py-0.5 shrink-0">
+                    {c.license}
+                  </span>
+                </div>
+                <p className="text-[11px] font-mono text-stone-400 mb-2">{c.path}</p>
+                <p className="text-xs text-stone-600 leading-relaxed">{c.purpose}</p>
+                {c.pypi && (
+                  <p className="text-[10px] text-stone-400 mt-2">PyPI: {c.pypi}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* What open means */}
+        <section className="mb-20 border border-stone-200 rounded-2xl p-8 bg-stone-50">
+          <h2 className="text-lg font-bold text-stone-900 mb-4">What open means here</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm text-stone-600 leading-relaxed">
+            <div>
+              <p className="font-semibold text-stone-900 mb-2">Apache-2.0</p>
+              <p>
+                The entire repository — CLI, Guard runtime, compiler, web UI, and API — is Apache-2.0.
+                The SaaS product runs this source. There is no closed core.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold text-stone-900 mb-2">Self-hosted</p>
+              <p>
+                Run Guard on your own infrastructure using Docker Compose. The same policy engine
+                and audit trail, on hardware you control. Kubernetes support is in preview.
+              </p>
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="border border-stone-200 rounded-xl bg-stone-50 p-5 flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-base">🛡️</span>
-            <p className="text-xs font-semibold uppercase tracking-widest text-stone-500">How it relates to Guard</p>
+        {/* CTA */}
+        <section className="mb-20 text-center border-t border-stone-100 pt-16">
+          <h2 className="text-2xl font-bold text-stone-900 mb-4">Start with the source.</h2>
+          <div className="flex flex-wrap justify-center gap-3">
+            <a
+              href="https://github.com/conductai/conduct"
+              className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+            >
+              View on GitHub →
+            </a>
+            <Link
+              href="/deployment"
+              className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
+            >
+              Deployment options →
+            </Link>
           </div>
-          <p className="text-sm text-stone-600 leading-relaxed">{guardRelation}</p>
-        </div>
-      </div>
+        </section>
+
+      </main>
     </div>
-  )
-}
-
-function CopyableLine({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false)
-
-  function copy() {
-    navigator.clipboard.writeText(value).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
-    })
-  }
-
-  return (
-    <div className="flex items-center justify-between gap-3 group">
-      <code className="text-xs font-mono text-stone-300 flex-1">
-        <span className="text-indigo-400">$ </span>
-        {value}
-      </code>
-      <button
-        onClick={copy}
-        className="text-[10px] font-semibold text-stone-600 hover:text-stone-300 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
-        aria-label={`Copy: ${value}`}
-      >
-        {copied ? "copied" : "copy"}
-      </button>
-    </div>
-  )
-}
-
-function GitHubIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-    </svg>
-  )
-}
-
-/* ─── CTA ───────────────────────────────────────────────────────────────── */
-
-function CtaSection() {
-  return (
-    <section className="border-t border-stone-200 bg-stone-50 px-6 py-14">
-      <div className="max-w-5xl mx-auto text-center">
-        <p className="text-stone-700 font-semibold text-lg mb-2">
-          Built something on top of Guard, Booster, or RTK?
-        </p>
-        <p className="text-stone-500 text-sm mb-8">We&apos;d love to hear about it.</p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <a
-            href="mailto:hello@conductai.ai"
-            className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-sm font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center"
-          >
-            hello@conductai.ai
-          </a>
-          <a
-            href="https://github.com/sseshachala"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-sm font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto"
-          >
-            <GitHubIcon />
-            GitHub
-          </a>
-        </div>
-      </div>
-    </section>
   )
 }
