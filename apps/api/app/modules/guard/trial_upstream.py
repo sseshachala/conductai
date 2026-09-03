@@ -104,4 +104,11 @@ def resolve_trial_key(
     if get_trial_cap_used(db, workspace_id, agent_identity_id) >= TRIAL_DAILY_CAP:
         return None, "exceeded"
 
+    # #1587 A3: opportunistic Slack alert on aggregate trial-key spend.
+    # Fires from here so the check piggybacks on real trial traffic instead
+    # of needing a cron. Rate-limited + threshold-gated inside the alerter;
+    # never raises (guarded by trial_spend_alert itself).
+    from app.modules.guard.observability.trial_spend_alert import check_and_alert_trial_spend
+    check_and_alert_trial_spend(db)
+
     return env_key, "active"
