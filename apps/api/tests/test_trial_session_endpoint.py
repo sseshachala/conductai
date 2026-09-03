@@ -154,6 +154,25 @@ def test_cap_used_reflects_recent_audit_rows(empty_ws):
     assert second.token == first.token
 
 
+def test_paid_empty_workspace_plan_not_overwritten(empty_ws):
+    """PR 5: a paid workspace with no runs/keys must keep its plan when the
+    Try-It endpoint on-demand-seeds. seed_trial only flips `free`, and the
+    endpoint must re-fetch instead of assuming the flip happened."""
+    ws_id, db = empty_ws
+
+    db.execute(text("UPDATE workspaces SET plan = 'pro' WHERE id = :ws"), {"ws": ws_id})
+    db.commit()
+
+    out = _call(ws_id, db)
+    assert out.plan == "pro"
+    assert out.token and out.token.startswith("cond_agt_")
+
+    plan_now = db.execute(
+        text("SELECT plan FROM workspaces WHERE id = :ws"), {"ws": ws_id},
+    ).scalar()
+    assert plan_now == "pro"
+
+
 def test_active_workspace_with_integration_is_ineligible(empty_ws):
     """PR 4 B: workspace already has a vault key → refuse to seed a trial identity."""
     ws_id, db = empty_ws
