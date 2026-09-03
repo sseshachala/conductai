@@ -24,6 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME
+from app.modules.guard.trial_upstream import TRIAL_DAILY_CAP
 
 log = structlog.get_logger(__name__)
 
@@ -76,35 +77,84 @@ def _record_posted(spend_usd: float) -> None:
     _dedup[_today_key()] = (_now(), spend_usd)
 
 
-def _get_spend_today(db: Session) -> float:
-    """SUM(cost_usd_after) for trial-identity audit rows in the last 24h."""
+def _get_spend_snapshot(db: Session) -> tuple[float, int, dict | None]:
+    """Return (spend_total, active_workspaces, top_spender_row_or_None).
+
+    Two cheap queries against the same 24h window trial-identity join —
+    the whole thing runs at most once per hour thanks to the dedup gate
+    upstream, so we prefer readability over collapsing into one CTE.
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-    return float(
-        db.execute(
-            text("""
-                SELECT COALESCE(SUM(ae.cost_usd_after), 0)
-                FROM guard_audit_events ae
-                JOIN agent_identities ai ON ai.id = ae.agent_identity_id
-                WHERE ai.name = :name AND ae.ts >= :cutoff
-            """),
-            {"name": TRIAL_IDENTITY_NAME, "cutoff": cutoff},
-        ).scalar() or 0.0
-    )
+
+    agg = db.execute(
+        text("""
+            SELECT
+                COUNT(DISTINCT ae.workspace_id) AS active,
+                COALESCE(SUM(ae.cost_usd_after), 0) AS spend
+            FROM guard_audit_events ae
+            JOIN agent_identities ai ON ai.id = ae.agent_identity_id
+            WHERE ai.name = :name AND ae.ts >= :cutoff
+        """),
+        {"name": TRIAL_IDENTITY_NAME, "cutoff": cutoff},
+    ).fetchone()
+
+    top = db.execute(
+        text("""
+            SELECT
+                w.name AS workspace_name,
+                COALESCE(SUM(ae.cost_usd_after), 0) AS spend,
+                COUNT(*) AS cap_used
+            FROM guard_audit_events ae
+            JOIN agent_identities ai ON ai.id = ae.agent_identity_id
+            JOIN workspaces w ON w.id = ae.workspace_id
+            WHERE ai.name = :name AND ae.ts >= :cutoff
+            GROUP BY w.name
+            ORDER BY spend DESC, cap_used DESC
+            LIMIT 1
+        """),
+        {"name": TRIAL_IDENTITY_NAME, "cutoff": cutoff},
+    ).fetchone()
+
+    spend_total = float(agg.spend if agg else 0.0)
+    active = int(agg.active if agg else 0)
+    top_row = None
+    if top:
+        top_row = {
+            "workspace_name": top.workspace_name,
+            "spend": float(top.spend),
+            "cap_used": int(top.cap_used),
+        }
+    return spend_total, active, top_row
 
 
-def _build_message(*, spend_usd: float, threshold_usd: float, last_alerted: float) -> dict:
+def _build_message(
+    *,
+    spend_usd: float,
+    threshold_usd: float,
+    last_alerted: float,
+    active_workspaces: int,
+    top_spender: dict | None,
+) -> dict:
     growth_line = (
         f"\n*Growth since last alert:* +${spend_usd - last_alerted:.2f} "
         f"(previous alert at ${last_alerted:.2f})"
         if last_alerted > 0 else ""
     )
+    top_line = (
+        f"\n*Top spender:* {top_spender['workspace_name']} — "
+        f"${top_spender['spend']:.2f} "
+        f"({top_spender['cap_used']} of {TRIAL_DAILY_CAP} calls today)"
+        if top_spender else ""
+    )
+    workspace_suffix = f" across {active_workspaces} workspaces" if active_workspaces > 1 else ""
     return {
         "text": (
             f":money_with_wings: *Trial spend crossed threshold*\n"
-            f"*Today's spend:* ${spend_usd:.2f}\n"
+            f"*Today's spend:* ${spend_usd:.2f}{workspace_suffix}\n"
             f"*Alert threshold:* ${threshold_usd:.2f}"
-            f"{growth_line}\n"
-            f"See `/guard/trial/ops` for the top-10 workspaces."
+            f"{growth_line}"
+            f"{top_line}\n"
+            f"See `/guard/trial/ops` for the full top-10."
         ),
     }
 
@@ -132,7 +182,7 @@ def check_and_alert_trial_spend(db: Session) -> None:
         if _within_rate_limit():
             return
 
-        spend = _get_spend_today(db)
+        spend, active, top = _get_spend_snapshot(db)
         if spend < threshold:
             return
 
@@ -141,7 +191,11 @@ def check_and_alert_trial_spend(db: Session) -> None:
             return
 
         payload = _build_message(
-            spend_usd=spend, threshold_usd=threshold, last_alerted=last_alerted,
+            spend_usd=spend,
+            threshold_usd=threshold,
+            last_alerted=last_alerted,
+            active_workspaces=active,
+            top_spender=top,
         )
         try:
             httpx.post(webhook, json=payload, timeout=_HTTP_TIMEOUT_SEC)
