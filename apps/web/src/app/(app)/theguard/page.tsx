@@ -427,6 +427,26 @@ export default function GuardPage() {
 function GuardDashboard() {
   const { getToken } = useAuth()
   const { authFetch } = useAuthFetch()
+
+  // #1567 empty-state banner gate: only show the banner for genuinely
+  // eligible first-time workspaces. Session endpoint returns
+  // {ineligible: true} for workspaces with any run or vault key.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const r = await authFetch(`${API}/guard/trial/session`)
+        if (!r.ok) return
+        const data = await r.json()
+        if (!cancelled) setTrialSession({
+          ineligible: !!data.ineligible,
+          expired: !!data.expired,
+          cap_used: data.cap_used ?? 0,
+        })
+      } catch { /* silent — banner just stays hidden on error */ }
+    })()
+    return () => { cancelled = true }
+  }, [authFetch])
   const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
@@ -446,6 +466,11 @@ function GuardDashboard() {
   const [chartToken, setChartToken]   = useState<string | null>(null)
   const [agentCount, setAgentCount]   = useState<number | null>(null)
   const [proxyCount, setProxyCount]   = useState<number | null>(null)
+  const [trialSession, setTrialSession] = useState<{
+    ineligible: boolean
+    expired: boolean
+    cap_used: number
+  } | null>(null)
 
   const PAGE_SIZE = 100
 
@@ -746,7 +771,7 @@ function GuardDashboard() {
     <GuardShell live={live} lastFetched={lastUpdated} agentCount={agentCount} proxyCount={proxyCount}>
 
       {/* #1567 empty-state CTA — new workspaces land on Try Guard in one click */}
-      {!loading && (stats?.events_today ?? 0) === 0 && (
+      {!loading && trialSession && !trialSession.ineligible && !trialSession.expired && trialSession.cap_used === 0 && (
         <div style={{
           borderRadius: 8,
           border: "1px solid var(--brand-bd, #0f766e)",
