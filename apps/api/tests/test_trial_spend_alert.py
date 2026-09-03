@@ -121,16 +121,22 @@ def test_noops_when_below_threshold(spend_ws, monkeypatch):
 
 
 def test_posts_when_over_threshold(spend_ws, monkeypatch):
-    _ws, db = spend_ws
+    ws_id, db = spend_ws
     monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK", "https://hooks.slack.com/fake")
     monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "2.0")  # $5 in DB, threshold $2
 
     with patch("httpx.post") as mock_post:
         check_and_alert_trial_spend(db)
     assert mock_post.call_count == 1
-    payload = mock_post.call_args.kwargs["json"]
-    assert "Trial spend crossed threshold" in payload["text"]
-    assert "$5.00" in payload["text"]
+    text_body = mock_post.call_args.kwargs["json"]["text"]
+    assert "Trial spend crossed threshold" in text_body
+    assert "$5.00" in text_body
+    # PR 4 A3 v2: alert now includes the workspace name of the top spender
+    # and the request count against the daily cap. Workspace name from the
+    # fixture is `spend-alert-<8char>`.
+    assert "Top spender" in text_body
+    assert "spend-alert-" in text_body
+    assert "5 of 200 calls" in text_body  # 5 seeded rows, cap 200
 
 
 def test_second_call_within_rate_limit_is_deduped(spend_ws, monkeypatch):
