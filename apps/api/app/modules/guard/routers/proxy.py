@@ -491,6 +491,29 @@ async def _proxy(
         _audit_decision = "warned" if _action == "WARN" else "allowed"
         _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
 
+        # 4d. Per-key RPM/TPM rate limiting (#980, #1587 E1). Fires for
+        # vault-key + trial-key + platform-key traffic — enforcement is
+        # opt-in per workspace via guard_rate_limits rows. If no row
+        # exists, check_rate_limit is a cheap no-op (early return in the
+        # module). Redis outage fails open by design.
+        from app.modules.guard.rate_limit import check_rate_limit as _check_rate_limit
+        _rate = _check_rate_limit(
+            db,
+            workspace_id=workspace_id,
+            agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+            input_tokens=_estimate_input_tokens(body),
+        )
+        if _rate.limited:
+            log.info(
+                "guard.proxy.rate_limited",
+                workspace_id=workspace_id,
+                scope=_rate.scope,
+                metric=_rate.metric,
+                limit=_rate.limit,
+                current=_rate.current,
+            )
+            return _fail_closed(429, _rate.reason)
+
         # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
         # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
         upstream = _upstream_url(db, workspace_id, provider, _environment_id)
