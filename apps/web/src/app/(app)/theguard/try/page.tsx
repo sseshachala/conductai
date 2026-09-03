@@ -10,6 +10,8 @@ import { API } from "@/lib/api/client"
 interface TrialSession {
   plan: string
   expired: boolean
+  ineligible?: boolean
+  reason?: string | null
   days_remaining: number
   token: string | null
   gateway_url: string
@@ -298,6 +300,27 @@ export default function GuardTryPage() {
               <Link href="/theguard/settings" className="inline-block text-sm px-3 py-1.5 rounded border border-amber-800 bg-amber-900 text-white hover:bg-amber-700">
                 Connect provider
               </Link>
+            </div>
+          )}
+
+          {session?.ineligible && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 p-4 space-y-3">
+              <p className="font-semibold text-sky-900">This workspace already has activity.</p>
+              <p className="text-sm text-sky-800">
+                The Try-It surface is for new signups. Your workspace already has real runs or vault keys —
+                Guard is already governing it. Two paths from here:
+              </p>
+              <ul className="text-sm text-sky-800 list-disc pl-5 space-y-1">
+                <li>
+                  <Link href="/projects" className="underline">Create a new workspace</Link> to
+                  run the four-verb demo in isolation.
+                </li>
+                <li>
+                  Point your existing traffic through the Guard Gateway — configure it in
+                  <Link href="/theguard/settings" className="underline mx-1">Settings → Proxy</Link>
+                  and every call becomes an audited event.
+                </li>
+              </ul>
             </div>
           )}
 
