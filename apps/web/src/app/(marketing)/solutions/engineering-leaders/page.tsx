@@ -1,171 +1,180 @@
-import { CtaLink } from "@/components/marketing/CtaLink"
+import Link from "next/link"
+import { AgentSurfaceStrip } from "@/components/marketing/facelift/AgentSurfaceStrip"
+import { DecisionCard } from "@/components/marketing/facelift/DecisionCard"
 
-/* ─── Page ──────────────────────────────────────────────────────────────── */
-
-export default function EngineeringLeadersPage() {
-  return (
-    <>
-      <HeroSection />
-      <ProblemSection />
-      <PitchSection />
-      <ProofArcSection />
-      <CtaSection />
-    </>
-  )
+export const metadata = {
+  title: "Engineering Agents — Consistent policy across every AI tool | Conduct",
+  description:
+    "Let developers choose their AI tools. Guard enforces consistent policy across Claude Code, Cursor, Copilot, and Codex — without slowing anyone down.",
 }
 
-/* ─── Hero ──────────────────────────────────────────────────────────────── */
-
-function HeroSection() {
+export default function EngineeringAgentsPage() {
   return (
-    <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
-      <div className="inline-flex items-center gap-2 bg-stone-100 text-stone-600 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
-        <span className="w-1.5 h-1.5 rounded-full bg-stone-400 inline-block" />
-        For engineering leaders
-      </div>
-      <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-        Ship AI-assisted code without becoming<br className="hidden sm:block" />
-        <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent"> the incident report.</span>
-      </h1>
-      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-8">
-        ConductAI gives platform teams a control plane for AI coding agents — policy personas per team, spend hard-stops, and a CI gate that blocks non-compliant commits.
-      </p>
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-        <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />
-        <a
-          href="https://cal.com/sudhi-seshachala-pks7pd"
-          target="_blank"
-          rel="noopener"
-          className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-base font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center"
-        >
-          Book a demo
-        </a>
-      </div>
-    </section>
-  )
-}
+    <div className="min-h-screen bg-white">
+      <main className="max-w-5xl mx-auto px-6">
 
-/* ─── Problem ───────────────────────────────────────────────────────────── */
-
-const PROBLEMS = [
-  {
-    headline: "AI agents are multiplying.",
-    body: "Every developer has Claude Code, Copilot, or Cursor. There's no inventory of what they're doing.",
-  },
-  {
-    headline: "Spend is invisible.",
-    body: "AI token costs accumulate per-developer with no budget controls. Finance asks. Engineering shrugs.",
-  },
-  {
-    headline: "The blast radius is unknown.",
-    body: "When an agent deletes the wrong file or exfiltrates a secret, you find out from the security team, not from a dashboard.",
-  },
-]
-
-function ProblemSection() {
-  return (
-    <section className="bg-stone-50 border-y border-stone-200 px-6 py-20">
-      <div className="max-w-5xl mx-auto">
-        <div className="grid md:grid-cols-3 gap-6">
-          {PROBLEMS.map((p) => (
-            <div key={p.headline} className="border border-stone-200 rounded-xl bg-white p-6">
-              <h3 className="text-sm font-bold text-stone-900 mb-2">{p.headline}</h3>
-              <p className="text-sm text-stone-500 leading-relaxed">{p.body}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Pitch ─────────────────────────────────────────────────────────────── */
-
-const FEATURES = [
-  {
-    icon: "👥",
-    title: "Policy personas per team",
-    desc: "Conservative / Standard / Developer. Assign per team. Change without redeploying.",
-  },
-  {
-    icon: "💸",
-    title: "Spend hard-stops",
-    desc: "Per-developer and per-workspace token budgets. Agents stop when the limit is hit.",
-  },
-  {
-    icon: "🚦",
-    title: "CI release gate",
-    desc: "conduct ci --exit-nonzero-on-block. Blocks PRs from merging if a Guard policy was violated in the session that produced them.",
-  },
-]
-
-function PitchSection() {
-  return (
-    <section className="max-w-5xl mx-auto px-6 py-20">
-      <div className="text-center mb-12">
-        <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight mb-4">
-          One control plane for every AI coding session.
-        </h2>
-      </div>
-      <div className="grid md:grid-cols-3 gap-5">
-        {FEATURES.map((f) => (
-          <div key={f.title} className="border border-stone-200 rounded-xl p-6 bg-white hover:border-stone-300 hover:shadow-sm transition-all">
-            <span className="text-2xl block mb-3">{f.icon}</span>
-            <h3 className="text-sm font-bold text-stone-900 mb-2">{f.title}</h3>
-            <p className="text-sm text-stone-500 leading-relaxed">{f.desc}</p>
+        {/* Hero */}
+        <section className="pt-20 pb-16 text-center">
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-4">
+            Engineering Agents
+          </p>
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
+            Let developers choose. Enforce policy everywhere.
+          </h1>
+          <p className="text-lg text-stone-500 max-w-2xl mx-auto leading-relaxed mb-10">
+            Your engineers use Claude Code, Cursor, Copilot, and Codex. Guard applies the same
+            runtime policy across all of them — without a separate configuration per tool.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link
+              href="/sign-up"
+              className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+            >
+              Start Discovery — 14 days free
+            </Link>
+            <Link
+              href="/demo"
+              className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
+            >
+              Book a Demo
+            </Link>
           </div>
-        ))}
-      </div>
-    </section>
-  )
-}
+        </section>
 
-/* ─── Proof arc ─────────────────────────────────────────────────────────── */
+        {/* Let developers choose */}
+        <section className="mb-20">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Developers keep their tools.</h2>
+          <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
+            Guard integrates through the CLI hook, the HTTP proxy, and the MCP layer. Developers
+            install once and keep using whichever AI tool they prefer. Policy travels with the agent,
+            not with the tool.
+          </p>
+          <AgentSurfaceStrip />
+        </section>
 
-function ProofArcSection() {
-  return (
-    <section className="bg-stone-950 px-6 py-20">
-      <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-12">
-          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3">What changes on day one</p>
-          <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-            Every AI coding session is visible.
+        {/* Consistent policy */}
+        <section className="mb-20">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">
+            Consistent policy across every agent tool.
           </h2>
-        </div>
-        <div className="max-w-2xl mx-auto">
-          <div className="border border-stone-700 rounded-xl bg-stone-900 p-8">
-            <h3 className="text-base font-bold text-white mb-3 leading-snug">Full session visibility from install</h3>
-            <p className="text-sm text-stone-400 leading-relaxed">
-              Within ten minutes you know which AI tools your team is running, who is using them, and what they are doing. Spend is visible by developer and by day. Policy violations surface in the activity feed as they happen.
-            </p>
+          <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
+            The same policy file governs all four agent tools. A rule written for Claude Code applies
+            to Cursor and Codex without modification. One policy, no per-tool exceptions.
+          </p>
+          <div className="border border-stone-200 rounded-2xl overflow-hidden bg-white">
+            <div className="px-6 py-4 bg-stone-50 border-b border-stone-200">
+              <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400">
+                Same rule — all surfaces
+              </p>
+            </div>
+            <div className="divide-y divide-stone-100">
+              {[
+                { agent: "claude-code / deploy-agent", tool: "Claude Code", surface: "CLI hook" },
+                { agent: "cursor-agent-17", tool: "Cursor", surface: "CLI hook · proxy" },
+                { agent: "copilot-reviewer", tool: "Copilot", surface: "CLI hook" },
+                { agent: "codex / release-agent", tool: "Codex", surface: "CLI hook · proxy" },
+              ].map(({ agent, tool, surface }) => (
+                <div key={agent} className="flex items-center justify-between px-6 py-3 font-mono text-xs">
+                  <div className="flex items-center gap-3">
+                    <span className="text-stone-900 font-medium">{agent}</span>
+                    <span className="text-stone-400 hidden sm:inline">·</span>
+                    <span className="text-stone-400 hidden sm:inline">{tool}</span>
+                  </div>
+                  <span className="text-stone-400 text-[10px]">{surface}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </div>
-    </section>
-  )
-}
+        </section>
 
-/* ─── CTA ───────────────────────────────────────────────────────────────── */
+        {/* Action table */}
+        <section className="mb-20">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">
+            Allow, approve, or block — per action.
+          </h2>
+          <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
+            Guard applies the same decision framework across all agent tools. Routine actions
+            proceed without friction. Consequential ones pause for approval. Prohibited ones stop.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <DecisionCard
+              agent="claude-code / deploy-agent"
+              action="run_tests"
+              resource="orders-db"
+              policy="production-change-v4"
+              decision="ALLOW"
+              reason="Action within policy limits"
+              compact
+            />
+            <DecisionCard
+              agent="codex / release-agent"
+              action="deploy_production"
+              resource="payments-api"
+              policy="production-change-v4"
+              decision="APPROVE"
+              reason="Production deployment outside approved change window"
+              showButtons
+              compact
+            />
+            <DecisionCard
+              agent="cursor-agent-17"
+              action="update_terraform"
+              resource="prod-vpc"
+              policy="no-production-network-change"
+              decision="BLOCK"
+              reason="Production network modifications require approved change record."
+              compact
+            />
+          </div>
+        </section>
 
-function CtaSection() {
-  return (
-    <section className="px-6 py-24 bg-gradient-to-br from-indigo-600 to-violet-600">
-      <div className="max-w-3xl mx-auto text-center">
-        <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-4">
-          Ready to put a control plane on your AI agents?
-        </h2>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8">
-          <CtaLink className="rounded-xl bg-white text-indigo-600 px-8 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center" />
-          <a
-            href="https://cal.com/sudhi-seshachala-pks7pd"
-            target="_blank"
-            rel="noopener"
-            className="rounded-xl border border-white/40 text-white px-8 py-3.5 text-base font-semibold hover:bg-white/10 transition-colors w-full sm:w-auto text-center"
-          >
-            Book a demo
-          </a>
-        </div>
-      </div>
-    </section>
+        {/* Why this matters for eng leads */}
+        <section className="mb-20 border border-stone-200 rounded-2xl p-8 bg-stone-50">
+          <h2 className="text-lg font-bold text-stone-900 mb-4">What this changes for engineering leads</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm text-stone-600">
+            <div>
+              <p className="font-semibold text-stone-900 mb-2">Before Guard</p>
+              <ul className="space-y-2 leading-relaxed">
+                <li>Each AI tool enforces policy differently — or not at all</li>
+                <li>Audit trails scattered across tools</li>
+                <li>Policy drift as teams adopt new agents</li>
+                <li>Compliance questions answered by guessing</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-semibold text-stone-900 mb-2">With Guard</p>
+              <ul className="space-y-2 leading-relaxed">
+                <li>One policy file governs all agent tools</li>
+                <li>Every decision logged in one audit trail</li>
+                <li>New agents inherit policy automatically</li>
+                <li>Compliance questions answered with signed receipts</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* CTA */}
+        <section className="mb-20 text-center border-t border-stone-100 pt-16">
+          <h2 className="text-2xl font-bold text-stone-900 mb-4">
+            Consistent policy. Every agent. Every action.
+          </h2>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link
+              href="/sign-up"
+              className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+            >
+              Start Discovery — 14 days free
+            </Link>
+            <Link
+              href="/guard"
+              className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
+            >
+              See how Guard works →
+            </Link>
+          </div>
+        </section>
+
+      </main>
+    </div>
   )
 }
