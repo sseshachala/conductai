@@ -58,6 +58,10 @@ def empty_ws():
         yield ws_id, db
     finally:
         db.rollback()
+        # integrations doesn't cascade, so wipe it explicitly. Other trial-owned
+        # tables (agent_identities, guard_rate_limits, guard_spend_budgets,
+        # guard_audit_events) do cascade off workspaces.id.
+        db.execute(text("DELETE FROM integrations WHERE workspace_id = :id"), {"id": ws_id})
         db.execute(text("DELETE FROM workspaces WHERE id = :id"), {"id": ws_id})
         db.commit()
         db.close()
@@ -148,3 +152,32 @@ def test_cap_used_reflects_recent_audit_rows(empty_ws):
     second = _call(ws_id, db)
     assert second.cap_used == 3
     assert second.token == first.token
+
+
+def test_active_workspace_with_integration_is_ineligible(empty_ws):
+    """PR 4 B: workspace already has a vault key → refuse to seed a trial identity."""
+    ws_id, db = empty_ws
+
+    db.execute(
+        text(
+            "INSERT INTO integrations (id, workspace_id, service, auth_method, handle, created_at) "
+            "VALUES (gen_random_uuid(), :ws, 'anthropic', 'api_key', 'anthropic', NOW())"
+        ),
+        {"ws": ws_id},
+    )
+    db.commit()
+
+    out = _call(ws_id, db)
+    assert out.ineligible is True
+    assert out.reason == "active_workspace"
+    assert out.token is None
+    assert out.days_remaining == 0
+
+    n = db.execute(
+        text(
+            "SELECT COUNT(*) FROM agent_identities "
+            "WHERE workspace_id = :ws AND name = :name"
+        ),
+        {"ws": ws_id, "name": TRIAL_IDENTITY_NAME},
+    ).scalar()
+    assert n == 0, "no trial identity should be minted for active workspaces"
