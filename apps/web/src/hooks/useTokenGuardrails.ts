@@ -13,7 +13,6 @@ export interface TokenGuardrails {
   structured_retrieval: boolean
   metrics_budgets: boolean
   manual_keys: string[]
-  slack_integration_id: string | null
 }
 
 const DEFAULTS: TokenGuardrails = {
@@ -25,7 +24,6 @@ const DEFAULTS: TokenGuardrails = {
   structured_retrieval: true,
   metrics_budgets: true,
   manual_keys: ["prompt_caching", "model_routing", "prompt_splitting"],
-  slack_integration_id: null,
 }
 
 interface UseTokenGuardrailsResult {
@@ -65,9 +63,7 @@ export async function patchTokenGuardrails(
   workspaceId: string,
   token: string,
   apiUrl: string,
-  patch: Partial<Pick<TokenGuardrails, "prompt_caching" | "model_routing" | "prompt_splitting">> & {
-    slack_integration_id?: string | null
-  },
+  patch: Partial<Pick<TokenGuardrails, "prompt_caching" | "model_routing" | "prompt_splitting">>,
 ): Promise<TokenGuardrails> {
   const res = await fetch(`${apiUrl}/guard/token-guardrails?workspace_id=${workspaceId}`, {
     method: "PATCH",

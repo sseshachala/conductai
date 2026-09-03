@@ -127,8 +127,8 @@ class TriggerFixResponse(BaseModel):
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-# ponytail: raw text() because security_config has no ORM model; add a model when we
-# need more than 3 fields.
+# ponytail: raw text() — SecurityConfig ORM model exists (models/security_config.py)
+# purely for Base.metadata registration; not worth wiring for a 3-column read.
 _SECURITY_CFG_SQL = text(
     "SELECT autopilot_enabled, security_slack_alerts_enabled, security_slack_channel "
     "FROM security_config WHERE workspace_id = :ws"

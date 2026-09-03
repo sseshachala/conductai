@@ -23,8 +23,6 @@ class SecurityConfig(Base):
     security_emit_enabled = sa.Column(sa.Boolean(), nullable=False, server_default="true")
     security_slack_alerts_enabled = sa.Column(sa.Boolean(), nullable=False, server_default="false")
     security_slack_channel = sa.Column(sa.String(100), nullable=True)
-    slack_webhook_url = sa.Column(sa.String(500), nullable=True)
-    slack_integration_id = sa.Column(UUID(as_uuid=True), nullable=True)
     autopilot_enabled = sa.Column(sa.Boolean(), nullable=False, server_default="false")
     automation_workflow_on_finding = sa.Column(sa.Boolean(), nullable=False, server_default="false")
     automation_finding_severity = sa.Column(sa.String(20), nullable=False, server_default="critical")

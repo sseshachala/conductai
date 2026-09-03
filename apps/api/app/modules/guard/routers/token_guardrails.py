@@ -1,6 +1,6 @@
 """
 GET   /guard/token-guardrails?workspace_id=...  — unified guardrail state (auto-detected + manual)
-PATCH /guard/token-guardrails                   — update manual flags and/or slack_webhook_url
+PATCH /guard/token-guardrails                   — update manual flags
 """
 import json
 import urllib.request
@@ -36,7 +36,6 @@ class TokenGuardrailsOut(BaseModel):
     structured_retrieval: bool
     metrics_budgets: bool
     manual_keys: list[str]
-    slack_integration_id: Optional[str] = None
 
 
 class TokenGuardrailsPatch(BaseModel):
@@ -44,7 +43,6 @@ class TokenGuardrailsPatch(BaseModel):
     prompt_caching: Optional[bool] = None
     model_routing: Optional[bool] = None
     prompt_splitting: Optional[bool] = None
-    slack_integration_id: Optional[str] = None
 
 
 # ── Drift helpers ─────────────────────────────────────────────────────────────
@@ -152,7 +150,6 @@ def _build_guardrail_state(db: Session, workspace_id: str) -> dict:
             structured_retrieval=has_booster,
             metrics_budgets=metrics_budgets,
             manual_keys=_MANUAL_KEYS,
-            slack_integration_id=str(team.slack_integration_id) if team.slack_integration_id else None,
         ),
     }
 
@@ -185,9 +182,6 @@ def patch_token_guardrails(
     if body.prompt_splitting is not None:
         manual["prompt_splitting"] = body.prompt_splitting
     team.token_guardrails = manual
-
-    if body.slack_integration_id is not None:
-        team.slack_integration_id = uuid.UUID(body.slack_integration_id)
 
     db.commit()
     db.refresh(team)
