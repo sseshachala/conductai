@@ -34,7 +34,31 @@ from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME, TRIAL_PLAN
 
 GUARD_TRIAL_ANTHROPIC_KEY_ENV = "GUARD_TRIAL_ANTHROPIC_KEY"
 TRIAL_DAILY_CAP = 200
+TRIAL_CAP_WINDOW_HOURS = 24
 TrialStatus = Literal["active", "expired", "exceeded", "ineligible"]
+
+
+def get_trial_cap_used(db: Session, workspace_id: str, agent_identity_id: str) -> int:
+    """Count trial-identity audit rows in the last `TRIAL_CAP_WINDOW_HOURS`.
+
+    Single source of truth for the trial cap counter — the proxy fence in
+    `resolve_trial_key` and the read-out in `/guard/trial/session` both call
+    this so the window/columns can't drift between call sites.
+    """
+    now = datetime.now(timezone.utc)
+    return db.execute(
+        text("""
+            SELECT COUNT(*) FROM guard_audit_events
+            WHERE workspace_id = :ws
+              AND agent_identity_id = :aid
+              AND ts >= :cutoff
+        """),
+        {
+            "ws": str(workspace_id),
+            "aid": str(agent_identity_id),
+            "cutoff": now - timedelta(hours=TRIAL_CAP_WINDOW_HOURS),
+        },
+    ).scalar() or 0
 
 
 def resolve_trial_key(
@@ -77,16 +101,7 @@ def resolve_trial_key(
     if row.expires_at is None or row.expires_at <= now:
         return None, "expired"
 
-    used = db.execute(
-        text("""
-            SELECT COUNT(*) FROM guard_audit_events
-            WHERE workspace_id = :ws
-              AND agent_identity_id = :aid
-              AND ts >= :cutoff
-        """),
-        {"ws": str(workspace_id), "aid": agent_identity_id, "cutoff": now - timedelta(hours=24)},
-    ).scalar() or 0
-    if used >= TRIAL_DAILY_CAP:
+    if get_trial_cap_used(db, workspace_id, agent_identity_id) >= TRIAL_DAILY_CAP:
         return None, "exceeded"
 
     return env_key, "active"

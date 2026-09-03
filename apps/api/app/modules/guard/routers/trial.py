@@ -12,7 +12,7 @@ identity tokens stay one-shot as before.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import structlog
 from fastapi import APIRouter, Depends
@@ -24,13 +24,8 @@ from app.core.auth import get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.database import get_db
-from app.modules.guard.trial_seed import (
-    TRIAL_DAYS,
-    TRIAL_IDENTITY_NAME,
-    TRIAL_PLAN,
-    seed_trial,
-)
-from app.modules.guard.trial_upstream import TRIAL_DAILY_CAP
+from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME, seed_trial
+from app.modules.guard.trial_upstream import TRIAL_DAILY_CAP, get_trial_cap_used
 
 log = structlog.get_logger(__name__)
 
@@ -80,19 +75,6 @@ def _load_trial_identity(db: Session, workspace_id: str):
     ).fetchone()
 
 
-def _cap_used_today(db: Session, workspace_id: str, agent_identity_id: str) -> int:
-    now = datetime.now(timezone.utc)
-    return db.execute(
-        text("""
-            SELECT COUNT(*) FROM guard_audit_events
-            WHERE workspace_id = :ws
-              AND agent_identity_id = :aid
-              AND ts >= :cutoff
-        """),
-        {"ws": workspace_id, "aid": agent_identity_id, "cutoff": now - timedelta(hours=24)},
-    ).scalar() or 0
-
-
 @router.get("/session", response_model=TrialSessionOut)
 def get_trial_session(
     workspace_id: str = Depends(get_workspace_id),
@@ -121,7 +103,13 @@ def get_trial_session(
         seed_trial(db, workspace_id)
         db.commit()
         identity = _load_trial_identity(db, workspace_id)
-        plan = TRIAL_PLAN
+        # PR 5: re-read plan from DB — `seed_trial` only flips `free`, so a
+        # paid empty workspace stays on its actual plan (e.g. 'pro').
+        plan_row = db.execute(
+            text("SELECT plan FROM workspaces WHERE id = :ws"),
+            {"ws": workspace_id},
+        ).fetchone()
+        plan = plan_row.plan if plan_row else plan
         log.info("guard.trial.seed_on_demand", workspace_id=workspace_id)
 
     if identity is None:
@@ -149,6 +137,6 @@ def get_trial_session(
         days_remaining=days_remaining if not expired else 0,
         token=token,
         gateway_url=settings.conduct_proxy_url,
-        cap_used=_cap_used_today(db, workspace_id, str(identity.id)),
+        cap_used=get_trial_cap_used(db, workspace_id, str(identity.id)),
         cap_max=TRIAL_DAILY_CAP,
     )
