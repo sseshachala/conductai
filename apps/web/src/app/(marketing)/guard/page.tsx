@@ -175,9 +175,9 @@ export default function GuardPage() {
         {/* What Guard does NOT protect */}
         <section className="mb-20 border border-stone-200 rounded-2xl overflow-hidden">
           <div className="px-6 py-5 bg-stone-50 border-b border-stone-200">
-            <h2 className="text-lg font-bold text-stone-900">What Guard does not protect</h2>
+            <h2 className="text-lg font-bold text-stone-900">One policy where your stack isn&apos;t one vendor&apos;s.</h2>
             <p className="text-xs text-stone-400 mt-1">
-              We publish where Guard stops. Honest scope is a design requirement.
+              Cortex enforces inside Cortex. Copilot inside Copilot. Guard enforces <em>across</em> whatever mix your team actually runs. Here&apos;s the scope Guard owns — and what we intentionally leave to the tools and data layers you already have.
             </p>
           </div>
           <div className="px-6 py-2">

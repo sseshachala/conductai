@@ -521,32 +521,30 @@ function NativeControlsSection() {
   return (
     <section className="py-12 sm:py-20 px-4 sm:px-6 border-t border-stone-100 bg-stone-50">
       <div className="max-w-5xl mx-auto">
-        <div className="grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
-          <div className="order-2 lg:order-1">
-            <RuntimeFlow variant="compact" />
-          </div>
-          <div className="order-1 lg:order-2">
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-stone-900 tracking-tight mb-4">
-              Keep the controls you already have.
-            </h2>
-            <p className="text-stone-500 leading-relaxed mb-6 text-sm sm:text-base">
-              Guard sits in front of your existing model gateways. Point to your Azure endpoint, your OpenRouter key, your LiteLLM proxy — Guard intercepts and enforces without replacing the stack underneath.
-            </p>
-            <div className="space-y-3 text-sm text-stone-600">
-              <p className="flex items-start gap-2">
-                <span className="text-stone-400 font-mono shrink-0">SDK</span>
-                <span>Drop-in base URL replacement. No SDK changes.</span>
-              </p>
-              <p className="flex items-start gap-2">
-                <span className="text-stone-400 font-mono shrink-0">CLI</span>
-                <span>Post-tool-use hook on Claude Code, Cursor, Codex, Copilot.</span>
-              </p>
-              <p className="flex items-start gap-2">
-                <span className="text-stone-400 font-mono shrink-0">MCP</span>
-                <span>Guard wraps MCP tool invocations before they reach the server.</span>
-              </p>
-            </div>
-          </div>
+        <div className="text-center mb-10 sm:mb-14">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+            One policy across your agent stack.
+          </h2>
+          <p className="text-stone-500 leading-relaxed max-w-2xl mx-auto text-sm sm:text-base">
+            Cortex enforces inside Cortex. Copilot Studio inside Copilot. Bedrock inside Bedrock. Conduct enforces <em>across</em> whatever mix your team actually runs — the native controls stay, Guard sits above them.
+          </p>
+        </div>
+        <div className="flex justify-center mb-12 overflow-x-auto">
+          <RuntimeFlow />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl mx-auto text-sm text-stone-600">
+          <p className="flex items-start gap-2">
+            <span className="text-stone-400 font-mono shrink-0">SDK</span>
+            <span>Drop-in base URL replacement. No SDK changes.</span>
+          </p>
+          <p className="flex items-start gap-2">
+            <span className="text-stone-400 font-mono shrink-0">CLI</span>
+            <span>Post-tool-use hook on Claude Code, Cursor, Codex, Copilot.</span>
+          </p>
+          <p className="flex items-start gap-2">
+            <span className="text-stone-400 font-mono shrink-0">MCP</span>
+            <span>Guard wraps MCP tool invocations before they reach the server.</span>
+          </p>
         </div>
       </div>
     </section>
