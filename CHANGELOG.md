@@ -29,7 +29,7 @@ Releases page.
 - Discovery mode — read-only, promote observed rules into enforcement.
 
 ### 2026-06 · Compliance packs + policy engine
-- 20+ compliance packs shipped (OWASP, SOC 2, HIPAA, PCI, EU AI Act).
+- 15 compliance packs shipped (OWASP, SOC 2, HIPAA, PCI, EU AI Act).
 - Persona-aware rules with `signed_config` verification on every check.
 - Guard Verify v2 — adversarial battery + `conduct verify` CLI.
 
@@ -37,8 +37,7 @@ Releases page.
 - Canvas UI, playbook DSL, YAML loader, workspace-scoped audit.
 - MCP OAuth on Claude.ai — Guard endpoint at
   `https://api.conductai.ai/guard/mcp`.
-- 22 pre-built playbooks covering GitHub, Slack, CI/CD, and incident
-  response workflows.
+- 39 playbooks covering GitHub, Slack, CI/CD, and incident response workflows.
 
 ## Version tag conventions
 

@@ -273,7 +273,7 @@ Forcing question, asked every Monday:
 
 ### What clones in a weekend
 
-Everything visible in a demo. All dashboard pages (`/governance`, `/guard`, `/secure`, `/spend`), canvas editor, YAML playbook format, the 22 playbooks, brain block prompts, framework matrix, KPI cards, narrative strip, RBAC tables, MCP surface, CLI.
+Everything visible in a demo. All dashboard pages (`/governance`, `/guard`, `/secure`, `/spend`), canvas editor, YAML playbook format, the 39 playbooks, brain block prompts, framework matrix, KPI cards, narrative strip, RBAC tables, MCP surface, CLI.
 
 If it lives on a screen or in a YAML file in the repo, it clones.
 

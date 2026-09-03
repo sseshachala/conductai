@@ -316,7 +316,7 @@ preserved contract, only once the facade has proven the model.
 - Three activity pages → one feed view, filtered by lens.
 
 No behaviour is removed. The executor, the queue, the webhook triggers, the CLI
-gate, and all 22 playbooks are untouched.
+gate, and all 39 playbooks are untouched.
 
 ---
 
