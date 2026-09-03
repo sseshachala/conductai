@@ -171,6 +171,7 @@ function MarketingFooter() {
       links: [
         ["Docs", "/docs"],
         ["CLI", "/tools/conduct-cli"],
+        ["Lens", "/docs/lens"],
         ["Open Source", "/open-source"],
         ["GitHub", "https://github.com/sseshachala/conductai"],
       ] as [string, string][],
