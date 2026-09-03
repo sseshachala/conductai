@@ -10,15 +10,6 @@ def _headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
-def _bot_name(token: str) -> str:
-    try:
-        r = httpx.post(f"{BASE}/auth.test", headers=_headers(token), timeout=10)
-        d = r.json()
-        return d.get("bot_id") and d.get("user", "the bot") or "the bot"
-    except Exception:
-        return "the bot"
-
-
 def _ensure_in_channel(token: str, channel: str) -> None:
     """Attempt to join a public channel. Silently skips private channels."""
     try:
@@ -47,10 +38,9 @@ def post_message(token: str, channel: str, text: str, blocks: list | None = None
     if not d.get("ok"):
         err = d.get("error", "unknown")
         if err == "not_in_channel":
-            bot = _bot_name(token)
             raise ValueError(
                 f"Slack error: bot is not in {channel}. "
-                f"Run /invite @{bot} in that channel, or use a public channel."
+                f"Run /invite @ConductAi in that channel, or use a public channel."
             )
         raise ValueError(f"Slack error: {err}")
     return {"ts": d["ts"], "channel": d["channel"], "text": text}
