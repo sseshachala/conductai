@@ -745,6 +745,45 @@ function GuardDashboard() {
   return (
     <GuardShell live={live} lastFetched={lastUpdated} agentCount={agentCount} proxyCount={proxyCount}>
 
+      {/* #1567 empty-state CTA — new workspaces land on Try Guard in one click */}
+      {!loading && (stats?.events_today ?? 0) === 0 && (
+        <div style={{
+          borderRadius: 8,
+          border: "1px solid var(--brand-bd, #0f766e)",
+          background: "var(--brand-bg, #ecfdf5)",
+          padding: "12px 16px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: "var(--brand-text, #064e3b)" }}>
+              New here? See Guard allow, warn, block, and prove — in 30 seconds.
+            </div>
+            <div style={{ fontSize: 12, color: "var(--brand-text-2, #065f46)" }}>
+              Uses a 7-day trial identity. No provider key needed.
+            </div>
+          </div>
+          <Link
+            href="/theguard/try"
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              padding: "6px 14px",
+              borderRadius: 6,
+              background: "var(--brand-fg, #0f766e)",
+              color: "white",
+              textDecoration: "none",
+            }}
+          >
+            Try Guard
+          </Link>
+        </div>
+      )}
+
       {/* Viewer-scoped notice */}
       {!loading && !permissionsLoading && !permissions.canViewAllActivity && (
         <div style={{

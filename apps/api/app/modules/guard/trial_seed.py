@@ -37,8 +37,11 @@ def seed_trial(db: Session, workspace_id: str) -> str | None:
     now = datetime.now(timezone.utc)
     ws = str(workspace_id)
 
+    # Only flip fresh workspaces to `free_trial`. Never overwrite an active
+    # workspace's plan (PR 4 cohort-2 fix). Idempotent replays are a no-op
+    # since the plan is already `free_trial`.
     db.execute(
-        text("UPDATE workspaces SET plan = :plan WHERE id = :ws"),
+        text("UPDATE workspaces SET plan = :plan WHERE id = :ws AND plan = 'free'"),
         {"plan": TRIAL_PLAN, "ws": ws},
     )
 

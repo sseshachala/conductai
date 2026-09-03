@@ -145,3 +145,20 @@ def test_seed_trial_is_idempotent(ws):
             params["name"] = TRIAL_IDENTITY_NAME
         n = _count(db, f"SELECT COUNT(*) FROM {table} WHERE {filt}", params)
         assert n == 1, f"{table}: expected 1 row, got {n}"
+
+
+def test_seed_does_not_overwrite_non_free_plan(ws):
+    """PR 4: an active workspace on plan!='free' must keep its plan when
+    seed_trial is called (e.g. curious active user clicks Try)."""
+    ws_id, db = ws
+
+    db.execute(text("UPDATE workspaces SET plan = 'pro' WHERE id = :ws"), {"ws": ws_id})
+    db.commit()
+
+    seed_trial(db, ws_id)
+    db.commit()
+
+    plan_now = db.execute(
+        text("SELECT plan FROM workspaces WHERE id = :ws"), {"ws": ws_id},
+    ).scalar()
+    assert plan_now == "pro"
