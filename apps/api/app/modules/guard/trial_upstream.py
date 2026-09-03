@@ -27,15 +27,57 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
+import structlog
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME, TRIAL_PLAN
 
+log = structlog.get_logger(__name__)
+
 GUARD_TRIAL_ANTHROPIC_KEY_ENV = "GUARD_TRIAL_ANTHROPIC_KEY"
 TRIAL_DAILY_CAP = 200
 TRIAL_CAP_WINDOW_HOURS = 24
 TrialStatus = Literal["active", "expired", "exceeded", "ineligible"]
+
+
+def _redis_client():
+    """Same shape as `app.modules.guard.rate_limit._redis_client` — lazy
+    import so tests can monkeypatch and the module loads without redis."""
+    import redis as _redis
+    from app.core.config import settings as _settings
+    return _redis.from_url(_settings.redis_url, decode_responses=True)
+
+
+def try_reserve_trial_slot(workspace_id: str, agent_identity_id: str) -> bool:
+    """Atomically reserve a slot in today's trial-cap window.
+
+    Uses Redis INCR (single-command atomic) so two concurrent requests
+    can't both pass the `< CAP` check. Returns True if the request is
+    under cap after the reservation, False if the reservation put us at
+    or over cap (caller should return 'exceeded').
+
+    Fails open when Redis is unreachable: logs a warning and returns True.
+    Rate-limit convention across the codebase (see `rate_limit.py`) — a
+    Redis outage shouldn't defeat trial availability, and the per-workspace
+    `guard_spend_budgets.hard_limit_usd = $2` cap bounds abuse anyway.
+    """
+    day = datetime.now(timezone.utc).strftime("%Y%m%d")
+    key = f"guard:trial:cap:{workspace_id}:{agent_identity_id}:{day}"
+    try:
+        r = _redis_client()
+        pipe = r.pipeline()
+        pipe.incr(key, 1)
+        pipe.expire(key, TRIAL_CAP_WINDOW_HOURS * 3600)
+        count, _ = pipe.execute()
+        return int(count or 0) <= TRIAL_DAILY_CAP
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "guard.trial.reserve_redis_unavailable",
+            workspace_id=workspace_id,
+            err=str(exc),
+        )
+        return True
 
 
 def get_trial_cap_used(db: Session, workspace_id: str, agent_identity_id: str) -> int:
@@ -101,7 +143,23 @@ def resolve_trial_key(
     if row.expires_at is None or row.expires_at <= now:
         return None, "expired"
 
+    # #1587 A4: race-free cap check via Redis atomic INCR. Falls back to
+    # DB count (with the original race) only when Redis is unreachable.
+    if not try_reserve_trial_slot(str(workspace_id), agent_identity_id):
+        return None, "exceeded"
+    # Belt+braces: DB count catches Redis-outage windows AND deliberate
+    # Redis resets (e.g. ops flushed the bucket mid-day). `>= CAP` matches
+    # the original pre-A4 semantic so a workspace that has already
+    # completed CAP requests stays rejected even if the Redis bucket says
+    # otherwise. Cheap SUM against indexed columns.
     if get_trial_cap_used(db, workspace_id, agent_identity_id) >= TRIAL_DAILY_CAP:
         return None, "exceeded"
+
+    # #1587 A3: opportunistic Slack alert on aggregate trial-key spend.
+    # Fires from here so the check piggybacks on real trial traffic instead
+    # of needing a cron. Rate-limited + threshold-gated inside the alerter;
+    # never raises (guarded by trial_spend_alert itself).
+    from app.modules.guard.observability.trial_spend_alert import check_and_alert_trial_spend
+    check_and_alert_trial_spend(db)
 
     return env_key, "active"

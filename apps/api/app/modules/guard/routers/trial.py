@@ -12,7 +12,7 @@ identity tokens stay one-shot as before.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import APIRouter, Depends
@@ -138,5 +138,93 @@ def get_trial_session(
         token=token,
         gateway_url=settings.conduct_proxy_url,
         cap_used=get_trial_cap_used(db, workspace_id, str(identity.id)),
+        cap_max=TRIAL_DAILY_CAP,
+    )
+
+
+# ── Trial ops (A1 of #1587) ───────────────────────────────────────────────────
+
+class TrialTopSpender(BaseModel):
+    workspace_id: str
+    workspace_name: str | None
+    spend_usd: float
+    cap_used: int
+
+
+class TrialOpsOut(BaseModel):
+    trial_workspaces_active_24h: int
+    workspaces_at_cap: int
+    spend_today_usd: float
+    top_10_by_spend: list[TrialTopSpender]
+    cap_max: int
+
+
+@router.get("/ops", response_model=TrialOpsOut)
+def get_trial_ops(
+    _perm: str = Depends(require_permission("guard.spend.view_all")),
+    db: Session = Depends(get_db),
+) -> TrialOpsOut:
+    """Platform-ops view of trial-key burn across all workspaces.
+
+    Restricted to `guard.spend.view_all` (security+) — this crosses tenant
+    boundaries by design. Every metric derives from `guard_audit_events`
+    joined against the trial `AgentIdentity` name filter.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=24)
+
+    active_24h = db.execute(
+        text("""
+            SELECT COUNT(DISTINCT ae.workspace_id)
+            FROM guard_audit_events ae
+            JOIN agent_identities ai ON ai.id = ae.agent_identity_id
+            WHERE ai.name = :name AND ae.ts >= :cutoff
+        """),
+        {"name": TRIAL_IDENTITY_NAME, "cutoff": cutoff},
+    ).scalar() or 0
+
+    spend_today = db.execute(
+        text("""
+            SELECT COALESCE(SUM(ae.cost_usd_after), 0)
+            FROM guard_audit_events ae
+            JOIN agent_identities ai ON ai.id = ae.agent_identity_id
+            WHERE ai.name = :name AND ae.ts >= :cutoff
+        """),
+        {"name": TRIAL_IDENTITY_NAME, "cutoff": cutoff},
+    ).scalar() or 0.0
+
+    top_rows = db.execute(
+        text("""
+            SELECT
+                ae.workspace_id,
+                w.name AS workspace_name,
+                COALESCE(SUM(ae.cost_usd_after), 0) AS spend,
+                COUNT(*) AS cap_used
+            FROM guard_audit_events ae
+            JOIN agent_identities ai ON ai.id = ae.agent_identity_id
+            JOIN workspaces w ON w.id = ae.workspace_id
+            WHERE ai.name = :name AND ae.ts >= :cutoff
+            GROUP BY ae.workspace_id, w.name
+            ORDER BY spend DESC, cap_used DESC
+            LIMIT 10
+        """),
+        {"name": TRIAL_IDENTITY_NAME, "cutoff": cutoff},
+    ).fetchall()
+
+    at_cap = sum(1 for r in top_rows if r.cap_used >= TRIAL_DAILY_CAP)
+
+    return TrialOpsOut(
+        trial_workspaces_active_24h=int(active_24h),
+        workspaces_at_cap=at_cap,
+        spend_today_usd=float(spend_today),
+        top_10_by_spend=[
+            TrialTopSpender(
+                workspace_id=str(r.workspace_id),
+                workspace_name=r.workspace_name,
+                spend_usd=float(r.spend),
+                cap_used=int(r.cap_used),
+            )
+            for r in top_rows
+        ],
         cap_max=TRIAL_DAILY_CAP,
     )
