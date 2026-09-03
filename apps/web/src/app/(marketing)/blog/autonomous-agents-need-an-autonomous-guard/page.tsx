@@ -12,7 +12,7 @@ export default function BlogPost() {
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-6">
           <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-full uppercase tracking-widest">
-            Autonomy
+            Context/Runtime Decisions
           </span>
           <span className="text-xs text-stone-400">August 23, 2026</span>
         </div>
