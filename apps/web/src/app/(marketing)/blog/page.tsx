@@ -29,7 +29,7 @@ export default function BlogIndex() {
       title: "Autonomous agents need an autonomous guard.",
       excerpt: "A self-driving network agent detects a BGP flap across two fabrics and proposes a fix. Before that change reaches production, ConductGuard intercepts it, asks a human, records the decision. 90-second demo.",
       date: "August 23, 2026",
-      tag: "Autonomy",
+      tag: "Context/Runtime Decisions",
       tagColor: "text-indigo-700 bg-indigo-50 border-indigo-200",
     },
     {
