@@ -1336,6 +1336,10 @@ async def clerk_webhook(request: Request, db: Session = Depends(get_db)):
     from app.routers.projects import _seed_starter_policies
     _seed_starter_policies(db, workspace_id, now)
 
+    # Trial seed (#1567): rate/budget caps + 7-day trial agent identity.
+    from app.modules.guard.trial_seed import seed_trial
+    seed_trial(db, str(workspace_id))
+
     db.commit()
     log.info("clerk_webhook.workspace_created", user_id=user_id, workspace_id=str(workspace_id))
     return {"ok": True, "workspace_id": str(workspace_id)}
