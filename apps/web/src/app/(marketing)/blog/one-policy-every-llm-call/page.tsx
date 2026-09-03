@@ -87,7 +87,7 @@ export default function BlogPost() {
             auditor.
           </li>
           <li>
-            <strong>20+ compliance packs out of the box.</strong>{" "}
+            <strong>15 compliance packs out of the box.</strong>{" "}
             OWASP, SOC 2 CC7.3, HIPAA §164.312, PCI DSS 4.0, EU AI Act
             Art. 15/16, NIST AI RMF, ISO 42001. Turn them on, they
             enforce everywhere Guard runs.
