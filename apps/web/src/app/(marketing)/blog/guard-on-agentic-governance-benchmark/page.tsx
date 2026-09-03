@@ -138,7 +138,7 @@ export default function BlogPost() {
               <tr>
                 <td className="px-4 py-2 border-b border-stone-100 font-semibold align-top">Jurisdictional Enforcement</td>
                 <td className="px-4 py-2 border-b border-stone-100 align-top">9 / 10</td>
-                <td className="px-4 py-2 border-b border-stone-100">20+ compliance packs with real clause mappings: SOC 2 CC7.3, HIPAA §164.312, PCI DSS 4.0, EU AI Act Art. 15/16, NIST AI RMF, ISO 42001. Applied per request, not per audit.</td>
+                <td className="px-4 py-2 border-b border-stone-100">15 compliance packs with real clause mappings: SOC 2 CC7.3, HIPAA §164.312, PCI DSS 4.0, EU AI Act Art. 15/16, NIST AI RMF, ISO 42001. Applied per request, not per audit.</td>
               </tr>
               <tr>
                 <td className="px-4 py-2 font-semibold align-top">Override Integrity</td>

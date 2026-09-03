@@ -1,30 +1,28 @@
 "use client"
 
-import BootSequence from "@/components/marketing/BootSequence"
 import { CtaLink } from "@/components/marketing/CtaLink"
+import { DecisionCard } from "@/components/marketing/facelift/DecisionCard"
+import { AgentSurfaceStrip } from "@/components/marketing/facelift/AgentSurfaceStrip"
+import { EvidenceReceipt } from "@/components/marketing/facelift/EvidenceReceipt"
+import { RuntimeFlow } from "@/components/marketing/facelift/RuntimeFlow"
+import { CapabilityStatus, type CapabilityItem } from "@/components/marketing/facelift/CapabilityStatus"
+import { PlaybookTile } from "@/components/marketing/facelift/PlaybookTile"
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <Nav />
       <main className="flex-1">
-
         <HeroSection />
-        <ControlPlaneSection />
-        <CeoQuoteSection />
-        <TrustBarSection />
-        <ProofStripSection />
         <ProblemSection />
-        <TwoLanesSection />
-        <CopilotPromoSection />
-        <StackStripSection />
-        <GovernanceNarrativeSection />
-        <GatewaySection />
-        <HonestySection />
-        <GuardLearnsTeaser />
-        <PersonasSection />
-        <DemoVideoSection />
-        <DeploymentStripSection />
+        <CoreLoopSection />
+        <ConsequentialActionsSection />
+        <OnePolicySection />
+        <NativeControlsSection />
+        <EvidenceSection />
+        <HonestSecuritySection />
+        <OpenSourceSection />
+        <DeploymentSection />
         <FinalCTASection />
       </main>
       <PageFooter />
@@ -32,318 +30,221 @@ export default function HomePage() {
   )
 }
 
-/* ─── Nav ──────────────────────────────────────────────────────────────── */
+/* ─── Nav ─────────────────────────────────────────────────────────────── */
 
 function Nav() {
   return (
     <header className="sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
       <div className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
-      <a href="/">
-        <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
-      </a>
-      <nav className="hidden md:flex items-center gap-6">
-        <ProductsDropdown />
-        <SolutionsDropdown />
-        {/* ponytail: home page has its own inlined nav; keep in sync with (marketing)/layout.tsx until we extract shared components */}
-        <a href="/docs" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Docs</a>
-        <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
-      </nav>
-      <div className="flex items-center gap-3">
-        <CtaLink className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors" />
-      </div>
+        <a href="/">
+          <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
+        </a>
+        <nav className="hidden md:flex items-center gap-6">
+          <ProductDropdown />
+          <SolutionsDropdown />
+          <DevelopersDropdown />
+          <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
+        </nav>
+        <div className="flex items-center gap-3">
+          <a href="/sign-in" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors hidden sm:block">
+            Sign in
+          </a>
+          <a href="/book-demo" className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors hidden sm:block">
+            Book Demo
+          </a>
+          <a
+            href="/discovery"
+            className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors"
+          >
+            Start Discovery
+          </a>
+        </div>
       </div>
     </header>
   )
 }
 
-/* ─── Shared Nav Components ────────────────────────────────────────────── */
+function ChevronDown() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5">
+      <path d="M2 4l4 4 4-4" />
+    </svg>
+  )
+}
 
-function ProductsDropdown() {
+function ProductDropdown() {
   return (
     <div className="relative group">
       <a href="#" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
         Product
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
+        <ChevronDown />
       </a>
       <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <a href="/guard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>🛡️</span>
-            <div>
-              <p className="font-semibold">Guard</p>
-              <p className="text-xs text-stone-400">Guard — see and control every AI session</p>
-            </div>
-          </a>
-          <a href="/mcp-gateway" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>🔌</span>
-            <div>
-              <p className="font-semibold">MCP Gateway</p>
-              <p className="text-xs text-stone-400">Boot-time tool discovery + policy + audit</p>
-            </div>
-          </a>
-          <a href="/registry" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>⚡</span>
-            <div>
-              <p className="font-semibold">Registry</p>
-              <p className="text-xs text-stone-400">Compliance &amp; automation packs</p>
-            </div>
-          </a>
-          <a href="/tools/conduct-cli" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span className="text-indigo-600 font-bold text-base">◈</span>
-            <div>
-              <p className="font-semibold">CLI</p>
-              <p className="text-xs text-stone-400">Terminal governance + token savings</p>
-            </div>
-          </a>
-          <a href="/team-os" className="flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <span>📔</span>
-            <div>
-              <p className="font-semibold">Team OS</p>
-              <p className="text-xs text-stone-400">CLAUDE.md · REVIEW.md · Standards</p>
-            </div>
-          </a>
+          <NavItem href="/guard" title="Guard" desc="Runtime policy enforcement for every AI agent" />
+          <NavItem href="/playbooks" title="Playbooks" desc="39 pre-built automations with Guard built in" />
+          <NavItem href="/evidence" title="Evidence" desc="Hash-chained audit trail for every decision" />
+          <NavItem href="/mcp-gateway" title="MCP" desc="Policy for every MCP tool invocation" />
         </div>
       </div>
     </div>
   )
 }
-
 
 function SolutionsDropdown() {
   return (
     <div className="relative group">
       <a href="#" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
         Solutions
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="opacity-40 mt-0.5"><path d="M2 4l4 4 4-4"/></svg>
+        <ChevronDown />
       </a>
-      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
+      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[240px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <a href="/solutions/engineering-leaders" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div><p className="font-semibold">Engineering leaders</p></div>
-          </a>
-          <a href="/solutions/security-compliance" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div><p className="font-semibold">Security &amp; compliance</p></div>
-          </a>
-          <a href="/solutions/action-governance" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div><p className="font-semibold">Action governance</p></div>
-          </a>
-          <a href="/solutions/financial-services" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div><p className="font-semibold">Financial services</p></div>
-          </a>
-          <a href="/solutions/life-sciences" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div><p className="font-semibold">Life sciences</p></div>
-          </a>
-          <a href="/solutions/memory-hardening" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div><p className="font-semibold">Memory hardening</p></div>
-          </a>
-          <a href="/solutions/okta-plus-conduct" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div><p className="font-semibold">Okta + Conduct</p></div>
-          </a>
-          <a href="/solutions/security-loop" className="flex items-center gap-3 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
-            <div><p className="font-semibold">Security Loop</p></div>
-          </a>
+          <div className="px-4 py-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Primary</p>
+          </div>
+          <NavItem href="/solutions/engineering-leaders" title="Engineering Agents" desc="Consistent policy across your agent fleet" />
+          <NavItem href="/solutions/security-compliance" title="Security Teams" desc="Enforcement, evidence, and compliance reports" />
+          <NavItem href="/solutions/action-governance" title="Business Actions" desc="Control before a refund, deploy, or email sends" />
+          <div className="my-1 border-t border-stone-100" />
+          <div className="px-4 py-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Industry</p>
+          </div>
+          <NavItem href="/solutions/financial-services" title="Financial Services" desc="PCI DSS 4.0 · refund controls · audit" />
+          <NavItem href="/solutions/life-sciences" title="Life Sciences" desc="HIPAA · 21 CFR Part 11 · validation" />
         </div>
       </div>
     </div>
   )
 }
 
+function DevelopersDropdown() {
+  return (
+    <div className="relative group">
+      <a href="#" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
+        Developers
+        <ChevronDown />
+      </a>
+      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[200px]">
+        <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
+          <NavItem href="/docs" title="Docs" desc="Full API and integration reference" />
+          <NavItem href="/tools/conduct-cli" title="CLI" desc="Agent lifecycle and Guard sync" />
+          <NavItem href="/docs/lens" title="Lens" desc="Chat tools for Guard, playbooks, and evidence" />
+          <NavItem href="/open-source" title="Open Source" desc="Apache-2.0 components" />
+          <NavItem href="https://github.com/sseshachala/conductai" title="GitHub" desc="Source, issues, and releases" />
+        </div>
+      </div>
+    </div>
+  )
+}
 
-/* ─── Hero ─────────────────────────────────────────────────────────────── */
+function NavItem({ href, title, desc }: { href: string; title: string; desc: string }) {
+  return (
+    <a href={href} className="flex flex-col px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+      <span className="font-semibold text-stone-900">{title}</span>
+      <span className="text-xs text-stone-400 mt-0.5">{desc}</span>
+    </a>
+  )
+}
+
+/* ─── 1. Hero ─────────────────────────────────────────────────────────── */
 
 function HeroSection() {
   return (
-    <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
-      <BootSequence />
-      <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-4">
-        Your team is running AI agents right now.
-      </h1>
-      <p className="text-2xl sm:text-3xl font-bold text-stone-500 max-w-3xl mx-auto leading-tight mb-6">
-        Your compliance team can&apos;t see or stop them.
-      </p>
-      <p className="text-lg text-stone-500 max-w-3xl mx-auto leading-relaxed mb-8">
-        Copilot, ChatGPT, Cursor, Claude, Sierra. Every AI tool your team uses supports MCP. That&apos;s the integration surface, and it&apos;s where Conduct enforces. Every tool call is visible. Every dangerous one can be blocked. Every decision lands in a signed audit trail you can prove.
-      </p>
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
-        <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />
-      </div>
-      <p className="text-xs text-stone-400">Free tier · Installs in 10 minutes · No infrastructure changes</p>
-    </section>
-  )
-}
-
-/* ─── Control Plane Diagram ────────────────────────────────────────────── */
-
-function ControlPlaneSection() {
-  return (
-    <section className="py-14 px-6 border-y border-stone-100 bg-stone-50">
-      <div className="max-w-2xl mx-auto text-center">
-        <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-8">Where Conduct sits</p>
-        <div className="flex flex-col items-center gap-1 font-mono text-sm">
-          <div className="bg-white border border-stone-200 rounded-xl px-8 py-3 text-stone-700 font-semibold shadow-sm w-64">
-            AI Agents + Developers
-          </div>
-          <div className="text-stone-300 text-lg">↓</div>
-          <div className="bg-stone-900 text-white rounded-xl px-8 py-3 font-bold shadow-md w-64">
+    <section className="max-w-6xl mx-auto px-6 pt-20 pb-16">
+      <div className="grid lg:grid-cols-2 gap-12 items-center">
+        {/* Left: copy */}
+        <div>
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-6">
             ConductGuard
+          </p>
+          <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
+            One policy across your AI agent stack.
+          </h1>
+          <p className="text-lg text-stone-500 leading-relaxed mb-8 max-w-xl">
+            Conduct Guard enforces runtime policy across supported AI agents, model gateways, and MCP tools — before consequential actions execute.
+          </p>
+
+          {/* Verbs */}
+          <div className="flex items-center gap-3 mb-10 font-mono text-sm font-bold">
+            <span className="text-emerald-600">Allow.</span>
+            <span className="text-amber-500">Approve.</span>
+            <span className="text-red-600">Block.</span>
+            <span className="text-stone-600">Prove.</span>
           </div>
-          <div className="text-xs text-stone-400 mt-1 mb-1">Every tool call · Every LLM request · Every workflow</div>
-          <div className="text-stone-300 text-lg">↓</div>
-          <div className="bg-white border border-stone-200 rounded-xl px-8 py-3 text-stone-700 font-semibold shadow-sm w-64">
-            Foundation Models
+
+          {/* CTAs */}
+          <div className="flex flex-col sm:flex-row items-start gap-3 mb-4">
+            <a
+              href="/discovery"
+              className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors"
+            >
+              Start Discovery — 14 days free
+            </a>
+            <a
+              href="/book-demo"
+              className="rounded-xl border border-stone-200 text-stone-700 px-7 py-3.5 text-base font-semibold hover:bg-stone-50 transition-colors"
+            >
+              Book a Demo
+            </a>
           </div>
+          <a
+            href="/open-source"
+            className="text-sm text-stone-400 hover:text-stone-700 transition-colors underline underline-offset-2"
+          >
+            View the open-source runtime →
+          </a>
         </div>
-        <p className="text-sm text-stone-500 mt-8 max-w-md mx-auto">
-          Conduct makes compliance structural. Not documented after the fact. Enforced before execution.
-        </p>
+
+        {/* Right: Decision card */}
+        <div className="flex flex-col gap-4">
+          <DecisionCard
+            agent="claude-code / deploy-agent"
+            action="deploy_production"
+            resource="payments-api"
+            policy="production-change-v4"
+            decision="APPROVE"
+            showButtons
+          />
+          <AgentSurfaceStrip />
+        </div>
       </div>
     </section>
   )
 }
 
-/* ─── Trust Bar ────────────────────────────────────────────────────────── */
-
-function CeoQuoteSection() {
-  return (
-    <section className="max-w-3xl mx-auto px-6 py-12">
-      <blockquote className="border-l-4 border-indigo-500 pl-6 py-2">
-        <p className="text-xl text-stone-700 leading-relaxed italic mb-4">
-          &ldquo;What impressed me most about Conduct AI is that it approaches AI governance
-          as a business capability, not just a technical feature. By bringing together cost
-          management, security controls, and compliance oversight in a scalable architecture,
-          it addresses a need that many enterprises are actively trying to solve.&rdquo;
-        </p>
-        <footer className="text-sm text-stone-500">
-          <span className="font-semibold text-stone-700">Ram Prasad</span>
-          {" · "}
-          CEO, Delence
-        </footer>
-      </blockquote>
-    </section>
-  )
-}
-
-function TrustBarSection() {
-  const integrations = ["GitHub", "Slack", "Linear", "Jira", "Claude", "GPT", "Gemini", "VS Code"]
-  return (
-    <div className="border-y border-stone-100 bg-stone-50 py-5 px-6">
-      <div className="max-w-5xl mx-auto text-center">
-        <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-4">
-          Works with
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
-          {integrations.map(name => (
-            <span key={name} className="text-sm font-semibold text-stone-400">{name}</span>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ─── Proof Strip ──────────────────────────────────────────────────────── */
-
-function ProofStripSection() {
-  return (
-    <section className="bg-stone-950 border-y border-stone-800 py-6 px-6">
-      <div className="max-w-5xl mx-auto">
-        <p className="text-center text-[10px] font-semibold uppercase tracking-widest text-stone-500 mb-5">
-          From 18 days of production use, one developer
-        </p>
-        <div className="flex flex-wrap items-start justify-center gap-x-12 gap-y-5">
-
-          {/* Production deploys blocked */}
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl font-black text-red-400 tracking-tight">6</span>
-            <span className="text-xs text-stone-400">production deploys blocked</span>
-            <span className="text-[10px] text-stone-600">before execution</span>
-          </div>
-
-          {/* PII spike */}
-          <div className="flex flex-col items-center gap-1 border border-stone-700 rounded-xl px-5 py-3 bg-stone-900">
-            <span className="text-2xl font-black text-white tracking-tight">971</span>
-            <span className="text-xs text-stone-300 font-semibold">PII events screened in a single day</span>
-            <span className="text-[10px] text-stone-500 mt-1">30x the normal baseline</span>
-          </div>
-
-          {/* Credential leaks */}
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl font-black text-white tracking-tight">2</span>
-            <span className="text-xs text-stone-400">credential leaks caught</span>
-            <span className="text-[10px] text-stone-600">in commit messages, same session</span>
-          </div>
-
-          {/* Spend visibility */}
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl font-black text-white tracking-tight">$4,170</span>
-            <span className="text-xs text-stone-400">AI spend made visible</span>
-            <span className="text-[10px] text-stone-600">by tool and by day</span>
-          </div>
-
-        </div>
-        <p className="text-center text-[10px] text-stone-600 mt-5">
-          Small sample, real system. We&apos;ll publish team-scale numbers when we have them.
-        </p>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Problem ──────────────────────────────────────────────────────────── */
-
-interface ProblemCard {
-  num: string
-  icon: string
-  headline: string
-  detail: string
-}
+/* ─── 2. Problem ──────────────────────────────────────────────────────── */
 
 function ProblemSection() {
-  const problems: ProblemCard[] = [
+  const cols = [
     {
-      num: "01",
-      icon: "🕳️",
-      headline: "Your team shipped a Friday deploy that an AI forced through unreviewed.",
-      detail: "You found out on Monday. The AI ran the command at 3pm. Nobody saw it.",
+      title: "One policy model per tool",
+      body: "Claude Code has hooks. Cursor has settings. Copilot has org controls. Each enforces differently, stores differently, audits differently. You can't write a rule once and trust it runs everywhere.",
     },
     {
-      num: "02",
-      icon: "💸",
-      headline: "Finance asked what AI cost last quarter. Engineering had no answer.",
-      detail: "The bill arrived. The sprint was over. The conversation was already awkward.",
+      title: "Consequential actions run without review",
+      body: "A refund processes. A production deploy lands. A secret is read. By the time you know, the action is done. Policies in documents don't stop actions at runtime.",
     },
     {
-      num: "03",
-      icon: "📄",
-      headline: "You have an AI usage policy. It didn't stop anything.",
-      detail: "It exists in a doc. It wasn't running at the moment the agent acted. That's the only moment that matters. Without runtime enforcement, agents experience permission drift, accumulating authority across tool calls that no single approval authorised.",
-    },
-    {
-      num: "04",
-      icon: "🔁",
-      headline: "The PR review script broke when the engineer who wrote it left.",
-      detail: "It lived in their terminal. It drifted. It broke. It left with them.",
+      title: "No tamper-evident trail",
+      body: "Log files change. Agent activity disappears when the session ends. When security or compliance asks what happened, the answer shouldn't be 'we think.'",
     },
   ]
+
   return (
-    <section className="bg-stone-900 py-24 px-6">
+    <section className="border-t border-stone-100 bg-stone-50 py-20 px-6">
       <div className="max-w-5xl mx-auto">
-        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-4">The Problem</p>
-        <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-tight mb-4 max-w-3xl">
-          AI agents ship code. Nobody sees what they actually did.
+        <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+          Five agent tools shouldn&apos;t require five policy models.
         </h2>
-        <p className="text-stone-400 leading-relaxed mb-12 max-w-2xl">
-          Your team is already using Claude, Codex, ChatGPT, Cursor, Copilot, and Windsurf. But when something breaks, there&apos;s no trail, no policy, no audit log, no budget control.
+        <p className="text-stone-500 mb-12 max-w-2xl">
+          Every new agent surface creates a new enforcement gap. The problem compounds every time a new tool lands in your stack.
         </p>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {problems.map(p => (
-            <div key={p.num} className="bg-white/5 border border-white/8 rounded-2xl p-5 flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <span className="text-2xl">{p.icon}</span>
-                <span className="text-xs font-mono font-bold text-stone-600">{p.num}</span>
-              </div>
-              <h3 className="text-sm font-bold text-white leading-snug">{p.headline}</h3>
-              <p className="text-xs text-stone-400 leading-relaxed">{p.detail}</p>
+        <div className="grid sm:grid-cols-3 gap-8">
+          {cols.map((col) => (
+            <div key={col.title}>
+              <p className="font-semibold text-stone-900 mb-2">{col.title}</p>
+              <p className="text-sm text-stone-500 leading-relaxed">{col.body}</p>
             </div>
           ))}
         </div>
@@ -352,126 +253,75 @@ function ProblemSection() {
   )
 }
 
-/* ─── What It Does ────────────────────────────────────────── */
+/* ─── 3. Core loop ────────────────────────────────────────────────────── */
 
-function TwoLanesSection() {
-  return (
-    <section className="py-24 px-6 bg-white">
-      <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-14">
-          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-3">What it does</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
-            Three things, all of them enforced.
-          </h2>
-        </div>
-        <div className="grid md:grid-cols-3 gap-5">
-
-          <div className="rounded-2xl bg-stone-900 border border-stone-800 p-8 flex flex-col gap-4">
-            <h3 className="text-xl font-bold text-white tracking-tight">See every session.</h3>
-            <p className="text-stone-400 leading-relaxed text-sm flex-1">
-              Within ten minutes of install you know which AI tools your team is running, who&apos;s using them, what they&apos;re calling, and what it costs, by developer, by day, by tool.
-            </p>
-          </div>
-
-          <div className="rounded-2xl bg-stone-900 border border-stone-800 p-8 flex flex-col gap-4">
-            <h3 className="text-xl font-bold text-white tracking-tight">Block what shouldn&apos;t run.</h3>
-            <p className="text-stone-400 leading-relaxed text-sm flex-1">
-              Policies are YAML rules evaluated at the moment the agent acts. A blocked call exits with code 2 and the agent stops. Not a prompt instruction the model can talk itself out of.
-            </p>
-          </div>
-
-          <div className="rounded-2xl bg-stone-900 border border-stone-800 p-8 flex flex-col gap-4">
-            <h3 className="text-xl font-bold text-white tracking-tight">Prove it afterward.</h3>
-            <p className="text-stone-400 leading-relaxed text-sm flex-1">
-              Every decision is written to a SHA-256 hash-chained log. One click confirms the record is intact. Export for compliance review in 30 seconds.
-            </p>
-          </div>
-
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Copilot MCP Promo ───────────────────────────────────── */
-
-function CopilotPromoSection() {
-  return (
-    <section className="bg-stone-900 border-y border-stone-800 px-6 py-10">
-      <div className="max-w-3xl mx-auto">
-        <p className="text-stone-400 text-sm leading-relaxed">
-          Covering a whole org takes one URL. GitHub Copilot for Business supports hosted MCP servers. An admin pastes the ConductGuard URL into org settings once and every developer is covered on their next session. No per-developer install.
-        </p>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Stack Strip ──────────────────────────────────────────────────────── */
-
-function StackStripSection() {
-  const steps = [
+function CoreLoopSection() {
+  const verbs = [
     {
-      step: "01",
-      label: "Team OS",
-      href: "/team-os",
-      badge: "Free",
-      badgeColor: "bg-emerald-100 text-emerald-700",
-      icon: "📄",
-      title: "Write down your standards",
-      desc: "CLAUDE.md gives agents project memory. REVIEW.md sets the quality bar. Standards encode how your team handles auth, security, and migrations.",
-      cta: "Get the templates →",
+      word: "Allow.",
+      colour: "text-emerald-600",
+      line: "Actions within policy proceed immediately. No friction for compliant work.",
+      decision: "ALLOW" as const,
     },
     {
-      step: "02",
-      label: "SDD",
-      href: "/sdd",
-      badge: "Spec first",
-      badgeColor: "bg-indigo-100 text-indigo-700",
-      icon: "📐",
-      title: "Spec before you build",
-      desc: "Generate a SPEC.md before agents touch code. Every decision has a why. Drift detection tells you when implementation diverges from intent.",
-      cta: "Generate your spec →",
+      word: "Approve.",
+      colour: "text-amber-500",
+      line: "Consequential actions pause for human review before they execute.",
+      decision: "APPROVE" as const,
     },
     {
-      step: "03",
-      label: "Guard",
-      href: "/guard",
-      badge: "Enforcement",
-      badgeColor: "bg-stone-200 text-stone-700",
-      icon: "🛡️",
-      title: "Enforce it at the MCP layer",
-      desc: "Guard intercepts every AI tool call before it runs. One policy across Claude Code, Cursor, Copilot, and every MCP client. Blocks, logs, audits automatically.",
-      cta: "Explore Guard →",
+      word: "Block.",
+      colour: "text-red-600",
+      line: "Actions outside policy are stopped before they reach a model or tool.",
+      decision: "BLOCK" as const,
+    },
+    {
+      word: "Prove.",
+      colour: "text-stone-700",
+      line: "Every decision lands in a hash-chained audit trail. Integrity is verifiable.",
+      decision: null,
     },
   ]
 
   return (
-    <section className="bg-stone-50 border-y border-stone-100 py-16 px-6">
+    <section className="py-20 px-6 border-t border-stone-100">
       <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-10">
-          <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-3">The full stack</p>
-          <h2 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
-            From standards to enforcement: three layers, one platform.
-          </h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {steps.map((s) => (
-            <a key={s.step} href={s.href} className="group rounded-2xl bg-white border border-stone-200 p-6 hover:border-stone-400 hover:shadow-md transition-all flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <span className="text-2xl">{s.icon}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-stone-300">{s.step}</span>
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${s.badgeColor}`}>{s.badge}</span>
+        <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+          Allow. Approve. Block. Prove.
+        </h2>
+        <p className="text-stone-500 mb-12 max-w-2xl">
+          Four outcomes. Every agent action gets one. Runtime, not retrospective.
+        </p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {verbs.map((v) => (
+            <div key={v.word} className="flex flex-col gap-3">
+              {v.decision ? (
+                <DecisionCard
+                  agent="claude-code / deploy-agent"
+                  action="deploy_production"
+                  resource="payments-api"
+                  policy="production-change-v4"
+                  decision={v.decision}
+                  compact
+                />
+              ) : (
+                <div className="border border-stone-200 rounded-xl px-4 py-3 bg-white">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-stone-400" />
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                      Hash-chained
+                    </span>
+                  </div>
+                  <p className="font-mono text-[10px] text-stone-400">
+                    SHA-256 · integrity verified
+                  </p>
                 </div>
-              </div>
+              )}
               <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-1">{s.label}</p>
-                <h3 className="font-bold text-stone-900 text-base mb-2">{s.title}</h3>
-                <p className="text-sm text-stone-500 leading-relaxed">{s.desc}</p>
+                <p className={`text-lg font-black tracking-tight ${v.colour}`}>{v.word}</p>
+                <p className="text-sm text-stone-500 mt-1 leading-relaxed">{v.line}</p>
               </div>
-              <p className="text-xs font-semibold text-stone-700 group-hover:text-stone-900 transition-colors mt-auto">{s.cta}</p>
-            </a>
+            </div>
           ))}
         </div>
       </div>
@@ -479,404 +329,477 @@ function StackStripSection() {
   )
 }
 
-/* ─── Governance Narrative ─────────────────────────────────────────────── */
+/* ─── 4. Consequential actions ────────────────────────────────────────── */
 
-function GovernanceNarrativeSection() {
-  const incidents = [
+function ConsequentialActionsSection() {
+  const cards = [
     {
-      rule: "approve-prod-deploy",
-      headline: "Force-deploy to production, intercepted",
-      detail: "AI attempted vercel deploy --prod --force at 3:11pm on a Friday. Guard blocked it before it executed.",
-      badge: "BLOCKED",
-      badgeColor: "bg-red-500",
+      agent: "codex / release-agent",
+      action: "process_refund",
+      resource: "customer C-8911",
+      policy: "refund-cap",
+      decision: "BLOCK" as const,
+      reason: "Refunds over $500 require human approval per FIN-07. Amount: $840.",
     },
     {
-      rule: "no-secret-in-commit-msg",
-      headline: "Secret embedded in git commit, caught",
-      detail: "AI tried to commit code with a credential token in the commit message. Fired twice in the same session.",
-      badge: "BLOCKED",
-      badgeColor: "bg-red-500",
+      agent: "claude-code / deploy-agent",
+      action: "deploy_production",
+      resource: "payments-api",
+      policy: "production-change-v4",
+      decision: "APPROVE" as const,
+      reason: "Production deployment outside approved change window",
+      showButtons: true,
     },
     {
-      rule: "pii-redact",
-      headline: "971 PII events in a single day",
-      detail: "Jun 19 spiked 30× the 32/day baseline. Without Guard, every one of those calls would have sent raw credentials to an LLM.",
-      badge: "WARNED",
-      badgeColor: "bg-amber-500",
+      agent: "cursor-agent-17",
+      action: "read_env",
+      resource: "orders-db",
+      policy: "secret-access",
+      decision: "BLOCK" as const,
+      reason: "Secret access from non-hardened session context.",
     },
-  ]
-
-  const kpis = [
-    { value: "$4,170", label: "AI spend", color: "text-indigo-600" },
-    { value: "6", label: "Deploys", color: "text-violet-600" },
-    { value: "589", label: "PII events", color: "text-red-500" },
-    { value: "$235", label: "Saved", color: "text-emerald-600" },
+    {
+      agent: "copilot-reviewer",
+      action: "send_email",
+      resource: "customer C-8911",
+      policy: "email-external",
+      decision: "APPROVE" as const,
+      reason: "External email requires confirmation before send.",
+    },
   ]
 
   return (
-    <section className="py-24 px-6 bg-white border-b border-stone-100">
+    <section className="py-20 px-6 border-t border-stone-100 bg-stone-50">
       <div className="max-w-5xl mx-auto">
-
-        {/* Two-column: left = text + chips, right = narrative card */}
-        <div className="grid md:grid-cols-2 gap-12 items-center mb-16">
-
-          {/* Left */}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500 mb-4">What governance actually tells you</p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight leading-tight mb-4">
-              Every AI session, explained in plain English.
-            </h2>
-            <p className="text-stone-500 leading-relaxed mb-8">
-              Guard watches every tool call across every AI session: Claude Code, Claude.ai, Claude Desktop, Codex CLI, Codex Desktop, ChatGPT, Cursor, Copilot, Windsurf. At the end of each day, it surfaces one sentence that tells your team what happened, what was blocked, and what it cost.
-            </p>
-            <div className="flex flex-wrap gap-2 mb-6">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-100 text-xs font-semibold text-red-600">🚫 6 deploys intercepted</span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-100 text-xs font-semibold text-amber-600">⚠ 2 destructive commands warned</span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-xs font-semibold text-indigo-600">🔒 589 PII events screened</span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100 text-xs font-semibold text-emerald-600">⚡ $235 saved by tooling</span>
-            </div>
-            <a href="/guard" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
-              See the full Insights tab →
-            </a>
-            <p className="mt-6 text-xs text-stone-400 leading-relaxed border-t border-stone-100 pt-4">
-              Whatever your team runs in Claude, whether a diligence desk, a security audit OS, or an engineering autopilot, ConductGuard is the enforcement layer that makes it safe to hand to an executive.
-            </p>
-          </div>
-
-          {/* Right — narrative card */}
-          <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4 pb-4 border-b border-stone-100">
-              <div className="flex items-center gap-2">
-                <span className="text-indigo-600 font-bold">✦</span>
-                <div>
-                  <p className="text-xs font-semibold text-stone-500">Guard · AI Narrative</p>
-                  <p className="text-[10px] text-stone-400">dev@yourteam.com</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
-                <span className="text-xs font-semibold text-emerald-600">Live</span>
-              </div>
-            </div>
-            <p className="text-sm text-stone-700 leading-relaxed mb-6">
-              You spent <strong>$245/day</strong> on AI this period across <span className="text-indigo-600 font-medium">claude-code</span>, <span className="text-indigo-600 font-medium">codex</span>, and <span className="text-indigo-600 font-medium">cursor</span>. Guard intercepted <strong>6 production deploys</strong> before they ran unreviewed, warned on <strong>2 destructive commands</strong>, and screened <strong>589 events for PII</strong> before they reached any LLM. Claude Code dominates at <strong>96% of total spend</strong>. RTK and Booster offset <strong>$235</strong>, 5.6% back.
-            </p>
-            <div className="grid grid-cols-4 gap-3 mb-4">
-              {kpis.map(k => (
-                <div key={k.label} className="text-center">
-                  <p className={`text-xl font-black tracking-tight ${k.color}`}>{k.value}</p>
-                  <p className="text-[10px] text-stone-400 mt-0.5">{k.label}</p>
-                </div>
-              ))}
-            </div>
-            <div className="pt-4 border-t border-stone-100 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-              <span className="text-[10px] text-stone-400">Generated Jun 19, 2026 · 5,985 events · 25 sessions</span>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Incident cards */}
-        <div className="grid md:grid-cols-3 gap-5 mb-12">
-          {incidents.map(inc => (
-            <div key={inc.rule} className="rounded-2xl border border-stone-200 p-6 flex flex-col gap-3 hover:border-stone-300 hover:shadow-sm transition-all">
-              <div className="flex items-center gap-2">
-                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold text-white tracking-wider ${inc.badgeColor}`}>
-                  {inc.badge}
-                </span>
-                <span className="text-[10px] font-mono text-stone-400">{inc.rule}</span>
-              </div>
-              <h3 className="text-sm font-bold text-stone-900 leading-snug">{inc.headline}</h3>
-              <p className="text-xs text-stone-500 leading-relaxed">{inc.detail}</p>
-            </div>
+        <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+          Control the action before it becomes an outcome.
+        </h2>
+        <p className="text-stone-500 mb-12 max-w-2xl">
+          Guard intercepts at the point of intent — not after a refund processes, a deploy lands, or a secret is read.
+        </p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {cards.map((card) => (
+            <DecisionCard key={card.action} {...card} compact />
           ))}
         </div>
-
-        <div className="rounded-2xl bg-indigo-50 border border-indigo-100 px-8 py-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-stone-900 mb-1">What would have happened without Guard?</p>
-            <p className="text-sm text-stone-500 leading-relaxed">
-              The production deploy would have executed. Six times in 18 days, on one developer&apos;s machine.
-            </p>
-          </div>
-          <CtaLink className="flex-shrink-0 rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-bold hover:bg-indigo-700 transition-colors whitespace-nowrap" />
-        </div>
-
       </div>
     </section>
   )
 }
 
-/* ─── Personas ─────────────────────────────────────────────────────────── */
+/* ─── 5. One policy across surfaces ──────────────────────────────────── */
 
-const personas = [
+function OnePolicySection() {
+  return (
+    <section className="py-20 px-6 border-t border-stone-100">
+      <div className="max-w-5xl mx-auto">
+        <div className="grid lg:grid-cols-2 gap-12 items-start">
+          <div>
+            <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+              Write the rule once. Apply it where agents work.
+            </h2>
+            <p className="text-stone-500 leading-relaxed mb-6">
+              One policy definition — one set of rules for which actions require approval, which are blocked, and which are audited. Guard applies it across your entire agent fleet: CLI hooks, HTTP proxy, and MCP layer.
+            </p>
+            <ul className="space-y-3 text-sm text-stone-600">
+              <li className="flex items-start gap-2">
+                <span className="text-emerald-600 font-bold mt-0.5">→</span>
+                <span>3 enforcement surfaces: CLI hook, HTTP proxy, MCP layer</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-emerald-600 font-bold mt-0.5">→</span>
+                <span>6 BYO gateway adapters: Azure, OpenRouter, Portkey, Helicone, LiteLLM (Preview), ConductAI</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-emerald-600 font-bold mt-0.5">→</span>
+                <span>39 pre-built playbooks with Guard enforcement built in</span>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <AgentSurfaceStrip />
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── 6. Native controls ──────────────────────────────────────────────── */
+
+function NativeControlsSection() {
+  return (
+    <section className="py-20 px-6 border-t border-stone-100 bg-stone-50">
+      <div className="max-w-5xl mx-auto">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          <div>
+            <RuntimeFlow variant="compact" />
+          </div>
+          <div>
+            <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+              Keep the controls you already have.
+            </h2>
+            <p className="text-stone-500 leading-relaxed mb-6">
+              Guard sits in front of your existing model gateways. Point to your Azure endpoint, your OpenRouter key, your LiteLLM proxy — Guard intercepts and enforces without replacing the stack underneath.
+            </p>
+            <div className="space-y-3 text-sm text-stone-600">
+              <p className="flex items-start gap-2">
+                <span className="text-stone-400 font-mono shrink-0">SDK</span>
+                <span>Drop-in base URL replacement. No SDK changes.</span>
+              </p>
+              <p className="flex items-start gap-2">
+                <span className="text-stone-400 font-mono shrink-0">CLI</span>
+                <span>Post-tool-use hook on Claude Code, Cursor, Codex, Copilot.</span>
+              </p>
+              <p className="flex items-start gap-2">
+                <span className="text-stone-400 font-mono shrink-0">MCP</span>
+                <span>Guard wraps MCP tool invocations before they reach the server.</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── 7. Evidence ─────────────────────────────────────────────────────── */
+
+function EvidenceSection() {
+  return (
+    <section className="py-20 px-6 border-t border-stone-100">
+      <div className="max-w-5xl mx-auto">
+        <div className="grid lg:grid-cols-2 gap-12 items-start">
+          <div>
+            <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+              Know exactly what happened — and why.
+            </h2>
+            <p className="text-stone-500 leading-relaxed mb-6">
+              Every Guard decision is recorded with agent, action, resource, matched rule, reason, user, and timestamp — in a SHA-256 hash-chained audit trail. Altered entries break the chain. Export-ready for SOC 2, HIPAA, and PCI DSS.
+            </p>
+            <ul className="space-y-2 text-sm text-stone-600">
+              {[
+                "Hash-chained integrity — not just logged, cryptographically ordered",
+                "Approval decisions captured with actor, timestamp, and rationale",
+                "Compliance report generation: SOC 2, HIPAA, PCI DSS",
+                "Export and verification API — machine-readable proof",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="text-emerald-600 font-bold mt-0.5 shrink-0">✓</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="flex justify-center lg:justify-end">
+            <EvidenceReceipt />
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── 8. Honest security ──────────────────────────────────────────────── */
+
+const HONEST_CAPABILITIES: CapabilityItem[] = [
+  { name: "Pre-call policy evaluation (allow / block / approve / audit)", status: "SHIPPED" },
+  { name: "SHA-256 hash-chained audit trail", status: "SHIPPED" },
+  { name: "CLI hook — Claude Code, Cursor, Codex, Copilot", status: "SHIPPED" },
+  { name: "HTTP proxy enforcement", status: "SHIPPED" },
+  { name: "MCP tool interception", status: "SHIPPED" },
+  { name: "Human approval gates (Slack + UI)", status: "SHIPPED" },
+  { name: "15 compliance packs (OWASP, SOC 2, HIPAA, PCI, EU AI Act, NIST, ISO 42001...)", status: "SHIPPED" },
+  { name: "Kubernetes deployment templates", status: "PREVIEW" },
+  { name: "LiteLLM Guard integration", status: "PREVIEW" },
+  { name: "Air-gapped / on-prem deployment", status: "PLANNED" },
+  { name: "Cross-agent workflow correlation (Operations)", status: "PLANNED" },
+]
+
+function HonestSecuritySection() {
+  return (
+    <section className="py-20 px-6 border-t border-stone-100 bg-stone-50">
+      <div className="max-w-5xl mx-auto">
+        <div className="grid lg:grid-cols-2 gap-12">
+          <div>
+            <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+              We publish where Guard stops.
+            </h2>
+            <p className="text-stone-500 leading-relaxed mb-4">
+              Every capability on this list maps to code in the repo. SHIPPED means it is in production. PREVIEW means it is working but not GA. PLANNED means it is on the roadmap, not in the codebase.
+            </p>
+            <p className="text-sm text-stone-400">
+              Last audit: 2026-09-01 · Source: automated codebase scan
+            </p>
+          </div>
+          <div>
+            <CapabilityStatus items={HONEST_CAPABILITIES} showLegend />
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── 9. Open source ──────────────────────────────────────────────────── */
+
+const OSS_COMPONENTS = [
   {
-    role: "Engineering Leaders",
-    title: "Your team is using 4 AI tools. You don't know which ones, what they cost, or what they did.",
-    desc: "Conduct gives you a single view across every tool, every developer, every session, without adding any process to your team's workflow.",
-    outcomes: [
-      "See every AI tool your team uses, in one dashboard",
-      "Know what AI is costing you, by person and by project",
-      "Enforce your engineering standards automatically",
-      "Answer security and compliance questions on demand",
-    ],
+    name: "conduct-cli",
+    license: "Apache-2.0",
+    repo: "packages/conduct-cli",
+    purpose: "Agent lifecycle management, Guard sync, testing",
   },
   {
-    role: "IT & Security Leaders",
-    title: "Your AI usage policy exists in a doc. It has never once stopped an agent.",
-    desc: "Conduct enforces policy at the layer where agents actually run. Not in a review meeting, not in a Notion page. At the moment the tool call happens.",
-    outcomes: [
-      "One policy layer across Claude, Codex, ChatGPT, Cursor, Copilot, Windsurf. Every surface your team uses.",
-      "No infrastructure changes. Works with your existing stack",
-      "Role-based policies for different teams and access levels",
-      "Spend budgets per developer, per tool, per project",
-    ],
+    name: "Guard runtime core",
+    license: "Apache-2.0",
+    repo: "apps/api/app/guard",
+    purpose: "Core enforcement engine — evaluation, scoring, audit",
   },
   {
-    role: "Security & Compliance",
-    title: "Compliance asked for an AI audit trail. You had nothing to show them.",
-    desc: "Every tool call, every decision, every developer, logged from day one. Export the audit trail in 30 seconds. Answer any question on demand.",
-    outcomes: [
-      "Credentials and PII blocked before they reach any LLM",
-      "Every tool call logged with decision, rule, and developer identity",
-      "Security scanning on every PR, automatic not manual",
-      "Compliance audit trail exportable on demand",
-    ],
+    name: "Playbook DSL compiler",
+    license: "Apache-2.0",
+    repo: "apps/api/app/compiler",
+    purpose: "YAML playbook definition and execution graph",
+  },
+  {
+    name: "Agent Booster MCP",
+    license: "Apache-2.0",
+    repo: "tools/booster",
+    purpose: "Developer productivity tools for Claude and Cursor",
   },
 ]
 
-/* ─── Guard Learns Teaser ──────────────────────────────────────────────── */
-
-function GuardLearnsTeaser() {
+function OpenSourceSection() {
   return (
-    <div className="bg-stone-50 border-y border-stone-100 py-8 px-6">
-      <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p className="text-sm text-stone-600 leading-relaxed">
-          <span className="font-semibold text-stone-900">Guard learns as it runs.</span>{" "}
-          Every session makes the next one more accurate for your team.
-        </p>
-        <a href="/guard" className="flex-shrink-0 text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors whitespace-nowrap">
-          See how it works →
-        </a>
-      </div>
-    </div>
-  )
-}
-
-/* ─── Personas ─────────────────────────────────────────────────────────── */
-
-function PersonasSection() {
-  return (
-    <section className="py-24 px-6 bg-stone-50">
+    <section className="py-20 px-6 border-t border-stone-100">
       <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-14">
-          <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-3">Built for the people responsible for how AI gets used.</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight">
-            Built for the people responsible<br />for how AI gets used.
-          </h2>
-        </div>
-        <div className="grid md:grid-cols-3 gap-5">
-          {personas.map(p => (
-            <div key={p.role} className="bg-white rounded-2xl border border-stone-200 p-6 hover:border-stone-300 hover:shadow-sm transition-all">
-              <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-3">{p.role}</p>
-              <h3 className="text-base font-bold text-stone-900 leading-snug mb-3">{p.title}</h3>
-              <p className="text-sm text-stone-500 leading-relaxed mb-4">{p.desc}</p>
-              <ul className="space-y-2">
-                {p.outcomes.map(o => (
-                  <li key={o} className="text-sm text-stone-600 flex items-start gap-2">
-                    <span className="text-indigo-500 font-bold flex-shrink-0 mt-0.5">→</span>
-                    {o}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Final CTA ────────────────────────────────────────────────────────── */
-
-function DemoVideoSection() {
-  return (
-    <section className="py-24 px-6 bg-stone-950">
-      <div className="max-w-4xl mx-auto text-center">
-        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3">See it in action</p>
-        <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-10">
-          Autonomous agents need an autonomous guard.
+        <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+          Open where trust matters.
         </h2>
-        <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
-          <iframe
-            className="absolute inset-0 w-full h-full rounded-2xl"
-            src="https://www.youtube.com/embed/NdgfQRkSg14"
-            title="Autonomous agents need an autonomous guard — ConductAI product overview"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
+        <p className="text-stone-500 mb-10 max-w-2xl">
+          The enforcement engine, CLI, compiler, and developer tools are Apache-2.0. You can read, audit, fork, and self-host them. The hosted product adds workspace management, multi-user access, and the managed SaaS layer.
+        </p>
+        <div className="border border-stone-200 rounded-xl overflow-hidden bg-white">
+          <div className="grid grid-cols-4 text-[10px] font-mono font-bold uppercase tracking-widest text-stone-400 px-5 py-3 border-b border-stone-100 bg-stone-50">
+            <span>Component</span>
+            <span>Licence</span>
+            <span>Repository path</span>
+            <span>Purpose</span>
+          </div>
+          {OSS_COMPONENTS.map((c, i) => (
+            <div
+              key={c.name}
+              className={`grid grid-cols-4 gap-2 px-5 py-3 text-sm ${
+                i < OSS_COMPONENTS.length - 1 ? "border-b border-stone-100" : ""
+              }`}
+            >
+              <span className="font-semibold text-stone-900 font-mono text-xs">{c.name}</span>
+              <span className="text-emerald-700 text-xs font-mono">{c.license}</span>
+              <span className="text-stone-400 text-xs font-mono truncate">{c.repo}</span>
+              <span className="text-stone-500 text-xs">{c.purpose}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-xs text-stone-400">
+          Apache-2.0 includes an explicit patent grant.{" "}
+          <a href="https://github.com/sseshachala/conductai" className="underline hover:text-stone-700 transition-colors">
+            View on GitHub →
+          </a>
+        </p>
+      </div>
+    </section>
+  )
+}
+
+/* ─── 10. Deployment ──────────────────────────────────────────────────── */
+
+const DEPLOYMENT_OPTIONS = [
+  {
+    label: "SaaS",
+    status: "SHIPPED",
+    desc: "Managed at conductai.ai. No infrastructure to run. US-hosted.",
+    cta: { text: "Start Discovery", href: "/discovery" },
+  },
+  {
+    label: "Docker",
+    status: "SHIPPED",
+    desc: "Self-hosted via Docker Compose. Full control. Apache-2.0.",
+    cta: { text: "View docs", href: "/docs/self-hosted" },
+  },
+  {
+    label: "Kubernetes",
+    status: "PREVIEW",
+    desc: "Reference deployment templates. Working but not GA.",
+    cta: { text: "Join preview", href: "/book-demo" },
+  },
+  {
+    label: "Air-gapped",
+    status: "PLANNED",
+    desc: "On-prem deployment with no external connectivity. On the roadmap.",
+    cta: null,
+  },
+]
+
+type DeployStatus = "SHIPPED" | "PREVIEW" | "PLANNED"
+
+const DEPLOY_STYLE: Record<DeployStatus, { badge: string; border: string }> = {
+  SHIPPED: { badge: "bg-emerald-50 text-emerald-700 border-emerald-200", border: "border-stone-200" },
+  PREVIEW: { badge: "bg-amber-50 text-amber-700 border-amber-200", border: "border-amber-200" },
+  PLANNED: { badge: "bg-stone-50 text-stone-500 border-stone-200", border: "border-stone-200" },
+}
+
+function DeploymentSection() {
+  return (
+    <section className="py-20 px-6 border-t border-stone-100 bg-stone-50">
+      <div className="max-w-5xl mx-auto">
+        <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+          Deploy Guard where your controls need to live.
+        </h2>
+        <p className="text-stone-500 mb-12 max-w-2xl">
+          Start on SaaS in minutes. Move to self-hosted Docker when you need data residency. Kubernetes templates are in preview.
+        </p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {DEPLOYMENT_OPTIONS.map((opt) => {
+            const s = DEPLOY_STYLE[opt.status as DeployStatus]
+            return (
+              <div key={opt.label} className={`border ${s.border} rounded-xl p-5 bg-white flex flex-col gap-3`}>
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-stone-900">{opt.label}</p>
+                  <span className={`text-[10px] font-mono font-bold uppercase tracking-wider border rounded px-1.5 py-0.5 ${s.badge}`}>
+                    {opt.status}
+                  </span>
+                </div>
+                <p className="text-sm text-stone-500 leading-relaxed flex-1">{opt.desc}</p>
+                {opt.cta && (
+                  <a
+                    href={opt.cta.href}
+                    className="text-sm font-semibold text-stone-900 hover:underline mt-auto"
+                  >
+                    {opt.cta.text} →
+                  </a>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     </section>
   )
 }
 
-function DeploymentStripSection() {
-  const tiers = [
-    { icon: "☁️", name: "SaaS", desc: "Up in minutes. No infra." },
-    { icon: "🏢", name: "Cloud (BYOC)", desc: "Your AWS / GCP / Azure account." },
-    { icon: "🔒", name: "On-premise", desc: "Air-gapped. Your data never leaves." },
-  ]
-  return (
-    <section className="py-16 px-6 bg-stone-50 border-y border-stone-100">
-      <div className="max-w-4xl mx-auto text-center">
-        <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-6">Flexible deployment</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          {tiers.map(t => (
-            <div key={t.name} className="bg-white rounded-2xl border border-stone-200 px-6 py-5 text-left">
-              <div className="text-2xl mb-2">{t.icon}</div>
-              <p className="font-bold text-stone-900 text-sm">{t.name}</p>
-              <p className="text-stone-500 text-xs mt-1">{t.desc}</p>
-            </div>
-          ))}
-        </div>
-        <a href="/deployment" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
-          Compare deployment options →
-        </a>
-      </div>
-    </section>
-  )
-}
+/* ─── Final CTA ───────────────────────────────────────────────────────── */
 
 function FinalCTASection() {
   return (
-    <section className="py-24 px-6 bg-gradient-to-br from-indigo-600 to-violet-600">
-      <div className="max-w-3xl mx-auto text-center">
-        <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-4">
-          Your team is already<br />using AI agents.<br />Conduct is how you<br />run them and govern them.
+    <section className="py-24 px-6 border-t border-stone-100">
+      <div className="max-w-2xl mx-auto text-center">
+        <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+          Put runtime policy in front of your agents.
         </h2>
-        <p className="text-indigo-200 text-lg leading-relaxed mb-10 max-w-xl mx-auto">
-          GitHub gives the CISO a setting. ConductGuard gives them enforcement.
+        <p className="text-stone-500 mb-8">
+          Discovery mode runs for 14 days, read-only. See every agent action across your team before you enforce anything.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <CtaLink className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center" />
-          <a href="https://cal.com/sudhi-seshachala-pks7pd" target="_blank" rel="noopener" className="rounded-xl border border-white/40 text-white px-7 py-3.5 text-base font-semibold hover:bg-white/10 transition-colors w-full sm:w-auto text-center">
+          <a
+            href="/discovery"
+            className="rounded-xl bg-stone-900 text-white px-8 py-4 text-base font-semibold hover:bg-stone-700 transition-colors"
+          >
+            Start Discovery — 14 days free
+          </a>
+          <a
+            href="/book-demo"
+            className="rounded-xl border border-stone-200 text-stone-700 px-8 py-4 text-base font-semibold hover:bg-stone-50 transition-colors"
+          >
             Book a Demo
           </a>
         </div>
-        <p className="text-indigo-300 text-xs mt-5">Free tier · No infrastructure changes · Works in minutes</p>
       </div>
     </section>
   )
 }
 
-/* ─── Gateway Comparison ─────────────────────────────────────── */
-
-function GatewaySection() {
-  return (
-    <section className="bg-white border-t border-stone-100 px-6 py-20">
-      <div className="max-w-3xl mx-auto">
-        <p className="text-xs font-semibold uppercase tracking-widest text-stone-400 mb-4">How ConductGuard is different</p>
-        <h2 className="text-3xl font-bold text-stone-900 mb-4 leading-tight">
-          A gateway governs what the model costs. Conduct governs what the agent does.
-        </h2>
-        <p className="text-stone-500 mb-10 text-lg">
-          Provider gateways sit between your team and the LLM. They cap spend, enforce SSO, and log model requests. That&apos;s the right layer for cost control.
-        </p>
-        <div className="grid md:grid-cols-2 gap-6 mb-10">
-          <div className="border border-stone-200 rounded-xl p-6">
-            <p className="text-sm font-semibold text-stone-400 uppercase tracking-widest mb-4">Provider gateway</p>
-            <ul className="space-y-3 text-sm text-stone-600">
-              {([
-                ["yes", "Caps LLM spend per user"],
-                ["yes", "SSO sign-in"],
-                ["yes", "Model selection controls"],
-                ["no",  "Sees tool calls (Bash, Write, Read)"],
-                ["no",  "Blocks destructive commands before they run"],
-                ["no",  "Detects credential leaks in tool input"],
-                ["no",  "One policy across Claude, Codex, ChatGPT, Cursor, Copilot"],
-                ["no",  "Custody proof log"],
-              ] as [string, string][]).map(([state, label]) => (
-                <li key={label} className="flex items-start gap-2">
-                  <span className={state === "yes" ? "text-green-500 font-bold mt-0.5" : "text-stone-300 font-bold mt-0.5"}>{state === "yes" ? "✓" : "✗"}</span>
-                  <span className={state === "no" ? "text-stone-400" : ""}>{label}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="border border-indigo-200 bg-indigo-50 rounded-xl p-6">
-            <p className="text-sm font-semibold text-indigo-500 uppercase tracking-widest mb-4">ConductGuard</p>
-            <ul className="space-y-3 text-sm text-stone-700">
-              {[
-                "Caps LLM spend per user",
-                "SSO sign-in",
-                "Model selection controls",
-                "Sees tool calls (Bash, Write, Read)",
-                "Blocks destructive commands before they run",
-                "Detects credential leaks in tool input",
-                "One policy across Claude, Codex, ChatGPT, Cursor, Copilot",
-                "Custody proof log",
-              ].map((label) => (
-                <li key={label} className="flex items-start gap-2">
-                  <span className="text-indigo-500 font-bold mt-0.5">✓</span>
-                  <span>{label}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-        <p className="text-stone-400 text-sm">
-          Use a provider gateway for spend control. Use ConductGuard for everything the model touches after it decides what to do.
-        </p>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Honesty Block ────────────────────────────────────────────── */
-
-function HonestySection() {
-  return (
-    <section className="bg-stone-50 border-y border-stone-100 px-6 py-16">
-      <div className="max-w-3xl mx-auto">
-        <h2 className="text-2xl font-bold text-stone-900 mb-4">What we don&apos;t protect yet.</h2>
-        <p className="text-stone-500 leading-relaxed mb-4">
-          Credentials are decrypted in the executor process. There&apos;s no per-environment egress allowlist. We don&apos;t statically analyse third-party playbooks before install. All of it is documented, with our plan for each.
-        </p>
-        <a href="/security" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
-          Read the threat model →
-        </a>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Footer ───────────────────────────────────────────────────────────── */
+/* ─── Footer ──────────────────────────────────────────────────────────── */
 
 function PageFooter() {
+  const footerCols = [
+    {
+      heading: "Product",
+      links: [
+        ["Guard", "/guard"],
+        ["Playbooks", "/playbooks"],
+        ["Evidence", "/evidence"],
+        ["MCP", "/mcp-gateway"],
+      ] as [string, string][],
+    },
+    {
+      heading: "Platform",
+      links: [
+        ["Discovery", "/docs/discovery"],
+        ["Router", "/router"],
+        ["Templates", "/docs/templates"],
+        ["Registry", "/registry"],
+        ["Team OS", "/team-os"],
+        ["CLI", "/tools/conduct-cli"],
+      ] as [string, string][],
+    },
+    {
+      heading: "Solutions",
+      links: [
+        ["Engineering Agents", "/solutions/engineering-leaders"],
+        ["Security Teams", "/solutions/security-compliance"],
+        ["Business Actions", "/solutions/action-governance"],
+        ["Financial Services", "/solutions/financial-services"],
+        ["Life Sciences", "/solutions/life-sciences"],
+        ["Deployment options", "/deployment"],
+      ] as [string, string][],
+    },
+    {
+      heading: "Developers",
+      links: [
+        ["Docs", "/docs"],
+        ["CLI", "/tools/conduct-cli"],
+        ["Open Source", "/open-source"],
+        ["GitHub", "https://github.com/sseshachala/conductai"],
+      ] as [string, string][],
+    },
+    {
+      heading: "Company",
+      links: [
+        ["About", "/about"],
+        ["Blog", "/blog"],
+        ["Security", "/security"],
+        ["Privacy", "/privacy"],
+        ["Terms", "/terms"],
+      ] as [string, string][],
+    },
+  ]
+
   return (
     <footer className="border-t border-stone-100 py-10 px-6 bg-white">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between gap-8 mb-10">
           <div>
             <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto mb-3" />
-            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">AI agent governance for engineering teams.</p>
+            <p className="text-sm text-stone-400 max-w-xs leading-relaxed">
+              Runtime policy for AI agent stacks.
+            </p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
-            {[
-              { heading: "Product", links: [["Team OS", "/team-os"], ["Guard", "/guard"], ["MCP Gateway", "/mcp-gateway"], ["Use cases", "/use-cases"], ["Registry", "/registry"], ["CLI", "/tools/conduct-cli"], ["Frameworks", "/frameworks"]] as [string, string][] },
-              { heading: "Solutions", links: [["Engineering leaders", "/solutions/engineering-leaders"], ["Security & compliance", "/solutions/security-compliance"], ["Security Loop", "/solutions/security-loop"], ["Action governance", "/solutions/action-governance"], ["Memory hardening", "/solutions/memory-hardening"], ["Okta + Conduct", "/solutions/okta-plus-conduct"], ["Financial services", "/solutions/financial-services"], ["Life sciences", "/solutions/life-sciences"], ["All use cases", "/use-cases"], ["Deployment options", "/deployment"]] as [string, string][] },
-              { heading: "Company", links: [["About", "/about"], /* ["Partners", "/partners"], */ ["Blog", "/blog"]] as [string, string][] },
-              { heading: "Resources", links: [["Docs", "/docs"], ["Open source", "/open-source"], ["GitHub", "https://github.com/sseshachala/conduct-cli"]] as [string, string][] },
-              { heading: "Legal", links: [["Privacy", "/privacy"], ["Terms", "/terms"]] as [string, string][] },
-            ].map(col => (
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-8">
+            {footerCols.map((col) => (
               <div key={col.heading}>
-                <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3">{col.heading}</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3">
+                  {col.heading}
+                </p>
                 <ul className="space-y-2">
                   {col.links.map(([label, href]) => (
                     <li key={label}>
-                      <a href={href} className="text-sm text-stone-500 hover:text-stone-900 transition-colors">{label}</a>
+                      <a
+                        href={href}
+                        className="text-sm text-stone-500 hover:text-stone-900 transition-colors"
+                      >
+                        {label}
+                      </a>
                     </li>
                   ))}
                 </ul>
@@ -885,13 +808,31 @@ function PageFooter() {
           </div>
         </div>
         <div className="border-t border-stone-100 pt-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-stone-400">
-          <span>© {new Date().getFullYear()} Conduct AI. All rights reserved.</span>
+          <span>
+            © {new Date().getFullYear()} Conduct AI. All rights reserved. · Patent pending (US 64/109,502)
+          </span>
           <div className="flex items-center gap-4">
-            <a href="https://www.linkedin.com/company/conductai/" target="_blank" rel="noopener noreferrer" className="hover:text-stone-700 transition-colors" aria-label="LinkedIn">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+            <a
+              href="https://www.linkedin.com/company/conductai/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-stone-700 transition-colors"
+              aria-label="LinkedIn"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+              </svg>
             </a>
-            <a href="https://www.youtube.com/@Conductai" target="_blank" rel="noopener noreferrer" className="hover:text-stone-700 transition-colors" aria-label="YouTube">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            <a
+              href="https://www.youtube.com/@Conductai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-stone-700 transition-colors"
+              aria-label="YouTube"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+              </svg>
             </a>
             <span>Envisioned, designed and developed with love from Houston</span>
           </div>

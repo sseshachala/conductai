@@ -42,7 +42,7 @@ function ProjectsSection() {
       <ProjectCard
         name="Conduct Guard"
         tagline="Runtime policy enforcement for AI agents"
-        description="Guard sits at the LLM call and shell tool boundary — block, warn, audit, or inject before an action executes. Ships with 20+ compliance packs (OWASP, SOC 2, HIPAA, PCI, EU AI Act), a canvas UI, YAML playbook DSL, and hash-chained audit trail. Apache 2.0 — free for commercial and non-commercial use, with an explicit patent grant."
+        description="Guard sits at the LLM call and shell tool boundary — block, warn, audit, or inject before an action executes. Ships with 15 compliance packs (OWASP, SOC 2, HIPAA, PCI, EU AI Act), a canvas UI, YAML playbook DSL, and hash-chained audit trail. Apache 2.0 — free for commercial and non-commercial use, with an explicit patent grant."
         install={["git clone https://github.com/sseshachala/conductai", "docker compose up"]}
         githubUrl="https://github.com/sseshachala/conductai"
         guardRelation="This is Guard itself — the policy engine, packs, canvas, and hash chain. Self-host for full control, or use the hosted product."
