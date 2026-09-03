@@ -498,6 +498,24 @@ async def _proxy(
         _vault_key_val = _vault_key(db, workspace_id, provider, _environment_id)
         real_key = _upstream_key or _vault_key_val
         if not real_key:
+            # #1567 PR 2: trial workspaces with no BYO key fall through to a
+            # platform-funded env key, fenced by plan + provider + identity + daily cap.
+            from app.modules.guard.trial_upstream import resolve_trial_key
+            _trial_key, _trial_status = resolve_trial_key(
+                db, workspace_id, provider, str(_agent_identity_id) if _agent_identity_id else None,
+            )
+            if _trial_status == "expired":
+                return _fail_closed(
+                    401,
+                    "trial_expired: 7-day trial ended. Add your own key in Settings → Environments.",
+                )
+            if _trial_status == "exceeded":
+                return _fail_closed(
+                    429,
+                    "trial_exceeded: daily trial quota hit. Add your own key in Settings → Environments.",
+                )
+            real_key = _trial_key
+        if not real_key:
             return _fail_closed(
                 503,
                 f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
