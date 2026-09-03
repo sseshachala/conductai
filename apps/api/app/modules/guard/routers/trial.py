@@ -40,11 +40,30 @@ router = APIRouter(prefix="/guard/trial", tags=["guard-trial"])
 class TrialSessionOut(BaseModel):
     plan: str
     expired: bool
+    ineligible: bool = False
+    reason: str | None = None
     days_remaining: int
     token: str | None
     gateway_url: str
     cap_used: int
     cap_max: int
+
+
+def _workspace_is_active(db: Session, workspace_id: str) -> bool:
+    """A workspace is 'active' if it has ever run a workflow or wired any
+    integration (vault key). Trial seeding is skipped for these — see PR 4
+    cohort-2 fix."""
+    has_run = db.execute(
+        text("SELECT 1 FROM runs WHERE workspace_id = :ws LIMIT 1"),
+        {"ws": workspace_id},
+    ).fetchone()
+    if has_run:
+        return True
+    has_creds = db.execute(
+        text("SELECT 1 FROM integrations WHERE workspace_id = :ws LIMIT 1"),
+        {"ws": workspace_id},
+    ).fetchone()
+    return bool(has_creds)
 
 
 def _load_trial_identity(db: Session, workspace_id: str):
@@ -88,6 +107,17 @@ def get_trial_session(
 
     identity = _load_trial_identity(db, workspace_id)
     if identity is None:
+        # PR 4: active workspaces (any run or vault key) don't get a trial
+        # identity minted for them. The page renders a "you're past the
+        # trial" panel and points them at the real gateway path.
+        if _workspace_is_active(db, workspace_id):
+            log.info("guard.trial.refused_active_workspace", workspace_id=workspace_id)
+            return TrialSessionOut(
+                plan=plan, expired=False, ineligible=True, reason="active_workspace",
+                days_remaining=0, token=None,
+                gateway_url=settings.conduct_proxy_url,
+                cap_used=0, cap_max=TRIAL_DAILY_CAP,
+            )
         seed_trial(db, workspace_id)
         db.commit()
         identity = _load_trial_identity(db, workspace_id)
