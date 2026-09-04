@@ -112,6 +112,7 @@ function MarketingNav() {
           <ProductDropdown />
           <SolutionsDropdown />
           <DevelopersDropdown />
+          <a href="/security" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Security</a>
           <a href="/pricing" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Pricing</a>
           <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
         </nav>
@@ -143,6 +144,7 @@ function MarketingFooter() {
         ["Playbooks", "/playbooks"],
         ["Evidence", "/evidence"],
         ["MCP", "/mcp-gateway"],
+        ["Security", "/security"],
         ["Pricing", "/pricing"],
       ] as [string, string][],
     },
