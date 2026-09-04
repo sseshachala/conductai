@@ -1,9 +1,9 @@
 import Link from "next/link"
 
 export const metadata = {
-  title: "Discovery — Conduct Docs",
+  title: "Agent Discovery — Conduct Docs",
   description:
-    "How Conduct's Discovery flow works and what it surfaces during the 14-day trial.",
+    "How Conduct's Agent Discovery flow works. Every hook, MCP call, and proxy request registers an agent automatically — no SDK install, no manual registration.",
 }
 
 export default function DocsDiscoveryPage() {
@@ -11,13 +11,13 @@ export default function DocsDiscoveryPage() {
     <div className="min-h-screen bg-white">
       <main className="max-w-3xl mx-auto px-6 py-20">
         <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-4">
-          Docs → Discovery
+          Docs → Agent Discovery
         </p>
         <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-stone-900 leading-[1.1] mb-4">
-          Discovery
+          Agent Discovery
         </h1>
         <p className="text-lg text-stone-500 leading-relaxed mb-10">
-          Discovery scans the AI tools your team is already using and shows you what runs where — Claude Code, Cursor, Codex, Copilot, MCP clients — so you know what Guard needs to enforce before you turn it on.
+          Every hook, MCP call, and proxy request registers the agent automatically. No SDK install. No manual registration. Your agent fleet appears as it runs — Claude Code, Cursor, Codex, Copilot, MCP clients — so you know what Guard needs to enforce before you turn it on.
         </p>
 
         <section className="mb-10">
@@ -50,7 +50,7 @@ export default function DocsDiscoveryPage() {
         </section>
 
         <div className="mt-16 pt-8 border-t border-stone-100 text-sm text-stone-400">
-          Full docs shipping soon. Meanwhile: <Link href="/sign-up" className="text-stone-900 font-semibold hover:underline">start Discovery</Link>.
+          Full docs shipping soon. Meanwhile: <Link href="/sign-up" className="text-stone-900 font-semibold hover:underline">start Agent Discovery</Link>.
         </div>
       </main>
     </div>

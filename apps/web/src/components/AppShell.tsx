@@ -147,7 +147,7 @@ const PALETTE_COMMANDS = [
   { group: "GOVERN", label: "Guard · Overview", href: "/theguard", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Spend", href: "/theguard/spend", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Policies", href: "/theguard/policies", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Discovery", href: "/theguard/discovery", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Agent Discovery", href: "/theguard/discovery", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Activity", href: "/theguard/activity", icon: "Shield" as const },
   { group: "WORKSPACE", label: "Integrations", href: "/integrations", icon: "Gear" as const },
   { group: "WORKSPACE", label: "Agent ID", href: "/agent-identity", icon: "Gear" as const },

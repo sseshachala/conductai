@@ -9,6 +9,8 @@
 
 **Governance for AI agents. Ship in 60 seconds.**
 
+_Built for engineering teams. Install in 10 minutes. Evidence for the CISO from day one._
+
 </div>
 
 ```bash
