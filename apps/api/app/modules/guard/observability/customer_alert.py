@@ -2,7 +2,7 @@
 
 Companion to the internal ERROR alert in ``fail_open_alert.py``:
 
-- Internal alert  → Conduct ops, `CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK`, per-surface
+- Internal alert  → Conduct ops, `CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL`, per-surface
 - Customer alert  → workspace's own Slack, routed through the
   ``guard_notification_channels`` table under action="fail_open"
 

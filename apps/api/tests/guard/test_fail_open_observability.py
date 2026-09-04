@@ -19,7 +19,7 @@ from app.modules.guard.observability.metrics import GUARD_ENGINE_ERRORS
 
 
 WS = "fd4b6608-f320-44b8-af22-fc579bd53600"
-WEBHOOK = "https://hooks.slack.com/services/T00/B00/XXX"
+WEBHOOK = "conduct-alerts"
 
 
 def _counter_value(surface: str) -> float:
@@ -52,7 +52,7 @@ def _isolate_from_customer_alert():
 
 
 def test_counter_increments_and_posts_once(monkeypatch):
-    monkeypatch.setenv(foa._ALERT_WEBHOOK_ENV, WEBHOOK)
+    monkeypatch.setenv(foa._ALERT_CHANNEL_ENV, WEBHOOK)
     before = _counter_value("proxy")
 
     with patch("app.modules.guard.observability.fail_open_alert.httpx.post") as post:
@@ -70,7 +70,7 @@ def test_counter_increments_and_posts_once(monkeypatch):
 
 
 def test_rate_limit_dedupes_second_event_within_window(monkeypatch):
-    monkeypatch.setenv(foa._ALERT_WEBHOOK_ENV, WEBHOOK)
+    monkeypatch.setenv(foa._ALERT_CHANNEL_ENV, WEBHOOK)
     before = _counter_value("proxy")
 
     with patch("app.modules.guard.observability.fail_open_alert.httpx.post") as post:
@@ -86,7 +86,7 @@ def test_rate_limit_dedupes_second_event_within_window(monkeypatch):
 
 
 def test_different_surface_does_not_dedup(monkeypatch):
-    monkeypatch.setenv(foa._ALERT_WEBHOOK_ENV, WEBHOOK)
+    monkeypatch.setenv(foa._ALERT_CHANNEL_ENV, WEBHOOK)
 
     with patch("app.modules.guard.observability.fail_open_alert.httpx.post") as post:
         with patch("app.modules.guard.observability.fail_open_alert.resolve_workspace_context") as rwc:
@@ -98,7 +98,7 @@ def test_different_surface_does_not_dedup(monkeypatch):
 
 
 def test_unset_webhook_skips_post_but_still_increments(monkeypatch):
-    monkeypatch.delenv(foa._ALERT_WEBHOOK_ENV, raising=False)
+    monkeypatch.delenv(foa._ALERT_CHANNEL_ENV, raising=False)
     before = _counter_value("proxy")
 
     with patch("app.modules.guard.observability.fail_open_alert.httpx.post") as post:
@@ -109,7 +109,7 @@ def test_unset_webhook_skips_post_but_still_increments(monkeypatch):
 
 
 def test_slack_post_failure_does_not_raise(monkeypatch):
-    monkeypatch.setenv(foa._ALERT_WEBHOOK_ENV, WEBHOOK)
+    monkeypatch.setenv(foa._ALERT_CHANNEL_ENV, WEBHOOK)
 
     with patch("app.modules.guard.observability.fail_open_alert.httpx.post", side_effect=RuntimeError("slack down")):
         with patch("app.modules.guard.observability.fail_open_alert.resolve_workspace_context") as rwc:
@@ -121,7 +121,7 @@ def test_slack_post_failure_does_not_raise(monkeypatch):
 def test_burst_count_included_after_window_flip(monkeypatch):
     """After the rate-limit window closes, the next post surfaces how many
     events were suppressed so ops can see burst magnitude."""
-    monkeypatch.setenv(foa._ALERT_WEBHOOK_ENV, WEBHOOK)
+    monkeypatch.setenv(foa._ALERT_CHANNEL_ENV, WEBHOOK)
 
     # Force the window to appear expired by shrinking it for this test.
     monkeypatch.setattr(foa, "_RATE_LIMIT_SEC", 0)
@@ -137,7 +137,7 @@ def test_burst_count_included_after_window_flip(monkeypatch):
 
 
 def test_context_lookup_failure_falls_back_to_workspace_id(monkeypatch):
-    monkeypatch.setenv(foa._ALERT_WEBHOOK_ENV, WEBHOOK)
+    monkeypatch.setenv(foa._ALERT_CHANNEL_ENV, WEBHOOK)
 
     with patch("app.modules.guard.observability.fail_open_alert.httpx.post") as post:
         with patch(

@@ -2,7 +2,7 @@
 
 Posts a single Slack message per (workspace_id, surface) burst so a broken
 policy engine (e.g. Redis outage) can't spam the ops channel thousands of
-times per minute. Reads ``CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK`` from env;
+times per minute. Reads ``CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL`` from env;
 if unset the alerter no-ops and only the Prometheus counter fires.
 
 Customer-facing WARNING alerts (using the workspace's own Slack config) are
@@ -23,7 +23,7 @@ from app.modules.guard.observability.name_cache import resolve_workspace_context
 
 log = structlog.get_logger(__name__)
 
-_ALERT_WEBHOOK_ENV = "CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK"
+_ALERT_CHANNEL_ENV = "CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL"
 _RATE_LIMIT_SEC = 300  # 5 minutes per (workspace_id, surface)
 _HTTP_TIMEOUT_SEC = 3.0
 
@@ -114,7 +114,7 @@ def record_fail_open(
     # in customer_alert._should_post.
     _also_notify_customer(db, ws_id)
 
-    webhook = os.environ.get(_ALERT_WEBHOOK_ENV, "").strip()
+    webhook = os.environ.get(_ALERT_CHANNEL_ENV, "").strip()
     if not webhook:
         return
 
