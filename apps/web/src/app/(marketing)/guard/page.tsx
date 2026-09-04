@@ -228,7 +228,7 @@ export default function GuardPage() {
               Start Agent Discovery — 14 days free
             </Link>
             <a
-              href="https://github.com/conductai/conduct"
+              href="https://github.com/sseshachala/conductai"
               className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
             >
               View the open-source runtime →

@@ -10,7 +10,7 @@ const OSS_COMPONENTS = [
   {
     name: "conduct-cli",
     license: "Apache-2.0",
-    repo: "github.com/conductai/conduct",
+    repo: "github.com/sseshachala/conductai",
     path: "packages/conduct-cli/",
     pypi: "conduct-cli",
     purpose: "Agent lifecycle management, Guard sync, policy testing. Runs on developer machines and in CI/CD.",
@@ -18,7 +18,7 @@ const OSS_COMPONENTS = [
   {
     name: "Guard runtime core",
     license: "Apache-2.0",
-    repo: "github.com/conductai/conduct",
+    repo: "github.com/sseshachala/conductai",
     path: "apps/api/app/guard/",
     pypi: null,
     purpose: "Core enforcement engine: rule evaluation, decision scoring, hash-chained audit trail. Runs inside the Conduct API server.",
@@ -26,7 +26,7 @@ const OSS_COMPONENTS = [
   {
     name: "Playbook DSL compiler",
     license: "Apache-2.0",
-    repo: "github.com/conductai/conduct",
+    repo: "github.com/sseshachala/conductai",
     path: "apps/api/app/compiler/",
     pypi: null,
     purpose: "Compiles YAML playbook definitions into executable DAG runs. Shared by all 39 shipped playbooks.",
@@ -34,7 +34,7 @@ const OSS_COMPONENTS = [
   {
     name: "Agent Booster MCP",
     license: "Apache-2.0",
-    repo: "github.com/conductai/conduct",
+    repo: "github.com/sseshachala/conductai",
     path: "tools/booster/",
     pypi: null,
     purpose: "Developer productivity tools (semantic search, smart read, test coverage) for Claude Code and Cursor. Runs locally or on Vercel.",
@@ -60,7 +60,7 @@ export default function OpenSourcePage() {
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <a
-              href="https://github.com/conductai/conduct"
+              href="https://github.com/sseshachala/conductai"
               className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
             >
               View the open-source runtime →
@@ -165,7 +165,7 @@ export default function OpenSourcePage() {
           <h2 className="text-2xl font-bold text-stone-900 mb-4">Start with the source.</h2>
           <div className="flex flex-wrap justify-center gap-3">
             <a
-              href="https://github.com/conductai/conduct"
+              href="https://github.com/sseshachala/conductai"
               className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
             >
               View on GitHub →
