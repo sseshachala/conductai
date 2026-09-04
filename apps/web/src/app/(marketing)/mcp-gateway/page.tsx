@@ -1,5 +1,4 @@
 import Link from "next/link"
-import { RuntimeFlow } from "@/components/marketing/facelift/RuntimeFlow"
 import { DecisionCard } from "@/components/marketing/facelift/DecisionCard"
 
 export const metadata = {
@@ -45,15 +44,27 @@ export default function MCPPage() {
         {/* MCP flow diagram */}
         <section className="mb-20">
           <h2 className="text-2xl font-bold text-stone-900 mb-3">
-            MCP client → Guard → MCP server.
+            Agent → Guard → Model / Tool.
           </h2>
           <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
             Guard wraps the MCP transport layer. Clients connect to Guard as if it were the MCP server.
             Guard evaluates each tool call and forwards allowed calls to the upstream server.
             Blocked calls never reach the server.
           </p>
-          <div className="border border-stone-200 rounded-2xl bg-stone-50 p-8 mb-8">
-            <RuntimeFlow variant="compact" />
+          <div className="border border-stone-200 rounded-2xl bg-white p-8 sm:p-12 mb-8">
+            <div className="flex items-center justify-center gap-3 sm:gap-6">
+              <div className="flex-1 max-w-[220px] border border-stone-200 rounded-2xl bg-white px-4 sm:px-6 py-6 sm:py-8 text-center shadow-sm">
+                <p className="text-lg sm:text-2xl font-black tracking-tight text-stone-900">Agent</p>
+              </div>
+              <FlowArrow />
+              <div className="flex-1 max-w-[220px] rounded-2xl bg-stone-900 px-4 sm:px-6 py-6 sm:py-8 text-center shadow-md">
+                <p className="text-lg sm:text-2xl font-black tracking-tight text-white">Guard</p>
+              </div>
+              <FlowArrow />
+              <div className="flex-1 max-w-[220px] border border-stone-200 rounded-2xl bg-white px-4 sm:px-6 py-6 sm:py-8 text-center shadow-sm">
+                <p className="text-base sm:text-2xl font-black tracking-tight text-stone-900 whitespace-nowrap">Model / Tool</p>
+              </div>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm font-mono">
             {[
@@ -187,5 +198,24 @@ export default function MCPPage() {
 
       </main>
     </div>
+  )
+}
+
+function FlowArrow() {
+  return (
+    <svg
+      className="w-5 h-3 sm:w-8 sm:h-4 text-stone-400 shrink-0"
+      viewBox="0 0 32 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M0 8h26M20 2l6 6-6 6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
