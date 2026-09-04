@@ -46,6 +46,7 @@ function Nav() {
           <ProductDropdown />
           <SolutionsDropdown />
           <DevelopersDropdown />
+          <a href="/pricing" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Pricing</a>
           <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
         </nav>
 
@@ -91,6 +92,7 @@ function Nav() {
               <MobileNavItem href="/playbooks" label="Playbooks" />
               <MobileNavItem href="/evidence" label="Evidence" />
               <MobileNavItem href="/mcp-gateway" label="MCP" />
+              <MobileNavItem href="/pricing" label="Pricing" />
             </MobileNavGroup>
             <MobileNavGroup label="Solutions">
               <MobileNavItem href="/solutions/engineering-leaders" label="Engineering Agents" />
