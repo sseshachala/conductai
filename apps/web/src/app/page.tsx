@@ -252,7 +252,7 @@ function HeroSection() {
             One policy across your AI agent stack.
           </h1>
           <p className="text-base sm:text-lg text-stone-500 leading-relaxed mb-4 sm:mb-5 max-w-xl">
-            Conduct Guard enforces runtime policy across supported AI agents, model gateways, and MCP tools — before consequential actions execute.
+            Conduct Guard enforces runtime policy across any MCP-compatible AI agent, model gateway, and MCP tool — before consequential actions execute.
           </p>
           <p className="text-sm sm:text-base font-semibold text-stone-700 mb-7 sm:mb-8 max-w-xl">
             Install in 10 minutes. Evidence for the CISO from day one.
