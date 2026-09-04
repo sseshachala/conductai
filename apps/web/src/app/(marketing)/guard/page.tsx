@@ -26,8 +26,8 @@ export default function GuardPage() {
             Runtime policy for every AI agent.
           </h1>
           <p className="text-lg text-stone-500 max-w-2xl mx-auto leading-relaxed mb-4">
-            Conduct Guard enforces runtime policy across supported AI agents, model gateways, and MCP
-            tools — before consequential actions execute.
+            Conduct Guard enforces runtime policy across any MCP-compatible AI agent, model gateway, and MCP
+            tool — before consequential actions execute.
           </p>
           <p className="text-sm font-mono font-bold text-stone-700 tracking-wider mb-3">
             Allow. Approve. Block. Prove.

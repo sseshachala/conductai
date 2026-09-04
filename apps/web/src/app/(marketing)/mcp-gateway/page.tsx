@@ -153,21 +153,32 @@ export default function MCPPage() {
 
         {/* Supported MCP clients */}
         <section className="mb-20">
-          <h2 className="text-2xl font-bold text-stone-900 mb-3">Supported MCP clients</h2>
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Works with any MCP client</h2>
+          <p className="text-sm text-stone-600 mb-6 max-w-2xl leading-relaxed">
+            If it speaks MCP, Guard wraps it. There is no allow-list of vendors — any client that implements
+            the Model Context Protocol connects through the same discovery endpoint and gets the same policy,
+            audit, and OAuth handling. The clients below are the ones we test on every release.
+          </p>
           <div className="border border-stone-200 rounded-2xl overflow-hidden bg-white">
             <div className="divide-y divide-stone-100">
               {[
-                { client: "Claude Desktop", note: "Native MCP support", status: "Shipped" },
-                { client: "Cursor", note: "MCP tool calling", status: "Shipped" },
-                { client: "Custom agents", note: "Any MCP-compatible client via proxy or direct MCP", status: "Shipped" },
-              ].map(({ client, note, status }) => (
+                { client: "Claude Desktop", note: "Native MCP support" },
+                { client: "Claude Code", note: "MCP tool calling in the CLI" },
+                { client: "Cursor", note: "MCP tool calling in the IDE" },
+                { client: "OpenAI Codex CLI", note: "MCP tool calling" },
+                { client: "ChatGPT Desktop", note: "MCP connectors" },
+                { client: "Gemini CLI", note: "MCP tool calling" },
+                { client: "Windsurf", note: "MCP tool calling in the IDE" },
+                { client: "VS Code (Copilot Chat)", note: "MCP tool calling" },
+                { client: "Any MCP-compatible client", note: "Direct MCP or LLM proxy — no client changes required" },
+              ].map(({ client, note }) => (
                 <div key={client} className="flex items-center justify-between px-6 py-4 text-sm">
                   <div>
                     <span className="font-medium text-stone-900">{client}</span>
                     <span className="text-stone-400 ml-2 text-xs">{note}</span>
                   </div>
                   <span className="text-[10px] font-mono font-bold uppercase tracking-wider border border-emerald-200 bg-emerald-50 text-emerald-700 rounded px-2 py-0.5">
-                    {status}
+                    Shipped
                   </span>
                 </div>
               ))}

@@ -5,7 +5,7 @@ import { DecisionCard } from "@/components/marketing/facelift/DecisionCard"
 export const metadata = {
   title: "Engineering Agents — Consistent policy across every AI tool | Conduct",
   description:
-    "Let developers choose their AI tools. Guard enforces consistent policy across Claude Code, Cursor, Copilot, and Codex — without slowing anyone down.",
+    "Let developers choose their AI tools. Guard enforces consistent policy across Claude Code, Cursor, Copilot, Codex, and any MCP-compatible agent — without slowing anyone down.",
 }
 
 export default function EngineeringAgentsPage() {
@@ -22,7 +22,7 @@ export default function EngineeringAgentsPage() {
             Let developers choose. Enforce policy everywhere.
           </h1>
           <p className="text-lg text-stone-500 max-w-2xl mx-auto leading-relaxed mb-10">
-            Your engineers use Claude Code, Cursor, Copilot, and Codex. Guard applies the same
+            Your engineers use Claude Code, Cursor, Copilot, Codex, or any MCP-compatible agent. Guard applies the same
             runtime policy across all of them — without a separate configuration per tool.
           </p>
           <div className="flex flex-wrap justify-center gap-3">

@@ -54,7 +54,7 @@ export default function SecurityTeamsPage() {
             {[
               { surface: "CLI hook", agents: "Claude Code · Cursor · Copilot · Codex", status: "SHIPPED" },
               { surface: "HTTP proxy", agents: "Any SDK with configurable base URL", status: "SHIPPED" },
-              { surface: "MCP layer", agents: "Claude Desktop · Cursor · Custom MCP clients", status: "SHIPPED" },
+              { surface: "MCP layer", agents: "Any MCP client — Claude Desktop, Cursor, Windsurf, Codex, and more", status: "SHIPPED" },
             ].map(({ surface, agents, status }) => (
               <div key={surface} className="border border-stone-200 rounded-xl bg-white p-5">
                 <div className="flex items-center gap-2 mb-2">
