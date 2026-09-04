@@ -125,7 +125,7 @@ function MarketingNav() {
             href="/discovery"
             className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors"
           >
-            Start Discovery
+            Start Agent Discovery
           </a>
         </div>
       </div>
@@ -147,7 +147,7 @@ function MarketingFooter() {
     {
       heading: "Platform",
       links: [
-        ["Discovery", "/docs/discovery"],
+        ["Agent Discovery", "/docs/discovery"],
         ["Router", "/router"],
         ["Templates", "/docs/templates"],
         ["Registry", "/registry"],

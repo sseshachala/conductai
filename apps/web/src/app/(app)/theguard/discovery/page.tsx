@@ -206,9 +206,9 @@ export default function DiscoveryPage() {
 
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-semibold text-stone-900">Shadow AI Discovery</h1>
+          <h1 className="text-2xl font-semibold text-stone-900">Agent Discovery</h1>
           <p className="text-sm text-stone-500 mt-1">
-            Agent Inventory — all AI agents found in your org, and how many Guard governs.
+            Every hook, MCP call, and proxy request registers the agent automatically. Shadow AI surfaces here — and how many Guard governs.
           </p>
         </div>
 

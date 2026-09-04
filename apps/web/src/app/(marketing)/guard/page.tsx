@@ -29,15 +29,18 @@ export default function GuardPage() {
             Conduct Guard enforces runtime policy across supported AI agents, model gateways, and MCP
             tools — before consequential actions execute.
           </p>
-          <p className="text-sm font-mono font-bold text-stone-700 tracking-wider mb-10">
+          <p className="text-sm font-mono font-bold text-stone-700 tracking-wider mb-3">
             Allow. Approve. Block. Prove.
+          </p>
+          <p className="text-sm sm:text-base font-semibold text-stone-700 max-w-xl mx-auto mb-10">
+            Install in 10 minutes. Evidence for the CISO from day one.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link
               href="/sign-up"
               className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
             >
-              Start Discovery — 14 days free
+              Start Agent Discovery — 14 days free
             </Link>
             <Link
               href="/demo"
@@ -222,7 +225,7 @@ export default function GuardPage() {
               href="/sign-up"
               className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
             >
-              Start Discovery — 14 days free
+              Start Agent Discovery — 14 days free
             </Link>
             <a
               href="https://github.com/conductai/conduct"

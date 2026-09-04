@@ -60,7 +60,7 @@ function Nav() {
             href="/discovery"
             className="rounded-lg bg-stone-900 text-white px-3 sm:px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors min-h-[44px] flex items-center"
           >
-            Start Discovery
+            Start Agent Discovery
           </a>
           {/* Hamburger */}
           <button
@@ -246,13 +246,16 @@ function HeroSection() {
         {/* Left: copy */}
         <div>
           <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-5 sm:mb-6">
-            ConductGuard
+            Built for engineering teams.
           </p>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-5 sm:mb-6">
             One policy across your AI agent stack.
           </h1>
-          <p className="text-base sm:text-lg text-stone-500 leading-relaxed mb-7 sm:mb-8 max-w-xl">
+          <p className="text-base sm:text-lg text-stone-500 leading-relaxed mb-4 sm:mb-5 max-w-xl">
             Conduct Guard enforces runtime policy across supported AI agents, model gateways, and MCP tools — before consequential actions execute.
+          </p>
+          <p className="text-sm sm:text-base font-semibold text-stone-700 mb-7 sm:mb-8 max-w-xl">
+            Install in 10 minutes. Evidence for the CISO from day one.
           </p>
 
           {/* Verbs */}
@@ -269,7 +272,7 @@ function HeroSection() {
               href="/discovery"
               className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors text-center min-h-[48px] flex items-center justify-center"
             >
-              Start Discovery — 14 days free
+              Start Agent Discovery — 14 days free
             </a>
             <a
               href="/book-demo"
@@ -729,7 +732,7 @@ const DEPLOYMENT_OPTIONS: Array<{
     label: "SaaS",
     status: "SHIPPED",
     desc: "Managed at conductai.ai. No infrastructure to run. US-hosted.",
-    cta: { text: "Start Discovery", href: "/discovery" },
+    cta: { text: "Start Agent Discovery", href: "/discovery" },
   },
   {
     label: "Docker",
@@ -810,14 +813,14 @@ function FinalCTASection() {
           Put runtime policy in front of your agents.
         </h2>
         <p className="text-stone-500 mb-8 text-sm sm:text-base">
-          Discovery mode runs for 14 days, read-only. See every agent action across your team before you enforce anything.
+          Agent Discovery mode runs for 14 days, read-only. See every agent action across your team before you enforce anything.
         </p>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
           <a
             href="/discovery"
             className="rounded-xl bg-stone-900 text-white px-8 py-4 text-base font-semibold hover:bg-stone-700 transition-colors text-center min-h-[48px] flex items-center justify-center"
           >
-            Start Discovery — 14 days free
+            Start Agent Discovery — 14 days free
           </a>
           <a
             href="/book-demo"
@@ -847,7 +850,7 @@ function PageFooter() {
     {
       heading: "Platform",
       links: [
-        ["Discovery", "/docs/discovery"],
+        ["Agent Discovery", "/docs/discovery"],
         ["Router", "/router"],
         ["Templates", "/docs/templates"],
         ["Registry", "/registry"],
