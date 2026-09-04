@@ -117,6 +117,116 @@ export default function SecurityPage() {
         </section>
 
         <section className="mb-16 border-t border-stone-100 pt-12">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Trust &amp; compliance</h2>
+          <p className="text-stone-600 leading-relaxed mb-8">
+            What&apos;s certified, who touches your data, and how it&apos;s handled. Enterprise buyers
+            paste this into their security review packet.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+            {/* Compliance & attestations */}
+            <div className="rounded-2xl border border-stone-200 bg-white p-6">
+              <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-3">
+                Compliance &amp; attestations
+              </p>
+              <p className="text-sm text-stone-600 leading-relaxed">
+                Certifications in progress. Letter of intent and gap-analysis timeline available on
+                request — email{" "}
+                <a href="mailto:security@conductai.ai" className="text-stone-900 font-semibold hover:underline">
+                  security@conductai.ai
+                </a>
+                .
+              </p>
+            </div>
+
+            {/* Data handling */}
+            <div className="rounded-2xl border border-stone-200 bg-white p-6">
+              <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-3">
+                Data handling
+              </p>
+              <ul className="text-sm text-stone-600 space-y-2 leading-relaxed">
+                <li>
+                  <span className="font-semibold text-stone-900">Stored:</span> policy decisions,
+                  hash-chained audit entries, agent identities (<span className="font-mono">cond_agt_*</span>),
+                  credentials in encrypted vault.
+                </li>
+                <li>
+                  <span className="font-semibold text-stone-900">Not stored by default:</span> LLM
+                  prompts, LLM responses, tool call payloads (metadata only).
+                </li>
+                <li>
+                  <span className="font-semibold text-stone-900">In transit:</span> TLS 1.3 across
+                  every surface.
+                </li>
+                <li>
+                  <span className="font-semibold text-stone-900">At rest:</span> provider-managed
+                  encryption (AES-256 across all sub-processors).
+                </li>
+                <li>
+                  <span className="font-semibold text-stone-900">DPA:</span> available on request
+                  for Business and Enterprise.
+                </li>
+              </ul>
+            </div>
+
+            {/* Sub-processors */}
+            <div className="rounded-2xl border border-stone-200 bg-white p-6">
+              <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-3">
+                Sub-processors
+              </p>
+              <ul className="text-sm text-stone-600 space-y-1.5 leading-relaxed">
+                <li><span className="font-semibold text-stone-900">Vercel</span> — web hosting</li>
+                <li><span className="font-semibold text-stone-900">Render</span> — API + worker hosting</li>
+                <li><span className="font-semibold text-stone-900">Clerk</span> — authentication and SSO</li>
+                <li>Cloud-managed <span className="font-semibold text-stone-900">PostgreSQL</span> — primary data store</li>
+                <li>Cloud-managed <span className="font-semibold text-stone-900">Redis</span> — queue and cache</li>
+                <li>
+                  Customer-chosen <span className="font-semibold text-stone-900">LLM providers</span>{" "}
+                  (routed through Guard, not stored): Anthropic, OpenAI, Google, AWS Bedrock, Azure
+                  OpenAI, Ollama, self-hosted.
+                </li>
+                <li className="text-stone-500 pt-1.5">
+                  Full sub-processor list available on request.
+                </li>
+              </ul>
+            </div>
+
+            {/* SSO & access */}
+            <div className="rounded-2xl border border-stone-200 bg-white p-6">
+              <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-3">
+                SSO &amp; access
+              </p>
+              <ul className="text-sm text-stone-600 space-y-2 leading-relaxed">
+                <li>
+                  <span className="font-semibold text-stone-900">Google, Microsoft, Okta</span> — OIDC,
+                  shipped on Team and above.
+                </li>
+                <li>
+                  <span className="font-semibold text-stone-900">SAML</span> — Enterprise, on request.
+                </li>
+                <li>
+                  <span className="font-semibold text-stone-900">Role-based access control (RBAC)</span>{" "}
+                  — per-user scoped permissions.
+                </li>
+                <li>
+                  <span className="font-semibold text-stone-900">Session TTL</span> — configurable per
+                  workspace.
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <p className="text-xs text-stone-500 leading-relaxed">
+            Need something not listed here — audit retention window, specific sub-processor names,
+            SOC2 timeline, DPA text? Email{" "}
+            <a href="mailto:security@conductai.ai" className="text-stone-900 font-semibold hover:underline">
+              security@conductai.ai
+            </a>
+            . Answers within one business day.
+          </p>
+        </section>
+
+        <section className="mb-16 border-t border-stone-100 pt-12">
           <h2 className="text-2xl font-bold text-stone-900 mb-3">Responsible disclosure</h2>
           <p className="text-stone-600 leading-relaxed">
             Found a security issue? Email <a href="mailto:security@conductai.ai" className="text-stone-900 font-semibold hover:underline">security@conductai.ai</a>. We aim to acknowledge within 24 hours and coordinate on disclosure timing.
