@@ -1,316 +1,136 @@
-import { CtaLink } from "@/components/marketing/CtaLink"
+import Link from "next/link"
+
+export const metadata = {
+  title: "Deployment — Conduct",
+  description:
+    "Deploy Guard where your controls need to live. SaaS, Docker, Kubernetes preview, or air-gapped.",
+}
+
+type Status = "SHIPPED" | "PREVIEW" | "PLANNED"
+
+const OPTIONS: {
+  name: string
+  status: Status
+  tagline: string
+  description: string
+  bullets: string[]
+}[] = [
+  {
+    name: "SaaS",
+    status: "SHIPPED",
+    tagline: "conductai.ai",
+    description:
+      "Hosted at conductai.ai. Same CLI, same audit trail. Zero infrastructure to run — fastest path from install to first blocked action.",
+    bullets: [
+      "US and EU regions",
+      "Free tier + 14-day Discovery trial",
+      "Rolling updates managed by Conduct",
+    ],
+  },
+  {
+    name: "Docker",
+    status: "SHIPPED",
+    tagline: "Self-hosted",
+    description:
+      "Single-container image. Runs on your servers, in your VPC, wherever Docker runs. No outbound calls to Conduct infrastructure required.",
+    bullets: [
+      "docker-compose.yml provided",
+      "Postgres + Redis dependencies",
+      "Full policy engine parity with SaaS",
+    ],
+  },
+  {
+    name: "Kubernetes",
+    status: "PREVIEW",
+    tagline: "Helm chart",
+    description:
+      "Helm chart for production Kubernetes clusters. HPA, PDB, and network policies included. Preview — reach out for pilot access.",
+    bullets: [
+      "values.yaml customization",
+      "Prometheus scrape targets",
+      "Service mesh compatible",
+    ],
+  },
+  {
+    name: "Air-gapped",
+    status: "PLANNED",
+    tagline: "No outbound",
+    description:
+      "Fully isolated rollout for regulated or classified environments. Manual audit chain export, offline update bundles. Design partners engaged.",
+    bullets: [
+      "No outbound calls",
+      "Offline update bundles",
+      "Manifest hash verification",
+    ],
+  },
+]
+
+const STATUS_STYLE: Record<Status, string> = {
+  SHIPPED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  PREVIEW: "bg-amber-50 text-amber-700 border-amber-200",
+  PLANNED: "bg-stone-50 text-stone-500 border-stone-200",
+}
 
 export default function DeploymentPage() {
   return (
-    <>
-      <HeroSection />
-      <TiersSection />
-      <CompareSection />
-      <HowItWorksSection />
-      <CtaSection />
-    </>
-  )
-}
+    <div className="min-h-screen bg-white">
+      <main className="max-w-5xl mx-auto px-6 py-20">
+        <section className="mb-16 text-center">
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-4">
+            Rollout
+          </p>
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
+            Deploy Guard where your controls need to live.
+          </h1>
+          <p className="text-lg text-stone-500 max-w-2xl mx-auto leading-relaxed">
+            Same policy engine, same CLI, same audit trail — wherever your data must stay.
+          </p>
+        </section>
 
-/* ─── Hero ──────────────────────────────────────────────────────────────── */
-
-function HeroSection() {
-  return (
-    <section className="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
-      <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
-        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
-        Flexible deployment
-      </div>
-      <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-        Deploy where your<br />
-        <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">security policy requires.</span>
-      </h1>
-      <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-4">
-        ConductGuard runs as SaaS, inside your cloud account, or fully on-premise. Same policy engine, same CLI, same audit trail — wherever your data must stay.
-      </p>
-      <p className="text-base text-stone-500 italic max-w-2xl mx-auto leading-relaxed mb-8">
-        The agent inherits the permission. It doesn&apos;t inherit the caution.
-      </p>
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-        <CtaLink className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center" />
-        <a
-          href="https://cal.com/sudhi-seshachala-pks7pd"
-          target="_blank"
-          rel="noopener"
-          className="rounded-xl border border-stone-300 bg-white text-stone-700 px-7 py-3.5 text-base font-semibold hover:border-stone-400 hover:shadow-sm transition-all w-full sm:w-auto text-center"
-        >
-          Talk to us
-        </a>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Three tiers ───────────────────────────────────────────────────────── */
-
-const TIERS = [
-  {
-    tag: "Fastest to start",
-    name: "SaaS",
-    tagline: "Up in 10 minutes. Nothing to manage.",
-    description:
-      "Managed by Conduct. Policy engine, audit trail, dashboard, and proxy all hosted on conductai.ai. No infrastructure decisions.",
-    bullets: [
-      "pip install conduct-cli, then conduct guard sync",
-      "Policy active across your team in minutes",
-      "Automatic upgrades, zero ops overhead",
-      "Free tier available",
-    ],
-    who: "Startups and engineering teams who want governance now, not in Q3.",
-    cta: "Start free",
-    ctaHref: "https://conductai.ai",
-    accent: "indigo",
-    dark: false,
-  },
-  {
-    tag: "Enterprise preferred",
-    name: "Cloud (BYOC)",
-    tagline: "Your cloud account. Our software.",
-    description:
-      "Deploy ConductGuard into your own AWS, GCP, or Azure account. Audit trail, policy engine, and proxy run in your VPC. Data never leaves your environment.",
-    bullets: [
-      "Terraform module — up in one apply",
-      "Works with your existing RDS, ElastiCache, and VPC",
-      "CLI points at your instance: conduct guard join --url https://guard.yourco.com",
-      "You control upgrades and data retention",
-    ],
-    who: "Financial services, healthcare, and any org with data residency requirements.",
-    cta: "Book a call",
-    ctaHref: "https://cal.com/sudhi-seshachala-pks7pd",
-    accent: "violet",
-    dark: true,
-  },
-  {
-    tag: "Air-gapped",
-    name: "On-Premise",
-    tagline: "Fully inside your perimeter.",
-    description:
-      "Docker Compose or Helm chart. Runs on your servers, your Kubernetes cluster, or an air-gapped environment. No outbound calls to Conduct infrastructure.",
-    bullets: [
-      "Docker images delivered to your registry",
-      "Helm chart for Kubernetes deployments",
-      "Works fully air-gapped — no external dependencies",
-      "Alembic migrations included — you own the schema",
-    ],
-    who: "Government, defence, and regulated enterprises with strict perimeter requirements.",
-    cta: "Contact us",
-    ctaHref: "https://cal.com/sudhi-seshachala-pks7pd",
-    accent: "stone",
-    dark: false,
-  },
-]
-
-function TiersSection() {
-  return (
-    <section className="max-w-6xl mx-auto px-6 py-20">
-      <div className="grid md:grid-cols-3 gap-6">
-        {TIERS.map((tier) => (
-          <div
-            key={tier.name}
-            className={`rounded-2xl border p-8 flex flex-col gap-5 ${
-              tier.dark
-                ? "bg-stone-950 border-stone-800 text-white"
-                : "bg-white border-stone-200 text-stone-900"
-            }`}
-          >
-            <div>
-              <span
-                className={`text-[10px] font-bold uppercase tracking-widest ${
-                  tier.dark ? "text-indigo-400" : "text-indigo-600"
-                }`}
-              >
-                {tier.tag}
-              </span>
-              <h2
-                className={`text-2xl font-black mt-1 mb-1 ${
-                  tier.dark ? "text-white" : "text-stone-900"
-                }`}
-              >
-                {tier.name}
-              </h2>
-              <p
-                className={`text-sm font-semibold ${
-                  tier.dark ? "text-stone-300" : "text-stone-600"
-                }`}
-              >
-                {tier.tagline}
-              </p>
-            </div>
-
-            <p className={`text-sm leading-relaxed ${tier.dark ? "text-stone-400" : "text-stone-500"}`}>
-              {tier.description}
-            </p>
-
-            <ul className="flex flex-col gap-2.5">
-              {tier.bullets.map((b) => (
-                <li key={b} className="flex items-start gap-2.5">
-                  <span className={`mt-[3px] text-xs ${tier.dark ? "text-indigo-400" : "text-indigo-500"}`}>✓</span>
-                  <span className={`text-sm ${tier.dark ? "text-stone-300" : "text-stone-600"}`}>{b}</span>
-                </li>
-              ))}
-            </ul>
-
+        <section className="mb-20 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {OPTIONS.map((opt) => (
             <div
-              className={`rounded-xl px-4 py-3 text-xs leading-relaxed mt-auto ${
-                tier.dark
-                  ? "bg-stone-900 border border-stone-800 text-stone-400"
-                  : "bg-stone-50 border border-stone-100 text-stone-500"
-              }`}
+              key={opt.name}
+              className="border border-stone-200 rounded-2xl p-6 bg-white flex flex-col"
             >
-              <span className="font-semibold">Best for: </span>{tier.who}
-            </div>
-
-            <a
-              href={tier.ctaHref}
-              target={tier.ctaHref.startsWith("http") ? "_blank" : undefined}
-              rel="noopener"
-              className={`w-full text-center rounded-xl px-6 py-3 text-sm font-bold transition-colors ${
-                tier.dark
-                  ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                  : "bg-stone-900 text-white hover:bg-stone-700"
-              }`}
-            >
-              {tier.cta}
-            </a>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-/* ─── Comparison table ──────────────────────────────────────────────────── */
-
-const ROWS = [
-  { cap: "Time to first policy",         saas: "10 minutes",    byoc: "~1 day",           onprem: "~2 days"          },
-  { cap: "Infrastructure managed by",    saas: "Conduct",       byoc: "You (your cloud)",  onprem: "You (on-site)"    },
-  { cap: "Data residency",               saas: "conductai.ai",  byoc: "Your VPC",          onprem: "Your servers"     },
-  { cap: "Audit trail location",         saas: "Conduct cloud", byoc: "Your RDS",          onprem: "Your DB"          },
-  { cap: "Air-gap support",              saas: false,           byoc: false,               onprem: true               },
-  { cap: "Automatic upgrades",           saas: true,            byoc: "Optional",          onprem: "Manual"           },
-  { cap: "Custom domain",                saas: false,           byoc: true,                onprem: true               },
-  { cap: "Terraform module",             saas: false,           byoc: true,                onprem: true               },
-  { cap: "Helm / Docker Compose",        saas: false,           byoc: true,                onprem: true               },
-  { cap: "Free tier",                    saas: true,            byoc: false,               onprem: false              },
-  { cap: "CLI works identically",        saas: true,            byoc: true,                onprem: true               },
-  { cap: "Same policy engine",           saas: true,            byoc: true,                onprem: true               },
-]
-
-function Cell({ val }: { val: boolean | string }) {
-  if (val === true)  return <span className="text-emerald-500 font-bold">✓</span>
-  if (val === false) return <span className="text-stone-300">—</span>
-  return <span className="text-stone-500 text-xs">{val}</span>
-}
-
-function CompareSection() {
-  return (
-    <section className="bg-stone-50 border-y border-stone-200 px-6 py-20">
-      <div className="max-w-5xl mx-auto">
-        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-3 text-center">Compare tiers</p>
-        <h2 className="text-3xl font-black text-stone-900 tracking-tight text-center mb-10">
-          Same governance. Your choice of where it runs.
-        </h2>
-        <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-stone-100">
-                <th className="px-5 py-4 text-left text-stone-400 font-semibold w-64">Capability</th>
-                <th className="px-5 py-4 text-center text-stone-700 font-semibold">SaaS</th>
-                <th className="px-5 py-4 text-center text-indigo-600 font-semibold bg-indigo-50">Cloud (BYOC)</th>
-                <th className="px-5 py-4 text-center text-stone-700 font-semibold">On-Premise</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ROWS.map((row, i) => (
-                <tr key={row.cap} className={`border-b border-stone-50 ${i % 2 === 0 ? "bg-white" : "bg-stone-50/60"}`}>
-                  <td className="px-5 py-3.5 text-stone-600 font-medium">{row.cap}</td>
-                  <td className="px-5 py-3.5 text-center"><Cell val={row.saas} /></td>
-                  <td className="px-5 py-3.5 text-center bg-indigo-50/40"><Cell val={row.byoc} /></td>
-                  <td className="px-5 py-3.5 text-center"><Cell val={row.onprem} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/* ─── How it works ──────────────────────────────────────────────────────── */
-
-function HowItWorksSection() {
-  return (
-    <section className="bg-stone-950 px-6 py-20">
-      <div className="max-w-4xl mx-auto">
-        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3 text-center">One CLI. Any deployment.</p>
-        <h2 className="text-3xl font-black text-white tracking-tight text-center mb-4">
-          Switching deployment model is one flag.
-        </h2>
-        <p className="text-stone-400 text-center mb-12 max-w-xl mx-auto">
-          The CLI reads <code className="text-indigo-300">api_url</code> from your Guard config. Point it at your instance and everything — hooks, proxy, MCP, audit trail — follows automatically.
-        </p>
-
-        <div className="grid md:grid-cols-3 gap-4">
-          {[
-            {
-              label: "SaaS",
-              code: `# Default — no config needed\npip install conduct-cli\nconduct guard sync`,
-            },
-            {
-              label: "Cloud (BYOC)",
-              code: `# Join your cloud instance\nconduct guard join \\\n  --url https://guard.yourco.com \\\n  --token cond_live_xxx`,
-            },
-            {
-              label: "On-Premise",
-              code: `# Deploy then join\ndocker compose up -d\nconduct guard join \\\n  --url https://guard.internal \\\n  --token cond_live_xxx`,
-            },
-          ].map((item) => (
-            <div key={item.label} className="rounded-xl border border-stone-800 bg-stone-900 p-5">
-              <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-3">{item.label}</p>
-              <pre className="text-xs font-mono text-stone-300 leading-relaxed whitespace-pre">{item.code}</pre>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xl font-bold text-stone-900">{opt.name}</h2>
+                <span
+                  className={`text-[10px] font-mono font-bold uppercase tracking-wider border rounded px-2 py-0.5 ${STATUS_STYLE[opt.status]}`}
+                >
+                  {opt.status}
+                </span>
+              </div>
+              <p className="text-xs font-mono text-stone-400 uppercase tracking-wider mb-4">
+                {opt.tagline}
+              </p>
+              <p className="text-sm text-stone-600 leading-relaxed mb-5">
+                {opt.description}
+              </p>
+              <ul className="text-sm text-stone-500 space-y-1.5 mt-auto">
+                {opt.bullets.map((b) => (
+                  <li key={b} className="flex items-start gap-2">
+                    <span className="text-stone-300 shrink-0">·</span>
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           ))}
-        </div>
+        </section>
 
-        <p className="text-stone-600 text-xs text-center mt-8">
-          Policy engine, proxy, MCP server, and audit trail work identically across all three tiers.
-        </p>
-      </div>
-    </section>
-  )
-}
-
-/* ─── CTA ───────────────────────────────────────────────────────────────── */
-
-function CtaSection() {
-  return (
-    <section className="py-24 px-6 bg-gradient-to-br from-indigo-600 to-violet-600">
-      <div className="max-w-3xl mx-auto text-center">
-        <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight mb-4">
-          Not sure which tier fits?
-        </h2>
-        <p className="text-indigo-200 text-lg leading-relaxed mb-10 max-w-xl mx-auto">
-          Start with SaaS. Migrate to BYOC or on-premise when your compliance team asks. The CLI command is the same either way.
-        </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <CtaLink className="rounded-xl bg-white text-indigo-600 px-7 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center" />
-          <a
-            href="https://cal.com/sudhi-seshachala-pks7pd"
-            target="_blank"
-            rel="noopener"
-            className="rounded-xl border border-white/40 text-white px-7 py-3.5 text-base font-semibold hover:bg-white/10 transition-colors w-full sm:w-auto text-center"
+        <section className="text-center border-t border-stone-100 pt-16">
+          <p className="text-lg text-stone-600 max-w-xl mx-auto leading-relaxed mb-6">
+            Not sure which fits? Start on SaaS, migrate to Docker or Kubernetes when compliance asks.
+          </p>
+          <Link
+            href="/sign-up"
+            className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
           >
-            Talk to us
-          </a>
-        </div>
-        <p className="text-indigo-300 text-xs mt-5">Free tier · No infrastructure changes · Works in minutes</p>
-      </div>
-    </section>
+            Start Discovery — 14 days free
+          </Link>
+        </section>
+      </main>
+    </div>
   )
 }

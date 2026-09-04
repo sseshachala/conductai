@@ -1,131 +1,137 @@
-import { CtaLink } from "@/components/marketing/CtaLink"
+import Link from "next/link"
+import { ThreatModelRow } from "@/components/marketing/facelift/ThreatModelRow"
+
+export const metadata = {
+  title: "Security — Conduct",
+  description:
+    "How Guard enforces, evidences, and where its threat model draws the line. Runtime policy across every agent tool your team runs.",
+}
 
 export default function SecurityPage() {
   return (
-    <>
-      <HeroSection />
-      <LimitationsSection />
-      <DisclosureSection />
-    </>
-  )
-}
+    <div className="min-h-screen bg-white">
+      <main className="max-w-4xl mx-auto px-6 py-20">
+        <section className="mb-16 text-center">
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-4">
+            Security
+          </p>
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
+            One policy where your stack isn&apos;t one vendor&apos;s.
+          </h1>
+          <p className="text-lg text-stone-500 max-w-2xl mx-auto leading-relaxed">
+            Cortex enforces inside Cortex. Copilot Studio inside Copilot. Bedrock inside Bedrock. Conduct enforces across whatever mix your team runs — with a scope you can inspect.
+          </p>
+        </section>
 
-/* ─── Hero ──────────────────────────────────────────────────────────────── */
+        <section className="mb-16">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Enforcement</h2>
+          <p className="text-stone-600 leading-relaxed mb-5">
+            Guard evaluates every action against your policy before it executes. Three enforcement surfaces catch every path an agent can take:
+          </p>
+          <ul className="text-sm text-stone-600 space-y-2.5">
+            <li className="flex items-start gap-3">
+              <span className="text-stone-400 font-mono shrink-0 min-w-[48px] pt-0.5">CLI</span>
+              <span>Post-tool-use hook on Claude Code, Cursor, Codex, Copilot. Local decisions, no round-trip.</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="text-stone-400 font-mono shrink-0 min-w-[48px] pt-0.5">HTTP</span>
+              <span>Drop-in base URL replacement in front of your model gateway. Every LLM request is policy-checked.</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="text-stone-400 font-mono shrink-0 min-w-[48px] pt-0.5">MCP</span>
+              <span>Wraps MCP tool invocations before they reach the server. Same policy engine, different transport.</span>
+            </li>
+          </ul>
+        </section>
 
-function HeroSection() {
-  return (
-    <section className="max-w-3xl mx-auto px-6 pt-20 pb-10">
-      <div className="inline-flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
-        Threat model
-      </div>
-      <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-        What we do not protect (yet).
-      </h1>
-      <p className="text-lg text-stone-500 leading-relaxed mb-4">
-        Guard enforces policies at the tool layer, across every AI agent your team runs. That scope is real and it compounds. There are also things it does not do today. This page names them directly, with our plan for each.
-      </p>
-      <p className="text-sm text-stone-400">Last reviewed: 2026-08-09</p>
-    </section>
-  )
-}
+        <section className="mb-16 border-t border-stone-100 pt-12">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Evidence</h2>
+          <p className="text-stone-600 leading-relaxed mb-4">
+            Every decision is a receipt. Hash-chained (SHA-256) so tampering is detectable, exportable by policy, and answerable to auditors.
+          </p>
+          <Link
+            href="/evidence"
+            className="text-sm font-semibold text-stone-900 hover:text-stone-600"
+          >
+            See what a receipt contains →
+          </Link>
+        </section>
 
-/* ─── Limitations ────────────────────────────────────────────────────────── */
+        <section className="mb-16 border-t border-stone-100 pt-12">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Rollout</h2>
+          <p className="text-stone-600 leading-relaxed mb-4">
+            Run Guard as SaaS, in a container, on Kubernetes, or fully isolated. Same policy engine, same audit trail, wherever your data must stay.
+          </p>
+          <Link
+            href="/deployment"
+            className="text-sm font-semibold text-stone-900 hover:text-stone-600"
+          >
+            See rollout options →
+          </Link>
+        </section>
 
-function LimitationsSection() {
-  const items = [
-    {
-      title: "Credentials are decrypted in the executor process.",
-      status: "Known gap",
-      statusStyle: "bg-amber-100 text-amber-700",
-      body: "When a workflow block runs, credentials stored in your workspace are decrypted in memory inside the executor process. A compromised executor with sufficient access could read them in plaintext. This is standard practice for secret injection into running processes — it is not unique to Conduct — but it is a real attack surface.",
-      plan: "We are evaluating hardware-backed secret stores (AWS KMS envelope encryption, HashiCorp Vault dynamic secrets) that keep the plaintext window as short as possible and audit every decryption. The executor would receive a short-lived token, not the raw credential. Timeline: Q4 2026.",
-    },
-    {
-      title: "No per-environment egress allowlist.",
-      status: "Known gap",
-      statusStyle: "bg-amber-100 text-amber-700",
-      body: "Guard controls which tools an agent can call and enforces spend limits, but it does not currently restrict which network destinations a tool can reach. An agent with a Bash tool could make outbound requests to arbitrary endpoints — Guard will log the call but not block it based on destination.",
-      plan: "Per-environment egress rules are on the Guard policy roadmap. The plan is to add a destination_allowlist field to the policy schema, evaluated at the proxy layer before any outbound call forwards. This requires the Guard Proxy to be in the path — a requirement we will document explicitly. Target: Q1 2027.",
-    },
-    {
-      title: "No static analysis of third-party playbooks before install.",
-      status: "Known gap",
-      statusStyle: "bg-amber-100 text-amber-700",
-      body: "Playbooks from the marketplace or imported via YAML are not statically analysed for dangerous patterns before install. A malicious playbook could contain a Bash block that exfiltrates data on first run. Guard policies apply at runtime, so the first execution is when enforcement kicks in — not before.",
-      plan: "We are building a pre-install scanner that inspects block types, tool permissions, and shell commands against a deny-list before a playbook is activated. It will surface warnings in the install flow, not silently block. Community-contributed playbooks will require a manual review step before appearing in the public registry. Target: Q3 2026.",
-    },
-  ]
-
-  return (
-    <section className="max-w-3xl mx-auto px-6 py-10">
-      <div className="space-y-10">
-        {items.map((item) => (
-          <div key={item.title} className="border border-stone-200 rounded-2xl p-8 bg-white">
-            <div className="flex items-start justify-between gap-4 mb-5">
-              <h2 className="text-lg font-bold text-stone-900 leading-snug">{item.title}</h2>
-              <span className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${item.statusStyle}`}>
-                {item.status}
-              </span>
+        <section className="mb-16 border-t border-stone-100 pt-12">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Threat model</h2>
+          <p className="text-stone-600 leading-relaxed mb-6">
+            We publish where Guard stops. Honest scope is a design requirement — and a differentiator, because heterogeneous coverage means we can&apos;t pretend to own every layer.
+          </p>
+          <div className="border border-stone-200 rounded-2xl overflow-hidden">
+            <div className="px-5 py-3 bg-stone-50 border-b border-stone-200">
+              <p className="text-xs font-mono font-bold text-stone-600 uppercase tracking-wider">
+                Coverage map
+              </p>
             </div>
-            <p className="text-stone-500 leading-relaxed mb-5">{item.body}</p>
-            <div className="rounded-xl bg-stone-50 border border-stone-100 px-5 py-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">Our plan</p>
-              <p className="text-sm text-stone-600 leading-relaxed">{item.plan}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-/* ─── Disclosure ─────────────────────────────────────────────────────────── */
-
-function DisclosureSection() {
-  return (
-    <section className="bg-stone-50 border-t border-stone-200 px-6 py-16">
-      <div className="max-w-3xl mx-auto">
-        <div className="grid md:grid-cols-2 gap-10 items-start">
-          <div>
-            <h2 className="text-xl font-bold text-stone-900 mb-3">Report a vulnerability.</h2>
-            <p className="text-stone-500 text-sm leading-relaxed mb-4">
-              If you find a security issue in Guard, the API, or the CLI, disclose it to us before making it public. We will respond within 48 hours, confirm scope, and keep you informed through resolution.
-            </p>
-            <a
-              href="mailto:security@conductai.ai"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors"
-            >
-              security@conductai.ai
-            </a>
-            <p className="text-xs text-stone-400 mt-3">
-              We do not have a formal bug bounty programme yet. We will credit researchers by name if they wish.
-            </p>
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-stone-900 mb-3">What Guard does protect.</h2>
-            <ul className="space-y-2 text-sm text-stone-600">
-              {[
-                "Tool-layer enforcement — block or warn before the agent acts",
-                "Credential leak detection in prompts and tool inputs",
-                "PII screening before calls reach LLM providers",
-                "Spend limits enforced in real time per developer and workspace",
-                "SHA-256 hash-chained audit log, tamper-evident and CISO-verifiable",
-                "RFC 8693 token exchange for agent identity",
-                "Fail-closed by default on API outage",
-              ].map((item) => (
-                <li key={item} className="flex items-start gap-2">
-                  <span className="text-emerald-500 font-bold mt-0.5">✓</span>
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-6">
-              <CtaLink className="rounded-lg bg-stone-900 text-white px-5 py-2.5 text-sm font-semibold hover:bg-stone-700 transition-colors" />
+            <div className="px-5 py-2">
+              <ThreatModelRow
+                threat="Actions routed through Guard (CLI hook, HTTP proxy, MCP layer)"
+                coverage="Protected"
+                detail="All three surfaces run the same policy engine. Refunds, network changes, secret reads — every action routed through Guard is inspected."
+              />
+              <ThreatModelRow
+                threat="Audit trail integrity"
+                coverage="Protected"
+                detail="SHA-256 hash chain on every decision. Altered entries break verification."
+              />
+              <ThreatModelRow
+                threat="Pre-call prompt injection (before Guard sees the tool call)"
+                coverage="Partial"
+                detail="Injection detection pack + pattern-based checks. ML-based detection is not implemented."
+              />
+              <ThreatModelRow
+                threat="Model-layer attacks (adversarial inputs to the LLM itself)"
+                coverage="Partial"
+                detail="Prompt-injection pack included. Semantic ML detection not implemented."
+              />
+              <ThreatModelRow
+                threat="Cross-agent correlation (Operations context)"
+                coverage="Not protected"
+                detail="Guard evaluates each action in isolation today. Cross-agent context is the Operations gap — Design Partner Preview."
+              />
+              <ThreatModelRow
+                threat="Actions that bypass all three enforcement surfaces"
+                coverage="Not protected"
+                detail="An agent that does not use the hook, proxy, or MCP layer is invisible to Guard."
+              />
             </div>
           </div>
-        </div>
-      </div>
-    </section>
+        </section>
+
+        <section className="mb-16 border-t border-stone-100 pt-12">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Responsible disclosure</h2>
+          <p className="text-stone-600 leading-relaxed">
+            Found a security issue? Email <a href="mailto:security@conductai.ai" className="text-stone-900 font-semibold hover:underline">security@conductai.ai</a>. We aim to acknowledge within 24 hours and coordinate on disclosure timing.
+          </p>
+        </section>
+
+        <section className="text-center border-t border-stone-100 pt-16">
+          <Link
+            href="/sign-up"
+            className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+          >
+            Start Discovery — 14 days free
+          </Link>
+        </section>
+      </main>
+    </div>
   )
 }
