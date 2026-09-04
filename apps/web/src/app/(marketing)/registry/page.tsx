@@ -49,6 +49,7 @@ interface AutomationPack {
   description: string
   category: string
   icon?: string
+  tags?: string[]
 }
 
 const CATEGORY_ALL = "All"
@@ -71,7 +72,11 @@ export default function RegistryPage() {
           : Array.isArray(data?.playbooks)
           ? data.playbooks
           : []
-        setAutomationPacks(items)
+        // Marketing registry shows real playbooks only. Demo playbooks (branch-42,
+        // prompt-injection scenarios, Acme fixtures) are tagged `demo` in
+        // apps/api/playbooks/registry.yaml — filter them out here.
+        const real = items.filter((p) => !(p.tags ?? []).includes("demo"))
+        setAutomationPacks(real)
       })
       .catch(() => setAutomationPacks([]))
       .finally(() => setLoading(false))
