@@ -112,6 +112,7 @@ function MarketingNav() {
           <ProductDropdown />
           <SolutionsDropdown />
           <DevelopersDropdown />
+          <a href="/pricing" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Pricing</a>
           <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
         </nav>
         <div className="flex items-center gap-3">
@@ -142,6 +143,7 @@ function MarketingFooter() {
         ["Playbooks", "/playbooks"],
         ["Evidence", "/evidence"],
         ["MCP", "/mcp-gateway"],
+        ["Pricing", "/pricing"],
       ] as [string, string][],
     },
     {
