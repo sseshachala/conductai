@@ -6,7 +6,7 @@ fail-open alerter (`fail_open_alert.py`) — one internal ops channel, one
 env var, no reinvention.
 
 Env config:
-  CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK  — reused; unset = no-op (silent).
+  CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL  — reused; unset = no-op (silent).
   GUARD_TRIAL_DAILY_ALERT_USD           — threshold; unset = no-op.
 
 Rate limit: one post per hour. Threshold is a "soft" alert — once it
@@ -28,7 +28,7 @@ from app.modules.guard.trial_upstream import TRIAL_DAILY_CAP
 
 log = structlog.get_logger(__name__)
 
-_ALERT_WEBHOOK_ENV = "CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK"
+_ALERT_CHANNEL_ENV = "CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL"
 _THRESHOLD_ENV = "GUARD_TRIAL_DAILY_ALERT_USD"
 _RATE_LIMIT_SEC = 3600  # one alert per hour
 _HTTP_TIMEOUT_SEC = 3.0
@@ -166,7 +166,7 @@ def check_and_alert_trial_spend(db: Session) -> None:
     defeat that decision.
     """
     try:
-        webhook = os.environ.get(_ALERT_WEBHOOK_ENV, "").strip()
+        webhook = os.environ.get(_ALERT_CHANNEL_ENV, "").strip()
         threshold_raw = os.environ.get(_THRESHOLD_ENV, "").strip()
         if not webhook or not threshold_raw:
             return

@@ -92,7 +92,7 @@ def spend_ws():
 
 def test_noops_when_webhook_env_missing(spend_ws, monkeypatch):
     _ws, db = spend_ws
-    monkeypatch.delenv("CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK", raising=False)
+    monkeypatch.delenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", raising=False)
     monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "2.0")
 
     with patch("httpx.post") as mock_post:
@@ -102,7 +102,7 @@ def test_noops_when_webhook_env_missing(spend_ws, monkeypatch):
 
 def test_noops_when_threshold_env_missing(spend_ws, monkeypatch):
     _ws, db = spend_ws
-    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK", "https://hooks.slack.com/fake")
+    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", "conduct-alerts")
     monkeypatch.delenv("GUARD_TRIAL_DAILY_ALERT_USD", raising=False)
 
     with patch("httpx.post") as mock_post:
@@ -112,7 +112,7 @@ def test_noops_when_threshold_env_missing(spend_ws, monkeypatch):
 
 def test_noops_when_below_threshold(spend_ws, monkeypatch):
     _ws, db = spend_ws
-    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK", "https://hooks.slack.com/fake")
+    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", "conduct-alerts")
     monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "100.0")  # $5 in DB, threshold $100
 
     with patch("httpx.post") as mock_post:
@@ -122,7 +122,7 @@ def test_noops_when_below_threshold(spend_ws, monkeypatch):
 
 def test_posts_when_over_threshold(spend_ws, monkeypatch):
     ws_id, db = spend_ws
-    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK", "https://hooks.slack.com/fake")
+    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", "conduct-alerts")
     monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "2.0")  # $5 in DB, threshold $2
 
     with patch("httpx.post") as mock_post:
@@ -141,7 +141,7 @@ def test_posts_when_over_threshold(spend_ws, monkeypatch):
 
 def test_second_call_within_rate_limit_is_deduped(spend_ws, monkeypatch):
     _ws, db = spend_ws
-    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK", "https://hooks.slack.com/fake")
+    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", "conduct-alerts")
     monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "2.0")
 
     with patch("httpx.post") as mock_post:
@@ -152,7 +152,7 @@ def test_second_call_within_rate_limit_is_deduped(spend_ws, monkeypatch):
 
 def test_bad_threshold_env_noops(spend_ws, monkeypatch):
     _ws, db = spend_ws
-    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_WEBHOOK", "https://hooks.slack.com/fake")
+    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", "conduct-alerts")
     monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "not-a-number")
 
     with patch("httpx.post") as mock_post:
