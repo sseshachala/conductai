@@ -78,6 +78,29 @@ const TIERS: Tier[] = [
   },
 ]
 
+const FAQ: { q: string; a: string }[] = [
+  {
+    q: "Is cond_agt_* priced per user or per bot?",
+    a: "Per bot — per governed service identity. One human developer running three governed agents counts as three identities. The unit tracks value produced by the agents, not headcount using the tool.",
+  },
+  {
+    q: "Does self-hosted include air-gapped deployments?",
+    a: "Yes, on Enterprise. Docker, Kubernetes, and fully air-gapped installs all deploy from the same image and run the same policy engine. Same list price as SaaS — you\u2019re paying for enforcement and audit, not where the pods run.",
+  },
+  {
+    q: "What if my agent count varies month to month?",
+    a: "Billed on the peak count of active identities in each month. Spin agents up for a launch, retire them after, and you only pay for the month you actually ran them. No proration penalty for scaling down.",
+  },
+  {
+    q: "Do you offer annual discounts?",
+    a: "Yes — 15% off list price on all tiers when paid annually up front. Available on Team, Business, and Enterprise. Ask for the annual quote when you talk to us.",
+  },
+  {
+    q: "What happens if I hit my tier cap?",
+    a: "Soft alert at 90% of cap so you can plan the upgrade. If you hit 100%, agents keep working — we auto-upgrade you to the next tier and send a confirmation email. No hard stops, no surprise blocks, no missed enforcement.",
+  },
+]
+
 export default function PricingPage() {
   return (
     <div className="min-h-screen bg-white">
@@ -180,6 +203,28 @@ export default function PricingPage() {
               <p className="text-stone-500 leading-relaxed text-[13px]">{f.body}</p>
             </div>
           ))}
+        </section>
+
+        {/* FAQ */}
+        <section className="mb-14">
+          <h2 className="text-2xl font-bold text-stone-900 mb-2">
+            Answers to the five questions every buyer asks.
+          </h2>
+          <p className="text-sm text-stone-500 mb-8 max-w-2xl leading-relaxed">
+            Direct answers so you don't need a sales call to scope the deal. If your situation
+            doesn't fit one of these, reach out and we'll answer the same way.
+          </p>
+          <div className="space-y-3">
+            {FAQ.map((f) => (
+              <div
+                key={f.q}
+                className="rounded-2xl border border-stone-200 bg-white p-6"
+              >
+                <p className="font-semibold text-stone-900 mb-2 text-[15px]">{f.q}</p>
+                <p className="text-sm text-stone-600 leading-relaxed">{f.a}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
         {/* CTA */}
