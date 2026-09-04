@@ -2,5 +2,5 @@
   "buildCommand": "npx turbo run build --filter=marshal-web",
   "outputDirectory": ".next",
   "framework": "nextjs",
-  "ignoreCommand": "! git diff HEAD~1 --name-only | grep -qE '^apps/web/|^vercel\\.json$|^turbo\\.json$|^package\\.json$'"
+  "ignoreCommand": "! git show HEAD --name-only --pretty='' | grep -qE '^apps/web/|^vercel\\.json$|^turbo\\.json$|^package\\.json$'"
 }
