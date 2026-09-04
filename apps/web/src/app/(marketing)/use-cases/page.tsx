@@ -1,9 +1,9 @@
 import { CtaLink } from "@/components/marketing/CtaLink"
 
 export const metadata = {
-  title: "Use cases we operate in today | Conduct",
+  title: "What buyers do with Conduct — prove, kill, contain, answer, discover | Conduct",
   description:
-    "Nine shipped surfaces of Guard, the all-in-one AI compliance and security platform. IDE governance, MCP governance, security loop, compliance evidence, spend guardrails, shadow-AI discovery, Know Your Agent (KYA), content inspection, and business-agent action governance.",
+    "Five things every buyer needs Guard to do: prove agents to auditors, kill misbehaving agents, contain shadow AI, answer the board question, and discover every agent already running. Each backed by a shipped surface.",
 }
 
 type UseCase = {
@@ -214,6 +214,66 @@ const CASES: UseCase[] = [
   },
 ]
 
+const VERBS: {
+  key: string
+  verb: string
+  jobLine: string
+  buyerLine: string
+  slugs: { slug: string; title: string }[]
+}[] = [
+  {
+    key: "prove",
+    verb: "Prove",
+    jobLine: "Prove every agent action to a regulator, a board, or an auditor.",
+    buyerLine: "Hash-chained evidence per call. Attested agent identity. Same receipt shape whether you're answering a SOC2 assessor or a CISO in Monday review.",
+    slugs: [
+      { slug: "compliance-evidence", title: "Compliance evidence from what the AI actually did" },
+      { slug: "agent-identity", title: "Know Your Agent (KYA) — attested identity, not shared keys" },
+    ],
+  },
+  {
+    key: "kill",
+    verb: "Kill",
+    jobLine: "Kill any misbehaving agent by flipping one column.",
+    buyerLine: "Sub-second revocation at the auth path. The next LLM call, MCP call, or tool call the agent makes gets 401 — regardless of token TTL. Stops in-flight damage without a deploy.",
+    slugs: [
+      { slug: "action-governance", title: "Business agents that take real actions" },
+      { slug: "agent-identity", title: "Know Your Agent (KYA) — kill switch on every identity" },
+    ],
+  },
+  {
+    key: "contain",
+    verb: "Contain",
+    jobLine: "Contain shadow AI, sprawl, and blast radius.",
+    buyerLine: "One policy across every AI tool your team runs — IDE, MCP, LLM proxy. Spend caps, PII/injection filters, per-tool allowlists. The most-used verb because containment is what Guard does every day.",
+    slugs: [
+      { slug: "ide-governance", title: "AI in the IDE, governed" },
+      { slug: "mcp-governance", title: "MCP that behaves like a permitted action, not a shell" },
+      { slug: "spend-guardrails", title: "Cost guardrails that stop the call" },
+      { slug: "content-inspection", title: "Prompt injection and PII, caught at the wire" },
+      { slug: "security-loop", title: "Scan to fix, closed" },
+    ],
+  },
+  {
+    key: "answer",
+    verb: "Answer",
+    jobLine: "Answer the board question: every AI call this week, who approved it.",
+    buyerLine: "Not a screenshot, not a Notion doc — a signed, hash-chained record you can export the day the question lands. Same evidence base as Prove, different consumer.",
+    slugs: [
+      { slug: "compliance-evidence", title: "Compliance evidence from what the AI actually did" },
+    ],
+  },
+  {
+    key: "discover",
+    verb: "Discover",
+    jobLine: "Discover every agent already running before you govern them.",
+    buyerLine: "Passive scan of dev environments, CI logs, and MCP servers to find agents you didn't sanction. First step before policy — you can't govern what you can't see.",
+    slugs: [
+      { slug: "shadow-ai-discovery", title: "Shadow AI, found" },
+    ],
+  },
+]
+
 export default function UseCasesPage() {
   return (
     <>
@@ -232,18 +292,14 @@ function Hero() {
     <section className="max-w-5xl mx-auto px-6 pt-20 pb-14 text-center">
       <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-8">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
-        Nine surfaces we operate in today
+        Five verbs. Nine shipped surfaces.
       </div>
       <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-        Where Guard already runs, in production.
+        Prove. Kill. Contain. Answer. Discover.
       </h1>
       <p className="text-xl text-stone-500 max-w-2xl mx-auto leading-relaxed mb-4">
-        Nine use cases. Every one is a shipped surface. Where a surface is partial, we say so on the card.
-        Where a link goes straight to the app, it will route anonymous visitors through sign-in and drop them
-        back where they were headed.
-      </p>
-      <p className="text-base text-stone-500 max-w-2xl mx-auto leading-relaxed italic mb-4">
-        Your identity provider tells you who your agents are. Guard governs what they do.
+        Five things every buyer needs Guard to do. Pick your verb; jump to the shipped surface
+        that does it. Every one is live in production today.
       </p>
       <p className="text-base text-stone-500 max-w-2xl mx-auto leading-relaxed italic">
         Governance is not a brake. It is the scaffolding that lets you expand agent autonomy safely.
@@ -256,21 +312,38 @@ function Summary() {
   return (
     <section className="max-w-6xl mx-auto px-6 pb-16">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {CASES.map((c) => (
-          <a
-            key={c.slug}
-            href={`#${c.slug}`}
-            className="block rounded-2xl border border-stone-200 bg-white p-5 hover:border-stone-400 transition-colors"
+        {VERBS.map((v) => (
+          <div
+            key={v.key}
+            className="rounded-2xl border border-stone-200 bg-white p-6 flex flex-col"
           >
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-xs font-mono text-stone-400">{c.n}</span>
-              <span className="text-xs uppercase tracking-widest text-stone-500">Use case</span>
+            <div className="flex items-baseline gap-3 mb-3">
+              <span className="text-3xl font-black text-stone-900 leading-none">{v.verb}</span>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-stone-400">
+                {v.slugs.length} shipped
+              </span>
             </div>
-            <div className="text-lg font-bold text-stone-900 mb-2 leading-snug">{c.title}</div>
-            <div className="text-sm text-stone-500 leading-relaxed">{c.oneLiner}</div>
-          </a>
+            <p className="text-sm font-semibold text-stone-900 leading-snug mb-2">{v.jobLine}</p>
+            <p className="text-sm text-stone-500 leading-relaxed mb-4">{v.buyerLine}</p>
+            <ul className="mt-auto space-y-1.5 border-t border-stone-100 pt-4">
+              {v.slugs.map((s) => (
+                <li key={`${v.key}-${s.slug}`}>
+                  <a
+                    href={`#${s.slug}`}
+                    className="text-[13px] text-stone-600 hover:text-stone-900 transition-colors leading-snug flex items-start gap-1.5"
+                  >
+                    <span className="text-stone-300 shrink-0">→</span>
+                    <span>{s.title}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
       </div>
+      <p className="text-xs text-stone-400 text-center mt-8 font-mono uppercase tracking-widest">
+        Nine surfaces below · each shipped, each auditable
+      </p>
     </section>
   )
 }
