@@ -307,6 +307,23 @@ def create_run(
         max_turns=max_turns,
     )
 
+    # #1515 — Canvas Run → Lens: mint a bare GlensChatSession alongside the
+    # Run in a single transaction. Mint the UUID here (rather than letting
+    # SQLAlchemy's default fire on flush) so `run.session_id` can carry it
+    # without an intermediate commit — if Run insert fails, both roll back
+    # and no ghost session appears in the sidebar.
+    lens_session_id = None
+    if body.create_lens_session:
+        import uuid as _uuid_std
+        from app.modules.glens.models import GlensChatSession
+        lens_session_id = _uuid_std.uuid4()
+        db.add(GlensChatSession(
+            id=lens_session_id,
+            workspace_id=workflow.workspace_id,
+            title=f"Run: {workflow.name}",
+            messages="[]",
+        ))
+
     run = Run(
         workflow_version_id=workflow.current_version_id,
         workspace_id=workflow.workspace_id,
@@ -314,9 +331,10 @@ def create_run(
         status="pending",
         state=initial_state,
         max_turns=max_turns,
+        session_id=lens_session_id,
     )
     db.add(run)
-    db.commit()
+    db.commit()  # single commit — session + run land together or neither does
     db.refresh(run)
 
     try:
