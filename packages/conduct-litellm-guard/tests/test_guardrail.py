@@ -54,6 +54,20 @@ class TestGuardDecisionParse:
         d = GuardDecision.parse("something the server invented later")
         assert d.verdict == "unknown"
 
+    def test_ws_prefix_and_bracket_rule_regression(self) -> None:
+        """Server wraps tool responses with '[ws:xxxxxxxx] ' for debug context
+        (apps/api/app/modules/guard/routers/mcp.py:_text). Without stripping,
+        every verdict falls through to 'unknown' and BLOCKED never fires."""
+        raw = (
+            "[ws:fd4b6608] BLOCKED — Account deletion needs a workspace "
+            "admin's approval. │  [rule: account-deletion-needs-approval]"
+        )
+        d = GuardDecision.parse(raw)
+        assert d.verdict == "block"
+        assert d.rule_id == "account-deletion-needs-approval"
+        assert d.message and "Account deletion" in d.message
+
+
 
 # ── Pre-call hook ──────────────────────────────────────────────────────
 

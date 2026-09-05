@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -39,6 +40,11 @@ except Exception:  # pragma: no cover — exercised via test double
 Verdict = Literal["allow", "advisory", "warning", "block", "approval", "unknown"]
 FailMode = Literal["fail_open", "fail_closed"]
 
+# Server prefixes tool responses with "[ws:xxxxxxxx] " for debug context
+# (apps/api/app/modules/guard/routers/mcp.py:_text). Strip before matching or
+# every verdict falls through to "unknown" and BLOCKED responses never fire.
+_WS_PREFIX = re.compile(r"^\[ws:[^\]]+\]\s*")
+
 
 @dataclass(frozen=True)
 class GuardDecision:
@@ -61,7 +67,7 @@ class GuardDecision:
           * ``"BLOCKED — ..."`` → hard block
           * ``"PENDING approval — ..."`` → HITL — treat as block for now
         """
-        stripped = (text or "").strip()
+        stripped = _WS_PREFIX.sub("", (text or "").strip())
         # Server emits lowercase "ok" today, but tolerate case + trailing
         # punctuation so a future minor server change doesn't 400 every call.
         if not stripped or stripped.lower().startswith("ok"):

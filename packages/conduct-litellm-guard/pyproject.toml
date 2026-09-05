@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "conduct-litellm-guard"
-version = "0.1.0"
+version = "0.1.1"
 description = "Conduct Guard as a LiteLLM guardrail — enforce runtime policy on every LLM call routed through LiteLLM."
 readme = "README.md"
 requires-python = ">=3.10"
