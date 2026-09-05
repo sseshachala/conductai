@@ -4,6 +4,7 @@ export default function PartnersPage() {
   return (
     <>
       <HeroSection />
+      <HiringDesignPartnersSection />
       <PartnerTypesSection />
       <WhyPartnerSection />
       <WhatYouGetSection />
@@ -30,6 +31,74 @@ function HeroSection() {
       <a href="#apply" className="inline-flex rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-bold hover:bg-stone-700 transition-colors">
         Tell Us How You'd Like to Partner →
       </a>
+    </section>
+  )
+}
+
+/* ─── Hiring: Design Partners ────────────────────────────────────────── */
+
+function HiringDesignPartnersSection() {
+  return (
+    <section id="design-partners" className="py-16 px-6 bg-gradient-to-br from-indigo-50 via-white to-violet-50 border-y border-indigo-100">
+      <div className="max-w-4xl mx-auto">
+        <div className="inline-flex items-center gap-2 rounded-full bg-indigo-600 text-white px-3 py-1 text-xs font-bold uppercase tracking-widest mb-4">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+          Open Roles · 2 seats · Q4 2026
+        </div>
+        <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-stone-900 leading-tight mb-4">
+          Hiring: Design Partners.
+        </h2>
+        <p className="text-lg text-stone-600 max-w-2xl leading-relaxed mb-8">
+          Not a beta. Not a discount. A working relationship where you shape what
+          Conduct becomes and we ship what you need. Capped at two teams this quarter.
+        </p>
+
+        <div className="grid md:grid-cols-3 gap-4 mb-8">
+          <div className="rounded-2xl bg-white border border-stone-200 p-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 mb-2">You Get</p>
+            <ul className="text-sm text-stone-700 space-y-1.5 leading-relaxed">
+              <li>· Direct founder access</li>
+              <li>· Priority Guard packs for your stack</li>
+              <li>· Named engineering contact</li>
+              <li>· Quarterly roadmap input</li>
+              <li>· Case-study rights</li>
+            </ul>
+          </div>
+          <div className="rounded-2xl bg-white border border-stone-200 p-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 mb-2">You Bring</p>
+            <ul className="text-sm text-stone-700 space-y-1.5 leading-relaxed">
+              <li>· An active AI agent deployment</li>
+              <li>· 30 min every two weeks for feedback</li>
+              <li>· Permission to be referenced</li>
+              <li>· Honest signal on what breaks</li>
+            </ul>
+          </div>
+          <div className="rounded-2xl bg-white border border-stone-200 p-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 mb-2">Best Fit</p>
+            <ul className="text-sm text-stone-700 space-y-1.5 leading-relaxed">
+              <li>· Platform teams shipping agents</li>
+              <li>· CISOs adding governance to an agent stack</li>
+              <li>· NOC / SRE teams evaluating autonomous ops</li>
+              <li>· Vertical teams (health, fin, gov)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <a
+            href="https://cal.com/sudhi-seshachala-pks7pd"
+            className="inline-flex rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-bold hover:bg-stone-700 transition-colors"
+          >
+            Book a 30-min scoping call →
+          </a>
+          <a
+            href="tel:+18325288110"
+            className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white text-stone-900 px-6 py-3 text-sm font-bold hover:border-stone-500 transition-colors"
+          >
+            Or call direct: (832) 528-8110
+          </a>
+        </div>
+      </div>
     </section>
   )
 }
