@@ -68,6 +68,7 @@ def ws_and_workflow():
 
 
 @requires_db
+@pytest.mark.forked
 def test_no_lens_session_by_default(ws_and_workflow):
     """No flag → run.session_id stays NULL, no GlensChatSession row."""
     from app.models.run import Run
@@ -101,6 +102,7 @@ def test_no_lens_session_by_default(ws_and_workflow):
 
 
 @requires_db
+@pytest.mark.forked
 def test_create_lens_session_flag_mints_and_links(ws_and_workflow):
     """Flag ON → new GlensChatSession row; run.session_id links; response carries it."""
     from app.models.run import Run
@@ -139,6 +141,7 @@ def test_create_lens_session_flag_mints_and_links(ws_and_workflow):
 
 
 @requires_db
+@pytest.mark.forked
 def test_session_and_run_commit_atomically(ws_and_workflow):
     """Self-review guard: session mint + Run insert must live in the same
     transaction. If the commit fails, the session must roll back — otherwise
