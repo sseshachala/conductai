@@ -79,10 +79,17 @@ const softwareAppJsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Conduct",
+  "alternateName": ["Conduct AI", "ConductAI", "Conduct.ai"],
+  "sameAs": [
+    "https://github.com/sseshachala/conductai",
+    "https://pypi.org/project/conduct-cli/",
+    "https://pypi.org/project/conduct-litellm-guard/",
+    "https://pypi.org/project/conduct-nemo-guard/"
+  ],
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Web",
   "url": "https://conductai.ai",
-  "description": "Governed AI automations for engineering teams. Turn tickets, PRs, alerts, and incidents into auditable workflows with human approval before anything merges.",
+  "description": "Runtime governance for AI agents. Allow, warn, or block every model and tool call before it commits. Hash-chained audit for every decision. Compliance packs for SOC 2, HIPAA, PCI DSS, EU AI Act, SR 11-7, and FDA CSA.",
   "offers": {
     "@type": "Offer",
     "price": "0",

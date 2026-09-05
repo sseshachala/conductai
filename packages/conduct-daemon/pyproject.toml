@@ -5,7 +5,7 @@ build-backend = "setuptools.backends.legacy:build"
 [project]
 name = "conduct-daemon"
 version = "0.1.0"
-description = "ConductGuard local policy enforcement daemon"
+description = "Runtime governance for AI agents. ConductGuard local policy enforcement daemon"
 requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.9",
