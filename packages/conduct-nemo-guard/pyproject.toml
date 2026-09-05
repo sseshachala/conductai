@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "conduct-nemo-guard"
 version = "0.1.0"
-description = "Conduct Guard as a NeMo Guardrails plugin — enforce runtime policy on every Colang flow and LLM call."
+description = "Runtime governance for AI agents. Conduct Guard as a NeMo Guardrails plugin — enforce runtime policy on every Colang flow and LLM call."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
