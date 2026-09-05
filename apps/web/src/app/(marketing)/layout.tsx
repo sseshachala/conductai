@@ -114,6 +114,7 @@ function MarketingNav() {
           <DevelopersDropdown />
           <a href="/security" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Security</a>
           <a href="/pricing" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Pricing</a>
+          <a href="/partners" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Partners</a>
           <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
         </nav>
         <div className="flex items-center gap-3">
@@ -184,6 +185,7 @@ function MarketingFooter() {
       heading: "Company",
       links: [
         ["About", "/about"],
+        ["Partners", "/partners"],
         ["Blog", "/blog"],
         ["Security", "/security"],
         ["Privacy", "/privacy"],
