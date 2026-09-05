@@ -191,43 +191,93 @@ when {
         <p className="text-stone-600 leading-relaxed mb-4">
           The underlying concepts overlap. What differs is the shape of the object being governed — none of the standards below were designed for agentic tool invocations. This table shows how our fields correspond so teams already using these engines see the alignment.
         </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-stone-200 text-left uppercase tracking-widest text-stone-500">
-                <th className="py-2 pr-3">Concept</th>
-                <th className="py-2 pr-3">Ours</th>
-                <th className="py-2 pr-3">OPA/Rego</th>
-                <th className="py-2 pr-3">Kyverno</th>
-                <th className="py-2 pr-3">Sentinel</th>
-                <th className="py-2 pr-3">Cedar</th>
-                <th className="py-2 pr-3">XACML</th>
-                <th className="py-2">MITRE ATLAS</th>
-              </tr>
-            </thead>
-            <tbody className="text-stone-700">
-              {[
-                ["Rule id",         "id",                                  "package + rule",           "policy metadata name",       "policy name",             "policy id",                     "PolicyId",                "technique ID"],
-                ["Decision",        "action",                              "deny / allow sets",        "validate.deny / mutate",     "main = rule bool",        "forbid / permit",               "Effect Deny/Permit",      "control category"],
-                ["Actor",           "persona_affinity + match.mcp_tool",   "input.subject",            "resource kind",              "input.subject",           "principal is <Type>",           "Subject",                 "technique target"],
-                ["Resource",        "match.tool + match.path_pattern",     "input.resource",           "match.resources.kinds",      "input.resource",          "resource",                      "Resource",                "attack surface"],
-                ["Match cond.",     "match.pattern (regex)",               "contains / startswith",    "match.resources.selector",   "matches function",        "when { ... } clause",           "Condition element",       "detection signature"],
-                ["Severity",        "severity enum",                       "annotation",               "policy.severity",            "metadata",                "@severity annotation",          "Obligation",              "severity rating"],
-                ["Compliance",      "frameworks[] tags",                   "annotation",               "policy.categories",          "metadata",                "@compliance annotation",        "Obligation reference",    "technique IDs"],
-                ["Metadata",        "annotations.<namespace>",             "package doc",              "annotations",                "scope description",       "@<name> annotation",            "attributes",              "technique references"],
-                ["Enforcement pt.", "enforcement.{proxy,hook,mcp,runtime}", "evaluator context",       "policy webhook",             "Terraform stage",         "authorization boundary",        "PDP context",             "detection layer"],
-              ].map((row) => (
-                <tr key={row[0]} className="border-b border-stone-100 align-top">
-                  {row.map((cell, i) => (
-                    <td key={i} className={i === 0 ? "py-2 pr-3 font-semibold" : (i <= 1 ? "py-2 pr-3 font-mono text-[11px]" : "py-2 pr-3 text-stone-600")}>
-                      {cell}
-                    </td>
+        {(() => {
+          const CONCEPTS = [
+            "Rule id", "Decision", "Actor", "Resource", "Match cond.",
+            "Severity", "Compliance", "Metadata", "Enforcement pt.",
+          ]
+          const OURS = [
+            "id",
+            "action",
+            "persona_affinity + match.mcp_tool",
+            "match.tool + match.path_pattern",
+            "match.pattern (regex)",
+            "severity enum",
+            "frameworks[] tags",
+            "annotations.<namespace>",
+            "enforcement.{proxy,hook,mcp,runtime}",
+          ]
+          const ENGINES: [string, string, string[]][] = [
+            ["OPA/Rego", "Generic policy over arbitrary JSON input", [
+              "package + rule", "deny / allow sets", "input.subject",
+              "input.resource", "contains / startswith", "annotation",
+              "annotation", "package doc", "evaluator context",
+            ]],
+            ["Kyverno", "K8s admission control", [
+              "policy metadata name", "validate.deny / mutate", "resource kind",
+              "match.resources.kinds", "match.resources.selector", "policy.severity",
+              "policy.categories", "annotations", "policy webhook",
+            ]],
+            ["Sentinel", "HashiCorp infra provisioning (Terraform)", [
+              "policy name", "main = rule bool", "input.subject",
+              "input.resource", "matches function", "metadata",
+              "metadata", "scope description", "Terraform stage",
+            ]],
+            ["Cedar", "Authorization (who can do what)", [
+              "policy id", "forbid / permit", "principal is <Type>",
+              "resource", "when { ... } clause", "@severity annotation",
+              "@compliance annotation", "@<name> annotation", "authorization boundary",
+            ]],
+            ["XACML", "Enterprise access control (legacy)", [
+              "PolicyId", "Effect Deny/Permit", "Subject",
+              "Resource", "Condition element", "Obligation",
+              "Obligation reference", "attributes", "PDP context",
+            ]],
+            ["MITRE ATLAS", "Adversarial ML threat catalog", [
+              "technique ID", "control category", "technique target",
+              "attack surface", "detection signature", "severity rating",
+              "technique IDs", "technique references", "detection layer",
+            ]],
+          ]
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Ours - highlighted */}
+              <div className="border-2 border-indigo-300 bg-indigo-50/40 rounded-xl p-4 md:col-span-2">
+                <div className="flex items-baseline justify-between mb-1">
+                  <p className="font-semibold text-stone-900">Conduct (Agentic Tool-Call Policy)</p>
+                  <p className="text-xs text-indigo-700">what this schema targets</p>
+                </div>
+                <p className="text-xs text-stone-500 mb-3">Agent invokes tool. Rule matches on tool + pattern. Decision fires pre-execution.</p>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  {CONCEPTS.map((c, i) => (
+                    <div key={c} className="flex gap-2 border-b border-indigo-100/60 py-1">
+                      <dt className="text-stone-500 w-28 flex-shrink-0">{c}</dt>
+                      <dd className="font-mono text-[11px] text-stone-800 break-all">{OURS[i]}</dd>
+                    </div>
                   ))}
-                </tr>
+                </dl>
+              </div>
+
+              {/* Adjacent engines - one card each */}
+              {ENGINES.map(([name, tagline, fields]) => (
+                <div key={name} className="border border-stone-200 rounded-xl p-4 bg-white">
+                  <div className="flex items-baseline justify-between mb-1">
+                    <p className="font-semibold text-stone-900">{name}</p>
+                  </div>
+                  <p className="text-xs text-stone-500 mb-3">{tagline}</p>
+                  <dl className="text-xs">
+                    {CONCEPTS.map((c, i) => (
+                      <div key={c} className="flex gap-2 border-b border-stone-100 py-1">
+                        <dt className="text-stone-500 w-28 flex-shrink-0">{c}</dt>
+                        <dd className="text-stone-700 break-words">{fields[i]}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )
+        })()}
         <p className="text-xs text-stone-500 mt-3 leading-relaxed">
           <strong>What this is saying:</strong> vocabulary overlap is high; problem shape differs. OPA governs arbitrary JSON. Kyverno governs K8s resources. Sentinel governs Terraform plans. Cedar governs authorization requests. <strong>Ours governs agentic tool invocations</strong> — an object shape none of the above are optimized for.
         </p>

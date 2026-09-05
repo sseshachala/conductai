@@ -298,14 +298,14 @@ rules:
         </p>
         <SubHeading>CLI import</SubHeading>
         <Pre>{`# Preview
-conduct import-cedar my-policy.json \
-  --pack-slug my-cedar-import \
+conduct import-cedar my-policy.json \\
+  --pack-slug my-cedar-import \\
   --pack-name "My Cedar Import"
 
 # Install
-conduct import-cedar my-policy.json \
-  --pack-slug my-cedar-import \
-  --pack-name "My Cedar Import" \
+conduct import-cedar my-policy.json \\
+  --pack-slug my-cedar-import \\
+  --pack-name "My Cedar Import" \\
   --install`}</Pre>
         <SubHeading>Cedar text export</SubHeading>
         <p className="text-stone-500 text-sm mb-3">
@@ -1923,13 +1923,25 @@ New tool calls are paused until the limit is raised. Contact your security team.
         <SubHeading>Rule schema</SubHeading>
         <p className="text-stone-500 text-sm mb-3">Each rule in your policy JSON follows this shape:</p>
         <Pre>{`{
-  "id":          "no-prod-push",          // unique slug, used in audit log
+  // unique slug, used in audit log
+  "id": "no-prod-push",
+
   "description": "Block git push to prod branches",
-  "applies_to":  ["Bash"],               // tool names: Bash, Write, Edit, MultiEdit, Read, Glob, mcp__*
-  "pattern":     "git push.*main|master", // regex matched against tool input (command, file_path, etc.)
-  "action":      "block",                // "block" | "warn" | "audit"
-  "overridable": false,                  // false = admin-only rule, cannot be disabled per-user
-  "severity":    "high"                  // "critical" | "high" | "medium" | "low"
+
+  // tool names: Bash, Write, Edit, MultiEdit, Read, Glob, mcp__*
+  "applies_to": ["Bash"],
+
+  // regex matched against tool input (command, file_path, etc.)
+  "pattern": "git push.*main|master",
+
+  // "block" | "warn" | "audit"
+  "action": "block",
+
+  // false = admin-only rule, cannot be disabled per-user
+  "overridable": false,
+
+  // "critical" | "high" | "medium" | "low"
+  "severity": "high"
 }`}</Pre>
 
         <div className="rounded-xl border border-stone-200 overflow-hidden my-6">
