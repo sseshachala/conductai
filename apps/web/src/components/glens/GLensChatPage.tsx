@@ -2,6 +2,7 @@
 import { API } from "@/lib/api"
 
 import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { useLensEvent } from "@/hooks/useLensEvent"
 import { useLensSessionStream, type LensSessionStream } from "@/hooks/useLensSessionStream"
@@ -1730,8 +1731,9 @@ function ChatInput({ onSubmit, disabled }: { onSubmit: (t: string) => void; disa
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export function GLensChatPage() {
+export function GLensChatPage({ initialSessionId }: { initialSessionId?: string } = {}) {
   const { authFetch, workspaceId } = useAuthFetch()
+  const router = useRouter()
 
   const [sessions, setSessions] = useState<GLensSession[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -1764,6 +1766,20 @@ export function GLensChatPage() {
       .catch(() => {})
   }, [workspaceId, authFetch])
 
+  // Deep-link entry: if the page mounted with an initialSessionId (URL
+  // /lens/{id}), load it once. selectSession updates the URL via
+  // router.replace, which is a no-op when we already match — so no loop.
+  const initialLoadedRef = useRef(false)
+  useEffect(() => {
+    if (initialSessionId && !initialLoadedRef.current && workspaceId) {
+      initialLoadedRef.current = true
+      selectSession(initialSessionId)
+    }
+    // selectSession is stable within the component closure; omitting from deps
+    // avoids re-firing when Redis-driven state updates cascade.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSessionId, workspaceId])
+
   // Load data-grounded opener chips
   useEffect(() => {
     if (!workspaceId) return
@@ -1781,9 +1797,11 @@ export function GLensChatPage() {
   function startNew() {
     setActiveId(null)
     setMessages([])
+    router.replace("/lens")
   }
 
   async function selectSession(id: string) {
+    router.replace(`/lens/${id}`)
     setLoading(true)
     setActiveId(id)
     setMessages([])
