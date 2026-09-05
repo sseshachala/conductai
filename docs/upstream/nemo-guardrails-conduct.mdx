@@ -1,0 +1,100 @@
+# Conduct
+
+[Conduct](https://conductai.ai) is a runtime policy layer for AI agents. It
+maintains a workspace-wide catalog of rules (RBAC, PII, secrets, HITL
+approvals, cost caps) and an audit chain, and exposes a single
+`guard_check` HTTP endpoint that returns `allow` / `warn` / `block` /
+`approval` verdicts.
+
+The `conduct-nemo-guard` plugin wires that endpoint into NeMo Guardrails as
+a Colang input rail. Every incoming user turn hits Conduct before the LLM
+runs; a blocked verdict short-circuits with a policy-safe response and
+the model is never called.
+
+## Installation
+
+```bash
+pip install conduct-nemo-guard
+```
+
+Mint a workspace agent token at [conductai.ai](https://conductai.ai)
+(*Settings → Agent identities*) and export it:
+
+```bash
+export CONDUCT_AGENT_TOKEN=cond_agt_...
+```
+
+Optional environment variables:
+
+- `CONDUCT_API_URL` — defaults to `https://api.conductai.ai`.
+- `CONDUCT_WORKSPACE_ID` — usually inferred from the token; set when a
+  single agent identity spans multiple workspaces.
+
+## Configure the input rail
+
+`config.yml`:
+
+```yaml
+models:
+  - type: main
+    engine: openai
+    model: gpt-4o-mini
+
+rails:
+  input:
+    flows:
+      - check_policy
+```
+
+`rails.co`:
+
+```colang
+define bot inform_policy_block
+  "That request is blocked by workspace policy. Reach out to your admin if this looks wrong."
+
+define bot inform_policy_hold
+  "That action needs a workspace admin's approval. I've queued the request — you'll get a confirmation once someone signs off."
+
+define bot inform_policy_advisory
+  "Heads up — this action is flagged as sensitive, so we'll keep an audit record of what you asked."
+
+define flow check_policy
+  $verdict = execute conduct_guard_verdict(tool_name="support_bot_message", prompt=$user_message)
+
+  if $verdict == "block"
+    bot inform_policy_block
+    stop
+
+  if $verdict == "approval"
+    bot inform_policy_hold
+    stop
+
+  if $verdict == "warning"
+    bot inform_policy_advisory
+    # warning is not a hard block — flow continues
+```
+
+`main.py`:
+
+```python
+from nemoguardrails import LLMRails, RailsConfig
+from conduct_nemo_guard.actions import register_actions
+
+config = RailsConfig.from_path("./config")
+rails = LLMRails(config)
+register_actions(rails)
+```
+
+## What lands in the audit chain
+
+Every verdict — allow, warn, block, approval — is recorded as an audit
+row in the Conduct workspace, source-tagged `nemo`, with the rule ID
+that matched. This is the same audit surface used by the CLI hook and
+the LiteLLM adapter, so a workspace running NeMo alongside other AI
+tooling gets one unified view.
+
+## References
+
+- Plugin source: [github.com/sseshachala/conduct-nemo-guard](https://github.com/sseshachala/conduct-nemo-guard)
+- Runnable example: `examples/support-bot/` in the plugin repo
+- Conduct docs: [docs.conductai.ai](https://docs.conductai.ai)
