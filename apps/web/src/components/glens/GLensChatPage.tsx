@@ -2,7 +2,7 @@
 import { API } from "@/lib/api"
 
 import { useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { useLensEvent } from "@/hooks/useLensEvent"
 import { useLensSessionStream, type LensSessionStream } from "@/hooks/useLensSessionStream"
@@ -1734,6 +1734,7 @@ function ChatInput({ onSubmit, disabled }: { onSubmit: (t: string) => void; disa
 export function GLensChatPage({ initialSessionId }: { initialSessionId?: string } = {}) {
   const { authFetch, workspaceId } = useAuthFetch()
   const router = useRouter()
+  const pathname = usePathname()
 
   const [sessions, setSessions] = useState<GLensSession[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -1969,6 +1970,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
     try {
       const body: Record<string, unknown> = { message: text }
       if (activeId) body.session_id = activeId
+      if (pathname) body.page_context = pathname
 
       const res = await authFetch(`${API}/glens/chat/stream`, {
         method: "POST",

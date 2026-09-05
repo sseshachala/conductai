@@ -775,6 +775,8 @@ async def glens_chat_stream(
     # (gpt-4o-mini fabricated "August 26" when today was "2026-08-27").
     today_display = _now.strftime("%A, %B %-d, %Y") + " UTC"
     system = _SYSTEM.format(today=today, today_display=today_display)
+    if req.page_context:
+        system += f"\n\nUser is currently viewing `{req.page_context}`. Prefer answers scoped to that page when ambiguous."
     llm_messages = _build_llm_messages(session_messages)
 
     loop = asyncio.get_running_loop()
