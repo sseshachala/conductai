@@ -12,6 +12,7 @@ import { GenericTableBubble } from "@/components/glens/GenericTableBubble"
 import { BlocksBubble } from "@/components/glens/BlocksBubble"
 import { FeedbackButtons } from "@/components/glens/FeedbackButtons"
 import RunDetailPanel, { type RunMeta } from "@/components/runs/RunDetailPanel"
+import { SlashDropdown, SlashForm, filterTools, type SlashTool } from "@/components/glens/SlashPicker"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1619,13 +1620,38 @@ function RunBubble({
 
 function ChatInput({ onSubmit, disabled }: { onSubmit: (t: string) => void; disabled: boolean }) {
   const [value, setValue] = useState("")
+  const [pickedTool, setPickedTool] = useState<SlashTool | null>(null)
+  // Escape sets this true to hide the picker without wiping the user's text;
+  // clears when the value stops starting with "/" (fresh slate for next try).
+  const [pickerDismissed, setPickerDismissed] = useState(false)
   const ref = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => { if (!disabled) ref.current?.focus() }, [disabled])
+  useEffect(() => { if (!disabled && !pickedTool) ref.current?.focus() }, [disabled, pickedTool])
+  useEffect(() => { if (!value.startsWith("/")) setPickerDismissed(false) }, [value])
 
   function submit() {
     const t = value.trim()
     if (t && !disabled) { onSubmit(t); setValue("") }
+  }
+
+  // Slash-command picker (#1630): only mount the dropdown when there are
+  // real matches. Prevents an invisible dropdown from swallowing Enter for
+  // messages that legitimately start with "/" (e.g. "/tmp/foo is broken").
+  const slashMatches: SlashTool[] =
+    value.startsWith("/") && !pickedTool && !pickerDismissed
+      ? filterTools(value.slice(1))
+      : []
+  const showPicker = slashMatches.length > 0
+
+  if (pickedTool) {
+    return (
+      <SlashForm
+        tool={pickedTool}
+        disabled={disabled}
+        onSubmit={prompt => { onSubmit(prompt); setValue(""); setPickedTool(null) }}
+        onCancel={() => { setPickedTool(null); setValue("") }}
+      />
+    )
   }
 
   const canSend = !disabled && value.trim().length > 0
@@ -1638,13 +1664,23 @@ function ChatInput({ onSubmit, disabled }: { onSubmit: (t: string) => void; disa
       padding: "10px 14px",
       transition: "border-color 120ms, box-shadow 120ms",
     }}>
+      {showPicker && (
+        <SlashDropdown
+          matches={slashMatches}
+          onSelect={t => { setPickedTool(t); setValue("") }}
+          onClose={() => setPickerDismissed(true)}
+        />
+      )}
       <textarea
         ref={ref}
         value={value}
         onChange={e => setValue(e.target.value)}
-        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit() } }}
+        onKeyDown={e => {
+          if (showPicker) return  // dropdown owns keys only while visible
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit() }
+        }}
         disabled={disabled}
-        placeholder="Ask about your governance data…"
+        placeholder="Ask about your governance data… (type / for commands)"
         rows={2}
         style={{
           width: "100%",
