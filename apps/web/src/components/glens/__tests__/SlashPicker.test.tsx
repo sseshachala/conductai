@@ -46,6 +46,12 @@ const authFetchMock = (path: string) => {
       { slug: "sr-11-7", name: "SR 11-7", description: "Federal model risk" },
     ])))
   }
+  if (path.includes("/guard/policies")) {
+    return Promise.resolve(new Response(JSON.stringify([
+      { rule_id: "r-1", description: "Block PII", enabled: true, pack_id: null },
+      { rule_id: "r-2", description: "SOC2 exception", enabled: false, pack_id: "conduct-soc2" },
+    ])))
+  }
   return Promise.resolve(new Response("null", { status: 404 }))
 }
 const authFetchRef = { authFetch: authFetchMock, workspaceId: "ws-1" }
@@ -72,6 +78,23 @@ describe("filterTools", () => {
     const names = SLASH_TOOLS.map(t => t.name)
     expect(names).toContain("update_budget")
     expect(names).toContain("install_pack")
+  })
+
+  it("includes enable_policy, disable_policy, deactivate_agent_identity", () => {
+    const names = SLASH_TOOLS.map(t => t.name)
+    expect(names).toContain("enable_policy")
+    expect(names).toContain("disable_policy")
+    expect(names).toContain("deactivate_agent_identity")
+  })
+
+  it("enable_policy.rule_id uses the policies completer", () => {
+    const tool = SLASH_TOOLS.find(t => t.name === "enable_policy")!
+    expect(tool.args.find(a => a.name === "rule_id")!.completer).toBe("policies")
+  })
+
+  it("deactivate_agent_identity.agent_id uses the agents completer", () => {
+    const tool = SLASH_TOOLS.find(t => t.name === "deactivate_agent_identity")!
+    expect(tool.args.find(a => a.name === "agent_id")!.completer).toBe("agents")
   })
 
   it("update_budget.budget_id uses the budgets completer", () => {
@@ -234,6 +257,14 @@ describe("Dormant completers (PR 3)", () => {
     const opts = await COMPLETERS.marketplace_packs(authFetchMock, "ws-1")
     expect(opts).toEqual([
       { value: "sr-11-7", label: "SR 11-7", sublabel: "Federal model risk" },
+    ])
+  })
+
+  it("policies: rule_id as value, description as label, enabled/pack in sublabel", async () => {
+    const opts = await COMPLETERS.policies(authFetchMock, "ws-1")
+    expect(opts).toEqual([
+      { value: "r-1", label: "Block PII", sublabel: "enabled" },
+      { value: "r-2", label: "SOC2 exception", sublabel: "disabled · pack: conduct-soc2" },
     ])
   })
 })

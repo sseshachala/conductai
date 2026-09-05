@@ -183,6 +183,80 @@ TOOLS: list[ToolDef] = [
         annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
         tags=_ACTOR_TAGS,
     ),
+    ToolDef(
+        name="enable_policy",
+        description=(
+            "Enable a Guard policy rule by rule_id. Two-step: returns a pending "
+            "action for the user to confirm; the confirm click flips the enabled "
+            "flag + invalidates the policy cache. Guard policy guard.policies.edit "
+            "still applies."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "rule_id": {
+                    "type": "string",
+                    "description": "Policy rule id (e.g. 'r-sr117-01').",
+                },
+            },
+            "required": ["rule_id"],
+        },
+        impl=_actor_impl("enable_policy"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
+        tags=_ACTOR_TAGS,
+    ),
+    ToolDef(
+        name="disable_policy",
+        description=(
+            "Disable a Guard policy rule by rule_id. Two-step: returns a pending "
+            "action for the user to confirm; the confirm click flips the enabled "
+            "flag + invalidates the policy cache. Disabling a pack rule requires "
+            "a reason (surfaces as a compliance exception in the audit trail)."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "rule_id": {
+                    "type": "string",
+                    "description": "Policy rule id.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Required when disabling a pack rule. Surfaced in the audit trail.",
+                },
+            },
+            "required": ["rule_id"],
+        },
+        impl=_actor_impl("disable_policy"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
+        tags=_ACTOR_TAGS,
+    ),
+    ToolDef(
+        name="deactivate_agent_identity",
+        description=(
+            "Deactivate an agent identity by id (security kill switch). Two-step: "
+            "returns a pending action for the user to confirm; the confirm click "
+            "sets lifecycle_state='deactivated' so the identity can no longer "
+            "authenticate. Guard policy platform.members.manage still applies."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string",
+                    "description": "Agent identity id (UUID).",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Optional reason surfaced in the audit trail.",
+                },
+            },
+            "required": ["agent_id"],
+        },
+        impl=_actor_impl("deactivate_agent_identity"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
+        tags=_ACTOR_TAGS,
+    ),
     # ── Chat-surface confirmation shortcut tools (#1465) ────────────────────
     # These let the LLM resolve natural-language "yes" / "no" replies against
     # a pending action without requiring a button click. Same server code as
