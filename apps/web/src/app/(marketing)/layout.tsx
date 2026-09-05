@@ -63,8 +63,10 @@ function SolutionsDropdown() {
       </a>
       <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[240px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
+          <NavItem href="/use-cases" title="Use cases" desc="Prove, kill, contain, answer, discover" />
+          <div className="my-1 border-t border-stone-100" />
           <div className="px-4 py-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Primary</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">By team</p>
           </div>
           <NavItem href="/solutions/engineering-leaders" title="Engineering Agents" desc="Consistent policy across your agent fleet" />
           <NavItem href="/solutions/security-compliance" title="Security Teams" desc="Enforcement, evidence, and compliance reports" />
@@ -75,6 +77,10 @@ function SolutionsDropdown() {
           </div>
           <NavItem href="/solutions/financial-services" title="Financial Services" desc="PCI DSS 4.0 · refund controls · audit" />
           <NavItem href="/solutions/life-sciences" title="Life Sciences" desc="HIPAA · 21 CFR Part 11 · validation" />
+          <div className="my-1 border-t border-stone-100" />
+          <div className="px-4 py-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Integrations</p>
+          </div>
           <NavItem href="/solutions/nemo-guardrails" title="NeMo Guardrails + Conduct" desc="App safety layer + org governance layer" />
         </div>
       </div>
@@ -164,6 +170,7 @@ function MarketingFooter() {
     {
       heading: "Solutions",
       links: [
+        ["Use cases", "/use-cases"],
         ["Engineering Agents", "/solutions/engineering-leaders"],
         ["Security Teams", "/solutions/security-compliance"],
         ["Business Actions", "/solutions/action-governance"],
