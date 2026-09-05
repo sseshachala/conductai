@@ -392,32 +392,46 @@ function CoreLoopSection() {
         <p className="text-stone-500 mb-10 sm:mb-12 max-w-2xl text-sm sm:text-base">
           Four outcomes. Every agent action gets one. Runtime, not retrospective.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-5">
+        <div className="grid grid-cols-4 md:grid-cols-4 gap-3 md:gap-5">
           {verbs.map((v) => (
             <div key={v.word} className="flex flex-col gap-3">
-              {v.decision ? (
-                <DecisionCard
-                  agent="claude-code / deploy-agent"
-                  action="deploy_production"
-                  resource="payments-api"
-                  policy="production-change-v4"
-                  decision={v.decision}
-                  compact
-                />
-              ) : (
-                <div className="border border-stone-200 rounded-xl px-4 py-3 bg-white">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="inline-block w-2 h-2 rounded-full bg-stone-400" />
-                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-stone-500">
-                      Hash-chained
-                    </span>
+              {/* Detail card — hidden on mobile, shown on tablet+ */}
+              <div className="hidden md:block">
+                {v.decision ? (
+                  <DecisionCard
+                    agent="claude-code / deploy-agent"
+                    action="deploy_production"
+                    resource="payments-api"
+                    policy="production-change-v4"
+                    decision={v.decision}
+                    compact
+                  />
+                ) : (
+                  <div className="border border-stone-200 rounded-xl px-4 py-3 bg-white">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="inline-block w-2 h-2 rounded-full bg-stone-400" />
+                      <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                        Hash-chained
+                      </span>
+                    </div>
+                    <p className="font-mono text-[10px] text-stone-400">
+                      SHA-256 · integrity verified
+                    </p>
                   </div>
-                  <p className="font-mono text-[10px] text-stone-400">
-                    SHA-256 · integrity verified
-                  </p>
-                </div>
-              )}
-              <div>
+                )}
+              </div>
+              {/* Mobile-compact marker — dot + verb, no description */}
+              <div className="md:hidden flex flex-col items-center text-center gap-1.5">
+                <span className={`inline-block w-2 h-2 rounded-full ${
+                  v.decision === "ALLOW" ? "bg-emerald-500" :
+                  v.decision === "APPROVE" ? "bg-amber-500" :
+                  v.decision === "BLOCK" ? "bg-red-500" :
+                  "bg-stone-400"
+                }`} />
+                <p className={`text-sm font-black tracking-tight ${v.colour}`}>{v.word}</p>
+              </div>
+              {/* Verb + long description — full on md+, hidden on mobile */}
+              <div className="hidden md:block">
                 <p className={`text-lg font-black tracking-tight ${v.colour}`}>{v.word}</p>
                 <p className="text-sm text-stone-500 mt-1 leading-relaxed">{v.line}</p>
               </div>
