@@ -392,7 +392,7 @@ function CoreLoopSection() {
         <p className="text-stone-500 mb-10 sm:mb-12 max-w-2xl text-sm sm:text-base">
           Four outcomes. Every agent action gets one. Runtime, not retrospective.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-5">
           {verbs.map((v) => (
             <div key={v.word} className="flex flex-col gap-3">
               {v.decision ? (
