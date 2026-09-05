@@ -232,7 +232,7 @@ export default function PackDetailPage() {
             <button
               onClick={toggleCedar}
               disabled={cedarLoading}
-              title="Render this pack as Cedar text syntax"
+              title="Render + copy this pack as Cedar text — the AWS Verified Permissions language. Bidirectional interchange, no lock-in."
               style={{
                 padding: "10px 14px",
                 borderRadius: 8,
@@ -245,7 +245,7 @@ export default function PackDetailPage() {
                 cursor: cedarLoading ? "wait" : "pointer",
               }}
             >
-              {cedarLoading ? "Loading…" : cedarText !== null ? "Hide Cedar" : "View as Cedar"}
+              {cedarLoading ? "Loading…" : cedarText !== null ? "Hide Cedar" : "Export Cedar"}
             </button>
             <button
               onClick={togglePack}
@@ -278,12 +278,21 @@ export default function PackDetailPage() {
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 {cedarText && (
-                  <button
-                    onClick={copyCedar}
-                    style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", fontSize: 11, cursor: "pointer" }}
-                  >
-                    {cedarCopied ? "✓ Copied" : "Copy"}
-                  </button>
+                  <>
+                    <button
+                      onClick={copyCedar}
+                      style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", fontSize: 11, cursor: "pointer" }}
+                    >
+                      {cedarCopied ? "✓ Copied" : "Copy"}
+                    </button>
+                    <a
+                      href={`data:text/plain;charset=utf-8,${encodeURIComponent(cedarText)}`}
+                      download={`${slug}.cedar`}
+                      style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", fontSize: 11, textDecoration: "none" }}
+                    >
+                      ⤓ Download .cedar
+                    </a>
+                  </>
                 )}
                 <button
                   onClick={toggleCedar}
