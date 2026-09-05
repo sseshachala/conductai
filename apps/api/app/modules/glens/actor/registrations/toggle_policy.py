@@ -102,43 +102,38 @@ def _propose_toggle(ctx: ActionCtx, args: dict[str, Any], *, target_enabled: boo
 
 
 def _execute_toggle(ctx: ActionCtx, resolved: dict[str, Any]) -> dict[str, Any]:
-    from app.modules.guard.models import (
-        GuardRuleOverride, WorkspaceCustomRule,
-    )
+    """Custom rules → flip WorkspaceCustomRule.enabled. Pack rules → delegate
+    to the router's `_upsert_override` so the write path is identical to
+    PATCH /guard/policies (correct column set + audit metadata)."""
+    from app.modules.guard.models import WorkspaceCustomRule
     from app.modules.guard.policy_engine import invalidate_policy_cache
+    from app.modules.guard.routers.policies import _upsert_override
 
     rule_id = resolved["rule_id"]
     kind = resolved["kind"]
     target = bool(resolved["target_enabled"])
     ws_uuid = _uuid.UUID(ctx.workspace_id)
-    now = datetime.now(timezone.utc)
 
     if kind == "custom":
         row = ctx.db.get(WorkspaceCustomRule, (ws_uuid, rule_id))
         if row is None:
             raise ValueError(f"custom rule {rule_id} disappeared between propose and execute")
         row.enabled = target
-        row.updated_at = now
+        row.updated_at = datetime.now(timezone.utc)
     else:
-        # Pack rule → upsert override with disabled=(not target).
-        override = ctx.db.get(GuardRuleOverride, (ws_uuid, rule_id))
-        if override is None:
-            override = GuardRuleOverride(
-                workspace_id=ws_uuid,
-                rule_id=rule_id,
-                disabled=not target,
-                reason=resolved.get("reason"),
-                overridden_by=ctx.clerk_user_id or "lens.actor",
-                created_at=now,
-                updated_at=now,
-            )
-            ctx.db.add(override)
-        else:
-            override.disabled = not target
-            if resolved.get("reason"):
-                override.reason = resolved["reason"]
-            override.overridden_by = ctx.clerk_user_id or "lens.actor"
-            override.updated_at = now
+        # Pack rule → upsert override via the shared helper. `disabled=not
+        # target` toggles the flag; the helper stamps `overridden_at` and
+        # optionally clears/sets the exception `reason` per the same
+        # semantics as the HTTP handler.
+        _upsert_override(
+            ctx.db,
+            ws_uuid,
+            rule_id,
+            disabled=not target,
+            reason=resolved.get("reason") if not target else None,
+            overridden_by=ctx.clerk_user_id or "lens.actor",
+            clear_exception=target,  # re-enable → drop exception metadata
+        )
 
     ctx.db.commit()
     invalidate_policy_cache(ctx.db, ws_uuid)

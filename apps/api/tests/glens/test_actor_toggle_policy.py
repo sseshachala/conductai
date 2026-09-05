@@ -142,3 +142,44 @@ def test_propose_enable_custom_success():
     assert "Enable policy 'Custom rule'" in out.summary
     assert out.resolved_input["target_enabled"] is True
     assert out.resolved_input["kind"] == "custom"
+
+
+def test_execute_pack_disable_delegates_to_upsert_override():
+    """Execute path for pack rules must call the shared _upsert_override helper
+    with the correct kwargs — the model has `overridden_at`, not
+    `created_at`/`updated_at`, so hand-rolling a constructor breaks."""
+    spec = default_action_registry.get("disable_policy")
+    ctx = _ctx()
+    with patch("app.modules.guard.routers.policies._upsert_override") as mock_upsert, \
+         patch("app.modules.guard.policy_engine.invalidate_policy_cache"):
+        out = spec.execute(ctx, {
+            "rule_id": "r-1",
+            "kind": "pack",
+            "target_enabled": False,
+            "reason": "Vendor exception",
+        })
+    assert mock_upsert.called
+    call_kwargs = mock_upsert.call_args.kwargs
+    assert call_kwargs["disabled"] is True
+    assert call_kwargs["reason"] == "Vendor exception"
+    assert call_kwargs["clear_exception"] is False
+    assert out == {"rule_id": "r-1", "kind": "pack", "enabled": False}
+
+
+def test_execute_pack_enable_clears_exception():
+    """Re-enabling a previously-disabled pack rule should clear the
+    exception metadata so an old reason doesn't linger on the row."""
+    spec = default_action_registry.get("enable_policy")
+    ctx = _ctx()
+    with patch("app.modules.guard.routers.policies._upsert_override") as mock_upsert, \
+         patch("app.modules.guard.policy_engine.invalidate_policy_cache"):
+        spec.execute(ctx, {
+            "rule_id": "r-1",
+            "kind": "pack",
+            "target_enabled": True,
+            "reason": None,
+        })
+    call_kwargs = mock_upsert.call_args.kwargs
+    assert call_kwargs["disabled"] is False
+    assert call_kwargs["clear_exception"] is True
+    assert call_kwargs["reason"] is None
