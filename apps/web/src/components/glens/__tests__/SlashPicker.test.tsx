@@ -67,6 +67,26 @@ describe("filterTools", () => {
   it("returns empty when nothing matches", () => {
     expect(filterTools("zzzzz")).toEqual([])
   })
+
+  it("includes update_budget and install_pack in the catalogue", () => {
+    const names = SLASH_TOOLS.map(t => t.name)
+    expect(names).toContain("update_budget")
+    expect(names).toContain("install_pack")
+  })
+
+  it("update_budget.budget_id uses the budgets completer", () => {
+    const tool = SLASH_TOOLS.find(t => t.name === "update_budget")!
+    const arg = tool.args.find(a => a.name === "budget_id")!
+    expect(arg.completer).toBe("budgets")
+    expect(arg.required).toBe(true)
+  })
+
+  it("install_pack.slug uses the marketplace_packs completer", () => {
+    const tool = SLASH_TOOLS.find(t => t.name === "install_pack")!
+    const arg = tool.args.find(a => a.name === "slug")!
+    expect(arg.completer).toBe("marketplace_packs")
+    expect(arg.required).toBe(true)
+  })
 })
 
 describe("composePrompt", () => {

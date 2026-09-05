@@ -110,6 +110,21 @@ export const SLASH_TOOLS: SlashTool[] = [
       { name: "reason", required: false, placeholder: "required when rejecting" },
     ],
   },
+  {
+    name: "update_budget",
+    description: "Update the monthly USD limit on a spend budget — requires confirmation.",
+    args: [
+      { name: "budget_id", required: true, placeholder: "budget UUID", completer: "budgets" },
+      { name: "monthly_limit_usd", required: true, placeholder: "e.g. 1000" },
+    ],
+  },
+  {
+    name: "install_pack",
+    description: "Install a marketplace skill pack — requires confirmation.",
+    args: [
+      { name: "slug", required: true, placeholder: "pack slug (e.g. conduct-soc2)", completer: "marketplace_packs" },
+    ],
+  },
 ]
 
 // Compose a natural-language prompt from tool + filled args. The LLM receives

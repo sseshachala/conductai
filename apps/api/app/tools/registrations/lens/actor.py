@@ -135,6 +135,54 @@ TOOLS: list[ToolDef] = [
         annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=False),
         tags=_ACTOR_TAGS,
     ),
+    ToolDef(
+        name="update_budget",
+        description=(
+            "Update the monthly USD limit on a Guard spend budget by budget ID. "
+            "Two-step: returns a pending action for the user to confirm; the "
+            "confirm click writes the new limit + a hash-chained audit entry. "
+            "Guard policy guard.spend.budgets.edit still applies."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "budget_id": {
+                    "type": "string",
+                    "description": "UUID of the guard_spend_budgets row to update.",
+                },
+                "monthly_limit_usd": {
+                    "type": "number",
+                    "description": "New monthly USD limit (>= 0).",
+                },
+            },
+            "required": ["budget_id", "monthly_limit_usd"],
+        },
+        impl=_actor_impl("update_budget"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
+        tags=_ACTOR_TAGS,
+    ),
+    ToolDef(
+        name="install_pack",
+        description=(
+            "Install a marketplace skill pack into the workspace by slug. "
+            "Two-step: returns a pending action for the user to confirm; the "
+            "confirm click adds the WorkspaceSkillPack row and invalidates "
+            "the policy cache. Guard policy guard.policies.edit still applies."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "slug": {
+                    "type": "string",
+                    "description": "Pack slug (e.g. 'conduct-soc2').",
+                },
+            },
+            "required": ["slug"],
+        },
+        impl=_actor_impl("install_pack"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
+        tags=_ACTOR_TAGS,
+    ),
     # ── Chat-surface confirmation shortcut tools (#1465) ────────────────────
     # These let the LLM resolve natural-language "yes" / "no" replies against
     # a pending action without requiring a button click. Same server code as
