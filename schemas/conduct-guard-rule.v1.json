@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.conductai.ai/conduct-guard-rule.v1.json",
-  "title": "Conduct Guard Rule Schema v1",
-  "description": "Machine-readable schema for a single Guard rule and a Guard pack (a bundle of rules). Guard rules are enforced across four surfaces: Guard proxy (LLM egress), pre-tool hooks (Claude Code / Cursor / Codex), MCP guard_check, and the workflow runtime. Rules are portable — the same rule renders to Cedar for AWS Verified Permissions ecosystems.",
+  "title": "Agentic Tool-Call Policy Schema v1",
+  "description": "Machine-readable schema for the Agentic Tool-Call Policy category: rules that govern what an AI agent is allowed to do when it invokes a tool (file edit, shell, HTTP, MCP tool call, workflow action). Enforced across four Conduct surfaces (Guard proxy, pre-tool hooks, MCP guard_check, workflow runtime) and portable to Cedar for AWS Verified Permissions ecosystems. Distinct from generic policy engines (OPA/Rego), authorization languages (Cedar), and infra-specific frameworks (Kyverno, Sentinel) — this is the schema for agentic tool-call policy.",
   "$defs": {
     "action": {
       "type": "string",
@@ -23,6 +23,24 @@
       "type": "string",
       "enum": ["free", "paid", "enterprise"],
       "description": "Pack distribution tier."
+    },
+    "match": {
+      "type": "object",
+      "description": "Extensible match dimensions. Runtime reads whichever dimensions it understands and ignores the rest — a rule matches when EVERY populated dimension matches the invocation. Standard dimensions listed below; callers can add custom keys (e.g. `mcp_server`, `webhook_source`) for domain-specific matching.",
+      "additionalProperties": { "type": ["string", "array", "object"] },
+      "properties": {
+        "tool":         { "type": "string", "description": "Comma-separated tool names (e.g. `edit,write,bash`). Empty or `*` means all." },
+        "pattern":      { "type": "string", "description": "Regex matched against tool_input.prompt / body." },
+        "path_pattern": { "type": "string", "description": "Regex matched against tool_input.path (file operations)." },
+        "http_method":  { "type": "string", "description": "HTTP verb for API-request rules (e.g. `POST`)." },
+        "mcp_tool":     { "type": "string", "description": "MCP tool name for MCP-native rules." },
+        "workflow_event": { "type": "string", "description": "Workflow event name for runtime-triggered rules." }
+      }
+    },
+    "annotations": {
+      "type": "object",
+      "description": "Namespaced free-form metadata. Runtime ignores unknown namespaces; exporters pass them through to their target format (Cedar → @annotation, Rego → package comment, Kyverno → labels). Keys are namespace strings (`cedar`, `opa`, `kyverno`, `custom.<name>`); values are arbitrary JSON.",
+      "additionalProperties": true
     },
     "enforcement": {
       "type": "object",
@@ -45,9 +63,11 @@
       "properties": {
         "id":                 { "type": "string", "minLength": 1, "description": "Stable identifier. Unique within the pack. Referenced by GuardRuleOverride to disable or amend." },
         "description":        { "type": "string", "description": "Human-readable summary — shown in dashboards + Cedar `@description` annotation." },
-        "match_tool":         { "type": "string", "description": "Comma-separated tool names the rule applies to (e.g. `edit,write,bash`). Empty or `*` means all tools." },
-        "match_pattern":      { "type": "string", "description": "Regex matched against the tool_input.prompt / body. Case-sensitive; anchors optional." },
-        "match_path_pattern": { "type": "string", "description": "Regex matched against the tool_input.path (file operations). Independent from `match_pattern`." },
+        "match":              { "$ref": "#/$defs/match" },
+        "match_tool":         { "type": "string", "description": "v1 sugar for match.tool. Comma-separated tool names (e.g. `edit,write,bash`). Runtime folds this into `match.tool` at eval time." },
+        "match_pattern":      { "type": "string", "description": "v1 sugar for match.pattern. Regex matched against the tool_input.prompt / body." },
+        "match_path_pattern": { "type": "string", "description": "v1 sugar for match.path_pattern. Regex matched against tool_input.path." },
+        "annotations":        { "$ref": "#/$defs/annotations" },
         "action":             { "$ref": "#/$defs/action" },
         "message":            { "type": "string", "description": "Shown to the user when the rule fires. Appears in Cedar `@message` annotation." },
         "recommendation":     { "type": "string", "description": "Remediation guidance. Appears in Cedar `@recommendation` annotation." },
