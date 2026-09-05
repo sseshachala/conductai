@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import patch as _patch
 
 import pytest
 
@@ -80,14 +81,17 @@ def test_no_lens_session_by_default(ws_and_workflow):
     before = db.query(GlensChatSession).filter(GlensChatSession.workspace_id == ws_uuid).count()
 
     body = RunCreate(triggered_by="manual", dry_run=False, initial_state={"__manual": True})
-    result = create_run(
-        workflow_id=uuid.UUID(wf_id),
-        body=body,
-        db=db,
-        workspace_id=ws_id,
-        _="dummy-permission-token",
-        caller_id="user_test",
-    )
+    # Mock the Redis enqueue — CI runs without a redis service, and our
+    # assertions only care about session mint semantics, not queue behavior.
+    with _patch("app.routers.runs._enqueue_run"):
+        result = create_run(
+            workflow_id=uuid.UUID(wf_id),
+            body=body,
+            db=db,
+            workspace_id=ws_id,
+            _="dummy-permission-token",
+            caller_id="user_test",
+        )
 
     assert result.session_id is None
     run = db.query(Run).filter(Run.id == result.id).first()
@@ -108,14 +112,15 @@ def test_create_lens_session_flag_mints_and_links(ws_and_workflow):
     ws_uuid = uuid.UUID(ws_id)
 
     body = RunCreate(triggered_by="manual", dry_run=False, create_lens_session=True, initial_state={"__manual": True})
-    result = create_run(
-        workflow_id=uuid.UUID(wf_id),
-        body=body,
-        db=db,
-        workspace_id=ws_id,
-        _="dummy-permission-token",
-        caller_id="user_test",
-    )
+    with _patch("app.routers.runs._enqueue_run"):
+        result = create_run(
+            workflow_id=uuid.UUID(wf_id),
+            body=body,
+            db=db,
+            workspace_id=ws_id,
+            _="dummy-permission-token",
+            caller_id="user_test",
+        )
 
     assert result.session_id is not None
     run = db.query(Run).filter(Run.id == result.id).first()
