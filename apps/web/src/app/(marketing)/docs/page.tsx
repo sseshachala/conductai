@@ -1903,9 +1903,9 @@ New tool calls are paused until the limit is raised. Contact your security team.
         </p>
 
         <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 px-5 py-4 my-6">
-          <p className="text-xs font-bold uppercase tracking-widest text-indigo-700 mb-2">Guard Rule Schema v1 — bidirectional interchange</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-indigo-700 mb-2">Agentic Tool-Call Policy Schema v1 — the open category</p>
           <p className="text-sm text-stone-700 mb-3 leading-relaxed">
-            Guard rules speak two dialects: JSON (runtime) and Cedar (portability). Import from AWS Verified Permissions or any Cedar-native IAM stack; export any pack back to Cedar. No lock-in.
+            A distinct policy shape: rules that govern what an AI agent may do when it invokes a tool. Two dialects — JSON at runtime, Cedar for portability. Bidirectional interchange with AWS Verified Permissions and any Cedar-native IAM stack. No lock-in.
           </p>
           <div className="flex flex-wrap gap-2">
             <a href="/docs/schema" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-stone-200 text-xs text-stone-700 hover:border-indigo-400 hover:text-indigo-700 transition-colors">

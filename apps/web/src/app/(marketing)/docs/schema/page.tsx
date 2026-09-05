@@ -1,7 +1,7 @@
 export const metadata = {
-  title: "Guard Rule Schema — Docs | Conduct",
+  title: "Agentic Tool-Call Policy Schema — Docs | Conduct",
   description:
-    "Conduct Guard rules speak two dialects: JSON at runtime, Cedar for portability. Bidirectional interchange, no lock-in.",
+    "The open schema for a distinct policy category: rules that govern what an AI agent is allowed to do when it invokes a tool. Bidirectional Cedar interchange, no lock-in.",
 }
 
 export default function GuardSchemaDocsPage() {
@@ -12,12 +12,15 @@ export default function GuardSchemaDocsPage() {
           Docs
         </a>
         <span className="text-sm text-stone-300 mx-2">/</span>
-        <span className="text-sm text-stone-600">Guard Rule Schema</span>
+        <span className="text-sm text-stone-600">Agentic Tool-Call Policy Schema</span>
       </div>
 
-      <h1 className="text-3xl font-bold text-stone-900 mt-6 mb-2">Guard Rule Schema v1</h1>
+      <h1 className="text-3xl font-bold text-stone-900 mt-6 mb-2">Agentic Tool-Call Policy Schema v1</h1>
       <p className="text-stone-500 mb-4 leading-relaxed">
-        Guard rules speak two dialects: <strong>JSON</strong> for runtime evaluation, <strong>Cedar</strong> for portability. Both are semantically equivalent. Import your existing Cedar policies from AWS Verified Permissions or any Cedar-consuming IAM stack. Export any Conduct pack back to Cedar. No proprietary lock-in.
+        <strong>A distinct policy category.</strong> OPA/Rego is generic policy. Cedar is authorization. Kyverno is K8s admission. Sentinel is Terraform. This is the schema for the shape none of them target: rules that govern what an AI agent is allowed to do when it invokes a tool (file edit, shell, HTTP, MCP tool call, workflow action).
+      </p>
+      <p className="text-stone-500 mb-4 leading-relaxed">
+        Rules speak two dialects: <strong>JSON</strong> for runtime evaluation, <strong>Cedar</strong> for portability. Both semantically equivalent. Import existing Cedar policies from AWS Verified Permissions; export any Conduct pack back to Cedar. No lock-in.
       </p>
 
       <div className="flex gap-3 mb-10 flex-wrap">
@@ -44,12 +47,33 @@ export default function GuardSchemaDocsPage() {
       <nav className="mb-10 border border-stone-200 rounded-xl px-5 py-4">
         <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3">On this page</p>
         <ol className="flex flex-col gap-1.5 text-sm text-stone-600">
+          <li><a href="#category" className="hover:text-indigo-600 transition-colors">Why a distinct category</a></li>
           <li><a href="#why-two" className="hover:text-indigo-600 transition-colors">Why two dialects</a></li>
           <li><a href="#example" className="hover:text-indigo-600 transition-colors">Same rule, two forms</a></li>
           <li><a href="#interchange" className="hover:text-indigo-600 transition-colors">Bidirectional interchange</a></li>
           <li><a href="#frameworks" className="hover:text-indigo-600 transition-colors">Framework tags</a></li>
+          <li><a href="#mapping" className="hover:text-indigo-600 transition-colors">Mapping to other policy languages</a></li>
+          <li><a href="#extensible" className="hover:text-indigo-600 transition-colors">Extensible (v1.1)</a></li>
         </ol>
       </nav>
+
+      <section id="category" className="mb-12">
+        <h2 className="text-xl font-bold text-stone-900 mb-3">Why a distinct category</h2>
+        <p className="text-stone-600 leading-relaxed mb-3">
+          Policy engines already exist. None target the shape we need. The industry has good tools for adjacent problems:
+        </p>
+        <ul className="list-disc pl-6 text-stone-600 leading-relaxed space-y-1 mb-3">
+          <li><strong>OPA/Rego</strong> — generic policy over arbitrary JSON input</li>
+          <li><strong>Cedar</strong> — authorization (who can do what to which resource)</li>
+          <li><strong>Kyverno</strong> — Kubernetes admission control</li>
+          <li><strong>Sentinel</strong> — HashiCorp infra provisioning</li>
+          <li><strong>XACML</strong> — enterprise access control (legacy)</li>
+          <li><strong>MITRE ATLAS / OWASP Agentic Top 10</strong> — threat catalogs, not enforceable rules</li>
+        </ul>
+        <p className="text-stone-600 leading-relaxed">
+          <strong>Agentic Tool-Call Policy is its own shape.</strong> The actor is an autonomous AI agent, the object is a tool invocation, decisions land in milliseconds pre-execution, and portability across enforcement surfaces (proxy, hooks, MCP, runtime) is table-stakes. This schema names that shape. See the <a href="#mapping" className="text-indigo-600 hover:underline">mapping table below</a> for how our vocabulary aligns with each of the above.
+        </p>
+      </section>
 
       <section id="why-two" className="mb-12">
         <h2 className="text-xl font-bold text-stone-900 mb-3">Why two dialects</h2>
@@ -160,6 +184,98 @@ when {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section id="mapping" className="mb-16">
+        <h2 className="text-xl font-bold text-stone-900 mb-3">Mapping to other policy languages</h2>
+        <p className="text-stone-600 leading-relaxed mb-4">
+          The underlying concepts overlap. What differs is the shape of the object being governed — none of the standards below were designed for agentic tool invocations. This table shows how our fields correspond so teams already using these engines see the alignment.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-stone-200 text-left uppercase tracking-widest text-stone-500">
+                <th className="py-2 pr-3">Concept</th>
+                <th className="py-2 pr-3">Ours</th>
+                <th className="py-2 pr-3">OPA/Rego</th>
+                <th className="py-2 pr-3">Kyverno</th>
+                <th className="py-2 pr-3">Sentinel</th>
+                <th className="py-2 pr-3">Cedar</th>
+                <th className="py-2 pr-3">XACML</th>
+                <th className="py-2">MITRE ATLAS</th>
+              </tr>
+            </thead>
+            <tbody className="text-stone-700">
+              {[
+                ["Rule id",         "id",                                  "package + rule",           "policy metadata name",       "policy name",             "policy id",                     "PolicyId",                "technique ID"],
+                ["Decision",        "action",                              "deny / allow sets",        "validate.deny / mutate",     "main = rule bool",        "forbid / permit",               "Effect Deny/Permit",      "control category"],
+                ["Actor",           "persona_affinity + match.mcp_tool",   "input.subject",            "resource kind",              "input.subject",           "principal is <Type>",           "Subject",                 "technique target"],
+                ["Resource",        "match.tool + match.path_pattern",     "input.resource",           "match.resources.kinds",      "input.resource",          "resource",                      "Resource",                "attack surface"],
+                ["Match cond.",     "match.pattern (regex)",               "contains / startswith",    "match.resources.selector",   "matches function",        "when { ... } clause",           "Condition element",       "detection signature"],
+                ["Severity",        "severity enum",                       "annotation",               "policy.severity",            "metadata",                "@severity annotation",          "Obligation",              "severity rating"],
+                ["Compliance",      "frameworks[] tags",                   "annotation",               "policy.categories",          "metadata",                "@compliance annotation",        "Obligation reference",    "technique IDs"],
+                ["Metadata",        "annotations.<namespace>",             "package doc",              "annotations",                "scope description",       "@<name> annotation",            "attributes",              "technique references"],
+                ["Enforcement pt.", "enforcement.{proxy,hook,mcp,runtime}", "evaluator context",       "policy webhook",             "Terraform stage",         "authorization boundary",        "PDP context",             "detection layer"],
+              ].map((row) => (
+                <tr key={row[0]} className="border-b border-stone-100 align-top">
+                  {row.map((cell, i) => (
+                    <td key={i} className={i === 0 ? "py-2 pr-3 font-semibold" : (i <= 1 ? "py-2 pr-3 font-mono text-[11px]" : "py-2 pr-3 text-stone-600")}>
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-stone-500 mt-3 leading-relaxed">
+          <strong>What this is saying:</strong> vocabulary overlap is high; problem shape differs. OPA governs arbitrary JSON. Kyverno governs K8s resources. Sentinel governs Terraform plans. Cedar governs authorization requests. <strong>Ours governs agentic tool invocations</strong> — an object shape none of the above are optimized for.
+        </p>
+        <p className="text-xs text-stone-500 mt-2 leading-relaxed">
+          <strong>What we don't try to do:</strong> we're not building a general policy engine. Runtime enforcement stays Conduct-specific. What ships is a portable <em>representation</em> — via Cedar for interchange, JSON Schema for tooling, and namespaced annotations for round-tripping foreign metadata.
+        </p>
+      </section>
+
+      <section id="extensible" className="mb-16">
+        <h2 className="text-xl font-bold text-stone-900 mb-3">Extensible (v1.1)</h2>
+        <p className="text-stone-600 leading-relaxed mb-4">
+          Two optional additions on top of v1. Backward compat: every v1 rule stays valid.
+        </p>
+
+        <h3 className="text-sm font-semibold text-stone-700 mb-2">Extensible <code className="bg-stone-100 px-1.5 py-0.5 rounded">match</code> map</h3>
+        <p className="text-stone-600 text-sm leading-relaxed mb-2">
+          Put every match dimension under a single map. Custom keys (e.g. <code className="bg-stone-100 px-1.5 py-0.5 rounded">mcp_server</code>, <code className="bg-stone-100 px-1.5 py-0.5 rounded">webhook_source</code>) allowed; surfaces that don't understand a key ignore it.
+        </p>
+        <pre className="text-xs bg-stone-950 text-stone-100 rounded-lg p-4 overflow-x-auto mb-6">
+{`{
+  "id": "block_prod_writes",
+  "action": "block",
+  "match": {
+    "tool":         "write,edit,bash",
+    "pattern":      "PROD_SECRET",
+    "path_pattern": "^prod/config\\\\.yaml$",
+    "http_method":  "POST",
+    "mcp_tool":     "guard_check"
+  }
+}`}
+        </pre>
+
+        <h3 className="text-sm font-semibold text-stone-700 mb-2">Namespaced <code className="bg-stone-100 px-1.5 py-0.5 rounded">annotations</code> map</h3>
+        <p className="text-stone-600 text-sm leading-relaxed mb-2">
+          Free-form metadata by namespace. Runtime ignores unknown namespaces; exporters pass them through (Cedar → <code className="bg-stone-100 px-1.5 py-0.5 rounded">@annotation</code>, OPA → package comments, custom → your own tooling).
+        </p>
+        <pre className="text-xs bg-stone-950 text-stone-100 rounded-lg p-4 overflow-x-auto">
+{`{
+  "id": "block_prod_writes",
+  "action": "block",
+  "annotations": {
+    "cedar":       { "principal_type": "Agent" },
+    "opa":         { "package": "conduct.pci" },
+    "kyverno":     { "match_kinds": ["Pod"] },
+    "custom.acme": "internal-tracker-#1234"
+  }
+}`}
+        </pre>
       </section>
     </div>
   )

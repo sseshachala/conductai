@@ -1,4 +1,8 @@
-# Conduct Guard Rule Schema v1
+# Agentic Tool-Call Policy Schema v1
+
+*Formerly "Guard Rule Schema" — same shape, sharper name.* This is the schema for a distinct policy category: rules that govern what an AI agent is allowed to do when it invokes a tool (file edit, shell, HTTP, MCP tool call, workflow action).
+
+**Why the category matters:** OPA/Rego is generic policy. Cedar is authorization. Kyverno is K8s admission. Sentinel is Terraform. **Agentic Tool-Call Policy is its own shape** — the actor is an autonomous AI agent, the object is a tool invocation, decisions land in milliseconds pre-execution, and portability across enforcement surfaces (proxy, hooks, MCP, runtime) is table-stakes. This schema is what that shape looks like.
 
 Guard rules speak **two dialects**: JSON (runtime evaluation) and Cedar (portability / interchange). Both are semantically equivalent — you can round-trip your policies in either direction with zero information loss.
 
@@ -140,9 +144,72 @@ The Cedar rendering preserves every rule field via annotations (`@id`, `@descrip
 
 Round-trip is lossless for schema v1. Bring your existing Cedar policies from AWS Verified Permissions, Dogwood, or any IAM stack that speaks Cedar JSON.
 
+## v1.1 additions (extensible match + annotations)
+
+Two optional additions keep v1 backward compat while giving room to grow.
+
+### Extensible `match` map
+
+Instead of hardcoding `match_tool`, `match_pattern`, `match_path_pattern`, put every dimension under a `match` object. Runtime reads whichever keys it understands and **matches when every populated dimension matches** the invocation.
+
+```json
+{
+  "id": "block_prod_writes",
+  "action": "block",
+  "match": {
+    "tool":         "write,edit,bash",
+    "pattern":      "PROD_SECRET",
+    "path_pattern": "^prod/config\\.yaml$",
+    "http_method":  "POST",
+    "mcp_tool":     "guard_check"
+  }
+}
+```
+
+v1 top-level `match_tool` / `match_pattern` / `match_path_pattern` stay valid — they become sugar that folds into `match.tool` etc. at eval time. Custom dimensions (e.g. `mcp_server`, `webhook_source`) are also allowed; unknown keys are ignored by surfaces that don't understand them.
+
+### Namespaced `annotations` map
+
+Free-form metadata namespaced by key. Runtime ignores unknown namespaces; exporters pass them through.
+
+```json
+{
+  "id": "block_prod_writes",
+  "action": "block",
+  "annotations": {
+    "cedar":       { "principal_type": "Agent" },
+    "opa":         { "package": "conduct.pci" },
+    "kyverno":     { "match_kinds": ["Pod"] },
+    "custom.acme": "internal-tracker-#1234"
+  }
+}
+```
+
+Use this to carry framework-specific metadata around your rules without polluting the core shape. Cedar exporter emits them as `@annotation`; OPA exporter (future) as package doc comments; import from other systems keeps their metadata intact.
+
+## How this schema maps to other policy languages
+
+Agentic Tool-Call Policy has its own shape, but the vocabulary overlaps with adjacent standards. Here's how our fields correspond so teams already using other engines can see the alignment.
+
+| Concept | Ours | OPA/Rego | Kyverno | Sentinel | Cedar | XACML | MITRE ATLAS |
+|---|---|---|---|---|---|---|---|
+| Rule identifier | `id` | package + rule name | policy metadata name | policy name | policy id | PolicyId | technique ID (e.g. `AML.T0051`) |
+| Decision | `action` (block/warn/allow/audit/inject/approval) | `deny` / `allow` sets | `validate.deny` / `mutate` | `main = rule { ... }` bool | `forbid` / `permit` | `Effect="Deny"/"Permit"` | control category |
+| Subject/actor | `persona_affinity` + `match.mcp_tool` | `input.subject` | resource kind | `input.subject` | `principal is <Type>` | `Subject` | technique target |
+| Object/resource | `match.tool` + `match.path_pattern` | `input.resource` | `match.resources.kinds` | `input.resource` | `resource` | `Resource` | attack surface |
+| Match condition | `match.pattern` (regex) | `contains` / `startswith` in Rego expr | `match.resources.selector` | `matches` function | `when { ... }` clause | `Condition` element | detection signature |
+| Severity | `severity` (low/medium/high/critical) | annotation | policy.severity | metadata | `@severity` annotation | `Obligation` | severity rating |
+| Compliance mapping | `frameworks[]` (`PCI_DSS:3.4` etc.) | annotation | policy.categories | metadata | `@compliance` annotation | `Obligation` reference | technique IDs |
+| Metadata roundtrip | `annotations.<ns>` | package doc | annotations | scope description | `@<name>` annotation | attributes | technique references |
+| Enforcement surface | `enforcement.{proxy,hook,mcp,runtime}` | evaluator context | policy webhook | Terraform run stage | authorization boundary | PDP context | detection layer |
+
+**What this table is saying:** the underlying concepts are the same across the industry. What differs is the *shape* of the primary object being governed: OPA governs arbitrary JSON input; Kyverno governs K8s resources; Sentinel governs Terraform plans; Cedar governs authorization requests. **Ours governs agentic tool invocations** — an object shape none of the above are optimized for.
+
+**What we don't try to do:** we're not building a general-purpose policy engine. Runtime enforcement stays Conduct-specific. What ships is a portable *representation* — via Cedar for interchange, JSON Schema for tooling, and annotations for round-tripping foreign metadata.
+
 ## Versioning
 
-Schema version = `v1`. Backward-incompatible changes will publish `v2` at a new `$id` and both stay available. Rule packs may declare a `$schema` reference to the specific version they target; runtime defaults to latest.
+Schema version = `v1` (with v1.1 additions above). Backward-incompatible changes will publish `v2` at a new `$id` and both stay available. Rule packs may declare a `$schema` reference to the specific version they target; runtime defaults to latest.
 
 ## Extending
 
