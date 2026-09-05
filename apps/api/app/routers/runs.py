@@ -307,6 +307,22 @@ def create_run(
         max_turns=max_turns,
     )
 
+    # #1515 — Canvas Run → Lens: mint a bare GlensChatSession before creating
+    # the run so `run.session_id` links at insert time. Token + AgentIdentity
+    # mint happens lazily when the user sends their first chat message.
+    lens_session_id = None
+    if body.create_lens_session:
+        from app.modules.glens.models import GlensChatSession
+        session = GlensChatSession(
+            workspace_id=workflow.workspace_id,
+            title=f"Run: {workflow.name}",
+            messages="[]",
+        )
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        lens_session_id = session.id
+
     run = Run(
         workflow_version_id=workflow.current_version_id,
         workspace_id=workflow.workspace_id,
@@ -314,6 +330,7 @@ def create_run(
         status="pending",
         state=initial_state,
         max_turns=max_turns,
+        session_id=lens_session_id,
     )
     db.add(run)
     db.commit()

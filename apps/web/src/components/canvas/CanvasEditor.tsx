@@ -880,6 +880,10 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     const res = await workflows.runs.trigger(authFetch, workflowId, {
       triggered_by: "manual",
       dry_run: dryRun,
+      // #1515 — non-dry canvas runs land in a Lens session; the RunBubble
+      // auto-spawns via the #1502 rehydration path. Dry runs keep the old
+      // /workflows/{id}/runs/{id} inspector page.
+      create_lens_session: !dryRun,
       ...(initialState ? { initial_state: initialState } : {}),
       ...(maxTurns    ? { max_turns: maxTurns }          : {}),
     })
@@ -887,7 +891,15 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     const run = await res.json()
     if (dryRun) {
       router.push(`/workflows/${workflowId}/runs/${run.id}`)
+    } else if (run.session_id) {
+      // Land in Lens; the session's rehydration effect picks up the run and
+      // renders the RunBubble inline. Keep localStorage marker so a return
+      // to canvas still shows "recent run" affordances.
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
+      router.push(`/lens/${run.session_id}`)
     } else {
+      // Server didn't mint a session (older API, or feature disabled) —
+      // fall back to the drawer path so nothing regresses.
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
       setActiveRunId(run.id)
       setDrawerVisible(true)

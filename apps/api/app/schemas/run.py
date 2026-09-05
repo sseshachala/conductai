@@ -115,6 +115,9 @@ class RunCreate(BaseModel):
     guard_enabled: Optional[bool] = None  # None = inherit from workflow.guard_enabled
     initial_state: Optional[dict[str, Any]] = None
     max_turns: Optional[int] = None  # override default 20-turn brain budget
+    # #1515 — Canvas Run → Lens: mint a Lens chat session, attach run.session_id
+    # so the RunBubble spawns automatically via the #1502 rehydration path.
+    create_lens_session: bool = False
 
 
 class RunEventOut(BaseModel):
@@ -144,6 +147,7 @@ class RunOut(BaseModel):
     created_at: datetime
     trigger_summary: Optional[str] = None
     repo: Optional[str] = None
+    session_id: Optional[UUID] = None  # #1515 — Lens session id when minted at trigger
 
     class Config:
         from_attributes = True
