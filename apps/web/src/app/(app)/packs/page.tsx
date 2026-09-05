@@ -739,6 +739,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
         {marketTab === "compliance" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <CedarImportBanner getToken={getToken} />
+            <CedarExportBanner />
             {packCatalog.map(pack => {
               const installed = installedPacks.has(pack.id)
               const busy = packInstalling === pack.id
@@ -760,6 +761,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                       {installed && <span className="sbadge ok">✓ Installed</span>}
+                      <CedarPackDownload slug={pack.id} getToken={getToken} />
                       {installed ? (
                         <>
                           <button onClick={() => installPack(pack.id)} disabled={!!packInstalling} className="btn btn-primary btn-sm" style={{ opacity: packInstalling && !busy ? 0.5 : 1 }}>
@@ -1679,5 +1681,73 @@ function CedarImportBanner({ getToken }: { getToken: (() => Promise<string | nul
         </button>
       </div>
     </div>
+  )
+}
+
+/**
+ * Mirror of CedarImportBanner — announces the reverse direction so buyers
+ * see the bidirectional interchange story on the same page. No lock-in.
+ */
+function CedarExportBanner() {
+  return (
+    <div className="card" style={{ padding: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Take your policies back out</div>
+        <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>
+          Every installed pack renders to Cedar — the AWS Verified Permissions
+          language. Click <strong>⤓ Cedar</strong> on any pack to download.
+          Bidirectional interchange by design.
+        </div>
+      </div>
+      <a href="/docs/schema" className="btn btn-ghost btn-sm">Schema docs →</a>
+    </div>
+  )
+}
+
+/**
+ * Per-tile Cedar download — fetches the rendered Cedar for one pack, saves
+ * as `{slug}.cedar`. No navigation; one-click from the list.
+ */
+function CedarPackDownload({ slug, getToken }: { slug: string; getToken: (() => Promise<string | null>) | null }) {
+  const { activeWorkspace } = useWorkspace()
+  const [busy, setBusy] = useState(false)
+
+  async function download() {
+    if (!activeWorkspace?.id) return
+    setBusy(true)
+    try {
+      const headers: Record<string, string> = {}
+      if (getToken) {
+        const token = await getToken()
+        if (token) headers["Authorization"] = `Bearer ${token}`
+      }
+      const res = await fetch(
+        `${API}/guard/registry/packs/${slug}/cedar?workspace_id=${activeWorkspace.id}`,
+        { headers },
+      )
+      if (!res.ok) return
+      const text = await res.text()
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${slug}.cedar`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={download}
+      disabled={busy}
+      title="Download this pack as Cedar (AWS Verified Permissions language)"
+      className="btn btn-ghost btn-sm"
+      style={{ fontSize: 11.5 }}
+    >
+      {busy ? "…" : "⤓ Cedar"}
+    </button>
   )
 }

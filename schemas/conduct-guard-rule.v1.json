@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.conductai.ai/conduct-guard-rule.v1.json",
+  "title": "Conduct Guard Rule Schema v1",
+  "description": "Machine-readable schema for a single Guard rule and a Guard pack (a bundle of rules). Guard rules are enforced across four surfaces: Guard proxy (LLM egress), pre-tool hooks (Claude Code / Cursor / Codex), MCP guard_check, and the workflow runtime. Rules are portable — the same rule renders to Cedar for AWS Verified Permissions ecosystems.",
+  "$defs": {
+    "action": {
+      "type": "string",
+      "enum": ["block", "warn", "allow", "audit", "inject", "approval"],
+      "description": "What Guard does when the rule matches. `block` refuses the tool call; `warn` surfaces a warning but proceeds; `allow` is an explicit permit; `audit` records without decision; `inject` prepends context to the prompt; `approval` pauses the run until a human approves."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"],
+      "description": "Severity tag used by dashboards + audit filters. No enforcement effect."
+    },
+    "persona": {
+      "type": "string",
+      "enum": ["agent", "proxy"],
+      "description": "Which persona the rule applies to. `agent` = local coding agent (Claude Code, Cursor). `proxy` = server-side LLM egress via Guard proxy."
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["free", "paid", "enterprise"],
+      "description": "Pack distribution tier."
+    },
+    "enforcement": {
+      "type": "object",
+      "description": "Surface-by-surface enforcement capability for this rule. Runtime uses this to decide which surfaces can actually block vs advise.",
+      "properties": {
+        "version": { "type": "integer", "const": 1 },
+        "proxy":   { "type": "string", "enum": ["hard", "conditional", "not_supported"] },
+        "hook":    { "type": "string", "enum": ["hard", "conditional", "not_supported"] },
+        "mcp":     { "type": "string", "enum": ["hard", "conditional", "not_supported"] },
+        "runtime": { "type": "string", "enum": ["hard", "conditional", "not_supported"] },
+        "guarantee":         { "type": "string" },
+        "requires":          { "type": "array", "items": { "type": "string" } },
+        "known_limitations": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["version"]
+    },
+    "rule": {
+      "type": "object",
+      "description": "One Guard rule. Evaluated at every tool call the rule's match_tool covers.",
+      "properties": {
+        "id":                 { "type": "string", "minLength": 1, "description": "Stable identifier. Unique within the pack. Referenced by GuardRuleOverride to disable or amend." },
+        "description":        { "type": "string", "description": "Human-readable summary — shown in dashboards + Cedar `@description` annotation." },
+        "match_tool":         { "type": "string", "description": "Comma-separated tool names the rule applies to (e.g. `edit,write,bash`). Empty or `*` means all tools." },
+        "match_pattern":      { "type": "string", "description": "Regex matched against the tool_input.prompt / body. Case-sensitive; anchors optional." },
+        "match_path_pattern": { "type": "string", "description": "Regex matched against the tool_input.path (file operations). Independent from `match_pattern`." },
+        "action":             { "$ref": "#/$defs/action" },
+        "message":            { "type": "string", "description": "Shown to the user when the rule fires. Appears in Cedar `@message` annotation." },
+        "recommendation":     { "type": "string", "description": "Remediation guidance. Appears in Cedar `@recommendation` annotation." },
+        "severity":           { "$ref": "#/$defs/severity" },
+        "persona_affinity":   { "type": "array", "items": { "$ref": "#/$defs/persona" }, "description": "Personas this rule applies to. Defaults to all if omitted." },
+        "frameworks":         { "type": "array", "items": { "type": "string" }, "description": "Compliance tags (e.g. `PCI_DSS:3.4`, `SOC2:CC6.1`, `ISO_42001:8.24`, `MITRE_ATLAS:AML.T0051`, `OWASP_AGENTIC:A01`). Appears in Cedar `@compliance` annotation." },
+        "iso_control":        { "type": "string", "description": "ISO 27001 / ISO 42001 control ID (e.g. `A.8.11`). Appears in Cedar `@iso_control` annotation." },
+        "enforcement":        { "$ref": "#/$defs/enforcement" }
+      },
+      "required": ["id", "action"]
+    },
+    "ui": {
+      "type": "object",
+      "description": "Optional presentation hints for the pack tile on /packs.",
+      "properties": {
+        "icon":     { "type": "string", "description": "Emoji or short glyph." },
+        "subtitle": { "type": "string" },
+        "tags":     { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "pack": {
+      "type": "object",
+      "description": "A Guard pack — a bundle of rules. Distributed as a JSON file under `apps/api/app/modules/guard/skill_packs/{slug}.json` or imported via the Cedar interchange endpoint.",
+      "properties": {
+        "slug":        { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "URL-safe pack identifier." },
+        "name":        { "type": "string" },
+        "version":     { "type": "string", "description": "Semver (e.g. `1.1.0`)." },
+        "tier":        { "$ref": "#/$defs/tier" },
+        "description": { "type": "string" },
+        "ui":          { "$ref": "#/$defs/ui" },
+        "rules":       { "type": "array", "items": { "$ref": "#/$defs/rule" }, "minItems": 1 }
+      },
+      "required": ["slug", "name", "version", "rules"]
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/pack" },
+    { "$ref": "#/$defs/rule" }
+  ]
+}
