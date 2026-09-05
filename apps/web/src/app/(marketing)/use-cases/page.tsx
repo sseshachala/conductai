@@ -367,7 +367,7 @@ function Detail({ c }: { c: UseCase }) {
       <ul className="space-y-3 mb-8">
         {c.mechanics.map((m, i) => (
           <li key={i} className="flex gap-3 text-stone-700 leading-relaxed">
-            <span className="text-indigo-500 flex-shrink-0">âº</span>
+            <span className="text-indigo-500 flex-shrink-0">›</span>
             <span>{m}</span>
           </li>
         ))}
