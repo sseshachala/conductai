@@ -1,0 +1,29 @@
+# NeMo Guardrails config for the conduct-nemo-guard support-bot example.
+#
+# The `check_policy` flow (see rails.co) calls Conduct's guard_check on
+# every incoming user turn. On BLOCKED / PENDING approval the flow ends
+# with a policy-safe response and never reaches the model.
+#
+# Run this from the parent directory:
+#     export CONDUCT_AGENT_TOKEN=cond_agt_...
+#     export OPENAI_API_KEY=sk-...
+#     python run.py "delete my account"
+#
+# See README.md for the walk-through the HPE PCAI screencast follows.
+
+models:
+  - type: main
+    engine: openai
+    model: gpt-4o-mini
+
+instructions:
+  - type: general
+    content: |
+      You are the support bot for an example workspace. Keep replies
+      short. Never invent policy actions — the runtime layer decides
+      what is permitted.
+
+rails:
+  input:
+    flows:
+      - check_policy

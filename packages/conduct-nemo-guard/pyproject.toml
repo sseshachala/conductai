@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conduct-nemo-guard"
+version = "0.1.0"
+description = "Conduct Guard as a NeMo Guardrails plugin — enforce runtime policy on every Colang flow and LLM call."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Conduct AI", email = "hello@conductai.ai" }]
+keywords = ["nemo", "nemoguardrails", "colang", "ai-governance", "policy", "llm-security"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "httpx>=0.24,<1.0",
+]
+
+[project.optional-dependencies]
+nemo = ["nemoguardrails>=0.9"]
+dev = [
+    "pytest>=7",
+    "pytest-asyncio>=0.21",
+    "respx>=0.20",
+]
+
+[project.urls]
+Homepage = "https://conductai.ai"
+Documentation = "https://conductai.ai/docs"
+Repository = "https://github.com/sseshachala/conductai"
+Issues = "https://github.com/sseshachala/conductai/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
