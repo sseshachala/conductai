@@ -1,0 +1,40 @@
+# Colang rails for the conduct-nemo-guard support-bot example.
+#
+# The `check_policy` flow runs as an input rail (see config.yml). Every
+# user turn hits Conduct's guard_check first; blocked / pending-approval
+# verdicts short-circuit the conversation with a policy-safe response.
+
+define user express_delete_account
+  "delete my account"
+  "cancel my subscription"
+  "close my account"
+  "remove my data"
+
+define bot inform_policy_hold
+  "That action needs a workspace admin's approval. I've queued the request — you'll get a confirmation once someone signs off."
+
+define bot inform_policy_block
+  "That request is blocked by workspace policy. Reach out to your admin if this looks wrong."
+
+define bot inform_policy_advisory
+  "Heads up — this action is flagged as sensitive, so we'll keep an audit record of what you asked."
+
+# Input rail. `$last_user_message` is the raw text of the current user
+# turn, exposed by NeMo Guardrails. We pass it to Conduct as the prompt
+# so audit rows carry the context that triggered the check.
+define flow check_policy
+  $verdict = execute conduct_guard_verdict(tool_name="support_bot_message", prompt=$user_message)
+
+  if $verdict == "block"
+    bot inform_policy_block
+    stop
+
+  if $verdict == "approval"
+    bot inform_policy_hold
+    stop
+
+  if $verdict == "warning"
+    bot inform_policy_advisory
+    # allow the flow to continue — warning is not a hard block
+
+  # allow / advisory / unknown → flow continues, the LLM answers normally
