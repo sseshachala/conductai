@@ -1,13 +1,25 @@
+export const metadata = {
+  title: "About Conduct AI — the runtime governance layer for AI agents | Conduct",
+  description:
+    "Conduct AI is the runtime governance layer for AI agents. Built by engineers who ran cloud infrastructure and observability teams for a decade — we know exactly where governance breaks under pressure.",
+  alternates: {
+    canonical: "https://conductai.ai/about",
+  },
+}
+
 export default function AboutPage() {
   return (
     <main className="flex-1 max-w-xl mx-auto px-6 py-20 w-full">
 
       <div className="mb-16">
         <div className="w-14 h-14 rounded-full bg-stone-900 flex items-center justify-center text-white text-lg font-bold mb-8">C</div>
+        <p className="text-sm text-stone-500 leading-relaxed mb-4">
+          Conduct AI is the runtime governance layer for AI agents — allow, warn, or block every model and tool call before it commits. Below is why we&apos;re building it.
+        </p>
         <h1 className="text-4xl font-black text-stone-900 tracking-tight leading-tight mb-3">
           A team of builders.
         </h1>
-        <p className="text-stone-400 text-sm">Houston, TX &nbsp;·&nbsp; Building governance for AI-assisted engineering teams</p>
+        <p className="text-stone-400 text-sm">Houston, TX &nbsp;·&nbsp; Runtime governance for AI agents</p>
       </div>
 
       <div className="space-y-8 text-stone-700 leading-[1.8] text-[1.0625rem]">
