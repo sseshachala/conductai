@@ -69,7 +69,18 @@ export const COMPLETERS: Record<string, CompleterFn> = {
       sublabel: a.provider ? `provider: ${a.provider}` : undefined,
     }))
   },
-  // Dormant until #1300 install_pack mutator lands.
+  // Wired for #1303 enable_policy / disable_policy — lists both custom and pack rules.
+  policies: async authFetch => {
+    const r = await authFetch(`${API}/guard/policies`)
+    if (!r.ok) throw new Error(`policies ${r.status}`)
+    const rows = (await r.json()) as Array<{ rule_id: string; description?: string | null; enabled: boolean; pack_id?: string | null }>
+    return rows.map(p => ({
+      value: p.rule_id,
+      label: p.description || p.rule_id,
+      sublabel: `${p.enabled ? "enabled" : "disabled"}${p.pack_id ? ` · pack: ${p.pack_id}` : ""}`,
+    }))
+  },
+  // Wired for #1300 install_pack mutator.
   marketplace_packs: async authFetch => {
     const r = await authFetch(`${API}/compliance/packs/available`)
     if (!r.ok) throw new Error(`packs ${r.status}`)
@@ -123,6 +134,29 @@ export const SLASH_TOOLS: SlashTool[] = [
     description: "Install a marketplace skill pack — requires confirmation.",
     args: [
       { name: "slug", required: true, placeholder: "pack slug (e.g. conduct-soc2)", completer: "marketplace_packs" },
+    ],
+  },
+  {
+    name: "enable_policy",
+    description: "Enable a Guard policy rule — requires confirmation.",
+    args: [
+      { name: "rule_id", required: true, placeholder: "policy rule id", completer: "policies" },
+    ],
+  },
+  {
+    name: "disable_policy",
+    description: "Disable a Guard policy rule — requires confirmation.",
+    args: [
+      { name: "rule_id", required: true, placeholder: "policy rule id", completer: "policies" },
+      { name: "reason", required: false, placeholder: "required for pack rules — surfaces in audit" },
+    ],
+  },
+  {
+    name: "deactivate_agent_identity",
+    description: "Deactivate an agent identity (security kill switch) — requires confirmation.",
+    args: [
+      { name: "agent_id", required: true, placeholder: "agent UUID", completer: "agents" },
+      { name: "reason", required: false, placeholder: "optional reason for audit" },
     ],
   },
 ]
