@@ -997,54 +997,6 @@ class Executor:
 
     # ── Approvals (#1287) ─────────────────────────────────────────────────────
 
-    def _tool_list_pending_approvals(self, status: str = "pending", limit: int = 20, since: str | None = None):
-        """List HITL approval requests. status: pending | approved | rejected | timed_out | all.
-        since: 'today' or 'YYYY-MM-DD' → filters created_at >= that date UTC."""
-        from datetime import datetime, timezone, timedelta
-        ws_uuid = uuid.UUID(self.workspace_id)
-        q = self.db.query(GuardApprovalRequest).filter(GuardApprovalRequest.workspace_id == ws_uuid)
-        status = (status or "pending").lower()
-        if status != "all":
-            q = q.filter(GuardApprovalRequest.status == status)
-        if since:
-            s = since.strip().lower()
-            if s == "today":
-                cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-            else:
-                try:
-                    cutoff = datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                except ValueError:
-                    cutoff = None
-            if cutoff:
-                q = q.filter(GuardApprovalRequest.created_at >= cutoff)
-        rows = q.order_by(GuardApprovalRequest.created_at.desc()).limit(min(limit, 100)).all()
-        return [
-            {"id": str(r.id), "status": r.status, "rule_id": r.rule_id, "tool_name": r.tool_name,
-             "requester_email": r.requester_email, "decided_by_email": r.decided_by_email,
-             "decided_at": r.decided_at.isoformat() if r.decided_at else None,
-             "created_at": r.created_at.isoformat() if r.created_at else None,
-             "timeout_at": r.timeout_at.isoformat() if r.timeout_at else None}
-            for r in rows
-        ]
-
-    def _tool_get_approval(self, id: str):
-        try:
-            rid = uuid.UUID(id)
-        except ValueError:
-            return {"error": "id must be a UUID"}
-        ws_uuid = uuid.UUID(self.workspace_id)
-        r = self.db.query(GuardApprovalRequest).filter(
-            GuardApprovalRequest.id == rid, GuardApprovalRequest.workspace_id == ws_uuid
-        ).first()
-        if not r:
-            return {"error": "Approval not found"}
-        return {"id": str(r.id), "status": r.status, "rule_id": r.rule_id, "tool_name": r.tool_name,
-                "tool_input": r.tool_input, "requester_email": r.requester_email,
-                "decided_by_email": r.decided_by_email,
-                "decided_at": r.decided_at.isoformat() if r.decided_at else None,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "timeout_at": r.timeout_at.isoformat() if r.timeout_at else None}
-
     # ── Packs (#1288) ─────────────────────────────────────────────────────────
 
     def _tool_list_installed_packs(self):
@@ -1138,38 +1090,6 @@ class Executor:
 
     # ── Platform audit log (#1291) ────────────────────────────────────────────
 
-    def _tool_get_audit_events(self, actor_email: str | None = None, action: str | None = None,
-                                resource_type: str | None = None, since: str | None = None,
-                                until: str | None = None, limit: int = 25):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        q = self.db.query(AuditLog).filter(AuditLog.workspace_id == ws_uuid)
-        if actor_email:   q = q.filter(AuditLog.actor_email == actor_email)
-        if action:        q = q.filter(AuditLog.action == action)
-        if resource_type: q = q.filter(AuditLog.resource_type == resource_type)
-        if since:         q = q.filter(AuditLog.created_at >= since)
-        if until:         q = q.filter(AuditLog.created_at <= until)
-        rows = q.order_by(AuditLog.created_at.desc()).limit(min(limit, 100)).all()
-        return [{"id": str(r.id), "actor_email": r.actor_email, "actor_role": r.actor_role,
-                 "action": r.action, "resource_type": r.resource_type,
-                 "resource_id": r.resource_id, "metadata": r.meta,
-                 "created_at": r.created_at.isoformat() if r.created_at else None}
-                for r in rows]
-
-    def _tool_search_audit_log(self, q: str, limit: int = 25):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        like = f"%{q.lower()}%"
-        rows = (self.db.query(AuditLog)
-                .filter(AuditLog.workspace_id == ws_uuid,
-                        sa_or(sa_func.lower(AuditLog.action).like(like),
-                              sa_func.lower(AuditLog.actor_email).like(like),
-                              sa_func.lower(AuditLog.resource_type).like(like),
-                              sa_func.lower(AuditLog.resource_id).like(like)))
-                .order_by(AuditLog.created_at.desc()).limit(min(limit, 100)).all())
-        return [{"id": str(r.id), "actor_email": r.actor_email, "action": r.action,
-                 "resource_type": r.resource_type, "resource_id": r.resource_id,
-                 "created_at": r.created_at.isoformat() if r.created_at else None}
-                for r in rows]
-
     # ── Projects (#1292) ──────────────────────────────────────────────────────
 
     def _tool_list_projects(self, limit: int = 50):
@@ -1196,45 +1116,6 @@ class Executor:
                 "created_at": r.created_at.isoformat() if r.created_at else None}
 
     # ── Observability alerts (#1293) ──────────────────────────────────────────
-
-    def _tool_list_alerts(self, severity: str | None = None, event_type: str | None = None,
-                           include_resolved: bool = False, since: str | None = None,
-                           limit: int = 25):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        q = self.db.query(WatchdogEvent).filter(WatchdogEvent.workspace_id == ws_uuid)
-        if severity:
-            q = q.filter(WatchdogEvent.severity == severity.lower())
-        if event_type:
-            q = q.filter(WatchdogEvent.event_type == event_type)
-        if not include_resolved:
-            q = q.filter(WatchdogEvent.resolved_at.is_(None))
-        if since:
-            q = q.filter(WatchdogEvent.created_at >= since)
-        rows = q.order_by(WatchdogEvent.created_at.desc()).limit(min(limit, 100)).all()
-        return [{"id": str(r.id), "event_type": r.event_type, "severity": r.severity,
-                 "run_id": str(r.run_id) if r.run_id else None,
-                 "workflow_id": str(r.workflow_id) if r.workflow_id else None,
-                 "payload": r.payload,
-                 "created_at": r.created_at.isoformat() if r.created_at else None,
-                 "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None}
-                for r in rows]
-
-    def _tool_get_alert(self, id: str):
-        try:
-            aid = uuid.UUID(id)
-        except ValueError:
-            return {"error": "id must be a UUID"}
-        ws_uuid = uuid.UUID(self.workspace_id)
-        r = self.db.query(WatchdogEvent).filter(
-            WatchdogEvent.id == aid, WatchdogEvent.workspace_id == ws_uuid).first()
-        if not r:
-            return {"error": "Alert not found"}
-        return {"id": str(r.id), "event_type": r.event_type, "severity": r.severity,
-                "run_id": str(r.run_id) if r.run_id else None,
-                "workflow_id": str(r.workflow_id) if r.workflow_id else None,
-                "payload": r.payload,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None}
 
     # ── Run logs (#1294) ──────────────────────────────────────────────────────
 

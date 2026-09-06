@@ -77,6 +77,179 @@ def get_autopilot_activity(ctx, since: str | None = None, limit: int = 50, statu
         db.close()
 
 
+# ── Migrated from Executor (epic #1655 PR 6/9) ─────────────────────────
+def list_pending_approvals(ctx, status: str = "pending", limit: int = 20, since: str | None = None):
+    """List HITL approval requests."""
+    import uuid as _uuid
+    from datetime import datetime, timezone
+    from app.core.database import SessionLocal
+    from app.modules.guard.models import GuardApprovalRequest
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        q = db.query(GuardApprovalRequest).filter(GuardApprovalRequest.workspace_id == ws_uuid)
+        status = (status or "pending").lower()
+        if status != "all":
+            q = q.filter(GuardApprovalRequest.status == status)
+        if since:
+            s = since.strip().lower()
+            cutoff = None
+            if s == "today":
+                cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            else:
+                try:
+                    cutoff = datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except ValueError:
+                    cutoff = None
+            if cutoff:
+                q = q.filter(GuardApprovalRequest.created_at >= cutoff)
+        rows = q.order_by(GuardApprovalRequest.created_at.desc()).limit(min(limit, 100)).all()
+        return [
+            {"id": str(r.id), "status": r.status, "rule_id": r.rule_id, "tool_name": r.tool_name,
+             "requester_email": r.requester_email, "decided_by_email": r.decided_by_email,
+             "decided_at": r.decided_at.isoformat() if r.decided_at else None,
+             "created_at": r.created_at.isoformat() if r.created_at else None,
+             "timeout_at": r.timeout_at.isoformat() if r.timeout_at else None}
+            for r in rows
+        ]
+    finally:
+        db.close()
+
+
+def get_approval(ctx, id: str):
+    """One approval request by id."""
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.modules.guard.models import GuardApprovalRequest
+    try:
+        rid = _uuid.UUID(id)
+    except ValueError:
+        return {"error": "id must be a UUID"}
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        r = db.query(GuardApprovalRequest).filter(
+            GuardApprovalRequest.id == rid, GuardApprovalRequest.workspace_id == ws_uuid
+        ).first()
+        if not r:
+            return {"error": "Approval not found"}
+        return {"id": str(r.id), "status": r.status, "rule_id": r.rule_id, "tool_name": r.tool_name,
+                "tool_input": r.tool_input, "requester_email": r.requester_email,
+                "decided_by_email": r.decided_by_email,
+                "decided_at": r.decided_at.isoformat() if r.decided_at else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "timeout_at": r.timeout_at.isoformat() if r.timeout_at else None}
+    finally:
+        db.close()
+
+
+def get_audit_events(ctx, actor_email: str | None = None, action: str | None = None,
+                     resource_type: str | None = None, since: str | None = None,
+                     until: str | None = None, limit: int = 25):
+    """Platform audit log with filters."""
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.models.audit_log import AuditLog
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        q = db.query(AuditLog).filter(AuditLog.workspace_id == ws_uuid)
+        if actor_email:   q = q.filter(AuditLog.actor_email == actor_email)
+        if action:        q = q.filter(AuditLog.action == action)
+        if resource_type: q = q.filter(AuditLog.resource_type == resource_type)
+        if since:         q = q.filter(AuditLog.created_at >= since)
+        if until:         q = q.filter(AuditLog.created_at <= until)
+        rows = q.order_by(AuditLog.created_at.desc()).limit(min(limit, 100)).all()
+        return [{"id": str(r.id), "actor_email": r.actor_email, "actor_role": r.actor_role,
+                 "action": r.action, "resource_type": r.resource_type,
+                 "resource_id": r.resource_id, "metadata": r.meta,
+                 "created_at": r.created_at.isoformat() if r.created_at else None}
+                for r in rows]
+    finally:
+        db.close()
+
+
+def search_audit_log(ctx, q: str, limit: int = 25):
+    """Substring search across audit log."""
+    import uuid as _uuid
+    from sqlalchemy import func as sa_func, or_ as sa_or
+    from app.core.database import SessionLocal
+    from app.models.audit_log import AuditLog
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        like = f"%{q.lower()}%"
+        rows = (db.query(AuditLog)
+                .filter(AuditLog.workspace_id == ws_uuid,
+                        sa_or(sa_func.lower(AuditLog.action).like(like),
+                              sa_func.lower(AuditLog.actor_email).like(like),
+                              sa_func.lower(AuditLog.resource_type).like(like),
+                              sa_func.lower(AuditLog.resource_id).like(like)))
+                .order_by(AuditLog.created_at.desc()).limit(min(limit, 100)).all())
+        return [{"id": str(r.id), "actor_email": r.actor_email, "action": r.action,
+                 "resource_type": r.resource_type, "resource_id": r.resource_id,
+                 "created_at": r.created_at.isoformat() if r.created_at else None}
+                for r in rows]
+    finally:
+        db.close()
+
+
+def list_alerts(ctx, severity: str | None = None, event_type: str | None = None,
+                include_resolved: bool = False, since: str | None = None, limit: int = 25):
+    """Watchdog alerts. Optional filters."""
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.models.watchdog_event import WatchdogEvent
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        q = db.query(WatchdogEvent).filter(WatchdogEvent.workspace_id == ws_uuid)
+        if severity:
+            q = q.filter(WatchdogEvent.severity == severity.lower())
+        if event_type:
+            q = q.filter(WatchdogEvent.event_type == event_type)
+        if not include_resolved:
+            q = q.filter(WatchdogEvent.resolved_at.is_(None))
+        if since:
+            q = q.filter(WatchdogEvent.created_at >= since)
+        rows = q.order_by(WatchdogEvent.created_at.desc()).limit(min(limit, 100)).all()
+        return [{"id": str(r.id), "event_type": r.event_type, "severity": r.severity,
+                 "run_id": str(r.run_id) if r.run_id else None,
+                 "workflow_id": str(r.workflow_id) if r.workflow_id else None,
+                 "payload": r.payload,
+                 "created_at": r.created_at.isoformat() if r.created_at else None,
+                 "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None}
+                for r in rows]
+    finally:
+        db.close()
+
+
+def get_alert(ctx, id: str):
+    """One alert by id."""
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.models.watchdog_event import WatchdogEvent
+    try:
+        aid = _uuid.UUID(id)
+    except ValueError:
+        return {"error": "id must be a UUID"}
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        r = db.query(WatchdogEvent).filter(
+            WatchdogEvent.id == aid, WatchdogEvent.workspace_id == ws_uuid).first()
+        if not r:
+            return {"error": "Alert not found"}
+        return {"id": str(r.id), "event_type": r.event_type, "severity": r.severity,
+                "run_id": str(r.run_id) if r.run_id else None,
+                "workflow_id": str(r.workflow_id) if r.workflow_id else None,
+                "payload": r.payload,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None}
+    finally:
+        db.close()
+
+
 # ── ToolDef list ───────────────────────────────────────────────────────
 TOOLS: list[ToolDef] = [
     ToolDef(
@@ -90,7 +263,7 @@ TOOLS: list[ToolDef] = [
             },
             "required": [],
         },
-        impl=_impl("list_pending_approvals"),
+        impl=list_pending_approvals,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),
@@ -102,7 +275,7 @@ TOOLS: list[ToolDef] = [
             "properties": {"id": {"type": "string", "description": "Approval UUID"}},
             "required": ["id"],
         },
-        impl=_impl("get_approval"),
+        impl=get_approval,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),
@@ -123,7 +296,7 @@ TOOLS: list[ToolDef] = [
             },
             "required": [],
         },
-        impl=_impl("get_audit_events"),
+        impl=get_audit_events,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),
@@ -138,7 +311,7 @@ TOOLS: list[ToolDef] = [
             },
             "required": ["q"],
         },
-        impl=_impl("search_audit_log"),
+        impl=search_audit_log,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),
@@ -159,7 +332,7 @@ TOOLS: list[ToolDef] = [
             },
             "required": [],
         },
-        impl=_impl("list_alerts"),
+        impl=list_alerts,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),
@@ -171,7 +344,7 @@ TOOLS: list[ToolDef] = [
             "properties": {"id": {"type": "string", "description": "Alert UUID"}},
             "required": ["id"],
         },
-        impl=_impl("get_alert"),
+        impl=get_alert,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),
