@@ -29,6 +29,7 @@ from app.models.workspace_config import WorkspaceConfig  # noqa
 from app.models.workspace_instructions import WorkspaceInstructions  # noqa
 from app.models.project_template import ProjectTemplate  # noqa
 from app.models.workspace_invite import WorkspaceInvite  # noqa
+from app.models.workspace_report_layout import WorkspaceReportLayout  # noqa
 from app.models.security_config import SecurityConfig  # noqa
 from app.models.security_policy import SecurityPolicy  # noqa
 from app.models.model_routing_policy import ModelRoutingPolicy  # noqa

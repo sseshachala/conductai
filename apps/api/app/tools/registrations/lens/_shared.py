@@ -82,3 +82,15 @@ _READ_ONLY_OPEN_WORLD = ToolAnnotations(read_only=True, open_world=True)
 
 _LENS_TAGS = ("lens",)
 _ACTOR_TAGS = ("lens", "actor")
+
+
+def _widget_tags(hint: str) -> tuple[str, ...]:
+    """Tags for a KPI tool that renders as a report-builder widget (#1450).
+
+    `widget` marks the tool as pickable in the widget catalog; the
+    `hint:<kind>` tag carries the render mode (`kpi_card` / `spark` /
+    `list` / `table` / `agent_row`). Frontend enumerates via
+    `default_registry.list(tag="widget")` and extracts the hint at render
+    time.
+    """
+    return ("lens", "widget", f"hint:{hint}")

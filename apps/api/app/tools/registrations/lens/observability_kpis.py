@@ -22,7 +22,8 @@ from app.tools.registrations.lens._shared import (
     _READ_ONLY,
     _READ_ONLY_OPEN_WORLD,
     _LENS_TAGS,
-    _ACTOR_TAGS
+    _ACTOR_TAGS,
+    _widget_tags
 )
 
 
@@ -337,7 +338,7 @@ TOOLS: list[ToolDef] = [
         input_schema={"type": "object", "properties": {}, "required": []},
         impl=get_observability_health,
         annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
+        tags=_widget_tags("kpi_card"),
     ),
     ToolDef(
         name="get_dora_metrics",
@@ -345,7 +346,7 @@ TOOLS: list[ToolDef] = [
         input_schema={"type": "object", "properties": {"days": _DAYS_WINDOW}, "required": []},
         impl=get_dora_metrics,
         annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
+        tags=_widget_tags("kpi_card"),
     ),
     ToolDef(
         name="get_analytics_summary",
@@ -353,7 +354,7 @@ TOOLS: list[ToolDef] = [
         input_schema={"type": "object", "properties": {"days": _DAYS_WINDOW}, "required": []},
         impl=get_analytics_summary,
         annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
+        tags=_widget_tags("spark"),
     ),
     ToolDef(
         name="list_agent_status",
@@ -361,7 +362,7 @@ TOOLS: list[ToolDef] = [
         input_schema={"type": "object", "properties": {}, "required": []},
         impl=list_agent_status,
         annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
+        tags=_widget_tags("list"),
     ),
     ToolDef(
         name="get_playbook_scorecards",
@@ -369,6 +370,6 @@ TOOLS: list[ToolDef] = [
         input_schema={"type": "object", "properties": {"days": _DAYS_WINDOW}, "required": []},
         impl=get_playbook_scorecards,
         annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
+        tags=_widget_tags("table"),
     ),
 ]
