@@ -12,7 +12,9 @@ from datetime import datetime, timezone
 from unittest.mock import patch as _patch
 
 import pytest
+from sqlalchemy import event
 from sqlalchemy import text as _sql
+from sqlalchemy.orm import Session
 
 from tests.regression.conftest import requires_db
 
@@ -27,46 +29,59 @@ def ws_and_workflow():
     sys.modules stubs from tests/test_token_paths.py that coerce ORM models
     into MagicMocks. Same pattern as tests/glens/test_run_tools.py.
 
-    Cleanup is intentionally skipped — ConductGuard's account-deletion rule
-    over-fires on any test code that removes a workspace row. Row leak is
-    tracked in #1643 (fresh UUID per invocation, so no cross-test collisions).
+    Cleanup uses the SQLAlchemy SAVEPOINT pattern (closes #1643): one
+    connection, outer transaction never commits, router's own db.commit()
+    calls release nested SAVEPOINTs instead of the outer txn. Teardown
+    rollback wipes everything — no destructive DDL/DML in source, so
+    ConductGuard's account-deletion rule doesn't fire.
     """
-    from app.core.database import SessionLocal
+    from app.core.database import engine
+
+    conn = engine.connect()
+    outer = conn.begin()
+    db = Session(bind=conn)
+    db.begin_nested()
+
+    @event.listens_for(db, "after_transaction_end")
+    def _restart_savepoint(sess, trans):
+        if trans.nested and not trans._parent.nested:
+            sess.begin_nested()
 
     ws_id = uuid.uuid4()
     wf_id = uuid.uuid4()
     version_id = uuid.uuid4()
     tag = ws_id.hex[:8]
 
-    with SessionLocal() as db:
-        db.execute(_sql(
-            "INSERT INTO workspaces "
-            "(id, name, owner_id, plan, is_approved, created_at, updated_at) "
-            "VALUES (:id, :nm, :oid, 'free', TRUE, :now, :now)"
-        ), {"id": ws_id, "nm": "run-lens-" + tag,
-            "oid": "user_test_run_lens_" + tag, "now": _now()})
-        db.execute(_sql(
-            "INSERT INTO workflows "
-            "(id, workspace_id, name, default_mode, guard_enabled, "
-            " agent_identity_required, created_at, updated_at, is_template) "
-            "VALUES (:id, :ws, :nm, 'dag', TRUE, TRUE, :now, :now, FALSE)"
-        ), {"id": wf_id, "ws": ws_id, "nm": "Test WF", "now": _now()})
-        db.execute(_sql(
-            "INSERT INTO workflow_versions "
-            "(id, workflow_id, graph, created_at) "
-            "VALUES (:id, :wid, CAST(:graph AS jsonb), :now)"
-        ), {"id": version_id, "wid": wf_id,
-            "graph": '{"nodes":[],"edges":[]}', "now": _now()})
-        db.execute(_sql(
-            "UPDATE workflows SET current_version_id = :vid WHERE id = :wid"
-        ), {"vid": version_id, "wid": wf_id})
-        db.commit()
+    db.execute(_sql(
+        "INSERT INTO workspaces "
+        "(id, name, owner_id, plan, is_approved, created_at, updated_at) "
+        "VALUES (:id, :nm, :oid, 'free', TRUE, :now, :now)"
+    ), {"id": ws_id, "nm": "run-lens-" + tag,
+        "oid": "user_test_run_lens_" + tag, "now": _now()})
+    db.execute(_sql(
+        "INSERT INTO workflows "
+        "(id, workspace_id, name, default_mode, guard_enabled, "
+        " agent_identity_required, created_at, updated_at, is_template) "
+        "VALUES (:id, :ws, :nm, 'dag', TRUE, TRUE, :now, :now, FALSE)"
+    ), {"id": wf_id, "ws": ws_id, "nm": "Test WF", "now": _now()})
+    db.execute(_sql(
+        "INSERT INTO workflow_versions "
+        "(id, workflow_id, graph, created_at) "
+        "VALUES (:id, :wid, CAST(:graph AS jsonb), :now)"
+    ), {"id": version_id, "wid": wf_id,
+        "graph": '{"nodes":[],"edges":[]}', "now": _now()})
+    db.execute(_sql(
+        "UPDATE workflows SET current_version_id = :vid WHERE id = :wid"
+    ), {"vid": version_id, "wid": wf_id})
+    db.flush()
 
-    db = SessionLocal()
     try:
         yield db, str(ws_id), str(wf_id)
     finally:
         db.close()
+        if outer.is_active:
+            outer.rollback()
+        conn.close()
 
 
 @requires_db
