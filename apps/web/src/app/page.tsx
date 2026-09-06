@@ -557,7 +557,7 @@ function NativeControlsSection() {
             One policy across your agent stack.
           </h2>
           <p className="text-stone-500 leading-relaxed max-w-2xl mx-auto text-sm sm:text-base">
-            Cortex enforces inside Cortex. Copilot Studio inside Copilot. Bedrock inside Bedrock. Conduct enforces <em>across</em> whatever mix your team actually runs — the native controls stay, Guard sits above them.
+            Native platform controls stay in place. Conduct applies one policy and evidence model <em>across</em> the mix of agent tools your team actually runs.
           </p>
         </div>
         <div className="flex justify-center mb-12 overflow-x-auto">
