@@ -29,6 +29,70 @@ from app.tools.registrations.lens._shared import (
 
 
 # ── Free-function tool implementations ─────────────────────────────────
+def _risk_level(score: int | None) -> str:
+    if score is None:
+        return "Unknown"
+    if score >= 70:
+        return "High"
+    if score >= 40:
+        return "Medium"
+    return "Low"
+
+
+def get_discovery_summary(ctx):
+    """Discovered agents inventory — total, coverage, high-risk agents,
+    per-framework breakdown. Migrated from Executor._tool_get_discovery_summary
+    (epic #1655)."""
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.modules.guard.models import DiscoveredAgent
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        agents = db.query(DiscoveredAgent).filter(
+            DiscoveredAgent.workspace_id == ws_uuid
+        ).all()
+
+        total = len(agents)
+        under_guard = sum(1 for a in agents if a.under_guard)
+
+        by_framework: dict[str, int] = {}
+        for a in agents:
+            fw = a.framework or "unknown"
+            by_framework[fw] = by_framework.get(fw, 0) + 1
+
+        high_risk = [
+            {"name": a.name, "framework": a.framework, "risk_score": a.risk_score,
+             "under_guard": a.under_guard, "location": a.location}
+            for a in agents if (a.risk_score or 0) >= 70
+        ]
+
+        return {
+            "total": total,
+            "under_guard": under_guard,
+            "missing": total - under_guard,
+            "coverage_pct": round(under_guard / total * 100) if total else 0,
+            "by_framework": [{"framework": fw, "count": cnt} for fw, cnt in sorted(by_framework.items())],
+            "high_risk": high_risk,
+            "agents": [
+                {
+                    "name": a.name,
+                    "framework": a.framework,
+                    "source": a.source,
+                    "location": a.location,
+                    "risk_score": a.risk_score,
+                    "risk_level": _risk_level(a.risk_score),
+                    "under_guard": a.under_guard,
+                    "proxy_routed": a.proxy_routed,
+                    "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
+                }
+                for a in agents
+            ],
+        }
+    finally:
+        db.close()
+
+
 def list_discovered_agents(ctx, framework: str | None = None, since: str | None = None):
     """Discovered AI agents in the workspace — name, framework, source,
     risk_score, under_guard, proxy_routed. Optional framework filter (e.g.
@@ -77,7 +141,7 @@ TOOLS: list[ToolDef] = [
         name="get_discovery_summary",
         description="Discovered agents inventory — total, coverage, high-risk agents, per-framework breakdown.",
         input_schema={"type": "object", "properties": {}, "required": []},
-        impl=_impl("get_discovery_summary"),
+        impl=get_discovery_summary,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),

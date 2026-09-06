@@ -350,58 +350,6 @@ class Executor:
 
     # ── Discovery ─────────────────────────────────────────────────────────────
 
-    def _tool_get_discovery_summary(self):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        agents = self.db.query(DiscoveredAgent).filter(
-            DiscoveredAgent.workspace_id == ws_uuid
-        ).all()
-
-        total = len(agents)
-        under_guard = sum(1 for a in agents if a.under_guard)
-
-        by_framework: dict[str, int] = {}
-        for a in agents:
-            fw = a.framework or "unknown"
-            by_framework[fw] = by_framework.get(fw, 0) + 1
-
-        def _risk_level(score: int | None) -> str:
-            if score is None:
-                return "Unknown"
-            if score >= 70:
-                return "High"
-            if score >= 40:
-                return "Medium"
-            return "Low"
-
-        high_risk = [
-            {"name": a.name, "framework": a.framework, "risk_score": a.risk_score,
-             "under_guard": a.under_guard, "location": a.location}
-            for a in agents if (a.risk_score or 0) >= 70
-        ]
-
-        return {
-            "total": total,
-            "under_guard": under_guard,
-            "missing": total - under_guard,
-            "coverage_pct": round(under_guard / total * 100) if total else 0,
-            "by_framework": [{"framework": fw, "count": cnt} for fw, cnt in sorted(by_framework.items())],
-            "high_risk": high_risk,
-            "agents": [
-                {
-                    "name": a.name,
-                    "framework": a.framework,
-                    "source": a.source,
-                    "location": a.location,
-                    "risk_score": a.risk_score,
-                    "risk_level": _risk_level(a.risk_score),
-                    "under_guard": a.under_guard,
-                    "proxy_routed": a.proxy_routed,
-                    "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
-                }
-                for a in agents
-            ],
-        }
-
     # ── Compliance ────────────────────────────────────────────────────────────
 
     def _tool_get_compliance_status(self):
