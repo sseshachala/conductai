@@ -48,6 +48,12 @@ export default function BlogPost() {
           condition under which we&rsquo;d flip our own defaults.
         </p>
 
+        <img
+          src="/blog/cedar-permit-forbid-vs-guard-runtime-outcomes.png"
+          alt="Cedar permit/forbid vs Guard allow, warn, approve, and block — why permit/forbid is not enough for runtime governance of AI agents"
+          className="w-full rounded-2xl border border-stone-200 mb-12"
+        />
+
         <h2 className="text-2xl font-bold text-stone-900 mt-12 mb-4">
           What we adopted verbatim
         </h2>
