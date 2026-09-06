@@ -37,6 +37,7 @@ from app.tools.registrations.lens import (
     ops,
     policies,
     primitives,
+    report_builder,
     runs,
     workflows,
     workspace,
@@ -56,6 +57,7 @@ _ALL_TOOLS = [
     *governance.TOOLS,
     *dashboard_kpis.TOOLS,
     *observability_kpis.TOOLS,
+    *report_builder.TOOLS,
     *actor.TOOLS,
     *capabilities.TOOLS,
 ]
