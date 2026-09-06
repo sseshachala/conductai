@@ -278,8 +278,12 @@ function PriorityItem({
   async function handleApproval(approved: boolean) {
     setApproveError(null)
     try {
+      // The approve endpoint lives under the workflow-scoped router
+      // (POST /workflows/{workflow_id}/runs/{run_id}/approve). AttentionRun
+      // already carries workflow_id — using the workspace-scoped /runs prefix
+      // 404s for every row, not just expired ones (#1672).
       const res = await authFetch(
-        `${API}/runs/${run.run_id}/approve`,
+        `${API}/workflows/${run.workflow_id}/runs/${run.run_id}/approve`,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: approved ? "approved" : "rejected" }) }
       )
       if (!res.ok) {
