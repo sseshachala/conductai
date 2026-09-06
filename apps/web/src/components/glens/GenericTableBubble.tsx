@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { DecisionBadge } from "@/components/guard/DecisionBadge"
+import { fmtNumber, fmtDate } from "@/lib/glens/formatters"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,22 +43,6 @@ function inferColumns(rows: Record<string, unknown>[]): Column[] {
     }
     return { key, label: toLabel(key), type: "text" as const }
   })
-}
-
-// ─── Cell formatters ──────────────────────────────────────────────────────────
-
-function fmtNumber(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M"
-  if (Math.abs(n) >= 1_000)     return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K"
-  return Number.isInteger(n) ? String(n) : String(n)
-}
-
-function fmtDate(raw: string): string {
-  const d = new Date(raw)
-  if (isNaN(d.getTime())) return raw
-  const datePart = d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
-  const timePart = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })
-  return `${datePart} ${timePart}`
 }
 
 const STATUS_CLASS: Record<string, string> = {

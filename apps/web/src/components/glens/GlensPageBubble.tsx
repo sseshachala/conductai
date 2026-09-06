@@ -3,38 +3,11 @@
 import { DecisionBadge } from "@/components/guard/DecisionBadge"
 import { ActivityHeader, ActivityRow, type AuditEvent } from "@/components/guard/ActivityRow"
 import { ByAiToolTable, type ByAiToolRow } from "@/components/guard/ByAiToolTable"
+import { fmtCost, fmtNumber, relativeTime } from "@/lib/glens/formatters"
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 type PageKind = "spend" | "discovery" | "compliance" | "governance" | "activity" | "policies"
-
-// ─── Shared helpers ────────────────────────────────────────────────────────────
-
-function fmtCost(n: number): string {
-  return `$${n.toFixed(2)}`
-}
-
-function fmtNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
-  return String(n)
-}
-
-function relativeTime(ts: string): string {
-  try {
-    const diff = Date.now() - new Date(ts).getTime()
-    const secs = Math.floor(diff / 1000)
-    if (secs < 60) return "just now"
-    const mins = Math.floor(secs / 60)
-    if (mins < 60) return `${mins}m ago`
-    const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return `${hrs}h ago`
-    const days = Math.floor(hrs / 24)
-    return `${days}d ago`
-  } catch {
-    return ts
-  }
-}
 
 const FRAMEWORK_LABELS: Record<string, string> = {
   "claude-code":    "Claude Code",
