@@ -27,6 +27,7 @@ from app.tools.registry import default_registry
 
 from app.tools.registrations.lens import (
     actor,
+    capabilities,
     dashboard_kpis,
     discovery,
     governance,
@@ -56,6 +57,7 @@ _ALL_TOOLS = [
     *dashboard_kpis.TOOLS,
     *observability_kpis.TOOLS,
     *actor.TOOLS,
+    *capabilities.TOOLS,
 ]
 
 
