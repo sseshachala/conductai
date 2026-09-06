@@ -8,6 +8,8 @@ Do not import from other domain files — depend only on _shared.
 """
 from __future__ import annotations
 
+from app.models.run import Run
+from app.models.workflow import Workflow, WorkflowVersion
 from app.tools.types import ToolDef
 from app.tools.registrations.lens._shared import (
     _actor_impl,
@@ -31,7 +33,6 @@ def list_workflows(ctx, status: str | None = None, limit: int = 20):
     """Enumerate workflows in this workspace's org. Migrated from
     Executor._tool_list_workflows (epic #1655)."""
     from app.core.database import SessionLocal
-    from app.models.workflow import Workflow
     from app.modules.guard.routers.spend import _org_ws_subquery
     db = SessionLocal()
     try:
@@ -122,8 +123,6 @@ def get_workflow_details(ctx, workflow_id: str | None = None, name: str | None =
     OR name. Migrated from Executor._tool_get_workflow_details (epic #1655)."""
     import uuid as _uuid
     from app.core.database import SessionLocal
-    from app.models.workflow import Workflow, WorkflowVersion
-    from app.models.run import Run
     from app.modules.guard.routers.spend import _org_ws_subquery
     if not workflow_id and not name:
         return {"error": "workflow_id or name required"}
@@ -178,8 +177,6 @@ def list_runs(ctx, workflow_id: str | None = None, status: str | None = None,
     Executor._tool_list_runs (epic #1655)."""
     import uuid as _uuid
     from app.core.database import SessionLocal
-    from app.models.workflow import Workflow, WorkflowVersion
-    from app.models.run import Run
     from app.modules.guard.routers.spend import _org_ws_subquery
     db = SessionLocal()
     try:
@@ -225,8 +222,6 @@ def get_run(ctx, run_id: str):
     Executor._tool_get_run (epic #1655)."""
     import uuid as _uuid
     from app.core.database import SessionLocal
-    from app.models.workflow import Workflow, WorkflowVersion
-    from app.models.run import Run
     from app.modules.guard.routers.spend import _org_ws_subquery
     try:
         rid = _uuid.UUID(run_id)
@@ -271,7 +266,7 @@ def list_run_events(ctx, run_id: str, kind: str | None = None, limit: int = 100)
     Executor._tool_list_run_events (epic #1655)."""
     import uuid as _uuid
     from app.core.database import SessionLocal
-    from app.models.run import Run, RunEvent
+    from app.models.run import RunEvent
     from app.modules.guard.routers.spend import _org_ws_subquery
     try:
         rid = _uuid.UUID(run_id)
@@ -301,7 +296,6 @@ def list_playbooks(ctx, category: str | None = None):
     Optional category filter (e.g. 'incident_response', 'ci_cd')."""
     from app.core.database import SessionLocal
     from app.routers.playbooks import _TEMPLATE_PLAYBOOKS, _PLAYBOOK_META
-    from app.models.workflow import Workflow
 
     entries: list[dict] = []
     for slug in _TEMPLATE_PLAYBOOKS:

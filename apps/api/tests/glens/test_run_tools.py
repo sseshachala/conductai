@@ -18,24 +18,6 @@ import pytest
 from tests.regression.conftest import requires_db
 
 
-# Capture real module refs at collection time — before any sibling test file
-# leaks MagicMocks into sys.modules['app.models.run'|'app.models.workflow'].
-# Evicting won't work: re-import triggers SQLAlchemy 'Table already defined'.
-import app.models.run as _real_app_models_run  # noqa: E402
-import app.models.workflow as _real_app_models_workflow  # noqa: E402
-
-
-@pytest.fixture(autouse=True)
-def _restore_leaked_model_modules():
-    """test_token_paths.py etc. swap sys.modules['app.models.run'] with a
-    MagicMock and never restore. Function-scope imports in the tool code
-    then pick up the mock. Restore the real module before each test."""
-    import sys
-    sys.modules["app.models.run"] = _real_app_models_run
-    sys.modules["app.models.workflow"] = _real_app_models_workflow
-    yield
-
-
 def _now():
     return datetime.now(timezone.utc)
 
