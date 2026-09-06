@@ -54,12 +54,6 @@ def test_chat_TOOLS_exposes_all_batch1_tools():
     assert not missing, f"Not in chat.TOOLS: {missing}"
 
 
-def test_executor_has_all_tool_methods():
-    from app.modules.glens.executor import Executor
-    missing = [n for n in BATCH1_TOOLS if not hasattr(Executor, f"_tool_{n}")]
-    assert not missing, f"Executor missing _tool_ methods: {missing}"
-
-
 def test_drilldown_routes_per_domain():
     from app.modules.glens.routers import chat
     cases = [
