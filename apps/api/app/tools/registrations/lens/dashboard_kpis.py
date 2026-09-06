@@ -22,7 +22,8 @@ from app.tools.registrations.lens._shared import (
     _READ_ONLY,
     _READ_ONLY_OPEN_WORLD,
     _LENS_TAGS,
-    _ACTOR_TAGS
+    _ACTOR_TAGS,
+    _widget_tags
 )
 
 
@@ -292,7 +293,7 @@ TOOLS: list[ToolDef] = [
         input_schema={"type": "object", "properties": {"time_window": _TIME_WINDOW}, "required": []},
         impl=get_dashboard_outcomes,
         annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
+        tags=_widget_tags("kpi_card"),
     ),
     ToolDef(
         name="list_attention_runs",
@@ -300,7 +301,7 @@ TOOLS: list[ToolDef] = [
         input_schema={"type": "object", "properties": {"limit": _LIMIT}, "required": []},
         impl=list_attention_runs,
         annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
+        tags=_widget_tags("list"),
     ),
     ToolDef(
         name="list_agent_health",
@@ -308,7 +309,7 @@ TOOLS: list[ToolDef] = [
         input_schema={"type": "object", "properties": {}, "required": []},
         impl=list_agent_health,
         annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
+        tags=_widget_tags("agent_row"),
     ),
     ToolDef(
         name="get_dashboard_token_usage",
@@ -316,7 +317,7 @@ TOOLS: list[ToolDef] = [
         input_schema={"type": "object", "properties": {}, "required": []},
         impl=get_dashboard_token_usage,
         annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
+        tags=_widget_tags("spark"),
     ),
     ToolDef(
         name="get_top_policy_hits",
@@ -328,6 +329,6 @@ TOOLS: list[ToolDef] = [
         },
         impl=get_top_policy_hits,
         annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
+        tags=_widget_tags("table"),
     ),
 ]
