@@ -2,7 +2,7 @@
 import { API } from "@/lib/api"
 
 import { useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { useLensEvent } from "@/hooks/useLensEvent"
 import { useLensSessionStream, type LensSessionStream } from "@/hooks/useLensSessionStream"
@@ -48,6 +48,21 @@ const DEFAULT_SUGGESTIONS = [
   "Cost by AI tool this month",
   "How many events today?",
   "Show recent blocks",
+]
+
+// #C2 — per-page opener chips. First matching regex wins. Empty match falls
+// through to /glens/opener data-grounded chips → DEFAULT_SUGGESTIONS.
+const PAGE_SUGGESTIONS: Array<{ match: RegExp; chips: string[] }> = [
+  { match: /^\/runs\/[^/]+/,             chips: ["Why did this fail?", "Compare to last run", "Show block trace", "Cost breakdown"] },
+  { match: /^\/workflows\/[^/]+\/canvas/, chips: ["Explain this workflow", "Recent runs", "Which blocks fail most?"] },
+  { match: /^\/workflows\/[^/]+/,        chips: ["Explain this workflow", "Recent failures", "Who runs this most?"] },
+  { match: /^\/workflows\/?$/,           chips: ["Which workflows failed today?", "Most-run workflows", "Longest-running workflows"] },
+  { match: /^\/theguard\/policies/,      chips: ["Which rules block the most?", "Show rules with no hits", "Rules changed this week"] },
+  { match: /^\/theguard\/spend/,         chips: ["Top spenders this month", "Budgets near limit", "Cost by AI tool"] },
+  { match: /^\/theguard\/discovery/,     chips: ["Unguarded agents", "Coverage by framework", "High-risk agents"] },
+  { match: /^\/compliance/,              chips: ["Overall compliance grade", "Which frameworks are we missing?", "ASI control status"] },
+  { match: /^\/logs\/guard/,             chips: ["Show blocks today", "Warnings by tool", "Events by user"] },
+  { match: /^\/marketplace/,             chips: ["Recommend packs for us", "What's installed?", "Newest packs"] },
 ]
 
 const SKILL_LABELS: Record<string, string> = {
@@ -1734,6 +1749,7 @@ function ChatInput({ onSubmit, disabled }: { onSubmit: (t: string) => void; disa
 export function GLensChatPage({ initialSessionId }: { initialSessionId?: string } = {}) {
   const { authFetch, workspaceId } = useAuthFetch()
   const router = useRouter()
+  const pathname = usePathname()
 
   const [sessions, setSessions] = useState<GLensSession[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -1780,14 +1796,20 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSessionId, workspaceId])
 
-  // Load data-grounded opener chips
+  // Load data-grounded opener chips — page-specific chips (#C2) win over
+  // /glens/opener; opener wins over DEFAULT_SUGGESTIONS.
   useEffect(() => {
+    const pageMatch = pathname ? PAGE_SUGGESTIONS.find(p => p.match.test(pathname)) : null
+    if (pageMatch) {
+      setSuggestions(pageMatch.chips)
+      return
+    }
     if (!workspaceId) return
     authFetch(`${API}/glens/opener`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.chips?.length) setSuggestions(d.chips) })
       .catch(() => {})
-  }, [workspaceId, authFetch])
+  }, [workspaceId, authFetch, pathname])
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -1969,6 +1991,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
     try {
       const body: Record<string, unknown> = { message: text }
       if (activeId) body.session_id = activeId
+      if (pathname) body.page_context = pathname
 
       const res = await authFetch(`${API}/glens/chat/stream`, {
         method: "POST",
