@@ -822,50 +822,6 @@ class Executor:
 
     # ── Agent identities (#1252) ──────────────────────────────────────────────
 
-    def _tool_list_agent_identities(self, status: str = "active", limit: int = 20):
-        """List agent identities in this workspace.
-
-        status: 'active' (default) | 'deactivated' | 'pending_review' | 'expired' | 'all'.
-        Returns id, name, token_prefix, lifecycle_state, risk_tier, source,
-        created_at, deactivated_at, last_used_at.
-        """
-        ws_uuid = uuid.UUID(self.workspace_id)
-        q = self.db.query(AgentIdentity).filter(AgentIdentity.workspace_id == ws_uuid)
-        status = (status or "active").lower()
-        if status != "all":
-            q = q.filter(AgentIdentity.lifecycle_state == status)
-        rows = q.order_by(AgentIdentity.created_at.desc()).limit(min(limit, 100)).all()
-        return [
-            {
-                "id": r.id,
-                "name": r.name,
-                "token_prefix": r.token_prefix,
-                "lifecycle_state": r.lifecycle_state,
-                "risk_tier": r.risk_tier,
-                "source": r.source,
-                "platform_of_origin": r.platform_of_origin,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "deactivated_at": r.deactivated_at.isoformat() if r.deactivated_at else None,
-                "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
-                "expires_at": r.expires_at.isoformat() if r.expires_at else None,
-            }
-            for r in rows
-        ]
-
-    def _tool_get_agent_identity_count(self, status: str = "active"):
-        """Exact COUNT of agent identities matching lifecycle_state.
-
-        status: 'active' (default) | 'deactivated' | 'pending_review' | 'expired' | 'all'.
-        """
-        ws_uuid = uuid.UUID(self.workspace_id)
-        q = self.db.query(sa_func.count(AgentIdentity.id)).filter(
-            AgentIdentity.workspace_id == ws_uuid
-        )
-        status = (status or "active").lower()
-        if status != "all":
-            q = q.filter(AgentIdentity.lifecycle_state == status)
-        return {"count": int(q.scalar() or 0), "status": status}
-
     # ── Workflow + runs (#1253) ───────────────────────────────────────────────
 
     def _tool_get_workflow_details(self, workflow_id: str | None = None, name: str | None = None):
@@ -1092,49 +1048,7 @@ class Executor:
 
     # ── Integrations (#1289) ──────────────────────────────────────────────────
 
-    def _tool_list_integrations(self):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        rows = self.db.query(Integration).filter(Integration.workspace_id == ws_uuid).all()
-        return [{"id": str(r.id), "service": r.service, "auth_method": r.auth_method,
-                 "handle": r.handle, "scopes": list(r.scopes) if r.scopes else [],
-                 "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
-                 "created_at": r.created_at.isoformat() if r.created_at else None}
-                for r in rows]
-
-    def _tool_get_integration_status(self, service: str):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        r = self.db.query(Integration).filter(
-            Integration.workspace_id == ws_uuid, Integration.service == service.lower()
-        ).first()
-        if not r:
-            return {"service": service, "configured": False}
-        return {"service": r.service, "configured": True, "auth_method": r.auth_method,
-                "handle": r.handle, "scopes": list(r.scopes) if r.scopes else [],
-                "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None}
-
     # ── Team members (#1290) ──────────────────────────────────────────────────
-
-    def _tool_list_members(self, role: str | None = None, limit: int = 50):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        q = self.db.query(WorkspaceUser).filter(WorkspaceUser.workspace_id == ws_uuid)
-        if role:
-            q = q.filter(WorkspaceUser.role == role.lower())
-        rows = q.order_by(WorkspaceUser.joined_at.desc()).limit(min(limit, 200)).all()
-        return [{"clerk_user_id": r.clerk_user_id, "role": r.role, "invited_by": r.invited_by,
-                 "joined_at": r.joined_at.isoformat() if r.joined_at else None}
-                for r in rows]
-
-    def _tool_get_member(self, clerk_user_id: str):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        r = self.db.query(WorkspaceUser).filter(
-            WorkspaceUser.workspace_id == ws_uuid, WorkspaceUser.clerk_user_id == clerk_user_id
-        ).first()
-        if not r:
-            return {"error": "Member not found"}
-        return {"clerk_user_id": r.clerk_user_id, "role": r.role,
-                "role_id": str(r.role_id) if r.role_id else None,
-                "invited_by": r.invited_by,
-                "joined_at": r.joined_at.isoformat() if r.joined_at else None}
 
     # ── Platform audit log (#1291) ────────────────────────────────────────────
 
@@ -1171,29 +1085,6 @@ class Executor:
                 for r in rows]
 
     # ── Projects (#1292) ──────────────────────────────────────────────────────
-
-    def _tool_list_projects(self, limit: int = 50):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        rows = (self.db.query(Project).filter(Project.workspace_id == ws_uuid)
-                .order_by(Project.created_at.desc()).limit(min(limit, 200)).all())
-        return [{"id": str(r.id), "name": r.name, "slug": r.slug,
-                 "project_type": r.project_type,
-                 "created_at": r.created_at.isoformat() if r.created_at else None}
-                for r in rows]
-
-    def _tool_get_project(self, id_or_slug: str):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        q = self.db.query(Project).filter(Project.workspace_id == ws_uuid)
-        try:
-            r = q.filter(Project.id == uuid.UUID(id_or_slug)).first()
-        except ValueError:
-            r = q.filter(Project.slug == id_or_slug).first()
-        if not r:
-            return {"error": "Project not found"}
-        return {"id": str(r.id), "name": r.name, "slug": r.slug,
-                "project_type": r.project_type,
-                "security_finding_id": r.security_finding_id,
-                "created_at": r.created_at.isoformat() if r.created_at else None}
 
     # ── Observability alerts (#1293) ──────────────────────────────────────────
 
