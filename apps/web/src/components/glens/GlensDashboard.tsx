@@ -7,12 +7,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts"
 import { DecisionBadge } from "@/components/guard/DecisionBadge"
-
-function fmt(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M"
-  if (Math.abs(n) >= 1_000)     return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K"
-  return Number.isInteger(n) ? String(n) : n.toFixed(2)
-}
+import { fmtNumber as fmt } from "@/lib/glens/formatters"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
