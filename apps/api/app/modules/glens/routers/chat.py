@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
 from app.modules.glens.executor import Executor
+from app.modules.glens.masking import mask_secrets
 from app.modules.glens.models import GlensChatSession
 from app.tools import registrations as _tool_registrations  # noqa: F401  # side-effect: populate default_registry before TOOLS derives
 
@@ -832,7 +833,7 @@ async def glens_chat_stream(
                     yield f"data: {json.dumps({'type': 'token', 'text': evt['text']})}\n\n"
 
                 elif evt.get("type") == "done":
-                    answer = evt["answer"]
+                    answer = mask_secrets(evt["answer"])
                     # Persist envelopes alongside the answer so session
                     # restore (#1480 PR 12) can rehydrate the right bubble
                     # kind — otherwise refresh loses ActionConfirmBubble /
