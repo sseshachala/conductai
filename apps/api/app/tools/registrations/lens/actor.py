@@ -184,6 +184,33 @@ TOOLS: list[ToolDef] = [
         tags=_ACTOR_TAGS,
     ),
     ToolDef(
+        name="invite_member",
+        description=(
+            "Invite a new member to the workspace by email. Two-step: returns "
+            "a pending action for the user to confirm; the confirm click "
+            "inserts the workspace_invites row, fires the Clerk org invitation, "
+            "and sends the templated email. Guard policy "
+            "platform.members.manage still applies."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "description": "Email address of the person to invite.",
+                },
+                "role": {
+                    "type": "string",
+                    "description": "Workspace role (admin, developer, security, viewer).",
+                },
+            },
+            "required": ["email", "role"],
+        },
+        impl=_actor_impl("invite_member"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
+        tags=_ACTOR_TAGS,
+    ),
+    ToolDef(
         name="enable_policy",
         description=(
             "Enable a Guard policy rule by rule_id. Two-step: returns a pending "
