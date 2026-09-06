@@ -175,6 +175,12 @@ class FakeWatchdogEvent:
 
 
 # Map of (dotted patch target, fake class). Extend when a new model shows up.
+#
+# NOTE on tool-module local refs: lens/workflows.py and lens/runs.py hoist
+# `from app.models.run import Run` (etc.) to module scope so a MagicMock
+# leak in sys.modules[app.models.run] from other test files can't shadow
+# the ORM class at tool-call time. patch("app.models.run.Run") alone won't
+# reach those hoisted refs, so patch the tool-module names explicitly too.
 FAKE_MODELS: list[tuple[str, type]] = [
     ("app.models.run.Run", FakeRun),
     ("app.models.workflow.Workflow", FakeWorkflow),
@@ -185,6 +191,13 @@ FAKE_MODELS: list[tuple[str, type]] = [
     ("app.models.run_analytics_event.RunAnalyticsEvent", FakeRunAnalyticsEvent),
     ("app.models.run_online_score.RunOnlineScore", FakeRunOnlineScore),
     ("app.models.watchdog_event.WatchdogEvent", FakeWatchdogEvent),
+    # Hoisted refs in lens tool modules — see NOTE above.
+    ("app.tools.registrations.lens.workflows.Run", FakeRun),
+    ("app.tools.registrations.lens.workflows.Workflow", FakeWorkflow),
+    ("app.tools.registrations.lens.workflows.WorkflowVersion", FakeWorkflowVersion),
+    ("app.tools.registrations.lens.runs.Run", FakeRun),
+    ("app.tools.registrations.lens.runs.Workflow", FakeWorkflow),
+    ("app.tools.registrations.lens.runs.WorkflowVersion", FakeWorkflowVersion),
 ]
 
 

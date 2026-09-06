@@ -77,7 +77,7 @@ def test_list_runs_in_session_defaults_to_ctx_session_id() -> None:
         session_id="11111111-1111-1111-1111-111111111111",
     )
     with patch("app.core.database.SessionLocal") as mock_sl, \
-         patch("app.modules.glens.executor._org_ws_subquery", return_value=[]):
+         patch("app.tools.registrations.lens.runs._org_ws_subquery", return_value=[]):
         mock_db = MagicMock()
         mock_db.query.return_value.join.return_value.join.return_value \
             .filter.return_value.filter.return_value.order_by.return_value \

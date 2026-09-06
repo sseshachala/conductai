@@ -11,6 +11,9 @@ workspace + insert test rows in setup, tear everything down in teardown.
 """
 from __future__ import annotations
 
+from app.tools.registrations.lens.workflows import get_blocked_workflows, list_workflows
+
+
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -113,7 +116,7 @@ def test_list_workflows_active_by_default(ws_and_executor):
     _seed_workflow(db, ws_id, "beta")
     _seed_workflow(db, ws_id, "gamma", archived=True)
 
-    rows = ex._tool_list_workflows()
+    rows = list_workflows(ex)
     names = {r["name"] for r in rows}
     assert names == {"alpha", "beta"}, names
     assert all(r["archived"] is False for r in rows)
@@ -125,8 +128,8 @@ def test_list_workflows_status_archived_and_all(ws_and_executor):
     _seed_workflow(db, ws_id, "active-1")
     _seed_workflow(db, ws_id, "archived-1", archived=True)
 
-    assert {r["name"] for r in ex._tool_list_workflows(status="archived")} == {"archived-1"}
-    assert {r["name"] for r in ex._tool_list_workflows(status="all")} == {"active-1", "archived-1"}
+    assert {r["name"] for r in list_workflows(ex, status="archived")} == {"archived-1"}
+    assert {r["name"] for r in list_workflows(ex, status="all")} == {"active-1", "archived-1"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -146,7 +149,7 @@ def test_get_blocked_workflows_ranks_by_count_and_picks_top_rule(ws_and_executor
         _seed_event(db, ws_id, wf_b, "Bravo", rule)
     _seed_event(db, ws_id, wf_c, "Charlie", "R1", decision="allowed")
 
-    rows = ex._tool_get_blocked_workflows()
+    rows = get_blocked_workflows(ex)
 
     assert [r["workflow_id"] for r in rows] == [wf_b, wf_a], rows
     assert rows[0]["name"] == "Bravo" and rows[0]["block_count"] == 5 and rows[0]["top_rule_id"] == "R2"
@@ -161,10 +164,10 @@ def test_get_blocked_workflows_filters_by_workflow_and_rule(ws_and_executor):
     _seed_event(db, ws_id, "wf-a", "Alpha", "R2")
     _seed_event(db, ws_id, "wf-b", "Bravo", "R1")
 
-    only_a = ex._tool_get_blocked_workflows(workflow_id="wf-a")
+    only_a = get_blocked_workflows(ex, workflow_id="wf-a")
     assert len(only_a) == 1 and only_a[0]["workflow_id"] == "wf-a" and only_a[0]["block_count"] == 2
 
-    only_r1 = ex._tool_get_blocked_workflows(rule_id="R1")
+    only_r1 = get_blocked_workflows(ex, rule_id="R1")
     assert {r["workflow_id"] for r in only_r1} == {"wf-a", "wf-b"}
     assert all(r["block_count"] == 1 for r in only_r1)
 
@@ -178,5 +181,5 @@ def test_get_blocked_workflows_bounded_by_since_until(ws_and_executor):
     _seed_event(db, ws_id, "wf-a", "Alpha", "R1", when=recent)
 
     since = (_now() - timedelta(days=1)).isoformat()
-    rows = ex._tool_get_blocked_workflows(since=since)
+    rows = get_blocked_workflows(ex, since=since)
     assert len(rows) == 1 and rows[0]["block_count"] == 1
