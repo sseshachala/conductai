@@ -180,7 +180,7 @@ export default function GuardPage() {
           <div className="px-6 py-5 bg-stone-50 border-b border-stone-200">
             <h2 className="text-lg font-bold text-stone-900">One policy where your stack isn&apos;t one vendor&apos;s.</h2>
             <p className="text-xs text-stone-400 mt-1">
-              Cortex enforces inside Cortex. Copilot inside Copilot. Guard enforces <em>across</em> whatever mix your team actually runs. Here&apos;s the scope Guard owns — and what we intentionally leave to the tools and data layers you already have.
+              Native platform controls stay in place. Guard applies one policy and evidence model <em>across</em> the mix of agent tools your team actually runs. Here&apos;s the scope Guard owns — and what we intentionally leave to the tools and data layers you already have.
             </p>
           </div>
           <div className="px-6 py-2">
