@@ -18,6 +18,18 @@ import pytest
 from tests.regression.conftest import requires_db
 
 
+@pytest.fixture(autouse=True)
+def _evict_leaked_model_mocks():
+    """test_token_paths.py / test_analytics_*.py leak MagicMocks into
+    sys.modules['app.models.run'|'app.models.workflow'] which then shadow
+    the real ORM classes when tool code does function-scope imports.
+    Evict before each test so the free-function imports resolve real."""
+    import sys
+    for mod in ("app.models.run", "app.models.workflow"):
+        sys.modules.pop(mod, None)
+    yield
+
+
 def _now():
     return datetime.now(timezone.utc)
 

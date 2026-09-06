@@ -16,8 +16,6 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from app.models.run import Run
-from app.models.workflow import Workflow, WorkflowVersion
 from app.modules.guard.routers.spend import _org_ws_subquery
 from app.tools.types import ToolDef
 from app.tools.registrations.lens._shared import (
@@ -54,6 +52,8 @@ def list_my_runs(ctx, status: str | None = None, limit: int = 20):
     list_runs but scoped to me.
     """
     from app.core.database import SessionLocal
+    from app.models.run import Run
+    from app.models.workflow import Workflow, WorkflowVersion
 
     clerk_user_id = getattr(ctx, "clerk_user_id", None)
     if not clerk_user_id or clerk_user_id.startswith("system:"):
@@ -82,6 +82,8 @@ def list_runs_in_session(ctx, session_id: str | None = None, status: str | None 
     runs.session_id column). Defaults to the current session in ctx.
     """
     from app.core.database import SessionLocal
+    from app.models.run import Run
+    from app.models.workflow import Workflow, WorkflowVersion
 
     sid = session_id or getattr(ctx, "session_id", None)
     if not sid:
