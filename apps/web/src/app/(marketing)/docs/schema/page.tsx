@@ -48,6 +48,7 @@ export default function GuardSchemaDocsPage() {
         <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3">On this page</p>
         <ol className="flex flex-col gap-1.5 text-sm text-stone-600">
           <li><a href="#category" className="hover:text-indigo-600 transition-colors">Why a distinct category</a></li>
+          <li><a href="#why-not-cedar" className="hover:text-indigo-600 transition-colors">Why not just adopt Cedar (or OPA)?</a></li>
           <li><a href="#why-two" className="hover:text-indigo-600 transition-colors">Why two dialects</a></li>
           <li><a href="#example" className="hover:text-indigo-600 transition-colors">Same rule, two forms</a></li>
           <li><a href="#interchange" className="hover:text-indigo-600 transition-colors">Bidirectional interchange</a></li>
@@ -73,6 +74,40 @@ export default function GuardSchemaDocsPage() {
         <p className="text-stone-600 leading-relaxed">
           <strong>Agentic Tool-Call Policy is its own shape.</strong> The actor is an autonomous AI agent, the object is a tool invocation, decisions land in milliseconds pre-execution, and portability across enforcement surfaces (proxy, hooks, MCP, runtime) is table-stakes. This schema names that shape. See the <a href="#mapping" className="text-indigo-600 hover:underline">mapping table below</a> for how our vocabulary aligns with each of the above.
         </p>
+      </section>
+
+      <section id="why-not-cedar" className="mb-12">
+        <h2 className="text-xl font-bold text-stone-900 mb-3">Why not just adopt Cedar (or OPA) directly?</h2>
+        <p className="text-stone-600 leading-relaxed mb-3">
+          Fair question — and the one we asked ourselves before writing a line of schema. We adopted every standard that fit and named only the gap they leave. Here is the honest audit.
+        </p>
+
+        <h3 className="text-sm font-semibold text-stone-700 mt-4 mb-2">What Cedar cannot express without heavy encoding</h3>
+        <ul className="list-disc pl-6 text-stone-600 text-sm leading-relaxed space-y-2 mb-4">
+          <li><strong>Non-binary decisions.</strong> Cedar has <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">permit</code> and <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">forbid</code>. Agentic policy needs <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">warn</code> (proceed but flag), <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">inject</code> (prepend context to prompt), <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">audit</code> (record decision), <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">approval</code> (pause for human). Encoding these as Cedar obligations pushes semantics <em>out</em> of the policy language and into runtime convention — the exact anti-pattern Cedar was built to avoid.</li>
+          <li><strong>Free-text pattern matching.</strong> Cedar's <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">like</code> is glob, not regex. Its condition grammar targets structural attribute checks, not scanning LLM prompts for PANs, secrets, or PII. Regex over <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">tool_input.prompt</code> is our common case; wedging it into Cedar loses linter and IDE support.</li>
+          <li><strong>Enforcement-surface metadata.</strong> Our <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">enforcement.&#123;proxy, hook, mcp, runtime&#125;</code> declares which of four surfaces can hard-block vs advise for a given rule. Cedar assumes one PDP; it has no concept of &quot;which enforcement point evaluates me.&quot;</li>
+          <li><strong>Compliance frameworks as first-class.</strong> Buyers query &quot;show me all rules tagged <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">NIST_AI_RMF:MG-2.6</code>.&quot; Cedar can carry that as <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">@annotation</code>, but annotations are opaque strings — no schema, no validation, no searchable field.</li>
+          <li><strong>Pack container.</strong> We ship <em>bundles</em> — slug, version, tier, UI hints, rules array. Cedar policies are individual documents. Pack-as-unit is what customers install, version, and publish.</li>
+        </ul>
+
+        <h3 className="text-sm font-semibold text-stone-700 mt-4 mb-2">What we adopted instead of inventing</h3>
+        <ul className="list-disc pl-6 text-stone-600 text-sm leading-relaxed space-y-1 mb-4">
+          <li><strong>JSON Schema 2020-12</strong> as the meta-format — linters, IDEs, and CI validators just work.</li>
+          <li><strong>Cedar as a first-class export target.</strong> Any pack renders as annotated Cedar text.</li>
+          <li><strong>Cedar as an import source.</strong> Bring your Verified Permissions policies in, roundtrip them back out unchanged.</li>
+          <li><strong>Existing compliance vocabularies verbatim</strong> — MITRE ATLAS, OWASP Agentic Top 10, NIST AI RMF, ISO 42001, PCI DSS, SOC 2, HIPAA, GDPR, SR 11-7 — as tag prefixes on the <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">frameworks[]</code> array.</li>
+          <li><strong>Namespaced <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">annotations</code> map</strong> so metadata from OPA, Kyverno, Cedar, or your own tooling roundtrips through Conduct without loss.</li>
+        </ul>
+
+        <h3 className="text-sm font-semibold text-stone-700 mt-4 mb-2">The one-liner</h3>
+        <p className="text-stone-600 text-sm leading-relaxed mb-4">
+          <strong>Cedar is the right <em>interchange</em> format. It is not the right <em>authoring</em> format for agentic tool-call policy.</strong> The vocabulary mismatch is real, not stylistic — you cannot express <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">warn</code> or <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded">inject</code> in Cedar without inventing runtime conventions Cedar itself would consider a bug. So we authored a schema for the shape none of the incumbents target, and made Cedar a peer for portability. No lock-in either direction.
+        </p>
+
+        <div className="border-l-2 border-stone-200 pl-4 py-1 text-sm text-stone-500 leading-relaxed">
+          <strong className="text-stone-700">Flip condition.</strong> If AWS ships Cedar language extensions for agent primitives — first-class tool-call resources, prompt content matchers, non-binary decisions — we flip Cedar to canonical and generate the JSON view from it. Watch Bedrock AgentCore and Verified Permissions release notes. Until then, this schema is the honest floor.
+        </div>
       </section>
 
       <section id="why-two" className="mb-12">
