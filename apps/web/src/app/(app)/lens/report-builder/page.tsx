@@ -26,6 +26,8 @@ import {
 } from "@/lib/reportBuilder/widgets"
 import { TEMPLATES, templateBySlug } from "@/lib/reportBuilder/templates"
 import { reportLayoutsApi, type ReportLayout, type WidgetSpec } from "@/lib/reportBuilder/api"
+import { useReportData } from "@/lib/reportBuilder/fetchers"
+import { WidgetRenderer } from "@/lib/reportBuilder/renderers"
 
 type LayoutDraft = {
   slug: string
@@ -73,11 +75,16 @@ export default function ReportBuilderPage() {
 
   const initialSlug = search.get("slug")
 
+  // #1450 PR 3: live widget data fetch (batches /dashboard once, obs endpoints
+  // per unique tool). Re-runs on layout changes via toolNames join key.
+
   const [layouts, setLayouts] = useState<ReportLayout[]>([])
   const [draft, setDraft] = useState<LayoutDraft>(emptyDraft())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const reportData = useReportData(authFetch, workspaceId, draft.layout_spec)
 
   const refreshLayouts = useCallback(async () => {
     if (!workspaceId) return
@@ -383,12 +390,8 @@ export default function ReportBuilderPage() {
                           </button>
                         </div>
                       </div>
-                      {/*
-                        ponytail: placeholder cell body. PR 3 wires the live
-                        tool-call renderer here, dispatched on `w.hint`.
-                      */}
-                      <div className="mt-2 flex h-full items-center justify-center rounded border border-dashed border-neutral-200 text-xs text-neutral-400">
-                        {w.tool_name}
+                      <div className="mt-2 h-full min-h-0 overflow-hidden">
+                        <WidgetRenderer hint={w.hint} state={reportData.get(w.tool_name)} />
                       </div>
                     </div>
                   )
