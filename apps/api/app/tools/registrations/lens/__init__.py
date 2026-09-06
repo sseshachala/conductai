@@ -86,8 +86,6 @@ register()
 # symbol gains an external caller (tests, other routers, docs).
 
 from app.tools.registrations.lens._shared import (  # noqa: F401,E402
-    _run,
-    _impl,
     _actor_impl,
     _window_start,
     _LIMIT,

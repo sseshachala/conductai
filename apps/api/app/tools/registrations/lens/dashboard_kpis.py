@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from app.tools.types import ToolDef
 from app.tools.registrations.lens._shared import (
-    _impl,
-    _run,
     _actor_impl,
     _window_start,
     _LIMIT,

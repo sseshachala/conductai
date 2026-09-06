@@ -7,6 +7,9 @@ Exercises:
 """
 from __future__ import annotations
 
+from app.tools.registrations.lens.workflows import get_run, get_workflow_details, list_runs
+
+
 import uuid
 from datetime import datetime, timezone
 
@@ -137,7 +140,7 @@ def test_get_workflow_details_by_id(ws_and_executor):
     wf, ver = _seed_workflow_with_version(db, ws_id, "alpha")
     _seed_run(db, ws_id, ver.id, status="succeeded")
 
-    out = ex._tool_get_workflow_details(workflow_id=str(wf.id))
+    out = get_workflow_details(ex, workflow_id=str(wf.id))
     assert out["name"] == "alpha"
     assert out["workflow_id"] == str(wf.id)
     assert out["latest_run"] is not None
@@ -149,7 +152,7 @@ def test_get_workflow_details_by_name(ws_and_executor):
     db, ws_id, ex = ws_and_executor
     _seed_workflow_with_version(db, ws_id, "beta")
 
-    out = ex._tool_get_workflow_details(name="beta")
+    out = get_workflow_details(ex, name="beta")
     assert out["name"] == "beta"
     assert out["latest_run"] is None
 
@@ -157,7 +160,7 @@ def test_get_workflow_details_by_name(ws_and_executor):
 @requires_db
 def test_get_workflow_details_missing_returns_error(ws_and_executor):
     db, ws_id, ex = ws_and_executor
-    out = ex._tool_get_workflow_details(name="nonexistent")
+    out = get_workflow_details(ex, name="nonexistent")
     assert "error" in out
 
 
@@ -172,7 +175,7 @@ def test_list_runs_returns_recent(ws_and_executor):
     _seed_run(db, ws_id, ver.id, status="succeeded")
     _seed_run(db, ws_id, ver.id, status="failed")
 
-    rows = ex._tool_list_runs()
+    rows = list_runs(ex)
     assert len(rows) == 2
     assert {r["status"] for r in rows} == {"succeeded", "failed"}
 
@@ -184,7 +187,7 @@ def test_list_runs_filter_by_status(ws_and_executor):
     _seed_run(db, ws_id, ver.id, status="succeeded")
     _seed_run(db, ws_id, ver.id, status="failed")
 
-    only_failed = ex._tool_list_runs(status="failed")
+    only_failed = list_runs(ex, status="failed")
     assert len(only_failed) == 1 and only_failed[0]["status"] == "failed"
 
 
@@ -196,7 +199,7 @@ def test_list_runs_filter_by_workflow(ws_and_executor):
     _seed_run(db, ws_id, ver1.id, status="succeeded")
     _seed_run(db, ws_id, ver2.id, status="succeeded")
 
-    rows = ex._tool_list_runs(workflow_id=str(wf1.id))
+    rows = list_runs(ex, workflow_id=str(wf1.id))
     assert len(rows) == 1 and rows[0]["workflow_name"] == "wf-1"
 
 
@@ -210,7 +213,7 @@ def test_get_run_returns_full_row(ws_and_executor):
     wf, ver = _seed_workflow_with_version(db, ws_id, "wf-1")
     run = _seed_run(db, ws_id, ver.id, status="succeeded")
 
-    out = ex._tool_get_run(run_id=str(run.id))
+    out = get_run(ex, run_id=str(run.id))
     assert out["run_id"] == str(run.id)
     assert out["workflow_name"] == "wf-1"
     assert out["status"] == "succeeded"
@@ -220,12 +223,12 @@ def test_get_run_returns_full_row(ws_and_executor):
 @requires_db
 def test_get_run_missing_returns_error(ws_and_executor):
     _db, _ws_id, ex = ws_and_executor
-    out = ex._tool_get_run(run_id=str(uuid.uuid4()))
+    out = get_run(ex, run_id=str(uuid.uuid4()))
     assert "error" in out
 
 
 @requires_db
 def test_get_run_rejects_non_uuid(ws_and_executor):
     _db, _ws_id, ex = ws_and_executor
-    out = ex._tool_get_run(run_id="not-a-uuid")
+    out = get_run(ex, run_id="not-a-uuid")
     assert "error" in out

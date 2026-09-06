@@ -15,33 +15,6 @@ from datetime import datetime, timedelta, timezone
 from app.tools.types import ToolAnnotations
 
 
-def _run(method_name: str, workspace_id: str, kwargs: dict[str, Any]) -> Any:
-    """Legacy dispatcher — opens a DB session and calls
-    `Executor._tool_{method_name}`. Used by the 44 pre-2026-08-29 tools that
-    still route through Executor. New tools skip this and register a free
-    function directly on their `ToolDef`."""
-    from app.core.database import SessionLocal
-    from app.modules.glens.executor import Executor
-
-    db = SessionLocal()
-    try:
-        executor = Executor(db, workspace_id)
-        fn = getattr(executor, f"_tool_{method_name}", None)
-        if fn is None:
-            return {"error": f"Executor is missing tool: {method_name}"}
-        return fn(**kwargs)
-    finally:
-        db.close()
-
-
-def _impl(method_name: str) -> Callable[..., Any]:
-    """Build a ctx-accepting impl for one legacy Executor-backed Lens tool."""
-    def _lens_impl(ctx, **kwargs):  # ctx: MCPContext
-        return _run(method_name, ctx.workspace_id, kwargs)
-    _lens_impl.__name__ = f"lens_impl_{method_name}"
-    return _lens_impl
-
-
 def _window_start(time_window: str) -> datetime:
     """Resolve a symbolic time window (last_24h / last_7d / mtd) to a UTC
     datetime lower bound. Default: last_24h."""

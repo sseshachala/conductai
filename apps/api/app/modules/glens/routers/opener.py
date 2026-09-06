@@ -9,9 +9,15 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
-from app.modules.glens.executor import Executor
+from app.tools.registrations.lens.governance import get_governance_kpis
 
 router = APIRouter(prefix="/glens", tags=["glens"])
+
+
+class _OpenerCtx:
+    """Minimal ctx shim — get_governance_kpis only reads .workspace_id."""
+    def __init__(self, workspace_id: str):
+        self.workspace_id = workspace_id
 
 
 @router.get("/opener")
@@ -20,9 +26,8 @@ def glens_opener(
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
-    executor = Executor(db, workspace_id)
     try:
-        kpis = executor._tool_get_governance_kpis()
+        kpis = get_governance_kpis(_OpenerCtx(workspace_id))
     except Exception:
         kpis = {}
 

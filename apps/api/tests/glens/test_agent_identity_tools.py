@@ -6,6 +6,9 @@ Exercises:
 """
 from __future__ import annotations
 
+from app.tools.registrations.lens.workspace import get_agent_identity_count, list_agent_identities
+
+
 import uuid
 from datetime import datetime, timezone
 
@@ -77,7 +80,7 @@ def test_list_agent_identities_active_by_default(ws_and_executor):
     _seed_identity(db, ws_id, "beta")
     _seed_identity(db, ws_id, "old-token", lifecycle_state="deactivated")
 
-    rows = ex._tool_list_agent_identities()
+    rows = list_agent_identities(ex)
     names = {r["name"] for r in rows}
     assert names == {"alpha", "beta"}, names
     assert all(r["lifecycle_state"] == "active" for r in rows)
@@ -90,8 +93,8 @@ def test_list_agent_identities_status_filter(ws_and_executor):
     _seed_identity(db, ws_id, "live")
     _seed_identity(db, ws_id, "dead", lifecycle_state="deactivated")
 
-    assert {r["name"] for r in ex._tool_list_agent_identities(status="deactivated")} == {"dead"}
-    assert {r["name"] for r in ex._tool_list_agent_identities(status="all")} == {"live", "dead"}
+    assert {r["name"] for r in list_agent_identities(ex, status="deactivated")} == {"dead"}
+    assert {r["name"] for r in list_agent_identities(ex, status="all")} == {"live", "dead"}
 
 
 @requires_db
@@ -101,9 +104,9 @@ def test_get_agent_identity_count(ws_and_executor):
     _seed_identity(db, ws_id, "b")
     _seed_identity(db, ws_id, "c", lifecycle_state="deactivated")
 
-    assert ex._tool_get_agent_identity_count()["count"] == 2
-    assert ex._tool_get_agent_identity_count(status="deactivated")["count"] == 1
-    assert ex._tool_get_agent_identity_count(status="all")["count"] == 3
+    assert get_agent_identity_count(ex)["count"] == 2
+    assert get_agent_identity_count(ex, status="deactivated")["count"] == 1
+    assert get_agent_identity_count(ex, status="all")["count"] == 3
 
 
 @requires_db
@@ -126,7 +129,7 @@ def test_agent_identities_scoped_to_workspace(ws_and_executor):
         with SessionLocal() as db2:
             _seed_identity(db2, str(other_ws), "not-mine")
 
-        rows = ex._tool_list_agent_identities()
+        rows = list_agent_identities(ex)
         assert {r["name"] for r in rows} == {"mine"}
     finally:
         from app.modules.agent_identity.models import AgentIdentity

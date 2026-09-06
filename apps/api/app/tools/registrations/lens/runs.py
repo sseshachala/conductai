@@ -53,7 +53,7 @@ def list_my_runs(ctx, status: str | None = None, limit: int = 20):
     from app.core.database import SessionLocal
     from app.models.run import Run
     from app.models.workflow import Workflow, WorkflowVersion
-    from app.modules.glens.executor import _org_ws_subquery
+    from app.modules.guard.routers.spend import _org_ws_subquery
 
     clerk_user_id = getattr(ctx, "clerk_user_id", None)
     if not clerk_user_id or clerk_user_id.startswith("system:"):
@@ -84,7 +84,7 @@ def list_runs_in_session(ctx, session_id: str | None = None, status: str | None 
     from app.core.database import SessionLocal
     from app.models.run import Run
     from app.models.workflow import Workflow, WorkflowVersion
-    from app.modules.glens.executor import _org_ws_subquery
+    from app.modules.guard.routers.spend import _org_ws_subquery
 
     sid = session_id or getattr(ctx, "session_id", None)
     if not sid:
