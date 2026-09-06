@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
+import { LensPanel } from "@/components/glens/LensPanel"
 import { useAuth, useUser, useClerk } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { setActiveGuardWorkspace } from "@/lib/guardStorage"
@@ -221,8 +222,20 @@ function AppShellInnerContent({
   const [paletteActive, setPaletteActive] = useState(0)
   const paletteInputRef = useRef<HTMLInputElement>(null)
 
-  // Global "Ask Lens" bar
+  // Global "Ask Lens" bar + right-side panel (#1214 #B1/#B2/#B5)
   const [askLensQuery, setAskLensQuery] = useState("")
+  const [lensPanelOpen, setLensPanelOpen] = useState(false)
+  const [lensPanelInitialQuery, setLensPanelInitialQuery] = useState<string | null>(null)
+
+  // Persist open/closed state (#B5). localStorage read is client-only.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try { if (window.localStorage.getItem("lens:panelOpen") === "1") setLensPanelOpen(true) } catch { /* ignore */ }
+  }, [])
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try { window.localStorage.setItem("lens:panelOpen", lensPanelOpen ? "1" : "0") } catch { /* ignore */ }
+  }, [lensPanelOpen])
 
   // Team rename/create/delete state
   const [creatingTeam, setCreatingTeam] = useState(false)
@@ -1122,7 +1135,8 @@ function AppShellInnerContent({
                   e.preventDefault()
                   const q = askLensQuery.trim()
                   if (!q) return
-                  router.push(`/lens?q=${encodeURIComponent(q)}`)
+                  setLensPanelInitialQuery(q)
+                  setLensPanelOpen(true)
                   setAskLensQuery("")
                 }}
                 style={{
@@ -1275,6 +1289,13 @@ function AppShellInnerContent({
     </div>
 
     {/* Command Palette */}
+    <LensPanel
+      open={lensPanelOpen}
+      initialQuery={lensPanelInitialQuery}
+      pathname={pathname}
+      onClose={() => { setLensPanelOpen(false); setLensPanelInitialQuery(null) }}
+    />
+
     {paletteOpen && (
       <div
         style={{
