@@ -235,29 +235,6 @@ class Executor:
 
     # ── Policies ──────────────────────────────────────────────────────────────
 
-    def _tool_list_policies(self):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        rows = self.db.query(WorkspaceCustomRule).filter(
-            WorkspaceCustomRule.workspace_id == ws_uuid
-        ).all()
-        return [
-            {"rule_id": r.rule_id, "enabled": r.enabled, "persona": r.persona,
-             "action": r.body.get("action"), "description": r.body.get("description"),
-             "match_tool": r.body.get("match_tool"), "match_pattern": r.body.get("match_pattern"),
-             "severity": r.body.get("severity", "medium")}
-            for r in rows
-        ]
-
-    def _tool_get_policy(self, rule_id: str):
-        ws_uuid = uuid.UUID(self.workspace_id)
-        row = self.db.query(WorkspaceCustomRule).filter(
-            WorkspaceCustomRule.workspace_id == ws_uuid,
-            WorkspaceCustomRule.rule_id == rule_id,
-        ).first()
-        if not row:
-            return {"error": f"Policy '{rule_id}' not found"}
-        return {"rule_id": row.rule_id, "enabled": row.enabled, "persona": row.persona, **row.body}
-
     # ── Knowledge index ───────────────────────────────────────────────────────
 
     def _tool_search_knowledge(self, q: str, kind: str | None = None, limit: int = 10):

@@ -29,6 +29,49 @@ from app.tools.registrations.lens._shared import (
 
 
 # ── Free-function tool implementations ─────────────────────────────────
+def list_policies(ctx):
+    """All custom workspace policies. Migrated from
+    Executor._tool_list_policies (epic #1655)."""
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.modules.guard.models import WorkspaceCustomRule
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        rows = db.query(WorkspaceCustomRule).filter(
+            WorkspaceCustomRule.workspace_id == ws_uuid
+        ).all()
+        return [
+            {"rule_id": r.rule_id, "enabled": r.enabled, "persona": r.persona,
+             "action": r.body.get("action"), "description": r.body.get("description"),
+             "match_tool": r.body.get("match_tool"), "match_pattern": r.body.get("match_pattern"),
+             "severity": r.body.get("severity", "medium")}
+            for r in rows
+        ]
+    finally:
+        db.close()
+
+
+def get_policy(ctx, rule_id: str):
+    """Full body of one custom policy by rule_id. Migrated from
+    Executor._tool_get_policy (epic #1655)."""
+    import uuid as _uuid
+    from app.core.database import SessionLocal
+    from app.modules.guard.models import WorkspaceCustomRule
+    db = SessionLocal()
+    try:
+        ws_uuid = _uuid.UUID(ctx.workspace_id)
+        row = db.query(WorkspaceCustomRule).filter(
+            WorkspaceCustomRule.workspace_id == ws_uuid,
+            WorkspaceCustomRule.rule_id == rule_id,
+        ).first()
+        if not row:
+            return {"error": f"Policy '{rule_id}' not found"}
+        return {"rule_id": row.rule_id, "enabled": row.enabled, "persona": row.persona, **row.body}
+    finally:
+        db.close()
+
+
 def list_credentials(ctx, environment_id: str | None = None, service: str | None = None):
     """Vault inventory — service + handle + auth_method + scopes + last_used_at
     per Integration row. NEVER returns encrypted_credentials or any raw
@@ -78,7 +121,7 @@ TOOLS: list[ToolDef] = [
         name="list_policies",
         description="All custom workspace policies (rule_id, enabled, persona, action, description).",
         input_schema={"type": "object", "properties": {}, "required": []},
-        impl=_impl("list_policies"),
+        impl=list_policies,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),
@@ -90,7 +133,7 @@ TOOLS: list[ToolDef] = [
             "properties": {"rule_id": {"type": "string"}},
             "required": ["rule_id"],
         },
-        impl=_impl("get_policy"),
+        impl=get_policy,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),
