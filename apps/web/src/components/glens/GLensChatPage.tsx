@@ -2,7 +2,7 @@
 import { API } from "@/lib/api"
 
 import { useEffect, useRef, useState } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { useLensEvent } from "@/hooks/useLensEvent"
 import { useLensSessionStream, type LensSessionStream } from "@/hooks/useLensSessionStream"
@@ -1750,6 +1750,21 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
   const { authFetch, workspaceId } = useAuthFetch()
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const askedFromUrlRef = useRef<string | null>(null)
+
+  // Auto-send when arriving with ?q=… from the global "Ask Lens" bar (#1333 #5).
+  // Ref-guard so React Strict-mode double-mount doesn't fire twice, and clean
+  // the query out of the URL after the send so refresh doesn't re-trigger.
+  useEffect(() => {
+    const q = searchParams?.get("q")
+    if (!q) return
+    if (askedFromUrlRef.current === q) return
+    askedFromUrlRef.current = q
+    void sendMessage(q)
+    router.replace("/lens")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const [sessions, setSessions] = useState<GLensSession[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)

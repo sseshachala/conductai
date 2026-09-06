@@ -221,6 +221,9 @@ function AppShellInnerContent({
   const [paletteActive, setPaletteActive] = useState(0)
   const paletteInputRef = useRef<HTMLInputElement>(null)
 
+  // Global "Ask Lens" bar
+  const [askLensQuery, setAskLensQuery] = useState("")
+
   // Team rename/create/delete state
   const [creatingTeam, setCreatingTeam] = useState(false)
   const [newTeamValue, setNewTeamValue] = useState("")
@@ -1112,28 +1115,48 @@ function AppShellInnerContent({
 
           {/* Right cluster */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            {/* Search / command palette trigger */}
-            <button
-              onClick={() => { setPaletteOpen(true); setPaletteQuery(""); setPaletteActive(0) }}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "5px 10px", borderRadius: 8,
-                border: "1px solid var(--border)",
-                background: "var(--surface-2)",
-                cursor: "pointer", fontSize: 13,
-                color: "var(--text-3)",
-              }}
-              onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.borderColor = "var(--border-2)")}
-              onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => (e.currentTarget.style.borderColor = "var(--border)")}
-            >
-              <Icons.Search />
-              <span>Search</span>
-              <kbd style={{
-                fontSize: 10.5, padding: "1px 5px", borderRadius: 4,
-                background: "var(--surface-3)", border: "1px solid var(--border-2)",
-                color: "var(--text-muted)", fontFamily: "inherit",
-              }}>⌘K</kbd>
-            </button>
+            {/* Global "Ask Lens" bar (#1333 #5) — hidden while on /lens (Lens has its own composer). */}
+            {!pathname?.startsWith("/lens") && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  const q = askLensQuery.trim()
+                  if (!q) return
+                  router.push(`/lens?q=${encodeURIComponent(q)}`)
+                  setAskLensQuery("")
+                }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "3px 10px", borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  width: 280,
+                }}
+              >
+                <Icons.Sparkles />
+                <input
+                  type="text"
+                  value={askLensQuery}
+                  onChange={(e) => setAskLensQuery(e.target.value)}
+                  placeholder="Ask Lens…"
+                  aria-label="Ask Lens"
+                  style={{
+                    flex: 1, background: "transparent", border: "none",
+                    outline: "none", color: "var(--text)", fontSize: 13,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => { setPaletteOpen(true); setPaletteQuery(""); setPaletteActive(0) }}
+                  title="Command palette"
+                  style={{
+                    padding: "1px 5px", borderRadius: 4, border: "1px solid var(--border-2)",
+                    background: "var(--surface-3)", color: "var(--text-muted)",
+                    fontFamily: "inherit", fontSize: 10.5, cursor: "pointer",
+                  }}
+                >⌘K</button>
+              </form>
+            )}
 
             {/* Bell / notifications */}
             <div ref={notifRef} style={{ position: "relative" }}>
