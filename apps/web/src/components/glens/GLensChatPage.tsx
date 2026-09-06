@@ -34,9 +34,9 @@ type Message =
   | { role: "user"; text: string }
   | { role: "assistant"; kind: "answer"; text: string; skill?: string; drilldown?: { path: string; filters?: Record<string, string> }; followups?: string[]; understoodAs?: string }
   | { role: "assistant"; kind: "streaming"; text: string }
-  | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string }
+  | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string; drilldown?: { path: string; filters?: Record<string, string> } }
   | { role: "assistant"; kind: "loading"; label?: string }
-  | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string }
+  | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> } }
   | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string; warning?: string }
   | { role: "assistant"; kind: "action_confirm"; toolName: string; approvalRequestId: string; summary: string; warnings?: string[]; expiresAt?: string }
   | { role: "assistant"; kind: "run"; runId: string; workflowName: string; initialStatus: string }
@@ -699,10 +699,12 @@ function DashboardBubble({
   spec,
   sessionId,
   authFetch,
+  drilldown,
 }: {
   spec: GlensDashboardSpec
   sessionId: string
   authFetch: (url: string, options?: RequestInit) => Promise<Response>
+  drilldown?: { path: string; filters?: Record<string, string> }
 }) {
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16, width: "100%" }}>
@@ -714,6 +716,16 @@ function DashboardBubble({
         padding: "16px",
       }}>
         <GlensDashboard spec={spec} sessionId={sessionId} authFetch={authFetch} />
+        {drilldown && (
+          <div style={{ marginTop: 12, textAlign: "right" }}>
+            <a
+              href={drilldown.path}
+              style={{ fontSize: 12, color: "var(--accent, #6366f1)", textDecoration: "none", fontWeight: 500 }}
+            >
+              View full &rarr;
+            </a>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1952,6 +1964,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
         pageData: data.page_data as Record<string, unknown>,
         warning: data.warning as string | undefined,
         skill: (data.skill as string) ?? "report",
+        drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined,
       }])
     } else if (data.blocks) {
       setMessages(prev => [...prev.slice(0, -1), {
@@ -1961,6 +1974,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
         warning: data.warning as string | undefined,
         skill: (data.skill as string) ?? "report",
         understoodAs: data.query_understood_as as string | undefined,
+        drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined,
       }])
     } else if (data.rows) {
       setMessages(prev => [...prev.slice(0, -1), {
@@ -1974,7 +1988,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
         understoodAs: data.query_understood_as as string | undefined,
       }])
     } else if (data.ready && data.spec) {
-      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: data.spec as GlensDashboardSpec, sessionId: data.session_id as string }])
+      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: data.spec as GlensDashboardSpec, sessionId: data.session_id as string, drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined }])
     } else {
       setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: (data.answer as string) ?? "No answer returned.", skill: data.skill as string | undefined, drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined, followups: data.followups as string[] | undefined, understoodAs: data.query_understood_as as string | undefined }])
     }
@@ -2140,10 +2154,10 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
               return (
                 <div key={i}>
                   {msg.kind === "answer" && <AnswerBubble text={msg.text} skill={msg.skill} drilldown={msg.drilldown} followups={msg.followups} onFollowup={sendMessage} understoodAs={msg.understoodAs} />}
-                  {msg.kind === "dashboard" && <DashboardBubble spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} />}
-                  {msg.kind === "blocks" && <BlocksBubble answer={msg.answer} blocks={msg.blocks as any} warning={msg.warning} skill={msg.skill} understoodAs={msg.understoodAs} />}
+                  {msg.kind === "dashboard" && <DashboardBubble spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} drilldown={msg.drilldown} />}
+                  {msg.kind === "blocks" && <BlocksBubble answer={msg.answer} blocks={msg.blocks as any} warning={msg.warning} skill={msg.skill} understoodAs={msg.understoodAs} drilldown={msg.drilldown} />}
                   {msg.kind === "table" && <GenericTableBubble answer={msg.answer} columns={msg.columns as any} rows={msg.rows as any} warning={msg.warning} skill={msg.skill} drilldown={msg.drilldown} understoodAs={msg.understoodAs} />}
-                  {msg.kind === "page" && <GlensPageBubble answer={msg.answer} pageKind={msg.pageKind as any} data={msg.pageData} warning={msg.warning} />}
+                  {msg.kind === "page" && <GlensPageBubble answer={msg.answer} pageKind={msg.pageKind as any} data={msg.pageData} warning={msg.warning} drilldown={msg.drilldown} />}
                   {msg.kind === "action_confirm" && (
                     <ActionConfirmBubble
                       toolName={msg.toolName}

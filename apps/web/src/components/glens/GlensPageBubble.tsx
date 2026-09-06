@@ -555,11 +555,13 @@ export function GlensPageBubble({
   pageKind,
   data,
   warning,
+  drilldown,
 }: {
   answer: string
   pageKind: PageKind
   data: Record<string, unknown>
   warning?: string
+  drilldown?: { path: string; filters?: Record<string, string> }
 }) {
   return (
     <div style={{ maxWidth: "100%", marginBottom: 16 }}>
@@ -579,6 +581,16 @@ export function GlensPageBubble({
       {pageKind === "governance" && <GovernanceEmbed data={data} />}
       {pageKind === "activity"   && <ActivityEmbed data={data} />}
       {pageKind === "policies"   && <PoliciesEmbed data={data} />}
+      {drilldown && (
+        <div style={{ marginTop: 12, textAlign: "right" }}>
+          <a
+            href={drilldown.path}
+            style={{ fontSize: 12, color: "var(--accent, #6366f1)", textDecoration: "none", fontWeight: 500 }}
+          >
+            View full &rarr;
+          </a>
+        </div>
+      )}
     </div>
   )
 }
