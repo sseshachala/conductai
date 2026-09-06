@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "cedar-cant-say-warn",
+      title: "Cedar can't say \"warn\". Here's why we shipped our own schema.",
+      excerpt: "We support AWS Cedar first because Verified Permissions is the largest existing base of policies teams already have. We didn't stop at Cedar because Cedar-only means AWS-only. The honest audit — what we adopted, what Cedar can't express, and how the same schema roundtrips to OPA, Kyverno, and Sentinel next.",
+      date: "September 7, 2026",
+      tag: "Positioning",
+      tagColor: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    },
+    {
       slug: "guard-on-agentic-governance-benchmark",
       title: "We scored Guard on the Agentic Governance Benchmark.",
       excerpt: "The AGB grades runtime governance across six weighted dimensions. We ran Conduct Guard through it: 80/100, Enforced tier. Here is the per-dimension evidence and what we are not claiming.",
