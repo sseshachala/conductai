@@ -1045,51 +1045,6 @@ class Executor:
                 "created_at": r.created_at.isoformat() if r.created_at else None,
                 "timeout_at": r.timeout_at.isoformat() if r.timeout_at else None}
 
-    # ── Packs (#1288) ─────────────────────────────────────────────────────────
-
-    def _tool_list_installed_packs(self):
-        org_ws = _org_ws_subquery(self.db, self.workspace_id)
-        rows = (self.db.query(WorkspaceSkillPack)
-                .filter(WorkspaceSkillPack.workspace_id.in_(org_ws))
-                .order_by(WorkspaceSkillPack.installed_at.desc()).all())
-        return [{"pack_slug": r.pack_slug, "pinned_version": r.pinned_version,
-                 "installed_by": r.installed_by,
-                 "installed_at": r.installed_at.isoformat() if r.installed_at else None}
-                for r in rows]
-
-    def _tool_browse_marketplace(self, query: str | None = None, limit: int = 30):
-        q = self.db.query(SkillPack)
-        if query:
-            like = f"%{query.lower()}%"
-            q = q.filter(sa_or(
-                sa_func.lower(SkillPack.slug).like(like),
-                sa_func.lower(SkillPack.name).like(like),
-                sa_func.lower(SkillPack.description).like(like)))
-        rows = q.order_by(SkillPack.slug.asc(), SkillPack.version.desc()).limit(min(limit * 3, 200)).all()
-        seen, out = set(), []
-        for r in rows:
-            if r.slug in seen:
-                continue
-            seen.add(r.slug)
-            rules = r.rules if isinstance(r.rules, list) else []
-            out.append({"slug": r.slug, "version": r.version, "name": r.name,
-                        "description": r.description, "tier": r.tier,
-                        "rules_count": len(rules),
-                        "published_at": r.published_at.isoformat() if r.published_at else None})
-            if len(out) >= limit:
-                break
-        return out
-
-    def _tool_get_pack_details(self, slug: str):
-        r = self.db.query(SkillPack).filter(SkillPack.slug == slug).order_by(SkillPack.version.desc()).first()
-        if not r:
-            return {"error": f"Pack '{slug}' not found"}
-        rules = r.rules if isinstance(r.rules, list) else []
-        return {"slug": r.slug, "version": r.version, "name": r.name,
-                "description": r.description, "tier": r.tier,
-                "rules_count": len(rules), "rules": rules,
-                "published_at": r.published_at.isoformat() if r.published_at else None}
-
     # ── Integrations (#1289) ──────────────────────────────────────────────────
 
     def _tool_list_integrations(self):
