@@ -215,12 +215,14 @@ export function BlocksBubble({
   warning,
   skill,
   understoodAs,
+  drilldown,
 }: {
   answer: string
   blocks: Block[]
   warning?: string
   skill?: string
   understoodAs?: string
+  drilldown?: { path: string; filters?: Record<string, string> }
 }) {
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16, width: "100%" }}>
@@ -259,6 +261,17 @@ export function BlocksBubble({
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {blocks.map((block, i) => renderBlock(block, i))}
         </div>
+
+        {drilldown && (
+          <div style={{ marginTop: 12, textAlign: "right" }}>
+            <a
+              href={drilldown.path}
+              style={{ fontSize: 12, color: "var(--accent, #6366f1)", textDecoration: "none", fontWeight: 500 }}
+            >
+              View full &rarr;
+            </a>
+          </div>
+        )}
       </div>
     </div>
   )
