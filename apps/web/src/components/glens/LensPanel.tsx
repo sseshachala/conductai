@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { API } from "@/lib/api"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { renderMd } from "@/components/glens/renderMd"
 
 type Message =
   | { role: "user"; text: string }
@@ -152,10 +153,18 @@ export function LensPanel({
   return (
     <div
       style={{
-        position: "fixed", top: 0, right: 0, bottom: 0, width: 420, zIndex: 300,
-        background: "var(--surface)", borderLeft: "1px solid var(--border)",
+        position: "fixed",
+        top: 56,        // clear the AppShell top bar
+        right: 12,      // small breathing room from viewport edge
+        bottom: 92,     // clear third-party chat widgets sitting bottom-right
+        width: 420,
+        maxHeight: "calc(100vh - 148px)",
+        zIndex: 300,
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 12,
         display: "flex", flexDirection: "column",
-        boxShadow: "-4px 0 20px rgba(0,0,0,.12)",
+        boxShadow: "-4px 8px 32px rgba(0,0,0,.18)",
       }}
       role="dialog"
       aria-label="Ask Lens panel"
@@ -275,7 +284,7 @@ function MsgBubble({ m, onExpand }: { m: Message; onExpand: (sessionId?: string)
   if (m.kind === "streaming") {
     return (
       <AssistantWrap>
-        <span style={{ whiteSpace: "pre-wrap" }}>{m.text}</span>
+        <div>{renderMd(m.text)}</div>
         <span style={{ opacity: .5 }}>▍</span>
       </AssistantWrap>
     )
@@ -290,7 +299,7 @@ function MsgBubble({ m, onExpand }: { m: Message; onExpand: (sessionId?: string)
   // answer
   return (
     <AssistantWrap>
-      <span style={{ whiteSpace: "pre-wrap" }}>{m.text}</span>
+      <div>{renderMd(m.text)}</div>
       {(m.drilldown || m.complex) && (
         <div style={{ marginTop: 8, display: "flex", gap: 8, justifyContent: "flex-end" }}>
           {m.drilldown && (
