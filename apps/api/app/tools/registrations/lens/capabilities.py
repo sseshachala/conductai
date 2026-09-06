@@ -34,7 +34,7 @@ def list_capabilities(ctx, domain: str | None = None) -> dict:
     items = [
         {
             "name": t.name,
-            "description": (t.description or "").split("\n", 1)[0][:200],
+            "description": t.description or "",
             "tags": [x for x in t.tags if x != "lens"],
             "read_only": bool(t.annotations.read_only),
         }
