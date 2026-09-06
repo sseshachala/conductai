@@ -396,82 +396,59 @@ def _has_data(final_msgs: list[dict]) -> bool:
     return False
 
 
-def _extract_confirm_envelope(final_msgs: list[dict]) -> dict | None:
-    """First tool result whose JSON body has confirm_required=True.
-    Surfaces the actor envelope (from require_confirmation) to the SSE 'done'
-    event so the frontend can render ActionConfirmBubble instead of prose.
-
-    OpenAI/Perplexity shape:  {"role": "tool", "content": "<json>"}
-    Anthropic shape:          {"role": "user", "content": [{"type": "tool_result", "content": "<json>"}, ...]}
+def _iter_tool_results(final_msgs: list[dict]):
+    """Yield each tool-result payload (raw). Handles both provider shapes:
+    OpenAI/Perplexity: ``{"role": "tool", "content": "<json>"}``
+    Anthropic:         ``{"role": "user", "content": [{"type": "tool_result", "content": "<json>"}, ...]}``
     """
-    def _match(raw) -> dict | None:
-        try:
-            r = json.loads(raw) if isinstance(raw, str) else raw
-        except Exception:
-            return None
-        if isinstance(r, dict) and r.get("confirm_required") and r.get("approval_request_id"):
-            return r
-        return None
-
     for m in final_msgs:
         content = m.get("content", "")
         if m.get("role") == "tool":
-            hit = _match(content)
-            if hit:
-                return hit
+            yield content
         elif m.get("role") == "user" and isinstance(content, list):
             for blk in content:
                 if isinstance(blk, dict) and blk.get("type") == "tool_result":
-                    hit = _match(blk.get("content", ""))
-                    if hit:
-                        return hit
+                    yield blk.get("content", "")
+
+
+def _parse_json_dict(raw) -> dict | None:
+    try:
+        r = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return None
+    return r if isinstance(r, dict) else None
+
+
+def _extract_confirm_envelope(final_msgs: list[dict]) -> dict | None:
+    """First tool result whose JSON body has ``confirm_required=True``.
+    Surfaces the actor envelope (from ``require_confirmation``) to the SSE
+    'done' event so the frontend renders ActionConfirmBubble instead of prose.
+    """
+    for raw in _iter_tool_results(final_msgs):
+        r = _parse_json_dict(raw)
+        if r and r.get("confirm_required") and r.get("approval_request_id"):
+            return r
     return None
 
 
 def _extract_run_started_envelope(final_msgs: list[dict]) -> dict | None:
-    """First tool result whose JSON body reports a successful run kickoff
-    (executed=True + result.run_id set). Surfaces the run metadata to the
-    SSE 'done' event so the frontend can render <RunBubble> inline —
-    same live surface the button-click path gets via ActionConfirmBubble
-    (#1480 PR 11).
-
-    Fires when the LLM took the natural-language confirm path
-    (`confirm_pending_action` tool) instead of the user clicking Confirm.
-
-    Same two shapes as `_extract_confirm_envelope`:
-      OpenAI/Perplexity: {"role": "tool", "content": "<json>"}
-      Anthropic:         {"role": "user", "content": [{"type": "tool_result", "content": "<json>"}, ...]}
+    """First tool result reporting a successful run kickoff (``executed=True``
+    + ``result.run_id`` set). Surfaces run metadata to the SSE 'done' event so
+    the frontend renders ``<RunBubble>`` inline — same live surface the
+    button-click path gets via ActionConfirmBubble (#1480 PR 11).
     """
-    def _match(raw) -> dict | None:
-        try:
-            r = json.loads(raw) if isinstance(raw, str) else raw
-        except Exception:
-            return None
-        if not isinstance(r, dict):
-            return None
-        if not r.get("executed"):
-            return None
+    for raw in _iter_tool_results(final_msgs):
+        r = _parse_json_dict(raw)
+        if not r or not r.get("executed"):
+            continue
         result = r.get("result")
         if not isinstance(result, dict) or not result.get("run_id"):
-            return None
+            continue
         return {
             "run_id": result["run_id"],
             "workflow_name": result.get("workflow_name") or r.get("tool_name") or "workflow",
             "status": result.get("status") or "pending",
         }
-
-    for m in final_msgs:
-        content = m.get("content", "")
-        if m.get("role") == "tool":
-            hit = _match(content)
-            if hit:
-                return hit
-        elif m.get("role") == "user" and isinstance(content, list):
-            for blk in content:
-                if isinstance(blk, dict) and blk.get("type") == "tool_result":
-                    hit = _match(blk.get("content", ""))
-                    if hit:
-                        return hit
     return None
 
 
