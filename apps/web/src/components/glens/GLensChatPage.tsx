@@ -1139,6 +1139,12 @@ function ActionConfirmBubble({
                 View run →
               </a>
             )}
+            {/* #1450 PR 5 follow-up: surface the report URL after propose_report confirm. */}
+            {serverStatus === "approved" && (serverResult?.url as string | undefined) && (
+              <a href={String(serverResult!.url)} style={{ color: "var(--accent)", textDecoration: "none" }}>
+                View report →
+              </a>
+            )}
           </div>
         )}
         {serverStatus === "approved" && runData?.workflow_id && resolvedRunId &&
