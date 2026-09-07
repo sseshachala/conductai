@@ -301,24 +301,38 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
       </div>
 
       {/* StatRow metric bar */}
-      <div className="card" style={{ display: "flex", padding: 0, overflow: "hidden", marginBottom: 22 }}>
-        {([
-          ["Duration",     <LiveDuration key="dur" startedAt={run.started_at} completedAt={run.completed_at} status={run.status} />, false],
-          ["Turns",        run.actual_turns ? `${run.actual_turns}${run.max_turns ? ` / ${run.max_turns} est.` : ""}` : run.max_turns ? `— / ${run.max_turns} est.` : "—", false],
-          ["Tokens",       statTokensDisplay, false],
-          ["Est. cost",    statCostDisplay, false],
-          ["Triggered by", formatTrigger(run.triggered_by), true],
-        ] as [string, React.ReactNode, boolean][]).map(([label, value, mono], i, arr) => (
-          <div key={label} style={{
-            flex: i === arr.length - 1 ? 1.4 : 1,
-            padding: "16px 20px",
-            borderLeft: i ? "1px solid var(--border)" : "none",
-          }}>
-            <div className="eyebrow" style={{ marginBottom: 7 }}>{label}</div>
-            <div style={{ fontSize: mono ? 14 : 18, fontWeight: 680, letterSpacing: "-.01em", fontFamily: mono ? "var(--font-mono, monospace)" : undefined, color: "var(--text)" }}>{value}</div>
+      {/* Awaiting approval before any LLM call fired: collapse the three
+          numeric cells into one "Waiting" label. Three "—" reads as
+          "no data available" — this reads as intent. */}
+      {(() => {
+        const noLLMYet = isAwaiting(run.status) && statTotalTokens === 0 && !run.actual_turns
+        const cells: [string, React.ReactNode, boolean, number][] = [
+          ["Duration",     <LiveDuration key="dur" startedAt={run.started_at} completedAt={run.completed_at} status={run.status} />, false, 1],
+          ...(noLLMYet
+            ? ([["Turns / Tokens / Est. cost", "Waiting for approval", false, 3]] as [string, React.ReactNode, boolean, number][])
+            : ([
+                ["Turns",     run.actual_turns ? `${run.actual_turns}${run.max_turns ? ` / ${run.max_turns} est.` : ""}` : run.max_turns ? `— / ${run.max_turns} est.` : "—", false, 1],
+                ["Tokens",    statTokensDisplay, false, 1],
+                ["Est. cost", statCostDisplay,   false, 1],
+              ] as [string, React.ReactNode, boolean, number][])
+          ),
+          ["Triggered by", formatTrigger(run.triggered_by), true, 1.4],
+        ]
+        return (
+          <div className="card" style={{ display: "flex", padding: 0, overflow: "hidden", marginBottom: 22 }}>
+            {cells.map(([label, value, mono, flex], i) => (
+              <div key={label} style={{
+                flex,
+                padding: "16px 20px",
+                borderLeft: i ? "1px solid var(--border)" : "none",
+              }}>
+                <div className="eyebrow" style={{ marginBottom: 7 }}>{label}</div>
+                <div style={{ fontSize: mono ? 14 : 18, fontWeight: 680, letterSpacing: "-.01em", fontFamily: mono ? "var(--font-mono, monospace)" : undefined, color: "var(--text)" }}>{value}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )
+      })()}
 
       {/* Tabs */}
       <div

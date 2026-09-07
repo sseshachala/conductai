@@ -32,6 +32,12 @@ def post_message(token: str, channel: str, text: str, blocks: list | None = None
     payload: dict = {"channel": channel, "text": text}
     if blocks:
         payload["blocks"] = blocks
+        # Block Kit messages own their CTA — never let Slack duplicate one of
+        # the linked URLs as an unfurl card below the buttons. Also kills the
+        # "some links didn't unfurl" warning glyph for auth-gated URLs like
+        # /runs/... and /theguard/approvals/...
+        payload["unfurl_links"] = False
+        payload["unfurl_media"] = False
     r = httpx.post(f"{BASE}/chat.postMessage", headers=_headers(token), json=payload, timeout=15)
     r.raise_for_status()
     d = r.json()

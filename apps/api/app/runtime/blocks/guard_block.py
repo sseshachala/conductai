@@ -212,6 +212,25 @@ def _execute_guard(
             # emits an approval_requested event with the approval_id + URL.
             from app.runtime.exceptions import ApprovalRequired
             from app.modules.guard import approval as _approval
+
+            # Propagate the run's actor identity so the Slack card shows a
+            # real requester instead of "unknown". Lens-triggered runs land
+            # here as "lens:<clerk_user_id>"; other sources ("webhook:...",
+            # "schedule:...", "manual:...") pass through the same way.
+            # ponytail: no display-name resolution — that needs a Clerk cache
+            # we don't have. Raw ident kills the "unknown" line.
+            _requester_ident: str | None = None
+            if run_id:
+                try:
+                    from app.models.run import Run as _Run
+                    _requester_ident = (
+                        db.query(_Run.triggered_by)
+                        .filter(_Run.id == run_id)
+                        .scalar()
+                    )
+                except Exception:
+                    pass
+
             try:
                 req = _approval.create_approval_request(
                     db,
@@ -220,6 +239,7 @@ def _execute_guard(
                     tool_name=block_id,
                     tool_input={k: state.get(k) for k in list(state.keys())[:20] if not str(k).startswith("__")},
                     requester_email=user_email,
+                    requester_agent_ident=_requester_ident,
                     surface="workflow",
                     session_id=None,
                     source_run_id=str(run_id) if run_id else None,

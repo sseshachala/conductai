@@ -49,6 +49,39 @@ def approval_url(request_id: str | _uuid.UUID) -> str:
     return f"{_base_url()}/theguard/approvals?highlight={request_id}"
 
 
+def _format_requester(requester_email: str | None, requester_agent_ident: str | None) -> str:
+    """Render a human-friendly requester line for the Slack card.
+
+    Prefers a resolved Clerk user (name + email) when the ident is a Lens
+    actor. Falls back to the raw ident so we never show "unknown" when we
+    at least know who kicked off the run.
+    """
+    if requester_email:
+        return requester_email
+    if not requester_agent_ident:
+        return "unknown"
+    ident = requester_agent_ident
+    if ident.startswith("lens:"):
+        clerk_id = ident.split(":", 1)[1]
+        try:
+            from app.core.auth import get_clerk_user_info
+            info = get_clerk_user_info(clerk_id)
+        except Exception:
+            info = {}
+        name = info.get("name") if isinstance(info, dict) else None
+        email = info.get("email") if isinstance(info, dict) else None
+        if name and email:
+            return f"{name} <{email}>"
+        if name:
+            return name
+        if email:
+            return email
+        # Clerk lookup failed (offline / no secret / user gone) — show a
+        # short tail rather than the full opaque ident.
+        return f"Lens · {clerk_id[-6:]}" if len(clerk_id) > 6 else ident
+    return ident
+
+
 def _snapshot_input(tool_input: dict | None) -> dict:
     """Redact secrets from the tool input before persisting. Bound size at
     ~8KB serialized — large blobs don't add signal for a human deciding."""
@@ -185,7 +218,7 @@ def dispatch_approval_notifications(
     url = approval_url(request.id)
     rule_id = request.rule_id
     summary = request.rule_message or f"Approval required for rule {rule_id}"
-    requester = request.requester_email or request.requester_agent_ident or "unknown"
+    requester = _format_requester(request.requester_email, request.requester_agent_ident)
 
     # Workflow context — when this pause came from a workflow run, look up the
     # workflow name + build a run-page link so the Slack post is actionable
