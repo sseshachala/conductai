@@ -15,6 +15,7 @@ export interface ReportLayout {
   slug: string
   name: string
   layout_spec: WidgetSpec[]
+  is_pinned: boolean
   created_by: string
   created_at: string
   updated_at: string
@@ -40,7 +41,7 @@ export const reportLayoutsApi = {
     f: AuthFetch,
     workspaceId: string,
     slug: string,
-    body: { name?: string; layout_spec?: WidgetSpec[] },
+    body: { name?: string; layout_spec?: WidgetSpec[]; is_pinned?: boolean },
   ) => put(f, `${base(workspaceId)}/${slug}`, body),
 
   remove: (f: AuthFetch, workspaceId: string, slug: string) =>

@@ -13,7 +13,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.core.database import Base
@@ -32,6 +32,7 @@ class WorkspaceReportLayout(Base):
     name = Column(Text, nullable=False)
     layout_spec = Column(JSONB, nullable=False, default=list)
     created_by = Column(String(255), nullable=False)  # clerk_user_id
+    is_pinned = Column(Boolean, nullable=False, default=False)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

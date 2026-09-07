@@ -33,6 +33,7 @@ type LayoutDraft = {
   slug: string
   name: string
   layout_spec: WidgetSpec[]
+  is_pinned: boolean
   existing: boolean // true = server has this slug; PUT vs POST on save
 }
 
@@ -49,6 +50,7 @@ function draftFromLayout(l: ReportLayout): LayoutDraft {
     slug: l.slug,
     name: l.name,
     layout_spec: l.layout_spec.map((w) => ({ ...w })),
+    is_pinned: Boolean(l.is_pinned),
     existing: true,
   }
 }
@@ -58,12 +60,13 @@ function draftFromTemplate(t: (typeof TEMPLATES)[number]): LayoutDraft {
     slug: t.slug,
     name: t.name,
     layout_spec: t.widgets.map((w) => ({ ...w })),
+    is_pinned: false,
     existing: false,
   }
 }
 
 function emptyDraft(): LayoutDraft {
-  return { slug: "", name: "", layout_spec: [], existing: false }
+  return { slug: "", name: "", layout_spec: [], is_pinned: false, existing: false }
 }
 
 export default function ReportBuilderPage() {
@@ -209,6 +212,20 @@ export default function ReportBuilderPage() {
     }
   }
 
+  const togglePin = async () => {
+    if (!workspaceId || !draft.existing) return
+    const next = !draft.is_pinned
+    setDraft((d) => ({ ...d, is_pinned: next }))
+    try {
+      await reportLayoutsApi.update(authFetch, workspaceId, draft.slug, { is_pinned: next })
+      await refreshLayouts()
+    } catch (e) {
+      // Revert on failure
+      setDraft((d) => ({ ...d, is_pinned: !next }))
+      setError(String((e as Error).message ?? e))
+    }
+  }
+
   const picker = useMemo(() => {
     return WIDGETS
   }, [])
@@ -224,6 +241,20 @@ export default function ReportBuilderPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {draft.existing && (
+              <button
+                type="button"
+                className={`rounded border px-3 py-1.5 text-sm ${
+                  draft.is_pinned
+                    ? "border-yellow-400 bg-yellow-50 text-yellow-800"
+                    : "border-neutral-300 hover:bg-neutral-50"
+                }`}
+                onClick={togglePin}
+                title={draft.is_pinned ? "Unpin from nav" : "Pin to nav"}
+              >
+                {draft.is_pinned ? "★ Pinned" : "☆ Pin"}
+              </button>
+            )}
             <button
               type="button"
               className="rounded border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
