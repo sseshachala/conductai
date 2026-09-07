@@ -219,6 +219,9 @@ export default function ReportBuilderPage() {
     try {
       await reportLayoutsApi.update(authFetch, workspaceId, draft.slug, { is_pinned: next })
       await refreshLayouts()
+      // #1450 PR 5: signal AppShell to refetch pinned reports so the sidebar
+      // reflects the pin/unpin without a route change.
+      window.dispatchEvent(new Event("reports:changed"))
     } catch (e) {
       // Revert on failure
       setDraft((d) => ({ ...d, is_pinned: !next }))

@@ -328,15 +328,29 @@ function AppShellInnerContent({
   // navigating between report-builder and other pages triggers a fresh
   // AppShell mount which picks up the change.
   useEffect(() => {
-    (async () => {
+    let cancelled = false
+    async function loadPinned() {
       if (!activeWorkspace?.id) { setPinnedReports([]); return }
       try {
         const all = await reportLayoutsApi.list(authFetch, activeWorkspace.id)
+        if (cancelled) return
         setPinnedReports(all.filter((r) => r.is_pinned))
       } catch {
+        if (cancelled) return
         setPinnedReports([])
       }
-    })()
+    }
+    void loadPinned()
+    // Live-invalidate when the report-builder toggles a pin. Window event
+    // is cheap here because there is at most one AppShell mounted at a
+    // time; if the app ever mounts multiple AppShells, hoist pinnedReports
+    // into WorkspaceContext instead of listening broadcast-style.
+    const onChange = () => { void loadPinned() }
+    window.addEventListener("reports:changed", onChange)
+    return () => {
+      cancelled = true
+      window.removeEventListener("reports:changed", onChange)
+    }
   }, [activeWorkspace?.id, authFetch])
 
 
