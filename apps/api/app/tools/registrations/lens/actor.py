@@ -23,10 +23,27 @@ from app.tools.types import ToolAnnotations, ToolDef
 from app.tools.registrations.lens._shared import _actor_impl, _ACTOR_TAGS
 
 
+_SAME_TURN_MSG = (
+    "This action was proposed in the same turn — wait for the user to reply "
+    "'yes' or click Confirm before calling this tool."
+)
+
+
 def _confirm_pending_action_impl(ctx, pending_action_id: str) -> dict[str, Any]:
     """LLM-callable confirm — same server logic as the ActionConfirmBubble
     button. Enforces proposer identity + session_id match so a compromised
-    LLM in another session can't decide this one's pending actions."""
+    LLM in another session can't decide this one's pending actions.
+
+    Also rejects same-turn self-confirmation: if the LLM emitted a proposal
+    tool_use and a confirm tool_use in the same tool loop iteration, the
+    proposal's id will be in `ctx.pending_action_ids_this_turn` and this
+    call is rejected as 409. Forces a real user round-trip before the
+    action can fire.
+    """
+    same_turn_ids = getattr(ctx, "pending_action_ids_this_turn", None)
+    if same_turn_ids is not None and pending_action_id in same_turn_ids:
+        return {"error": _SAME_TURN_MSG, "status_code": 409}
+
     from app.core.database import SessionLocal
     from app.modules.glens.actor.helpers import ConfirmError, dispatch_confirm
 
@@ -52,7 +69,12 @@ def _confirm_pending_action_impl(ctx, pending_action_id: str) -> dict[str, Any]:
 def _cancel_pending_action_impl(
     ctx, pending_action_id: str, reason: str | None = None,
 ) -> dict[str, Any]:
-    """LLM-callable cancel — same server logic as the Cancel button."""
+    """LLM-callable cancel — same server logic as the Cancel button. Also
+    rejects same-turn self-cancellation (mirrors confirm)."""
+    same_turn_ids = getattr(ctx, "pending_action_ids_this_turn", None)
+    if same_turn_ids is not None and pending_action_id in same_turn_ids:
+        return {"error": _SAME_TURN_MSG, "status_code": 409}
+
     from app.core.database import SessionLocal
     from app.modules.glens.actor.helpers import ConfirmError, dispatch_cancel
 
