@@ -1,0 +1,920 @@
+{
+  "source": {
+    "fileKey": "UktEyWiEqTWrkmJUaF2aco",
+    "exportedAt": "2026-09-07"
+  },
+  "collections": [
+    {
+      "id": "VariableCollectionId:2:2",
+      "name": "ConductAI Marketing",
+      "defaultModeId": "2:0",
+      "modes": [
+        {
+          "id": "2:0",
+          "name": "Default"
+        }
+      ],
+      "variables": [
+        {
+          "id": "VariableID:2:3",
+          "name": "Color/Ink",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL",
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {},
+          "valuesByMode": {
+            "2:0": "#1C1A17"
+          }
+        },
+        {
+          "id": "VariableID:2:4",
+          "name": "Color/Muted",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {},
+          "valuesByMode": {
+            "2:0": "#78706B"
+          }
+        },
+        {
+          "id": "VariableID:2:5",
+          "name": "Color/Line",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "STROKE_COLOR"
+          ],
+          "codeSyntax": {},
+          "valuesByMode": {
+            "2:0": "#E8E3DE"
+          }
+        },
+        {
+          "id": "VariableID:2:6",
+          "name": "Color/Canvas",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL"
+          ],
+          "codeSyntax": {},
+          "valuesByMode": {
+            "2:0": "#FFFFFF"
+          }
+        },
+        {
+          "id": "VariableID:2:7",
+          "name": "Color/Surface",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL"
+          ],
+          "codeSyntax": {},
+          "valuesByMode": {
+            "2:0": "#FAF7F5"
+          }
+        },
+        {
+          "id": "VariableID:2:8",
+          "name": "Color/Allow",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL",
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {},
+          "valuesByMode": {
+            "2:0": "#059669"
+          }
+        },
+        {
+          "id": "VariableID:2:9",
+          "name": "Color/Approve",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL",
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {},
+          "valuesByMode": {
+            "2:0": "#F59E0A"
+          }
+        },
+        {
+          "id": "VariableID:2:10",
+          "name": "Color/Block",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL",
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {},
+          "valuesByMode": {
+            "2:0": "#DB2626"
+          }
+        }
+      ]
+    },
+    {
+      "id": "VariableCollectionId:10:2",
+      "name": "ConductAI / Primitives",
+      "defaultModeId": "10:0",
+      "modes": [
+        {
+          "id": "10:0",
+          "name": "Value"
+        }
+      ],
+      "variables": [
+        {
+          "id": "VariableID:10:3",
+          "name": "neutral/0",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--neutral-0)"
+          },
+          "valuesByMode": {
+            "10:0": "#FFFFFF"
+          }
+        },
+        {
+          "id": "VariableID:10:4",
+          "name": "neutral/50",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--neutral-50)"
+          },
+          "valuesByMode": {
+            "10:0": "#F7F8FC"
+          }
+        },
+        {
+          "id": "VariableID:10:5",
+          "name": "neutral/100",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--neutral-100)"
+          },
+          "valuesByMode": {
+            "10:0": "#EEF0F7"
+          }
+        },
+        {
+          "id": "VariableID:10:6",
+          "name": "neutral/300",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--neutral-300)"
+          },
+          "valuesByMode": {
+            "10:0": "#C9CEDD"
+          }
+        },
+        {
+          "id": "VariableID:10:7",
+          "name": "neutral/500",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--neutral-500)"
+          },
+          "valuesByMode": {
+            "10:0": "#6D7488"
+          }
+        },
+        {
+          "id": "VariableID:10:8",
+          "name": "neutral/700",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--neutral-700)"
+          },
+          "valuesByMode": {
+            "10:0": "#34394A"
+          }
+        },
+        {
+          "id": "VariableID:10:9",
+          "name": "neutral/900",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--neutral-900)"
+          },
+          "valuesByMode": {
+            "10:0": "#10121A"
+          }
+        },
+        {
+          "id": "VariableID:10:10",
+          "name": "navy/950",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--navy-950)"
+          },
+          "valuesByMode": {
+            "10:0": "#070A18"
+          }
+        },
+        {
+          "id": "VariableID:10:11",
+          "name": "indigo/100",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--indigo-100)"
+          },
+          "valuesByMode": {
+            "10:0": "#E7E9FF"
+          }
+        },
+        {
+          "id": "VariableID:10:12",
+          "name": "indigo/400",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--indigo-400)"
+          },
+          "valuesByMode": {
+            "10:0": "#818CF8"
+          }
+        },
+        {
+          "id": "VariableID:10:13",
+          "name": "indigo/500",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--indigo-500)"
+          },
+          "valuesByMode": {
+            "10:0": "#6366F1"
+          }
+        },
+        {
+          "id": "VariableID:10:14",
+          "name": "indigo/600",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--indigo-600)"
+          },
+          "valuesByMode": {
+            "10:0": "#4F46E5"
+          }
+        },
+        {
+          "id": "VariableID:10:15",
+          "name": "cyan/100",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--cyan-100)"
+          },
+          "valuesByMode": {
+            "10:0": "#CFFAFE"
+          }
+        },
+        {
+          "id": "VariableID:10:16",
+          "name": "cyan/400",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--cyan-400)"
+          },
+          "valuesByMode": {
+            "10:0": "#22D3EE"
+          }
+        },
+        {
+          "id": "VariableID:10:17",
+          "name": "cyan/500",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--cyan-500)"
+          },
+          "valuesByMode": {
+            "10:0": "#06B6D4"
+          }
+        },
+        {
+          "id": "VariableID:10:18",
+          "name": "green/500",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--green-500)"
+          },
+          "valuesByMode": {
+            "10:0": "#10B981"
+          }
+        },
+        {
+          "id": "VariableID:10:19",
+          "name": "amber/500",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--amber-500)"
+          },
+          "valuesByMode": {
+            "10:0": "#F59E0B"
+          }
+        },
+        {
+          "id": "VariableID:10:20",
+          "name": "red/500",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [],
+          "codeSyntax": {
+            "WEB": "var(--red-500)"
+          },
+          "valuesByMode": {
+            "10:0": "#EF4444"
+          }
+        }
+      ]
+    },
+    {
+      "id": "VariableCollectionId:10:21",
+      "name": "ConductAI / Dimensions",
+      "defaultModeId": "10:1",
+      "modes": [
+        {
+          "id": "10:1",
+          "name": "Value"
+        }
+      ],
+      "variables": [
+        {
+          "id": "VariableID:10:22",
+          "name": "spacing/1",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "GAP"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--spacing-1)"
+          },
+          "valuesByMode": {
+            "10:1": 4
+          }
+        },
+        {
+          "id": "VariableID:10:23",
+          "name": "spacing/2",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "GAP"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--spacing-2)"
+          },
+          "valuesByMode": {
+            "10:1": 8
+          }
+        },
+        {
+          "id": "VariableID:10:24",
+          "name": "spacing/3",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "GAP"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--spacing-3)"
+          },
+          "valuesByMode": {
+            "10:1": 12
+          }
+        },
+        {
+          "id": "VariableID:10:25",
+          "name": "spacing/4",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "GAP"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--spacing-4)"
+          },
+          "valuesByMode": {
+            "10:1": 16
+          }
+        },
+        {
+          "id": "VariableID:10:26",
+          "name": "spacing/6",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "GAP"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--spacing-6)"
+          },
+          "valuesByMode": {
+            "10:1": 24
+          }
+        },
+        {
+          "id": "VariableID:10:27",
+          "name": "spacing/8",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "GAP"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--spacing-8)"
+          },
+          "valuesByMode": {
+            "10:1": 32
+          }
+        },
+        {
+          "id": "VariableID:10:28",
+          "name": "spacing/12",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "GAP"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--spacing-12)"
+          },
+          "valuesByMode": {
+            "10:1": 48
+          }
+        },
+        {
+          "id": "VariableID:10:29",
+          "name": "spacing/16",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "GAP"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--spacing-16)"
+          },
+          "valuesByMode": {
+            "10:1": 64
+          }
+        },
+        {
+          "id": "VariableID:10:30",
+          "name": "spacing/24",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "GAP"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--spacing-24)"
+          },
+          "valuesByMode": {
+            "10:1": 96
+          }
+        },
+        {
+          "id": "VariableID:10:31",
+          "name": "radius/sm",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "CORNER_RADIUS"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--radius-sm)"
+          },
+          "valuesByMode": {
+            "10:1": 8
+          }
+        },
+        {
+          "id": "VariableID:10:32",
+          "name": "radius/md",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "CORNER_RADIUS"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--radius-md)"
+          },
+          "valuesByMode": {
+            "10:1": 12
+          }
+        },
+        {
+          "id": "VariableID:10:33",
+          "name": "radius/lg",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "CORNER_RADIUS"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--radius-lg)"
+          },
+          "valuesByMode": {
+            "10:1": 20
+          }
+        },
+        {
+          "id": "VariableID:10:34",
+          "name": "radius/full",
+          "resolvedType": "FLOAT",
+          "description": "",
+          "scopes": [
+            "CORNER_RADIUS"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--radius-full)"
+          },
+          "valuesByMode": {
+            "10:1": 9999
+          }
+        }
+      ]
+    },
+    {
+      "id": "VariableCollectionId:11:2",
+      "name": "ConductAI / Color",
+      "defaultModeId": "11:0",
+      "modes": [
+        {
+          "id": "11:0",
+          "name": "Light"
+        },
+        {
+          "id": "11:1",
+          "name": "Dark"
+        }
+      ],
+      "variables": [
+        {
+          "id": "VariableID:11:3",
+          "name": "color/bg/canvas",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-bg-canvas)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:3"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:10"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:4",
+          "name": "color/bg/subtle",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-bg-subtle)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:4"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:9"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:5",
+          "name": "color/bg/elevated",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-bg-elevated)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:3"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:8"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:6",
+          "name": "color/bg/brand",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-bg-brand)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:14"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:12"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:7",
+          "name": "color/bg/runtime",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-bg-runtime)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:10"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:10"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:8",
+          "name": "color/text/primary",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-text-primary)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:9"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:3"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:9",
+          "name": "color/text/secondary",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-text-secondary)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:7"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:6"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:10",
+          "name": "color/text/on-brand",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-text-on-brand)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:3"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:10"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:11",
+          "name": "color/text/brand",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-text-brand)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:14"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:12"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:12",
+          "name": "color/border/default",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "STROKE_COLOR"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-border-default)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:5"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:8"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:13",
+          "name": "color/border/strong",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "STROKE_COLOR"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-border-strong)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:6"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:7"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:14",
+          "name": "color/runtime/activity",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL",
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-runtime-activity)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:17"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:16"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:15",
+          "name": "color/decision/allow",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL",
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-decision-allow)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:18"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:18"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:16",
+          "name": "color/decision/approve",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL",
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-decision-approve)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:19"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:19"
+            }
+          }
+        },
+        {
+          "id": "VariableID:11:17",
+          "name": "color/decision/block",
+          "resolvedType": "COLOR",
+          "description": "",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL",
+            "TEXT_FILL"
+          ],
+          "codeSyntax": {
+            "WEB": "var(--color-decision-block)"
+          },
+          "valuesByMode": {
+            "11:0": {
+              "aliasTo": "VariableID:10:20"
+            },
+            "11:1": {
+              "aliasTo": "VariableID:10:20"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

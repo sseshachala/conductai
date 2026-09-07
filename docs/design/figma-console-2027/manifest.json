@@ -1,0 +1,46 @@
+{
+  "figma": {
+    "fileKey": "UktEyWiEqTWrkmJUaF2aco",
+    "url": "https://www.figma.com/design/UktEyWiEqTWrkmJUaF2aco"
+  },
+  "exportedAt": "2026-09-07",
+  "scale": "2x",
+  "frames": [
+    {
+      "page": "20 Console / Dashboard",
+      "nodeId": "55:3",
+      "file": "mockups/dashboard.png",
+      "route": "/dashboard"
+    },
+    {
+      "page": "21 Console / Runtime Governance",
+      "nodeId": "55:119",
+      "file": "mockups/runtime-governance.png",
+      "route": "/governance"
+    },
+    {
+      "page": "22 Console / Guard Policies",
+      "nodeId": "55:249",
+      "file": "mockups/guard-policies.png",
+      "route": "/theguard/policies"
+    },
+    {
+      "page": "23 Console / Activity & Evidence",
+      "nodeId": "55:367",
+      "file": "mockups/activity-evidence.png",
+      "route": "/logs/guard"
+    },
+    {
+      "page": "24 Console / Registry",
+      "nodeId": "55:483",
+      "file": "mockups/registry.png",
+      "route": "/packs"
+    }
+  ],
+  "rules": [
+    "Preserve existing website and console copy and positioning.",
+    "Use Figma for visual design, layout, components, color, and responsive behavior.",
+    "Do not use emoji as interface icons. Use purpose-built SVG icons.",
+    "Treat example metrics and activity records in mockups as presentation data, not production claims."
+  ]
+}
