@@ -115,12 +115,23 @@ from app.modules.guard.trial_teardown import sweep_expired_trials  # noqa: E402
 
 
 def test_sweep_tears_down_only_expired_trials(ws):
+    """Workspace-scoped assertions — the sweeper is global, but other tests may
+    have left unrelated trial rows in this shared test DB, so we can't assert
+    the sweep count. What matters: this workspace's fresh trial is untouched
+    before its expires_at, and torn down after."""
     ws_id, db = ws
     seed_trial(db, ws_id)
     db.commit()
 
-    # Nothing has expired yet — sweep is a no-op.
-    assert sweep_expired_trials(db) == 0
+    # Fresh trial has expires_at 7d out — this workspace should survive a sweep.
+    sweep_expired_trials(db)
+    plan = db.execute(text("SELECT plan FROM workspaces WHERE id = :ws"), {"ws": ws_id}).scalar()
+    assert plan == "free_trial"
+    lifecycle = db.execute(
+        text("SELECT lifecycle_state FROM agent_identities WHERE workspace_id = :ws AND name = :name"),
+        {"ws": ws_id, "name": TRIAL_IDENTITY_NAME},
+    ).scalar()
+    assert lifecycle == "active"
 
     # Force this trial's identity into the past.
     db.execute(
@@ -136,16 +147,12 @@ def test_sweep_tears_down_only_expired_trials(ws):
     )
     db.commit()
 
-    assert sweep_expired_trials(db) == 1
-
+    # Now sweep — this workspace should be torn down.
+    sweep_expired_trials(db)
     plan = db.execute(text("SELECT plan FROM workspaces WHERE id = :ws"), {"ws": ws_id}).scalar()
     assert plan == "free"
-
     lifecycle = db.execute(
         text("SELECT lifecycle_state FROM agent_identities WHERE workspace_id = :ws AND name = :name"),
         {"ws": ws_id, "name": TRIAL_IDENTITY_NAME},
     ).scalar()
     assert lifecycle == "expired"
-
-    # Second sweep finds nothing left to tear down.
-    assert sweep_expired_trials(db) == 0
