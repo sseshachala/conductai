@@ -411,15 +411,17 @@ function Detail({ c }: { c: UseCase }) {
 
 function BottomCta() {
   return (
-    <section className="max-w-3xl mx-auto px-6 py-20 text-center border-t border-stone-100">
-      <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-stone-900 leading-tight mb-4">
-        Not sure which one is you?
-      </h2>
-      <p className="text-lg text-stone-500 leading-relaxed mb-8">
-        Most teams land in three at once. Pick the one that hurts the most today.
-        The other two will be on the same Guard install.
-      </p>
-      <CtaLink className="rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors" />
+    <section className="px-6 py-16 sm:py-24 bg-indigo-600 text-center">
+      <div className="max-w-3xl mx-auto">
+        <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-white leading-tight mb-4">
+          Not sure which one is you?
+        </h2>
+        <p className="text-lg text-indigo-100 leading-relaxed mb-8">
+          Most teams land in three at once. Pick the one that hurts the most today.
+          The other two will be on the same Guard install.
+        </p>
+        <CtaLink className="rounded-xl bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-indigo-50 transition-colors" />
+      </div>
     </section>
   )
 }

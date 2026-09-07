@@ -233,10 +233,10 @@ export default function SecurityPage() {
           </p>
         </section>
 
-        <section className="text-center border-t border-stone-100 pt-16">
+        <section className="-mx-6 sm:-mx-10 lg:-mx-20 px-6 sm:px-10 lg:px-20 py-16 sm:py-24 bg-indigo-600 mb-0 text-center">
           <Link
             href="/sign-up"
-            className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+            className="inline-block rounded-xl bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-indigo-50 transition-colors"
           >
             Start Discovery — 14 days free
           </Link>
