@@ -11,6 +11,18 @@
   4. `13 Website Port / Evidence`
   5. `14 Website Port / MCP`
 
+## Exported assets
+
+- Design tokens: [`docs/design/figma/tokens.json`](figma/tokens.json)
+- PNG references:
+  - [Home](figma/exports/home.png)
+  - [Guard](figma/exports/guard.png)
+  - [Registry](figma/exports/registry.png)
+  - [Evidence](figma/exports/evidence.png)
+  - [MCP](figma/exports/mcp.png)
+
+The PNGs are compact full-page implementation references. Use the live Figma frames for precise inspection of typography, spacing, layers, and component details.
+
 ## Implementation instruction
 
 > Implement the five `Website Port` frames faithfully. Preserve existing website copy and positioning; use the Figma file only for visual design, layout, components, color, and responsive behavior.
