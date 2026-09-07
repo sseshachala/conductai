@@ -43,6 +43,7 @@ class ReportLayoutCreate(BaseModel):
 class ReportLayoutUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     layout_spec: list[WidgetSpec] | None = None
+    is_pinned: bool | None = None
 
 
 class ReportLayoutOut(BaseModel):
@@ -50,6 +51,7 @@ class ReportLayoutOut(BaseModel):
     slug: str
     name: str
     layout_spec: list[dict[str, Any]]
+    is_pinned: bool = False
     created_by: str
     created_at: datetime
     updated_at: datetime
@@ -85,6 +87,7 @@ def _to_out(row: WorkspaceReportLayout) -> ReportLayoutOut:
         slug=row.slug,
         name=row.name,
         layout_spec=list(row.layout_spec or []),
+        is_pinned=bool(getattr(row, "is_pinned", False)),
         created_by=row.created_by,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -220,6 +223,8 @@ def update_report_layout(
         row.name = name
     if body.layout_spec is not None:
         row.layout_spec = _validate_layout(body.layout_spec)
+    if body.is_pinned is not None:
+        row.is_pinned = bool(body.is_pinned)
 
     db.commit()
     db.refresh(row)

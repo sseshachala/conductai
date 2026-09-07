@@ -62,6 +62,7 @@ def _mk_row(slug: str, name: str, layout, uid=None):
     row.layout_spec = layout
     row.created_by = USER_ID
     row.created_at = now
+    row.is_pinned = False
     row.updated_at = now
     return row
 
@@ -192,6 +193,31 @@ def test_list_returns_rows():
 
 
 # ── update / delete ─────────────────────────────────────────────────────────
+
+def test_update_pins_and_unpins():
+    db = MagicMock()
+    row = _mk_row("ops", "Ops", [])
+    row.is_pinned = False
+    db.query.return_value.filter.return_value.first.return_value = row
+    client = _client(db)
+    try:
+        r = client.put(
+            f"/workspaces/{WS_ID}/report-layouts/ops",
+            json={"is_pinned": True},
+        )
+        assert r.status_code == 200, r.text
+        assert row.is_pinned is True
+        assert r.json()["is_pinned"] is True
+
+        r2 = client.put(
+            f"/workspaces/{WS_ID}/report-layouts/ops",
+            json={"is_pinned": False},
+        )
+        assert r2.status_code == 200, r2.text
+        assert row.is_pinned is False
+    finally:
+        _teardown()
+
 
 def test_update_name_and_layout():
     db = MagicMock()

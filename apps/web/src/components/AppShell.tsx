@@ -11,6 +11,7 @@ import { PreferencesProvider } from "@/lib/PreferencesContext"
 import Toast, { type ToastData } from "@/components/ui/Toast"
 import ErrorBoundary from "@/components/ui/ErrorBoundary"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { reportLayoutsApi, type ReportLayout } from "@/lib/reportBuilder/api"
 import { workspaces as workspacesApi, projects as projectsApi, organizations, runs, guard, workflows } from "@/lib/api"
 
 interface Project { id: string; name: string; agent_count: number; project_type?: string }
@@ -182,7 +183,7 @@ function AppShellInnerContent({
   userId: string | null
 }) {
   const pathname = usePathname()
-  const router = useRouter()
+    const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
   const [toast, setToast] = useState<ToastData | null>(null)
   function showError(message: string) { setToast({ message, type: "error" }) }
@@ -214,6 +215,7 @@ function AppShellInnerContent({
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [pinnedReports, setPinnedReports] = useState<ReportLayout[]>([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
 
   // Command palette
@@ -318,6 +320,37 @@ function AppShellInnerContent({
     fetchNotifications()
     return () => { cancelled = true }
   }, [activeWorkspace?.id])
+
+  // #1450 PR 5: pinned reports for the left-nav Reports section. Refetches
+  // when the workspace changes; the pin/unpin action on the report-builder
+  // page updates the row server-side but we do NOT live-invalidate here —
+  // navigating between report-builder and other pages triggers a fresh
+  // AppShell mount which picks up the change.
+  useEffect(() => {
+    let cancelled = false
+    async function loadPinned() {
+      if (!activeWorkspace?.id) { setPinnedReports([]); return }
+      try {
+        const all = await reportLayoutsApi.list(authFetch, activeWorkspace.id)
+        if (cancelled) return
+        setPinnedReports(all.filter((r) => r.is_pinned))
+      } catch {
+        if (cancelled) return
+        setPinnedReports([])
+      }
+    }
+    void loadPinned()
+    // Live-invalidate when the report-builder toggles a pin. Window event
+    // is cheap here because there is at most one AppShell mounted at a
+    // time; if the app ever mounts multiple AppShells, hoist pinnedReports
+    // into WorkspaceContext instead of listening broadcast-style.
+    const onChange = () => { void loadPinned() }
+    window.addEventListener("reports:changed", onChange)
+    return () => {
+      cancelled = true
+      window.removeEventListener("reports:changed", onChange)
+    }
+  }, [activeWorkspace?.id, authFetch])
 
 
   // Fetch user role from members API
@@ -741,9 +774,47 @@ function AppShellInnerContent({
             href="/lens"
             label="Lens"
             icon={<Icons.Sparkles />}
-            active={pathname.startsWith("/lens")}
+            active={pathname.startsWith("/lens") && !pathname.startsWith("/lens/report-builder")}
             collapsed={collapsed}
           />
+
+          {/* Reports — #1450 PR 5 (report builder + pinned reports) */}
+          <SideNavItem
+            href="/lens/report-builder"
+            label="Reports"
+            icon={<Icons.Spark />}
+            active={pathname.startsWith("/lens/report-builder")}
+            collapsed={collapsed}
+          />
+          {!collapsed && pinnedReports.length > 0 && (
+            <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 4, display: "flex", flexDirection: "column", gap: 1 }}>
+              {pinnedReports.map((r) => {
+                const href = `/lens/report-builder?slug=${encodeURIComponent(r.slug)}`
+                const active = false  // sub-items skip active tint; parent Reports link covers highlighting
+                return (
+                  <Link
+                    key={r.id}
+                    href={href}
+                    style={{
+                      display: "block",
+                      padding: "5px 10px",
+                      borderRadius: 7,
+                      fontSize: 13,
+                      fontWeight: active ? 600 : 400,
+                      color: active ? "var(--accent-text)" : "var(--text-3)",
+                      background: active ? "var(--accent-weak)" : "transparent",
+                      textDecoration: "none",
+                    }}
+                    onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!active) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
+                    onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!active) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
+                    title={r.name}
+                  >
+                    {r.name}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
 
           {/* GOVERN group — Guard */}
           {!canSeeGuard && !collapsed && (
