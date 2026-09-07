@@ -30,6 +30,7 @@ for _m in ["structlog", "redis", "sentry_sdk", "app.core.pii"]:
 
 from app.runtime.blocks.guard_block import _execute_guard  # noqa: E402
 from app.runtime.exceptions import ApprovalRequired  # noqa: E402
+from app.modules.guard.approval import _format_requester  # noqa: E402
 
 
 def test_guard_block_propagates_run_triggered_by_as_requester_ident():
@@ -79,3 +80,34 @@ def test_guard_block_propagates_run_triggered_by_as_requester_ident():
             f"expected requester_agent_ident={triggered_by!r}, "
             f"got {kwargs.get('requester_agent_ident')!r}"
         )
+
+
+class TestFormatRequester:
+    def test_email_wins(self):
+        assert _format_requester("alice@example.com", "lens:user_123") == "alice@example.com"
+
+    def test_unknown_when_both_none(self):
+        assert _format_requester(None, None) == "unknown"
+
+    def test_raw_ident_passes_through_for_non_lens(self):
+        assert _format_requester(None, "webhook:inbound") == "webhook:inbound"
+        assert _format_requester(None, "schedule:cron_daily") == "schedule:cron_daily"
+
+    def test_lens_ident_with_name_and_email(self):
+        with patch("app.core.auth.get_clerk_user_info", return_value={"name": "Alice Smith", "email": "alice@example.com"}):
+            assert _format_requester(None, "lens:user_abc123") == "Alice Smith <alice@example.com>"
+
+    def test_lens_ident_with_name_only(self):
+        with patch("app.core.auth.get_clerk_user_info", return_value={"name": "Alice", "email": None}):
+            assert _format_requester(None, "lens:user_abc123") == "Alice"
+
+    def test_lens_ident_falls_back_to_tail_when_clerk_returns_nothing(self):
+        with patch("app.core.auth.get_clerk_user_info", return_value={"name": None, "email": None}):
+            got = _format_requester(None, "lens:user_3FaVu74iF3CN1ou9AUDBcuBx1Oq")
+            assert got.startswith("Lens · ")
+            assert len(got.split("Lens · ")[1]) == 6
+
+    def test_lens_ident_falls_back_when_clerk_raises(self):
+        with patch("app.core.auth.get_clerk_user_info", side_effect=RuntimeError("clerk down")):
+            got = _format_requester(None, "lens:user_abcdefghij")
+            assert got.startswith("Lens · ")
