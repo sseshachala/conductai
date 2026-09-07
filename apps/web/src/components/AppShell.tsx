@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { LensPanel } from "@/components/glens/LensPanel"
 import { useAuth, useUser, useClerk } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -183,8 +183,7 @@ function AppShellInnerContent({
   userId: string | null
 }) {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const router = useRouter()
+    const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
   const [toast, setToast] = useState<ToastData | null>(null)
   function showError(message: string) { setToast({ message, type: "error" }) }
@@ -791,7 +790,7 @@ function AppShellInnerContent({
             <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 4, display: "flex", flexDirection: "column", gap: 1 }}>
               {pinnedReports.map((r) => {
                 const href = `/lens/report-builder?slug=${encodeURIComponent(r.slug)}`
-                const active = pathname === "/lens/report-builder" && (searchParams?.get("slug") === r.slug)
+                const active = false  // sub-items skip active tint; parent Reports link covers highlighting
                 return (
                   <Link
                     key={r.id}
