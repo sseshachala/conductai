@@ -51,6 +51,12 @@ export function formatTrigger(triggeredBy: string | null): string {
   if (triggeredBy.startsWith("webhook:")) return "Webhook"
   if (triggeredBy.startsWith("schedule:")) return "Schedule"
   if (triggeredBy.startsWith("manual:")) return "Manual"
+  if (triggeredBy.startsWith("lens:")) {
+    // Lens actor idents are "lens:<clerk_user_id>" (e.g. lens:user_3FaVu74…).
+    // Show a friendly-ish tail until we have a Clerk display-name resolver.
+    const tail = triggeredBy.slice(5).replace(/^user_/, "")
+    return tail ? `Lens · ${tail.slice(0, 6)}` : "Lens"
+  }
   return triggeredBy
 }
 
