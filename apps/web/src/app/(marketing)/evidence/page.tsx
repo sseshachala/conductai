@@ -140,18 +140,21 @@ export default function EvidencePage() {
         </section>
 
         {/* CTA */}
-        <section className="mb-20 text-center border-t border-stone-100 pt-16">
-          <h2 className="text-2xl font-bold text-stone-900 mb-4">One receipt per action. Verifiable. Always.</h2>
+        {/* CTA — Figma indigo band */}
+        <section className="-mx-6 sm:-mx-10 lg:-mx-20 px-6 sm:px-10 lg:px-20 py-16 sm:py-24 bg-indigo-600 mb-0 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mb-6 max-w-2xl mx-auto">
+            One receipt per action. Verifiable. Always.
+          </h2>
           <div className="flex flex-wrap justify-center gap-3">
             <Link
               href="/sign-up"
-              className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+              className="inline-block rounded-xl bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-indigo-50 transition-colors"
             >
               Start Discovery — 14 days free
             </Link>
             <Link
               href="/guard"
-              className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
+              className="inline-block rounded-xl border border-indigo-300 bg-transparent text-white px-6 py-3 text-sm font-semibold hover:bg-indigo-700 transition-colors"
             >
               See how Guard enforces →
             </Link>
