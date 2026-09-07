@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { PlaybookTile } from "@/components/marketing/facelift/PlaybookTile"
 import type { PlaybookCategory, BlockType } from "@/components/marketing/facelift/PlaybookTile"
+import { CompliancePackCard } from "@/components/marketing/facelift/CompliancePackCard"
 
 export const metadata = {
   title: "Registry — Conduct",
@@ -80,20 +81,20 @@ export default function RegistryPage() {
     <div className="min-h-screen bg-white">
       <main className="max-w-5xl mx-auto px-6">
 
-        {/* Hero */}
-        <section className="pt-20 pb-16 text-center">
+        {/* Hero — Figma frame 12 */}
+        <section className="pt-20 pb-14 text-left max-w-3xl">
           <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-4">
-            Registry
+            Conduct Registry
           </p>
           <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-            Registry. 39 playbooks shipped.
+            Browse the Conduct Registry.
           </h1>
-          <p className="text-lg text-stone-500 max-w-2xl mx-auto leading-relaxed mb-10">
-            Each playbook combines a brain block for reasoning, a guard block for policy enforcement,
-            approval gates for consequential actions, and hash-chained evidence for every decision.
-            The same primitives. Every workflow.
+          <p className="text-lg text-stone-500 leading-relaxed mb-10">
+            Install a pack. It runs under Guard enforcement. Every playbook combines a brain block for
+            reasoning, a guard block for policy enforcement, approval gates for consequential actions, and
+            hash-chained evidence for every decision.
           </p>
-          <div className="flex flex-wrap justify-center gap-3">
+          <div className="flex flex-wrap gap-3">
             <Link
               href="/sign-up"
               className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
@@ -106,6 +107,40 @@ export default function RegistryPage() {
             >
               Book a Demo
             </Link>
+          </div>
+        </section>
+
+        {/* Compliance packs — Figma frame 12 */}
+        <section className="mb-16">
+          <div className="flex items-baseline gap-3 mb-6">
+            <h2 className="text-2xl font-bold text-stone-900">Compliance packs</h2>
+            <span className="text-xs font-mono text-stone-400">5 shipped</span>
+          </div>
+          <p className="text-stone-500 text-sm leading-relaxed mb-6 max-w-2xl">
+            Pre-built rule sets, one per compliance standard. Each pack is enforced by the same Guard engine
+            that runs your custom policies.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <CompliancePackCard
+              name="OWASP LLM Top 10"
+              description="Rule set for OWASP LLM security categories — insecure output handling, model DoS, and related risks."
+            />
+            <CompliancePackCard
+              name="SOC 2"
+              description="Hook-scoped rules that fire on file edits and writes for SOC 2 Trust Services Criteria."
+            />
+            <CompliancePackCard
+              name="HIPAA"
+              description="45 CFR §164.312 Technical Safeguards — access controls and transmission security."
+            />
+            <CompliancePackCard
+              name="PCI DSS v4.0"
+              description="Requirements 3.3.1 and 3.3.2 — mask PANs, avoid storing sensitive authentication data."
+            />
+            <CompliancePackCard
+              name="Prompt Safety"
+              description="Detection pack for common LLM prompt patterns that indicate untrusted or adversarial input."
+            />
           </div>
         </section>
 
@@ -219,6 +254,28 @@ export default function RegistryPage() {
               letting Guard decisions account for what happened before this action, not just the action itself.
               Available to design partners first.
             </p>
+          </div>
+        </section>
+
+        {/* Every pack runs under Guard enforcement — Figma frame 12 */}
+        <section className="mb-16 -mx-6 sm:-mx-10 lg:-mx-20 px-6 sm:px-10 lg:px-20 py-14 bg-stone-950 rounded-3xl">
+          <h2 className="text-2xl font-bold text-white mb-3">Every pack runs under Guard enforcement.</h2>
+          <p className="text-stone-400 text-sm leading-relaxed mb-8 max-w-2xl">
+            Policies apply instantly — no registry.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { title: "Choose a pack", body: "Browse compliance packs or automation playbooks." },
+              { title: "Inspect every rule", body: "YAML in the repository. No black-box engine." },
+              { title: "Install to workspace", body: "One click. Rules apply to every agent surface." },
+              { title: "Guard enforces", body: "Every decision hash-chained. Every action inspectable." },
+            ].map(({ title, body }, i) => (
+              <div key={title} className="border border-stone-800 rounded-2xl bg-stone-900 p-5">
+                <p className="text-[10px] font-mono uppercase tracking-widest text-stone-500 mb-2">Step {i + 1}</p>
+                <p className="text-white font-semibold mb-2">{title}</p>
+                <p className="text-stone-400 text-xs leading-relaxed">{body}</p>
+              </div>
+            ))}
           </div>
         </section>
 

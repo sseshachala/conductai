@@ -12,108 +12,115 @@ export default function MCPPage() {
     <div className="min-h-screen bg-white">
       <main className="max-w-5xl mx-auto px-6">
 
-        {/* Hero */}
-        <section className="pt-20 pb-16 text-center">
-          <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-4">
-            MCP
-          </p>
-          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
-            Runtime policy for MCP actions.
-          </h1>
-          <p className="text-lg text-stone-500 max-w-2xl mx-auto leading-relaxed mb-10">
-            Guard sits between the MCP client and the MCP server. Every tool call is evaluated
-            against policy before it reaches the server. Policy applies at the MCP call — not at
-            the client, not at the model.
-          </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            <Link
-              href="/sign-up"
-              className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
-            >
-              Start Discovery — 14 days free
-            </Link>
-            <Link
-              href="/demo"
-              className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
-            >
-              Book a Demo
-            </Link>
-          </div>
-        </section>
-
-        {/* MCP flow diagram */}
-        <section className="mb-20">
-          <h2 className="text-2xl font-bold text-stone-900 mb-3">
-            Agent → Guard → Model / Tool.
-          </h2>
-          <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
-            Guard wraps the MCP transport layer. Clients connect to Guard as if it were the MCP server.
-            Guard evaluates each tool call and forwards allowed calls to the upstream server.
-            Blocked calls never reach the server.
-          </p>
-          <div className="border border-stone-200 rounded-2xl bg-white p-8 sm:p-12 mb-8">
-            <div className="flex items-center justify-center gap-3 sm:gap-6">
-              <div className="flex-1 max-w-[220px] border border-stone-200 rounded-2xl bg-white px-4 sm:px-6 py-6 sm:py-8 text-center shadow-sm">
-                <p className="text-lg sm:text-2xl font-black tracking-tight text-stone-900">Agent</p>
-              </div>
-              <FlowArrow />
-              <div className="flex-1 max-w-[220px] rounded-2xl bg-stone-900 px-4 sm:px-6 py-6 sm:py-8 text-center shadow-md">
-                <p className="text-lg sm:text-2xl font-black tracking-tight text-white">Guard</p>
-              </div>
-              <FlowArrow />
-              <div className="flex-1 max-w-[220px] border border-stone-200 rounded-2xl bg-white px-4 sm:px-6 py-6 sm:py-8 text-center shadow-sm">
-                <p className="text-base sm:text-2xl font-black tracking-tight text-stone-900 whitespace-nowrap">Model / Tool</p>
-              </div>
+        {/* Hero — Figma frame 14 */}
+        <section className="pt-20 pb-16 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+          <div>
+            <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-4">
+              MCP
+            </p>
+            <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
+              Policy for every MCP tool invocation.
+            </h1>
+            <p className="text-lg text-stone-500 leading-relaxed mb-4">
+              Guard sits between the MCP client and the MCP server. Every tool call is evaluated
+              against policy before it reaches the server — applying runtime policy and evidence-model
+              enforcement across every MCP-compatible client.
+            </p>
+            <p className="text-sm font-mono font-bold text-stone-700 tracking-wider mb-6">
+              Allow. Approve. Block. Prove.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/sign-up"
+                className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+              >
+                Start Discovery — 14 days free
+              </Link>
+              <Link
+                href="/demo"
+                className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
+              >
+                Book a Demo
+              </Link>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm font-mono">
-            {[
-              { step: "1", label: "MCP Client", desc: "Claude Desktop, Cursor, or any MCP-compatible client sends a tool call." },
-              { step: "2", label: "Guard evaluates", desc: "Guard checks the tool call against policy. Allow, approve, or block — before the server sees it." },
-              { step: "3", label: "MCP Server", desc: "Allowed calls reach the server. Blocked calls return a Guard decision with reason." },
-            ].map(({ step, label, desc }) => (
-              <div key={step} className="border border-stone-200 rounded-xl bg-white p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="w-5 h-5 rounded-full bg-stone-900 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
-                    {step}
-                  </span>
-                  <span className="font-bold text-stone-900 text-[13px]">{label}</span>
-                </div>
-                <p className="text-stone-500 text-[12px] leading-relaxed">{desc}</p>
-              </div>
-            ))}
+          <div className="lg:pl-4">
+            {/* SVG diagram — clients → ConductAI → MCP server. See docs/design/figma/screenshots/mcp-hero-diagram.svg */}
+            <img
+              src="/design/mcp-hero-diagram.svg"
+              alt="MCP clients Claude Desktop, ChatGPT, and Cursor route tool invocations through ConductAI, which decides ALLOW, APPROVE, or BLOCK before the MCP server executes the tool."
+              className="w-full h-auto rounded-2xl border border-stone-800/60 shadow-md"
+              loading="lazy"
+            />
           </div>
         </section>
 
-        {/* Policy applies at the MCP call */}
+        {/* Control before the tool executes — Figma frame 14 */}
         <section className="mb-20">
           <h2 className="text-2xl font-bold text-stone-900 mb-3">
-            Policy at the call, not the client.
+            Control before the tool executes.
           </h2>
           <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
-            MCP clients do not enforce policy — they issue tool calls. Guard is the enforcement
-            point that sits at the transport layer. The same policy that governs Claude Code CLI
-            actions also governs MCP tool calls through the same engine.
+            Guard evaluates the tool call after the model chooses it and before the MCP server receives it.
+            The same policy that governs Claude Code CLI actions also governs MCP tool calls through the same engine.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <DecisionCard
-              agent="claude-code / deploy-agent"
-              action="update_terraform"
-              resource="prod-vpc"
-              policy="no-production-network-change"
-              decision="BLOCK"
-              reason="Production network modifications require approved change record."
+              compact
+              agent="cursor-agent-17"
+              action="read_repository"
+              resource="approved-repos"
+              policy="repo-scope-v2"
+              decision="ALLOW"
+              reason="Repository on approved list"
             />
             <DecisionCard
-              agent="cursor-agent-17"
-              action="deploy_production"
-              resource="payments-api"
-              policy="production-change-v4"
+              compact
+              agent="claude-desktop"
+              action="send_external_email"
+              resource="finance-recipients"
+              policy="external-comms-v1"
               decision="APPROVE"
-              reason="Production deployment outside approved change window"
-              showButtons
+              reason="External send requires human approval"
+            />
+            <DecisionCard
+              compact
+              agent="claude-code / deploy-agent"
+              action="read_production_secret"
+              resource="SECRET_KEY"
+              policy="no-prod-secret-read"
+              decision="BLOCK"
+              reason="Production secret access denied by policy"
             />
           </div>
+        </section>
+
+        {/* Wrap the invocation. Keep the server. — Figma frame 14 */}
+        <section className="mb-20 grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-stone-900 mb-3">
+              Wrap the invocation. Keep the server.
+            </h2>
+            <p className="text-stone-500 text-sm leading-relaxed mb-4">
+              Guard adapts the compatible client and MCP server. Your existing MCP servers stay in place —
+              Guard sits at the transport layer, evaluates each tool call, and forwards allowed calls unchanged.
+            </p>
+            <p className="text-xs font-mono text-stone-400 uppercase tracking-widest">
+              No client changes required
+            </p>
+          </div>
+          <pre className="rounded-xl border border-stone-800/60 bg-stone-950 text-stone-300 text-[12px] leading-relaxed p-5 overflow-x-auto font-mono shadow-md">
+{`{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "deploy_production",
+    "arguments": { "env": "prod" }
+  }
+}
+`}
+            <span className="block mt-3 text-emerald-400 text-[11px]">{"// guard: APPROVE → routed to Slack"}</span>
+          </pre>
         </section>
 
         {/* MCP capabilities */}
@@ -212,21 +219,3 @@ export default function MCPPage() {
   )
 }
 
-function FlowArrow() {
-  return (
-    <svg
-      className="w-5 h-3 sm:w-8 sm:h-4 text-stone-400 shrink-0"
-      viewBox="0 0 32 16"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M0 8h26M20 2l6 6-6 6"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
