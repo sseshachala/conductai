@@ -119,7 +119,7 @@ export default function MCPPage() {
   }
 }
 `}
-            <span className="block mt-3 text-emerald-400 text-[11px]">// guard: APPROVE → routed to Slack</span>
+            <span className="block mt-3 text-emerald-400 text-[11px]">{"// guard: APPROVE → routed to Slack"}</span>
           </pre>
         </section>
 
