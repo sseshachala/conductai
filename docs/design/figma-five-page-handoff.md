@@ -55,6 +55,11 @@ The AI-slop problem is not limited to the five Figma frames. The same drawn "pro
 | `PolicySnippet` | `apps/web/src/components/marketing/facelift/PolicySnippet.tsx` | Real policy from `/theguard/policies/{id}`, syntax-highlighted from disk |
 | `EvidenceReceipt` | `apps/web/src/components/marketing/facelift/EvidenceReceipt.tsx` | Real receipt from `/theguard/decisions/{id}` |
 | `AgentSurfaceStrip` | `apps/web/src/components/marketing/facelift/AgentSurfaceStrip.tsx` | Real integration-status row from `/settings/integrations` |
+| `ActivityRow` | `apps/web/src/components/marketing/facelift/ActivityRow.tsx` | Real Guard activity-feed row (compact) from `/theguard/activity` |
+| `CompliancePackCard` | `apps/web/src/components/marketing/facelift/CompliancePackCard.tsx` | Real Registry pack tile from `/registry` |
+| `LensTranscript` | `apps/web/src/components/marketing/facelift/LensTranscript.tsx` | Real Lens query + result table from `/lens` |
+
+All facelift components accept optional `imageSrc` and `imageAlt` props. When `imageSrc` is set, the drawn shell is bypassed and the screenshot is rendered inside the same border/rounded/shadow footprint. Consumers can adopt real screenshots per-route without any component-code change.
 
 ### Consuming routes (auto-updated when the components are fixed)
 
