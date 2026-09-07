@@ -16,6 +16,8 @@ export interface EvidenceReceiptProps {
   user?: string
   timestamp?: string
   integrity?: "Verified" | "Failed" | "Pending"
+  imageSrc?: string
+  imageAlt?: string
 }
 
 export function EvidenceReceipt({
@@ -29,30 +31,43 @@ export function EvidenceReceipt({
   user = "developer@acme.example",
   timestamp = "14:32:11 UTC · 2026-03-11",
   integrity = "Verified",
+  imageSrc,
+  imageAlt,
 }: EvidenceReceiptProps) {
+  if (imageSrc) {
+    return (
+      <img
+        src={imageSrc}
+        alt={imageAlt ?? `Evidence receipt for decision ${decisionId}`}
+        loading="lazy"
+        className="border border-stone-200 rounded-xl shadow-sm max-w-sm w-full h-auto"
+      />
+    )
+  }
+
   return (
-    <div className="border border-stone-200 rounded-xl overflow-hidden bg-white shadow-sm font-mono text-xs max-w-sm">
+    <div className="border border-stone-200 rounded-xl overflow-hidden bg-white shadow-md text-sm max-w-sm">
       {/* Header */}
       <div className="bg-stone-900 px-5 py-3 flex items-center justify-between">
-        <span className="text-white font-bold text-[11px] tracking-wider">DECISION #{decisionId}</span>
+        <span className="text-white font-mono font-bold text-[11px] tracking-widest">DECISION #{decisionId}</span>
         <DecisionBadge decision={decision} />
       </div>
 
       {/* Fields */}
       <div className="divide-y divide-stone-100">
-        <Field label="Agent" value={agent} />
-        <Field label="Action" value={action} />
-        <Field label="Resource" value={resource} />
-        <Field label="Decision" value={decision} highlight={decision === "BLOCK"} />
-        <Field label="Rule" value={rule} />
+        <Field label="Agent" value={agent} mono />
+        <Field label="Action" value={action} mono />
+        <Field label="Resource" value={resource} mono />
+        <Field label="Decision" value={decision} highlight={decision === "BLOCK"} mono />
+        <Field label="Rule" value={rule} mono />
         <Field label="Reason" value={reason} wrap />
-        <Field label="User" value={user} />
-        <Field label="Timestamp" value={timestamp} />
+        <Field label="User" value={user} mono />
+        <Field label="Timestamp" value={timestamp} mono />
       </div>
 
       {/* Integrity footer */}
       <div className="px-5 py-3 bg-stone-50 border-t border-stone-100 flex items-center justify-between">
-        <span className="text-stone-400 text-[10px] uppercase tracking-wider">Integrity</span>
+        <span className="text-stone-400 text-[10px] uppercase tracking-widest font-mono">Integrity</span>
         <div className="flex items-center gap-1.5">
           <span
             className={`inline-block w-2 h-2 rounded-full ${
@@ -60,7 +75,7 @@ export function EvidenceReceipt({
             }`}
           />
           <span
-            className={`text-[11px] font-semibold ${
+            className={`text-[12px] font-semibold ${
               integrity === "Verified" ? "text-emerald-700" : "text-red-700"
             }`}
           >
@@ -90,18 +105,20 @@ function Field({
   value,
   highlight = false,
   wrap = false,
+  mono = false,
 }: {
   label: string
   value: string
   highlight?: boolean
   wrap?: boolean
+  mono?: boolean
 }) {
   return (
-    <div className={`flex ${wrap ? "flex-col gap-0.5" : "items-start"} px-5 py-2`}>
-      <span className="text-stone-400 text-[10px] uppercase tracking-wider shrink-0 w-20">{label}</span>
+    <div className={`flex ${wrap ? "flex-col gap-0.5" : "items-baseline"} px-5 py-2.5 gap-3`}>
+      <span className="text-stone-400 text-[10px] uppercase tracking-widest font-mono shrink-0 w-20">{label}</span>
       <span
-        className={`text-[11px] ${
-          highlight ? "text-red-600 font-bold" : "text-stone-700"
+        className={`${mono ? "font-mono text-[12px]" : "text-[13px] leading-snug"} ${
+          highlight ? "text-red-600 font-bold" : "text-stone-800"
         } ${wrap ? "" : "truncate"}`}
       >
         {value}

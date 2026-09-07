@@ -17,6 +17,8 @@ export interface DecisionCardProps {
   reason?: string
   showButtons?: boolean
   compact?: boolean
+  imageSrc?: string
+  imageAlt?: string
 }
 
 const STATE_CONFIG: Record<DecisionState, {
@@ -62,7 +64,20 @@ export function DecisionCard({
   reason,
   showButtons = false,
   compact = false,
+  imageSrc,
+  imageAlt,
 }: DecisionCardProps) {
+  if (imageSrc) {
+    return (
+      <img
+        src={imageSrc}
+        alt={imageAlt ?? `Guard ${decision} decision`}
+        loading="lazy"
+        className="border border-stone-200 rounded-xl shadow-sm w-full h-auto"
+      />
+    )
+  }
+
   const cfg = STATE_CONFIG[decision]
   const defaultReason =
     decision === "APPROVE"
@@ -75,35 +90,35 @@ export function DecisionCard({
 
   return (
     <div
-      className={`${cfg.bg} border ${cfg.border} rounded-xl shadow-sm font-mono text-xs overflow-hidden`}
+      className={`${cfg.bg} border ${cfg.border} rounded-xl shadow-md text-sm overflow-hidden`}
     >
       {/* Header bar */}
-      <div className={`${cfg.badgeBg} border-b ${cfg.border} px-4 py-2 flex items-center justify-between`}>
+      <div className={`${cfg.badgeBg} border-b ${cfg.border} px-5 py-2.5 flex items-center justify-between`}>
         <div className="flex items-center gap-2">
           <span className={`inline-block w-2 h-2 rounded-full ${cfg.dot}`} />
-          <span className={`font-bold tracking-wider text-[10px] uppercase ${cfg.badge}`}>
+          <span className={`font-mono font-bold tracking-widest text-[10px] uppercase ${cfg.badge}`}>
             {cfg.label}
           </span>
         </div>
-        <span className="text-stone-400 text-[10px]">Guard</span>
+        <span className="text-stone-400 text-[10px] font-mono tracking-wider uppercase">Guard</span>
       </div>
 
       {/* Body */}
-      <div className={`px-4 ${compact ? "py-3" : "py-4"} space-y-2`}>
-        <Row label="Agent" value={agent} />
-        <Row label="Action" value={action} />
-        <Row label="Resource" value={resource} />
-        {!compact && <Row label="Policy" value={policy} />}
+      <div className={`px-5 ${compact ? "py-3.5" : "py-4"} space-y-2.5`}>
+        <Row label="Agent" value={agent} mono />
+        <Row label="Action" value={action} mono />
+        <Row label="Resource" value={resource} mono />
+        {!compact && <Row label="Policy" value={policy} mono />}
         <Row label="Reason" value={displayReason} wrap />
       </div>
 
       {/* Approval buttons */}
       {showButtons && decision === "APPROVE" && (
-        <div className="border-t border-amber-100 px-4 py-3 flex gap-2 bg-amber-50/50">
-          <button className="rounded-lg bg-emerald-600 text-white px-4 py-1.5 text-xs font-semibold hover:bg-emerald-700 transition-colors">
+        <div className="border-t border-amber-100 px-5 py-3 flex gap-2 bg-amber-50/50">
+          <button className="rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-semibold hover:bg-emerald-700 transition-colors">
             Approve
           </button>
-          <button className="rounded-lg bg-white border border-stone-200 text-stone-600 px-4 py-1.5 text-xs font-semibold hover:bg-stone-50 transition-colors">
+          <button className="rounded-lg bg-white border border-stone-200 text-stone-600 px-4 py-2 text-sm font-semibold hover:bg-stone-50 transition-colors">
             Reject
           </button>
         </div>
@@ -112,11 +127,11 @@ export function DecisionCard({
   )
 }
 
-function Row({ label, value, wrap = false }: { label: string; value: string; wrap?: boolean }) {
+function Row({ label, value, wrap = false, mono = false }: { label: string; value: string; wrap?: boolean; mono?: boolean }) {
   return (
-    <div className={`flex ${wrap ? "flex-col gap-0.5" : "items-start gap-2"}`}>
-      <span className="text-stone-400 text-[10px] uppercase tracking-wider shrink-0 w-16">{label}</span>
-      <span className={`text-stone-700 text-[11px] ${wrap ? "" : "truncate"}`}>{value}</span>
+    <div className={`flex ${wrap ? "flex-col gap-0.5" : "items-baseline gap-3"}`}>
+      <span className="text-stone-400 text-[10px] uppercase tracking-widest font-mono shrink-0 w-16">{label}</span>
+      <span className={`text-stone-800 ${mono ? "font-mono text-[12px]" : "text-[13px] leading-snug"} ${wrap ? "" : "truncate"}`}>{value}</span>
     </div>
   )
 }

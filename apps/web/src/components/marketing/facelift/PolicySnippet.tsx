@@ -11,6 +11,8 @@ export interface PolicySnippetProps {
   language?: PolicyLanguage
   title?: string
   code?: string
+  imageSrc?: string
+  imageAlt?: string
 }
 
 const DEFAULT_YAML = `policy: refund-cap
@@ -38,27 +40,36 @@ export function PolicySnippet({
   language = "yaml",
   title,
   code,
+  imageSrc,
+  imageAlt,
 }: PolicySnippetProps) {
+  if (imageSrc) {
+    return (
+      <img
+        src={imageSrc}
+        alt={imageAlt ?? `${language} policy snippet`}
+        loading="lazy"
+        className="rounded-xl border border-stone-200 shadow-sm w-full h-auto"
+      />
+    )
+  }
+
   const displayTitle = title ?? (language === "yaml" ? "refund-cap.yaml" : "production-change.cedar")
   const displayCode = code ?? (language === "yaml" ? DEFAULT_YAML : DEFAULT_CEDAR)
 
   return (
-    <div className="rounded-xl border border-stone-200 overflow-hidden text-xs font-mono bg-stone-950 shadow-sm">
+    <div className="rounded-xl border border-stone-800/60 overflow-hidden text-xs font-mono bg-stone-950 shadow-md">
       {/* Title bar */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-stone-900 border-b border-stone-800">
-        <div className="flex gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-stone-600" />
-          <span className="w-2.5 h-2.5 rounded-full bg-stone-600" />
-          <span className="w-2.5 h-2.5 rounded-full bg-stone-600" />
-        </div>
-        <span className="text-stone-400 text-[10px] ml-1">{displayTitle}</span>
-        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-stone-800 text-stone-500 uppercase tracking-wider">
+      <div className="flex items-center gap-3 px-4 py-2.5 bg-stone-900 border-b border-stone-800">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden />
+        <span className="text-stone-300 text-[11px]">{displayTitle}</span>
+        <span className="ml-auto text-[10px] px-2 py-0.5 rounded bg-stone-800 text-stone-400 uppercase tracking-widest border border-stone-700">
           {language}
         </span>
       </div>
 
       {/* Code */}
-      <pre className="px-4 py-4 text-[11px] leading-relaxed overflow-x-auto">
+      <pre className="px-5 py-4 text-[12px] leading-relaxed overflow-x-auto">
         <YamlHighlight code={displayCode} language={language} />
       </pre>
     </div>
