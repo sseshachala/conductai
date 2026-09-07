@@ -197,3 +197,101 @@ def test_agent_proposed_by_synthetic_user_id_also_lenient():
         session_id=None,
     )
     _enforce_ownership(row, clerk_user_id="user_real_human", session_id=None)
+
+
+# ── Same-turn self-confirm guard (#1465 follow-up) ─────────────────────────
+
+def test_confirm_rejected_when_id_proposed_in_same_turn():
+    """LLM emits `run_workflow` + `confirm_pending_action(id)` in the SAME
+    tool loop iteration. Lens's tool loop registers the id in
+    ctx.pending_action_ids_this_turn; the confirm tool must refuse with 409
+    without calling dispatch_confirm."""
+    from app.tools.registrations.lens.actor import _confirm_pending_action_impl
+
+    ctx = MCPContext(
+        workspace_id=_CTX.workspace_id,
+        clerk_user_id=_CTX.clerk_user_id,
+        user_email=_CTX.user_email,
+        session_id=_CTX.session_id,
+        surface="lens",
+        pending_action_ids_this_turn={"a1"},
+    )
+
+    with patch("app.modules.glens.actor.helpers.dispatch_confirm") as mock_dispatch:
+        out = _confirm_pending_action_impl(ctx, "a1")
+
+    mock_dispatch.assert_not_called()
+    assert out["status_code"] == 409
+    assert "same turn" in out["error"]
+
+
+def test_cancel_rejected_when_id_proposed_in_same_turn():
+    from app.tools.registrations.lens.actor import _cancel_pending_action_impl
+
+    ctx = MCPContext(
+        workspace_id=_CTX.workspace_id,
+        clerk_user_id=_CTX.clerk_user_id,
+        user_email=_CTX.user_email,
+        session_id=_CTX.session_id,
+        surface="lens",
+        pending_action_ids_this_turn={"a1"},
+    )
+
+    with patch("app.modules.glens.actor.helpers.dispatch_cancel") as mock_dispatch:
+        out = _cancel_pending_action_impl(ctx, "a1")
+
+    mock_dispatch.assert_not_called()
+    assert out["status_code"] == 409
+
+
+def test_confirm_allowed_when_id_not_in_same_turn_set():
+    """Different id in the set → real dispatch runs. This is the natural-
+    language 'yes' path on a NEW user turn (fresh ctx, empty set)."""
+    from app.tools.registrations.lens.actor import _confirm_pending_action_impl
+
+    ctx = MCPContext(
+        workspace_id=_CTX.workspace_id,
+        clerk_user_id=_CTX.clerk_user_id,
+        user_email=_CTX.user_email,
+        session_id=_CTX.session_id,
+        surface="lens",
+        pending_action_ids_this_turn={"other-id"},
+    )
+
+    fake_payload = {
+        "executed": True, "cached": False,
+        "action_id": "a1", "tool_name": "run_workflow",
+        "status": "approved", "result": {"run_id": "r1"},
+    }
+    with patch("app.core.database.SessionLocal", return_value=SimpleNamespace(close=lambda: None)), \
+         patch("app.modules.glens.actor.helpers.dispatch_confirm", return_value=fake_payload) as mock_dispatch:
+        out = _confirm_pending_action_impl(ctx, "a1")
+
+    mock_dispatch.assert_called_once()
+    assert out["executed"] is True
+
+
+def test_confirm_allowed_when_ctx_has_no_same_turn_set():
+    """HTTP/stdio adapters don't populate the set. Field is None → guard
+    is a no-op, dispatch runs normally."""
+    from app.tools.registrations.lens.actor import _confirm_pending_action_impl
+
+    ctx = MCPContext(
+        workspace_id=_CTX.workspace_id,
+        clerk_user_id=_CTX.clerk_user_id,
+        user_email=_CTX.user_email,
+        session_id=_CTX.session_id,
+        surface="stdio",
+        pending_action_ids_this_turn=None,
+    )
+
+    fake_payload = {
+        "executed": True, "cached": False,
+        "action_id": "a1", "tool_name": "run_workflow",
+        "status": "approved", "result": {"run_id": "r1"},
+    }
+    with patch("app.core.database.SessionLocal", return_value=SimpleNamespace(close=lambda: None)), \
+         patch("app.modules.glens.actor.helpers.dispatch_confirm", return_value=fake_payload):
+        out = _confirm_pending_action_impl(ctx, "a1")
+
+    assert out["executed"] is True

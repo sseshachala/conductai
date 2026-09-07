@@ -590,10 +590,15 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
     msgs = list(messages)
     tool_calls_made: list[tuple[str, dict]] = []
 
+    # Same-turn self-confirmation guard (#1465 follow-up): if the LLM emits
+    # a proposal + a confirm_pending_action for that proposal's id in the
+    # same tool loop, the confirm tool refuses. Populated below after each
+    # dispatch by scanning results for `confirm_required` envelopes.
     lens_ctx = MCPContext(
         workspace_id=executor.workspace_id,
         clerk_user_id="system:lens",
         surface="lens",
+        pending_action_ids_this_turn=set(),
     )
 
     def _bound_dispatcher(name: str, args_json: str) -> str:
@@ -619,6 +624,15 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
             results,
         ):
             log.debug("glens.tool", name=name_and_input[0], result_len=len(result))
+        # Register any pending-action ids returned by proposal tools so a
+        # follow-up confirm_pending_action/cancel_pending_action in the
+        # NEXT iteration of this same tool loop is refused.
+        for _id, result_str in results:
+            envelope = _parse_json_dict(result_str)
+            if envelope and envelope.get("confirm_required"):
+                aid = envelope.get("approval_request_id")
+                if isinstance(aid, str):
+                    lens_ctx.pending_action_ids_this_turn.add(aid)
         msgs.extend(client.make_tool_results_turn(results))
 
     return msgs, None, tool_calls_made

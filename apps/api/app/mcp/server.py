@@ -57,6 +57,13 @@ class MCPContext:
     user_email: str | None = None
     session_id: str | None = None
     resolved_token: str = ""      # raw Bearer — guard_enable echoes it back to the user
+    # Set of approval_request_ids proposed earlier in the CURRENT LLM tool
+    # loop. Populated by Lens's `_resolve_tools` after each dispatch; read by
+    # the actor confirm/cancel tools to reject same-turn self-confirmation
+    # (LLM must wait for a real user reply before deciding a proposal it
+    # just created). Left None for adapters that don't run a multi-turn tool
+    # loop — the guard is a no-op for them.
+    pending_action_ids_this_turn: set[str] | None = None
 
 
 def _ok(msg_id: Any, result: dict[str, Any]) -> dict[str, Any]:
