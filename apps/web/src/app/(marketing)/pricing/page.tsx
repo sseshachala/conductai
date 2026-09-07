@@ -99,6 +99,22 @@ const FAQ: { q: string; a: string }[] = [
     q: "What happens if I hit my tier cap?",
     a: "Soft alert at 90% of cap so you can plan the upgrade. If you hit 100%, agents keep working — we auto-upgrade you to the next tier and send a confirmation email. No hard stops, no surprise blocks, no missed enforcement.",
   },
+  {
+    q: "How is our data stored and processed when it passes through third-party LLMs?",
+    a: "Every call flows through the Conduct proxy first: workspace-scoped vault keys (no shared credentials), pre-flight redaction of PII, secrets, and path prefixes, and a policy check that decides allow / block / approve / audit before the request leaves your perimeter. Every decision writes a SHA-256 hash-chained audit receipt. Deployment can be SaaS, self-hosted, or air-gapped — you choose where the data physically lives.",
+  },
+  {
+    q: "What happens to our margins when model prices jump 2\u20133\u00d7 overnight?",
+    a: "Zero direct exposure. Customers bring their own model keys — Conduct never resells tokens. We charge per governed decision, not per token, so model price swings do not move your unit economics. Cross-provider routing is native: if one vendor spikes, workspace policy can route to a cheaper equivalent without any application change.",
+  },
+  {
+    q: "What happens if Claude Code, OpenAI, or Microsoft ships a native version of this?",
+    a: "Vendor-native governance is single-vendor by definition — Anthropic will not ship enforcement for OpenAI models, OpenAI will not ship it for Anthropic, and neither will govern the MCP tools your agents actually call. Conduct is the cross-cutting layer: one policy across every model, agent, and tool your enterprise runs. That heterogeneity is structural, not a feature race.",
+  },
+  {
+    q: "Why leave the major platforms for you?",
+    a: "One policy across N vendors, M agents, and K tools — a scope no single platform can offer without cannibalizing itself. Hash-chained audit that legal and SOC 2 auditors accept as evidence. Apache-2.0 core with patent-pending enforcement (US 64/109,502), so if we disappear tomorrow the runtime keeps running. Vendor logs are marketing; hash-chained receipts are proof.",
+  },
 ]
 
 export default function PricingPage() {
@@ -208,7 +224,7 @@ export default function PricingPage() {
         {/* FAQ */}
         <section className="mb-14">
           <h2 className="text-2xl font-bold text-stone-900 mb-2">
-            Answers to the five questions every buyer asks.
+            Answers to the questions every buyer asks.
           </h2>
           <p className="text-sm text-stone-500 mb-8 max-w-2xl leading-relaxed">
             Direct answers so you don't need a sales call to scope the deal. If your situation
