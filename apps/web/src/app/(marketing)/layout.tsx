@@ -112,8 +112,8 @@ function MarketingNav() {
   return (
     <header className="marketing-nav sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
       <div className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
-        <a href="/" className="marketing-wordmark" aria-label="Conduct AI home">
-          conduct<span>.ai</span>
+        <a href="/" aria-label="Conduct AI home">
+          <img src="/logo.png" alt="Conduct AI" className="h-8 sm:h-10 w-auto" />
         </a>
         <nav className="hidden md:flex items-center gap-6">
           <ProductDropdown />
@@ -207,8 +207,8 @@ function MarketingFooter() {
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between gap-8 mb-10">
           <div>
-            <a href="/" className="marketing-wordmark inline-block mb-3" aria-label="Conduct AI home">
-              conduct<span>.ai</span>
+            <a href="/" className="inline-block mb-3" aria-label="Conduct AI home">
+              <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto" />
             </a>
             <p className="text-sm text-stone-400 max-w-xs leading-relaxed">
               Runtime policy for AI agent stacks.
