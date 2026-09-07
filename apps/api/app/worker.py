@@ -57,6 +57,7 @@ JUDGE_SAMPLE_RATE      = float(os.environ.get("ONLINE_EVAL_JUDGE_SAMPLE_RATE", "
 STALE_RUN_THRESHOLD_MINUTES        = int(os.environ.get("STALE_RUN_THRESHOLD_MINUTES", "20"))
 STALE_PENDING_THRESHOLD_MINUTES    = int(os.environ.get("STALE_PENDING_THRESHOLD_MINUTES", "10"))
 STALE_RUN_REAPER_INTERVAL          = int(os.environ.get("STALE_RUN_REAPER_INTERVAL", "120"))  # seconds
+TRIAL_TEARDOWN_INTERVAL            = int(os.environ.get("TRIAL_TEARDOWN_INTERVAL", "3600"))    # seconds
 AUTOMATION_PROJECT_RETENTION_DAYS  = int(os.environ.get("AUTOMATION_PROJECT_RETENTION_DAYS", "30"))
 
 
@@ -261,6 +262,24 @@ def _reaper_loop() -> None:
 
 # -- online eval scorer --------------------------------------------------------
 
+def _trial_teardown_loop() -> None:
+    """Daemon: periodically tear down trial workspaces whose identity has expired."""
+    from app.core.database import SessionLocal
+    from app.modules.guard.trial_teardown import sweep_expired_trials
+
+    log.info("trial_teardown.started", interval_seconds=TRIAL_TEARDOWN_INTERVAL)
+    while True:
+        time.sleep(TRIAL_TEARDOWN_INTERVAL)
+        try:
+            with SessionLocal() as db:
+                torn = sweep_expired_trials(db)
+            if torn:
+                log.info("trial_teardown.cycle", swept=torn)
+        except Exception:
+            log.exception("trial_teardown.loop_error")
+
+
+
 def _online_eval_loop() -> None:
     """Daemon thread: consume the online eval queue and score each completed run."""
     import random
@@ -384,6 +403,9 @@ def main() -> None:
 
     online_eval = threading.Thread(target=_online_eval_loop, daemon=True, name="online-eval")
     online_eval.start()
+
+    trial_teardown = threading.Thread(target=_trial_teardown_loop, daemon=True, name="trial-teardown")
+    trial_teardown.start()
 
     if CONCURRENCY == 1:
         _loop(0)
