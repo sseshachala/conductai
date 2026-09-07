@@ -390,60 +390,46 @@ function CoreLoopSection() {
     },
   ]
 
+  const DOT: Record<string, string> = {
+    ALLOW: "bg-emerald-400",
+    APPROVE: "bg-amber-400",
+    BLOCK: "bg-red-400",
+    PROVE: "bg-stone-400",
+  }
+  const VERB_ON_DARK: Record<string, string> = {
+    "Allow.": "text-emerald-400",
+    "Approve.": "text-amber-400",
+    "Block.": "text-red-400",
+    "Prove.": "text-white",
+  }
+
   return (
-    <section className="py-12 sm:py-20 px-4 sm:px-6 border-t border-stone-100">
+    <section className="py-16 sm:py-24 px-4 sm:px-6 bg-stone-950">
       <div className="max-w-5xl mx-auto">
-        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white tracking-tight mb-4">
           Allow. Approve. Block. Prove.
         </h2>
-        <p className="text-stone-500 mb-10 sm:mb-12 max-w-2xl text-sm sm:text-base">
+        <p className="text-stone-400 mb-10 sm:mb-14 max-w-2xl text-sm sm:text-base">
           Four outcomes. Every agent action gets one. Runtime, not retrospective.
         </p>
-        <div className="grid grid-cols-4 md:grid-cols-4 gap-3 md:gap-5">
-          {verbs.map((v) => (
-            <div key={v.word} className="flex flex-col gap-3">
-              {/* Detail card — hidden on mobile, shown on tablet+ */}
-              <div className="hidden md:block">
-                {v.decision ? (
-                  <DecisionCard
-                    agent="claude-code / deploy-agent"
-                    action="deploy_production"
-                    resource="payments-api"
-                    policy="production-change-v4"
-                    decision={v.decision}
-                    compact
-                  />
-                ) : (
-                  <div className="border border-stone-200 rounded-xl px-4 py-3 bg-white">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="inline-block w-2 h-2 rounded-full bg-stone-400" />
-                      <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-stone-500">
-                        Hash-chained
-                      </span>
-                    </div>
-                    <p className="font-mono text-[10px] text-stone-400">
-                      SHA-256 · integrity verified
-                    </p>
-                  </div>
-                )}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
+          {verbs.map((v) => {
+            const key = v.decision ?? "PROVE"
+            return (
+              <div key={v.word} className="border border-stone-800 rounded-2xl bg-stone-900 p-5 sm:p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className={`inline-block w-2 h-2 rounded-full ${DOT[key]}`} />
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-stone-400">
+                    {v.decision ?? "Hash-chained"}
+                  </span>
+                </div>
+                <p className={`text-2xl sm:text-3xl font-black tracking-tight mb-3 ${VERB_ON_DARK[v.word]}`}>
+                  {v.word}
+                </p>
+                <p className="text-stone-400 text-sm leading-relaxed">{v.line}</p>
               </div>
-              {/* Mobile-compact marker — dot + verb, no description */}
-              <div className="md:hidden flex flex-col items-center text-center gap-1.5">
-                <span className={`inline-block w-2 h-2 rounded-full ${
-                  v.decision === "ALLOW" ? "bg-emerald-500" :
-                  v.decision === "APPROVE" ? "bg-amber-500" :
-                  v.decision === "BLOCK" ? "bg-red-500" :
-                  "bg-stone-400"
-                }`} />
-                <p className={`text-sm font-black tracking-tight ${v.colour}`}>{v.word}</p>
-              </div>
-              {/* Verb + long description — full on md+, hidden on mobile */}
-              <div className="hidden md:block">
-                <p className={`text-lg font-black tracking-tight ${v.colour}`}>{v.word}</p>
-                <p className="text-sm text-stone-500 mt-1 leading-relaxed">{v.line}</p>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </section>
@@ -835,24 +821,24 @@ function DeploymentSection() {
 
 function FinalCTASection() {
   return (
-    <section className="py-16 sm:py-24 px-4 sm:px-6 border-t border-stone-100">
-      <div className="max-w-2xl mx-auto text-center">
-        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-stone-900 tracking-tight mb-4">
+    <section className="py-16 sm:py-24 px-4 sm:px-6 bg-indigo-600">
+      <div className="max-w-3xl mx-auto text-center">
+        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white tracking-tight mb-4">
           Put runtime policy in front of your agents.
         </h2>
-        <p className="text-stone-500 mb-8 text-sm sm:text-base">
+        <p className="text-indigo-100 mb-8 text-sm sm:text-base leading-relaxed">
           Agent Discovery mode runs for 14 days, read-only. See every agent action across your team before you enforce anything.
         </p>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
           <a
             href="/discovery"
-            className="rounded-xl bg-stone-900 text-white px-8 py-4 text-base font-semibold hover:bg-stone-700 transition-colors text-center min-h-[48px] flex items-center justify-center"
+            className="rounded-xl bg-white text-indigo-700 px-8 py-4 text-base font-semibold hover:bg-indigo-50 transition-colors text-center min-h-[48px] flex items-center justify-center"
           >
             Start Agent Discovery — 14 days free
           </a>
           <a
             href="/book-demo"
-            className="rounded-xl border border-stone-200 text-stone-700 px-8 py-4 text-base font-semibold hover:bg-stone-50 transition-colors text-center min-h-[48px] flex items-center justify-center"
+            className="rounded-xl border border-indigo-300 text-white px-8 py-4 text-base font-semibold hover:bg-indigo-700 transition-colors text-center min-h-[48px] flex items-center justify-center"
           >
             Book a Demo
           </a>
