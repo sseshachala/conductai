@@ -9,7 +9,7 @@ import { CapabilityStatus, type CapabilityItem, type CapStatus } from "@/compone
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="marketing-v2 min-h-screen bg-white flex flex-col">
       <Nav />
       <main className="flex-1">
         <HeroSection />
@@ -35,10 +35,10 @@ function Nav() {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
+    <header className="marketing-nav sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
       <div className="px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
-        <a href="/">
-          <img src="/logo.png" alt="Conduct AI" className="h-8 sm:h-10 w-auto" />
+        <a href="/" className="marketing-wordmark" aria-label="Conduct AI home">
+          conduct<span>.ai</span>
         </a>
 
         {/* Desktop nav */}
@@ -905,11 +905,13 @@ function PageFooter() {
   ]
 
   return (
-    <footer className="border-t border-stone-100 py-10 px-4 sm:px-6 bg-white">
+    <footer className="marketing-footer border-t border-stone-100 py-10 px-4 sm:px-6 bg-white">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between gap-8 mb-10">
           <div className="shrink-0">
-            <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto mb-3" />
+            <a href="/" className="marketing-wordmark inline-block mb-3" aria-label="Conduct AI home">
+              conduct<span>.ai</span>
+            </a>
             <p className="text-sm text-stone-400 max-w-xs leading-relaxed">
               Runtime policy for AI agent stacks.
             </p>

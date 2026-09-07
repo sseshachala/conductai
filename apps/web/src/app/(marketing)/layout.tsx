@@ -7,7 +7,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   return (
     <WorkspaceProvider clerkEnabled={clerkEnabled}>
-      <div className="min-h-screen bg-white flex flex-col">
+      <div className="marketing-v2 min-h-screen bg-white flex flex-col">
         <MarketingNav />
         <main className="flex-1">{children}</main>
         <MarketingFooter />
@@ -110,10 +110,10 @@ function DevelopersDropdown() {
 
 function MarketingNav() {
   return (
-    <header className="sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
+    <header className="marketing-nav sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
       <div className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
-        <a href="/">
-          <img src="/logo.png" alt="Conduct AI" className="h-10 w-auto" />
+        <a href="/" className="marketing-wordmark" aria-label="Conduct AI home">
+          conduct<span>.ai</span>
         </a>
         <nav className="hidden md:flex items-center gap-6">
           <ProductDropdown />
@@ -203,11 +203,13 @@ function MarketingFooter() {
   ]
 
   return (
-    <footer className="border-t border-stone-100 py-10 px-6 bg-white">
+    <footer className="marketing-footer border-t border-stone-100 py-10 px-6 bg-white">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between gap-8 mb-10">
           <div>
-            <img src="/logo.png" alt="Conduct AI" className="h-8 w-auto mb-3" />
+            <a href="/" className="marketing-wordmark inline-block mb-3" aria-label="Conduct AI home">
+              conduct<span>.ai</span>
+            </a>
             <p className="text-sm text-stone-400 max-w-xs leading-relaxed">
               Runtime policy for AI agent stacks.
             </p>

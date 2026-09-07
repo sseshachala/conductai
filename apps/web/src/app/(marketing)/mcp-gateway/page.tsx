@@ -37,7 +37,7 @@ export default function MCPPage() {
                 Start Discovery — 14 days free
               </Link>
               <Link
-                href="/demo"
+                href="/book-demo"
                 className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
               >
                 Book a Demo
@@ -218,4 +218,3 @@ export default function MCPPage() {
     </div>
   )
 }
-

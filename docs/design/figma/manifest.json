@@ -1,0 +1,26 @@
+{
+  "source": {
+    "fileKey": "UktEyWiEqTWrkmJUaF2aco",
+    "url": "https://www.figma.com/design/UktEyWiEqTWrkmJUaF2aco"
+  },
+  "frames": [
+    {"page": "10 Website Port / Home", "nodeId": "39:2", "route": "/", "reference": "exports/home.png"},
+    {"page": "11 Website Port / Guard", "nodeId": "40:2", "route": "/guard", "reference": "exports/guard.png"},
+    {"page": "12 Website Port / Registry", "nodeId": "41:2", "route": "/registry", "reference": "exports/registry.png"},
+    {"page": "13 Website Port / Evidence", "nodeId": "42:2", "route": "/evidence", "reference": "exports/evidence.png"},
+    {"page": "14 Website Port / MCP", "nodeId": "43:2", "route": "/mcp-gateway", "reference": "exports/mcp.png"}
+  ],
+  "implementation": {
+    "scopeClass": "marketing-v2 (all public marketing routes)",
+    "sharedShell": "apps/web/src/app/(marketing)/layout.tsx",
+    "globalTokens": "apps/web/src/app/globals.css",
+    "copySourceOfTruth": "repository",
+    "visualSourceOfTruth": "figma"
+  },
+  "rules": [
+    "Preserve existing website copy and positioning.",
+    "Use Figma for visual design, layout, components, color, and responsive behavior.",
+    "Do not use emoji as interface icons; use custom SVGs.",
+    "Do not turn product-interface mockups into flattened screenshots."
+  ]
+}
