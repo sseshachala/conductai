@@ -12,33 +12,33 @@ export default function MCPPage() {
     <div className="min-h-screen bg-white">
       <main className="max-w-5xl mx-auto px-6">
 
-        {/* Hero — Figma frame 14 */}
-        <section className="pt-20 pb-16 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+        {/* Hero — Figma frame 14: dark full-width band */}
+        <section className="-mx-6 sm:-mx-10 lg:-mx-20 px-6 sm:px-10 lg:px-20 py-20 sm:py-24 bg-stone-950 mb-16 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <div>
-            <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-4">
+            <p className="text-xs font-mono font-bold uppercase tracking-widest text-indigo-400 mb-4">
               MCP
             </p>
-            <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
+            <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white leading-[1.05] mb-6">
               Policy for every MCP tool invocation.
             </h1>
-            <p className="text-lg text-stone-500 leading-relaxed mb-4">
+            <p className="text-lg text-stone-400 leading-relaxed mb-4">
               Guard sits between the MCP client and the MCP server. Every tool call is evaluated
               against policy before it reaches the server — applying runtime policy and evidence-model
               enforcement across every MCP-compatible client.
             </p>
-            <p className="text-sm font-mono font-bold text-stone-700 tracking-wider mb-6">
+            <p className="text-sm font-mono font-bold text-indigo-300 tracking-wider mb-6">
               Allow. Approve. Block. Prove.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/sign-up"
-                className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+                className="inline-block rounded-xl bg-indigo-600 text-white px-6 py-3 text-sm font-semibold hover:bg-indigo-500 transition-colors"
               >
                 Start Discovery — 14 days free
               </Link>
               <Link
                 href="/demo"
-                className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
+                className="inline-block rounded-xl border border-stone-700 bg-transparent text-stone-200 px-6 py-3 text-sm font-semibold hover:bg-stone-900 transition-colors"
               >
                 Book a Demo
               </Link>
@@ -49,7 +49,7 @@ export default function MCPPage() {
             <img
               src="/design/mcp-hero-diagram.svg"
               alt="MCP clients Claude Desktop, ChatGPT, and Cursor route tool invocations through ConductAI, which decides ALLOW, APPROVE, or BLOCK before the MCP server executes the tool."
-              className="w-full h-auto rounded-2xl border border-stone-800/60 shadow-md"
+              className="w-full h-auto rounded-2xl border border-stone-800 shadow-md"
               loading="lazy"
             />
           </div>
@@ -194,20 +194,20 @@ export default function MCPPage() {
         </section>
 
         {/* CTA */}
-        <section className="mb-20 text-center border-t border-stone-100 pt-16">
-          <h2 className="text-2xl font-bold text-stone-900 mb-4">
+        <section className="-mx-6 sm:-mx-10 lg:-mx-20 px-6 sm:px-10 lg:px-20 py-16 sm:py-24 bg-indigo-600 mb-0 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mb-6 max-w-2xl mx-auto">
             Policy at the MCP call. Not the client.
           </h2>
           <div className="flex flex-wrap justify-center gap-3">
             <Link
               href="/sign-up"
-              className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+              className="inline-block rounded-xl bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-indigo-50 transition-colors"
             >
               Start Discovery — 14 days free
             </Link>
             <Link
               href="/guard"
-              className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
+              className="inline-block rounded-xl border border-indigo-300 bg-transparent text-white px-6 py-3 text-sm font-semibold hover:bg-indigo-700 transition-colors"
             >
               See how Guard works →
             </Link>

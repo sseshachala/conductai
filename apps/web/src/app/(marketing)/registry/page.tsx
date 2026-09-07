@@ -280,22 +280,24 @@ export default function RegistryPage() {
         </section>
 
         {/* CTA */}
-        <section className="mb-20 text-center border-t border-stone-100 pt-16">
-          <h2 className="text-2xl font-bold text-stone-900 mb-4">Start with Discovery. Add playbooks as you go.</h2>
-          <p className="text-stone-500 text-sm mb-8 max-w-lg mx-auto leading-relaxed">
+        <section className="-mx-6 sm:-mx-10 lg:-mx-20 px-6 sm:px-10 lg:px-20 py-16 sm:py-24 bg-indigo-600 mb-0 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mb-4 max-w-2xl mx-auto">
+            Start with Discovery. Add playbooks as you go.
+          </h2>
+          <p className="text-indigo-100 text-sm mb-8 max-w-lg mx-auto leading-relaxed">
             Discovery maps what your agents are doing today. Playbooks extend that into governed, repeatable
             automation — with policy at every step.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link
               href="/sign-up"
-              className="inline-block rounded-xl bg-stone-900 text-white px-6 py-3 text-sm font-semibold hover:bg-stone-700 transition-colors"
+              className="inline-block rounded-xl bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-indigo-50 transition-colors"
             >
               Start Discovery — 14 days free
             </Link>
             <a
               href="https://github.com/sseshachala/conductai"
-              className="inline-block rounded-xl border border-stone-200 bg-white text-stone-700 px-6 py-3 text-sm font-semibold hover:bg-stone-50 transition-colors"
+              className="inline-block rounded-xl border border-indigo-300 bg-transparent text-white px-6 py-3 text-sm font-semibold hover:bg-indigo-700 transition-colors"
             >
               View the open-source runtime →
             </a>
