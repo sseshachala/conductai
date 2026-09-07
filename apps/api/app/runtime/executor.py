@@ -266,6 +266,17 @@ def execute_run(run_id: str):
             except Exception:
                 log.warning("run.cred_token_mint_failed", run_id=run_id)
 
+        # Populate the in-process cred cache so blocks skip the HTTP-to-self
+        # broker round-trip. This eliminates the intermittent MissingProviderKey
+        # class of failure where a broker 401/500 on a per-block fetch returned
+        # {} and looked like "no key configured" to brain_block. See
+        # app.runtime.run_credentials for cache lifecycle.
+        try:
+            from app.runtime.run_credentials import populate as _cred_cache_populate
+            _cred_cache_populate(_cred_token, dict(credentials._data))
+        except Exception as _cc_err:
+            log.warning("run.cred_cache_populate_failed", run_id=run_id, error=str(_cc_err))
+
         # Stamp agent_role_id on the run if CONDUCT_AGENT_TOKEN is in credentials.
         _env_vars_creds = credentials.get("env_vars") or {}
         if isinstance(_env_vars_creds, dict) and _env_vars_creds.get("CONDUCT_AGENT_TOKEN"):
@@ -473,6 +484,16 @@ def execute_run(run_id: str):
                     _inv_db.close()
             except Exception:
                 pass  # never let token cleanup crash the run
+
+        # Drop the in-process credential snapshot for this segment. Purge
+        # regardless of pause state — resume rebuilds it on the next
+        # execute_run() call via the populate step above.
+        try:
+            from app.runtime.run_credentials import purge as _cred_cache_purge
+            _cred_cache_purge(state.get("__cred_token__", "") or _cred_token)
+        except Exception:
+            pass
+
         db.close()
 
 
