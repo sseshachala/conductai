@@ -40,10 +40,42 @@ The PNGs are compact full-page implementation references. Use the live Figma fra
 4. If Figma copy conflicts with current repository copy, use the repository copy.
 5. Do not introduce customer logos, metrics, certifications, deployment claims, integrations, or product capabilities that are not supported by the repository.
 6. Keep native platform controls in place; ConductAI adds a common runtime policy and evidence model across the agent stack.
-7. Any Figma panel that depicts an in-product surface (Guard, Lens, Run, Registry, Evidence receipt, Slack approval) MUST be implemented from the matching screenshot in [`docs/design/figma/screenshots/`](figma/screenshots/), not redrawn from the mockup. Redrawing produces AI-looking mockups; real screenshots read as product.
+7. Any Figma panel or shared React component that depicts an in-product surface (Guard, Lens, Run, Registry, Evidence receipt, Slack approval, MCP flow) MUST be implemented from the matching screenshot in [`docs/design/figma/screenshots/`](figma/screenshots/), not redrawn from the mockup. Redrawing produces AI-looking mockups; real screenshots read as product. This rule applies site-wide, not only to the five Figma pages. See the Site-wide scope section for the four shared components and six consuming routes.
 8. The MCP hero panel is a **diagram**, not a screenshot — no fake product-UI shell. Draw as SVG showing real client names (Claude Desktop, ChatGPT, Cursor) routing through ConductAI to an MCP server.
 
-## Screenshot inventory
+## Site-wide scope (beyond the five Figma pages)
+
+The AI-slop problem is not limited to the five Figma frames. The same drawn "product UI" panels are used across the whole marketing site through four shared React components under `apps/web/src/components/marketing/facelift/`. Fixing those four components fixes every consuming route.
+
+### Facelift components to swap
+
+| Component | Path | Real-screenshot replacement |
+|---|---|---|
+| `DecisionCard` | `apps/web/src/components/marketing/facelift/DecisionCard.tsx` | Real Guard activity-feed row or decision-detail card |
+| `PolicySnippet` | `apps/web/src/components/marketing/facelift/PolicySnippet.tsx` | Real policy from `/theguard/policies/{id}`, syntax-highlighted from disk |
+| `EvidenceReceipt` | `apps/web/src/components/marketing/facelift/EvidenceReceipt.tsx` | Real receipt from `/theguard/decisions/{id}` |
+| `AgentSurfaceStrip` | `apps/web/src/components/marketing/facelift/AgentSurfaceStrip.tsx` | Real integration-status row from `/settings/integrations` |
+
+### Consuming routes (auto-updated when the components are fixed)
+
+- `/guard` — hero + decisions row + policy + receipt + surfaces
+- `/evidence` — hero receipt
+- `/mcp-gateway` — decision cards in MCP flow
+- `/solutions/action-governance` — decision cards for refund / deploy / secret-read stories
+- `/solutions/engineering-leaders` — surface strip + decision cards
+- `/solutions/security-compliance` — receipt
+
+### Routes with no drawn product UI (skip)
+
+`about`, `benchmark`, `blog`, `book-demo`, `compare`, `deployment`, `discovery`, `docs`, `eval`, `frameworks`, `open-source`, `partners`, `pricing`, `privacy`, `router`, `sdd`, `team-os`, `terms`, `token-guardrails`, `tools`, `use-cases`, `what-is-conduct-ai`, `security` (uses tabular threat-model rows, not drawn UI).
+
+### Not drawn product UI — keep as-is
+
+- `ThreatModelRow` — tabular teaching material, not a screen.
+- `CapabilityStatus` — status legend, not a screen.
+- `PlaybookTile` in `/registry` — architectural block-sequence tiles, not screens.
+
+## Screenshot inventory (five Figma pages)
 
 The mockup PNGs under `figma/exports/` depict several in-product surfaces as drawn UI. Those must be replaced during implementation with real screenshots captured from the running product. Marketing tiles (feature grids, deployment cards, compliance tag rows) stay as HTML/CSS components — only in-product surfaces need real captures.
 
