@@ -5,7 +5,23 @@
  * Renders AGENT TOOLS / CLIENTS / BYO GATEWAYS blocks.
  */
 
-export function AgentSurfaceStrip() {
+export interface AgentSurfaceStripProps {
+  imageSrc?: string
+  imageAlt?: string
+}
+
+export function AgentSurfaceStrip({ imageSrc, imageAlt }: AgentSurfaceStripProps = {}) {
+  if (imageSrc) {
+    return (
+      <img
+        src={imageSrc}
+        alt={imageAlt ?? "Agent surface strip"}
+        loading="lazy"
+        className="border border-stone-200 rounded-2xl shadow-sm w-full h-auto"
+      />
+    )
+  }
+
   return (
     <div className="border border-stone-200 rounded-2xl overflow-hidden bg-white shadow-sm text-xs font-mono">
       <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-stone-200">

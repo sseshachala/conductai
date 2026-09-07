@@ -11,6 +11,8 @@ export interface PolicySnippetProps {
   language?: PolicyLanguage
   title?: string
   code?: string
+  imageSrc?: string
+  imageAlt?: string
 }
 
 const DEFAULT_YAML = `policy: refund-cap
@@ -38,7 +40,20 @@ export function PolicySnippet({
   language = "yaml",
   title,
   code,
+  imageSrc,
+  imageAlt,
 }: PolicySnippetProps) {
+  if (imageSrc) {
+    return (
+      <img
+        src={imageSrc}
+        alt={imageAlt ?? `${language} policy snippet`}
+        loading="lazy"
+        className="rounded-xl border border-stone-200 shadow-sm w-full h-auto"
+      />
+    )
+  }
+
   const displayTitle = title ?? (language === "yaml" ? "refund-cap.yaml" : "production-change.cedar")
   const displayCode = code ?? (language === "yaml" ? DEFAULT_YAML : DEFAULT_CEDAR)
 

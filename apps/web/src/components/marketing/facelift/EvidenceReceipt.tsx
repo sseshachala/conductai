@@ -16,6 +16,8 @@ export interface EvidenceReceiptProps {
   user?: string
   timestamp?: string
   integrity?: "Verified" | "Failed" | "Pending"
+  imageSrc?: string
+  imageAlt?: string
 }
 
 export function EvidenceReceipt({
@@ -29,7 +31,20 @@ export function EvidenceReceipt({
   user = "developer@acme.example",
   timestamp = "14:32:11 UTC · 2026-03-11",
   integrity = "Verified",
+  imageSrc,
+  imageAlt,
 }: EvidenceReceiptProps) {
+  if (imageSrc) {
+    return (
+      <img
+        src={imageSrc}
+        alt={imageAlt ?? `Evidence receipt for decision ${decisionId}`}
+        loading="lazy"
+        className="border border-stone-200 rounded-xl shadow-sm max-w-sm w-full h-auto"
+      />
+    )
+  }
+
   return (
     <div className="border border-stone-200 rounded-xl overflow-hidden bg-white shadow-sm font-mono text-xs max-w-sm">
       {/* Header */}

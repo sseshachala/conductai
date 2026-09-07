@@ -17,6 +17,8 @@ export interface DecisionCardProps {
   reason?: string
   showButtons?: boolean
   compact?: boolean
+  imageSrc?: string
+  imageAlt?: string
 }
 
 const STATE_CONFIG: Record<DecisionState, {
@@ -62,7 +64,20 @@ export function DecisionCard({
   reason,
   showButtons = false,
   compact = false,
+  imageSrc,
+  imageAlt,
 }: DecisionCardProps) {
+  if (imageSrc) {
+    return (
+      <img
+        src={imageSrc}
+        alt={imageAlt ?? `Guard ${decision} decision`}
+        loading="lazy"
+        className="border border-stone-200 rounded-xl shadow-sm w-full h-auto"
+      />
+    )
+  }
+
   const cfg = STATE_CONFIG[decision]
   const defaultReason =
     decision === "APPROVE"
