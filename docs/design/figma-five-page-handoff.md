@@ -53,6 +53,7 @@ The PNGs are compact full-page implementation references. Use the live Figma fra
   - Red: `BLOCK`.
 - Implement responsive desktop, tablet, and mobile layouts.
 - Product interfaces shown in Figma should be implemented as structured HTML/CSS, not flattened screenshots.
+- Do not use emoji as interface icons (for example, 🔐, 🏥, or 💳). Use purpose-built SVG icons with consistent stroke, sizing, and accessible labels.
 - Retain accessibility, focus states, keyboard navigation, semantic headings, and reduced-motion support.
 
 ## Page mapping
