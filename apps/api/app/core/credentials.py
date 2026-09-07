@@ -129,16 +129,57 @@ def retrieve_credential(db, cred_token: str, handle: str) -> dict | None:
 
 
 def fetch_credential(cred_token: str, handle: str, api_url: str) -> dict:
-    """HTTP call to broker. Used by blocks running inside a run context."""
+    """Return decrypted credential dict for `handle`.
+
+    Cache-first: the executor populates a process-local snapshot at run
+    start (see `app.runtime.run_credentials`). In-process blocks hit the
+    snapshot and skip the HTTP round-trip entirely. Broker call remains
+    for out-of-process callers (CLI, remote workers) and for the small
+    window before the executor populates.
+
+    Non-200 broker responses used to return `{}` silently — that made a
+    stale cred_token (bug B on run resume) look identical to a missing
+    handle, and downstream brain_block raised MissingProviderKey with
+    misleading UX. We now log the failure so operators can see it.
+    """
+    from app.runtime.run_credentials import resolve as _cache_resolve
+
+    cached = _cache_resolve(cred_token, handle)
+    if cached is not None:
+        return cached
+
     import httpx
-    resp = httpx.post(
-        f"{api_url}/credentials/creds/retrieve",
-        json={"handle": handle},
-        headers={"X-Cred-Token": cred_token},
-        timeout=5.0,
-    )
+    try:
+        resp = httpx.post(
+            f"{api_url}/credentials/creds/retrieve",
+            json={"handle": handle},
+            headers={"X-Cred-Token": cred_token},
+            timeout=5.0,
+        )
+    except Exception as exc:
+        try:
+            import structlog
+            structlog.get_logger(__name__).warning(
+                "credentials.broker_fetch_exception",
+                handle=handle,
+                error=str(exc),
+                cred_token_prefix=(cred_token or "")[:12],
+            )
+        except Exception:
+            pass
+        return {}
     if resp.status_code == 200:
         return resp.json()
+    try:
+        import structlog
+        structlog.get_logger(__name__).warning(
+            "credentials.broker_fetch_failed",
+            handle=handle,
+            status=resp.status_code,
+            cred_token_prefix=(cred_token or "")[:12],
+        )
+    except Exception:
+        pass
     return {}
 
 
