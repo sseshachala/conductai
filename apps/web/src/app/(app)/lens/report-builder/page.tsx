@@ -384,21 +384,32 @@ export default function ReportBuilderPage() {
                   return (
                     <div
                       key={`${w.tool_name}-${idx}`}
-                      className="relative rounded border border-neutral-200 bg-white p-3"
                       style={{
                         gridColumn: `span ${size.col}`,
                         gridRow: `span ${size.row}`,
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        padding: 14,
+                        boxShadow: "var(--shadow-sm)",
+                        display: "flex",
+                        flexDirection: "column",
+                        minHeight: 0,
                       }}
                     >
-                      <div className="mb-1 flex items-start justify-between">
-                        <div>
-                          <div className="text-sm font-medium">{meta?.label ?? w.tool_name}</div>
-                          <div className="text-xs text-neutral-500">{w.hint}</div>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {meta?.label ?? w.tool_name}
+                          </div>
+                          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--text-muted)", marginTop: 2 }}>
+                            {w.hint.replace("_", " ")}
+                          </div>
                         </div>
-                        <div className="flex gap-1">
+                        <div style={{ display: "flex", gap: 2 }}>
                           <button
                             type="button"
-                            className="rounded px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100"
+                            style={{ padding: "3px 7px", borderRadius: 6, fontSize: 12, color: "var(--text-muted)", background: "transparent", border: "none", cursor: idx === 0 ? "default" : "pointer", opacity: idx === 0 ? 0.3 : 1 }}
                             onClick={() => moveWidget(idx, -1)}
                             title="Move up"
                             disabled={idx === 0}
@@ -407,7 +418,7 @@ export default function ReportBuilderPage() {
                           </button>
                           <button
                             type="button"
-                            className="rounded px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100"
+                            style={{ padding: "3px 7px", borderRadius: 6, fontSize: 12, color: "var(--text-muted)", background: "transparent", border: "none", cursor: idx === draft.layout_spec.length - 1 ? "default" : "pointer", opacity: idx === draft.layout_spec.length - 1 ? 0.3 : 1 }}
                             onClick={() => moveWidget(idx, 1)}
                             title="Move down"
                             disabled={idx === draft.layout_spec.length - 1}
@@ -416,7 +427,7 @@ export default function ReportBuilderPage() {
                           </button>
                           <button
                             type="button"
-                            className="rounded px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-red-50 hover:text-red-600"
+                            style={{ padding: "3px 7px", borderRadius: 6, fontSize: 12, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer" }}
                             onClick={() => removeWidgetAt(idx)}
                             title="Remove"
                           >
@@ -424,7 +435,7 @@ export default function ReportBuilderPage() {
                           </button>
                         </div>
                       </div>
-                      <div className="mt-2 h-full min-h-0 overflow-hidden">
+                      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
                         <WidgetRenderer hint={w.hint} state={reportData.get(w.tool_name)} />
                       </div>
                     </div>

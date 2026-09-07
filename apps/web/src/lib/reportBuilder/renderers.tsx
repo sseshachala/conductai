@@ -1,23 +1,30 @@
 /**
- * Widget renderers for the report-builder skill (#1450 PR 3).
+ * Widget renderers for the report-builder skill (#1450 PR 3, polish PR 6).
  *
- * One component per `hint`, dispatched by `<WidgetRenderer>`. Each takes
- * a `WidgetLoadState` and renders loading / error / data states.
+ * One component per `hint`, dispatched by `<WidgetRenderer>`. Uses the
+ * app's design tokens (--accent, --ok/warn/err, --surface, --text-2)
+ * instead of raw Tailwind neutrals so the report builder matches the
+ * rest of the app.
  *
- * ponytail: no charting library. `spark` and `agent_row` show headline
- * numbers, not sparkline SVGs. Upgrade the visualization when tools
- * start returning time series.
+ * `spark` widgets get a mini SVG sparkline built from whatever ordered
+ * numeric series the tool exposes — currently token_usage per-agent and
+ * analytics_summary aggregates. When tools start returning explicit time
+ * series, feed them straight into MiniSpark.
  */
 import type { WidgetData, WidgetLoadState } from "./fetchers"
 
+// ── formatters ─────────────────────────────────────────────────────────────
+
 function fmtInt(n: number | null | undefined): string {
   if (n == null) return "—"
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (Math.abs(n) >= 1000) return `${(n / 1000).toFixed(1)}k`
-  return String(n)
+  return String(Math.round(n))
 }
 
 function fmtUsd(n: number | null | undefined): string {
   if (n == null) return "—"
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`
   return `$${n.toFixed(2)}`
 }
 
@@ -29,14 +36,23 @@ function fmtPct(n: number | null | undefined): string {
 function fmtWhen(ts: string | null | undefined): string {
   if (!ts) return "—"
   const d = new Date(ts)
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+  const now = Date.now()
+  const diffMin = Math.floor((now - d.getTime()) / 60000)
+  if (diffMin < 1) return "just now"
+  if (diffMin < 60) return `${diffMin}m ago`
+  if (diffMin < 60 * 24) return `${Math.floor(diffMin / 60)}h ago`
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
 }
 
-// ── loading / error primitives ─────────────────────────────────────────────
+// ── shared primitives ──────────────────────────────────────────────────────
 
 function LoadingBody() {
   return (
-    <div className="flex h-full min-h-16 items-center justify-center text-xs text-neutral-400">
+    <div style={{
+      display: "flex", height: "100%", minHeight: 64,
+      alignItems: "center", justifyContent: "center",
+      color: "var(--text-muted)", fontSize: 12,
+    }}>
       Loading…
     </div>
   )
@@ -44,24 +60,82 @@ function LoadingBody() {
 
 function ErrorBody({ error }: { error: string }) {
   return (
-    <div className="flex h-full min-h-16 items-center justify-center px-3 text-center text-xs text-red-500">
+    <div style={{
+      display: "flex", height: "100%", minHeight: 64,
+      alignItems: "center", justifyContent: "center", padding: "0 12px",
+      textAlign: "center", color: "var(--err)", fontSize: 12,
+    }}>
       {error}
     </div>
   )
 }
 
-// ── KPI card ───────────────────────────────────────────────────────────────
+function EmptyBody({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ color: "var(--text-muted)", fontSize: 12, padding: 4 }}>
+      {children}
+    </div>
+  )
+}
 
-interface KpiTile { label: string; value: string; sub?: string }
+// ── KPI Tiles ──────────────────────────────────────────────────────────────
+
+interface KpiTile {
+  label: string
+  value: string
+  tone?: "default" | "ok" | "warn" | "err" | "accent"
+  sub?: string
+}
+
+const TONE_COLORS: Record<NonNullable<KpiTile["tone"]>, string> = {
+  default: "var(--text)",
+  ok:      "var(--ok)",
+  warn:    "var(--warn)",
+  err:     "var(--err)",
+  accent:  "var(--accent)",
+}
 
 function KpiTiles({ tiles }: { tiles: KpiTile[] }) {
   return (
-    <div className="grid grid-cols-3 gap-3 text-center">
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${Math.min(tiles.length, 3)}, minmax(0, 1fr))`,
+        gap: 8,
+      }}
+    >
       {tiles.map((t) => (
-        <div key={t.label} className="rounded bg-neutral-50 px-2 py-2">
-          <div className="text-xl font-semibold">{t.value}</div>
-          <div className="mt-0.5 text-[10px] uppercase tracking-wide text-neutral-500">{t.label}</div>
-          {t.sub && <div className="mt-0.5 text-[10px] text-neutral-400">{t.sub}</div>}
+        <div
+          key={t.label}
+          style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "10px 12px",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 22, fontWeight: 600, lineHeight: 1.1,
+              color: TONE_COLORS[t.tone ?? "default"],
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {t.value}
+          </div>
+          <div
+            style={{
+              marginTop: 4, fontSize: 10, fontWeight: 600,
+              letterSpacing: ".08em", textTransform: "uppercase",
+              color: "var(--text-muted)",
+            }}
+          >
+            {t.label}
+          </div>
+          {t.sub && (
+            <div style={{ marginTop: 2, fontSize: 10, color: "var(--text-3)" }}>{t.sub}</div>
+          )}
         </div>
       ))}
     </div>
@@ -74,25 +148,26 @@ function KpiCardBody({ data }: { data: WidgetData }) {
     return (
       <KpiTiles
         tiles={[
-          { label: "PRs",      value: fmtInt(o.prs_opened) },
-          { label: "Issues",   value: fmtInt(o.issues_triaged) },
-          { label: "Reviews",  value: fmtInt(o.reviews_completed) },
-          { label: "Incidents",value: fmtInt(o.incidents_investigated) },
-          { label: "Succeeded",value: fmtInt(o.successful_automations) },
-          { label: "Failed",   value: fmtInt(o.failed_automations) },
+          { label: "PRs",       value: fmtInt(o.prs_opened),             tone: "accent" },
+          { label: "Issues",    value: fmtInt(o.issues_triaged) },
+          { label: "Reviews",   value: fmtInt(o.reviews_completed) },
+          { label: "Incidents", value: fmtInt(o.incidents_investigated), tone: o.incidents_investigated ? "warn" : "default" },
+          { label: "Succeeded", value: fmtInt(o.successful_automations), tone: "ok" },
+          { label: "Failed",    value: fmtInt(o.failed_automations),     tone: o.failed_automations ? "err" : "default" },
         ]}
       />
     )
   }
   if (data.tool === "get_observability_health") {
     const o = data.data
+    const errTone = o.error_rate > 0.1 ? "err" : o.error_rate > 0.02 ? "warn" : "ok"
     return (
       <KpiTiles
         tiles={[
-          { label: "Runs 1h",   value: fmtInt(o.runs_last_hour) },
-          { label: "Runs 24h",  value: fmtInt(o.runs_last_24h) },
-          { label: "Error Rate",value: fmtPct(o.error_rate) },
-          { label: "P95 latency", value: o.p95_latency_ms == null ? "—" : `${o.p95_latency_ms} ms` },
+          { label: "Runs 1h",     value: fmtInt(o.runs_last_hour),  tone: "accent" },
+          { label: "Runs 24h",    value: fmtInt(o.runs_last_24h) },
+          { label: "Error rate",  value: fmtPct(o.error_rate),      tone: errTone },
+          { label: "P95 latency", value: o.p95_latency_ms == null ? "—" : `${o.p95_latency_ms}ms` },
         ]}
       />
     )
@@ -102,10 +177,10 @@ function KpiCardBody({ data }: { data: WidgetData }) {
     return (
       <KpiTiles
         tiles={[
-          { label: "Deploys/wk", value: fmtInt(d.deployment_frequency) },
-          { label: "Lead time",  value: d.lead_time_hours == null ? "—" : `${d.lead_time_hours.toFixed(1)} h` },
-          { label: "MTTR",       value: d.mttr_hours == null ? "—" : `${d.mttr_hours.toFixed(1)} h` },
-          { label: "Change fail",value: fmtPct(d.change_failure_rate) },
+          { label: "Deploys/wk",  value: fmtInt(d.deployment_frequency), tone: "accent" },
+          { label: "Lead time",   value: d.lead_time_hours == null ? "—" : `${d.lead_time_hours.toFixed(1)}h` },
+          { label: "MTTR",        value: d.mttr_hours == null ? "—" : `${d.mttr_hours.toFixed(1)}h` },
+          { label: "Change fail", value: fmtPct(d.change_failure_rate),  tone: d.change_failure_rate > 0.15 ? "err" : d.change_failure_rate > 0.05 ? "warn" : "ok" },
         ]}
       />
     )
@@ -113,16 +188,42 @@ function KpiCardBody({ data }: { data: WidgetData }) {
   return null
 }
 
-// ── Spark (headline + delta stand-in) ──────────────────────────────────────
+// ── Spark (headline + mini sparkline) ──────────────────────────────────────
+
+function MiniSpark({ points, color = "var(--accent)" }: { points: number[]; color?: string }) {
+  if (points.length < 2) return null
+  const w = 120, h = 32, pad = 2
+  const min = Math.min(...points), max = Math.max(...points)
+  const span = max - min || 1
+  const step = (w - pad * 2) / (points.length - 1)
+  const coords = points.map((p, i) => {
+    const x = pad + i * step
+    const y = h - pad - ((p - min) / span) * (h - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(" ")
+  const areaCoords = `${pad},${h - pad} ${coords} ${(w - pad).toFixed(1)},${h - pad}`
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block", marginTop: 4 }}>
+      <polygon points={areaCoords} fill={color} opacity={0.12} />
+      <polyline points={coords} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
 
 function SparkBody({ data }: { data: WidgetData }) {
   if (data.tool === "get_dashboard_token_usage") {
     const t = data.data
+    const perAgent = (t.per_agent ?? []).map((a) => a.cost_usd).slice(0, 20)
     return (
-      <div className="flex flex-col items-center justify-center">
-        <div className="text-3xl font-semibold">{fmtUsd(t.estimated_cost_usd)}</div>
-        <div className="mt-1 text-[11px] uppercase tracking-wide text-neutral-500">Est. cost</div>
-        <div className="mt-2 text-xs text-neutral-500">
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: 30, fontWeight: 600, color: "var(--accent)", fontVariantNumeric: "tabular-nums" }}>
+          {fmtUsd(t.estimated_cost_usd)}
+        </div>
+        <div style={{ marginTop: 2, fontSize: 10, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+          Est. cost
+        </div>
+        {perAgent.length >= 2 && <MiniSpark points={perAgent} />}
+        <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-3)" }}>
           {fmtInt(t.total_input_tokens)} in · {fmtInt(t.total_output_tokens)} out
         </div>
       </div>
@@ -130,14 +231,19 @@ function SparkBody({ data }: { data: WidgetData }) {
   }
   if (data.tool === "get_analytics_summary") {
     const a = data.data
+    const successPct = fmtPct(a.success_rate)
+    const successTone = a.success_rate < 0.9 ? "var(--warn)" : "var(--ok)"
     return (
-      <div className="flex flex-col items-center justify-center">
-        <div className="text-3xl font-semibold">{fmtInt(a.total_runs)}</div>
-        <div className="mt-1 text-[11px] uppercase tracking-wide text-neutral-500">
-          Runs ({a.window_days}d)
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: 30, fontWeight: 600, color: "var(--accent)", fontVariantNumeric: "tabular-nums" }}>
+          {fmtInt(a.total_runs)}
         </div>
-        <div className="mt-2 text-xs text-neutral-500">
-          {fmtPct(a.success_rate)} success · {fmtUsd(a.total_cost_usd)}
+        <div style={{ marginTop: 2, fontSize: 10, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+          Runs · {a.window_days}d
+        </div>
+        {a.total_runs > 0 && <MiniSpark points={[a.succeeded, a.failed, Math.max(0, a.total_runs - a.succeeded - a.failed)]} />}
+        <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-3)" }}>
+          <span style={{ color: successTone, fontWeight: 600 }}>{successPct}</span> success · {fmtUsd(a.total_cost_usd)}
         </div>
       </div>
     )
@@ -145,23 +251,63 @@ function SparkBody({ data }: { data: WidgetData }) {
   return null
 }
 
+// ── Status pill ────────────────────────────────────────────────────────────
+
+const STATUS_TONES: Record<string, { bg: string; text: string; bd: string }> = {
+  succeeded: { bg: "var(--ok-bg)",     text: "var(--ok)",         bd: "var(--ok-bd)" },
+  running:   { bg: "var(--info-bg)",   text: "var(--info)",       bd: "var(--info-bd)" },
+  pending:   { bg: "var(--info-bg)",   text: "var(--info)",       bd: "var(--info-bd)" },
+  paused:    { bg: "var(--warn-bg)",   text: "var(--warn)",       bd: "var(--warn-bd)" },
+  failed:    { bg: "var(--err-bg)",    text: "var(--err)",        bd: "var(--err-bd)" },
+  cancelled: { bg: "var(--surface-3)", text: "var(--text-muted)", bd: "var(--border)" },
+}
+
+function StatusPill({ status }: { status: string | null | undefined }) {
+  const s = (status ?? "unknown").toLowerCase()
+  const tone = STATUS_TONES[s] ?? { bg: "var(--surface-3)", text: "var(--text-2)", bd: "var(--border)" }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "1px 8px",
+        borderRadius: 999,
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: ".03em",
+        textTransform: "uppercase",
+        background: tone.bg,
+        color: tone.text,
+        border: `1px solid ${tone.bd}`,
+      }}
+    >
+      {s}
+    </span>
+  )
+}
+
 // ── List ───────────────────────────────────────────────────────────────────
 
 function ListBody({ data }: { data: WidgetData }) {
   if (data.tool === "list_attention_runs") {
     const rows = data.data
-    if (rows.length === 0) return <div className="text-xs text-neutral-500">Nothing needs attention.</div>
+    if (rows.length === 0) return <EmptyBody>Nothing needs attention.</EmptyBody>
     return (
-      <ul className="divide-y divide-neutral-100 text-xs">
-        {rows.map((r) => (
-          <li key={r.run_id} className="py-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate font-medium">{r.workflow_name}</span>
-              <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] uppercase text-neutral-600">
-                {r.status}
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 12 }}>
+        {rows.map((r, i) => (
+          <li
+            key={r.run_id}
+            style={{
+              padding: "8px 0",
+              borderTop: i === 0 ? "none" : "1px solid var(--border)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+              <span style={{ fontWeight: 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.workflow_name}
               </span>
+              <StatusPill status={r.status} />
             </div>
-            <div className="text-neutral-500">{fmtWhen(r.created_at)}</div>
+            <div style={{ marginTop: 2, color: "var(--text-3)", fontSize: 11 }}>{fmtWhen(r.created_at)}</div>
           </li>
         ))}
       </ul>
@@ -169,16 +315,24 @@ function ListBody({ data }: { data: WidgetData }) {
   }
   if (data.tool === "list_agent_status") {
     const rows = data.data
-    if (rows.length === 0) return <div className="text-xs text-neutral-500">No agents.</div>
+    if (rows.length === 0) return <EmptyBody>No agents.</EmptyBody>
     return (
-      <ul className="divide-y divide-neutral-100 text-xs">
-        {rows.slice(0, 8).map((r) => (
-          <li key={r.name} className="py-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate font-medium">{r.name}</span>
-              <span className="shrink-0 text-neutral-500">{r.status}</span>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 12 }}>
+        {rows.slice(0, 8).map((r, i) => (
+          <li
+            key={r.name}
+            style={{
+              padding: "8px 0",
+              borderTop: i === 0 ? "none" : "1px solid var(--border)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+              <span style={{ fontWeight: 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.name}
+              </span>
+              <StatusPill status={r.status} />
             </div>
-            <div className="text-neutral-500">
+            <div style={{ marginTop: 2, color: "var(--text-3)", fontSize: 11 }}>
               {fmtInt(r.run_count_24h)} runs · last {fmtWhen(r.last_run_at)}
             </div>
           </li>
@@ -191,23 +345,41 @@ function ListBody({ data }: { data: WidgetData }) {
 
 // ── Table ──────────────────────────────────────────────────────────────────
 
+const TH: React.CSSProperties = {
+  padding: "6px 8px",
+  textAlign: "left",
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: ".08em",
+  textTransform: "uppercase",
+  color: "var(--text-muted)",
+  borderBottom: "1px solid var(--border)",
+}
+const TD: React.CSSProperties = {
+  padding: "8px",
+  fontSize: 12,
+  color: "var(--text-2)",
+  borderBottom: "1px solid var(--border)",
+}
+const TDR: React.CSSProperties = { ...TD, textAlign: "right", fontVariantNumeric: "tabular-nums" }
+
 function TableBody({ data }: { data: WidgetData }) {
   if (data.tool === "get_top_policy_hits") {
     const rows = data.data
-    if (rows.length === 0) return <div className="text-xs text-neutral-500">No policy hits.</div>
+    if (rows.length === 0) return <EmptyBody>No policy hits.</EmptyBody>
     return (
-      <table className="w-full text-xs">
-        <thead className="border-b border-neutral-200 text-left text-neutral-500">
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
           <tr>
-            <th className="py-1.5 font-normal">Rule</th>
-            <th className="py-1.5 text-right font-normal">Blocked</th>
+            <th style={TH}>Rule</th>
+            <th style={{ ...TH, textAlign: "right" }}>Blocked</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-neutral-100">
+        <tbody>
           {rows.slice(0, 8).map((r) => (
             <tr key={r.rule_id}>
-              <td className="py-1.5 pr-2">{r.rule_id}</td>
-              <td className="py-1.5 text-right font-medium">{fmtInt(r.count)}</td>
+              <td style={{ ...TD, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: "var(--text)" }}>{r.rule_id}</td>
+              <td style={{ ...TDR, fontWeight: 600, color: "var(--err)" }}>{fmtInt(r.count)}</td>
             </tr>
           ))}
         </tbody>
@@ -216,26 +388,29 @@ function TableBody({ data }: { data: WidgetData }) {
   }
   if (data.tool === "get_playbook_scorecards") {
     const rows = data.data
-    if (rows.length === 0) return <div className="text-xs text-neutral-500">No playbook runs.</div>
+    if (rows.length === 0) return <EmptyBody>No playbook runs.</EmptyBody>
     return (
-      <table className="w-full text-xs">
-        <thead className="border-b border-neutral-200 text-left text-neutral-500">
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
           <tr>
-            <th className="py-1.5 font-normal">Playbook</th>
-            <th className="py-1.5 text-right font-normal">Runs</th>
-            <th className="py-1.5 text-right font-normal">Success</th>
-            <th className="py-1.5 text-right font-normal">Cost</th>
+            <th style={TH}>Playbook</th>
+            <th style={{ ...TH, textAlign: "right" }}>Runs</th>
+            <th style={{ ...TH, textAlign: "right" }}>Success</th>
+            <th style={{ ...TH, textAlign: "right" }}>Cost</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-neutral-100">
-          {rows.slice(0, 8).map((r) => (
-            <tr key={r.playbook_slug}>
-              <td className="py-1.5 pr-2 font-medium">{r.playbook_slug}</td>
-              <td className="py-1.5 text-right">{fmtInt(r.run_count)}</td>
-              <td className="py-1.5 text-right">{fmtPct(r.success_rate)}</td>
-              <td className="py-1.5 text-right">{fmtUsd(r.avg_cost_usd)}</td>
-            </tr>
-          ))}
+        <tbody>
+          {rows.slice(0, 8).map((r) => {
+            const successColor = r.success_rate < 0.9 ? "var(--warn)" : "var(--ok)"
+            return (
+              <tr key={r.playbook_slug}>
+                <td style={{ ...TD, fontWeight: 500, color: "var(--text)" }}>{r.playbook_slug}</td>
+                <td style={TDR}>{fmtInt(r.run_count)}</td>
+                <td style={{ ...TDR, color: successColor, fontWeight: 600 }}>{fmtPct(r.success_rate)}</td>
+                <td style={TDR}>{fmtUsd(r.avg_cost_usd)}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     )
@@ -248,24 +423,37 @@ function TableBody({ data }: { data: WidgetData }) {
 function AgentRowBody({ data }: { data: WidgetData }) {
   if (data.tool !== "list_agent_health") return null
   const rows = data.data
-  if (rows.length === 0) return <div className="text-xs text-neutral-500">No agents.</div>
+  if (rows.length === 0) return <EmptyBody>No agents.</EmptyBody>
   return (
-    <div className="flex gap-3 overflow-x-auto pb-1">
-      {rows.slice(0, 12).map((r) => (
-        <div
-          key={r.workflow_id}
-          className="min-w-[160px] shrink-0 rounded border border-neutral-200 px-3 py-2 text-xs"
-        >
-          <div className="truncate font-medium">{r.name}</div>
-          <div className="mt-1 flex items-center justify-between text-neutral-500">
-            <span>{fmtInt(r.run_count)} runs</span>
-            <span>{fmtPct(r.success_rate)}</span>
+    <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+      {rows.slice(0, 12).map((r) => {
+        const rateTone = r.success_rate < 0.9 ? "var(--warn)" : "var(--ok)"
+        return (
+          <div
+            key={r.workflow_id}
+            style={{
+              minWidth: 168, flexShrink: 0,
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "8px 10px",
+              fontSize: 11,
+            }}
+          >
+            <div style={{ fontWeight: 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {r.name}
+            </div>
+            <div style={{ marginTop: 4, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ color: "var(--text-3)" }}>{fmtInt(r.run_count)} runs</span>
+              <span style={{ color: rateTone, fontWeight: 600 }}>{fmtPct(r.success_rate)}</span>
+            </div>
+            <div style={{ marginTop: 4, display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)" }}>
+              <span>last {fmtWhen(r.last_run_at)}</span>
+              <StatusPill status={r.last_run_status} />
+            </div>
           </div>
-          <div className="mt-0.5 text-[10px] text-neutral-400">
-            last {fmtWhen(r.last_run_at)} · {r.last_run_status ?? "—"}
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
