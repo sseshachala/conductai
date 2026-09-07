@@ -40,6 +40,36 @@ The PNGs are compact full-page implementation references. Use the live Figma fra
 4. If Figma copy conflicts with current repository copy, use the repository copy.
 5. Do not introduce customer logos, metrics, certifications, deployment claims, integrations, or product capabilities that are not supported by the repository.
 6. Keep native platform controls in place; ConductAI adds a common runtime policy and evidence model across the agent stack.
+7. Any Figma panel that depicts an in-product surface (Guard, Lens, Run, Registry, Evidence receipt, Slack approval) MUST be implemented from the matching screenshot in [`docs/design/figma/screenshots/`](figma/screenshots/), not redrawn from the mockup. Redrawing produces AI-looking mockups; real screenshots read as product.
+8. The MCP hero panel is a **diagram**, not a screenshot — no fake product-UI shell. Draw as SVG showing real client names (Claude Desktop, ChatGPT, Cursor) routing through ConductAI to an MCP server.
+
+## Screenshot inventory
+
+The mockup PNGs under `figma/exports/` depict several in-product surfaces as drawn UI. Those must be replaced during implementation with real screenshots captured from the running product. Marketing tiles (feature grids, deployment cards, compliance tag rows) stay as HTML/CSS components — only in-product surfaces need real captures.
+
+Save all captures to `docs/design/figma/screenshots/` at 1440×900 desktop and 375×812 mobile, PNG, from the seeded demo workspace.
+
+| Page | Drawn panel in mockup | Replace with real screenshot | Capture source |
+|---|---|---|---|
+| Home | Hero right-side dark card (fake actor / action / decision) | Lens `run_workflow` confirm card | `/lens` — send `run <workflow>`, capture the Confirm/Cancel bubble |
+| Home | "Know exactly what happened" right card (fake run summary) | Run detail page, Summary tab | `/runs/{id}` |
+| Guard | Three-card row (ALLOW / APPROVE / BLOCK) with fake action names | Guard activity feed row | `/theguard/activity` — feed with mixed decisions |
+| Guard | YAML policy block | Real policy in editor | `/theguard/policies/{id}` |
+| Guard | Consequential-actions column (three rows) | Slack Guard-approval card | Slack — real `Guard approval required` message with Approve/Reject |
+| Registry | Four compliance-pack cards (OWASP LLM Top 10, SOC 2, HIPAA, PCI DSS) | Registry pack grid | `/registry` |
+| Registry | "No automation packs found" | Keep as-is — honest empty state | — |
+| Evidence | Hero right-side dark card (fake receipt) | Decision receipt page | `/theguard/decisions/{id}` — a full BLOCK receipt |
+| Evidence | Bottom "Show me every block against payments…" quote card | Lens transcript answering that exact query | `/lens` — query = "show me every block against payments this month" |
+| MCP | Hero right-side dark card (fake client router) | **Diagram (SVG)**, not a screenshot | draw client → ConductAI → MCP server |
+| MCP | JSON tool-call block | MCP protocol trace | MCP inspector or Lens tool trace |
+
+Marketing tiles that stay as HTML/CSS components (do not screenshot):
+
+- Home: "Five agent tools shouldn't require five policy models" cards; "Allow. Approve. Block. Prove." decision quad; "Write the rule once" surface picker.
+- Guard: "Deploy Guard where your controls need to live" (SaaS / Docker / Kubernetes / Air-gapped); "One policy where your stack isn't one vendor's" boundary cards.
+- Registry: "Every pack runs under Guard enforcement" four-step row.
+- Evidence: "What each receipt contains" six-card grid; "Compliance mapping" tag row.
+- MCP: "One policy across MCP clients" client tiles; "Control before the tool executes" decision cards.
 
 ## Visual implementation
 
@@ -74,3 +104,5 @@ The PNGs are compact full-page implementation references. Use the live Figma fra
 - Pages are responsive and usable at common mobile, tablet, and desktop widths.
 - Decision states and capability-status labels retain their precise semantic meaning.
 - No unsupported marketing claims are introduced.
+- Every in-product surface in the Screenshot inventory table is implemented from a real capture in `docs/design/figma/screenshots/`, not redrawn from the mockup.
+- MCP hero is an SVG diagram, not a screenshot of a fake UI shell.
