@@ -1,0 +1,67 @@
+/* Generated from ConductAI Figma variables.
+ * Source: https://www.figma.com/design/UktEyWiEqTWrkmJUaF2aco
+ * Collections: ConductAI / Primitives, Dimensions, Color
+ */
+:root {
+  --neutral-0: #ffffff;
+  --neutral-50: #f7f8fc;
+  --neutral-100: #eef0f7;
+  --neutral-300: #c9cedd;
+  --neutral-500: #6d7488;
+  --neutral-700: #34394a;
+  --neutral-900: #10121a;
+  --navy-950: #070a18;
+  --indigo-100: #e7e9ff;
+  --indigo-400: #818cf8;
+  --indigo-500: #6366f1;
+  --indigo-600: #4f46e5;
+  --cyan-100: #cffafe;
+  --cyan-400: #22d3ee;
+  --cyan-500: #06b6d4;
+  --green-500: #10b981;
+  --amber-500: #f59e0b;
+  --red-500: #ef4444;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-24: 96px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+  --color-bg-canvas: var(--neutral-0);
+  --color-bg-subtle: var(--neutral-50);
+  --color-bg-elevated: var(--neutral-0);
+  --color-bg-brand: var(--indigo-600);
+  --color-bg-runtime: var(--navy-950);
+  --color-text-primary: var(--neutral-900);
+  --color-text-secondary: var(--neutral-500);
+  --color-text-on-brand: var(--neutral-0);
+  --color-text-brand: var(--indigo-600);
+  --color-border-default: var(--neutral-100);
+  --color-border-strong: var(--neutral-300);
+  --color-runtime-activity: var(--cyan-500);
+  --color-decision-allow: var(--green-500);
+  --color-decision-approve: var(--amber-500);
+  --color-decision-block: var(--red-500);
+}
+
+[data-theme="dark"] {
+  --color-bg-canvas: var(--navy-950);
+  --color-bg-subtle: var(--neutral-900);
+  --color-bg-elevated: var(--neutral-700);
+  --color-bg-brand: var(--indigo-400);
+  --color-bg-runtime: var(--navy-950);
+  --color-text-primary: var(--neutral-0);
+  --color-text-secondary: var(--neutral-300);
+  --color-text-on-brand: var(--navy-950);
+  --color-text-brand: var(--indigo-400);
+  --color-border-default: var(--neutral-700);
+  --color-border-strong: var(--neutral-500);
+  --color-runtime-activity: var(--cyan-400);
+}

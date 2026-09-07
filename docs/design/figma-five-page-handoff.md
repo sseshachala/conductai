@@ -14,6 +14,8 @@
 ## Exported assets
 
 - Design tokens: [`docs/design/figma/tokens.json`](figma/tokens.json)
+- Resolved CSS variables: [`docs/design/figma/tokens.css`](figma/tokens.css)
+- Route and Figma-node manifest: [`docs/design/figma/manifest.json`](figma/manifest.json)
 - PNG references:
   - [Home](figma/exports/home.png)
   - [Guard](figma/exports/guard.png)
@@ -141,5 +143,12 @@ Marketing tiles that stay as HTML/CSS components (do not screenshot):
 - Pages are responsive and usable at common mobile, tablet, and desktop widths.
 - Decision states and capability-status labels retain their precise semantic meaning.
 - No unsupported marketing claims are introduced.
+
+## Source implementation
+
+The Figma visual system is implemented through the scoped `marketing-v2`
+theme in `apps/web/src/app/globals.css`. The home page and every route in
+the shared marketing layout inherit it automatically, including future
+marketing pages. Authenticated console routes remain unaffected.
 - Every in-product surface in the Screenshot inventory table is implemented from a real capture in `docs/design/figma/screenshots/`, not redrawn from the mockup.
 - MCP hero is an SVG diagram, not a screenshot of a fake UI shell.

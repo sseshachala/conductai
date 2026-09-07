@@ -2,6 +2,175 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ConductAI marketing port — Figma pages 10–14.
+   Scoped so authenticated console and non-ported marketing routes retain
+   their existing presentation. */
+.marketing-v2 {
+  --mkt-canvas: #ffffff;
+  --mkt-subtle: #f7f8fc;
+  --mkt-ink: #10121a;
+  --mkt-muted: #6d7488;
+  --mkt-line: #e5e7ef;
+  --mkt-line-strong: #34394a;
+  --mkt-night: #070a18;
+  --mkt-night-panel: #101426;
+  --mkt-indigo: #4f46e5;
+  --mkt-indigo-hover: #4338ca;
+  --mkt-cyan: #22d3ee;
+  --mkt-green: #10b981;
+  --mkt-amber: #f59e0b;
+  --mkt-red: #ef4444;
+  background: var(--mkt-canvas);
+  color: var(--mkt-ink);
+}
+
+.marketing-v2 .marketing-nav {
+  position: sticky;
+  top: 0;
+  border: 0;
+  background: rgba(255,255,255,.86);
+  padding: 24px clamp(16px, 4vw, 40px);
+  backdrop-filter: blur(18px);
+}
+
+.marketing-v2 .marketing-nav > div {
+  max-width: 1200px;
+  min-height: 72px;
+  padding: 10px 22px;
+  border: 1px solid var(--mkt-line);
+  border-radius: 999px;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 14px 40px rgba(16,18,26,.06);
+}
+
+.marketing-wordmark {
+  color: var(--mkt-ink);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -.035em;
+  text-decoration: none;
+}
+
+.marketing-wordmark span { color: var(--mkt-indigo); }
+
+.marketing-v2 .marketing-nav nav a {
+  color: #34394a;
+  font-size: 13px;
+}
+
+.marketing-v2 .marketing-nav a[href="/discovery"] {
+  min-height: 48px;
+  padding-inline: 22px;
+  border: 1px solid var(--mkt-line-strong);
+  border-radius: 999px;
+  background: var(--mkt-indigo);
+  color: #fff;
+}
+
+.marketing-v2 .marketing-nav a[href="/discovery"]:hover,
+.marketing-v2 a[href="/sign-up"]:hover { background: var(--mkt-indigo-hover); }
+
+.marketing-v2 main > .min-h-screen > main {
+  max-width: 1200px;
+  padding-inline: clamp(20px, 5vw, 64px);
+}
+
+.marketing-v2 main > .min-h-screen > main > section:first-child {
+  margin-inline: calc(clamp(20px, 5vw, 64px) * -1);
+  padding: 86px clamp(20px, 5vw, 64px);
+  border-radius: 24px;
+  background: var(--mkt-subtle);
+}
+
+.marketing-v2 h1 {
+  color: var(--mkt-ink) !important;
+  font-size: clamp(44px, 5vw, 64px) !important;
+  font-weight: 750 !important;
+  letter-spacing: -.045em !important;
+  line-height: 1.02 !important;
+}
+
+.marketing-v2 h2 {
+  color: var(--mkt-ink);
+  font-size: clamp(30px, 3.2vw, 42px);
+  font-weight: 720;
+  letter-spacing: -.035em;
+  line-height: 1.08;
+}
+
+.marketing-v2 .text-stone-900 { color: var(--mkt-ink) !important; }
+.marketing-v2 .text-stone-700,
+.marketing-v2 .text-stone-600,
+.marketing-v2 .text-stone-500,
+.marketing-v2 .text-stone-400 { color: var(--mkt-muted) !important; }
+.marketing-v2 .bg-stone-50 { background-color: var(--mkt-subtle) !important; }
+.marketing-v2 .border-stone-100,
+.marketing-v2 .border-stone-200 { border-color: var(--mkt-line) !important; }
+
+.marketing-v2 main a[href="/sign-up"],
+.marketing-v2 main a[href="/discovery"] {
+  border: 1px solid var(--mkt-line-strong);
+  border-radius: 999px !important;
+  background: var(--mkt-indigo) !important;
+  color: #fff !important;
+  padding: 15px 24px;
+}
+
+.marketing-v2 main a[href="/demo"],
+.marketing-v2 main a[href="/book-demo"] {
+  border: 1px solid var(--mkt-line);
+  border-radius: 999px !important;
+  background: #fff;
+  color: var(--mkt-indigo) !important;
+  padding: 15px 24px;
+}
+
+.marketing-v2 .bg-stone-950 {
+  background: var(--mkt-night) !important;
+  border-radius: 24px !important;
+}
+
+.marketing-v2 .bg-stone-900 { background: var(--mkt-night-panel) !important; }
+.marketing-v2 .border-stone-700,
+.marketing-v2 .border-stone-800 { border-color: var(--mkt-line-strong) !important; }
+.marketing-v2 .bg-stone-950 h2,
+.marketing-v2 .bg-stone-950 h3,
+.marketing-v2 .bg-stone-950 .text-white { color: #fff !important; }
+.marketing-v2 .bg-stone-950 .text-stone-400 { color: #c9cedd !important; }
+.marketing-v2 .text-emerald-400,
+.marketing-v2 .text-emerald-600 { color: var(--mkt-green) !important; }
+.marketing-v2 .text-amber-400,
+.marketing-v2 .text-amber-500 { color: var(--mkt-amber) !important; }
+.marketing-v2 .text-red-600 { color: var(--mkt-red) !important; }
+.marketing-v2 .text-indigo-600 { color: var(--mkt-indigo) !important; }
+
+.marketing-v2 main section { scroll-margin-top: 130px; }
+
+.marketing-v2 main section [class*="rounded-xl"],
+.marketing-v2 main section [class*="rounded-2xl"] {
+  border-radius: 18px;
+}
+
+.marketing-v2 .marketing-footer {
+  border-color: var(--mkt-line);
+  padding-top: 64px;
+  padding-bottom: 44px;
+}
+
+@media (max-width: 767px) {
+  .marketing-v2 .marketing-nav { padding: 12px; }
+  .marketing-v2 .marketing-nav > div {
+    min-height: 60px;
+    padding: 8px 14px;
+  }
+  .marketing-v2 h1 { font-size: 42px !important; }
+  .marketing-v2 h2 { font-size: 30px; }
+  .marketing-v2 main > .min-h-screen > main > section:first-child {
+    padding-top: 56px;
+    padding-bottom: 56px;
+  }
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
 :root {
