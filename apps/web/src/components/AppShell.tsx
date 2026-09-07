@@ -778,42 +778,47 @@ function AppShellInnerContent({
             collapsed={collapsed}
           />
 
-          {/* Reports — #1450 PR 5 (report builder + pinned reports) */}
-          <SideNavItem
-            href="/lens/report-builder"
-            label="Reports"
-            icon={<Icons.Spark />}
-            active={pathname.startsWith("/lens/report-builder")}
-            collapsed={collapsed}
-          />
-          {!collapsed && pinnedReports.length > 0 && (
-            <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 4, display: "flex", flexDirection: "column", gap: 1 }}>
-              {pinnedReports.map((r) => {
-                const href = `/lens/report-builder?slug=${encodeURIComponent(r.slug)}`
-                const active = false  // sub-items skip active tint; parent Reports link covers highlighting
-                return (
-                  <Link
-                    key={r.id}
-                    href={href}
-                    style={{
-                      display: "block",
-                      padding: "5px 10px",
-                      borderRadius: 7,
-                      fontSize: 13,
-                      fontWeight: active ? 600 : 400,
-                      color: active ? "var(--accent-text)" : "var(--text-3)",
-                      background: active ? "var(--accent-weak)" : "transparent",
-                      textDecoration: "none",
-                    }}
-                    onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!active) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
-                    onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!active) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
-                    title={r.name}
-                  >
-                    {r.name}
-                  </Link>
-                )
-              })}
-            </div>
+          {/* Reports — #1450 PR 5. Hidden until report builder is built properly.
+              Re-enable by removing this false && guard once the surface ships. */}
+          {false && (
+            <>
+              <SideNavItem
+                href="/lens/report-builder"
+                label="Reports"
+                icon={<Icons.Spark />}
+                active={pathname.startsWith("/lens/report-builder")}
+                collapsed={collapsed}
+              />
+              {!collapsed && pinnedReports.length > 0 && (
+                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 4, display: "flex", flexDirection: "column", gap: 1 }}>
+                  {pinnedReports.map((r) => {
+                    const href = `/lens/report-builder?slug=${encodeURIComponent(r.slug)}`
+                    const active = false
+                    return (
+                      <Link
+                        key={r.id}
+                        href={href}
+                        style={{
+                          display: "block",
+                          padding: "5px 10px",
+                          borderRadius: 7,
+                          fontSize: 13,
+                          fontWeight: active ? 600 : 400,
+                          color: active ? "var(--accent-text)" : "var(--text-3)",
+                          background: active ? "var(--accent-weak)" : "transparent",
+                          textDecoration: "none",
+                        }}
+                        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!active) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
+                        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!active) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
+                        title={r.name}
+                      >
+                        {r.name}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </>
           )}
 
           {/* GOVERN group — Guard */}
