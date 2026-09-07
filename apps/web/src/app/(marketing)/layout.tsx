@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { WorkspaceProvider } from "@/lib/WorkspaceContext"
 import { CtaLink } from "@/components/marketing/CtaLink"
 
@@ -109,9 +110,11 @@ function DevelopersDropdown() {
 }
 
 function MarketingNav() {
+  const [mobileOpen, setMobileOpen] = useState(false)
+
   return (
     <header className="marketing-nav sticky top-0 bg-white/95 backdrop-blur-sm z-50 border-b border-stone-100">
-      <div className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
+      <div className="px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between max-w-6xl mx-auto w-full">
         <a href="/" aria-label="Conduct AI home">
           <img src="/logo.png" alt="Conduct AI" className="h-8 sm:h-10 w-auto" />
         </a>
@@ -124,7 +127,7 @@ function MarketingNav() {
           <a href="/partners" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Partners</a>
           <a href="/blog" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">Blog</a>
         </nav>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <a href="/sign-in" className="text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors hidden sm:block">
             Sign in
           </a>
@@ -133,13 +136,97 @@ function MarketingNav() {
           </a>
           <a
             href="/discovery"
-            className="rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors"
+            className="rounded-lg bg-stone-900 text-white px-3 sm:px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors min-h-[44px] flex items-center"
           >
             Start Agent Discovery
           </a>
+          {/* Hamburger (mobile only) */}
+          <button
+            className="md:hidden p-2 rounded-lg text-stone-600 hover:bg-stone-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+            aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? (
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" />
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M3 5h14a1 1 0 110 2H3a1 1 0 010-2zm0 4h14a1 1 0 110 2H3a1 1 0 010-2zm0 4h14a1 1 0 110 2H3a1 1 0 010-2z" />
+              </svg>
+            )}
+          </button>
         </div>
       </div>
+
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <div className="md:hidden border-t border-stone-100 bg-white px-4 pb-4">
+          <div className="pt-3 space-y-1">
+            <MobileNavGroup label="Product">
+              <MobileNavItem href="/guard" label="Guard" />
+              <MobileNavItem href="/registry" label="Registry" />
+              <MobileNavItem href="/evidence" label="Evidence" />
+              <MobileNavItem href="/mcp-gateway" label="MCP" />
+            </MobileNavGroup>
+            <MobileNavGroup label="Solutions">
+              <MobileNavItem href="/solutions/engineering-leaders" label="Engineering Agents" />
+              <MobileNavItem href="/solutions/security-compliance" label="Security Teams" />
+              <MobileNavItem href="/solutions/action-governance" label="Business Actions" />
+              <MobileNavItem href="/solutions/financial-services" label="Financial Services" />
+              <MobileNavItem href="/solutions/life-sciences" label="Life Sciences" />
+              <MobileNavItem href="/solutions/nemo-guardrails" label="NeMo Guardrails + Conduct" />
+            </MobileNavGroup>
+            <MobileNavGroup label="Developers">
+              <MobileNavItem href="/docs" label="Docs" />
+              <MobileNavItem href="/tools/conduct-cli" label="CLI" />
+              <MobileNavItem href="/docs/lens" label="Lens" />
+              <MobileNavItem href="/open-source" label="Open Source" />
+              <MobileNavItem href="https://github.com/sseshachala/conductai" label="GitHub" />
+            </MobileNavGroup>
+            <div className="border-t border-stone-100 pt-3 mt-3 space-y-1">
+              <MobileNavItem href="/security" label="Security" />
+              <MobileNavItem href="/pricing" label="Pricing" />
+              <MobileNavItem href="/partners" label="Partners" />
+              <MobileNavItem href="/blog" label="Blog" />
+              <MobileNavItem href="/sign-in" label="Sign in" />
+              <MobileNavItem href="/book-demo" label="Book Demo" />
+            </div>
+          </div>
+        </div>
+      )}
     </header>
+  )
+}
+
+function MobileNavGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button
+        className="w-full flex items-center justify-between px-3 py-3 text-sm font-semibold text-stone-700 hover:bg-stone-50 rounded-lg transition-colors min-h-[44px]"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <span>{label}</span>
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className={`transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true">
+          <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+        </svg>
+      </button>
+      {open && <div className="pl-3 space-y-1">{children}</div>}
+    </div>
+  )
+}
+
+function MobileNavItem({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      className="block px-3 py-2.5 text-sm text-stone-500 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-colors min-h-[40px]"
+    >
+      {label}
+    </a>
   )
 }
 
