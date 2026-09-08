@@ -79,6 +79,13 @@ ALLOWLIST = {
     # audit row, AND the workspace must still be on the trial plan at read
     # time. Never returns rows from paid workspaces.
     "modules/guard/routers/blocks.py::get_receipt_public",
+    # Trial provisioning — public signup endpoint (#1712 Track 1 gap 3).
+    # Unauthenticated (no Clerk session) but email is REQUIRED in the body.
+    # Anti-abuse: IP rate-limit (5/hr) + email idempotency (same email
+    # returns the SAME workspace within the trial window). No Clerk user
+    # created here — email stashed on workspace.owner_id for later
+    # magic-link claim.
+    "modules/guard/routers/trial.py::provision_trial",
     # Guard budget check (workspace_id validated against guard_config — called pre-tool-use)
     "modules/guard/routers/spend.py::budget_check",
     # Telemetry ingest (auth via Authorization or X-Workspace-Id header — alternative auth)

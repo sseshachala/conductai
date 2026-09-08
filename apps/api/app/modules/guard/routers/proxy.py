@@ -443,18 +443,25 @@ async def _proxy(
         _environment_id = request.headers.get("x-conductai-environment-id") or None
         _hook_session_id = request.headers.get("x-conduct-session-id") or None
 
-        # #1712 Track 1 quick win — trial-plan lookup before policy eval so a
-        # BLOCK response can carry an anonymous receipt URL (Priya use case:
-        # Cursor error → click → land in Lens receipt with no login). Cheap
-        # single-row read against an indexed PK; failure falls back to
-        # workspace-only receipt URL. Reused inside _render_block via kwarg.
+        # #1712 Track 1 — trial-plan lookup before policy eval so a BLOCK
+        # response can carry an anonymous receipt URL. Cheap indexed read;
+        # any failure falls back to workspace-only receipt.
+        #
+        # `is_trial` is TRUE only when the workspace is on the seed trial
+        # plan AND has no owner attached — i.e. the anonymous curl-install
+        # flow. Trials with an email/owner (Option A install, existing Try
+        # page signup) get the workspace URL because the owner has a real
+        # account to view it under, and we don't want block prompts to
+        # default to a publicly-shareable link.
+        from app.modules.guard.trial_seed import TRIAL_PLAN as _TRIAL_PLAN
         _is_trial = False
         try:
-            _plan = db.execute(
-                text("SELECT plan FROM workspaces WHERE id = :ws"),
+            _row = db.execute(
+                text("SELECT plan, owner_id FROM workspaces WHERE id = :ws"),
                 {"ws": workspace_id},
-            ).scalar()
-            _is_trial = (_plan == "trial")
+            ).fetchone()
+            if _row is not None:
+                _is_trial = (_row.plan == _TRIAL_PLAN and _row.owner_id is None)
         except Exception:
             pass
 

@@ -25,6 +25,14 @@ const nextConfig = {
       { source: "/observability", destination: "/logs/observability", permanent: true },
     ]
   },
+  async rewrites() {
+    return [
+      // #1712 Track 1 — `curl -fsSL conductai.ai/install | sh` serves the
+      // shell installer from public/install.sh. Rewrite (not redirect) so
+      // the URL in marketing copy stays `/install` — clean and stable.
+      { source: "/install", destination: "/install.sh" },
+    ]
+  },
 }
 
 module.exports = nextConfig

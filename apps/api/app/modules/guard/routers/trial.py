@@ -24,7 +24,7 @@ from app.core.auth import get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.database import get_db
-from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME, seed_trial
+from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME, TRIAL_PLAN, seed_trial
 from app.modules.guard.trial_upstream import TRIAL_DAILY_CAP, get_trial_cap_used
 
 log = structlog.get_logger(__name__)
@@ -227,4 +227,209 @@ def get_trial_ops(
             for r in top_rows
         ],
         cap_max=TRIAL_DAILY_CAP,
+    )
+
+
+# ─── /guard/trial/provision — self-service curl-install endpoint (#1712 Track 1) ─
+#
+# `curl -fsSL conduct.ai/install | sh` posts an email + optional company to
+# this endpoint. Unauthenticated (no Clerk session, no Bearer token) but
+# email is REQUIRED — this is a signup form, not an identity-anonymous
+# mint. We provision a trial workspace + agent identity token and return
+# them so the shell script can drop `~/.conduct/env` on the caller's laptop.
+#
+# The email is stashed on workspace.owner_id as a plain string (not yet a
+# Clerk user id). A later `conduct claim` / magic-link flow can bind the
+# workspace to a real Clerk account.
+#
+# Anti-abuse:
+#   - IP rate-limit: 5 provisions per hour (Redis atomic INCR)
+#   - Email idempotency: repeat POST with same email within the trial
+#     window returns the SAME trial token instead of minting a second
+#     workspace. Protects platform-key spend and keeps ~/.conduct/env
+#     stable when the user re-runs the installer.
+
+
+import re as _re
+
+from fastapi import HTTPException, Request
+
+from app.guard.receipts import web_base_url as _web_base_url
+
+_EMAIL_RE = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_PROVISION_IP_CAP = 5   # per hour
+_PROVISION_IP_WINDOW_SEC = 3600
+
+
+class TrialProvisionIn(BaseModel):
+    email: str
+    company: str
+    # Optional caller-provided source tag (marketing attribution, referrer).
+    # Ignored by the provisioning path — stored in preferences for later
+    # analytics without altering the trial contract itself.
+    source: str | None = None
+
+
+class TrialProvisionOut(BaseModel):
+    workspace_id: str
+    agent_token: str
+    gateway_url: str
+    workspace_url: str
+
+
+def _redis_or_none():
+    """Best-effort Redis handle — fail-open on outage (matches trial_upstream
+    convention). No throttle when Redis is down is preferable to blocking
+    installs entirely."""
+    try:
+        from app.modules.guard.trial_upstream import _redis_client
+        return _redis_client()
+    except Exception:
+        return None
+
+
+def _ip_of(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for") or ""
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _throttle_by_ip(ip: str) -> bool:
+    """Return True if under the per-hour cap; False if the cap is hit.
+    Fails open when Redis is unreachable."""
+    r = _redis_or_none()
+    if r is None:
+        return True
+    key = f"guard:provision:ip:{ip}:{datetime.now(timezone.utc).strftime('%Y%m%d%H')}"
+    try:
+        pipe = r.pipeline()
+        pipe.incr(key, 1)
+        pipe.expire(key, _PROVISION_IP_WINDOW_SEC)
+        count, _ = pipe.execute()
+        return int(count or 0) <= _PROVISION_IP_CAP
+    except Exception:
+        return True
+
+
+def _find_existing_trial_by_email(db: Session, email: str) -> str | None:
+    """Return the workspace_id of an active trial owned by this email, or None.
+
+    An 'active' trial here = plan free_trial + owner_id matches email + trial
+    identity still `active` (not swept by teardown). Same email posting twice
+    within the trial window gets the same workspace back — idempotent."""
+    row = db.execute(
+        text("""
+            SELECT w.id
+            FROM workspaces w
+            JOIN agent_identities ai
+              ON ai.workspace_id = w.id
+             AND ai.name = :name
+             AND ai.lifecycle_state = 'active'
+             AND (ai.expires_at IS NULL OR ai.expires_at > :now)
+            WHERE w.owner_id = :owner AND w.plan = :plan
+            ORDER BY w.created_at DESC
+            LIMIT 1
+        """),
+        {
+            "owner": email, "plan": TRIAL_PLAN,
+            "name": TRIAL_IDENTITY_NAME,
+            "now": datetime.now(timezone.utc),
+        },
+    ).fetchone()
+    return str(row.id) if row else None
+
+
+@router.post("/provision", response_model=TrialProvisionOut)
+def provision_trial(
+    body: TrialProvisionIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> TrialProvisionOut:
+    """Anonymous trial workspace provisioning.
+
+    Called by `scripts/install.sh` (curl | sh). Returns the trial agent
+    token so the shell script can drop it in ``~/.conduct/env``.
+    """
+    # `seed_trial` is imported at module top; local re-imports here would
+    # shadow patches (used by tests) — keep the top-level binding.
+    from app.models.workspace import Workspace as _WS
+    import uuid as _uuid
+
+    email = (body.email or "").strip().lower()
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=422, detail="invalid_email")
+
+    company = (body.company or "").strip()
+    if not company:
+        raise HTTPException(status_code=422, detail="company_required")
+
+    ip = _ip_of(request)
+    if not _throttle_by_ip(ip):
+        raise HTTPException(
+            status_code=429,
+            detail=f"provision_rate_limited: {_PROVISION_IP_CAP}/hour per IP",
+        )
+
+    # Idempotency: same email within trial lifetime → return existing token.
+    ws_id = _find_existing_trial_by_email(db, email)
+    if ws_id is None:
+        ws = _WS(
+            id=_uuid.uuid4(),
+            name=f"{company[:60]} · trial",
+            owner_id=email,
+            plan="free",           # seed_trial flips to free_trial
+            is_approved=True,
+            preferences={
+                # Signup metadata — surfaced in trial ops dashboards and
+                # available for later SDR follow-up. Kept in a namespaced
+                # sub-object so downstream preference keys don't collide.
+                "trial_signup": {
+                    "email": email,
+                    "company": company,
+                    "source": (body.source or "curl-install")[:60],
+                    "ip": ip,
+                    "at": datetime.now(timezone.utc).isoformat(),
+                },
+            },
+        )
+        db.add(ws)
+        db.flush()
+        ws_id = str(ws.id)
+        seed_trial(db, ws_id)
+        db.commit()
+        log.info(
+            "guard.trial.provisioned",
+            workspace_id=ws_id, email=email, company=company, ip=ip,
+        )
+    else:
+        # Idempotent re-provision — no side effects, just re-reveal the
+        # existing token below. seed_trial(); is a no-op on an already-seeded
+        # workspace but we skip it entirely to avoid extra writes.
+        log.info(
+            "guard.trial.provision_replayed",
+            workspace_id=ws_id, email=email, ip=ip,
+        )
+
+    # Fetch + decrypt the trial identity token to return to the caller.
+    row = _load_trial_identity(db, ws_id)
+    if row is None:
+        # seed_trial should have written one; if not, something is very wrong.
+        raise HTTPException(status_code=500, detail="trial_seed_failed")
+    try:
+        token = decrypt(row.token_encrypted)["token"]
+    except Exception:
+        raise HTTPException(status_code=500, detail="trial_token_decrypt_failed")
+
+    # Anthropic SDK does `POST {base}/v1/messages`, so ANTHROPIC_BASE_URL
+    # must land on the vendor-specific route (`/proxy/anthropic`), not the
+    # bare `/proxy` root. Endpoint paths for other providers live under
+    # `/proxy/openai` and `/proxy/perplexity` — install.sh only wires
+    # Anthropic today; users who want OpenAI/Perplexity edit their env
+    # file directly.
+    return TrialProvisionOut(
+        workspace_id=ws_id,
+        agent_token=token,
+        gateway_url=f"{settings.conduct_proxy_url.rstrip('/')}/anthropic",
+        workspace_url=f"{_web_base_url()}/theguard",
     )
