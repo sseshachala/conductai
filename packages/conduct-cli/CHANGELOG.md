@@ -6,6 +6,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.11.0] - 2026-09-08
+
+### Added
+- **Block-receipt printer.** When a Guard rule blocks a Claude Code tool
+  call, the hook now mints an audit-row id client-side and prints a
+  bordered stderr callout with a clickable receipt URL:
+  ```
+  ┌────────────────────────────────────────────────────────────────┐
+  │ [ConductGuard] Blocked: bash cannot rm the workspace           │
+  │ → Receipt: https://conductai.ai/theguard/blocks/01JAX...       │
+  └────────────────────────────────────────────────────────────────┘
+  ```
+  Clicking the URL lands on a Lens receipt page seeded with four
+  pre-canned prompts ("Why did this block?", "Show me the rule",
+  "What would have allowed it?", "Draft an exception"). Falls back to
+  ASCII (`+---+`) on cp1252 stderr so Windows terminals don't crash.
+- `boxed_stderr()`, `web_url_from_api()`, `hook_receipt_url()` helpers in
+  `conduct_cli.hooks.base`. Self-host installs can override the web-app URL
+  via `web_url` in `~/.conduct/config.json`.
+
+### Changed
+- `post_event()` now sends the pre-minted `receipt_id` in the
+  `/guard/events` payload so the audit row PK matches what the user saw on
+  stderr.
+
+### Requires
+- Backend deployed with `HookEvent.receipt_id` support (see #1712 / PR
+  #1718). Older backends silently drop the field — the receipt URL still
+  prints but the link 404s until the backend is updated.
+
+---
+
 ## [0.10.0] - 2026-08-26
 
 ### Changed
