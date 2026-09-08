@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector image required — 0001_baseline + 0077_session_reports_embedding
+    # both run CREATE EXTENSION vector. Kept in step with .github/workflows/ci.yml.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-marshal}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marshal}
@@ -62,7 +64,10 @@ services:
 
   web:
     build:
-      context: ./apps/web
+      # Context is repo root because apps/web/Dockerfile does `COPY docs/`
+      # (marketing pages read docs/reference/*.md at build time).
+      context: .
+      dockerfile: apps/web/Dockerfile
       target: dev
     ports:
       - "3000:3000"
