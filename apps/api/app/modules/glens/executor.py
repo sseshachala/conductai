@@ -14,9 +14,20 @@ from sqlalchemy.orm import Session
 
 class Executor:
 
-    def __init__(self, db: Session, workspace_id: str, agent_identity_id: str | None = None):
+    def __init__(
+        self,
+        db: Session,
+        workspace_id: str,
+        agent_identity_id: str | None = None,
+        session_id: str | None = None,
+    ):
         self.db = db
         self.workspace_id = workspace_id
         # Set on chat endpoints so guarded_llm_call/stream can attribute egress
         # to the session-scoped AgentIdentity. None outside chat (tool registrations).
         self.agent_identity_id = agent_identity_id
+        # Lens chat session id — threaded into guarded_llm_call/stream as
+        # hook_session_id so audit rows link a block back to the Lens
+        # conversation that produced it (#1712 Track 1 quick win 3/3).
+        # None outside chat (tool registrations, headless callers).
+        self.session_id = session_id

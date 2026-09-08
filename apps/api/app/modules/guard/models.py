@@ -220,6 +220,10 @@ class GuardAuditEvent(Base):
         ForeignKey("agent_identities.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Added by revision 0116 — sha256 of a short-lived share token, present
+    # only for trial-workspace blocks. Enables anonymous receipt lookup for
+    # signup users who don't yet have a login; workspace rows leave it NULL.
+    share_token_hash = Column(Text, nullable=True)
 
     __table_args__ = (
         Index("ix_guard_audit_events_source", "workspace_id", "source", "ts"),

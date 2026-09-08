@@ -334,10 +334,13 @@ def post_event(
     *,
     drain_via: Optional[Path] = None,
     blast_radius: "dict | None" = None,
+    receipt_id: Optional[str] = None,
 ) -> None:
     """Post one guard event via the journal/drain pattern.  Never raises.
 
     drain_via — path of the calling hook file passed to ensure_drain_daemon().
+    receipt_id — pre-minted UUID (see hooks/pretooluse.py) so the row we
+    write here matches the receipt URL the hook already printed to stderr.
     """
     cfg = load_config()
     workspace_id = cfg.get("workspace_id")
@@ -365,7 +368,65 @@ def post_event(
         "blast_radius":    blast_radius,
         "goal_id":         _gcfg.get("current_goal_id") or None,
         "goal_name":       _gcfg.get("current_goal_name") or None,
+        "receipt_id":      receipt_id,
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     journal_append(payload, api_url)
     ensure_drain_daemon(drain_via)
+
+
+def web_url_from_api(api_url: str) -> str:
+    """Derive the web-app URL from api_url.
+
+    `https://api.conductai.ai` → `https://conductai.ai`. Self-hosted setups
+    can override by setting `web_url` in ~/.conduct/config.json — see
+    hook_receipt_url() below."""
+    stripped = api_url.rstrip("/")
+    # Only replace when the host actually starts with "api." — avoids
+    # eating a legitimate hostname like "myapi.example.com".
+    for scheme in ("https://", "http://"):
+        if stripped.startswith(scheme + "api."):
+            return scheme + stripped[len(scheme) + 4:]
+    return stripped
+
+
+def hook_receipt_url(receipt_id: str) -> Optional[str]:
+    """Build the receipt URL for a hook-side pre-minted block.
+
+    Returns None if no workspace/config is set. Uses `web_url` from config
+    when present (self-host), otherwise derives from `api_url`."""
+    cfg = load_config()
+    if not cfg.get("workspace_id"):
+        return None
+    web_url = cfg.get("web_url") or web_url_from_api(
+        cfg.get("api_url", "https://api.conductai.ai")
+    )
+    return f"{web_url.rstrip('/')}/theguard/blocks/{receipt_id}"
+
+
+def boxed_stderr(message: str, receipt_url: Optional[str] = None) -> str:
+    """Format a block message + optional receipt URL as a bordered stderr
+    callout so `[ConductGuard]` prints stand out from Claude Code chatter.
+
+    Kept as a plain string builder — the print itself happens at the call
+    site so tests can assert on the shape without patching stderr.
+
+    Uses unicode box-drawing chars on utf-8 stderr; falls back to plain
+    ASCII (`+---+`) on cp1252/etc. so Windows terminals never crash the
+    hook with UnicodeEncodeError."""
+    import sys as _sys
+    _enc = (getattr(_sys.stderr, "encoding", None) or "").lower()
+    _utf8 = _enc.startswith("utf")
+    tl, tr, bl, br = ("┌", "┐", "└", "┘") if _utf8 else ("+", "+", "+", "+")
+    h, v = ("─", "│") if _utf8 else ("-", "|")
+    arrow = "→" if _utf8 else "->"
+
+    body = message.rstrip()
+    if receipt_url:
+        body = f"{body}\n{arrow} Receipt: {receipt_url}"
+    lines = body.splitlines()
+    # Grow the box to fit the longest line (URLs can be > 80 chars).
+    width = max(80, max(len(line) for line in lines) + 2)
+    bar = h * width
+    inner = "\n".join(f"{v} {line.ljust(width - 2)}{v}" for line in lines)
+    return f"{tl}{bar}{tr}\n{inner}\n{bl}{bar}{br}"

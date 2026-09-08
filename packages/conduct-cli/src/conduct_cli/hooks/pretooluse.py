@@ -856,12 +856,28 @@ def main() -> None:
         sys.exit(0)
     if action == "warn" and session_id and rule_id:
         _record_session_warn(session_id, rule_id)
-    post_event(tool_name, tool_input, decision, rule_id, message, session_id, drain_via=_this_file)
+
+    # Pre-mint the audit-row id ONLY on block. That way the receipt URL
+    # we print to stderr resolves to the row we're about to write via
+    # /guard/events. Non-block decisions don't need a receipt.
+    receipt_id = None
+    receipt_url = None
+    if action == "block":
+        import uuid as _uuid
+        from .base import hook_receipt_url, boxed_stderr  # local import — hooks avoid heavy top-level imports
+        receipt_id = str(_uuid.uuid4())
+        receipt_url = hook_receipt_url(receipt_id)
+
+    post_event(
+        tool_name, tool_input, decision, rule_id, message, session_id,
+        drain_via=_this_file, receipt_id=receipt_id,
+    )
 
     if action == "block":
+        from .base import boxed_stderr as _boxed
         msg = f"[ConductGuard] {message}"
         print(msg)
-        print(msg, file=sys.stderr)
+        print(_boxed(msg, receipt_url), file=sys.stderr)
         sys.exit(2)
     if action == "warn":
         print(f"[ConductGuard] {message}")

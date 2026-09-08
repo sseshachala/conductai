@@ -563,6 +563,7 @@ def _guarded_openai_completion(executor: Executor, provider: str, model: str,
             clerk_user_id="system:lens",
             agent_identity_id=executor.agent_identity_id,
             prompt_summary="lens.resolve_tools",
+            hook_session_id=executor.session_id,
         )
     except _Blocked as blk:
         raise Exception(f"Guard blocked Lens call: {blk.detail}") from blk
@@ -660,6 +661,7 @@ def _stream_synthesis(msgs: list[dict], system: str, executor: Executor, on_toke
         clerk_user_id="system:lens",
         agent_identity_id=executor.agent_identity_id,
         prompt_summary="lens.synthesis",
+        hook_session_id=executor.session_id,
     )
     return text or "Could not complete the analysis."
 
@@ -759,7 +761,11 @@ async def glens_chat_stream(
     session_messages = json.loads(session.messages)
     session_messages.append({"role": "user", "content": req.message})
     session_id_str = str(session.id)
-    executor = Executor(db, workspace_id, agent_identity_id=session.agent_identity_id)
+    executor = Executor(
+        db, workspace_id,
+        agent_identity_id=session.agent_identity_id,
+        session_id=session_id_str,
+    )
 
     _now = datetime.now(timezone.utc)
     today = _now.strftime("%Y-%m-%d")

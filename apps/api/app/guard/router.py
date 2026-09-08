@@ -35,12 +35,21 @@ log = structlog.get_logger(__name__)
 
 # ─── Public helpers ───────────────────────────────────────────────────────────
 
-def fail_closed(status: int, message: str) -> JSONResponse:
-    """Security tool failing open is worse than no tool. Surface clear errors."""
-    return JSONResponse(
-        status_code=status,
-        content={"error": {"type": "conduct_guard_proxy", "message": message}},
-    )
+def fail_closed(
+    status: int,
+    message: str,
+    *,
+    extra: dict | None = None,
+) -> JSONResponse:
+    """Security tool failing open is worse than no tool. Surface clear errors.
+
+    `extra` merges into `error.metadata` so blocks can carry structured
+    fields (receipt_id, receipt_url) without breaking the canonical shape.
+    """
+    err: dict = {"type": "conduct_guard_proxy", "message": message}
+    if extra:
+        err["metadata"] = extra
+    return JSONResponse(status_code=status, content={"error": err})
 
 
 # ─── Private helpers ──────────────────────────────────────────────────────────

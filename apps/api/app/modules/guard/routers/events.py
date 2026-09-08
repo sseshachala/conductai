@@ -80,6 +80,11 @@ class HookEvent(BaseModel):
     # #1150 phase 1 — layered verdict envelope; hooks may forward the same shape
     evaluated_rules: list[dict] | None = None
     defense_score: int | None = None
+    # #1712 Track 1 — hook-side pre-minted receipt id. When present the
+    # audit row's PK is set to this uuid so the URL the hook printed to
+    # stderr resolves to the row we just wrote. Optional; when absent the
+    # row gets its usual server-generated uuid and no receipt is emitted.
+    receipt_id: str | None = None
 
 
 class UsageUpdate(BaseModel):
@@ -580,7 +585,14 @@ def ingest_event(
     policy_hash = get_policy_hash(db, ws_uuid)
 
     # 2. Write the audit event
+    _event_id: uuid.UUID | None = None
+    if body.receipt_id:
+        try:
+            _event_id = uuid.UUID(body.receipt_id)
+        except ValueError:
+            _event_id = None
     event = GuardAuditEvent(
+        id=_event_id or uuid.uuid4(),
         workspace_id=ws_uuid,
         clerk_user_id=body.clerk_user_id,
         session_id=body.session_id,
