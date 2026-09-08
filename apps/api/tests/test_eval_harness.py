@@ -40,6 +40,7 @@ _WIP_PLAYBOOKS = {
     "compromised_support_agent",
     "network_diagnosis_agent",
     "self_driving_network_approval_demo",
+    "nemo_guardrails_demo",
 }
 
 
