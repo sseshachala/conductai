@@ -273,7 +273,15 @@ class TrialProvisionIn(BaseModel):
 class TrialProvisionOut(BaseModel):
     workspace_id: str
     agent_token: str
+    # `gateway_url` — Anthropic-specific route (`.../proxy/anthropic`).
+    # The Anthropic SDK does `POST {base}/v1/messages`; other vendors
+    # follow the same pattern under their own `/proxy/<vendor>` prefix.
+    # Kept as-is for backwards compat with older install scripts.
     gateway_url: str
+    # `proxy_base_url` — vendor-agnostic root (`.../proxy`). Newer install
+    # scripts derive OpenAI / Perplexity URLs from this so we don't need
+    # a new response field per provider.
+    proxy_base_url: str
     workspace_url: str
     # Clerk one-time sign-in URL — click to land signed-in in dashboard.
     # Optional: null if Clerk isn't configured (local dev) or minting failed.
@@ -419,16 +427,18 @@ def provision_trial(
     # curl-install still works, user just goes to /sign-in manually.
     sign_in_url = _clerk_mint_sign_in_token(clerk_user_id)
 
-    # Anthropic SDK does `POST {base}/v1/messages`, so ANTHROPIC_BASE_URL
-    # must land on the vendor-specific route (`/proxy/anthropic`), not the
-    # bare `/proxy` root. Endpoint paths for other providers live under
-    # `/proxy/openai` and `/proxy/perplexity` — install.sh only wires
-    # Anthropic today; users who want OpenAI/Perplexity edit their env
-    # file directly.
+    # `gateway_url` is Anthropic-shaped because that's what the trial
+    # upstream key covers today. `proxy_base_url` is the vendor-agnostic
+    # root so newer install scripts can derive OpenAI / Perplexity URLs
+    # (`{proxy_base_url}/openai`, `.../perplexity`) without another API
+    # round-trip. Both routes accept the same trial token; Guard policy
+    # and hash-chained audit apply uniformly.
+    _proxy_base = settings.conduct_proxy_url.rstrip("/")
     return TrialProvisionOut(
         workspace_id=ws_id,
         agent_token=token,
-        gateway_url=f"{settings.conduct_proxy_url.rstrip('/')}/anthropic",
+        gateway_url=f"{_proxy_base}/anthropic",
+        proxy_base_url=_proxy_base,
         workspace_url=f"{_web_base_url()}/theguard",
         sign_in_url=sign_in_url,
     )
