@@ -74,6 +74,11 @@ ALLOWLIST = {
     "modules/guard/routers/events.py::ingest_event",
     "modules/guard/routers/events.py::update_usage",
     "modules/guard/routers/events.py::ingest_batch",
+    # Guard block receipt public read (#1712 — anonymous trial signup flow).
+    # Auth: sha256(share_token) in URL path must match share_token_hash on the
+    # audit row, AND the workspace must still be on the trial plan at read
+    # time. Never returns rows from paid workspaces.
+    "modules/guard/routers/blocks.py::get_receipt_public",
     # Guard budget check (workspace_id validated against guard_config — called pre-tool-use)
     "modules/guard/routers/spend.py::budget_check",
     # Telemetry ingest (auth via Authorization or X-Workspace-Id header — alternative auth)
