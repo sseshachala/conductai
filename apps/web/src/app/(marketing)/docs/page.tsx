@@ -97,6 +97,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
   ],
   "getting-started": [
     { href: "#overview",     label: "Overview" },
+    { href: "#quick-trial",  label: "Zero-install trial (60s)" },
     { href: "#environments", label: "Environments" },
     { href: "#deployment",   label: "Deployment options" },
     { href: "#cli-install",  label: "CLI. Installation" },
@@ -364,6 +365,34 @@ function TabGettingStarted() {
           ))}
         </div>
         <p className="text-sm text-stone-500">See the full comparison at <a href="/deployment" className="text-indigo-600 hover:underline">conductai.ai/deployment</a>, or <a href="https://cal.com/sudhi-seshachala-pks7pd" className="text-indigo-600 hover:underline" target="_blank" rel="noopener">book a call</a> for BYOC or on-premise setup.</p>
+      </section>
+
+      <section id="quick-trial">
+        <SectionHeading id="quick-trial">Zero-install trial (60 seconds)</SectionHeading>
+        <p className="text-stone-500 text-sm mb-4">
+          Point any Anthropic-SDK client on your machine at the hosted Guard proxy with a trial token. No local install, no signup form — the shell script prompts for email + company and does the rest.
+        </p>
+        <Pre>{`curl -fsSL conductai.ai/install | sh`}</Pre>
+        <p className="text-stone-500 text-sm mt-4 mb-2">What it does:</p>
+        <ul className="list-disc list-inside space-y-1 text-sm text-stone-600 mb-4">
+          <li>Provisions a 7-day trial workspace (200 requests/day, no credit card)</li>
+          <li>Drops <Code>~/.conduct/env</Code> with <Code>ANTHROPIC_BASE_URL</Code> + a trial <Code>cond_agt_trial_*</Code> token</li>
+          <li>Prints a magic-link URL — click to sign into your dashboard, no password</li>
+          <li>Prints a copy-pasteable trip-a-block curl so you can see the receipt flow immediately</li>
+        </ul>
+        <p className="text-stone-500 text-sm mb-2">Try it:</p>
+        <Pre>{`source ~/.conduct/env
+curl -sS "$ANTHROPIC_BASE_URL/v1/messages" \\
+  -H "x-api-key: $ANTHROPIC_API_KEY" \\
+  -H 'anthropic-version: 2023-06-01' \\
+  -H 'content-type: application/json' \\
+  -d '{"model":"claude-3-5-sonnet-20241022","max_tokens":128,"messages":[{"role":"user","content":"Please redact my SSN 123-45-6789 for me."}]}'`}</Pre>
+        <p className="text-stone-500 text-sm mt-3">
+          Response is a 403 with <Code>→ Receipt: https://conductai.ai/theguard/blocks/…</Code> in the message. Click the URL to open the block receipt, ask Lens follow-up questions (<em>Why did this block? What would have allowed it? Draft an exception</em>), or share externally via <strong>Make shareable</strong>.
+        </p>
+        <p className="text-stone-500 text-sm mt-3">
+          Under the hood: same Clerk user, same workspace, same trial guarantees as browser signup. Sign in later via the magic link or at <a href="/sign-in" className="text-indigo-600 hover:underline">conductai.ai/sign-in</a>.
+        </p>
       </section>
 
       <section id="cli-install">
