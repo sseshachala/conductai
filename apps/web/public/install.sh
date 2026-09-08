@@ -77,17 +77,32 @@ if [ "$HTTP_CODE" != "200" ]; then
 fi
 
 # ── Parse response ───────────────────────────────────────────────────────────
-if command -v python3 >/dev/null 2>&1; then
-    AGENT_TOKEN=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys;print(json.load(sys.stdin)["agent_token"])')
-    GATEWAY_URL=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys;print(json.load(sys.stdin)["gateway_url"])')
-    WORKSPACE_URL=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys;print(json.load(sys.stdin)["workspace_url"])')
-    SIGN_IN_URL=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("sign_in_url") or "")')
-else
-    AGENT_TOKEN=$(printf '%s' "$HTTP_BODY" | sed -n 's/.*"agent_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-    GATEWAY_URL=$(printf '%s' "$HTTP_BODY" | sed -n 's/.*"gateway_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-    WORKSPACE_URL=$(printf '%s' "$HTTP_BODY" | sed -n 's/.*"workspace_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-    SIGN_IN_URL=$(printf '%s' "$HTTP_BODY" | sed -n 's/.*"sign_in_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+# Require python3 for JSON parsing — the sed fallback was fragile on URLs
+# containing quotes or Unicode escapes. Modern macOS/Linux dev machines
+# ship python3 by default; the very few that don't can install via
+# Homebrew / apt / pyenv before re-running the installer.
+if ! command -v python3 >/dev/null 2>&1; then
+    printf '%serror: python3 is required to parse the trial response.%s\n' "$YELLOW" "$RESET" >&2
+    printf 'Install python3 (macOS: brew install python; Linux: apt install python3),\n' >&2
+    printf 'then re-run this installer. Every response field below is JSON:\n\n' >&2
+    printf '%s\n' "$HTTP_BODY" >&2
+    exit 1
 fi
+
+# One python invocation extracts every field — cheaper than four separate
+# json.load calls and gives us a single failure point if the shape changes.
+_parsed=$(printf '%s' "$HTTP_BODY" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print(d["agent_token"])
+print(d["gateway_url"])
+print(d["workspace_url"])
+print(d.get("sign_in_url") or "")
+')
+AGENT_TOKEN=$(printf '%s\n' "$_parsed" | sed -n '1p')
+GATEWAY_URL=$(printf '%s\n' "$_parsed" | sed -n '2p')
+WORKSPACE_URL=$(printf '%s\n' "$_parsed" | sed -n '3p')
+SIGN_IN_URL=$(printf '%s\n' "$_parsed" | sed -n '4p')
 
 if [ -z "$AGENT_TOKEN" ]; then
     printf '%serror: could not extract agent_token from response.%s\n' "$YELLOW" "$RESET" >&2

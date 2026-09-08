@@ -359,11 +359,27 @@ def provision_trial(
     # browser signup should short-circuit to a sign-in prompt rather than
     # spawning a second Clerk user + workspace. Clerk enforces email
     # uniqueness, so we can trust its answer as the source of truth.
+    def _map_clerk_error(exc: _ClerkError, *, on_422: int = 502) -> HTTPException:
+        """Translate Clerk API failures to caller-facing HTTP responses.
+
+        - 429 passes through unchanged so a rate-limited caller can back
+          off instead of retrying against what looks like a server error.
+        - 422 usually means "email already exists" (racy signup) — caller
+          decides whether to surface as 409 (create path) or 502
+          (lookup path).
+        - Anything else is an upstream failure → 502.
+        """
+        if exc.status == 429:
+            return HTTPException(status_code=429, detail="clerk_rate_limited")
+        if exc.status == 422:
+            return HTTPException(status_code=on_422, detail="clerk_create_user_failed")
+        return HTTPException(status_code=502, detail="clerk_unavailable")
+
     try:
         clerk_user_id = _clerk_find_user_by_email(email)
     except _ClerkError as exc:
         log.warning("guard.trial.provision.clerk_lookup_failed", email=email, err=str(exc))
-        raise HTTPException(status_code=502, detail="clerk_unavailable")
+        raise _map_clerk_error(exc)
 
     if clerk_user_id is None:
         # Fresh email — create the Clerk user via backend API. Same code
@@ -373,10 +389,9 @@ def provision_trial(
             clerk_user_id = _clerk_create_user(email)
         except _ClerkError as exc:
             log.warning("guard.trial.provision.clerk_create_failed", email=email, status=exc.status, body=exc.body)
-            # 422 from Clerk == email disallowed / already exists in a
-            # race we didn't see on lookup. Surface a clear signal.
-            status = 409 if exc.status == 422 else 502
-            raise HTTPException(status_code=status, detail="clerk_create_user_failed")
+            # 422 in the create path → 409 to hint "sign in" rather than
+            # "server error". 429 passes through unchanged for backoff.
+            raise _map_clerk_error(exc, on_422=409)
 
     # Shared onboarding — same function the Clerk webhook calls. Idempotent
     # so a race between webhook + this call is safe (whoever wins, later

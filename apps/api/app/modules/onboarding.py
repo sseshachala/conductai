@@ -40,13 +40,26 @@ def provision_workspace_for_user(
 
     Returns the workspace id.
     """
-    existing = db.execute(
-        text("SELECT id FROM workspaces WHERE owner_id = :uid ORDER BY created_at ASC LIMIT 1"),
+    # `owner_id` should be unique per Clerk user in normal operation. Multi-row
+    # matches indicate either legacy manual inserts or a race we didn't
+    # catch — surface them so ops can investigate. We still return the
+    # oldest (`created_at ASC`) for deterministic idempotency.
+    existing_rows = db.execute(
+        text("SELECT id FROM workspaces WHERE owner_id = :uid ORDER BY created_at ASC"),
         {"uid": clerk_user_id},
-    ).fetchone()
-    if existing:
-        log.info("onboarding.workspace_exists", clerk_user_id=clerk_user_id, workspace_id=str(existing.id))
-        return existing.id
+    ).fetchall()
+    if existing_rows:
+        if len(existing_rows) > 1:
+            log.warning(
+                "onboarding.multiple_workspaces_for_owner",
+                clerk_user_id=clerk_user_id,
+                count=len(existing_rows),
+                ids=[str(r.id) for r in existing_rows],
+                note="returning oldest for idempotency; investigate root cause",
+            )
+        winner = existing_rows[0]
+        log.info("onboarding.workspace_exists", clerk_user_id=clerk_user_id, workspace_id=str(winner.id))
+        return winner.id
 
     now = datetime.now(timezone.utc)
     workspace_id = _uuid.uuid4()

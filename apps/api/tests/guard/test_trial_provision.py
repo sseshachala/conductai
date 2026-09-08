@@ -224,7 +224,9 @@ def test_provision_502s_when_clerk_create_user_fails_with_5xx():
         _clear()
 
     assert resp.status_code == 502
-    assert "clerk_create_user_failed" in resp.text
+    # New mapping: 5xx from Clerk → clerk_unavailable (upstream outage).
+    # 4xx-non-422 also maps here — same class of error from the caller's POV.
+    assert "clerk_unavailable" in resp.text
 
 
 def test_provision_409s_on_clerk_422_race():
@@ -250,6 +252,31 @@ def test_provision_409s_on_clerk_422_race():
 
     assert resp.status_code == 409
     assert "clerk_create_user_failed" in resp.text
+
+
+def test_provision_passes_through_clerk_429_as_429():
+    """Clerk rate-limiting our provisioning should surface as 429 to the
+    caller, not 502 — so `curl | sh` can back off honestly instead of
+    treating an upstream throttle as a server outage."""
+    from app.core.clerk import ClerkError
+    stack, cfg = _patch_deps(
+        existing_clerk_user_id=None,
+        create_raises=ClerkError(status=429, message="too many requests"),
+    )
+    db = MagicMock()
+    client = _client(db)
+    try:
+        with stack:
+            _apply_patches(stack, cfg)
+            resp = client.post(
+                "/guard/trial/provision",
+                json={"email": "sudhi@example.com", "company": "Xervmon"},
+            )
+    finally:
+        _clear()
+
+    assert resp.status_code == 429
+    assert "clerk_rate_limited" in resp.text
 
 
 # ── Rate-limit ────────────────────────────────────────────────────────────────
