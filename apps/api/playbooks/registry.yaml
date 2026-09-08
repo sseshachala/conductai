@@ -325,6 +325,14 @@ playbooks:
     featured: true
     description: "Self-driving network agent (HPE Aruba Central + Juniper Mist) detects a BGP flap + DFS radar event, drafts a synchronized multi-fabric config push. Guard's approve-prod-deploy rule intercepts the shell command, pauses the run, fires a Slack Approve/Reject post. Approved → both fabrics converge; rejected → run halts. One rule, one click, hash-chained audit."
 
+  nemo_guardrails_demo:
+    file: nemo-guardrails-demo.yaml
+    icon: "🛡️"
+    category: AI Governance
+    tags: [governance, demo, nemo, guardrails, hpe, pcai, trism, prompt-injection]
+    featured: true
+    description: "5-beat live demo of Conduct as the DETECT & ENFORCE layer at L4 AI RUNTIME TRUST on HPE AI TRiSM. NeMo-style input rail → guard_check → real block on a prompt-injection payload → hash-chained audit row. ~90 seconds. Anchor moment for PCAI substrate deck."
+
 # GitHub events Conduct listens for globally (union of all playbook github_events above).
 # Used when registering a repo webhook so GitHub sends everything and we filter in the handler.
 all_github_events:
