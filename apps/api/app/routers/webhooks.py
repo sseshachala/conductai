@@ -1294,54 +1294,12 @@ async def clerk_webhook(request: Request, db: Session = Depends(get_db)):
 
     user_id: str = payload["data"]["id"]  # Clerk user ID e.g. user_2abc...
 
-    # Idempotency — skip if workspace already exists for this user
-    existing = db.execute(
-        _text("SELECT 1 FROM workspaces WHERE owner_id = :uid LIMIT 1"),
-        {"uid": user_id},
-    ).fetchone()
-    if existing:
-        log.info("clerk_webhook.workspace_exists", user_id=user_id)
-        return {"ok": True, "skipped": "workspace already exists"}
-
-    now          = _dt.now(_tz.utc)
-    workspace_id = _uuid.uuid4()
-    invite_code  = _uuid.uuid4().hex[:16]
-    token        = _secrets.token_urlsafe(24)
-
-    db.execute(_text("""
-        INSERT INTO workspaces (id, name, owner_id, plan, is_approved, created_at, updated_at)
-        VALUES (:id, 'Engineering', :owner_id, 'free', true, :now, :now)
-        ON CONFLICT DO NOTHING
-    """), {"id": str(workspace_id), "owner_id": user_id, "now": now})
-
-    db.execute(_text("""
-        INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
-        VALUES (:ws, :uid, 'admin', :now)
-        ON CONFLICT DO NOTHING
-    """), {"ws": str(workspace_id), "uid": user_id, "now": now})
-
-    db.execute(_text("""
-        INSERT INTO guard_config (workspace_id, invite_code, created_at)
-        VALUES (:ws, :code, :now)
-        ON CONFLICT (workspace_id) DO NOTHING
-    """), {"ws": str(workspace_id), "code": invite_code, "now": now})
-
-    db.execute(_text("""
-        INSERT INTO guard_member_config (workspace_id, clerk_user_id, member_token, active, joined_at)
-        VALUES (:ws, :uid, :token, true, :now)
-        ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
-    """), {"ws": str(workspace_id), "uid": user_id, "token": token, "now": now})
-
-    # Seed starter Guard policies (reuse projects.py helper via direct SQL equivalent)
-    from app.routers.projects import _seed_starter_policies
-    _seed_starter_policies(db, workspace_id, now)
-
-    # Trial seed (#1567): rate/budget caps + 7-day trial agent identity.
-    from app.modules.guard.trial_seed import seed_trial
-    seed_trial(db, str(workspace_id))
-
+    # #1712 PR 5 — shared onboarding function so the curl-install path and
+    # this webhook use one code path. `provision_workspace_for_user` is
+    # idempotent (returns existing id if user already has a workspace).
+    from app.modules.onboarding import provision_workspace_for_user
+    workspace_id = provision_workspace_for_user(db, user_id)
     db.commit()
-    log.info("clerk_webhook.workspace_created", user_id=user_id, workspace_id=str(workspace_id))
     return {"ok": True, "workspace_id": str(workspace_id)}
 
 

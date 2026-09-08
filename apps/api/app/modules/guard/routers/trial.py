@@ -24,7 +24,7 @@ from app.core.auth import get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.database import get_db
-from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME, TRIAL_PLAN, seed_trial
+from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME, seed_trial
 from app.modules.guard.trial_upstream import TRIAL_DAILY_CAP, get_trial_cap_used
 
 log = structlog.get_logger(__name__)
@@ -275,6 +275,9 @@ class TrialProvisionOut(BaseModel):
     agent_token: str
     gateway_url: str
     workspace_url: str
+    # Clerk one-time sign-in URL — click to land signed-in in dashboard.
+    # Optional: null if Clerk isn't configured (local dev) or minting failed.
+    sign_in_url: str | None = None
 
 
 def _redis_or_none():
@@ -312,49 +315,30 @@ def _throttle_by_ip(ip: str) -> bool:
         return True
 
 
-def _find_existing_trial_by_email(db: Session, email: str) -> str | None:
-    """Return the workspace_id of an active trial owned by this email, or None.
-
-    An 'active' trial here = plan free_trial + owner_id matches email + trial
-    identity still `active` (not swept by teardown). Same email posting twice
-    within the trial window gets the same workspace back — idempotent."""
-    row = db.execute(
-        text("""
-            SELECT w.id
-            FROM workspaces w
-            JOIN agent_identities ai
-              ON ai.workspace_id = w.id
-             AND ai.name = :name
-             AND ai.lifecycle_state = 'active'
-             AND (ai.expires_at IS NULL OR ai.expires_at > :now)
-            WHERE w.owner_id = :owner AND w.plan = :plan
-            ORDER BY w.created_at DESC
-            LIMIT 1
-        """),
-        {
-            "owner": email, "plan": TRIAL_PLAN,
-            "name": TRIAL_IDENTITY_NAME,
-            "now": datetime.now(timezone.utc),
-        },
-    ).fetchone()
-    return str(row.id) if row else None
-
-
 @router.post("/provision", response_model=TrialProvisionOut)
 def provision_trial(
     body: TrialProvisionIn,
     request: Request,
     db: Session = Depends(get_db),
 ) -> TrialProvisionOut:
-    """Anonymous trial workspace provisioning.
+    """Self-service trial workspace provisioning (public signup endpoint).
 
-    Called by `scripts/install.sh` (curl | sh). Returns the trial agent
-    token so the shell script can drop it in ``~/.conduct/env``.
+    Called by `apps/web/public/install.sh` (curl | sh). Converged with the
+    UI signup flow — a Clerk user is created here, then the same shared
+    `provision_workspace_for_user` runs that the `user.created` webhook
+    uses. Result: one workspace-creation code path, no bifurcation.
+
+    Response includes an optional one-time sign-in URL so the CLI can
+    print "click here to view your dashboard" — user lands signed in with
+    zero password prompts.
     """
-    # `seed_trial` is imported at module top; local re-imports here would
-    # shadow patches (used by tests) — keep the top-level binding.
-    from app.models.workspace import Workspace as _WS
-    import uuid as _uuid
+    from app.core.clerk import (
+        ClerkError as _ClerkError,
+        create_user as _clerk_create_user,
+        find_user_by_email as _clerk_find_user_by_email,
+        mint_sign_in_token as _clerk_mint_sign_in_token,
+    )
+    from app.modules.onboarding import provision_workspace_for_user
 
     email = (body.email or "").strip().lower()
     if not _EMAIL_RE.match(email):
@@ -371,55 +355,54 @@ def provision_trial(
             detail=f"provision_rate_limited: {_PROVISION_IP_CAP}/hour per IP",
         )
 
-    # Idempotency: same email within trial lifetime → return existing token.
-    ws_id = _find_existing_trial_by_email(db, email)
-    if ws_id is None:
-        ws = _WS(
-            id=_uuid.uuid4(),
-            name=f"{company[:60]} · trial",
-            owner_id=email,
-            plan="free",           # seed_trial flips to free_trial
-            is_approved=True,
-            preferences={
-                # Signup metadata — surfaced in trial ops dashboards and
-                # available for later SDR follow-up. Kept in a namespaced
-                # sub-object so downstream preference keys don't collide.
-                "trial_signup": {
-                    "email": email,
-                    "company": company,
-                    "source": (body.source or "curl-install")[:60],
-                    "ip": ip,
-                    "at": datetime.now(timezone.utc).isoformat(),
-                },
-            },
-        )
-        db.add(ws)
-        db.flush()
-        ws_id = str(ws.id)
-        seed_trial(db, ws_id)
-        db.commit()
-        log.info(
-            "guard.trial.provisioned",
-            workspace_id=ws_id, email=email, company=company, ip=ip,
-        )
-    else:
-        # Idempotent re-provision — no side effects, just re-reveal the
-        # existing token below. seed_trial(); is a no-op on an already-seeded
-        # workspace but we skip it entirely to avoid extra writes.
-        log.info(
-            "guard.trial.provision_replayed",
-            workspace_id=ws_id, email=email, ip=ip,
-        )
+    # Look up first — same email hitting the endpoint twice OR after a
+    # browser signup should short-circuit to a sign-in prompt rather than
+    # spawning a second Clerk user + workspace. Clerk enforces email
+    # uniqueness, so we can trust its answer as the source of truth.
+    try:
+        clerk_user_id = _clerk_find_user_by_email(email)
+    except _ClerkError as exc:
+        log.warning("guard.trial.provision.clerk_lookup_failed", email=email, err=str(exc))
+        raise HTTPException(status_code=502, detail="clerk_unavailable")
+
+    if clerk_user_id is None:
+        # Fresh email — create the Clerk user via backend API. Same code
+        # path Clerk fires webhooks for; our webhook handler is idempotent
+        # so a duplicate `user.created` (if delivered late) is a no-op.
+        try:
+            clerk_user_id = _clerk_create_user(email)
+        except _ClerkError as exc:
+            log.warning("guard.trial.provision.clerk_create_failed", email=email, status=exc.status, body=exc.body)
+            # 422 from Clerk == email disallowed / already exists in a
+            # race we didn't see on lookup. Surface a clear signal.
+            status = 409 if exc.status == 422 else 502
+            raise HTTPException(status_code=status, detail="clerk_create_user_failed")
+
+    # Shared onboarding — same function the Clerk webhook calls. Idempotent
+    # so a race between webhook + this call is safe (whoever wins, later
+    # caller returns the existing workspace).
+    ws_id_uuid = provision_workspace_for_user(db, clerk_user_id, name=company[:60])
+    db.commit()
+    ws_id = str(ws_id_uuid)
+    log.info(
+        "guard.trial.provisioned",
+        workspace_id=ws_id, clerk_user_id=clerk_user_id,
+        email=email, company=company, ip=ip,
+    )
 
     # Fetch + decrypt the trial identity token to return to the caller.
     row = _load_trial_identity(db, ws_id)
     if row is None:
-        # seed_trial should have written one; if not, something is very wrong.
         raise HTTPException(status_code=500, detail="trial_seed_failed")
     try:
         token = decrypt(row.token_encrypted)["token"]
     except Exception:
         raise HTTPException(status_code=500, detail="trial_token_decrypt_failed")
+
+    # Best-effort sign-in URL — CLI prints it so user can click straight
+    # into the dashboard. None if Clerk not configured or mint failed;
+    # curl-install still works, user just goes to /sign-in manually.
+    sign_in_url = _clerk_mint_sign_in_token(clerk_user_id)
 
     # Anthropic SDK does `POST {base}/v1/messages`, so ANTHROPIC_BASE_URL
     # must land on the vendor-specific route (`/proxy/anthropic`), not the
@@ -432,4 +415,5 @@ def provision_trial(
         agent_token=token,
         gateway_url=f"{settings.conduct_proxy_url.rstrip('/')}/anthropic",
         workspace_url=f"{_web_base_url()}/theguard",
+        sign_in_url=sign_in_url,
     )

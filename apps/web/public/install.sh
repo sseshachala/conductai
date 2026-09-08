@@ -81,10 +81,12 @@ if command -v python3 >/dev/null 2>&1; then
     AGENT_TOKEN=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys;print(json.load(sys.stdin)["agent_token"])')
     GATEWAY_URL=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys;print(json.load(sys.stdin)["gateway_url"])')
     WORKSPACE_URL=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys;print(json.load(sys.stdin)["workspace_url"])')
+    SIGN_IN_URL=$(printf '%s' "$HTTP_BODY" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("sign_in_url") or "")')
 else
     AGENT_TOKEN=$(printf '%s' "$HTTP_BODY" | sed -n 's/.*"agent_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
     GATEWAY_URL=$(printf '%s' "$HTTP_BODY" | sed -n 's/.*"gateway_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
     WORKSPACE_URL=$(printf '%s' "$HTTP_BODY" | sed -n 's/.*"workspace_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    SIGN_IN_URL=$(printf '%s' "$HTTP_BODY" | sed -n 's/.*"sign_in_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 fi
 
 if [ -z "$AGENT_TOKEN" ]; then
@@ -111,7 +113,12 @@ mv "$TMP_ENV" "$ENV_FILE"
 
 printf '%s✓ Trial workspace provisioned.%s\n' "$GREEN" "$RESET"
 printf '  Env file:      %s%s%s\n' "$BOLD" "$ENV_FILE" "$RESET"
-printf '  Workspace URL: %s%s%s\n\n' "$BOLD" "$WORKSPACE_URL" "$RESET"
+printf '  Workspace URL: %s%s%s\n' "$BOLD" "$WORKSPACE_URL" "$RESET"
+if [ -n "$SIGN_IN_URL" ]; then
+    printf '  Sign in:       %s%s%s\n' "$BOLD" "$SIGN_IN_URL" "$RESET"
+    printf '  %s(one-time magic link, valid 24h — opens straight into your dashboard)%s\n' "$DIM" "$RESET"
+fi
+printf '\n'
 
 # ── Trip-a-block command ─────────────────────────────────────────────────────
 printf '%sTrip a block to see the receipt flow:%s\n\n' "$BOLD" "$RESET"
