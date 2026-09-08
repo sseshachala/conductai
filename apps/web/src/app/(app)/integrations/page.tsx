@@ -93,16 +93,18 @@ function McpModal({
   isSystem,
   isConductManaged,
   hasExistingAuth,
+  serverId,
 }: {
   mode: "add" | "edit"
   initial: FormState
   environments: Environment[]
   onSave: (form: FormState) => Promise<void>
-  onTest: (body: { url: string; auth_token: string | null; transport: string; environment_id?: string; credential_key?: string }) => Promise<{ ok: boolean; msg: string }>
+  onTest: (body: { url: string; auth_token: string | null; transport: string; environment_id?: string; credential_key?: string; server_id?: string }) => Promise<{ ok: boolean; msg: string }>
   onClose: () => void
   isSystem?: boolean
   isConductManaged?: boolean
   hasExistingAuth?: boolean
+  serverId?: string
 }) {
   const [form, setForm] = useState<FormState>(initial)
   const [saving, setSaving] = useState(false)
@@ -124,6 +126,7 @@ function McpModal({
         transport: form.transport,
         environment_id: form.environment_id || undefined,
         credential_key: getProvider(form.provider)?.credentialKey || undefined,
+        server_id: serverId,
       })
       setTestResult(result)
     } catch (e: unknown) {
@@ -422,7 +425,7 @@ function IntegrationsPageInner({
     setEditTarget(null)
   }
 
-  async function handleTest(body: { url: string; auth_token: string | null; transport: string; environment_id?: string; credential_key?: string }): Promise<{ ok: boolean; msg: string }> {
+  async function handleTest(body: { url: string; auth_token: string | null; transport: string; environment_id?: string; credential_key?: string; server_id?: string }): Promise<{ ok: boolean; msg: string }> {
     const headers = await buildHeaders(true)
     const res = await authFetch(`${API}/mcp-servers/test-connection`, {
       method: "POST",
@@ -652,6 +655,7 @@ function IntegrationsPageInner({
           isSystem={!!editTarget?.is_system}
           isConductManaged={editTarget?.name === "Conduct AI Guard"}
           hasExistingAuth={!!editTarget?.has_auth}
+          serverId={editTarget?.id}
           initial={initialForm}
           environments={environments}
           onSave={handleSave}

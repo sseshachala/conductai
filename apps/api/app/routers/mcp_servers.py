@@ -142,6 +142,7 @@ class McpTestIn(BaseModel):
     transport: str = "auto"
     environment_id: Optional[str] = None
     credential_key: Optional[str] = None  # e.g. GITHUB_TOKEN — resolve from env if auth_token blank
+    server_id: Optional[str] = None  # when set, fall back to this server's saved token if auth_token blank
 
 
 class McpTestOut(BaseModel):
@@ -164,10 +165,31 @@ def test_mcp_connection(
     Returns ok=True with a tool sample on success, ok=False with the underlying
     error message on failure. Saves the user a 30-minute agent run that fails
     at the first tool call because the token was wrong.
+
+    Auth resolution chain (first hit wins):
+      1. ``body.auth_token`` — the token typed into the form. Lets the user
+         validate a NEW token before overwriting the saved one.
+      2. ``body.server_id`` — decrypts the saved token for that row (workspace-
+         scoped). Lets the user re-test an existing config without re-typing.
+      3. ``body.credential_key`` — resolves via workspace env-var table.
     """
     from app.runtime.integrations.mcp_client import list_tools
 
     token = body.auth_token or None
+    if not token and body.server_id:
+        # Workspace-scoped lookup — never leak another workspace's token.
+        row = db.execute(
+            text(
+                "SELECT encrypted_auth FROM mcp_servers "
+                "WHERE id = :id AND workspace_id = :ws"
+            ),
+            {"id": body.server_id, "ws": workspace_id},
+        ).fetchone()
+        if row and row.encrypted_auth:
+            try:
+                token = decrypt(row.encrypted_auth).get("token")
+            except Exception:
+                token = None
     if not token and body.credential_key:
         try:
             from app.runtime.mcp_credentials import resolve_mcp_token_by_credential_key
