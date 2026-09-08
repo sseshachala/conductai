@@ -36,6 +36,17 @@ from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME, TRIAL_PLAN
 log = structlog.get_logger(__name__)
 
 GUARD_TRIAL_ANTHROPIC_KEY_ENV = "GUARD_TRIAL_ANTHROPIC_KEY"
+GUARD_TRIAL_OPENAI_KEY_ENV = "GUARD_TRIAL_OPENAI_KEY"
+# Provider → env-var name for the platform-funded trial upstream key.
+# Adding a provider = one entry here + one Render env var, no code fork.
+# Cap semantics are SHARED across providers (see try_reserve_trial_slot):
+# a workspace gets TRIAL_DAILY_CAP total requests per day regardless of
+# which provider it hits — that matches the existing agent-identity
+# scope of the Redis counter.
+TRIAL_UPSTREAM_KEY_ENV_BY_PROVIDER = {
+    "anthropic": GUARD_TRIAL_ANTHROPIC_KEY_ENV,
+    "openai": GUARD_TRIAL_OPENAI_KEY_ENV,
+}
 TRIAL_DAILY_CAP = 200
 TRIAL_CAP_WINDOW_HOURS = 24
 TrialStatus = Literal["active", "expired", "exceeded", "ineligible"]
@@ -110,11 +121,18 @@ def resolve_trial_key(
     agent_identity_id: str | None,
 ) -> tuple[str | None, TrialStatus]:
     """Trial-only platform upstream key resolver. See module docstring."""
-    if provider != "anthropic":
+    env_var = TRIAL_UPSTREAM_KEY_ENV_BY_PROVIDER.get(provider)
+    if env_var is None:
+        # Provider outside the trial-funded set (Perplexity, Bedrock, etc.)
+        # — user brings their own vendor key via the workspace vault.
         return None, "ineligible"
 
-    env_key = os.environ.get(GUARD_TRIAL_ANTHROPIC_KEY_ENV) or ""
+    env_key = os.environ.get(env_var) or ""
     if not env_key:
+        # Trial-funded set includes this provider, but no key is
+        # configured on this deploy. Trial workspaces still authenticate
+        # to the proxy, but the upstream call has nowhere to go — same
+        # outcome as a truly-unsupported provider from the user's POV.
         return None, "ineligible"
 
     if not agent_identity_id:
