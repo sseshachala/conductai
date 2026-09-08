@@ -19,7 +19,7 @@ _Built for engineering teams. Install in 10 minutes. Evidence for the CISO from 
 curl -fsSL conductai.ai/install | sh
 ```
 
-Prompts for email + company, provisions a 7-day trial workspace, drops `~/.conduct/env` with `ANTHROPIC_BASE_URL` + a trial token. Any Anthropic-SDK client on the machine (Cursor, Claude Code, LangChain, LiteLLM, raw SDK) now routes through the Guard proxy. A blocked call comes back with a `Receipt: https://conductai.ai/theguard/blocks/…` URL — click it to view the block, ask Lens follow-up questions, and log in to the dashboard via the magic-link the installer prints.
+Prompts for email + company, provisions a 7-day trial workspace, drops `~/.conduct/env` with `ANTHROPIC_BASE_URL` + `OPENAI_BASE_URL` + a trial token (200 requests/day shared across both providers). Any Anthropic- or OpenAI-SDK client on the machine (Cursor, Claude Code, LangChain, LiteLLM, raw SDK) now routes through the Guard proxy. A blocked call comes back with a `Receipt: https://conductai.ai/theguard/blocks/…` URL — click it to view the block, ask Lens follow-up questions, and log in to the dashboard via the magic-link the installer prints.
 
 ### Full install (for daily use)
 

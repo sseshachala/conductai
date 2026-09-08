@@ -89,20 +89,35 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 1
 fi
 
-# One python invocation extracts every field — cheaper than four separate
+# One python invocation extracts every field — cheaper than five separate
 # json.load calls and gives us a single failure point if the shape changes.
+# `gateway_url` is the Anthropic-specific route (kept for backwards compat).
+# `proxy_base_url` is the vendor-agnostic root so we can derive OpenAI /
+# Perplexity URLs client-side without another API round-trip.
 _parsed=$(printf '%s' "$HTTP_BODY" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
 print(d["agent_token"])
 print(d["gateway_url"])
+print(d.get("proxy_base_url") or "")
 print(d["workspace_url"])
 print(d.get("sign_in_url") or "")
 ')
 AGENT_TOKEN=$(printf '%s\n' "$_parsed" | sed -n '1p')
 GATEWAY_URL=$(printf '%s\n' "$_parsed" | sed -n '2p')
-WORKSPACE_URL=$(printf '%s\n' "$_parsed" | sed -n '3p')
-SIGN_IN_URL=$(printf '%s\n' "$_parsed" | sed -n '4p')
+PROXY_BASE_URL=$(printf '%s\n' "$_parsed" | sed -n '3p')
+WORKSPACE_URL=$(printf '%s\n' "$_parsed" | sed -n '4p')
+SIGN_IN_URL=$(printf '%s\n' "$_parsed" | sed -n '5p')
+
+# Derive OpenAI base from proxy_base_url. Anthropic already lives on
+# GATEWAY_URL. Skipped if the backend hasn't started returning
+# proxy_base_url yet (older deploys) — user can still trip a block via
+# Anthropic; OpenAI just doesn't get wired.
+if [ -n "$PROXY_BASE_URL" ]; then
+    OPENAI_BASE_URL="${PROXY_BASE_URL}/openai"
+else
+    OPENAI_BASE_URL=""
+fi
 
 if [ -z "$AGENT_TOKEN" ]; then
     printf '%serror: could not extract agent_token from response.%s\n' "$YELLOW" "$RESET" >&2
@@ -117,13 +132,26 @@ mkdir -p "$(dirname "$ENV_FILE")"
 # explicit permission-modifying call, without invoking one.
 TMP_ENV=$(mktemp)
 cat > "$TMP_ENV" <<EOF
-# ConductGuard trial — 7 days, 200 requests/day
-# Point any Anthropic-SDK client at this base URL and the trial token
-# authenticates you. Same env var (ANTHROPIC_BASE_URL) works with Cursor,
-# Claude Code, LangChain, LiteLLM, and every SDK we've tested.
+# ConductGuard trial — 7 days, 200 Anthropic requests/day
+#
+# Anthropic (trial-funded):
+#   The trial token authenticates every Anthropic-SDK client on this
+#   machine — Cursor, Claude Code, LangChain, LiteLLM, raw SDK, curl.
 export ANTHROPIC_BASE_URL="$GATEWAY_URL"
 export ANTHROPIC_API_KEY="$AGENT_TOKEN"
 EOF
+
+if [ -n "$OPENAI_BASE_URL" ]; then
+    cat >> "$TMP_ENV" <<EOF
+
+# OpenAI (also trial-funded when Guard has GUARD_TRIAL_OPENAI_KEY):
+#   The same trial token authenticates OpenAI-SDK clients — LangChain,
+#   raw SDK, curl. Same 200 requests/day cap across all providers.
+export OPENAI_BASE_URL="$OPENAI_BASE_URL"
+export OPENAI_API_KEY="$AGENT_TOKEN"
+EOF
+fi
+
 mv "$TMP_ENV" "$ENV_FILE"
 
 printf '%s✓ Trial workspace provisioned.%s\n' "$GREEN" "$RESET"

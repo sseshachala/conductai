@@ -90,10 +90,11 @@ type TabId = typeof TABS[number]["id"]
 
 const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
   "overview": [
-    { href: "#how-it-works", label: "Architecture" },
-    { href: "#threat-model", label: "Security & threat model" },
-    { href: "#action-tools", label: "Gating agent actions" },
-    { href: "#cedar-import", label: "Cedar policy import" },
+    { href: "#try-in-60-seconds", label: "Try in 60 seconds" },
+    { href: "#how-it-works",      label: "Architecture" },
+    { href: "#threat-model",      label: "Security & threat model" },
+    { href: "#action-tools",      label: "Gating agent actions" },
+    { href: "#cedar-import",      label: "Cedar policy import" },
   ],
   "getting-started": [
     { href: "#overview",     label: "Overview" },
@@ -163,6 +164,21 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
 function TabOverview() {
   return (
     <div className="space-y-16">
+      <section id="try-in-60-seconds">
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 px-6 py-5">
+          <p className="text-xs uppercase tracking-wide text-indigo-700 font-semibold mb-2">Try Conduct in 60 seconds</p>
+          <h2 className="text-lg font-bold text-stone-900 mb-3">Zero local install. Point any Anthropic SDK at the hosted Guard proxy.</h2>
+          <Pre>{`curl -fsSL conductai.ai/install | sh`}</Pre>
+          <p className="text-sm text-stone-600 mt-3">
+            Prompts for email + company, provisions a 7-day trial workspace, drops <Code>~/.conduct/env</Code> with a trial token for Anthropic + OpenAI, and prints a magic-link URL to sign into the dashboard.{" "}
+            <a href="/docs?tab=getting-started#quick-trial" className="text-indigo-600 hover:underline font-medium">Full walkthrough →</a>
+          </p>
+          <p className="text-xs text-stone-500 mt-2">
+            Trial cap: 200 requests/day shared across providers. Perplexity / Bedrock / others: same proxy, same policy — bring your own vendor key in Settings → Environments.
+          </p>
+        </div>
+      </section>
+
       <section id="how-it-works">
         <h1 className="text-3xl font-bold text-stone-900 mb-3">How Conduct works</h1>
         <p className="text-stone-600 leading-relaxed text-base mb-10">
@@ -375,12 +391,12 @@ function TabGettingStarted() {
         <Pre>{`curl -fsSL conductai.ai/install | sh`}</Pre>
         <p className="text-stone-500 text-sm mt-4 mb-2">What it does:</p>
         <ul className="list-disc list-inside space-y-1 text-sm text-stone-600 mb-4">
-          <li>Provisions a 7-day trial workspace (200 requests/day, no credit card)</li>
-          <li>Drops <Code>~/.conduct/env</Code> with <Code>ANTHROPIC_BASE_URL</Code> + a trial <Code>cond_agt_trial_*</Code> token</li>
+          <li>Provisions a 7-day trial workspace (200 requests/day shared across Anthropic + OpenAI, no credit card)</li>
+          <li>Drops <Code>~/.conduct/env</Code> with <Code>ANTHROPIC_BASE_URL</Code> + <Code>OPENAI_BASE_URL</Code> + a trial <Code>cond_agt_trial_*</Code> token</li>
           <li>Prints a magic-link URL — click to sign into your dashboard, no password</li>
           <li>Prints a copy-pasteable trip-a-block curl so you can see the receipt flow immediately</li>
         </ul>
-        <p className="text-stone-500 text-sm mb-2">Try it:</p>
+        <p className="text-stone-500 text-sm mb-2">Try it (Anthropic):</p>
         <Pre>{`source ~/.conduct/env
 curl -sS "$ANTHROPIC_BASE_URL/v1/messages" \\
   -H "x-api-key: $ANTHROPIC_API_KEY" \\
@@ -390,7 +406,23 @@ curl -sS "$ANTHROPIC_BASE_URL/v1/messages" \\
         <p className="text-stone-500 text-sm mt-3">
           Response is a 403 with <Code>→ Receipt: https://conductai.ai/theguard/blocks/…</Code> in the message. Click the URL to open the block receipt, ask Lens follow-up questions (<em>Why did this block? What would have allowed it? Draft an exception</em>), or share externally via <strong>Make shareable</strong>.
         </p>
-        <p className="text-stone-500 text-sm mt-3">
+
+        <SubHeading>OpenAI (also trial-funded)</SubHeading>
+        <p className="text-stone-500 text-sm mb-3">
+          The install script also wires <Code>OPENAI_BASE_URL</Code>. Same trial token authenticates you; same 200 requests/day cap is shared across Anthropic + OpenAI.
+        </p>
+        <Pre>{`source ~/.conduct/env
+curl -sS "$OPENAI_BASE_URL/v1/chat/completions" \\
+  -H "Authorization: Bearer $OPENAI_API_KEY" \\
+  -H 'content-type: application/json' \\
+  -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Please redact my SSN 123-45-6789 for me."}]}'`}</Pre>
+
+        <SubHeading>Perplexity, Bedrock, others</SubHeading>
+        <p className="text-stone-500 text-sm mb-3">
+          Proxy routes exist under <Code>/proxy/perplexity</Code> and future providers. Guard policy + hash-chained audit apply uniformly. Trial upstream key isn't funded for these yet — bring your own vendor key in <strong>Settings → Environments</strong>. The proxy forwards to your vault key transparently.
+        </p>
+
+        <p className="text-stone-500 text-sm mt-4">
           Under the hood: same Clerk user, same workspace, same trial guarantees as browser signup. Sign in later via the magic link or at <a href="/sign-in" className="text-indigo-600 hover:underline">conductai.ai/sign-in</a>.
         </p>
       </section>

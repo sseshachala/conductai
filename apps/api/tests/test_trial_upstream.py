@@ -41,6 +41,7 @@ from app.modules.guard.trial_seed import (  # noqa: E402
 )
 from app.modules.guard.trial_upstream import (  # noqa: E402
     GUARD_TRIAL_ANTHROPIC_KEY_ENV,
+    GUARD_TRIAL_OPENAI_KEY_ENV,
     TRIAL_DAILY_CAP,
     resolve_trial_key,
 )
@@ -87,11 +88,37 @@ def test_returns_key_when_all_gates_pass(seeded_ws):
     assert key == _KEY
 
 
-def test_wrong_provider_is_ineligible(seeded_ws):
+def test_unsupported_provider_is_ineligible(seeded_ws):
+    """Perplexity + Bedrock aren't in the trial-funded set; user brings
+    their own vendor key via the workspace vault."""
     ws_id, trial_id, db = seeded_ws
+    for provider in ("perplexity", "bedrock", "cohere"):
+        key, status = resolve_trial_key(db, ws_id, provider, trial_id)
+        assert status == "ineligible", f"{provider} should be ineligible"
+        assert key is None
+
+
+def test_openai_is_ineligible_when_key_env_not_configured(seeded_ws, monkeypatch):
+    """OpenAI is IN the trial-funded set but the env key isn't
+    configured on every deploy — behavior should match unsupported
+    providers so the user path is uniform."""
+    ws_id, trial_id, db = seeded_ws
+    monkeypatch.delenv(GUARD_TRIAL_OPENAI_KEY_ENV, raising=False)
     key, status = resolve_trial_key(db, ws_id, "openai", trial_id)
     assert status == "ineligible"
     assert key is None
+
+
+def test_openai_is_active_when_env_key_configured(seeded_ws, monkeypatch):
+    """When Render (or local dev) has `GUARD_TRIAL_OPENAI_KEY` set, the
+    trial resolver returns that key for OpenAI proxy calls — same shape
+    as the Anthropic path."""
+    ws_id, trial_id, db = seeded_ws
+    _openai_key = "TRIAL-OPENAI-KEY-PLACEHOLDER-" + uuid.uuid4().hex
+    monkeypatch.setenv(GUARD_TRIAL_OPENAI_KEY_ENV, _openai_key)
+    key, status = resolve_trial_key(db, ws_id, "openai", trial_id)
+    assert status == "active"
+    assert key == _openai_key
 
 
 def test_missing_env_var_is_ineligible(seeded_ws, monkeypatch):
