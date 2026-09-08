@@ -394,7 +394,14 @@ def hook_receipt_url(receipt_id: str) -> Optional[str]:
     """Build the receipt URL for a hook-side pre-minted block.
 
     Returns None if no workspace/config is set. Uses `web_url` from config
-    when present (self-host), otherwise derives from `api_url`."""
+    when present (self-host), otherwise derives from `api_url`.
+
+    Path shape mirrors ``apps/api/app/guard/receipts.py::build_receipt_url``.
+    Cross-package because the CLI hook mints its own receipt id client-side
+    and prints the URL to stderr BEFORE the audit row is written (backend
+    writes the row asynchronously after we return). If you change the URL
+    shape here, change it there too — no shared code, both are the
+    contract."""
     cfg = load_config()
     if not cfg.get("workspace_id"):
         return None

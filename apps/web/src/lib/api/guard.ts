@@ -362,6 +362,12 @@ export interface BlockReceipt {
   hook_session_id: string | null
 }
 
+export interface ShareResult {
+  receipt_id: string
+  already_shared: boolean
+  receipt_url: string | null
+}
+
 export const blocks = {
   get: (f: AuthFetch, id: string) =>
     json<BlockReceipt>(f, `${base()}/blocks/${encodeURIComponent(id)}`),
@@ -370,6 +376,11 @@ export const blocks = {
       `${base()}/blocks/public/${encodeURIComponent(id)}/${encodeURIComponent(token)}`,
     )
     if (!res.ok) throw new Error(`receipt fetch ${res.status}`)
+    return res.json()
+  },
+  share: async (f: AuthFetch, id: string): Promise<ShareResult> => {
+    const res = await post(f, `${base()}/blocks/${encodeURIComponent(id)}/share`, {})
+    if (!res.ok) throw new Error(`share ${res.status}`)
     return res.json()
   },
 }

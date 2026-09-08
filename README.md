@@ -13,6 +13,16 @@ _Built for engineering teams. Install in 10 minutes. Evidence for the CISO from 
 
 </div>
 
+### 60-second trial (no install)
+
+```bash
+curl -fsSL conductai.ai/install | sh
+```
+
+Prompts for email + company, provisions a 7-day trial workspace, drops `~/.conduct/env` with `ANTHROPIC_BASE_URL` + a trial token. Any Anthropic-SDK client on the machine (Cursor, Claude Code, LangChain, LiteLLM, raw SDK) now routes through the Guard proxy. A blocked call comes back with a `Receipt: https://conductai.ai/theguard/blocks/…` URL — click it to view the block, ask Lens follow-up questions, and log in to the dashboard via the magic-link the installer prints.
+
+### Full install (for daily use)
+
 ```bash
 pip install conduct-cli
 conduct login
@@ -21,7 +31,7 @@ conduct sync
 
 Every Claude Code, Cursor, Copilot, and Codex session on that machine is now governed. Blocks, warnings, and a hash-chained audit trail show up at [conductai.ai](https://conductai.ai).
 
-Prefer to self-host?
+### Self-host
 
 ```bash
 git clone https://github.com/sseshachala/conductai && cd conductai && docker compose up

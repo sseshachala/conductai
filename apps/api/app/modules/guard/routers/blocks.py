@@ -20,12 +20,13 @@ import uuid as _uuid
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
-from app.guard.receipts import hash_share_token
+from app.guard.receipts import build_receipt_url, hash_share_token, mint_share_token
 
 log = structlog.get_logger(__name__)
 
@@ -90,9 +91,14 @@ def get_receipt_public(
     token: str,
     db: Session = Depends(get_db),
 ):
-    """Anonymous receipt read for trial signup users. Hash-check the token
-    against the row and re-verify the workspace is still on the trial plan
-    — a converted paid workspace must not leak old trial receipts."""
+    """Anonymous receipt read. Hash-check the token against the row and
+    re-verify the workspace is still on the trial plan — a workspace that
+    converted to paid must not leak old trial receipts through this route.
+
+    The plan value is the ``TRIAL_PLAN`` constant (``free_trial``) — not the
+    literal string ``"trial"``. Earlier revisions of this endpoint compared
+    against the wrong string and 404'd every request (#1712 PR 5 bugfix)."""
+    from app.modules.guard.trial_seed import TRIAL_PLAN
     row = _fetch_blocked(db, receipt_id)
     if row is None or not row.share_token_hash:
         raise HTTPException(status_code=404, detail="receipt_not_found")
@@ -102,6 +108,68 @@ def get_receipt_public(
         text("SELECT plan FROM workspaces WHERE id = :ws"),
         {"ws": str(row.workspace_id)},
     ).scalar()
-    if plan != "trial":
+    if plan != TRIAL_PLAN:
         raise HTTPException(status_code=404, detail="receipt_not_found")
     return _row_to_receipt(row)
+
+
+class ShareOut(BaseModel):
+    """Response for POST /guard/blocks/{id}/share.
+
+    `receipt_url` is populated on a fresh share (raw token revealed once);
+    `already_shared=True` means the row already had a hash and the raw
+    token isn't recoverable — owner needs revoke+reshare (future PR) to
+    get a new URL. Same Notion-style pattern as the FE ShareButton."""
+    receipt_id: str
+    already_shared: bool
+    receipt_url: str | None
+
+
+@router.post("/{receipt_id}/share", response_model=ShareOut)
+def make_shareable(
+    receipt_id: _uuid.UUID,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.activity.view_own")),
+):
+    """Owner-triggered share: mint a share token for this receipt so the
+    owner can paste a public URL into Slack/email/tweet. Cross-workspace
+    requests 404. Idempotent on the "already shareable" branch —
+    re-clicking returns the same URL, but the raw token is only revealed
+    once (subsequent calls return the public URL with an opaque marker so
+    the owner can copy the link but not the raw token, matching Notion's
+    "you can view this link but not re-copy the secret" pattern)."""
+    row = _fetch_blocked(db, receipt_id)
+    if row is None or str(row.workspace_id) != str(workspace_id):
+        raise HTTPException(status_code=404, detail="receipt_not_found")
+
+    if row.share_token_hash:
+        # Already shared. We don't have the raw token anymore (hash only).
+        # Return already-shared so the FE can say "This link is public"
+        # without hinting the token can be reconstructed. Owner who lost
+        # the URL needs revoke + re-share (future PR).
+        return ShareOut(
+            receipt_id=str(row.id),
+            already_shared=True,
+            receipt_url=None,
+        )
+
+    raw, digest = mint_share_token()
+    db.execute(
+        text("""
+            UPDATE guard_audit_events
+            SET share_token_hash = :hash
+            WHERE id = :id AND workspace_id = :ws
+        """),
+        {"hash": digest, "id": str(receipt_id), "ws": str(workspace_id)},
+    )
+    db.commit()
+    log.info(
+        "guard.blocks.shared",
+        receipt_id=str(receipt_id), workspace_id=workspace_id,
+    )
+    return ShareOut(
+        receipt_id=str(row.id),
+        already_shared=False,
+        receipt_url=build_receipt_url(str(row.id), raw),
+    )

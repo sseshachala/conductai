@@ -94,7 +94,8 @@ def test_render_block_trial_path_returns_public_receipt_url_and_share_hash():
     assert parts[-3] == "b"
     assert parts[-2] == err["receipt_id"]
     raw_token = parts[-1]
-    assert raw_token.startswith("cond_bkr_")
+    from app.guard.receipts import SHARE_TOKEN_PREFIX
+    assert raw_token.startswith(SHARE_TOKEN_PREFIX)
 
     # Hash on the audit row matches sha256(raw_token) — anonymous public
     # endpoint uses this to authorize the reader.
@@ -145,7 +146,8 @@ def test_share_token_hash_round_trip():
     from app.guard.receipts import mint_share_token, hash_share_token
 
     raw, digest = mint_share_token()
-    assert raw.startswith("cond_bkr_")
+    from app.guard.receipts import SHARE_TOKEN_PREFIX
+    assert raw.startswith(SHARE_TOKEN_PREFIX)
     assert digest == hash_share_token(raw)
     # Different mint = different digest
     raw2, digest2 = mint_share_token()
@@ -217,20 +219,21 @@ def test_guarded_client_call_forwards_hook_session_id_to_audit(monkeypatch):
     assert recorded["kwargs"]["hook_session_id"] == "ses_abc123"
 
 
-def test_receipt_url_honors_conduct_web_url():
-    from app.guard.receipts import build_receipt_url
+def test_receipt_url_honors_env_overrides_and_defaults_to_localhost(monkeypatch):
+    """Resolution order: CONDUCT_WEB_URL > APP_URL > localhost default."""
+    from app.guard.receipts import build_receipt_url, DEFAULT_LOCAL_WEB_URL
 
-    orig = os.environ.get("CONDUCT_WEB_URL")
-    try:
-        os.environ["CONDUCT_WEB_URL"] = "https://example.test"
-        assert build_receipt_url("abc").startswith("https://example.test/theguard/blocks/")
-        url = build_receipt_url("abc", "cond_bkr_xyz")
-        assert url == "https://example.test/b/abc/cond_bkr_xyz"
-    finally:
-        if orig is None:
-            del os.environ["CONDUCT_WEB_URL"]
-        else:
-            os.environ["CONDUCT_WEB_URL"] = orig
+    monkeypatch.delenv("CONDUCT_WEB_URL", raising=False)
+    monkeypatch.delenv("APP_URL", raising=False)
+    assert build_receipt_url("abc").startswith(f"{DEFAULT_LOCAL_WEB_URL}/theguard/blocks/")
+
+    monkeypatch.setenv("APP_URL", "https://example.test")
+    assert build_receipt_url("abc").startswith("https://example.test/theguard/blocks/")
+
+    # CONDUCT_WEB_URL wins over APP_URL when both are set
+    monkeypatch.setenv("CONDUCT_WEB_URL", "https://staging.example.com")
+    url = build_receipt_url("abc", "cond_bkr_xyz")
+    assert url == "https://staging.example.com/b/abc/cond_bkr_xyz"
 
 
 # ─── HTTP endpoint tests ──────────────────────────────────────────────────────
@@ -323,7 +326,7 @@ def test_endpoint_public_receipt_returns_row_with_valid_token_on_trial_workspace
     # Two calls: fetchone for the audit row, scalar for the workspace plan.
     db = MagicMock()
     fetch = MagicMock(); fetch.fetchone.return_value = row
-    scalar = MagicMock(); scalar.scalar.return_value = "trial"
+    scalar = MagicMock(); scalar.scalar.return_value = "free_trial"
     db.execute.side_effect = [fetch, scalar]
 
     client = _client_with_db(db, workspace_id="does-not-matter-public-route")
@@ -362,6 +365,72 @@ def test_endpoint_public_receipt_404s_on_bad_token_and_non_trial_plan():
     client = _client_with_db(db_paid, workspace_id="x")
     try:
         resp = client.get(f"/guard/blocks/public/{row2.id}/{raw_token}")
+        assert resp.status_code == 404
+    finally:
+        _clear_overrides()
+
+
+# ─── POST /guard/blocks/{id}/share — make-shareable ─────────────────────────
+
+def test_endpoint_make_shareable_mints_token_and_returns_public_url():
+    """Owner-triggered share: mints token, writes hash, returns public URL."""
+    ws = "00000000-0000-0000-0000-000000000020"
+    row = _make_audit_row(ws, share_token_hash=None)  # not yet shared
+
+    db = MagicMock()
+    fetch_result = MagicMock(); fetch_result.fetchone.return_value = row
+    update_result = MagicMock()
+    # First execute() = SELECT the row; second = UPDATE share_token_hash
+    db.execute.side_effect = [fetch_result, update_result]
+
+    client = _client_with_db(db, workspace_id=ws)
+    try:
+        resp = client.post(f"/guard/blocks/{row.id}/share")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["already_shared"] is False
+        assert body["receipt_url"].startswith("http")
+        # URL shape: {web}/b/{id}/{cond_bkr_...}
+        from app.guard.receipts import SHARE_TOKEN_PREFIX
+        assert f"/b/{row.id}/{SHARE_TOKEN_PREFIX}" in body["receipt_url"]
+    finally:
+        _clear_overrides()
+
+
+def test_endpoint_make_shareable_returns_already_shared_when_hash_present():
+    """Idempotent branch — receipt already has a hash, we don't remint."""
+    ws = "00000000-0000-0000-0000-000000000021"
+    row = _make_audit_row(ws, share_token_hash="deadbeef" * 8)  # already shared
+
+    db = MagicMock()
+    fetch_result = MagicMock(); fetch_result.fetchone.return_value = row
+    db.execute.return_value = fetch_result
+
+    client = _client_with_db(db, workspace_id=ws)
+    try:
+        resp = client.post(f"/guard/blocks/{row.id}/share")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["already_shared"] is True
+        # Owner who lost the URL sees receipt_url=None — they need to
+        # revoke + reshare (future PR) to get a fresh raw token
+        assert body["receipt_url"] is None
+    finally:
+        _clear_overrides()
+
+
+def test_endpoint_make_shareable_404s_across_workspaces():
+    row_ws = "00000000-0000-0000-0000-000000000022"
+    caller_ws = "00000000-0000-0000-0000-000000000023"
+    row = _make_audit_row(row_ws, share_token_hash=None)
+
+    db = MagicMock()
+    fetch_result = MagicMock(); fetch_result.fetchone.return_value = row
+    db.execute.return_value = fetch_result
+
+    client = _client_with_db(db, workspace_id=caller_ws)
+    try:
+        resp = client.post(f"/guard/blocks/{row.id}/share")
         assert resp.status_code == 404
     finally:
         _clear_overrides()
