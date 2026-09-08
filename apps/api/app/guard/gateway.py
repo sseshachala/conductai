@@ -88,12 +88,17 @@ async def guarded_completion(
     conductai_workflow_id: str | None = None,
     hook_session_id: str | None = None,
     agent_identity_id: str | None = None,
+    is_trial: bool = False,
 ) -> StreamingResponse | JSONResponse:
     """Evaluate policy, dispatch to upstream if allowed, schedule audit.
 
     This is the ONE code path that must be true for every LLM call — HTTP
     proxy, Lens, per-tool guard_check. If a caller needs a variant, add a
     parameter here; do not fork the composition."""
+    import uuid as _uuid
+    from app.guard.receipts import build_receipt_url as _build_receipt_url
+    from app.guard.receipts import mint_share_token as _mint_share_token
+
     started = time.monotonic()
 
     # #1254 — composable policy engine (#1225). RulePolicySource inside
@@ -125,6 +130,12 @@ async def guarded_completion(
     )
 
     if decision.action == "BLOCK":
+        _receipt_id = str(_uuid.uuid4())
+        _share_token: str | None = None
+        _share_token_hash: str | None = None
+        if is_trial:
+            _share_token, _share_token_hash = _mint_share_token()
+        _receipt_url = _build_receipt_url(_receipt_id, _share_token)
         background.add_task(
             _record_audit,
             workspace_id, clerk_user_id, ai_tool, provider, model,
@@ -138,10 +149,14 @@ async def guarded_completion(
             hook_session_id=hook_session_id,
             evaluated_rules=decision.matched_rules,
             defense_score=decision.defense_score,
+            receipt_id=_receipt_id,
+            share_token_hash=_share_token_hash,
         )
         return _router.fail_closed(
             403,
-            f"Blocked by Guard rule {decision.rule_id}: {decision.message or 'policy violation'}",
+            f"Blocked by Guard rule {decision.rule_id}: {decision.message or 'policy violation'}"
+            f"\n→ Receipt: {_receipt_url}",
+            extra={"receipt_id": _receipt_id, "receipt_url": _receipt_url},
         )
 
     audit_args: tuple[Any, ...] = (
@@ -188,6 +203,8 @@ async def guarded_llm_call(
     vendor_key: str | None = None,
     extra_headers: dict | None = None,
     agent_identity_id: str | None = None,
+    hook_session_id: str | None = None,
+    is_trial: bool = False,
 ) -> dict:
     """In-process, non-streaming Lens sibling of `guarded_completion`.
 
@@ -226,6 +243,8 @@ async def guarded_llm_call(
         vendor_key=vendor_key,
         extra_headers=extra_headers,
         agent_identity_id=agent_identity_id,
+        hook_session_id=hook_session_id,
+        is_trial=is_trial,
     )
 
     # Drive the scheduled audit writes now — no request lifecycle to run them for us.
@@ -321,6 +340,7 @@ def guarded_client_call(
     agent_identity_id: str | None = None,
     prompt_summary: str = "",
     user_email: str | None = None,
+    hook_session_id: str | None = None,
 ):
     """Policy-checked LLMClient.create — same policy engine as guarded_completion.
 
@@ -362,6 +382,7 @@ def guarded_client_call(
                 int((_time.monotonic() - started) * 1000),
                 body=body, response_bytes=None,
                 prompt_summary=prompt_summary, user_email=user_email,
+                hook_session_id=hook_session_id,
             )
         except Exception as e:
             log.warning("guarded_client_call.audit_block_failed", err=str(e))
@@ -389,6 +410,7 @@ def guarded_client_call(
             int((_time.monotonic() - started) * 1000),
             body=body, response_bytes=synth,
             prompt_summary=prompt_summary, user_email=user_email,
+            hook_session_id=hook_session_id,
         )
     except Exception as e:
         log.warning("guarded_client_call.audit_allow_failed", err=str(e))
@@ -411,6 +433,7 @@ def guarded_client_stream(
     agent_identity_id: str | None = None,
     prompt_summary: str = "",
     user_email: str | None = None,
+    hook_session_id: str | None = None,
 ) -> str:
     """Policy-checked LLMClient.stream — text-only synthesis path.
 
@@ -449,6 +472,7 @@ def guarded_client_stream(
                 int((_time.monotonic() - started) * 1000),
                 body=body, response_bytes=None,
                 prompt_summary=prompt_summary, user_email=user_email,
+                hook_session_id=hook_session_id,
             )
         except Exception as e:
             log.warning("guarded_client_stream.audit_block_failed", err=str(e))
@@ -479,6 +503,7 @@ def guarded_client_stream(
             int((_time.monotonic() - started) * 1000),
             body=body, response_bytes=None,
             prompt_summary=prompt_summary, user_email=user_email,
+            hook_session_id=hook_session_id,
         )
     except Exception as e:
         log.warning("guarded_client_stream.audit_allow_failed", err=str(e))
@@ -501,6 +526,7 @@ def guarded_llm_stream(
     clerk_user_id: str = "system:lens",
     db=None,
     agent_identity_id: str | None = None,
+    hook_session_id: str | None = None,
 ) -> str:
     """Streaming, in-process sibling of `guarded_llm_call` for OpenAI-shape SSE.
 
@@ -554,6 +580,7 @@ def guarded_llm_stream(
                 prompt_summary=f"{ai_tool}.stream",
                 evaluated_rules=decision.matched_rules,
                 defense_score=decision.defense_score,
+                hook_session_id=hook_session_id,
             )
         except Exception:
             pass
@@ -604,6 +631,7 @@ def guarded_llm_stream(
             prompt_summary=f"{ai_tool}.stream",
             evaluated_rules=decision.matched_rules,
             defense_score=decision.defense_score,
+            hook_session_id=hook_session_id,
         )
     except Exception as e:
         log.warning("guarded_llm_stream.audit_failed", err=str(e))

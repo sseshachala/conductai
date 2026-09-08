@@ -17,74 +17,100 @@ def render_block(
     decision, background, workspace_id, clerk_user_id, ai_tool, provider,
     model, body, prompt_summary, user_email, run_id, workflow,
     workflow_id, hook_session_id, started, record_audit_fn, fail_closed_fn,
+    *, is_trial: bool = False,
 ):
+    from app.guard.receipts import build_receipt_url, mint_share_token
+
     source = decision.source
     extras = decision.extras or {}
     duration_ms = int((time.monotonic() - started) * 1000)
 
-    if source == "rule":
-        background.add_task(
-            record_audit_fn, workspace_id, clerk_user_id, ai_tool, provider, model,
-            "blocked", decision.rule_id, duration_ms,
+    # Pre-mint the audit row id so the response can carry a link to it
+    # before the background audit write completes. Trial rows also get a
+    # short-lived share token so anonymous signup users can view their
+    # own receipt without logging in.
+    receipt_id = str(uuid.uuid4())
+    share_token: str | None = None
+    share_token_hash: str | None = None
+    if is_trial:
+        share_token, share_token_hash = mint_share_token()
+    receipt_url = build_receipt_url(receipt_id, share_token)
+
+    def _audit(decision_str: str, rule_id: str | None, *, with_verdict: bool):
+        kwargs = dict(
             body=body, response_bytes=None,
             prompt_summary=prompt_summary, user_email=user_email,
             conductai_run_id=run_id, conductai_workflow=workflow,
             conductai_workflow_id=workflow_id, hook_session_id=hook_session_id,
-            evaluated_rules=decision.matched_rules,
-            defense_score=decision.defense_score,
+            receipt_id=receipt_id,
+            share_token_hash=share_token_hash,
         )
+        if with_verdict:
+            kwargs["evaluated_rules"] = decision.matched_rules
+            kwargs["defense_score"] = decision.defense_score
+        background.add_task(
+            record_audit_fn, workspace_id, clerk_user_id, ai_tool, provider, model,
+            decision_str, rule_id, duration_ms, **kwargs,
+        )
+
+    # Embed the receipt URL in the message itself so every SDK that raises
+    # on `error.message` (Anthropic, OpenAI, LiteLLM, LangChain, raw curl)
+    # surfaces the link with zero per-integration wiring. Structured fields
+    # stay next to it for plugins that want machine-readable access.
+    def _with_receipt(msg: str | None) -> str:
+        base = msg or "Blocked by policy"
+        return f"{base}\n→ Receipt: {receipt_url}"
+
+    if source == "rule":
+        _audit("blocked", decision.rule_id, with_verdict=True)
         err = {
             "type": "guard_block",
-            "message": decision.reason,
+            "message": _with_receipt(decision.reason),
             "rule": decision.rule_id,
             "matched_rules": decision.matched_rules,
             "defense_score": decision.defense_score,
+            "receipt_id": receipt_id,
+            "receipt_url": receipt_url,
         }
         if decision.inject_guidance and decision.guidance:
             err["guidance"] = decision.guidance
         return JSONResponse(status_code=403, content={"error": err})
 
     if source == "spend_cap":
-        background.add_task(
-            record_audit_fn, workspace_id, clerk_user_id, ai_tool, provider, model,
-            "budget_exceeded", None, duration_ms,
-            body=body, response_bytes=None,
-            prompt_summary=prompt_summary, user_email=user_email,
-            conductai_run_id=run_id, conductai_workflow=workflow,
-            conductai_workflow_id=workflow_id, hook_session_id=hook_session_id,
-        )
+        _audit("budget_exceeded", None, with_verdict=False)
         return JSONResponse(
             status_code=429,
             content={"error": {
                 "type": "guard_budget_exceeded",
-                "message": decision.reason or "Monthly AI budget reached.",
+                "message": _with_receipt(decision.reason or "Monthly AI budget reached."),
                 "monthly_cost_usd": extras.get("monthly_cost_usd"),
                 "hard_limit_usd": extras.get("hard_limit_usd"),
+                "receipt_id": receipt_id,
+                "receipt_url": receipt_url,
             }},
         )
 
     if source == "throughput_cap":
-        background.add_task(
-            record_audit_fn, workspace_id, clerk_user_id, ai_tool, provider, model,
-            "rate_limited", None, duration_ms,
-            body=body, response_bytes=None,
-            prompt_summary=prompt_summary, user_email=user_email,
-            conductai_run_id=run_id, conductai_workflow=workflow,
-            conductai_workflow_id=workflow_id, hook_session_id=hook_session_id,
-        )
+        _audit("rate_limited", None, with_verdict=False)
         return JSONResponse(
             status_code=429,
             content={"error": {
                 "type": "guard_rate_limited",
-                "message": decision.reason,
+                "message": _with_receipt(decision.reason),
                 "metric": extras.get("metric"),
                 "limit": extras.get("limit"),
                 "current": extras.get("current"),
                 "scope": extras.get("scope"),
+                "receipt_id": receipt_id,
+                "receipt_url": receipt_url,
             }},
         )
 
-    return fail_closed_fn(403, decision.reason or "Blocked by policy")
+    return fail_closed_fn(
+        403,
+        _with_receipt(decision.reason or "Blocked by policy"),
+        extra={"receipt_id": receipt_id, "receipt_url": receipt_url},
+    )
 
 
 def render_approval(

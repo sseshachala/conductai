@@ -341,3 +341,35 @@ export const glens = {
   session: (f: AuthFetch, sessionId: string) =>
     json<any>(f, `${API}/glens/sessions/${sessionId}`),
 }
+
+// Block receipts (#1712 Track 1) — every Guard block response carries a
+// receipt_id + receipt_url. Workspace users read via authFetch; anonymous
+// trial signup users hit the public path with a share token embedded in
+// the URL (never persisted anywhere else).
+export interface BlockReceipt {
+  receipt_id: string
+  ts: string | null
+  decision: string
+  rule_id: string | null
+  rule_message: string | null
+  provider: string | null
+  model: string | null
+  ai_tool: string
+  input_summary: string | null
+  evaluated_rules: Array<Record<string, unknown>> | null
+  defense_score: number | null
+  conductai_run_id: string | null
+  hook_session_id: string | null
+}
+
+export const blocks = {
+  get: (f: AuthFetch, id: string) =>
+    json<BlockReceipt>(f, `${base()}/blocks/${encodeURIComponent(id)}`),
+  getPublic: async (id: string, token: string): Promise<BlockReceipt> => {
+    const res = await fetch(
+      `${base()}/blocks/public/${encodeURIComponent(id)}/${encodeURIComponent(token)}`,
+    )
+    if (!res.ok) throw new Error(`receipt fetch ${res.status}`)
+    return res.json()
+  },
+}

@@ -123,12 +123,20 @@ def record(
     conductai_workflow_id: str | None = None, hook_session_id: str | None = None,
     evaluated_rules: list[dict] | None = None, defense_score: int | None = None,
     routing_meta: dict | None = None,
+    receipt_id: str | None = None,
+    share_token_hash: str | None = None,
 ) -> None:
     """Background task — best-effort audit write, never blocks the response.
 
     Writes one row to guard_audit_events with tokens, cost, rule, decision,
     and provenance metadata. On BLOCK decisions, also fires a Slack notification
-    via events.notify_guard_block (best-effort — swallows failures)."""
+    via events.notify_guard_block (best-effort — swallows failures).
+
+    `receipt_id` is a pre-minted row id so the caller can return
+    `receipt_url` in the block response before this background task runs.
+    `share_token_hash` (sha256 of a raw short-lived token) is populated
+    only for trial calls, so the anonymous public receipt endpoint can
+    authorize a stranger reading their own block."""
     db = SessionLocal()
     try:
         set_workspace_rls(db, workspace_id)
@@ -137,9 +145,16 @@ def record(
             # ponytail: blocked call — estimate what vendor would have consumed
             in_tokens, out_tokens = _estimate_input_tokens(body), 0
         cost_usd = _compute_cost(provider, model, in_tokens, out_tokens)
+        # Mint id in Python — pgcrypto/gen_random_uuid isn't guaranteed to be
+        # loaded on every deploy, so we don't rely on it. Caller may pre-mint
+        # (block path) so the response can reference the row before the
+        # background write lands.
+        import uuid as _uuid
+        row_id = receipt_id or str(_uuid.uuid4())
         db.execute(
             text("""
                 INSERT INTO guard_audit_events (
+                  id,
                   workspace_id, clerk_user_id, ai_tool, tool_call,
                   source, provider, model,
                   decision, rule_id, ts,
@@ -148,8 +163,10 @@ def record(
                   conductai_run_id, conductai_workflow, conductai_workflow_id,
                   hook_session_id,
                   evaluated_rules, defense_score,
-                  routing_meta
+                  routing_meta,
+                  share_token_hash
                 ) VALUES (
+                  CAST(:row_id AS uuid),
                   :ws, :uid, :ai, NULL,
                   'proxy', :prov, :model,
                   :dec, :rid, :ts,
@@ -158,10 +175,12 @@ def record(
                   :run_id, :workflow, :workflow_id,
                   :hook_session_id,
                   CAST(:eval AS jsonb), :score,
-                  CAST(:routing AS jsonb)
+                  CAST(:routing AS jsonb),
+                  :share_token_hash
                 )
             """),
             {
+                "row_id": row_id,
                 "ws": workspace_id, "uid": clerk_user_id,
                 "ai": ai_tool,
                 "prov": provider, "model": model,
@@ -178,6 +197,7 @@ def record(
                 "eval": json.dumps(evaluated_rules) if evaluated_rules else None,
                 "score": defense_score,
                 "routing": json.dumps(routing_meta) if routing_meta else None,
+                "share_token_hash": share_token_hash,
             },
         )
         db.commit()

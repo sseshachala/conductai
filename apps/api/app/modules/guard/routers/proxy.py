@@ -443,6 +443,21 @@ async def _proxy(
         _environment_id = request.headers.get("x-conductai-environment-id") or None
         _hook_session_id = request.headers.get("x-conduct-session-id") or None
 
+        # #1712 Track 1 quick win — trial-plan lookup before policy eval so a
+        # BLOCK response can carry an anonymous receipt URL (Priya use case:
+        # Cursor error → click → land in Lens receipt with no login). Cheap
+        # single-row read against an indexed PK; failure falls back to
+        # workspace-only receipt URL. Reused inside _render_block via kwarg.
+        _is_trial = False
+        try:
+            _plan = db.execute(
+                text("SELECT plan FROM workspaces WHERE id = :ws"),
+                {"ws": workspace_id},
+            ).scalar()
+            _is_trial = (_plan == "trial")
+        except Exception:
+            pass
+
         # 4c. Pre-call Guard policy evaluation — composed engine (#1225 Phase 4)
         prompt_summary = _flatten_prompt(body)[:200]
         from app.guard.policy import evaluate_composed as _eval_composed
@@ -477,6 +492,7 @@ async def _proxy(
                 _pd, background, workspace_id, clerk_user_id, ai_tool, provider,
                 model, body, prompt_summary, _user_email, _run_id, _workflow,
                 _workflow_id, _hook_session_id, started, _record_audit, _fail_closed,
+                is_trial=_is_trial,
             )
 
         if _pd.needs_approval:
