@@ -115,6 +115,48 @@ def test_list_my_runs_declares_output_schema():
     assert "outputSchema" in tools["list_runs_in_session"]
 
 
+def test_tools_list_uses_spec_hint_suffix_on_annotations():
+    """Regression: MCP spec mandates readOnlyHint/idempotentHint/destructiveHint/
+    openWorldHint. Emitting readOnly (no suffix) caused Claude.ai to reject the
+    entire tools/list response, surfacing as 'no tools available' in the UI.
+    """
+    from app.tools.registry import ToolRegistry
+    from app.tools.types import ToolAnnotations, ToolDef
+
+    reg = ToolRegistry()
+    reg.register(
+        ToolDef(
+            name="probe",
+            description="d",
+            input_schema={"type": "object"},
+            impl=lambda ctx=None: "x",
+            annotations=ToolAnnotations(read_only=True, destructive=False),
+        )
+    )
+    entry = reg.as_mcp_tools_list()[0]
+    ann = entry["annotations"]
+    for key in ("readOnlyHint", "idempotentHint", "destructiveHint", "openWorldHint"):
+        assert key in ann, f"missing spec-mandated {key!r}"
+    # No-suffix legacy field names must not sneak back in.
+    for legacy in ("readOnly", "idempotent", "destructive", "openWorld"):
+        assert legacy not in ann, f"legacy no-suffix field {legacy!r} present"
+    assert ann["readOnlyHint"] is True
+    assert ann["destructiveHint"] is False
+
+
+def test_tools_list_response_has_no_non_spec_extras():
+    """Regression: `ttlMs` / `cacheScope` at the top level of tools/list result
+    tripped strict clients into rejecting the whole response.
+    """
+    from app.mcp.server import _handle_tools_list
+    from app.tools.registry import ToolRegistry
+
+    result = _handle_tools_list(msg_id=1, registry=ToolRegistry())
+    body = result["result"]
+    assert set(body.keys()) <= {"tools", "nextCursor"}, f"unexpected keys: {set(body.keys())}"
+    assert body["tools"] == []
+
+
 def test_get_route_is_registered(monkeypatch):
     # ponytail: SSE-open test hangs TestClient (infinite generator + full-body
     # drain). The 401 test above already proves the route exists and is auth-

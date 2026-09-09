@@ -115,11 +115,12 @@ def test_tools_list_projects_registry():
     assert {t["name"] for t in tools} == {"a", "b"}
 
 
-def test_tools_list_includes_cacheable_metadata():
+def test_tools_list_result_body_is_spec_only():
+    # Spec-strict: only `tools` (and optional `nextCursor`) at the top level.
+    # The old ttlMs/cacheScope extras caused Claude.ai to reject the response.
     request = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
     response = dispatch(request, _ctx(), ToolRegistry())
-    assert response["result"]["ttlMs"] == 60_000
-    assert response["result"]["cacheScope"] == "workspace"
+    assert set(response["result"].keys()) <= {"tools", "nextCursor"}
 
 
 def test_tools_list_includes_annotations():
@@ -128,8 +129,9 @@ def test_tools_list_includes_annotations():
     ])
     request = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
     tools = dispatch(request, _ctx(), registry)["result"]["tools"]
-    assert tools[0]["annotations"]["readOnly"] is True
-    assert tools[0]["annotations"]["idempotent"] is True
+    # Spec-mandated `Hint` suffix — Claude.ai drops tools without it.
+    assert tools[0]["annotations"]["readOnlyHint"] is True
+    assert tools[0]["annotations"]["idempotentHint"] is True
 
 
 # ─── tools/call ──────────────────────────────────────────────────────────────

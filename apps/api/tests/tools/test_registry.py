@@ -128,24 +128,24 @@ def test_as_mcp_tools_list_shape():
     assert entry["description"] == "A sample tool."
     assert entry["inputSchema"] == {"type": "object", "properties": {"q": {"type": "string"}}}
     assert entry["annotations"] == {
-        "readOnly": True,
-        "idempotent": True,
-        "destructive": False,
-        "openWorld": False,
+        "readOnlyHint": True,
+        "idempotentHint": True,
+        "destructiveHint": False,
+        "openWorldHint": False,
     }
 
 
 def test_as_mcp_tools_list_default_annotations():
     """Tools registered without explicit annotations get the safe default
-    (all False — treat as unknown)."""
+    (all False — treat as unknown). Uses the spec-mandated `Hint` suffix."""
     reg = ToolRegistry()
     reg.register(_tool("noannot"))
     entry = reg.as_mcp_tools_list()[0]
     assert entry["annotations"] == {
-        "readOnly": False,
-        "idempotent": False,
-        "destructive": False,
-        "openWorld": False,
+        "readOnlyHint": False,
+        "idempotentHint": False,
+        "destructiveHint": False,
+        "openWorldHint": False,
     }
 
 

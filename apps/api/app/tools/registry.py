@@ -86,12 +86,15 @@ class ToolRegistry:
             }
             if t.output_schema is not None:
                 entry["outputSchema"] = t.output_schema
-            # MCP 2026-07-28 tool annotations
+            # MCP tool annotations — the spec-mandated field names carry the
+            # `Hint` suffix. Emitting `readOnly` (no suffix) caused Claude.ai
+            # to reject the entire tools/list response, surfacing in the UI as
+            # "This connector has no tools available".
             entry["annotations"] = {
-                "readOnly": t.annotations.read_only,
-                "idempotent": t.annotations.idempotent,
-                "destructive": t.annotations.destructive,
-                "openWorld": t.annotations.open_world,
+                "readOnlyHint": t.annotations.read_only,
+                "idempotentHint": t.annotations.idempotent,
+                "destructiveHint": t.annotations.destructive,
+                "openWorldHint": t.annotations.open_world,
             }
             out.append(entry)
         return out
