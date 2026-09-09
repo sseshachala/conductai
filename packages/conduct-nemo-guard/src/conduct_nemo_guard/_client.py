@@ -81,7 +81,7 @@ class GuardCheckClient:
             headers["X-Conduct-Session-Id"] = session_id
 
         response = await self._client.post(
-            f"{self._base}/guard/mcp",
+            f"{self._base}/mcp",
             json=payload,
             headers=headers,
         )

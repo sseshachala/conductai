@@ -349,7 +349,7 @@ def list_projects(
         db.execute(text("""
             INSERT INTO mcp_servers (id, workspace_id, environment_id, name, url, transport, encrypted_auth, created_at)
             VALUES (gen_random_uuid(), :ws, NULL, 'Conduct AI Guard',
-                    'https://api.conductai.ai/guard/mcp',
+                    'https://api.conductai.ai/mcp',
                     'http', :auth, :now)
             ON CONFLICT DO NOTHING
         """), {"ws": str(project_id), "auth": _enc_bearer, "now": now})
