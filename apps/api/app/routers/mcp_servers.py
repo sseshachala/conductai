@@ -202,7 +202,14 @@ def test_mcp_connection(
     try:
         tools, transport_used = list_tools(body.url, token, body.transport)
     except Exception as e:
-        return McpTestOut(ok=False, error=str(e)[:300])
+        # ponytail: str(e) is empty for CancelledError, bare Exception(), or
+        # anyio ExceptionGroup with a naked inner — the UI then shows
+        # "Connection failed" with no cause. Always include the type name
+        # + a hint about whether we even had a token so the failure is
+        # actionable instead of opaque.
+        msg = str(e).strip() or repr(e) or type(e).__name__
+        token_hint = "" if token else " (no token was available — check auth_token / server_id / credential_key)"
+        return McpTestOut(ok=False, error=f"{type(e).__name__}: {msg}{token_hint}"[:300])
 
     sample = [t.get("name", "") for t in tools[:5] if t.get("name")]
     return McpTestOut(
