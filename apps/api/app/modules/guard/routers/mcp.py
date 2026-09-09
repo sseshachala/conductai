@@ -22,7 +22,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from sqlalchemy import text as _sql
@@ -688,7 +688,11 @@ async def mcp_endpoint(
             )
 
         elif method == "notifications/initialized":
-            return JSONResponse(status_code=204, content=None)
+            # Response() not JSONResponse(content=None): the latter serializes
+            # `null` (4 bytes) with Content-Length: 0, uvicorn raises
+            # RuntimeError("Response content longer than Content-Length"),
+            # Claude.ai's toolbox proxy sees a broken response and returns 502.
+            return Response(status_code=204)
 
         elif method == "tools/list":
             return JSONResponse(_ok(msg_id, {"tools": _TOOLS}))

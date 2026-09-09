@@ -159,8 +159,12 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
 
     response = dispatch(body, ctx, default_registry)
     if response is None:
-        # Notification — no reply
-        return JSONResponse(status_code=204, content=None)
+        # Notification (no id) — spec says 202/204 no body.
+        # Use Response() not JSONResponse(content=None): the latter serializes
+        # `null` (4 bytes) but sets Content-Length: 0, and uvicorn raises
+        # RuntimeError("Response content longer than Content-Length") mid-send.
+        # That truncated response is why Claude.ai's toolbox proxy returned 502.
+        return Response(status_code=204)
 
     return JSONResponse(
         status_code=200,
