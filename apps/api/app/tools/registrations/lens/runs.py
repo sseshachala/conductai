@@ -29,6 +29,37 @@ from app.tools.registrations.lens._shared import (
 
 _RUN_STATUS_ENUM = ["pending", "running", "paused", "succeeded", "failed", "cancelled"]
 
+# Shape of one row returned by list_my_runs / list_runs_in_session — mirrors
+# `_serialize_row` below. Declared once so both ToolDefs reuse it.
+_RUN_ROW_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "run_id":         {"type": "string"},
+        "workflow_id":    {"type": "string"},
+        "workflow_name":  {"type": "string"},
+        "status":         {"type": "string", "enum": _RUN_STATUS_ENUM},
+        "triggered_by":   {"type": ["string", "null"]},
+        "started_at":     {"type": ["string", "null"]},
+        "completed_at":   {"type": ["string", "null"]},
+        "created_at":     {"type": ["string", "null"]},
+        "actual_turns":   {"type": ["integer", "null"]},
+    },
+    "required": ["run_id", "workflow_id", "workflow_name", "status"],
+}
+
+# Tools return either a list of rows, or an {"error": "..."} envelope on
+# missing-context failure — describe both.
+_RUN_LIST_OUTPUT_SCHEMA: dict = {
+    "oneOf": [
+        {"type": "array", "items": _RUN_ROW_SCHEMA},
+        {
+            "type": "object",
+            "properties": {"error": {"type": "string"}},
+            "required": ["error"],
+        },
+    ],
+}
+
 
 def _serialize_row(row) -> dict[str, Any]:
     """Common row shape — matches list_runs so consumers can share rendering."""
@@ -134,6 +165,7 @@ TOOLS: list[ToolDef] = [
         impl=list_my_runs,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
+        output_schema=_RUN_LIST_OUTPUT_SCHEMA,
     ),
     ToolDef(
         name="list_runs_in_session",
@@ -162,5 +194,6 @@ TOOLS: list[ToolDef] = [
         impl=list_runs_in_session,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
+        output_schema=_RUN_LIST_OUTPUT_SCHEMA,
     ),
 ]

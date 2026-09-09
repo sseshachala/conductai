@@ -84,6 +84,8 @@ class ToolRegistry:
                 "description": t.description,
                 "inputSchema": t.input_schema,
             }
+            if t.output_schema is not None:
+                entry["outputSchema"] = t.output_schema
             # MCP 2026-07-28 tool annotations
             entry["annotations"] = {
                 "readOnly": t.annotations.read_only,
