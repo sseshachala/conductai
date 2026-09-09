@@ -123,6 +123,7 @@ def _to_tooldef(schema: dict[str, Any]) -> ToolDef:
         impl=_wrap(named_impl),
         annotations=_ANNOTATIONS.get(name, ToolAnnotations()),
         tags=_GUARD_TAGS,
+        output_schema=schema.get("outputSchema"),
     )
 
 

@@ -55,7 +55,7 @@ def test_exchange_refresh_token_defaults_to_empty_string():
 
 def test_exchange_http_error_json_body_exits(capsys):
     body = json.dumps({"detail": "invalid clerk token"}).encode()
-    err = _make_http_error("https://api.example.com/token", 401, body)
+    err = _make_http_error("https://api.example.com/oauth/token", 401, body)
     with patch("urllib.request.urlopen", side_effect=err):
         with pytest.raises(SystemExit):
             _exchange_clerk_token("https://api.example.com", "bad_tok", "ws_1")
@@ -66,7 +66,7 @@ def test_exchange_http_error_json_body_exits(capsys):
 
 def test_exchange_http_error_non_json_body_exits(capsys):
     body = b"Service Unavailable"
-    err = _make_http_error("https://api.example.com/token", 503, body)
+    err = _make_http_error("https://api.example.com/oauth/token", 503, body)
     with patch("urllib.request.urlopen", side_effect=err):
         with pytest.raises(SystemExit):
             _exchange_clerk_token("https://api.example.com", "bad_tok", "ws_1")
@@ -89,7 +89,7 @@ def test_exchange_posts_to_correct_url():
     with patch("urllib.request.urlopen", side_effect=fake_urlopen):
         _exchange_clerk_token("https://api.example.com", "clerk_tok", "ws_1")
 
-    assert captured_req["url"] == "https://api.example.com/token"
+    assert captured_req["url"] == "https://api.example.com/oauth/token"
     assert captured_req["method"] == "POST"
     assert captured_req["headers"].get("Content-type") == "application/x-www-form-urlencoded"
 

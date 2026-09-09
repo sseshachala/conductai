@@ -38,6 +38,7 @@ class ToolDef:
     permission: str | None = None                # RBAC permission required
     annotations: ToolAnnotations = field(default_factory=ToolAnnotations)
     tags: tuple[str, ...] = field(default_factory=tuple)
+    output_schema: dict[str, Any] | None = None  # 2025-06/08 spec — declares structuredContent shape
 
 
 class ToolContext(Protocol):

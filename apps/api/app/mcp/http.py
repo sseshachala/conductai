@@ -10,12 +10,13 @@ registry — useful for pattern verification but not yet a full replacement.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
 import structlog
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -37,6 +38,42 @@ def _extract_bearer(request: Request) -> str | None:
         token = raw[7:].strip()
         return token or None
     return None
+
+
+_UNAUTH_HEADERS = {
+    "WWW-Authenticate": (
+        'Bearer realm="https://api.conductai.ai/mcp", '
+        'resource_metadata="https://api.conductai.ai/.well-known/oauth-protected-resource/mcp"'
+    ),
+}
+
+
+def _unauthorized(msg_id: Any = None, message: str = "missing token (use Authorization: Bearer)") -> JSONResponse:
+    return JSONResponse(
+        status_code=401,
+        content={
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "error": {"code": -32600, "message": message},
+        },
+        headers=_UNAUTH_HEADERS,
+    )
+
+
+def _auth_or_401(request: Request) -> tuple[str, str | None] | JSONResponse:
+    """Resolve Bearer → (workspace_id, clerk_user_id) or return 401 JSONResponse."""
+    token = _extract_bearer(request)
+    if not token:
+        return _unauthorized()
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        resolved = _resolve_workspace(token, db)
+    finally:
+        db.close()
+    if resolved is None:
+        return _unauthorized(message="Token not recognized")
+    return resolved
 
 
 def _resolve_workspace(token: str, db: Session) -> tuple[str, str | None] | None:
@@ -62,26 +99,6 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
     - Notification (no id) → 204 no content
     - Otherwise → 200 with dispatch result + Mcp-Session-Id header
     """
-    token = _extract_bearer(request)
-    if not token:
-        return JSONResponse(
-            status_code=401,
-            content={
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {
-                    "code": -32600,
-                    "message": "missing token (use Authorization: Bearer)",
-                },
-            },
-            headers={
-                "WWW-Authenticate": (
-                    'Bearer realm="https://api.conductai.ai/mcp", '
-                    'resource_metadata="https://api.conductai.ai/.well-known/oauth-protected-resource/mcp"'
-                ),
-            },
-        )
-
     try:
         body = await request.json()
     except Exception:
@@ -94,23 +111,11 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
             },
         )
 
-    # Resolve workspace from token
-    from app.core.database import SessionLocal
-    db = SessionLocal()
-    try:
-        resolved = _resolve_workspace(token, db)
-        if resolved is None:
-            return JSONResponse(
-                status_code=401,
-                content={
-                    "jsonrpc": "2.0",
-                    "id": body.get("id"),
-                    "error": {"code": -32600, "message": "Token not recognized"},
-                },
-            )
-        workspace_id, clerk_user_id = resolved
-    finally:
-        db.close()
+    auth = _auth_or_401(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+    workspace_id, clerk_user_id = auth
+    token = _extract_bearer(request) or ""
 
     # Detect surface from clientInfo if present (initialize call), else headers.
     client_info = (body.get("params") or {}).get("clientInfo") or {}
@@ -137,7 +142,11 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
         except Exception as e:
             log.warning("mcp.http.email_lookup_failed", err=str(e))
             user_email = clerk_user_id
-    session_id = request.headers.get("x-session-id") or str(uuid.uuid4())
+    # Streamable-HTTP spec: server issues Mcp-Session-Id on initialize; client
+    # echoes it on every subsequent request. Stateless server → accept whatever
+    # the client sends; only mint fresh when absent.
+    mcp_session_id = request.headers.get("mcp-session-id") or new_session_id()
+    session_id = request.headers.get("x-session-id") or mcp_session_id
 
     ctx = MCPContext(
         workspace_id=workspace_id,
@@ -156,8 +165,48 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
     return JSONResponse(
         status_code=200,
         content=response,
-        headers={"Mcp-Session-Id": new_session_id()},
+        headers={"Mcp-Session-Id": mcp_session_id},
     )
+
+
+@router.get("")
+async def mcp_stream(request: Request) -> Response:
+    """Optional server→client SSE stream (2025-06/08 streamable HTTP spec).
+
+    Opens with one comment ping and idles; keepalives every 15s until the
+    client disconnects. Stateless — no server-initiated notifications yet, but
+    the endpoint exists so SDK clients that probe GET don't fail on 405.
+    """
+    auth = _auth_or_401(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+
+    async def _idle_stream():
+        try:
+            yield ": connected\n\n"
+            while True:
+                await asyncio.sleep(15)
+                yield ": keepalive\n\n"
+        except asyncio.CancelledError:
+            return
+
+    return StreamingResponse(
+        _idle_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@router.delete("")
+async def mcp_terminate(request: Request) -> Response:
+    """Session termination (2025-06/08 spec).
+
+    Stateless server → nothing to tear down; auth still required for parity.
+    """
+    auth = _auth_or_401(request)
+    if isinstance(auth, JSONResponse):
+        return auth
+    return Response(status_code=204)
 
 
 # ─── OAuth resource metadata (RFC 9728) ──────────────────────────────────────
