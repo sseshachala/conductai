@@ -498,7 +498,7 @@ def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
     import shutil
     sse_entry = {
         "type": "http",
-        "url": f"{api_url}/guard/mcp",
+        "url": f"{api_url}/mcp",
         "headers": {"Authorization": f"Bearer {agent_token}"},
     }
     booster_entry = {"command": "booster", "args": ["serve"]} if shutil.which("booster") else None
@@ -1618,7 +1618,7 @@ def cmd_guard_sync(args):
     # Print remote MCP URL for any MCP-compatible client
     agent_token = cfg.get("agent_token", "")
     if workspace_id and agent_token:
-        mcp_url = "https://api.conductai.ai/guard/mcp"
+        mcp_url = "https://api.conductai.ai/mcp"
         masked = agent_token[:13] + "•" * 20
         print(f"\n{BOLD}MCP server{RESET} (Claude.ai, Copilot, Cursor, Windsurf, any MCP client):")
         print(f"  URL:    {CYAN}{mcp_url}{RESET}")
