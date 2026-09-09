@@ -144,13 +144,13 @@ def _handle_initialize(msg_id: Any, params: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_tools_list(msg_id: Any, registry: ToolRegistry) -> dict[str, Any]:
-    """Project the registry onto the MCP tools/list response shape."""
-    return _ok(msg_id, {
-        "tools": registry.as_mcp_tools_list(),
-        # 2026-07-28 spec — cacheable list result
-        "ttlMs": 60_000,
-        "cacheScope": "workspace",
-    })
+    """Project the registry onto the MCP tools/list response shape.
+
+    Spec-strict: only `tools` (and optional `nextCursor` for pagination) at
+    the top level. Extra fields like ttlMs/cacheScope trip strict clients
+    (Claude.ai) into rejecting the whole response.
+    """
+    return _ok(msg_id, {"tools": registry.as_mcp_tools_list()})
 
 
 def _handle_tools_call(
