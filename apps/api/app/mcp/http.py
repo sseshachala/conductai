@@ -193,7 +193,15 @@ async def mcp_stream(request: Request) -> Response:
     return StreamingResponse(
         _idle_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            # Render/Nginx buffer streaming responses by default; without this
+            # header the client waits for first-byte until the reverse-proxy
+            # timeout (typically 30s) and gets 502 Bad Gateway. Claude.ai's
+            # toolbox proxy hit exactly that path — matches /guard/mcp SSE.
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
