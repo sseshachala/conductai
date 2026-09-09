@@ -15,7 +15,7 @@
 # See #1631 for design context.
 # ──────────────────────────────────────────────────────────────────────────────
 name: NeMo Guardrails × Conduct — DETECT & ENFORCE demo
-version: 2
+version: 3
 description: >
   5-beat live demo showing Conduct as the DETECT & ENFORCE layer at L4
   AI RUNTIME TRUST on HPE PCAI. A NeMo-style input rail hits guard_check,
@@ -65,7 +65,7 @@ blocks:
       _PREVENT (DSPM) is upstream. RECOVER (Zerto · Veeam) is downstream.
       This demo lives in the middle box._
 
-      _Prompt about to be checked_ → `{{inputs.demo_prompt}}`
+      _Sending a prompt-injection payload to Conduct's guard_check for evaluation._
 
   # ── 2a. Guardrails leg — real Conduct verdict (Beat 2) ────────────────────
   call_guard_check:
@@ -76,10 +76,16 @@ blocks:
       server_name: "Conduct AI Guard"
       tool_name: guard_check
       inputs:
-        tool_name: "write"
+        # ponytail: tool_name is llm_call, not write. write trips the always-on
+        # conduct-base rule surface-chat-no-file-write BEFORE the caller's
+        # pack: gets evaluated, so the demo would show the wrong rule id.
+        # llm_call is the correct action family for a prompt being sent to
+        # a model — nothing in conduct-base short-circuits it, so the
+        # conduct-prompt-injection pack rule fires cleanly on the payload.
+        tool_name: "llm_call"
         tool_input:
-          file_path: "demo.py"
-          content: "prompt = '{{inputs.demo_prompt}}'"
+          model: "claude-sonnet-4-5"
+          prompt: "{{inputs.demo_prompt}}"
         pack: "conduct-prompt-injection"
         ai_tool: "{{inputs.ai_tool_label}}"
     next: explain_verdict
@@ -89,29 +95,30 @@ blocks:
     type: brain
     mode: single
     label: Verdict — plain English
-    description: Human-readable rendering of the guard_check response for a non-technical viewer.
+    description: Human-readable rendering of the guard_check response. Reads verdict + rule id from the guard_check response text without echoing any raw payload back to the LLM (see epic #1734 — LLM proxy egress lacks pack-rule scanning, so CF WAF ends up filtering our own demo payloads).
     max_turns: 1
     next: gateway_and_observability
     system: |
       You explain a Conduct guard_check response in plain English for a
       non-technical viewer. Output markdown only. No preamble, no meta
-      commentary, no advice. Do not invent facts beyond the response text.
+      commentary, no advice.
     prompt: |
-      The guard_check response was:
+      A Conduct guard_check call just completed. The response text looks
+      like this (verdict word first, then a message, then a rule id in
+      brackets):
 
-      ```
-      {{call_guard_check.output}}
-      ```
+      Response: `{{call_guard_check.output}}`
 
-      Render exactly this shape, filling in values from the response above:
+      Read the verdict word and the rule id, then render EXACTLY this
+      shape (no other text):
 
-      **Conduct verdict.** _<one line: Blocked / Warned / Audited / Allowed and why in plain English>_
+      **Conduct verdict.** _<one line based on the verdict word — Blocked, Warned, Audited, or Allowed — and the message>_
 
-      **Rule that matched.** `<rule id from the response, or "none" if allowed>`
+      **Rule that matched.** `<the rule id from the brackets, or "none" if no brackets>`
 
-      **What just happened.** The prompt never reached the model — Conduct
-      intercepted it at L4 AI RUNTIME TRUST and hash-chained the decision
-      into the workspace audit trail.
+      **What just happened.** Conduct intercepted the request at L4 AI
+      RUNTIME TRUST and hash-chained the decision into the workspace
+      audit trail before the model saw the payload.
 
   # ── 3+4. Gateway leg + Observability leg (Beats 3 & 4) ────────────────────
   gateway_and_observability:
