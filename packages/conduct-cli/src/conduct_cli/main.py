@@ -524,7 +524,12 @@ def _find_free_port() -> int:
 
 
 def _exchange_clerk_token(api_url: str, clerk_token: str, workspace_id: str) -> dict:
-    """POST /token (RFC 8693) to exchange a Clerk JWT for cond_agt_* + cond_ref_*."""
+    """POST /oauth/token (RFC 8693 grant) to exchange a Clerk JWT for cond_agt_* + cond_ref_*.
+
+    Endpoint moved from /token → /oauth/token in the OAuth 2.1 consolidation.
+    /token remains as a backwards-compat alias for older CLI installs; delete
+    the alias after ~60 days of zero traffic there.
+    """
     _GRANT = "urn:ietf:params:oauth:grant-type:token-exchange"
     _TYPE  = "urn:ietf:params:oauth:token-type:jwt"
     body = urllib.parse.urlencode({
@@ -534,7 +539,7 @@ def _exchange_clerk_token(api_url: str, clerk_token: str, workspace_id: str) -> 
         "resource":           workspace_id,
     }).encode()
     req = urllib.request.Request(
-        f"{api_url}/token",
+        f"{api_url}/oauth/token",
         data=body,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         method="POST",

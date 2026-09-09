@@ -142,16 +142,24 @@ def issue_cli_token(
     )
 
 
-@router.post("/refresh", response_model=CliTokenResponse)
-def refresh_cli_token(
-    body: RefreshRequest,
-    db: Session = Depends(get_db),
-):
-    """Rotate a refresh_token → new agent_token + new refresh_token (no browser needed)."""
-    if not body.refresh_token.startswith(_REFRESH_PREFIX):
+def rotate_identity_by_refresh(
+    refresh_token: str,
+    db: Session,
+) -> tuple[AgentIdentity, str, str]:
+    """Look up AgentIdentity by refresh-token hash, rotate the token pair,
+    ensure workspace_users membership, and commit.
+
+    Shared by /auth/refresh (CLI, this file) and the OAuth 2.1 refresh_token
+    grant (app/modules/auth/oauth/grants/refresh_token.py). Both callers
+    accept an opaque cond_ref_* token from the client and issue a fresh
+    (access, refresh) pair — one implementation, two URLs.
+
+    Raises HTTPException(401) on unknown / expired / malformed refresh token.
+    """
+    if not refresh_token or not refresh_token.startswith(_REFRESH_PREFIX):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    hashed = hashlib.sha256(body.refresh_token.encode()).hexdigest()
+    hashed = hashlib.sha256(refresh_token.encode()).hexdigest()
     identity = db.query(AgentIdentity).filter(
         AgentIdentity.refresh_token_hash == hashed
     ).first()
@@ -192,7 +200,16 @@ def refresh_cli_token(
         )
 
     db.commit()
+    return identity, agent_raw, refresh_raw
 
+
+@router.post("/refresh", response_model=CliTokenResponse)
+def refresh_cli_token(
+    body: RefreshRequest,
+    db: Session = Depends(get_db),
+):
+    """Rotate a refresh_token → new agent_token + new refresh_token (no browser needed)."""
+    identity, agent_raw, refresh_raw = rotate_identity_by_refresh(body.refresh_token, db)
     return CliTokenResponse(
         agent_token=agent_raw,
         refresh_token=refresh_raw,

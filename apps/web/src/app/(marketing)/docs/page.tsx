@@ -666,9 +666,10 @@ conduct mcp install`}</Pre>
             </thead>
             <tbody className="divide-y divide-stone-100">
               {[
+                ["Claude.ai (native)","Add MCP → sign in with Conduct (OAuth 2.1 + PKCE)", "no local file — server-side"],
                 ["Claude Code",      "conduct login  /  conduct mcp install", "~/.claude/settings.json"],
                 ["Codex CLI",        "conduct login  /  conduct mcp install", "~/.codex/config.toml"],
-                ["Cursor",           "conduct login  /  conduct mcp install", "~/.cursor/mcp.json"],
+                ["Cursor",           "Add MCP → sign in  ·  or: conduct login  /  conduct mcp install", "~/.cursor/mcp.json"],
                 ["Windsurf",         "conduct login  /  conduct mcp install", "~/.codeium/windsurf/mcp_config.json"],
                 ["VS Code (Copilot)","conduct login  /  conduct mcp install", "VS Code settings.json → mcp.servers"],
               ].map(([tool, how, cfg]) => (
@@ -1320,7 +1321,7 @@ conduct guard status`}</Pre>
         </div>
 
         <SubHeading>RFC 8693 token exchange</SubHeading>
-        <Pre>{`POST /token
+        <Pre>{`POST /oauth/token
 Content-Type: application/x-www-form-urlencoded
 
 grant_type=urn:ietf:params:oauth:grant-type:token-exchange
@@ -1336,7 +1337,25 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
   "refresh_token": "cond_ref_...",
   "workspace_id": "<uuid>"
 }`}</Pre>
-        <p className="text-stone-500 text-xs mt-3">conduct login calls this endpoint automatically after browser auth. Use it directly from any RFC 8693-compatible OAuth client.</p>
+        <p className="text-stone-500 text-xs mt-3">
+          conduct login calls this endpoint automatically after browser auth. Older CLI installs may still POST to <Code>/token</Code>; that URL is a backwards-compat alias for the same handler and will be removed after ~60 days of zero traffic.
+        </p>
+
+        <SubHeading>OAuth 2.1 (native MCP client discovery)</SubHeading>
+        <p className="text-stone-500 text-sm mb-3 leading-relaxed">
+          Spec-compliant MCP clients (Claude.ai native "Add MCP", Cursor, etc.) discover and authenticate against Conduct without a pasted token. The chain:
+        </p>
+        <ol className="text-stone-500 text-sm leading-relaxed mb-4 list-decimal ml-5 space-y-1">
+          <li>Client hits <Code>https://api.conductai.ai/mcp</Code>, receives 401 with <Code>WWW-Authenticate: Bearer resource_metadata=…</Code>.</li>
+          <li>Client fetches <Code>/.well-known/oauth-protected-resource/mcp</Code>, follows <Code>authorization_servers</Code>.</li>
+          <li>Client fetches <Code>/.well-known/oauth-authorization-server</Code>, reads endpoints.</li>
+          <li>Client self-registers via <Code>POST /oauth/register</Code> (RFC 7591 DCR).</li>
+          <li>Client redirects user to <Code>/oauth/authorize</Code> with PKCE S256 challenge; user signs in with Clerk.</li>
+          <li>Client redeems the returned code at <Code>POST /oauth/token</Code> and uses the <Code>cond_agt_*</Code> access token for MCP calls.</li>
+        </ol>
+        <p className="text-stone-500 text-xs mt-1">
+          PKCE S256 is mandatory (OAuth 2.1). Confidential clients (with <Code>client_secret</Code>) are not supported — public clients only. Refresh tokens rotate on every use.
+        </p>
       </section>
 
       <section id="guard-okta-tracking" className="[&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:text-sm [&_p]:text-stone-500 [&_p]:leading-relaxed [&_p]:mb-3 [&_ul]:text-sm [&_ul]:text-stone-500 [&_ul]:list-disc [&_ul]:ml-5 [&_ul]:mb-3 [&_li]:mb-1 [&_code]:font-mono [&_code]:text-xs [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_table]:text-xs [&_table]:mb-4 [&_table]:border [&_table]:border-stone-200 [&_table]:w-full [&_th]:bg-stone-50 [&_th]:text-left [&_th]:font-semibold [&_th]:p-2 [&_th]:border-b [&_th]:border-stone-200 [&_td]:p-2 [&_td]:border-b [&_td]:border-stone-100 [&_td]:align-top [&_a]:text-indigo-600 [&_a:hover]:underline [&_strong]:font-semibold [&_strong]:text-stone-700"

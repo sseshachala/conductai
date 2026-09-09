@@ -66,8 +66,16 @@ ALLOWLIST = {
     "routers/tokens.py::mint_session_token",
     # CLI token refresh (auth via refresh_token in body — RFC-style rotation)
     "modules/auth/cli_token.py::refresh_cli_token",
-    # RFC 8693 token exchange: Clerk JWT → cond_agt_* (subject_token in body)
-    "modules/auth/token_exchange.py::token_exchange",
+    # OAuth 2.1 + DCR — all public by spec.
+    # /oauth/register: RFC 7591 Dynamic Client Registration
+    # /oauth/authorize + /confirm: browser round-trip; verify Clerk JWT internally
+    # /oauth/token + /token: PKCE / refresh / RFC 8693 grants — no session auth
+    "modules/auth/oauth/router.py::dcr_register",
+    "modules/auth/oauth/router.py::authorize",
+    "modules/auth/oauth/router.py::authorize_confirm",
+    "modules/auth/oauth/router.py::oauth_token",
+    "modules/auth/oauth/router.py::legacy_token",
+    "modules/auth/oauth/router.py::oauth_metadata",
     # Guard join (auth via invite_code in body)
     "modules/guard/routers/config.py::join_guard",
     # Guard hook events (workspace_id validated against guard_config — no Clerk auth by design)
