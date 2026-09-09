@@ -45,8 +45,9 @@ _TOOLS = [
     {
         "name": "guard_status",
         "description": (
-            "Returns current ConductGuard policy status: team name, your email, "
-            "number of active rules, and the policy version timestamp."
+            "Returns current ConductGuard policy status: workspace_id, "
+            "workspace_name, your email, number of active rules, and the "
+            "policy version timestamp."
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },

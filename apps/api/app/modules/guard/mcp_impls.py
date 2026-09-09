@@ -76,6 +76,21 @@ def guard_status_impl(ctx: GuardCtx, **arguments) -> str:
 
     rules = _get_rules(db, ws_uuid)
     _ws_out = workspace_id or (str(ws_uuid) if ws_uuid else None)
+
+    # Include workspace_name so LLMs surface the team name (e.g. "ConductGuard
+    # is active on 'Acme Engineering'") without a second tool call. Non-fatal
+    # if the lookup fails.
+    _ws_name = None
+    try:
+        _row = db.execute(
+            _sql("SELECT name FROM workspaces WHERE id = :ws LIMIT 1"),
+            {"ws": str(ws_uuid)},
+        ).fetchone()
+        if _row:
+            _ws_name = _row.name
+    except Exception:
+        pass
+
     _pv = None
     _pv_at = None
     try:
@@ -88,6 +103,7 @@ def guard_status_impl(ctx: GuardCtx, **arguments) -> str:
         pass  # never fail guard_status over policy-version lookup
     return json.dumps({
         "workspace_id":       _ws_out,
+        "workspace_name":     _ws_name,
         "email":              user_email,
         "rules_active":       len(rules),
         "policy_version":     _pv,

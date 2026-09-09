@@ -98,6 +98,47 @@ def test_db_exception_returns_error_envelope():
     assert "connection reset" in result["error"]
 
 
+def test_guard_status_includes_workspace_name():
+    """guard_status now returns workspace_name alongside workspace_id so LLMs
+    can surface the team name ('ConductGuard is active on Acme Engineering')
+    without a second tool call. Non-fatal if the name lookup fails."""
+    from unittest.mock import MagicMock, patch
+    from app.modules.guard.mcp_impls import guard_status_impl
+
+    ws_uuid = uuid.uuid4()
+    ctx = _ctx(ws_uuid=ws_uuid)
+
+    # Fake DB — first execute() returns workspace row, second is for policy cache
+    ws_row = SimpleNamespace(name="Acme Engineering")
+    ctx.db = MagicMock()
+    ctx.db.execute.return_value.fetchone.return_value = ws_row
+    ctx.db.get.return_value = None  # no policy cache
+
+    with patch("app.modules.guard.mcp_impls._get_rules", return_value=[]):
+        result = json.loads(guard_status_impl(ctx))
+
+    assert result["workspace_name"] == "Acme Engineering"
+    assert result["workspace_id"] == str(ws_uuid)
+
+
+def test_guard_status_survives_workspace_name_lookup_failure():
+    """Workspace-name lookup is best-effort. If it raises, guard_status still
+    returns the rest of the payload with workspace_name=None."""
+    from unittest.mock import MagicMock, patch
+    from app.modules.guard.mcp_impls import guard_status_impl
+
+    ctx = _ctx()
+    ctx.db = MagicMock()
+    ctx.db.execute.side_effect = RuntimeError("boom")
+    ctx.db.get.return_value = None
+
+    with patch("app.modules.guard.mcp_impls._get_rules", return_value=[]):
+        result = json.loads(guard_status_impl(ctx))
+
+    assert result["workspace_name"] is None
+    assert result["workspace_id"] is not None
+
+
 def test_tool_registered_via_default_registry():
     """Integration: prove the tool is in default_registry with correct annotations.
     This is what /mcp tools/list projects onto the wire."""
