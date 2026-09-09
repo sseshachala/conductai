@@ -273,6 +273,41 @@ def test_build_rules_supports_list_valued_persona():
     assert [rule["id"] for rule in proxy_rules] == ["r_both"]
 
 
+def test_build_rules_higher_precedence_wins_on_rule_id_collision():
+    """When two packs both define the same rule_id, the higher-precedence pack wins.
+
+    Packs are ordered by precedence ASC in the query (higher precedence loaded last),
+    and the merge loop is last-write-wins, so higher precedence overwrites lower.
+    """
+    ws_uuid = _ws_uuid()
+    db = _mock_db()
+
+    low_pack = MagicMock()
+    low_pack.rules = [{"id": "shared", "action": "warn", "source_note": "low"}]
+    high_pack = MagicMock()
+    high_pack.rules = [{"id": "shared", "action": "block", "source_note": "high"}]
+
+    low = MagicMock(pack_slug="low", pinned_version=None)
+    high = MagicMock(pack_slug="high", pinned_version=None)
+
+    # Simulates ORDER BY precedence ASC → low first, high last.
+    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+        low, high,
+    ]
+    db.query.return_value.filter.return_value.all.return_value = []
+
+    def get_pack(_db, slug, _pinned):
+        return {"low": low_pack, "high": high_pack}[slug]
+
+    with patch("app.modules.guard.policy_engine._get_pack", side_effect=get_pack):
+        rules = _build_rules(db, ws_uuid, "agent")
+
+    assert len(rules) == 1
+    assert rules[0]["action"] == "block"
+    assert rules[0]["source_note"] == "high"
+    assert rules[0]["source_pack"] == "high"
+
+
 def test_build_rules_override_disables_rule():
     """A GuardRuleOverride with disabled=True removes the rule from the result."""
     ws_uuid = _ws_uuid()

@@ -89,6 +89,26 @@ _TOOLS = [
         },
     },
     {
+        "name": "guard_test",
+        "description": (
+            "Dry-run a single pack against a candidate tool call. "
+            "Evaluates only conduct-base + the named pack — workspace custom rules, "
+            "overrides, and other installed packs are excluded. Never writes to the "
+            "audit chain. Returns 'WOULD-<VERDICT> — <message>' or 'OK — no rule fired'. "
+            "Use for pack authoring, CI, and demos. Replaces guard_check(pack=...) which "
+            "is deprecated (#1737)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pack":      {"type": "string", "description": "Compliance pack slug to test (e.g. 'conduct-eu-ai-act'). Must be installed for this workspace. 'conduct-base' is rejected — always enforced anyway."},
+                "tool_name": {"type": "string", "description": "The action to test (e.g. bash, write_file, curl)."},
+                "tool_input": {"type": "object", "description": "Parameters for that action, matching the shape guard_check would receive."},
+            },
+            "required": ["pack", "tool_name"],
+        },
+    },
+    {
         "name": "guard_sync",
         "description": "Returns current active ruleset (no-op for remote MCP — policy is always live).",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
@@ -409,6 +429,7 @@ def _project_rule(r: dict) -> dict:
     out = {
         "rule_id":           r.get("id") or r.get("rule_id"),
         "match_tool":        r.get("match_tool"),
+        "match_ai_tool":     r.get("match_ai_tool"),  # #1752: was dropped by projector
         "match_pattern":     r.get("match_pattern"),
         "match_path_pattern": r.get("match_path_pattern"),
         "action":            r.get("action"),
