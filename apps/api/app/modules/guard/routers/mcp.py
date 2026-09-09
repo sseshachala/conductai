@@ -377,13 +377,14 @@ _ACTION_PRIORITY = {"block": 0, "approval": 1, "warn": 2, "audit": 3}
 
 
 def _match_policy(
-    tool_name: str, tool_input: dict, rules: list, gate: str = "action"
+    tool_name: str, tool_input: dict, rules: list, gate: str | None = "action"
 ) -> dict | None:
     """Return the most restrictive matching rule (block > approval > warn > audit).
 
     ``gate`` filters which rules are considered — only rules whose ``gates``
     list includes the given gate fire. Default ``"action"`` preserves
-    pre-#1733 MCP behavior for every existing caller.
+    pre-#1733 MCP behavior for every existing caller. Pass ``gate=None`` to
+    skip gate filtering — used by pack-authoring tests.
     """
     from app.modules.guard.enforcement import rule_matches_gate
 
@@ -395,7 +396,7 @@ def _match_policy(
     best_priority = 999
 
     for rule in rules:
-        if not rule_matches_gate(rule, gate):
+        if gate is not None and not rule_matches_gate(rule, gate):
             continue
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":

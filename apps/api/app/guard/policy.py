@@ -108,14 +108,16 @@ def _is_proxy_rule(rule: dict) -> bool:
 
 
 def _rule_matches(
-    rule: dict, provider: str, model: str, prompt_text: str, gate: str = "prompt"
+    rule: dict, provider: str, model: str, prompt_text: str, gate: str | None = "prompt"
 ) -> bool:
     """Proxy-side rule matcher. ``gate`` filters by declared rule gates —
     default ``"prompt"`` because every existing proxy caller today evaluates
-    outbound prompts (pre-#1733 baseline)."""
+    outbound prompts (pre-#1733 baseline). Pass ``gate=None`` to skip gate
+    filtering — used by pack-authoring tests that assert rule matcher shape
+    without gate semantics."""
     from app.modules.guard.enforcement import rule_matches_gate
 
-    if not rule_matches_gate(rule, gate):
+    if gate is not None and not rule_matches_gate(rule, gate):
         return False
     p = rule.get("match_provider")
     if p is not None and p != provider:
