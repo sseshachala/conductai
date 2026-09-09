@@ -62,6 +62,40 @@ def flatten_prompt(body: dict) -> str:
     return "\n".join(out)
 
 
+def flatten_response(body: dict) -> str:
+    """#1733 PR 4: extract model reply text for response-gate matching.
+
+    Handles Anthropic (``content: [{type:'text', text:...}]``) and OpenAI
+    (``choices: [{message:{content:...}}]``) shapes. Silent on unknown
+    shapes — returns "" so the matcher sees an empty response and no rule
+    fires accidentally.
+    """
+    out: list[str] = []
+    # Anthropic Messages API
+    content = body.get("content")
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict) and part.get("type") in (None, "text"):
+                text = part.get("text")
+                if text:
+                    out.append(text)
+    elif isinstance(content, str):
+        out.append(content)
+    # OpenAI-compatible chat completions
+    for choice in body.get("choices") or []:
+        msg = choice.get("message") or {}
+        c = msg.get("content")
+        if isinstance(c, str):
+            out.append(c)
+        elif isinstance(c, list):
+            for part in c:
+                if isinstance(part, dict) and part.get("type") in (None, "text"):
+                    text = part.get("text")
+                    if text:
+                        out.append(text)
+    return "\n".join(out)
+
+
 # ─── Rule matching helpers ────────────────────────────────────────────────────
 
 def _is_proxy_rule(rule: dict) -> bool:
@@ -73,7 +107,16 @@ def _is_proxy_rule(rule: dict) -> bool:
     return "match_pattern" in rule and "match_tool" not in rule
 
 
-def _rule_matches(rule: dict, provider: str, model: str, prompt_text: str) -> bool:
+def _rule_matches(
+    rule: dict, provider: str, model: str, prompt_text: str, gate: str = "prompt"
+) -> bool:
+    """Proxy-side rule matcher. ``gate`` filters by declared rule gates —
+    default ``"prompt"`` because every existing proxy caller today evaluates
+    outbound prompts (pre-#1733 baseline)."""
+    from app.modules.guard.enforcement import rule_matches_gate
+
+    if not rule_matches_gate(rule, gate):
+        return False
     p = rule.get("match_provider")
     if p is not None and p != provider:
         return False
@@ -94,7 +137,13 @@ def _rule_matches(rule: dict, provider: str, model: str, prompt_text: str) -> bo
 
 # ─── Evaluate (public API) ────────────────────────────────────────────────────
 
-def evaluate(workspace_id: str, provider: str, model: str, body: dict) -> dict:
+def evaluate(
+    workspace_id: str,
+    provider: str,
+    model: str,
+    body: dict,
+    gate: str = "prompt",
+) -> dict:
     """Pre-call Guard policy evaluation.
 
     Loads the workspace's compiled policy snapshot (from skill_packs via the
@@ -138,14 +187,16 @@ def evaluate(workspace_id: str, provider: str, model: str, body: dict) -> dict:
                 return {"action": "BLOCK", "rule_id": "guard.engine_error", "message": "Policy engine error — request blocked (fail-closed). Check Guard settings to change this behavior."}
             return {"action": "ALLOW", "rule_id": "guard.engine_error", "message": None}
 
-        prompt_text = flatten_prompt(body)
+        # #1733: response-gate feeds the model reply into the same matcher.
+        # For prompt gate (default), same behavior as before.
+        prompt_text = flatten_response(body) if gate == "response" else flatten_prompt(body)
         matched: list[dict] = []
         winner_full: dict | None = None
         winner_rank = -1
         for r in rules:
             if not _is_proxy_rule(r):
                 continue
-            if not _rule_matches(r, provider, model, prompt_text):
+            if not _rule_matches(r, provider, model, prompt_text, gate=gate):
                 continue
             rule_id = r.get("rule_id") or r.get("id")
             action = (r.get("action") or "warn").lower()

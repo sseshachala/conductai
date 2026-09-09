@@ -138,6 +138,42 @@ function ActionBadge({ action }: { action: PolicyAction }) {
   )
 }
 
+// ─── Gates ────────────────────────────────────────────────────────────────────
+// #1733/#1750 Phase B — locked enum [action, prompt, response]. Shows *where*
+// a rule fires: `action` = MCP tool call; `prompt` = outbound LLM proxy;
+// `response` = inbound LLM proxy.
+
+type Gate = "action" | "prompt" | "response"
+
+const ALL_GATES: readonly Gate[] = ["action", "prompt", "response"] as const
+
+const GATE_TONE: Record<Gate, string> = {
+  action:   "info",
+  prompt:   "warn",
+  response: "ok",
+}
+
+function GateChips({ gates }: { gates?: string[] | null }) {
+  const list = (gates && gates.length ? gates : ["action"]).filter((g): g is Gate =>
+    (ALL_GATES as readonly string[]).includes(g),
+  )
+  if (!list.length) return null
+  return (
+    <span style={{ display: "inline-flex", gap: 3, flexShrink: 0 }}>
+      {list.map((g) => (
+        <span
+          key={g}
+          className={`sbadge ${GATE_TONE[g]}`}
+          style={{ textTransform: "uppercase", fontSize: 9, letterSpacing: ".06em", padding: "0 5px" }}
+          title={`Fires at ${g} gate`}
+        >
+          {g}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 // ─── Toggle ───────────────────────────────────────────────────────────────────
 
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
@@ -900,6 +936,7 @@ function PoliciesContent() {
   const [exceptionRequest, setExceptionRequest] = useState<PolicyExceptionRequest | null>(null)
   const [exceptionSaving, setExceptionSaving] = useState(false)
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
+  const [gateFilter, setGateFilter] = useState<"all" | Gate>("all")  // #1733/#1750 Phase B
 
   const canWrite = !permissionsLoading && permissions.canEditPolicies
 
@@ -1110,7 +1147,7 @@ function PoliciesContent() {
       count: policies.filter(p => p.pack_id === id).length,
     })),
   ].filter(t => t.count > 0 || t.id === "agent" || t.id === "custom" || t.id === "security")
-  const visiblePolicies = policyTab === "security"
+  const _tabScope = policyTab === "security"
     ? securityRules
     : policyTab === "agent"
     ? policies.filter(p => p.builtin && (!p.persona || p.persona === "agent"))
@@ -1119,6 +1156,12 @@ function PoliciesContent() {
     : policyTab === "custom"
     ? customRules
     : policies.filter(p => p.pack_id === policyTab)
+  // #1733/#1750 Phase B — filter by gate. `all` bypasses; otherwise keep rules
+  // whose gates list includes the selected gate (falls back to ['action'] if
+  // the backend hasn't stamped gates yet — matches derive_gates default).
+  const visiblePolicies = gateFilter === "all"
+    ? _tabScope
+    : _tabScope.filter(p => (p.gates && p.gates.length ? p.gates : ["action"]).includes(gateFilter))
 
   const latestUpdated = policies
     .map(p => p.updated_at)
@@ -1237,13 +1280,15 @@ function PoliciesContent() {
               function renderCard(p: Policy) {
                 const expanded = expandedIds.has(p.id)
                 const hasException = p.exception_active || p.exception_expired
-                const hasDetails = !!(p.match_pattern || p.match_path_pattern || p.message || hasException)
+                const hasProse = !!(p.guarantee || (p.known_limitations && p.known_limitations.length > 0))
+                const hasDetails = !!(p.match_pattern || p.match_path_pattern || p.message || hasException || hasProse)
                 const locked = !!p.non_overridable
                 return (
                   <div key={p.id} style={{ opacity: p.enabled ? 1 : 0.55 }}>
                     {/* Main row */}
                     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--border)" }}>
                       <ActionBadge action={p.action} />
+                      <GateChips gates={p.gates} />
                       <span className="mono" style={{ fontWeight: 650, fontSize: 12, color: "var(--text-1)", whiteSpace: "nowrap" }}>{p.rule_id}</span>
                       {p.exception_active && (
                         <span className="sbadge warn" style={{ textTransform: "uppercase", fontSize: 9.5, letterSpacing: ".06em" }}>
@@ -1345,6 +1390,23 @@ function PoliciesContent() {
                         {p.match_pattern && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Pattern </span><span className="mono" style={{ fontSize: 11, color: "var(--err)", background: "var(--err-bg)", borderRadius: 4, padding: "1px 6px" }}>{p.match_pattern}</span></div>}
                         {p.match_path_pattern && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Path </span><span className="mono" style={{ fontSize: 11, color: "var(--warn)", background: "var(--warn-bg)", borderRadius: 4, padding: "1px 6px" }}>{p.match_path_pattern}</span></div>}
                         {p.message && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Message </span><span style={{ fontSize: 11.5, color: "var(--text-2)", fontStyle: "italic" }}>&ldquo;{p.message}&rdquo;</span></div>}
+                        {/* #1750 Phase B — retained hand-authored trust prose */}
+                        {p.guarantee && (
+                          <div style={{ flexBasis: "100%" }}>
+                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Guarantee </span>
+                            <span style={{ fontSize: 11.5, color: "var(--text-2)" }}>{p.guarantee}</span>
+                          </div>
+                        )}
+                        {p.known_limitations && p.known_limitations.length > 0 && (
+                          <div style={{ flexBasis: "100%" }}>
+                            <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Known limitations </span>
+                            <ul style={{ margin: "3px 0 0 16px", padding: 0, fontSize: 11.5, color: "var(--text-2)" }}>
+                              {p.known_limitations.map((lim, i) => (
+                                <li key={i} style={{ marginBottom: 2 }}>{lim}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                         {hasException && (
                           <div style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", gap: 12, paddingTop: 4, borderTop: "1px solid var(--border)" }}>
                             <div>
@@ -1409,6 +1471,25 @@ function PoliciesContent() {
                       </button>
                     ))}
                     <span style={{ flex: 1 }} />
+                    {/* #1733/#1750 Phase B — filter by gate */}
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-muted)" }}>
+                      Gate
+                      <select
+                        value={gateFilter}
+                        onChange={(e) => setGateFilter(e.target.value as "all" | Gate)}
+                        style={{
+                          padding: "3px 8px", borderRadius: 6, fontSize: 12,
+                          border: "1px solid var(--border)", background: "var(--surface)",
+                          color: "var(--text-2)", cursor: "pointer",
+                        }}
+                        title="Show only rules that fire at this enforcement gate (action, prompt, or response)"
+                      >
+                        <option value="all">All</option>
+                        <option value="action">Action</option>
+                        <option value="prompt">Prompt</option>
+                        <option value="response">Response</option>
+                      </select>
+                    </label>
                     {canWrite && (policyTab === "agent" || policyTab === "proxy" || policyTab === "custom") && (
                       <button
                         type="button"

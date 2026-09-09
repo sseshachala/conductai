@@ -376,8 +376,17 @@ def _detect_surface(client_info: dict) -> str:
 _ACTION_PRIORITY = {"block": 0, "approval": 1, "warn": 2, "audit": 3}
 
 
-def _match_policy(tool_name: str, tool_input: dict, rules: list) -> dict | None:
-    """Return the most restrictive matching rule (block > approval > warn > audit)."""
+def _match_policy(
+    tool_name: str, tool_input: dict, rules: list, gate: str = "action"
+) -> dict | None:
+    """Return the most restrictive matching rule (block > approval > warn > audit).
+
+    ``gate`` filters which rules are considered — only rules whose ``gates``
+    list includes the given gate fire. Default ``"action"`` preserves
+    pre-#1733 MCP behavior for every existing caller.
+    """
+    from app.modules.guard.enforcement import rule_matches_gate
+
     inp_text  = json.dumps(tool_input)
     path_keys = ["file_path", "path", "command"]
     path_text = " ".join(str(tool_input.get(k, "")) for k in path_keys)
@@ -386,6 +395,8 @@ def _match_policy(tool_name: str, tool_input: dict, rules: list) -> dict | None:
     best_priority = 999
 
     for rule in rules:
+        if not rule_matches_gate(rule, gate):
+            continue
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
             allowed = expand_match_tool(match_tool)
@@ -435,6 +446,7 @@ def _project_rule(r: dict) -> dict:
         "action":            r.get("action"),
         "message":           r.get("message"),
         "pack":              r.get("pack") or r.get("pack_slug"),
+        "gates":             r.get("gates") or ["action"],  # #1733: expose gate list to consumers
         "enforcement":       r.get("enforcement") or {},
     }
     for k in _APPROVAL_FIELDS:

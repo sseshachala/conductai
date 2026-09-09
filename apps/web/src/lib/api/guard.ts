@@ -22,6 +22,9 @@ export interface GuardPolicy {
   persona: "agent" | "proxy"
   non_overridable: boolean
   persona_affinity: string[]
+  gates?: string[]  // #1733/#1750 Phase B — locked enum [action, prompt, response]
+  guarantee?: string | null  // #1750 Phase B — hand-authored trust prose
+  known_limitations?: string[]  // #1750 Phase B — hand-authored operational caveats
   tag: string | null
   exception_reason: string | null
   exception_expires_at: string | null

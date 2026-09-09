@@ -30,7 +30,7 @@ from app.modules.guard.models import (
     WorkspaceCustomRule,
     WorkspaceSkillPack,
 )
-from app.modules.guard.enforcement import rule_personas
+from app.modules.guard.enforcement import derive_gates, rule_personas
 
 PERSONAS = ["agent", "proxy"]
 
@@ -174,6 +174,9 @@ def _build_rules(
             # #1048: stamp source_pack so downstream (sync response, audit,
             # debugging) can trace 'which pack put this rule into my cache'.
             body["source_pack"] = wp.pack_slug
+            # #1733/#1750-A: gates are locked to [action, prompt, response].
+            # Derived from persona for legacy rules; explicit on new rules.
+            body["gates"] = derive_gates(body)
             rules[rule["id"]] = body
 
     # 1b. merge workspace custom rules on top (workspace-defined wins on rule_id collision)
@@ -194,6 +197,7 @@ def _build_rules(
         affinity = body.get("persona_affinity", PERSONAS)
         if persona not in affinity:
             continue
+        body["gates"] = derive_gates(body)  # #1733/#1750-A
         rules[c.rule_id] = body
 
     # 2. apply workspace overrides (skipped in restrict_to_pack mode)

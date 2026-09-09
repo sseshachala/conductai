@@ -48,7 +48,7 @@ from app.modules.guard.policy_engine import (
     is_exception_active,
 )
 from app.modules.guard.coverage import workspace_coverage_matrix
-from app.modules.guard.enforcement import is_hook_applicable_rule
+from app.modules.guard.enforcement import derive_gates, is_hook_applicable_rule
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
@@ -106,6 +106,10 @@ class PolicyOut(BaseModel):
     severity: str = "medium"
     iso_control: Optional[str] = None
     tag: Optional[str] = None
+    gates: list[str] = []  # #1733/#1750 Phase B — locked enum [action, prompt, response]
+    # #1750 reviewer edit 4 — retained hand-authored prose (NOT deleted in Phase D).
+    guarantee: Optional[str] = None
+    known_limitations: list[str] = []
     exception_reason: Optional[str] = None
     exception_expires_at: Optional[datetime] = None
     exception_active: bool = False
@@ -227,6 +231,10 @@ def _org_ws_subquery(db: Session, workspace_id: str):
 
 def _custom_to_out(row: WorkspaceCustomRule) -> PolicyOut:
     body = row.body or {}
+    # #1733: derive_gates needs a persona hint. Custom rules store persona
+    # on the ORM row, not the body dict — inject a shallow copy so the
+    # helper sees it without mutating the underlying JSONB.
+    body_for_gates = {**body, "persona": body.get("persona") or row.persona or "agent"}
     return PolicyOut(
         id=row.rule_id,
         workspace_id=str(row.workspace_id),
@@ -247,6 +255,9 @@ def _custom_to_out(row: WorkspaceCustomRule) -> PolicyOut:
         frameworks=body.get("frameworks") or [],
         severity=body.get("severity") or "medium",
         iso_control=body.get("iso_control"),
+        gates=derive_gates(body_for_gates),
+        guarantee=(body.get("enforcement") or {}).get("guarantee"),
+        known_limitations=(body.get("enforcement") or {}).get("known_limitations") or [],
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -300,6 +311,9 @@ def _pack_rule_to_out(
         severity=rule.get("severity") or "medium",
         iso_control=rule.get("iso_control"),
         tag=rule.get("tag"),
+        gates=derive_gates(rule),
+        guarantee=(rule.get("enforcement") or {}).get("guarantee"),
+        known_limitations=(rule.get("enforcement") or {}).get("known_limitations") or [],
         exception_reason=override.reason if override and relaxing else None,
         exception_expires_at=override.expires_at if override and relaxing else None,
         exception_active=active,

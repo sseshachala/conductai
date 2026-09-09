@@ -396,7 +396,10 @@ def test_build_rules_expired_disable_restores_rule():
     with patch("app.modules.guard.policy_engine._get_pack", return_value=pack):
         rules = _build_rules(db, ws_uuid, "agent")
 
-    assert [{k: v for k, v in r.items() if k != "source_pack"} for r in rules] == pack.rules
+    assert [
+        {k: v for k, v in r.items() if k not in ("source_pack", "gates")}
+        for r in rules
+    ] == pack.rules
 
 
 def test_build_rules_expired_action_restores_base_but_keeps_message():

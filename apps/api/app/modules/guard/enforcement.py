@@ -44,6 +44,44 @@ def rule_personas(rule: dict[str, Any]) -> set[str]:
     return set()
 
 
+# #1733 / #1750 Phase A — locked enum, three gates, from day one. New signal
+# shapes route through obligations, not new gates. See docs/guard/architecture.md
+# Property 5.
+GATES = ("action", "prompt", "response")
+
+
+def derive_gates(rule: dict[str, Any]) -> list[str]:
+    """Return the enforcement gates a rule fires at.
+
+    Precedence:
+      1. Rule explicitly declares ``gates: [...]`` — use it (dropping unknown values).
+      2. Otherwise derive from persona: agent→action, proxy→prompt, both→both.
+      3. Fallback: ``['action']`` (the safest default — matches existing MCP behavior).
+
+    Preserves order: action first, then prompt, then response.
+    """
+    declared = rule.get("gates")
+    if isinstance(declared, list) and declared:
+        keep = [g for g in GATES if g in declared]
+        if keep:
+            return keep
+    personas = rule_personas(rule)
+    gates: list[str] = []
+    if "agent" in personas:
+        gates.append("action")
+    if "proxy" in personas:
+        gates.append("prompt")
+    return gates or ["action"]
+
+
+def rule_matches_gate(rule: dict[str, Any], gate: str) -> bool:
+    """Whether ``rule`` fires at the given enforcement gate. Rules loaded
+    through ``_build_rules`` already carry a ``gates`` list; for rules that
+    arrived by other paths (e.g. inline test fixtures) we derive lazily."""
+    gates = rule.get("gates") or derive_gates(rule)
+    return gate in gates
+
+
 def validate_enforcement_metadata(rule: dict[str, Any]) -> None:
     """Validate one rule's strict rule-level enforcement contract."""
     rule_id = rule.get("id") or rule.get("rule_id") or "(unknown)"

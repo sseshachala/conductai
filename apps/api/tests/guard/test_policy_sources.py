@@ -30,7 +30,7 @@ def _ctx(**over):
 # ─── RulePolicySource ────────────────────────────────────────────────────────
 
 def test_rule_source_allow():
-    fake_evaluator = lambda ws, prov, model, body: {
+    fake_evaluator = lambda ws, prov, model, body, **_: {
         "action": "ALLOW", "rule_id": None, "matched_rules": [], "defense_score": 0,
     }
     d = RulePolicySource(evaluator=fake_evaluator).evaluate(_ctx())
@@ -39,7 +39,7 @@ def test_rule_source_allow():
 
 
 def test_rule_source_block():
-    fake_evaluator = lambda ws, prov, model, body: {
+    fake_evaluator = lambda ws, prov, model, body, **_: {
         "action": "BLOCK", "rule_id": "r-42", "message": "no secrets",
         "matched_rules": [{"rule_id": "r-42"}], "defense_score": 5,
     }
@@ -50,7 +50,7 @@ def test_rule_source_block():
 
 
 def test_rule_source_warn_with_guidance():
-    fake_evaluator = lambda ws, prov, model, body: {
+    fake_evaluator = lambda ws, prov, model, body, **_: {
         "action": "WARN", "rule_id": "r-1",
         "message": "be careful",
         "matched_rules": [{"rule_id": "r-1"}], "defense_score": 2,
@@ -63,7 +63,7 @@ def test_rule_source_warn_with_guidance():
 
 
 def test_rule_source_unknown_action_falls_back_to_allow():
-    fake_evaluator = lambda ws, prov, model, body: {"action": "MAYBE"}
+    fake_evaluator = lambda ws, prov, model, body, **_: {"action": "MAYBE"}
     d = RulePolicySource(evaluator=fake_evaluator).evaluate(_ctx())
     assert d.action == PolicyAction.ALLOW
 

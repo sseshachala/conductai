@@ -153,7 +153,7 @@ def test_default_sources_used_when_none_passed(monkeypatch):
     # Stub the real rule source's underlying evaluator so no DB call is made.
     from app.guard import sources as _sources
 
-    def _stub(ws, provider, model, body):
+    def _stub(ws, provider, model, body, **_):  # **_ absorbs new gate kwarg (#1733)
         return {"action": "ALLOW", "rule_id": None, "matched_rules": [], "defense_score": 0}
 
     monkeypatch.setattr(

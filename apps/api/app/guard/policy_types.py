@@ -38,6 +38,11 @@ class PolicyContext:
     input_tokens: int = 0
     db: "Session | None" = None
     extras: dict[str, Any] = field(default_factory=dict)
+    # #1733: which enforcement gate this context represents. Locked enum
+    # ("action", "prompt", "response") per Guard architecture doc §3.
+    # "prompt" = outbound LLM proxy egress; "response" = inbound LLM proxy
+    # ingress; "action" = tool call. Default "action" for pre-#1733 callers.
+    gate: str = "action"
 
 
 @dataclass
