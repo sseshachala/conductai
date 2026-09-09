@@ -45,8 +45,20 @@ _TOOLS = [
     {
         "name": "guard_status",
         "description": (
-            "Returns current ConductGuard policy status: team name, your email, "
-            "number of active rules, and the policy version timestamp."
+            "Returns current ConductGuard policy status: workspace_id, "
+            "workspace_name, your email, number of active rules, and the "
+            "policy version timestamp."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "conduct_current_workspace",
+        "description": (
+            "Return the active workspace this MCP session is scoped to: "
+            "workspace_id, workspace_name, and the caller's role in that workspace. "
+            "Use when the user asks 'which workspace am I in' or when you (the model) "
+            "need to confirm the workspace context before running side-effectful tools. "
+            "Read-only; no side effects."
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },

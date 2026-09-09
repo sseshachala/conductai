@@ -37,8 +37,9 @@ _GUARD_TAGS = ("guard",)
 # don't; guard_check + trigger_fix + post_finding + guard_discover_register
 # + conduct_run_workflow are open_world (they mutate DB / enqueue runs).
 _ANNOTATIONS: dict[str, ToolAnnotations] = {
-    "guard_status":            ToolAnnotations(read_only=True),
-    "guard_check":             ToolAnnotations(open_world=True),
+    "guard_status":              ToolAnnotations(read_only=True),
+    "conduct_current_workspace": ToolAnnotations(read_only=True, idempotent=True),
+    "guard_check":               ToolAnnotations(open_world=True),
     "guard_sync":              ToolAnnotations(read_only=True),
     "guard_enable":            ToolAnnotations(read_only=True),
     "guard_spend":             ToolAnnotations(read_only=True),

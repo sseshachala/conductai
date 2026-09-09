@@ -76,6 +76,21 @@ def guard_status_impl(ctx: GuardCtx, **arguments) -> str:
 
     rules = _get_rules(db, ws_uuid)
     _ws_out = workspace_id or (str(ws_uuid) if ws_uuid else None)
+
+    # Include workspace_name so LLMs surface the team name (e.g. "ConductGuard
+    # is active on 'Acme Engineering'") without a second tool call. Non-fatal
+    # if the lookup fails.
+    _ws_name = None
+    try:
+        _row = db.execute(
+            _sql("SELECT name FROM workspaces WHERE id = :ws LIMIT 1"),
+            {"ws": str(ws_uuid)},
+        ).fetchone()
+        if _row:
+            _ws_name = _row.name
+    except Exception:
+        pass
+
     _pv = None
     _pv_at = None
     try:
@@ -88,6 +103,7 @@ def guard_status_impl(ctx: GuardCtx, **arguments) -> str:
         pass  # never fail guard_status over policy-version lookup
     return json.dumps({
         "workspace_id":       _ws_out,
+        "workspace_name":     _ws_name,
         "email":              user_email,
         "rules_active":       len(rules),
         "policy_version":     _pv,
@@ -615,8 +631,51 @@ def conduct_get_run_impl(ctx: GuardCtx, **arguments) -> str:
 
 
 
+def conduct_current_workspace_impl(ctx: GuardCtx, **arguments) -> str:
+    """Return the caller's active workspace: id, name, and their role.
+
+    LLMs use this to remind themselves which workspace context they're in —
+    useful when a user is a member of multiple workspaces and has multiple
+    Conduct MCP connectors installed (see issue #1747 for the alternative
+    in-chat workspace-switching design).
+
+    Returns JSON: {workspace_id, workspace_name, role, member_email}. If the
+    workspace or membership can't be resolved, returns an {error} envelope.
+    """
+    db = ctx.db
+    ws_uuid = ctx.ws_uuid
+    clerk_user_id = ctx.clerk_user_id
+    user_email = ctx.user_email
+
+    try:
+        row = db.execute(
+            _sql("""
+                SELECT w.id AS workspace_id, w.name AS workspace_name, wu.role AS role
+                FROM workspaces w
+                LEFT JOIN workspace_users wu
+                       ON wu.workspace_id = w.id AND wu.clerk_user_id = :uid
+                WHERE w.id = :ws
+                LIMIT 1
+            """),
+            {"ws": str(ws_uuid), "uid": clerk_user_id or ""},
+        ).fetchone()
+    except Exception as e:
+        return json.dumps({"error": f"lookup_failed: {e}"})
+
+    if row is None:
+        return json.dumps({"error": "workspace_not_found"})
+
+    return json.dumps({
+        "workspace_id":   str(row.workspace_id),
+        "workspace_name": row.workspace_name,
+        "role":           row.role or "unknown",
+        "member_email":   user_email,
+    }, indent=2)
+
+
 _GUARD_TOOL_IMPLS: dict[str, Any] = {
     'guard_status': guard_status_impl,
+    'conduct_current_workspace': conduct_current_workspace_impl,
     'guard_check': guard_check_impl,
     'guard_sync': guard_sync_impl,
     'guard_enable': guard_enable_impl,
