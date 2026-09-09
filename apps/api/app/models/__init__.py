@@ -34,6 +34,7 @@ from app.models.security_config import SecurityConfig  # noqa
 from app.models.security_policy import SecurityPolicy  # noqa
 from app.models.model_routing_policy import ModelRoutingPolicy  # noqa
 from app.models.cred_retrieval_token import CredRetrievalToken  # noqa
+from app.models.oauth import OauthClient, OauthAuthCode  # noqa — OAuth 2.1 tables (migration 0118)
 
 from app.modules.guard.models import (
     GuardConfig,
