@@ -108,7 +108,13 @@ def _run_mcp_block(config: dict) -> dict:
     block = {"data": {"config": {**config, "tool_name": "some_tool"}}}
     state = {}
 
-    with patch("app.runtime.blocks.mcp_block.call_tool") as mock_call, \
+    # ponytail: patch call_tool at its source module (integrations.mcp_client),
+    # not on mcp_block. mcp_block imports it INSIDE the function via
+    # `from app.runtime.integrations.mcp_client import call_tool`, so it never
+    # exists as an attribute on mcp_block itself — patching there raises
+    # AttributeError. Same for get_db + resolve_mcp_server, which are also
+    # local imports inside _execute_mcp.
+    with patch("app.runtime.integrations.mcp_client.call_tool") as mock_call, \
          patch("app.core.database.get_db") as mock_get_db, \
          patch("app.runtime.mcp_credentials.resolve_mcp_server") as mock_resolve:
         mock_get_db.return_value = iter([MagicMock()])
