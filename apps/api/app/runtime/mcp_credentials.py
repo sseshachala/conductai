@@ -35,18 +35,21 @@ def resolve_mcp_server(
     from sqlalchemy import text as _text
     from app.core.crypto import decrypt as _decrypt
 
+    # ponytail: try UUID first (canvas path), then fall back to name lookup
+    # if the UUID either wasn't set or points at a stale/deleted row. Old
+    # ``if server_id: ... elif server_name: ...`` meant a wrong UUID
+    # short-circuited without trying the name — masked stale block configs.
+    row = None
     if server_id:
         row = db.execute(
             _text("SELECT url, transport, encrypted_auth, name, environment_id FROM mcp_servers WHERE id = :id AND workspace_id = :ws"),
             {"id": server_id, "ws": workspace_id},
         ).fetchone()
-    elif server_name:
+    if not row and server_name:
         row = db.execute(
             _text("SELECT url, transport, encrypted_auth, name, environment_id FROM mcp_servers WHERE name = :name AND workspace_id = :ws"),
             {"name": server_name, "ws": workspace_id},
         ).fetchone()
-    else:
-        return None
 
     if not row:
         return None

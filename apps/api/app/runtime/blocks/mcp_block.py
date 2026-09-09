@@ -15,9 +15,14 @@ def _execute_mcp(block: dict, state: dict, cred_store: object, workspace_id: str
     """Execute an MCP tool call.
 
     Config may specify the server via either:
-    - ``server_name``: playbook path — logical name matched against mcp_servers.name for the workspace.
-    - ``provider``: canvas path — UUID from the mcp_servers table.
-    - ``credential_key``: legacy path — credential vault lookup for server_url + token.
+    - ``server_id`` / ``provider``: canvas path — UUID from the mcp_servers
+      table. The canvas MCP block writes to ``server_id``; ``provider`` is
+      the legacy key kept for backward compat with older block configs.
+    - ``server_name``: playbook path — logical name matched against
+      mcp_servers.name for the workspace. Used when a workflow is
+      instantiated from a YAML pack that can't hardcode a workspace UUID.
+    - ``credential_key``: legacy path — credential vault lookup for
+      server_url + token.
     """
     from app.runtime.integrations.mcp_client import call_tool
     from app.runtime.tool_engine import _resolve_refs
@@ -26,7 +31,13 @@ def _execute_mcp(block: dict, state: dict, cred_store: object, workspace_id: str
     config = data.get("config", {}) or {}
 
     credential_key = config.get("credential_key", "")
-    server_id      = config.get("provider", "")  # UUID stored by canvas MCP block
+    # ponytail: the canvas MCP block writes UUID to config.server_id — see
+    # apps/web/src/components/canvas/BlockEditor.tsx handleServerChange. The
+    # legacy comment claimed ``provider`` was the field but that's a different
+    # UI (sandbox provider select). Reading ``provider`` first left UUID
+    # resolution silently broken for every canvas-authored MCP block since
+    # the field was renamed — verified live 2026-09-08 during PR #1731 demo.
+    server_id      = config.get("server_id", "") or config.get("provider", "")
     server_name    = config.get("server_name", "")  # logical name used in playbooks
     tool_name      = config.get("tool_name", "")
     transport      = config.get("transport", "auto")
