@@ -159,7 +159,16 @@ def test_create_lens_session_flag_mints_and_links(ws_and_workflow):
     ), {"sid": result.session_id, "ws": ws_uuid}).first()
     assert sess is not None
     assert sess[0] == "Run: Test WF"
-    assert sess[1] == "[]"
+    # Session is pre-seeded with a run_started envelope so /lens/{id} renders
+    # the RunBubble on redirect — frontend rehydration keys off p.run_started.
+    import json as _json
+    msgs = _json.loads(sess[1])
+    assert len(msgs) == 1
+    assert msgs[0]["role"] == "assistant"
+    payload = _json.loads(msgs[0]["content"])
+    assert payload["run_started"]["run_id"] == str(result.id)
+    assert payload["run_started"]["workflow_name"] == "Test WF"
+    assert payload["run_started"]["status"] == "pending"
     # Token + AgentIdentity mint lazily on first chat message; both stay NULL
     # here. That's the whole point — canvas Run doesn't need chat auth.
     assert sess[2] is None

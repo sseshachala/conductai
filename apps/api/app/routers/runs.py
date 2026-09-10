@@ -312,19 +312,20 @@ def create_run(
     # SQLAlchemy's default fire on flush) so `run.session_id` can carry it
     # without an intermediate commit — if Run insert fails, both roll back
     # and no ghost session appears in the sidebar.
+    import uuid as _uuid_std
+    # Mint run.id upfront so the seeded run_started envelope can reference it
+    # without needing a pre-commit flush. SQLAlchemy's Python-side default
+    # doesn't fire on __init__ — only on flush — so `str(run.id)` before add
+    # would resolve to "None".
+    run_id = _uuid_std.uuid4()
+
     lens_session_id = None
     if body.create_lens_session:
-        import uuid as _uuid_std
         from app.modules.glens.models import GlensChatSession
         lens_session_id = _uuid_std.uuid4()
-        db.add(GlensChatSession(
-            id=lens_session_id,
-            workspace_id=workflow.workspace_id,
-            title=f"Run: {workflow.name}",
-            messages="[]",
-        ))
 
     run = Run(
+        id=run_id,
         workflow_version_id=workflow.current_version_id,
         workspace_id=workflow.workspace_id,
         triggered_by=body.triggered_by,
@@ -333,6 +334,30 @@ def create_run(
         max_turns=max_turns,
         session_id=lens_session_id,
     )
+
+    if body.create_lens_session:
+        # Pre-seed the session with a run_started envelope so /lens/{id} renders
+        # the RunBubble immediately on redirect, without waiting for the worker
+        # to publish the first event. Frontend rehydration matches on
+        # `p.run_started?.run_id` (GLensChatPage.selectSession).
+        import json as _json_std
+        run_started_msg = {
+            "role": "assistant",
+            "content": _json_std.dumps({
+                "run_started": {
+                    "run_id": str(run_id),
+                    "workflow_name": workflow.name,
+                    "status": "pending",
+                }
+            }),
+        }
+        db.add(GlensChatSession(
+            id=lens_session_id,
+            workspace_id=workflow.workspace_id,
+            title=f"Run: {workflow.name}",
+            messages=_json_std.dumps([run_started_msg]),
+        ))
+
     db.add(run)
     db.commit()  # single commit — session + run land together or neither does
     db.refresh(run)
