@@ -136,6 +136,22 @@ Per #1739 ADR. Three values, from day one, no growth.
 
 `LLMStream` (drafted in #1739) is deferred. Streaming semantics route through obligations on `LLMResponse`, not a fourth gate. Extending the gate enum requires schema migration on every workspace — obligations extend without one.
 
+### Rule field → gate mapping
+
+Not every rule field applies at every gate. Ratchet locked here so a new rule field can't silently pick up cross-gate semantics without a doc update:
+
+| Rule field | Fires at gate | Notes |
+|---|---|---|
+| `match_tool` | action | expanded through `expand_match_tool` (families like `bash`/`shell`) |
+| `match_ai_tool` | action | matches the caller surface (`claude-code`, `cursor`, …) |
+| `match_path_pattern` | action | regex against `file_path` / `path` / `command` |
+| `match_pattern` | action **or** prompt | evaluated against the caller-provided text at each gate (`json.dumps(tool_input)` for action; prompt body for prompt) |
+| `match_prompt` | prompt | regex against outbound prompt text |
+| `match_provider` | prompt | exact match against upstream provider name |
+| `match_model` | prompt | regex against model id |
+
+Property 8 corollary: both matchers — the MCP-side `_match_policy` and the proxy-side `_rule_matches` — must honour the same field-to-gate mapping. #1771 caught the MCP-side matcher up on `match_prompt / match_provider / match_model` after #1770's `guard_check_prompt` verb made MCP a valid transport into the proxy PEP.
+
 ---
 
 ## 4. Use cases
