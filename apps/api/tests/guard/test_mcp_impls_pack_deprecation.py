@@ -60,7 +60,17 @@ def test_pack_arg_returns_deprecation_suffix_on_error_path():
 
 def test_divergence_log_line_fires_on_different_rule_ids():
     """Pure-function coverage of the divergence-message builder — no
-    patching, no logger, no test-order coupling."""
+    patching, no logger, no test-order coupling.
+
+    Pre-existing tests (test_guard_approval*.py) stub app.core.pii module
+    with a MagicMock at import time and never restore. Force-reload the
+    real module before this test runs so redaction actually executes."""
+    import sys, importlib
+    # Pre-existing tests stubbed sys.modules["app.core.pii"] = MagicMock().
+    # Drop the stub, force a fresh import of the real module.
+    sys.modules.pop("app.core.pii", None)
+    importlib.import_module("app.core.pii")
+
     # Fake-format secret matching pii._SECRET_PATTERNS `sk-<20+>` regex.
     # Built by concat so this fixture doesn't itself trip secret scanners.
     secret = "sk" + "-" + ("X" * 30)

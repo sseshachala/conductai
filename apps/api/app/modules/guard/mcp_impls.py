@@ -48,7 +48,11 @@ def _build_divergence_log_line(
     if pack_rid == unified_rid:
         return None
     from app.core.pii import redact_secrets
-    redacted_input, _found = redact_secrets(json.dumps(tool_input, default=str))
+    # Defensive unpack: contract is tuple[str, list[str]], but some tests
+    # stub redact_secrets as a str→str lambda. Trust nothing — take element 0
+    # if the result is a tuple, else treat it as the string directly.
+    _res = redact_secrets(json.dumps(tool_input, default=str))
+    redacted_input = _res[0] if isinstance(_res, tuple) and _res else str(_res)
     return (
         "guard_check shadow divergence (#1737) "
         "pack=%s tool=%s pack_rule=%s unified_rule=%s input=%s",

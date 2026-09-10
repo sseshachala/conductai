@@ -32,7 +32,8 @@ _STUBS = ["structlog", "redis", "sentry_sdk", "app.core.pii"]
 for _m in _STUBS:
     sys.modules.setdefault(_m, MagicMock())
 import app.core.pii as _pii  # noqa: E402
-_pii.redact_secrets = lambda s: s
+# Preserve real signature tuple[str, list[str]] — see test_guard_approval.py note.
+_pii.redact_secrets = lambda s: (s, [])
 
 from app.modules.guard.approval import resume_verdict  # noqa: E402
 
