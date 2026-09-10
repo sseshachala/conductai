@@ -242,6 +242,18 @@ Lens is a well-behaved caller — no special path. LLM calls route through `guar
 
 The four rows above (excluding Lens) are the source of truth for `PEP_CAPABILITIES` in `apps/api/app/modules/guard/pep_registry.py`. `derive_surface_status(rule, surface)` reads this table + the rule's `gates` to compute per-rule enforcement status. `pack_coverage_matrix(db, pack_slug)` aggregates across a pack; the Policies UI reads it via `GET /guard/policies/packs/{slug}/coverage-matrix`.
 
+`PolicyOut` and `EnforcementCoverageOut` both carry `derived_<surface>` fields alongside the hand-authored `enforcement.<surface>` values. The Coverage tab renders both side-by-side; when they disagree, a ⚠ marker flags the rule as stale metadata (#1750 Phase D signal). Once Phase D retires the hand-authored fields, the derived subtext becomes the sole source of truth without any UI change.
+
+### Smoke test
+
+`scripts/smoke_1755.sh` verifies the end-to-end wiring against a running API:
+
+```bash
+API=http://localhost:8000 CONDUCT_TOKEN=cond_agt_xxx bash scripts/smoke_1755.sh
+```
+
+Checks: coverage endpoint returns `derived_<surface>` fields; pack coverage matrix populated for `conduct-base`; rule-fires endpoint redacts `input_summary`; count of authored↔derived divergences (Phase D readiness signal).
+
 ---
 
 ## 9. Failure modes prevented

@@ -48,7 +48,11 @@ from app.modules.guard.policy_engine import (
     is_exception_active,
 )
 from app.modules.guard.coverage import workspace_coverage_matrix
-from app.modules.guard.enforcement import derive_gates, is_hook_applicable_rule
+from app.modules.guard.enforcement import (
+    derive_gates,
+    derive_surface_status,
+    is_hook_applicable_rule,
+)
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
@@ -107,6 +111,14 @@ class PolicyOut(BaseModel):
     iso_control: Optional[str] = None
     tag: Optional[str] = None
     gates: list[str] = []  # #1733/#1750 Phase B — locked enum [action, prompt, response]
+    # #1755 Slice 2 — derived per-PEP surface status. Reads pep_registry
+    # capabilities × rule.gates. UI renders these as verified badges on
+    # rule detail. Hand-authored `enforcement.<surface>` fields stay
+    # in the JSON but are being retired (#1750 Phase D).
+    derived_mcp: str = "not_supported"
+    derived_proxy: str = "not_supported"
+    derived_runtime: str = "not_supported"
+    derived_hook: str = "not_supported"
     # #1750 reviewer edit 4 — retained hand-authored prose (NOT deleted in Phase D).
     guarantee: Optional[str] = None
     known_limitations: list[str] = []
@@ -218,6 +230,16 @@ class EnforcementCoverageOut(BaseModel):
     hook: Literal["hard", "conditional", "advisory", "not_supported"]
     mcp: Literal["hard", "conditional", "advisory", "not_supported"]
     runtime: Literal["hard", "conditional", "advisory", "not_supported"]
+    # #1755 Slice 2 (real PR 5) — derived counterparts. Same values, but
+    # computed live from rule.gates × PEP_CAPABILITIES rather than
+    # hand-authored. UI renders both side-by-side so a compliance officer
+    # can see when the hand-authored value has gone stale (divergence).
+    # After #1750 Phase D retires the hand-authored fields above, these
+    # derived fields become the sole source of truth.
+    derived_proxy: str = "not_supported"
+    derived_hook: str = "not_supported"
+    derived_mcp: str = "not_supported"
+    derived_runtime: str = "not_supported"
     guarantee: str
     requires: list[str]
     known_limitations: list[str]
@@ -276,6 +298,10 @@ def _custom_to_out(row: WorkspaceCustomRule) -> PolicyOut:
         severity=body.get("severity") or "medium",
         iso_control=body.get("iso_control"),
         gates=derive_gates(body_for_gates),
+        derived_mcp=derive_surface_status(body_for_gates, "mcp"),
+        derived_proxy=derive_surface_status(body_for_gates, "proxy"),
+        derived_runtime=derive_surface_status(body_for_gates, "runtime"),
+        derived_hook=derive_surface_status(body_for_gates, "hook"),
         guarantee=(body.get("enforcement") or {}).get("guarantee"),
         known_limitations=(body.get("enforcement") or {}).get("known_limitations") or [],
         created_at=row.created_at,
@@ -332,6 +358,10 @@ def _pack_rule_to_out(
         iso_control=rule.get("iso_control"),
         tag=rule.get("tag"),
         gates=derive_gates(rule),
+        derived_mcp=derive_surface_status(rule, "mcp"),
+        derived_proxy=derive_surface_status(rule, "proxy"),
+        derived_runtime=derive_surface_status(rule, "runtime"),
+        derived_hook=derive_surface_status(rule, "hook"),
         guarantee=(rule.get("enforcement") or {}).get("guarantee"),
         known_limitations=(rule.get("enforcement") or {}).get("known_limitations") or [],
         exception_reason=override.reason if override and relaxing else None,

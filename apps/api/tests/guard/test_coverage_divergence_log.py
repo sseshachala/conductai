@@ -160,3 +160,33 @@ def test_return_shape_unchanged():
     row = matrix[0]
     for key in ("proxy", "hook", "mcp", "runtime", "guarantee", "requires", "known_limitations"):
         assert key in row, f"expected key {key} still present"
+
+
+def test_derived_fields_land_on_coverage_row():
+    """#1755 Slice 2 (real PR 5) — coverage rows carry derived_<surface>
+    alongside hand-authored so the UI can render both + flag divergence."""
+    rule = {
+        "id": "derived-check",
+        "action": "block",
+        "persona": "agent",
+        "gates": ["action"],
+        "enforcement": _authored({
+            "proxy": "not_supported",
+            "mcp": "hard",
+            "hook": "hard",
+            "runtime": "hard",
+        }),
+    }
+    db = _make_db([rule])
+    with patch(
+        "app.modules.guard.coverage._get_pack",
+        return_value=_pack_object([rule]),
+    ), patch("app.modules.guard.coverage.validate_enforcement_metadata"):
+        matrix = workspace_coverage_matrix(db, uuid.uuid4())
+
+    row = matrix[0]
+    # Action-gate rule → mcp/hook/runtime derive "hard", proxy derives "not_supported".
+    assert row["derived_mcp"] == "hard"
+    assert row["derived_hook"] == "hard"
+    assert row["derived_runtime"] == "hard"
+    assert row["derived_proxy"] == "not_supported"
