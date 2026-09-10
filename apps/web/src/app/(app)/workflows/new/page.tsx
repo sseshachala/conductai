@@ -95,12 +95,6 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   const [webhookError, setWebhookError]   = useState<string | null>(null)
   const [error, setError]                 = useState<string | null>(null)
 
-  // NL-to-DAG mode
-  const [mode, setMode]                   = useState<"playbook" | "describe">("playbook")
-  const [nlPrompt, setNlPrompt]           = useState("")
-  const [generating, setGenerating]       = useState(false)
-  const [generatedCreds, setGeneratedCreds] = useState<string[]>([])
-
   const { authFetch } = useAuthFetch()
 
 
@@ -185,48 +179,6 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   }, [template])
 
 
-  async function handleGenerate() {
-    if (!nlPrompt.trim()) return
-    setGenerating(true)
-    setError(null)
-    try {
-      const genRes = await authFetch(`${API}/workflows/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: nlPrompt.trim(), environment_id: selectedEnvId || null }),
-      })
-      if (!genRes.ok) {
-        const err = await genRes.json().catch(() => ({}))
-        setError(err.detail ?? `Generation failed (${genRes.status})`)
-        return
-      }
-      const { name, graph, required_credentials } = await genRes.json()
-      setGeneratedCreds(required_credentials ?? [])
-
-      // Create the workflow with the generated graph
-      const createRes = await authFetch(`${API}/workflows`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: agentName.trim() || name,
-          graph,
-          ...(selectedProjectId && { project_id: selectedProjectId }),
-          ...(selectedEnvId     && { environment_id: selectedEnvId }),
-        }),
-      })
-      if (!createRes.ok) {
-        const err = await createRes.json().catch(() => ({}))
-        setError(err.detail ?? `Create failed (${createRes.status})`)
-        return
-      }
-      const wf = await createRes.json()
-      router.push(`/workflows/${wf.id}`)
-    } catch {
-      setError("Network error — please try again")
-    } finally {
-      setGenerating(false)
-    }
-  }
 
   async function handleCreate() {
     setLoading(true)
@@ -283,16 +235,20 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
         <h1 className="page-title" style={{ fontSize: 22 }}>New agent</h1>
         <p className="page-sub" style={{ marginBottom: 22 }}>Choose a playbook and configure it — the webhook is registered automatically on create.</p>
 
-        {/* mode toggle */}
+        {/* Second pill routes to Lens — NL → block graph moved there. */}
         <div style={{ display: "flex", background: "var(--surface-3)", borderRadius: 10, padding: 3, marginBottom: 24, width: "fit-content" }}>
-          {([["playbook", "Start from playbook"], ["describe", "Describe"]] as const).map(([v, l]) => (
-            <button key={v} onClick={() => setMode(v)} style={{ border: "none", background: mode === v ? "var(--surface)" : "transparent", color: mode === v ? "var(--text)" : "var(--text-3)", fontSize: 13, fontWeight: 600, padding: "7px 16px", borderRadius: 8, cursor: "pointer", boxShadow: mode === v ? "var(--shadow-sm)" : "none", display: "flex", alignItems: "center", gap: 7 }}>
-              {l}
-            </button>
-          ))}
+          <button style={{ border: "none", background: "var(--surface)", color: "var(--text)", fontSize: 13, fontWeight: 600, padding: "7px 16px", borderRadius: 8, cursor: "default", boxShadow: "var(--shadow-sm)", display: "flex", alignItems: "center", gap: 7 }}>
+            Start from playbook
+          </button>
+          <button onClick={() => router.push(`/lens?q=${encodeURIComponent("Help me build a new agent. Ask what it should do, what triggers it, and what tools/credentials it needs, then draft the block graph.")}`)} style={{ border: "none", background: "transparent", color: "var(--text-3)", fontSize: 13, fontWeight: 600, padding: "7px 16px", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 7 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" /><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z" />
+            </svg>
+            Build agents from Lens
+          </button>
         </div>
 
-        {mode === "playbook" ? (
+        {(
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
             {/* Playbook picker */}
@@ -453,52 +409,6 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
                 </button>
               </>
             )}
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <div className="card" style={{ padding: "13px 15px", display: "flex", gap: 11, background: "var(--accent-weak)", borderColor: "var(--accent-ring)" }}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                style={{ color: "var(--accent-text)", flexShrink: 0, marginTop: 1 }}>
-                <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" /><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z" />
-              </svg>
-              <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
-                Describe what the agent should do in plain English. Conduct drafts the block graph and flags the credentials it needs — you can refine it on the canvas.
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Describe your agent</label>
-              <textarea value={nlPrompt} onChange={e => setNlPrompt(e.target.value)} rows={5}
-                placeholder="When a PR is labeled needs-review, have an agent review the diff for security issues and post a summary to #eng-reviews. Require a human approval before it can be merged."
-                style={{ ...ni, height: "auto", padding: "10px 12px", resize: "vertical", lineHeight: 1.5 }} />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Project</label>
-                <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} style={ni}>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Environment</label>
-                <select value={selectedEnvId} onChange={e => setSelectedEnvId(e.target.value)} style={ni}>
-                  {environments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {error && (
-              <div style={{ fontSize: 12.5, color: "var(--err)", background: "var(--err-bg)", border: "1px solid var(--err-bd)", borderRadius: 9, padding: "10px 12px" }}>{error}</div>
-            )}
-
-            <button className="btn btn-accent" style={{ height: 42, justifyContent: "center", marginTop: 4, opacity: nlPrompt.trim() ? 1 : 0.5, cursor: nlPrompt.trim() ? "pointer" : "not-allowed" }}
-              onClick={handleGenerate} disabled={!nlPrompt.trim() || generating}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
-              </svg>
-              {generating ? "Generating…" : "Generate agent"}
-            </button>
           </div>
         )}
       </div>
