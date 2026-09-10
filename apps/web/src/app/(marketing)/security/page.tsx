@@ -26,7 +26,7 @@ export default function SecurityPage() {
         <section className="mb-16">
           <h2 className="text-2xl font-bold text-stone-900 mb-3">Enforcement</h2>
           <p className="text-stone-600 leading-relaxed mb-5">
-            Guard evaluates every action against your policy before it executes. Three enforcement surfaces catch every path an agent can take:
+            Guard evaluates every action against your policy before it executes. Five enforcement surfaces catch every path an agent can take:
           </p>
           <ul className="text-sm text-stone-600 space-y-2.5">
             <li className="flex items-start gap-3">
@@ -35,11 +35,15 @@ export default function SecurityPage() {
             </li>
             <li className="flex items-start gap-3">
               <span className="text-stone-400 font-mono shrink-0 min-w-[48px] pt-0.5">HTTP</span>
-              <span>Drop-in base URL replacement in front of your model gateway. Every LLM request is policy-checked.</span>
+              <span>Drop-in base URL replacement in front of your model gateway. Two gates on every call: prompt before the model sees it, response before it returns.</span>
             </li>
             <li className="flex items-start gap-3">
               <span className="text-stone-400 font-mono shrink-0 min-w-[48px] pt-0.5">MCP</span>
               <span>Wraps MCP tool invocations before they reach the server. Same policy engine, different transport.</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="text-stone-400 font-mono shrink-0 min-w-[48px] pt-0.5">LENS</span>
+              <span>Every Lens chat LLM turn routes through the same policy engine. In-process, no round-trip.</span>
             </li>
           </ul>
         </section>
@@ -83,9 +87,9 @@ export default function SecurityPage() {
             </div>
             <div className="px-5 py-2">
               <ThreatModelRow
-                threat="Actions routed through Guard (CLI hook, HTTP proxy, MCP layer)"
+                threat="Actions routed through Guard (CLI hook, LLM proxy, MCP layer, Lens)"
                 coverage="Protected"
-                detail="All three surfaces run the same policy engine. Refunds, network changes, secret reads — every action routed through Guard is inspected."
+                detail="All five enforcement surfaces run the same policy engine — CLI hook, proxy prompt gate, proxy response gate, MCP, and Lens LLM turn. Refunds, network changes, secret reads — every action routed through Guard is inspected."
               />
               <ThreatModelRow
                 threat="Audit trail integrity"

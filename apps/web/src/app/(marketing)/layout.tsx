@@ -46,7 +46,7 @@ function ProductDropdown() {
       <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
         <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
           <NavItem href="/guard" title="Guard" desc="Runtime policy enforcement for every AI agent" />
-          <NavItem href="/playbooks" title="Playbooks" desc="39 pre-built automations with Guard built in" />
+          <NavItem href="/playbooks" title="Playbooks" desc="35 pre-built automations with Guard built in" />
           <NavItem href="/evidence" title="Evidence" desc="Hash-chained audit trail for every decision" />
           <NavItem href="/mcp-gateway" title="MCP" desc="Policy for every MCP tool invocation" />
         </div>

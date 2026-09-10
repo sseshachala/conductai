@@ -278,12 +278,12 @@ function OnePolicySection() {
               Write the rule once. Apply it where agents work.
             </h2>
             <p className="text-stone-500 leading-relaxed mb-6 text-sm sm:text-base">
-              One policy definition — one set of rules for which actions require approval, which are blocked, and which are audited. Guard applies it across your entire agent fleet: CLI hooks, HTTP proxy, and MCP layer.
+              One policy definition — one set of rules for which actions require approval, which are blocked, and which are audited. Guard applies it across your entire agent fleet: CLI hooks, LLM proxy (prompt + response gates), MCP layer, and Lens chat.
             </p>
             <ul className="space-y-3 text-sm text-stone-600">
               <li className="flex items-start gap-2">
                 <span className="text-emerald-600 font-bold mt-0.5 shrink-0">→</span>
-                <span>3 enforcement surfaces: CLI hook, HTTP proxy, MCP layer</span>
+                <span>5 enforcement surfaces: CLI hook, LLM proxy (prompt), LLM proxy (response), MCP layer, Lens</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-emerald-600 font-bold mt-0.5 shrink-0">→</span>
@@ -291,7 +291,7 @@ function OnePolicySection() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-emerald-600 font-bold mt-0.5 shrink-0">→</span>
-                <span>39 pre-built playbooks with Guard enforcement built in</span>
+                <span>35 pre-built playbooks with Guard enforcement built in</span>
               </li>
             </ul>
           </div>

@@ -114,12 +114,12 @@ Every request runs through Guard (policy, budget, audit) before it reaches the u
 | Compliance packs        | `apps/api/app/modules/guard/skill_packs/`     |
 | Canvas UI               | `apps/web/`                                   |
 | Playbook DSL loader     | `apps/api/app/dsl/`                           |
-| Playbook library        | `apps/api/playbooks/` (39 pre-built)          |
+| Playbook library        | `apps/api/playbooks/` (35 pre-built)          |
 | CLI                     | `packages/conduct-cli/`                       |
 
 **15 compliance packs out of the box:** OWASP, SOC 2 CC7.3, HIPAA §164.312, PCI DSS 4.0, EU AI Act Art. 15/16, NIST AI RMF, ISO 42001, plus Python, Node, and Terraform.
 
-**39 pre-built playbooks:** issue-to-PR, code review, incident response, prod deploy gate, CI/CD triage, security scanner triage, Slack digest. One YAML file each. Edit and run.
+**35 pre-built playbooks:** issue-to-PR, code review, incident response, prod deploy gate, CI/CD triage, security scanner triage, Slack digest. One YAML file each. Edit and run.
 
 ---
 
@@ -164,7 +164,7 @@ Full docs live under [`docs/`](./docs/README.md) — organized by goal (Start ·
 Quick paths:
 
 - **New to Conduct** → [Start](./docs/start.md)
-- **See what's possible** → [Examples — 37 playbooks](./docs/examples.md)
+- **See what's possible** → [Examples — 35 playbooks](./docs/examples.md)
 - **Write a playbook** → [Block reference](./docs/reference/blocks.md)
 - **Wire into CI, MCP, tools** → [Automate](./docs/automate.md)
 - **Governance & compliance** → [Guard rule packs — 183 rules](./docs/reference/guard-rule-packs.md)

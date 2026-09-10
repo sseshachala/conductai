@@ -164,7 +164,7 @@ export default function RegistryPage() {
           <h2 className="text-2xl font-bold text-stone-900 mb-3">What every playbook is made of</h2>
           <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
             Playbooks are not scripts. They are structured compositions of typed blocks. The same block types
-            appear across all 39 playbooks — which means policy, approval, and evidence are never bolt-ons.
+            appear across all 35 playbooks — which means policy, approval, and evidence are never bolt-ons.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
