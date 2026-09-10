@@ -106,6 +106,26 @@ class TestPreCallHook:
             await g.async_pre_call_hook(None, None, data, "completion")
         assert exc.value.decision.rule_id == "no-prod-secrets"
 
+    async def test_block_is_http_400_not_500(self) -> None:
+        """0.2.1 fix: ConductGuardBlocked inherits from fastapi.HTTPException
+        so LiteLLM's exception handler maps blocks to HTTP 400 instead of
+        the default 500. Regression test — LiteLLM users see the correct
+        bad-request status for a policy block.
+        """
+        from fastapi import HTTPException
+        g = _guard()
+        g._client.guard_check = AsyncMock(
+            return_value="BLOCKED — credential detected [rule: proxy-no-credential-leak]"
+        )
+        data = {"model": "gpt-4o", "messages": [{"role": "user", "content": "sk_live_..."}]}
+        with pytest.raises(ConductGuardBlocked) as exc:
+            await g.async_pre_call_hook(None, None, data, "completion")
+        # HTTPException carries a numeric status_code that LiteLLM propagates
+        # through its exception handler.
+        assert isinstance(exc.value, HTTPException)
+        assert exc.value.status_code == 400
+        assert "credential" in exc.value.detail.lower()
+
     async def test_pending_approval_also_raises(self) -> None:
         """PENDING approval must block the request while HITL runs — the
         LiteLLM caller cannot wait indefinitely."""

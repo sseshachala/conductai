@@ -118,13 +118,37 @@ def _extract_rule_id(text: str) -> str | None:
     return tail[:end].strip() if end >= 0 else None
 
 
-class ConductGuardBlocked(Exception):
-    """Raised inside the pre-call hook to abort a LiteLLM request. LiteLLM
-    surfaces the message to the caller; keep it short and rule-scoped."""
+try:
+    # Prefer FastAPI's HTTPException so LiteLLM's exception handler maps
+    # the block to HTTP 400 instead of the default 500 "internal error".
+    # A guardrail block is a bad-request semantic — the caller sent
+    # something disallowed by policy. LiteLLM already depends on FastAPI.
+    from fastapi import HTTPException as _BlockBase  # type: ignore[import-not-found]
+    _BLOCK_STATUS = 400
+except ImportError:  # pragma: no cover — FastAPI is always present under LiteLLM
+    _BlockBase = Exception  # type: ignore[misc,assignment]
+    _BLOCK_STATUS = None
+
+
+class ConductGuardBlocked(_BlockBase):
+    """Raised inside the pre-call hook to abort a LiteLLM request.
+
+    Inherits from ``fastapi.HTTPException`` when available so LiteLLM's
+    exception handler surfaces the block as HTTP 400 (bad-request semantic
+    for a policy violation) — not the misleading 500 default that a plain
+    ``Exception`` subclass falls through to. Falls back to a plain
+    ``Exception`` if FastAPI isn't importable (won't happen inside the
+    LiteLLM proxy, but keeps the module importable in bare unit tests).
+    """
 
     def __init__(self, decision: GuardDecision):
         self.decision = decision
-        super().__init__(decision.message or decision.raw or "Blocked by Conduct Guard")
+        msg = decision.message or decision.raw or "Blocked by Conduct Guard"
+        if _BLOCK_STATUS is not None:
+            # HTTPException signature: (status_code, detail)
+            super().__init__(status_code=_BLOCK_STATUS, detail=msg)
+        else:
+            super().__init__(msg)
 
 
 class ConductGuard(CustomGuardrail):
