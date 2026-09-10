@@ -26,6 +26,7 @@ new playbooks, tests, and code.
 ```bash
 git clone https://github.com/sseshachala/conductai
 cd conductai
+cp .env.example .env         # required — Compose declares env_file: .env on api, worker, web
 docker compose up            # API on :8000, web on :3000, worker + redis
 ```
 
