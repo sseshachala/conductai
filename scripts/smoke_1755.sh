@@ -104,6 +104,84 @@ else
   ok "${divergent} rules diverge — Phase D signal (see server logs for details)"
 fi
 
+# ── 5. Cedar import + export gate (#1768) ──────────────────────────
+say "Cedar export + import + audit trail"
+
+# 5a. Export a shipped pack as Cedar text.
+export_resp=$(curl -sS -w "\n___HTTP=%{http_code}" -H "Authorization: Bearer ${CONDUCT_TOKEN}" \
+  "${API}/guard/registry/packs/conduct-base/cedar?${qs}")
+export_code=$(sed -n 's/^___HTTP=//p' <<<"$export_resp")
+export_body=$(sed '$d' <<<"$export_resp")
+export_policies=$(grep -Ec '^permit|^forbid' <<<"$export_body" || true)
+if [[ "$export_code" == "200" && "$export_policies" -gt 0 ]]; then
+  ok "export /packs/conduct-base/cedar → ${export_policies} policies"
+else
+  bad "export failed (HTTP=${export_code}, policies=${export_policies})"
+fi
+
+# 5b. Preview-only import (no side effects).
+import_body=$(cat <<'JSON'
+{
+  "format": "cedar_json",
+  "policies": [{
+    "effect": "forbid",
+    "principal": {},
+    "action": {},
+    "conditions": [],
+    "annotations": {
+      "id": "smoke-1755-preview-rule",
+      "description": "Preview-only smoke rule — never installed",
+      "message": "This rule should never fire",
+      "severity": "medium"
+    }
+  }],
+  "pack_slug": "smoke-1755-preview",
+  "pack_name": "Smoke 1755 Preview",
+  "pack_version": "0.0.1",
+  "preview_only": true
+}
+JSON
+)
+import_resp=$(curl -sS -w "\n___HTTP=%{http_code}" -X POST "${hdr[@]}" \
+  -d "$import_body" \
+  "${API}/guard/registry/import-cedar?${qs}")
+import_code=$(sed -n 's/^___HTTP=//p' <<<"$import_resp")
+import_json=$(sed '$d' <<<"$import_resp")
+if [[ "$import_code" == "200" ]]; then
+  installed=$(jq -r '.installed' <<<"$import_json")
+  imported=$(jq -r '.rules_imported' <<<"$import_json")
+  if [[ "$installed" == "false" && "$imported" -ge 1 ]]; then
+    ok "import (preview) → rules_imported=${imported}  installed=false"
+  else
+    bad "import preview response shape wrong (installed=${installed}, imported=${imported})"
+  fi
+elif [[ "$import_code" == "403" || "$import_code" == "428" ]]; then
+  # A workspace policy override intentionally gates Cedar imports.
+  # That's a valid deployed state — record it as a signal, not a failure.
+  ok "import returned HTTP ${import_code} — Cedar gate is enforcing an admin-configured policy"
+else
+  bad "import failed unexpectedly (HTTP=${import_code}): $(head -c 200 <<<"$import_json")"
+fi
+
+# 5c. Rule fires for cedar-import-audit — only present after #1768 deploy.
+#     Skip cleanly if the rule isn't installed yet.
+policies=$(curl -sS "${hdr[@]}" "${API}/guard/policies?${qs}" | jq -r '.[] | .rule_id' | grep -c '^cedar-import-audit$' || true)
+if [[ "$policies" -eq 0 ]]; then
+  ok "cedar-import-audit rule not installed on this workspace — pending #1768 deploy (or admin uninstall)"
+else
+  fires_resp=$(curl -sS "${hdr[@]}" "${API}/guard/events/rule/cedar-import-audit/fires?${qs}&limit=5")
+  fires_n=$(jq 'length' <<<"$fires_resp" 2>/dev/null || echo 0)
+  # Confirm no raw preview-secret candidates leak in the redacted preview
+  # (Property 9 re-verified for the Cedar surface).
+  leaked=$(jq -r '.[] | select(.input_summary_redacted != null) | .input_summary_redacted' <<<"$fires_resp" 2>/dev/null \
+           | grep -Ei '(sk-[a-z0-9]{20,}|xox[bp]-[0-9]+-[0-9]+|-----BEGIN.*PRIVATE KEY-----)' || true)
+  if [[ -z "$leaked" ]]; then
+    ok "cedar-import-audit fires: ${fires_n}  (no raw secrets in redacted preview)"
+  else
+    bad "possible raw secret in redacted preview: ${leaked}"
+  fi
+fi
+
 # ── Summary ─────────────────────────────────────────────────────────
 echo
 if [[ "$fail" -eq 0 ]]; then
