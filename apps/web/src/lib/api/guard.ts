@@ -23,6 +23,12 @@ export interface GuardPolicy {
   non_overridable: boolean
   persona_affinity: string[]
   gates?: string[]  // #1733/#1750 Phase B — locked enum [action, prompt, response]
+  // #1755 Slice 2 — derived per-PEP surface status from rule.gates × PEP_CAPABILITIES.
+  // Values: "hard" | "not_supported" (locked; deploy-caveat statuses stay hand-authored).
+  derived_mcp?: string
+  derived_proxy?: string
+  derived_runtime?: string
+  derived_hook?: string
   guarantee?: string | null  // #1750 Phase B — hand-authored trust prose
   known_limitations?: string[]  // #1750 Phase B — hand-authored operational caveats
   tag: string | null
@@ -48,6 +54,22 @@ export interface GuardPolicyPatch {
   expires_at?: string
 }
 
+// #1755 Slice 2 — redacted rule-firing shape for the Policies UI panel.
+// Raw input_summary NEVER lands here (Property 9); only the redacted preview,
+// a sha256 prefix, and byte size for dedupe/volume signal.
+export interface RuleFire {
+  id: string
+  ts: string
+  rule_id: string | null
+  decision: string
+  tool_call: string | null
+  source: string
+  ai_tool: string
+  input_summary_redacted: string | null
+  input_hash_prefix: string | null
+  input_size_bytes: number
+}
+
 export type EnforcementStatus = "hard" | "conditional" | "advisory" | "not_supported"
 
 export interface GuardEnforcementCoverage {
@@ -64,6 +86,13 @@ export interface GuardEnforcementCoverage {
   hook: EnforcementStatus
   mcp: EnforcementStatus
   runtime: EnforcementStatus
+  // #1755 Slice 2 (real PR 5) — derived counterparts for divergence UI.
+  // Locked to "hard" | "not_supported" today; expands when derive_surface_status
+  // learns to model deploy-caveat statuses.
+  derived_proxy?: string
+  derived_hook?: string
+  derived_mcp?: string
+  derived_runtime?: string
   guarantee: string
   requires: string[]
   known_limitations: string[]
@@ -131,6 +160,12 @@ export const guard = {
     auditVerify: (f: AuthFetch, workspaceId: string) =>
       json<any>(f, `${base()}/events/audit/verify?workspace_id=${workspaceId}`),
     streamUrl: () => `${base()}/events/stream`,
+    // #1755 Slice 2 — redacted-preview firings for one rule (Policies UI panel).
+    ruleFires: (f: AuthFetch, ruleId: string, workspaceId?: string, limit = 20) => {
+      const params = new URLSearchParams({ limit: String(limit) })
+      if (workspaceId) params.set("workspace_id", workspaceId)
+      return json<RuleFire[]>(f, `${base()}/events/rule/${encodeURIComponent(ruleId)}/fires?${params}`)
+    },
   },
 
   policies: {

@@ -25,6 +25,23 @@ def test_pack_rule_to_out_stamps_gates_from_persona_default():
     assert out.gates == ["action"]
 
 
+def test_pack_rule_to_out_populates_derived_surface_status():
+    """#1755 Slice 2 — every PolicyOut carries derived_<surface> for all four PEPs."""
+    action_rule = {"id": "act", "action": "block", "gates": ["action"]}
+    out = _pack_rule_to_out(action_rule, "conduct-base", datetime.now(timezone.utc), uuid.uuid4(), None)
+    assert out.derived_mcp == "hard"
+    assert out.derived_hook == "hard"
+    assert out.derived_runtime == "hard"
+    assert out.derived_proxy == "not_supported"
+
+
+def test_pack_rule_to_out_derived_proxy_hard_for_prompt_gate_rule():
+    prompt_rule = {"id": "prompt-x", "action": "block", "gates": ["prompt"]}
+    out = _pack_rule_to_out(prompt_rule, "conduct-base", datetime.now(timezone.utc), uuid.uuid4(), None)
+    assert out.derived_proxy == "hard"
+    assert out.derived_mcp == "not_supported"
+
+
 def test_pack_rule_to_out_stamps_gates_from_proxy_persona():
     rule = {"id": "r-p", "action": "warn", "persona": "proxy"}
     out = _pack_rule_to_out(rule, "conduct-base", datetime.now(timezone.utc), uuid.uuid4(), None)

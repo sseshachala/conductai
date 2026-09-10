@@ -17,8 +17,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, _clerk_enabled, _verify_clerk_token
+from app.core.auth import get_workspace_id, require_permission, _clerk_enabled, _verify_clerk_token
 from app.core.database import SessionLocal, get_db
+from app.core.pii import redact_secrets
 from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget, chain_hash_for_insert, get_policy_hash
 
@@ -140,6 +141,26 @@ class EventOut(BaseModel):
     evaluated_rules: list[dict] | None = None
     defense_score: int | None = None
     routing_meta: dict | None = None
+
+
+class RuleFireOut(BaseModel):
+    """#1755 Slice 2 — safe projection of a rule firing for the Policies UI
+    'Recent Firings' panel. Property 9: raw input_summary NEVER surfaces —
+    the field is routed through ``redact_secrets`` before serialization
+    and augmented with a hash prefix + size hint so consumers can dedupe
+    without needing the raw content."""
+    id: str
+    ts: str
+    rule_id: str | None
+    decision: str
+    tool_call: str | None = None
+    source: str
+    ai_tool: str
+    # Redacted preview (matched-span shape, credentials + emails/SSNs masked).
+    input_summary_redacted: str | None = None
+    # sha256 of the raw input_summary, first 16 hex chars — dedupe without leaking payload.
+    input_hash_prefix: str | None = None
+    input_size_bytes: int = 0
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -877,6 +898,59 @@ def list_events(
         .all()
     )
     return [EventOut(**_event_to_dict(e)) for e in rows]
+
+
+# ── GET /guard/events/rule/{rule_id}/fires — redacted preview (#1755 Slice 2) ─
+
+def _project_rule_fire(e: GuardAuditEvent) -> RuleFireOut:
+    """Property 9: redact input_summary via app.core.pii.redact_secrets
+    before it leaves the API. Emit only a hash prefix + size for dedupe."""
+    raw = e.input_summary or ""
+    redacted_text, _found = redact_secrets(raw) if raw else ("", [])
+    return RuleFireOut(
+        id=str(e.id),
+        ts=e.ts.isoformat() if e.ts else "",
+        rule_id=e.rule_id,
+        decision=e.decision,
+        tool_call=e.tool_call,
+        source=e.source or "hook",
+        ai_tool=e.ai_tool,
+        input_summary_redacted=redacted_text or None,
+        input_hash_prefix=(
+            hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
+            if raw else None
+        ),
+        input_size_bytes=len(raw.encode("utf-8", errors="replace")),
+    )
+
+
+@router.get("/rule/{rule_id}/fires", response_model=list[RuleFireOut])
+def list_rule_fires(
+    rule_id: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    limit: int = Query(default=20, ge=1, le=100),
+    _: str = Depends(require_permission("guard.activity.view_own")),
+):
+    """#1755 Slice 2 — Recent Firings panel for a specific rule.
+
+    Returns the most recent N events that fired ``rule_id`` in this
+    workspace, projected through ``redact_secrets`` so raw input_summary
+    never leaves the API. Hash prefix + size ride along for dedupe /
+    volume signals without needing the payload.
+    """
+    org_ws = _org_ws_subquery(db, workspace_id)
+    rows = (
+        db.query(GuardAuditEvent)
+        .filter(
+            GuardAuditEvent.workspace_id.in_(org_ws),
+            GuardAuditEvent.rule_id == rule_id,
+        )
+        .order_by(GuardAuditEvent.ts.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_project_rule_fire(e) for e in rows]
 
 
 # ── GET /guard/events/cost-trend ─────────────────────────────────────────────

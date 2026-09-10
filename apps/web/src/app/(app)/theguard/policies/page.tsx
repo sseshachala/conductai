@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
-import type { GuardPolicy, GuardPolicyAction, GuardPolicyPatch } from "@/lib/api/guard"
+import type { GuardPolicy, GuardPolicyAction, GuardPolicyPatch, RuleFire } from "@/lib/api/guard"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
@@ -171,6 +171,134 @@ function GateChips({ gates }: { gates?: string[] | null }) {
         </span>
       ))}
     </span>
+  )
+}
+
+// ─── SurfaceBadges (#1755 Slice 2) ─────────────────────────────────────────
+// Per-PEP verification chips: green when the PEP can enforce the rule, muted
+// when not_supported. Sourced from PolicyOut.derived_<surface> (backend
+// derives from rule.gates × PEP_CAPABILITIES). Falls back to muted when the
+// backend hasn't populated the field yet (never breaks the row).
+
+type SurfaceStatus = "hard" | "not_supported"
+const SURFACES: readonly { key: string; label: string }[] = [
+  { key: "mcp",     label: "MCP" },
+  { key: "proxy",   label: "Proxy" },
+  { key: "runtime", label: "Runtime" },
+  { key: "hook",    label: "Hook" },
+] as const
+
+function _normalizeStatus(v?: string | null): SurfaceStatus {
+  return v === "hard" ? "hard" : "not_supported"
+}
+
+function SurfaceBadges({ policy }: { policy: Policy }) {
+  const statuses: Record<string, SurfaceStatus> = {
+    mcp:     _normalizeStatus(policy.derived_mcp),
+    proxy:   _normalizeStatus(policy.derived_proxy),
+    runtime: _normalizeStatus(policy.derived_runtime),
+    hook:    _normalizeStatus(policy.derived_hook),
+  }
+  return (
+    <span style={{ display: "inline-flex", gap: 3, flexShrink: 0 }} title="PEP surfaces that can enforce this rule (green = hard)">
+      {SURFACES.map(({ key, label }) => {
+        const status = statuses[key]
+        const isHard = status === "hard"
+        return (
+          <span
+            key={key}
+            className={`sbadge ${isHard ? "ok" : ""}`}
+            style={{
+              textTransform: "uppercase",
+              fontSize: 9,
+              letterSpacing: ".06em",
+              padding: "0 5px",
+              opacity: isHard ? 1 : 0.35,
+              color: isHard ? undefined : "var(--text-muted)",
+              background: isHard ? undefined : "var(--surface-2)",
+              border: isHard ? undefined : "1px solid var(--border)",
+            }}
+            title={`${label} PEP: ${status}`}
+          >
+            {label}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+// ─── RuleFiresPanel (#1755 Slice 2) ───────────────────────────────────────
+// Shows the last N events that fired this rule. Server projects through
+// redact_secrets — raw input_summary NEVER lands here (Property 9). The
+// panel renders a redacted preview + short sha256 prefix + byte size so
+// consumers can dedupe / spot volume without needing the payload.
+
+function _formatFireTime(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toISOString().replace("T", " ").replace(/\..*/, "")
+  } catch {
+    return iso
+  }
+}
+
+function RuleFiresPanel({ state }: { state?: { loading: boolean; fires: RuleFire[]; error?: string } }) {
+  if (!state) return null
+  if (state.loading) {
+    return (
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic" }}>
+        Loading recent firings…
+      </div>
+    )
+  }
+  if (state.error) {
+    return (
+      <div style={{ fontSize: 11.5, color: "var(--err)" }}>
+        Could not load firings: {state.error}
+      </div>
+    )
+  }
+  if (state.fires.length === 0) {
+    return (
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic" }}>
+        No recent firings for this rule.
+      </div>
+    )
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {state.fires.map(fire => (
+        <div key={fire.id} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "4px 8px", background: "var(--surface)", borderRadius: 5, border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11, color: "var(--text-2)" }}>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+              {_formatFireTime(fire.ts)}
+            </span>
+            <span className={`sbadge ${fire.decision === "blocked" ? "err" : fire.decision === "warned" ? "warn" : "info"}`} style={{ textTransform: "uppercase", fontSize: 9, letterSpacing: ".06em", padding: "0 5px" }}>
+              {fire.decision}
+            </span>
+            <span style={{ color: "var(--text-muted)" }}>{fire.ai_tool}</span>
+            {fire.tool_call && (
+              <span className="mono" style={{ color: "var(--text-muted)" }}>{fire.tool_call}</span>
+            )}
+            <span style={{ marginLeft: "auto", color: "var(--text-muted)", fontSize: 10 }}>
+              {fire.input_size_bytes} B
+              {fire.input_hash_prefix && (
+                <>
+                  {" · "}
+                  <span className="mono">sha256:{fire.input_hash_prefix}…</span>
+                </>
+              )}
+            </span>
+          </div>
+          {fire.input_summary_redacted && (
+            <div className="mono" style={{ fontSize: 11, color: "var(--text-2)", background: "var(--surface-2)", borderRadius: 4, padding: "2px 6px", wordBreak: "break-all" }}>
+              {fire.input_summary_redacted}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -937,6 +1065,9 @@ function PoliciesContent() {
   const [exceptionSaving, setExceptionSaving] = useState(false)
   const [successBanner, setSuccessBanner] = useState<string | null>(null)
   const [gateFilter, setGateFilter] = useState<"all" | Gate>("all")  // #1733/#1750 Phase B
+  // #1755 Slice 2 — per-rule firings cache. Map ruleId → { loading, fires }.
+  // Populated lazily on expand (see toggleExpand below).
+  const [ruleFires, setRuleFires] = useState<Record<string, { loading: boolean; fires: RuleFire[]; error?: string }>>({})
 
   const canWrite = !permissionsLoading && permissions.canEditPolicies
 
@@ -1172,7 +1303,17 @@ function PoliciesContent() {
   function toggleExpand(id: string) {
     setExpandedIds(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      const isOpening = !next.has(id)
+      isOpening ? next.add(id) : next.delete(id)
+      // #1755 Slice 2 — lazy-fetch firings on first expand.
+      if (isOpening && !ruleFires[id]) {
+        setRuleFires(s => ({ ...s, [id]: { loading: true, fires: [] } }))
+        guard.events.ruleFires(authFetch, id, teamId ?? undefined)
+          .then(fires => setRuleFires(s => ({ ...s, [id]: { loading: false, fires } })))
+          .catch(err => setRuleFires(s => ({
+            ...s, [id]: { loading: false, fires: [], error: String(err?.message ?? err) },
+          })))
+      }
       return next
     })
   }
@@ -1281,7 +1422,9 @@ function PoliciesContent() {
                 const expanded = expandedIds.has(p.id)
                 const hasException = p.exception_active || p.exception_expired
                 const hasProse = !!(p.guarantee || (p.known_limitations && p.known_limitations.length > 0))
-                const hasDetails = !!(p.match_pattern || p.match_path_pattern || p.message || hasException || hasProse)
+                // #1755 Slice 2 — surface badges are always relevant to compliance
+                // officers, so every rule is expandable now.
+                const hasDetails = true || !!(p.match_pattern || p.match_path_pattern || p.message || hasException || hasProse)
                 const locked = !!p.non_overridable
                 return (
                   <div key={p.id} style={{ opacity: p.enabled ? 1 : 0.55 }}>
@@ -1386,6 +1529,11 @@ function PoliciesContent() {
                     {/* Expanded details */}
                     {expanded && hasDetails && (
                       <div style={{ margin: "4px 0 4px 12px", padding: "8px 12px", background: "var(--surface-2)", borderRadius: 8, display: "flex", flexWrap: "wrap", gap: 12 }}>
+                        {/* #1755 Slice 2 — PEP verified badges */}
+                        <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Enforced by</span>
+                          <SurfaceBadges policy={p} />
+                        </div>
                         {p.match_tool && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Tool </span><span className="mono" style={{ fontSize: 11.5, color: "var(--text-2)" }}>{p.match_tool}</span></div>}
                         {p.match_pattern && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Pattern </span><span className="mono" style={{ fontSize: 11, color: "var(--err)", background: "var(--err-bg)", borderRadius: 4, padding: "1px 6px" }}>{p.match_pattern}</span></div>}
                         {p.match_path_pattern && <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)" }}>Path </span><span className="mono" style={{ fontSize: 11, color: "var(--warn)", background: "var(--warn-bg)", borderRadius: 4, padding: "1px 6px" }}>{p.match_path_pattern}</span></div>}
@@ -1407,6 +1555,13 @@ function PoliciesContent() {
                             </ul>
                           </div>
                         )}
+                        {/* #1755 Slice 2 — Recent firings panel (redacted preview). */}
+                        <div style={{ flexBasis: "100%", paddingTop: 4, borderTop: "1px solid var(--border)" }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)", marginBottom: 4 }}>
+                            Recent firings
+                          </div>
+                          <RuleFiresPanel state={ruleFires[p.id]} />
+                        </div>
                         {hasException && (
                           <div style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", gap: 12, paddingTop: 4, borderTop: "1px solid var(--border)" }}>
                             <div>

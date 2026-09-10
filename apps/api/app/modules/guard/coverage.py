@@ -147,6 +147,11 @@ def workspace_coverage_matrix(db: Session, workspace_id: uuid.UUID) -> list[dict
             "hook": metadata["hook"],
             "mcp": metadata["mcp"],
             "runtime": metadata["runtime"],
+            # #1755 Slice 2 (real PR 5) — derived counterparts for divergence UI.
+            "derived_proxy": derive_surface_status(rule, "proxy"),
+            "derived_hook": derive_surface_status(rule, "hook"),
+            "derived_mcp": derive_surface_status(rule, "mcp"),
+            "derived_runtime": derive_surface_status(rule, "runtime"),
             "guarantee": metadata["guarantee"],
             "requires": list(metadata["requires"]),
             "known_limitations": list(metadata["known_limitations"]),

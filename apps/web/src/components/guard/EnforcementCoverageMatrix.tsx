@@ -59,6 +59,47 @@ function StatusBadge({ status }: { status: EnforcementStatus }) {
   )
 }
 
+// #1755 Slice 2 (real PR 5) — headline = hand-authored value (today's UI);
+// subtext = derived value from PEP capabilities × rule.gates. When they
+// disagree, a ⚠ marker tells the compliance officer this rule's metadata
+// is stale. Phase D will retire the hand-authored fields and the subtext
+// becomes the headline.
+function _divergent(authored: EnforcementStatus, derived?: string): boolean {
+  if (!derived) return false
+  // Only flag flips between the two derived-model values. authored's
+  // "conditional" / "advisory" are richer states derive doesn't emit yet
+  // — those are still valid, not divergent.
+  if (authored === "conditional" || authored === "advisory") return false
+  return authored !== derived
+}
+
+function StatusCell({ authored, derived }: { authored: EnforcementStatus; derived?: string }) {
+  const isDivergent = _divergent(authored, derived)
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+        <StatusBadge status={authored} />
+        {isDivergent && (
+          <span
+            style={{ color: "var(--warn)", fontSize: 10, fontWeight: 700, cursor: "help" }}
+            title={`Hand-authored '${authored}' disagrees with derived '${derived}'. Rule metadata is stale — flag for Phase D cleanup.`}
+          >
+            ⚠
+          </span>
+        )}
+      </span>
+      {derived && (
+        <span
+          style={{ color: "var(--text-muted)", fontSize: 9, letterSpacing: ".05em", textTransform: "uppercase" }}
+          title="Derived from rule.gates × PEP capabilities (source of truth once #1750 Phase D retires the hand-authored fields)"
+        >
+          derived: {derived === "hard" ? "hard" : "n/s"}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function formatAction(action: string): string {
   return action.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase())
 }
@@ -393,10 +434,10 @@ function FragmentRow({
             </div>
           </button>
         </td>
-        <td style={statusCellStyle}><StatusBadge status={row.proxy} /></td>
-        <td style={statusCellStyle}><StatusBadge status={row.hook} /></td>
-        <td style={statusCellStyle}><StatusBadge status={row.mcp} /></td>
-        <td style={statusCellStyle}><StatusBadge status={row.runtime} /></td>
+        <td style={statusCellStyle}><StatusCell authored={row.proxy} derived={row.derived_proxy} /></td>
+        <td style={statusCellStyle}><StatusCell authored={row.hook} derived={row.derived_hook} /></td>
+        <td style={statusCellStyle}><StatusCell authored={row.mcp} derived={row.derived_mcp} /></td>
+        <td style={statusCellStyle}><StatusCell authored={row.runtime} derived={row.derived_runtime} /></td>
         <td style={{ padding: "10px 12px", color: "var(--text-2)", fontSize: 11.5, lineHeight: 1.45 }}>{row.guarantee}</td>
       </tr>
       {expanded && (
