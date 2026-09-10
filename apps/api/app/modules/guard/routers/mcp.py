@@ -82,7 +82,6 @@ _TOOLS = [
                 "tool_input": {"type": "object", "description": "Relevant parameters — e.g. {\"command\": \"rm -rf /\"} or {\"file_path\": \"/etc/passwd\"}"},
                 "conduct_run_id":   {"type": "string", "description": "Conduct run ID if called from within a workflow run — pass the value from your run context."},
                 "conduct_workflow": {"type": "string", "description": "Conduct workflow slug if called from within a workflow run."},
-                "pack": {"type": "string", "description": "Optional. Scope this check to a specific compliance pack (e.g. 'conduct-eu-ai-act', 'conduct-hipaa'). conduct-base is always enforced on top. Returns ERROR if the pack is not installed for this workspace."},
                 "prompt": {"type": "string", "description": "Optional. The prompt or action description being checked. Stored in the audit trail for traceability — useful for agentic apps passing context about why an action is being taken."},
             },
             "required": ["tool_name"],
@@ -464,35 +463,9 @@ def _get_rules(db: Session, ws_uuid: uuid.UUID) -> list[dict]:
 
 _PERSONAS = ["agent", "proxy"]
 
-def _get_rules_for_pack(db: Session, ws_uuid: uuid.UUID, pack_slug: str) -> list[dict] | str:
-    """Rules from conduct-base + pack_slug only. Returns error string if pack not installed."""
-    if pack_slug == "conduct-base":
-        return 'ERROR — "conduct-base" is always enforced and cannot be selected directly. Use a compliance pack (e.g. "conduct-eu-ai-act").'
-    row = db.execute(_sql("SELECT 1 FROM workspace_skill_packs WHERE workspace_id=:ws AND pack_slug=:p"),
-                     {"ws": ws_uuid, "p": pack_slug}).fetchone()
-    if not row:
-        installed = [r[0] for r in db.execute(_sql(
-            "SELECT pack_slug FROM workspace_skill_packs WHERE workspace_id=:ws AND pack_slug != 'conduct-base'"
-        ), {"ws": ws_uuid}).fetchall()]
-        available = ", ".join(sorted(installed)) or "none"
-        return f'ERROR — pack "{pack_slug}" is not installed for this workspace. Installed packs: {available}.'
-    rules: dict[str, dict] = {}
-    for slug in ("conduct-base", pack_slug):
-        sp = db.execute(_sql(
-            "SELECT rules FROM skill_packs WHERE slug=:slug ORDER BY published_at DESC LIMIT 1"
-        ), {"slug": slug}).fetchone()
-        if not sp:
-            continue
-        for rule in (sp[0] or []):
-            persona = rule.get("persona")
-            if persona and persona != "agent":
-                continue
-            if not persona and "agent" not in rule.get("persona_affinity", _PERSONAS):
-                continue
-            projected = _project_rule(rule)
-            projected["pack"] = projected.get("pack") or slug
-            rules[rule["id"]] = projected
-    return list(rules.values())
+# _get_rules_for_pack was retired in #1753 (2026-09-10). Callers who need
+# pack-scoped isolation use the guard_test MCP verb instead — same behavior,
+# without bypassing workspace overrides.
 
 
 def _record_event(

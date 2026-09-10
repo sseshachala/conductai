@@ -27,60 +27,13 @@ from sqlalchemy import text as _sql
 
 LOG = logging.getLogger("guard.mcp_impls")
 
-# #1737 PR 3: deprecation window on guard_check `pack:` arg. Suffix appended
-# to non-"ok"/non-PENDING responses so callers see the notice; server-side
-# LOG.warning gives telemetry for who still passes it. Removed in Phase D
-# once telemetry shows zero callers.
-_PACK_ARG_DEPRECATION_SUFFIX = (
-    "\n\n[deprecation: guard_check(pack=...) is deprecated (#1737). "
-    "Use guard_test for pack-scoped isolation. This arg will be removed.]"
-)
+# #1737 PR 3 built a deprecation window on guard_check(pack=...). #1753
+# retired all of it (2026-09-10) — _PACK_ARG_DEPRECATION_SUFFIX,
+# _build_divergence_log_line, _shadow_log_pack_divergence, and the
+# guard_check_impl branch that dispatched to _get_rules_for_pack are
+# gone. Pack-scoped isolation now lives in the guard_test MCP verb only.
 
 
-def _build_divergence_log_line(
-    pack: str, tool_name: str, tool_input: dict,
-    pack_rid: str | None, unified_rid: str | None,
-) -> tuple[str, tuple] | None:
-    """Pure helper: return (fmt_msg, args) for LOG.warning, or None if the
-    two paths agree. Split out from _shadow_log_pack_divergence so tests
-    can exercise the divergence-message shape + redaction without any
-    patching (was CI-flaky when we patched module-level names)."""
-    if pack_rid == unified_rid:
-        return None
-    from app.core.pii import redact_secrets
-    # Defensive unpack: contract is tuple[str, list[str]], but some tests
-    # stub redact_secrets as a str→str lambda. Trust nothing — take element 0
-    # if the result is a tuple, else treat it as the string directly.
-    _res = redact_secrets(json.dumps(tool_input, default=str))
-    redacted_input = _res[0] if isinstance(_res, tuple) and _res else str(_res)
-    return (
-        "guard_check shadow divergence (#1737) "
-        "pack=%s tool=%s pack_rule=%s unified_rule=%s input=%s",
-        (pack, tool_name, pack_rid, unified_rid, redacted_input),
-    )
-
-
-def _shadow_log_pack_divergence(
-    db, ws_uuid, pack: str, tool_name: str, tool_input: dict, pack_rules: list[dict],
-) -> None:
-    """#1737 PR 4: run the unified path in shadow when pack: is used and
-    log any divergence in match result. Never raises — shadow eval failure
-    must not affect the primary decision. Redaction lives in the pure
-    helper `_build_divergence_log_line` so test coverage doesn't depend on
-    patching module-level names (reviewer edit 3)."""
-    try:
-        unified_rules = _get_rules(db, ws_uuid)
-        pack_match = _match_policy(tool_name, tool_input, pack_rules)
-        unified_match = _match_policy(tool_name, tool_input, unified_rules)
-        pack_rid = (pack_match or {}).get("rule_id")
-        unified_rid = (unified_match or {}).get("rule_id")
-        line = _build_divergence_log_line(pack, tool_name, tool_input, pack_rid, unified_rid)
-        if line is None:
-            return
-        fmt, args = line
-        LOG.warning(fmt, *args)
-    except Exception as _shadow_err:
-        LOG.debug("shadow eval failed (#1737): %s", _shadow_err)
 from sqlalchemy.orm import Session
 
 from app.modules.guard import approval as _approval
@@ -98,7 +51,6 @@ from app.models.workspace import Workspace
 # functions live at module top now and need them here.
 from app.modules.guard.routers.mcp import (  # noqa: E402
     _get_rules,
-    _get_rules_for_pack,
     _list_agents,
     _list_playbooks,
     _list_projects,
@@ -185,34 +137,19 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
     inner_input = arguments.get("tool_input") or {}
     _run_id = arguments.get("conduct_run_id") or None
     _workflow = arguments.get("conduct_workflow") or None
-    _pack = arguments.get("pack") or None
     _prompt = arguments.get("prompt") or None
-    _dep = _PACK_ARG_DEPRECATION_SUFFIX if _pack else ""
-    if _pack:
-        LOG.warning(
-            "guard_check pack: arg is deprecated (#1737); ai_tool=%s user=%s pack=%s",
-            ai_tool, user_email, _pack,
-        )
+    # #1753 (2026-09-10): the `pack:` argument is retired. If a legacy client
+    # still passes it, we ignore it silently and evaluate against the full
+    # workspace policy (which is the correct behavior anyway — pack-scoping
+    # was the buggy path that bypassed overrides).
     try:
-        if _pack:
-            rules_or_err = _get_rules_for_pack(db, ws_uuid, _pack)
-            if isinstance(rules_or_err, str):
-                return rules_or_err + _dep
-            rules = rules_or_err
-        else:
-            rules = _get_rules(db, ws_uuid)
+        rules = _get_rules(db, ws_uuid)
     except Exception as _eval_err:
         _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if _cfg and not _cfg.deny_on_error:
-            return f"advisory: policy eval error (fail-open): {_eval_err}{_dep}"
+            return f"advisory: policy eval error (fail-open): {_eval_err}"
         _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "policy_eval_error", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-        return f"BLOCKED — policy evaluation failed. Request denied by fail-closed default.{_dep}"
-
-    # #1737 PR 4: shadow eval — when pack: is used, also compute the unified
-    # path and log divergences. Builds confidence before removing the pack
-    # arg in Phase D. Redacted through pii.redact_secrets (reviewer edit 3).
-    if _pack:
-        _shadow_log_pack_divergence(db, ws_uuid, _pack, inner_tool, inner_input, rules)
+        return "BLOCKED — policy evaluation failed. Request denied by fail-closed default."
 
     _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     _advisory = _cfg.advisory_mode if _cfg else False
@@ -233,11 +170,11 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
 
     if _advisory:
         _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-        return f"advisory: {message} [rule: {rule_id}]{_guidance_suffix}{_dep}"
+        return f"advisory: {message} [rule: {rule_id}]{_guidance_suffix}"
 
     if action == "block":
         _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-        return f"BLOCKED — {message}  [rule: {rule_id}]{_guidance_suffix}{_dep}"
+        return f"BLOCKED — {message}  [rule: {rule_id}]{_guidance_suffix}"
 
     if action == "warn":
         already_warned = db.query(GuardAuditEvent).filter(
@@ -249,7 +186,7 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
         if already_warned:
             return "ok"
         _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-        return f"WARNING — {message}  [rule: {rule_id}]{_guidance_suffix}{_dep}"
+        return f"WARNING — {message}  [rule: {rule_id}]{_guidance_suffix}"
 
     if action == "approval":
         prior = None
@@ -273,7 +210,7 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
             return "ok"
         if verdict == "block":
             _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
-            return f"BLOCKED — {block_reason}  [rule: {rule_id}]{_guidance_suffix}{_dep}"
+            return f"BLOCKED — {block_reason}  [rule: {rule_id}]{_guidance_suffix}"
         if verdict == "wait":
             return _approval.pending_marker(prior)
         # verdict == "create"
