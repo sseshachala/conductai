@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.15.0",
+  "version": "2.16.0",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 16 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "ui": {
@@ -1443,6 +1443,65 @@
         ],
         "known_limitations": [
           "Only request text exposed to the proxy matcher is inspected"
+        ]
+      }
+    },
+    {
+      "id": "cedar-import-audit",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Audit every Cedar policy import so the requesting user, target slug, and rule count land in the hash-chained audit trail. Override to action: approval for regulated workspaces that require admin sign-off before install.",
+      "match_tool": "cedar_import",
+      "action": "audit",
+      "message": "Cedar policy import to /guard/registry/import-cedar — captured in the audit trail for security review.",
+      "severity": "medium",
+      "frameworks": [
+        "SOC2:CC6.1",
+        "ISO_42001:8.3"
+      ],
+      "recommendation": "For regulated workspaces, override this rule to action: approval so a workspace admin approves each Cedar import before it installs.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Every POST /guard/registry/import-cedar request runs through the composed policy evaluator and is recorded in the audit trail (default action: audit). Overriding to block or approval takes effect on the next request without a redeploy.",
+        "requires": [
+          "Caller invokes POST /guard/registry/import-cedar with a Bearer token that has platform.marketplace.install"
+        ],
+        "known_limitations": [
+          "Enforced at the REST endpoint, not at any of the four PEP surfaces (mcp/proxy/hook/runtime). Divergence log will flag the derived-vs-authored mismatch; this is intentional until a first-class 'http' surface exists in pep_registry.",
+          "REST-endpoint approval routing is not yet implemented — action: approval returns 428 with a pending marker; the caller must retry after admin decision"
+        ]
+      }
+    },
+    {
+      "id": "cedar-export-audit",
+      "persona": "agent",
+      "non_overridable": false,
+      "description": "Audit every Cedar render of an installed pack — visible in the audit trail for pack-content review.",
+      "match_tool": "cedar_export",
+      "action": "audit",
+      "message": "Cedar pack export from /guard/registry/packs/{slug}/cedar — captured in the audit trail.",
+      "severity": "low",
+      "frameworks": [
+        "SOC2:CC6.1"
+      ],
+      "recommendation": "Override to action: warn for workspaces that want callers notified their read is audited.",
+      "enforcement": {
+        "version": 1,
+        "proxy": "not_supported",
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "runtime": "not_supported",
+        "guarantee": "Every GET /guard/registry/packs/{slug}/cedar request runs through the composed policy evaluator and is recorded in the audit trail (default action: audit). Overriding to block or approval takes effect on the next request without a redeploy.",
+        "requires": [
+          "Caller invokes GET /guard/registry/packs/{slug}/cedar with a Bearer token that has platform.marketplace.browse"
+        ],
+        "known_limitations": [
+          "Enforced at the REST endpoint, not at any of the four PEP surfaces (mcp/proxy/hook/runtime). Divergence log will flag the derived-vs-authored mismatch; this is intentional until a first-class 'http' surface exists in pep_registry.",
+          "REST-endpoint approval routing is not yet implemented — action: approval returns 428 with a pending marker; the caller must retry after admin decision"
         ]
       }
     }
