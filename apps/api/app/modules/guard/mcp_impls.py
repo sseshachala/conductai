@@ -37,34 +37,44 @@ _PACK_ARG_DEPRECATION_SUFFIX = (
 )
 
 
+def _build_divergence_log_line(
+    pack: str, tool_name: str, tool_input: dict,
+    pack_rid: str | None, unified_rid: str | None,
+) -> tuple[str, tuple] | None:
+    """Pure helper: return (fmt_msg, args) for LOG.warning, or None if the
+    two paths agree. Split out from _shadow_log_pack_divergence so tests
+    can exercise the divergence-message shape + redaction without any
+    patching (was CI-flaky when we patched module-level names)."""
+    if pack_rid == unified_rid:
+        return None
+    from app.core.pii import redact_secrets
+    redacted_input, _found = redact_secrets(json.dumps(tool_input, default=str))
+    return (
+        "guard_check shadow divergence (#1737) "
+        "pack=%s tool=%s pack_rule=%s unified_rule=%s input=%s",
+        (pack, tool_name, pack_rid, unified_rid, redacted_input),
+    )
+
+
 def _shadow_log_pack_divergence(
     db, ws_uuid, pack: str, tool_name: str, tool_input: dict, pack_rules: list[dict],
-    *, log_fn=None,
 ) -> None:
     """#1737 PR 4: run the unified path in shadow when pack: is used and
     log any divergence in match result. Never raises — shadow eval failure
-    must not affect the primary decision. All logged payloads route through
-    redact_secrets (reviewer edit 3) — raw tool_input never persists.
-
-    ``log_fn`` is a dependency-injection hook: pass a callable(msg, *args)
-    to receive the log call directly (e.g. for tests). Defaults to
-    ``LOG.warning`` so production callers don't need to know it exists."""
-    warn = log_fn if log_fn is not None else LOG.warning
+    must not affect the primary decision. Redaction lives in the pure
+    helper `_build_divergence_log_line` so test coverage doesn't depend on
+    patching module-level names (reviewer edit 3)."""
     try:
         unified_rules = _get_rules(db, ws_uuid)
         pack_match = _match_policy(tool_name, tool_input, pack_rules)
         unified_match = _match_policy(tool_name, tool_input, unified_rules)
         pack_rid = (pack_match or {}).get("rule_id")
         unified_rid = (unified_match or {}).get("rule_id")
-        if pack_rid == unified_rid:
+        line = _build_divergence_log_line(pack, tool_name, tool_input, pack_rid, unified_rid)
+        if line is None:
             return
-        from app.core.pii import redact_secrets
-        redacted_input, _found = redact_secrets(json.dumps(tool_input, default=str))
-        warn(
-            "guard_check shadow divergence (#1737) "
-            "pack=%s tool=%s pack_rule=%s unified_rule=%s input=%s",
-            pack, tool_name, pack_rid, unified_rid, redacted_input,
-        )
+        fmt, args = line
+        LOG.warning(fmt, *args)
     except Exception as _shadow_err:
         LOG.debug("shadow eval failed (#1737): %s", _shadow_err)
 from sqlalchemy.orm import Session

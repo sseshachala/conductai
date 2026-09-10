@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 from app.modules.guard.mcp_impls import (
     _PACK_ARG_DEPRECATION_SUFFIX,
     GuardCtx,
-    _shadow_log_pack_divergence,
+    _build_divergence_log_line,
     guard_check_impl,
 )
 
@@ -58,63 +58,52 @@ def test_pack_arg_returns_deprecation_suffix_on_error_path():
     assert any("pack: arg is deprecated" in m for m in logged)
 
 
-def test_shadow_log_fires_on_divergent_match():
-    """When pack-scoped and unified paths produce different rule matches,
-    the shadow log emits a warning with redacted input. Uses the log_fn DI
-    hook — no global patching, no logger reset ordering issues."""
-    pack_rules = [{"id": "pack-rule", "action": "warn"}]
-    unified_rules = [{"id": "unified-rule", "action": "block"}]
-    db = MagicMock()
-    ws_uuid = uuid.uuid4()
-
-    def match_side(_tool, _input, rules, gate=None):
-        return {"rule_id": rules[0]["id"]} if rules else None
-
+def test_divergence_log_line_fires_on_different_rule_ids():
+    """Pure-function coverage of the divergence-message builder — no
+    patching, no logger, no test-order coupling."""
     # Fake-format secret matching pii._SECRET_PATTERNS `sk-<20+>` regex.
     # Built by concat so this fixture doesn't itself trip secret scanners.
     secret = "sk" + "-" + ("X" * 30)
-
-    logged: list[str] = []
-
-    def _capture(msg, *args, **_kw):
-        logged.append(msg % args if args else msg)
-
-    with patch("app.modules.guard.mcp_impls._get_rules", return_value=unified_rules), \
-         patch("app.modules.guard.mcp_impls._match_policy", side_effect=match_side):
-        _shadow_log_pack_divergence(
-            db, ws_uuid, "conduct-fake", "bash",
-            {"command": "ls", "token": secret},
-            pack_rules,
-            log_fn=_capture,
-        )
-
-    assert any("shadow divergence" in m for m in logged)
-    assert any("pack_rule=pack-rule" in m for m in logged)
-    assert any("unified_rule=unified-rule" in m for m in logged)
-    assert not any(secret in m for m in logged), (
+    line = _build_divergence_log_line(
+        pack="conduct-fake",
+        tool_name="bash",
+        tool_input={"command": "ls", "token": secret},
+        pack_rid="pack-rule",
+        unified_rid="unified-rule",
+    )
+    assert line is not None
+    fmt, args = line
+    assert "shadow divergence" in fmt
+    rendered = fmt % args
+    assert "pack_rule=pack-rule" in rendered
+    assert "unified_rule=unified-rule" in rendered
+    assert secret not in rendered, (
         "raw secret leaked into shadow log — redact_secrets did not run"
     )
 
 
-def test_shadow_log_silent_on_matching_result():
-    """When pack-scoped and unified paths agree, no divergence log."""
-    rules = [{"id": "same-rule", "action": "warn"}]
-    db = MagicMock()
-    logged: list[str] = []
+def test_divergence_log_line_silent_on_same_rule_ids():
+    """When both paths agree, builder returns None (no log)."""
+    line = _build_divergence_log_line(
+        pack="conduct-fake",
+        tool_name="bash",
+        tool_input={"cmd": "ls"},
+        pack_rid="same-rule",
+        unified_rid="same-rule",
+    )
+    assert line is None
 
-    def _capture(msg, *args, **_kw):
-        logged.append(msg % args if args else msg)
 
-    with patch("app.modules.guard.mcp_impls._get_rules", return_value=rules), \
-         patch(
-             "app.modules.guard.mcp_impls._match_policy",
-             return_value={"rule_id": "same-rule"},
-         ):
-        _shadow_log_pack_divergence(
-            db, uuid.uuid4(), "conduct-fake", "bash", {"cmd": "ls"}, rules,
-            log_fn=_capture,
-        )
-    assert not any("shadow divergence" in m for m in logged)
+def test_divergence_log_line_silent_when_both_paths_null():
+    """No rule matched on either side → no divergence."""
+    line = _build_divergence_log_line(
+        pack="conduct-fake",
+        tool_name="bash",
+        tool_input={},
+        pack_rid=None,
+        unified_rid=None,
+    )
+    assert line is None
 
 
 def test_no_pack_arg_no_deprecation_suffix():
