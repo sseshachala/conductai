@@ -27,7 +27,7 @@ const TIERS: Tier[] = [
     includes: [
       "Full policy engine — allow, block, approve, prove",
       "Hash-chained audit trail",
-      "MCP + proxy + CLI hook enforcement",
+      "MCP + LLM proxy + CLI hook + Lens enforcement",
       "Community support (GitHub Discussions)",
     ],
   },
@@ -131,8 +131,8 @@ export default function PricingPage() {
           </h1>
           <p className="text-lg text-stone-500 max-w-2xl mx-auto leading-relaxed">
             Every tier includes the full policy engine, hash-chained audit trail, and every
-            enforcement surface — MCP, proxy, and CLI hook. You pay for how many agent
-            identities you govern, not which features you unlock.
+            enforcement surface — MCP, LLM proxy (prompt + response), CLI hook, and Lens.
+            You pay for how many agent identities you govern, not which features you unlock.
           </p>
         </section>
 
@@ -203,7 +203,7 @@ export default function PricingPage() {
           {[
             {
               title: "One engine — every surface",
-              body: "MCP tool interception, LLM proxy, and CLI hooks all run through the same policy engine and write to the same audit chain.",
+              body: "MCP tool interception, LLM proxy (prompt + response gates), CLI hooks, and Lens chat all run through the same policy engine and write to the same audit chain.",
             },
             {
               title: "One agent identity",

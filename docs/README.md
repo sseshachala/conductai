@@ -136,7 +136,7 @@ Third-party systems Conduct plugs into.
 
 ## Examples
 
-- [Examples](examples.md) — 37 pre-built playbooks grouped by what they do: code review, security scan + auto-fix, dependencies, incidents, releases, AI governance, autopilot, testing, docs, NetOps.
+- [Examples](examples.md) — 35 pre-built playbooks grouped by what they do: code review, security scan + auto-fix, dependencies, incidents, releases, AI governance, autopilot, testing, docs, NetOps.
 
 ---
 

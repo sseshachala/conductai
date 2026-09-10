@@ -1,6 +1,6 @@
 # Examples
 
-37 pre-built playbooks. Every one is a working YAML file under [`apps/api/playbooks/`](../apps/api/playbooks/) — copy, tweak, install. Grouped by what they *do*, not by which tool they call.
+35 pre-built playbooks. Every one is a working YAML file under [`apps/api/playbooks/`](../apps/api/playbooks/) — copy, tweak, install. Grouped by what they *do*, not by which tool they call. (Demo playbooks — `-demo` / `-e2e` files and `kind: base` snippets — are excluded from this count.)
 
 Install one directly:
 
