@@ -64,34 +64,46 @@ def reset_client() -> None:
 
 
 async def conduct_guard_check(
-    tool_name: str = "colang_flow",
-    tool_input: dict[str, Any] | None = None,
     prompt: str | None = None,
+    model: str | None = None,
+    provider: str | None = None,
     session_id: str | None = None,
+    # ── Backward-compat kwargs (accepted, ignored). Existing Colang flows
+    # ── like `execute conduct_guard_check(tool_name="ask_bot")` continue to
+    # ── load. Since 0.2.0 the plugin routes through guard_check_prompt
+    # ── (prompt gate) — match_tool is no longer the filter, match_pattern
+    # ── on the prompt text is.
+    tool_name: str | None = None,
+    tool_input: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Colang-callable action. Runs ``guard_check`` against Conduct.
+    """Colang-callable action. Runs ``guard_check_prompt`` against Conduct.
 
     Returns a dict with ``verdict``, ``rule_id``, ``message``, and the
     raw text so Colang flows can pattern-match on the result::
 
         define flow policy_gate
-          $decision = execute conduct_guard_check(tool_name="ask_bot")
+          $decision = execute conduct_guard_check(prompt=$user_message)
           if $decision.verdict == "block"
             bot inform_blocked_by_policy
             stop
+
+    The Colang runtime always supplies ``$user_message`` on input-rail
+    flows. Pass it as ``prompt`` — that's what the proxy-persona rules
+    (credential leak, prompt injection, PII, dual-use) match against.
     """
     client = _get_client()
-    # ponytail: server-side pattern matcher greps json.dumps(tool_input),
-    # not `prompt`. Fold prompt into tool_input so match_pattern hits user text.
-    merged_input = dict(tool_input or {})
-    if prompt is not None and "prompt" not in merged_input:
-        merged_input["prompt"] = prompt
+    # If the caller only supplied the legacy tool_input dict (pre-0.2.0
+    # Colang flows), pull a prompt out of it so nothing breaks silently.
+    if not prompt and tool_input and isinstance(tool_input, dict):
+        prompt = tool_input.get("prompt") or tool_input.get("content") or ""
+    if not prompt:
+        prompt = ""
     try:
         raw = await client.guard_check(
-            tool_name=tool_name,
-            tool_input=merged_input,
-            session_id=session_id,
             prompt=prompt,
+            model=model,
+            provider=provider,
+            session_id=session_id,
         )
     except GuardCheckError as e:
         log.warning("conduct_guard_check: eval error %s — returning block", e)
@@ -119,9 +131,12 @@ async def conduct_guard_check(
 
 
 async def conduct_guard_verdict(
-    tool_name: str = "colang_flow",
     prompt: str | None = None,
+    model: str | None = None,
+    provider: str | None = None,
     session_id: str | None = None,
+    # Backward-compat, ignored.
+    tool_name: str | None = None,
 ) -> str:
     """Scalar-return sibling of :func:`conduct_guard_check`. Returns just
     the verdict string ("allow" | "block" | "approval" | "warning" |
@@ -129,7 +144,7 @@ async def conduct_guard_verdict(
     plain string compare — some Colang versions don't do attribute
     access on dict return values."""
     result = await conduct_guard_check(
-        tool_name=tool_name, prompt=prompt, session_id=session_id
+        prompt=prompt, model=model, provider=provider, session_id=session_id
     )
     return result["verdict"]
 
