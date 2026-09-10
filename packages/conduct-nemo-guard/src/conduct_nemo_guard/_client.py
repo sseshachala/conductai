@@ -1,9 +1,16 @@
-"""HTTP client for Conduct's ``guard_check`` MCP tool.
+"""HTTP client for Conduct's ``guard_check_prompt`` MCP tool.
 
-Copied verbatim from ``conduct_litellm_guard._client`` — the only
-surface-specific bit is the ``surface`` default and the ``User-Agent``.
+Copied from ``conduct_litellm_guard._client`` — the only surface-specific
+bits are the ``surface`` default (``"nemo"``) and the ``User-Agent``.
 When a third consumer arrives we should extract this into
 ``packages/shared/``.
+
+Why ``guard_check_prompt`` and not ``guard_check``? NeMo Guardrails
+intercepts input rails at the LLM egress boundary — a prompt-gate
+concern. Calling the action-gate ``guard_check`` verb loads only
+agent-persona rules, so proxy-persona rules (credential leaks, prompt
+injection, PII, dual-use framing) silently pass through. Mirrors the
+LiteLLM 0.2.0 fix.
 """
 from __future__ import annotations
 
@@ -41,35 +48,38 @@ class GuardCheckClient:
     async def guard_check(
         self,
         *,
-        tool_name: str,
-        tool_input: dict[str, Any],
+        prompt: str,
+        model: str | None = None,
+        provider: str | None = None,
         session_id: str | None = None,
-        prompt: str | None = None,
     ) -> str:
-        """Call the ``guard_check`` tool and return the text payload.
+        """Call the ``guard_check_prompt`` tool and return the text payload.
 
         Returns strings that start with ``"ok"``, ``"advisory:"``,
         ``"WARNING —"``, ``"BLOCKED —"``, or ``"PENDING approval —"``.
         Callers parse the prefix via :class:`GuardDecision`.
+
+        Method name kept as ``guard_check`` for source-compat with existing
+        actions callers; the wire-level MCP tool is ``guard_check_prompt``
+        (per Guard architecture §8 — NeMo is a prompt-gate PEP).
         """
-        arguments: dict[str, Any] = {
-            "tool_name": tool_name,
-            "tool_input": tool_input,
-        }
-        if prompt is not None:
-            arguments["prompt"] = prompt
+        arguments: dict[str, Any] = {"prompt": prompt}
+        if model is not None:
+            arguments["model"] = model
+        if provider is not None:
+            arguments["provider"] = provider
 
         payload = {
             "jsonrpc": "2.0",
             "id": str(uuid.uuid4()),
             "method": "tools/call",
-            "params": {"name": "guard_check", "arguments": arguments},
+            "params": {"name": "guard_check_prompt", "arguments": arguments},
         }
 
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
-            "User-Agent": "conduct-nemo-guard/0.1.0",
+            "User-Agent": "conduct-nemo-guard/0.2.0",
             # Server reads this to populate the DEVELOPER/TOOL column
             # in the audit dashboard. Defaults to 'nemo' so audit rows
             # land under a clear surface name.
