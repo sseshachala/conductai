@@ -14,19 +14,133 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+import uuid as _uuid
+
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_permission
+from app.core.auth import get_user_id, get_workspace_id, require_permission
 from app.core.database import get_db
+from app.guard.policy import evaluate_composed
+from app.guard.policy_types import PolicyAction, PolicyContext
 from app.modules.guard.cedar_adapter import cedar_json_bundle_to_pack, pack_to_cedar_text
 from app.modules.guard.models import SkillPack, WorkspaceSkillPack
 from app.modules.guard.policy_engine import invalidate_policy_cache
+from app.modules.guard.routers.mcp import _record_event
+
+
+log = structlog.get_logger(__name__)
 
 
 router = APIRouter(prefix="/guard/registry", tags=["cedar-import"])
+
+
+_DECISION_LABEL: dict[PolicyAction, str] = {
+    PolicyAction.ALLOW: "allowed",
+    PolicyAction.WARN: "warned",
+    PolicyAction.APPROVAL: "approval_pending",
+    PolicyAction.BLOCK: "blocked",
+}
+
+
+def _write_cedar_receipt(
+    db: Session,
+    workspace_id: str,
+    clerk_user_id: str | None,
+    tool_name: str,
+    payload: dict,
+    decision_label: str,
+    rule_id: str | None,
+) -> None:
+    """Land a hash-chained receipt on every Cedar import/export attempt.
+
+    Uses the same _record_event helper the MCP surface uses so the audit
+    row shape (hash chain, policy_hash, redacted input_summary) is
+    identical to MCP-recorded events. `source="http"` lets the Guard
+    Activity UI attribute the event to the REST endpoint.
+    """
+    try:
+        _record_event(
+            db=db,
+            ws_uuid=_uuid.UUID(workspace_id),
+            tool_name=tool_name,
+            tool_input=payload,
+            decision=decision_label,
+            rule_id=rule_id,
+            ai_tool="conduct-api",
+            user_email=clerk_user_id or "",
+            session_id="",
+            source="http",
+        )
+    except Exception as e:
+        # Never fail an import/export because the receipt write blew up.
+        # Same fail-open posture as guarded_client_call.audit_*_failed paths.
+        log.warning("cedar_gate.audit_write_failed", tool=tool_name, err=str(e))
+
+
+def _enforce_cedar_gate(
+    db: Session,
+    workspace_id: str,
+    clerk_user_id: str | None,
+    tool_name: str,
+    payload: dict,
+) -> None:
+    """Run Guard policy against a Cedar import/export intent.
+
+    Composes the same evaluator every other surface uses (MCP, Lens, proxy),
+    then writes a hash-chained audit receipt for every decision (including
+    ALLOW / no-match) so the Rule Fires panel and Guard Activity feed reflect
+    Cedar traffic like any other surface.
+
+    Fail-open on evaluator errors — matches proxy / lens behavior.
+    BLOCK → 403. APPROVAL → 428 (REST approval routing is a follow-up).
+    ALLOW / WARN / no match → return silently.
+    """
+    ctx = PolicyContext(
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id,
+        provider="conduct",
+        model=tool_name,
+        body={"tool_name": tool_name, "arguments": payload},
+        db=db,
+        extras={"kind": tool_name, "surface": "http", "tool_name": tool_name},
+    )
+    try:
+        decision = evaluate_composed(ctx)
+    except Exception as e:
+        log.warning("cedar_gate.eval_failed", tool=tool_name, err=str(e))
+        _write_cedar_receipt(db, workspace_id, clerk_user_id, tool_name, payload, "allowed", None)
+        return
+
+    if decision is None:
+        _write_cedar_receipt(db, workspace_id, clerk_user_id, tool_name, payload, "allowed", None)
+        return
+
+    decision_label = _DECISION_LABEL.get(decision.action, "allowed")
+    _write_cedar_receipt(db, workspace_id, clerk_user_id, tool_name, payload, decision_label, decision.rule_id)
+
+    if decision.action == PolicyAction.BLOCK:
+        log.warning("cedar_gate.blocked", tool=tool_name, rule=decision.rule_id)
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Blocked by Guard rule {decision.rule_id}: "
+                f"{decision.reason or 'policy violation'}"
+            ),
+        )
+    if decision.action == PolicyAction.APPROVAL:
+        log.info("cedar_gate.approval_required", tool=tool_name, rule=decision.rule_id)
+        raise HTTPException(
+            status_code=428,
+            detail=(
+                f"Requires admin approval per Guard rule {decision.rule_id}: "
+                f"{decision.reason or 'approval required'}. "
+                "REST-endpoint approval routing is not yet implemented."
+            ),
+        )
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────
@@ -70,6 +184,7 @@ class CedarImportResponse(BaseModel):
 def import_cedar(
     body: CedarImportRequest,
     workspace_id: str = Depends(get_workspace_id),
+    clerk_user_id: str = Depends(get_user_id),
     _: str = Depends(require_permission("platform.marketplace.install")),
     db: Session = Depends(get_db),
 ) -> CedarImportResponse:
@@ -83,6 +198,20 @@ def import_cedar(
 
     if not isinstance(body.policies, list) or not body.policies:
         raise HTTPException(status_code=400, detail="policies must be a non-empty list of Cedar policy objects")
+
+    _enforce_cedar_gate(
+        db=db,
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id,
+        tool_name="cedar_import",
+        payload={
+            "pack_slug": body.pack_slug,
+            "pack_version": body.pack_version,
+            "rule_count": len(body.policies),
+            "preview_only": body.preview_only,
+            "format": body.format,
+        },
+    )
 
     # Multi-tenant scoping: user-supplied slug is namespaced under the
     # workspace so two workspaces can independently import the same slug
@@ -153,6 +282,7 @@ def export_pack_as_cedar(
     slug: str,
     version: str | None = None,
     workspace_id: str = Depends(get_workspace_id),
+    clerk_user_id: str = Depends(get_user_id),
     _: str = Depends(require_permission("platform.marketplace.browse")),
     db: Session = Depends(get_db),
 ) -> PlainTextResponse:
@@ -167,6 +297,14 @@ def export_pack_as_cedar(
     (slug not starting with 'custom.') are readable by any authenticated
     workspace member — they ship with the product.
     """
+    _enforce_cedar_gate(
+        db=db,
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id,
+        tool_name="cedar_export",
+        payload={"pack_slug": slug, "version": version},
+    )
+
     if slug.startswith("custom."):
         ws_uuid = uuid.UUID(workspace_id)
         installed = db.get(WorkspaceSkillPack, (ws_uuid, slug))
