@@ -5,10 +5,16 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import structlog
 from sqlalchemy.orm import Session
 
+log = structlog.get_logger(__name__)
+
 from app.modules.guard.enforcement import (
+    GATES,
     conservative_custom_enforcement,
+    derive_gates,
+    derive_surface_status,
     rule_personas,
     validate_enforcement_metadata,
 )
@@ -17,6 +23,7 @@ from app.modules.guard.models import (
     WorkspaceCustomRule,
     WorkspaceSkillPack,
 )
+from app.modules.guard.pep_registry import all_surfaces
 from app.modules.guard.policy_engine import (
     VALID_ACTIONS,
     _get_pack,
@@ -105,6 +112,27 @@ def workspace_coverage_matrix(db: Session, workspace_id: uuid.UUID) -> list[dict
         personas = sorted(rule_personas(rule))
         if not rule.get("_builtin") and rule.get("_custom_persona"):
             personas = [rule["_custom_persona"]]
+
+        # #1751 PR 4: log divergence between hand-authored enforcement.<surface>
+        # and derive_surface_status(rule, surface). Telemetry for #1750 Phase D
+        # cleanup — every 'not_supported' claim that's actually 'hard' (or vice
+        # versa) points at a rule whose hand-authored metadata is stale.
+        for _surface in ("proxy", "hook", "mcp", "runtime"):
+            _authored = metadata.get(_surface)
+            _derived = derive_surface_status(rule, _surface)
+            # 'conditional' and 'advisory' are deploy-caveat statuses derived
+            # doesn't model yet; only flag hard↔not_supported flips.
+            if _authored in ("hard", "not_supported") and _authored != _derived:
+                log.warning(
+                    "guard.coverage.status_divergence",
+                    rule_id=rule_id,
+                    pack=rule.get("_pack_slug"),
+                    surface=_surface,
+                    authored=_authored,
+                    derived=_derived,
+                    note="#1750 Phase D: authored value is stale; derived is authoritative",
+                )
+
         matrix.append({
             "rule_id": rule_id,
             "name": rule.get("name") or rule.get("description") or rule_id,
@@ -133,3 +161,64 @@ def workspace_coverage_matrix(db: Session, workspace_id: uuid.UUID) -> list[dict
         matrix,
         key=lambda item: (item["pack"] or "~custom", item["pack_version"] or "", item["rule_id"]),
     )
+
+
+def pack_coverage_matrix(db: Session, pack_slug: str) -> dict[str, Any]:
+    """#1751 PR 3 — return per-surface × per-gate rule counts for a pack.
+
+    Answers the Policies UI question "does this pack cover response-gate
+    leakage on the proxy?" in one call.
+
+    Shape::
+        {
+            "pack": "conduct-hipaa",
+            "version": "1.4.2",
+            "total_rules": 42,
+            "by_surface": {
+                "mcp":     {"hard": 27, "not_supported": 15},
+                "proxy":   {"hard": 12, "not_supported": 30},
+                "runtime": {"hard": 27, "not_supported": 15},
+                "hook":    {"hard": 27, "not_supported": 15},
+            },
+            "by_gate": {"action": 30, "prompt": 10, "response": 2},
+        }
+
+    Missing pack → ``{"pack": pack_slug, "version": None, "total_rules": 0,
+    "by_surface": {surface: {"hard": 0, "not_supported": 0} ...},
+    "by_gate": {gate: 0 ...}}`` so UI callers can render an empty state
+    without a null check.
+    """
+    surfaces = all_surfaces()
+    empty_by_surface = {s: {"hard": 0, "not_supported": 0} for s in surfaces}
+    empty_by_gate = {g: 0 for g in GATES}
+
+    pack = _get_pack(db, pack_slug, pinned_version=None)
+    if pack is None:
+        return {
+            "pack": pack_slug,
+            "version": None,
+            "total_rules": 0,
+            "by_surface": empty_by_surface,
+            "by_gate": empty_by_gate,
+        }
+
+    by_surface = {s: {"hard": 0, "not_supported": 0} for s in surfaces}
+    by_gate = {g: 0 for g in GATES}
+    total = 0
+    for rule in pack.rules or []:
+        total += 1
+        for gate in derive_gates(rule):
+            if gate in by_gate:
+                by_gate[gate] += 1
+        for surface in surfaces:
+            status = derive_surface_status(rule, surface)
+            key = status if status in by_surface[surface] else "not_supported"
+            by_surface[surface][key] += 1
+
+    return {
+        "pack": pack_slug,
+        "version": pack.version,
+        "total_rules": total,
+        "by_surface": by_surface,
+        "by_gate": by_gate,
+    }

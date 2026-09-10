@@ -82,6 +82,33 @@ def rule_matches_gate(rule: dict[str, Any], gate: str) -> bool:
     return gate in gates
 
 
+def derive_surface_status(rule: dict[str, Any], surface: str) -> str:
+    """#1751 PR 2 — return whether a PEP surface can enforce a given rule.
+
+    Reads:
+      - rule.gates (derived on load — see derive_gates)
+      - pep_registry.PEP_CAPABILITIES[surface]
+
+    Returns:
+      - ``"hard"``           — intersection non-empty; PEP declares it can
+                                evaluate at least one gate the rule fires at.
+      - ``"not_supported"``  — no overlap OR unknown surface.
+
+    ``"conditional"`` and ``"advisory"`` are deploy-caveat concepts (a PEP
+    can technically evaluate but only under certain conditions, e.g. the
+    agent must voluntarily call guard_check). Those stay as hand-authored
+    fields on ``rule.enforcement`` until Phase D retires them; this helper
+    only reports the capability-declaration status.
+    """
+    from app.modules.guard.pep_registry import pep_provides
+
+    pep_gates = pep_provides(surface)
+    if not pep_gates:
+        return "not_supported"
+    rule_gates = set(rule.get("gates") or derive_gates(rule))
+    return "hard" if pep_gates & rule_gates else "not_supported"
+
+
 def validate_enforcement_metadata(rule: dict[str, Any]) -> None:
     """Validate one rule's strict rule-level enforcement contract."""
     rule_id = rule.get("id") or rule.get("rule_id") or "(unknown)"
