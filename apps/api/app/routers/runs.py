@@ -312,13 +312,20 @@ def create_run(
     # SQLAlchemy's default fire on flush) so `run.session_id` can carry it
     # without an intermediate commit — if Run insert fails, both roll back
     # and no ghost session appears in the sidebar.
+    import uuid as _uuid_std
+    # Mint run.id upfront so the seeded run_started envelope can reference it
+    # without needing a pre-commit flush. SQLAlchemy's Python-side default
+    # doesn't fire on __init__ — only on flush — so `str(run.id)` before add
+    # would resolve to "None".
+    run_id = _uuid_std.uuid4()
+
     lens_session_id = None
     if body.create_lens_session:
-        import uuid as _uuid_std
         from app.modules.glens.models import GlensChatSession
         lens_session_id = _uuid_std.uuid4()
 
     run = Run(
+        id=run_id,
         workflow_version_id=workflow.current_version_id,
         workspace_id=workflow.workspace_id,
         triggered_by=body.triggered_by,
@@ -338,7 +345,7 @@ def create_run(
             "role": "assistant",
             "content": _json_std.dumps({
                 "run_started": {
-                    "run_id": str(run.id),
+                    "run_id": str(run_id),
                     "workflow_name": workflow.name,
                     "status": "pending",
                 }
