@@ -58,6 +58,22 @@ def _cache_set(run_id: str | None, block_id: str | None, turn: int, response_jso
     except Exception:
         pass
 
+# MCP tool naming — Anthropic tools API requires ^[a-zA-Z0-9_-]{1,128}$.
+# Prior joins used `::` which fails validation and broke every workflow
+# with MCP tools attached (self-driving-network-approval-demo regression,
+# 2026-09-10). We sanitize both halves to that alphabet and join with `__`,
+# and mirror the sanitization when building the server-name lookup map so
+# tool_use responses route back correctly.
+# ponytail: server.name authored to contain `__` will split ambiguously;
+# document convention rather than encode a fully-reversible scheme.
+_MCP_JOIN_SEP = "__"
+
+
+def _mcp_safe_name(s: str) -> str:
+    import re as _re
+    return _re.sub(r"[^A-Za-z0-9_-]", "-", s or "")
+
+
 # Re-imported here so block files can be imported standalone; also re-exported for
 # any caller that used to import BRAIN_TOOLS from executor.
 BRAIN_TOOLS = [
@@ -273,8 +289,9 @@ def _load_workspace_mcp_tools(
             tool_name = t.get("name", "")
             if not tool_name:
                 continue
+            _joined = f"{_mcp_safe_name(server.name)}{_MCP_JOIN_SEP}{_mcp_safe_name(tool_name)}"[:128]
             tools.append({
-                "name": f"{server.name}::{tool_name}",
+                "name": _joined,
                 "description": (
                     f"[MCP:{server.name}] {t.get('description', '')}"
                 ).strip(),
@@ -697,7 +714,9 @@ def _execute_brain(
                     _McpServer.workspace_id == workspace_id
                 ).all()
                 for s in servers:
-                    _mcp_server_cache[s.name] = s
+                    # Key by the sanitized form used in tool names so the parse
+                    # round-trips. Retain raw name in the value for downstream use.
+                    _mcp_server_cache[_mcp_safe_name(s.name)] = s
             except Exception as exc:
                 log.warning("brain.mcp_dispatch.map_failed", error=str(exc))
             return _mcp_server_cache
@@ -953,9 +972,9 @@ def _execute_brain(
                     }
 
                 try:
-                    if "::" in tc.name:
-                        # MCP tool dispatch — server_name::tool_name
-                        _mcp_server_name, _mcp_tool_name = tc.name.split("::", 1)
+                    if _MCP_JOIN_SEP in tc.name:
+                        # MCP tool dispatch — server-name__tool-name (see _mcp_safe_name).
+                        _mcp_server_name, _mcp_tool_name = tc.name.split(_MCP_JOIN_SEP, 1)
 
                         # Guard check before every MCP tool call
                         if state.get("__guard_enabled") and db and workspace_id:

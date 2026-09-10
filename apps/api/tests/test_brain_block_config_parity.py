@@ -187,7 +187,7 @@ def test_mcp_selection_none_returns_all_servers():
         tools = _load_workspace_mcp_tools("ws-1", None, db, selected_ids=None)
     # Two servers × one tool each = 2 tools total
     assert len(tools) == 2
-    assert {"gh::t1", "slack::t1"} == {t["name"] for t in tools}
+    assert {"gh__t1", "slack__t1"} == {t["name"] for t in tools}
 
 
 def test_mcp_selection_all_sentinel_returns_all_servers():
@@ -198,7 +198,7 @@ def test_mcp_selection_all_sentinel_returns_all_servers():
         return_value=([{"name": "t1", "description": "d"}], None),
     ):
         tools = _load_workspace_mcp_tools("ws-1", None, db, selected_ids=["all"])
-    assert {"gh::t1", "slack::t1"} == {t["name"] for t in tools}
+    assert {"gh__t1", "slack__t1"} == {t["name"] for t in tools}
 
 
 def test_mcp_selection_empty_list_returns_all_servers():
@@ -209,7 +209,7 @@ def test_mcp_selection_empty_list_returns_all_servers():
         return_value=([{"name": "t1", "description": "d"}], None),
     ):
         tools = _load_workspace_mcp_tools("ws-1", None, db, selected_ids=[])
-    assert {"gh::t1", "slack::t1"} == {t["name"] for t in tools}
+    assert {"gh__t1", "slack__t1"} == {t["name"] for t in tools}
 
 
 def test_mcp_selection_specific_ids_filters_to_subset():
@@ -225,5 +225,5 @@ def test_mcp_selection_specific_ids_filters_to_subset():
     ):
         tools = _load_workspace_mcp_tools("ws-1", None, db, selected_ids=["s1", "s3"])
     # slack (s2) must be filtered out
-    assert {"gh::t1", "linear::t1"} == {t["name"] for t in tools}
-    assert not any(t["name"].startswith("slack::") for t in tools)
+    assert {"gh__t1", "linear__t1"} == {t["name"] for t in tools}
+    assert not any(t["name"].startswith("slack__") for t in tools)
