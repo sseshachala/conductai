@@ -89,6 +89,26 @@ _TOOLS = [
         },
     },
     {
+        "name": "guard_test",
+        "description": (
+            "Dry-run a single pack against a candidate tool call. "
+            "Evaluates only conduct-base + the named pack — workspace custom rules, "
+            "overrides, and other installed packs are excluded. Never writes to the "
+            "audit chain. Returns 'WOULD-<VERDICT> — <message>' or 'OK — no rule fired'. "
+            "Use for pack authoring, CI, and demos. Replaces guard_check(pack=...) which "
+            "is deprecated (#1737)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pack":      {"type": "string", "description": "Compliance pack slug to test (e.g. 'conduct-eu-ai-act'). Must be installed for this workspace. 'conduct-base' is rejected — always enforced anyway."},
+                "tool_name": {"type": "string", "description": "The action to test (e.g. bash, write_file, curl)."},
+                "tool_input": {"type": "object", "description": "Parameters for that action, matching the shape guard_check would receive."},
+            },
+            "required": ["pack", "tool_name"],
+        },
+    },
+    {
         "name": "guard_sync",
         "description": "Returns current active ruleset (no-op for remote MCP — policy is always live).",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
@@ -356,8 +376,18 @@ def _detect_surface(client_info: dict) -> str:
 _ACTION_PRIORITY = {"block": 0, "approval": 1, "warn": 2, "audit": 3}
 
 
-def _match_policy(tool_name: str, tool_input: dict, rules: list) -> dict | None:
-    """Return the most restrictive matching rule (block > approval > warn > audit)."""
+def _match_policy(
+    tool_name: str, tool_input: dict, rules: list, gate: str | None = "action"
+) -> dict | None:
+    """Return the most restrictive matching rule (block > approval > warn > audit).
+
+    ``gate`` filters which rules are considered — only rules whose ``gates``
+    list includes the given gate fire. Default ``"action"`` preserves
+    pre-#1733 MCP behavior for every existing caller. Pass ``gate=None`` to
+    skip gate filtering — used by pack-authoring tests.
+    """
+    from app.modules.guard.enforcement import rule_matches_gate
+
     inp_text  = json.dumps(tool_input)
     path_keys = ["file_path", "path", "command"]
     path_text = " ".join(str(tool_input.get(k, "")) for k in path_keys)
@@ -366,6 +396,8 @@ def _match_policy(tool_name: str, tool_input: dict, rules: list) -> dict | None:
     best_priority = 999
 
     for rule in rules:
+        if gate is not None and not rule_matches_gate(rule, gate):
+            continue
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
             allowed = expand_match_tool(match_tool)
@@ -409,11 +441,13 @@ def _project_rule(r: dict) -> dict:
     out = {
         "rule_id":           r.get("id") or r.get("rule_id"),
         "match_tool":        r.get("match_tool"),
+        "match_ai_tool":     r.get("match_ai_tool"),  # #1752: was dropped by projector
         "match_pattern":     r.get("match_pattern"),
         "match_path_pattern": r.get("match_path_pattern"),
         "action":            r.get("action"),
         "message":           r.get("message"),
         "pack":              r.get("pack") or r.get("pack_slug"),
+        "gates":             r.get("gates") or ["action"],  # #1733: expose gate list to consumers
         "enforcement":       r.get("enforcement") or {},
     }
     for k in _APPROVAL_FIELDS:

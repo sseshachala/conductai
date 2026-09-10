@@ -94,6 +94,7 @@ when {
 | `recommendation` | string | Remediation guidance. Cedar `@recommendation`. |
 | `severity` | enum | `low` \| `medium` \| `high` \| `critical`. Cedar `@severity`. |
 | `persona_affinity` | string[] | `agent` and/or `proxy`. Defaults to both if omitted. |
+| `gates` | string[] | Locked enum: `action`, `prompt`, `response`. Which enforcement gate the rule fires at. If omitted, derived from `persona_affinity`: `agent` → `[action]`, `proxy` → `[prompt]`, both → `[action, prompt]`. New rules that need to scan model responses set `[response]` explicitly. See `docs/guard/architecture.md` §3. |
 | `frameworks` | string[] | Compliance tags (`PCI_DSS:3.4`, `SOC2:CC6.1`, `ISO_42001:8.24`, `MITRE_ATLAS:AML.T0051`, `OWASP_AGENTIC:A01`). Cedar `@compliance`. |
 | `iso_control` | string | ISO 27001/42001 control ID. Cedar `@iso_control`. |
 | `enforcement` | object | Surface-by-surface enforcement capability (see below). |

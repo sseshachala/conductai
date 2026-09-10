@@ -91,12 +91,17 @@ def _load_pack(pack_name: str) -> list[dict]:
 
 
 def _matching_rules(rules: list[dict], prompt_text: str, provider: str, model: str) -> list[dict]:
-    """Return every proxy-eligible rule that fires for this prompt."""
+    """Return every proxy-eligible rule that fires for this prompt.
+
+    Uses gate=None (skip gate filter) — the pack-authoring matrix tests
+    rule shape and match logic, not the gate-vs-surface routing that
+    production callers use (#1733).
+    """
     matches: list[dict] = []
     for rule in rules:
         if "match_pattern" not in rule or "match_tool" in rule:
             continue  # hook-only rule, not proxy-eligible
-        if _rule_matches(rule, provider, model, prompt_text):
+        if _rule_matches(rule, provider, model, prompt_text, gate=None):
             matches.append(rule)
     return matches
 

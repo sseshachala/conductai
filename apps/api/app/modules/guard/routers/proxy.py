@@ -478,6 +478,7 @@ async def _proxy(
             body=body,
             input_tokens=_estimate_input_tokens(body),
             db=db,
+            gate="prompt",  # #1733: outbound LLM proxy egress
         )
         _pd = _eval_composed(_ctx)
         decision = _pd.extras.get("raw") or {
@@ -593,7 +594,7 @@ async def _proxy(
         k.lower(): v for k, v in request.headers.items()
         if k.lower() not in _skip and not k.lower().startswith("x-conduct")
     }
-    return await _forward(
+    _response = await _forward(
         upstream=upstream,
         path=upstream_path,
         body=body,
@@ -608,9 +609,201 @@ async def _proxy(
         vendor_key=_vault_key_val,
         provider=provider,
     )
+    # #1733 PR 4: response gate (non-streaming).
+    if not is_stream and isinstance(_response, JSONResponse) and _response.status_code < 400:
+        _response = _apply_response_gate(
+            _response, workspace_id=workspace_id, provider=provider, model=model,
+            clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
+        )
+    # #1733 PR 5: response gate (streaming, buffered end-of-stream scan).
+    elif is_stream and isinstance(_response, StreamingResponse) and _response.status_code < 400:
+        _response = _wrap_streaming_response(
+            _response, workspace_id=workspace_id, provider=provider, model=model,
+            clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
+        )
+    return _response
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
+
+def _evaluate_response_body(
+    resp_body: dict,
+    *,
+    workspace_id: str,
+    provider: str,
+    model: str,
+    clerk_user_id: str | None,
+    agent_identity_id: str | None,
+):
+    """#1733 PRs 4+5 — shared response-gate evaluator. Called by both the
+    non-streaming path (post-upstream, pre-return) and the streaming path
+    (end-of-stream, post-yield). Returns a ``PolicyDecision`` or ``None`` on
+    engine error. Never raises."""
+    try:
+        from app.guard.policy import evaluate_composed as _eval_composed
+        from app.guard.policy_types import PolicyContext as _PC
+
+        _ctx = _PC(
+            workspace_id=workspace_id,
+            clerk_user_id=clerk_user_id or None,
+            agent_identity_id=str(agent_identity_id) if agent_identity_id else None,
+            provider=provider,
+            model=model,
+            body=resp_body,
+            input_tokens=0,
+            db=None,
+            gate="response",  # #1733: inbound model reply
+        )
+        return _eval_composed(_ctx)
+    except Exception as _e:
+        log.warning("guard.proxy.response_gate_error", err=str(_e))
+        return None
+
+
+def _apply_response_gate(
+    response: JSONResponse,
+    *,
+    workspace_id: str,
+    provider: str,
+    model: str,
+    clerk_user_id: str | None,
+    agent_identity_id: str | None,
+) -> JSONResponse:
+    """#1733 PR 4 — evaluate the response body against gate='response' rules.
+
+    If a response-gate rule fires BLOCK, replace the upstream body with a
+    Guard-blocked envelope; otherwise return the original response.
+
+    Never raises — response-gate failures log at WARN and pass the response
+    through, so the response path never breaks on a policy engine hiccup.
+    """
+    try:
+        import json as _json
+        from app.guard.policy_types import PolicyAction as _PA
+
+        resp_body = _json.loads(response.body or b"{}")
+        decision = _evaluate_response_body(
+            resp_body,
+            workspace_id=workspace_id, provider=provider, model=model,
+            clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
+        )
+        if decision is None or decision.action != _PA.BLOCK:
+            return response
+        log.warning(
+            "guard.proxy.response_blocked",
+            workspace_id=workspace_id, provider=provider, model=model,
+            rule_id=decision.rule_id, reason=decision.reason,
+        )
+        return JSONResponse(
+            status_code=451,
+            content={
+                "error": {
+                    "type": "conduct_guard_response_block",
+                    "message": decision.reason or "Response blocked by ConductGuard response-gate policy.",
+                    "rule_id": decision.rule_id,
+                    "gate": "response",
+                }
+            },
+        )
+    except Exception as _e:
+        log.warning("guard.proxy.response_gate_error", err=str(_e))
+        return response
+
+
+_STREAM_TEXT_RE = None  # lazy compiled — see _extract_stream_text below
+
+
+def _extract_stream_text(collected: bytes) -> str:
+    """Best-effort text extraction from an SSE-formatted upstream stream.
+
+    Matches ``"text":"..."`` (Anthropic ``content_block_delta``/``text_delta``)
+    and ``"content":"..."`` (OpenAI streaming ``choices[].delta.content``) via
+    a single regex. Handles escaped quotes and backslashes.
+
+    ponytail: full-body regex sweep, not an SSE-aware parser. Upgrade path is
+    a proper event-frame decoder if false positives (e.g. matching input
+    echoes in trace metadata) become a real signal. Chunk-scan (per-chunk
+    eval with mid-stream halt) is the true long-term shape.
+    """
+    global _STREAM_TEXT_RE
+    import re as _re
+
+    if _STREAM_TEXT_RE is None:
+        _STREAM_TEXT_RE = _re.compile(r'"(?:text|content)":\s*"((?:[^"\\]|\\.)*)"')
+    try:
+        text = collected.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+    parts = [
+        m.encode("utf-8").decode("unicode_escape", errors="replace")
+        for m in _STREAM_TEXT_RE.findall(text)
+    ]
+    return "\n".join(parts)
+
+
+def _wrap_streaming_response(
+    response: StreamingResponse,
+    *,
+    workspace_id: str,
+    provider: str,
+    model: str,
+    clerk_user_id: str | None,
+    agent_identity_id: str | None,
+) -> StreamingResponse:
+    """#1733 PR 5 — buffered end-of-stream response gate.
+
+    Wraps the upstream StreamingResponse: yields each chunk to the client
+    unchanged, accumulates the full body in memory, then at end-of-stream
+    evaluates gate='response' rules and logs a WARN if any rule fires BLOCK.
+
+    ponytail: buffered scan. Client has already received the offending
+    tokens by the time we decide — we only get telemetry + audit-trail
+    coverage. Upgrade path: chunk-scan (per-chunk eval + mid-stream halt)
+    so a live rule fire terminates the stream before further leak.
+    """
+    original_iterator = response.body_iterator
+
+    async def _wrapped():
+        collected = bytearray()
+        async for chunk in original_iterator:
+            if isinstance(chunk, str):
+                chunk_bytes = chunk.encode("utf-8")
+            else:
+                chunk_bytes = chunk
+            collected.extend(chunk_bytes)
+            yield chunk_bytes
+        # End-of-stream response-gate scan. Wrapped in a broad try/except
+        # so a downstream failure NEVER truncates the stream after yield.
+        try:
+            text = _extract_stream_text(bytes(collected))
+            if not text:
+                return
+            synthetic = {"content": [{"type": "text", "text": text}]}
+            decision = _evaluate_response_body(
+                synthetic,
+                workspace_id=workspace_id, provider=provider, model=model,
+                clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
+            )
+            if decision is None:
+                return
+            from app.guard.policy_types import PolicyAction as _PA
+            if decision.action == _PA.BLOCK:
+                log.warning(
+                    "guard.proxy.response_stream_blocked_post_hoc",
+                    workspace_id=workspace_id, provider=provider, model=model,
+                    rule_id=decision.rule_id, reason=decision.reason,
+                    note="ponytail: buffered scan — client saw response; upgrade to chunk-scan",
+                )
+        except Exception as _e:
+            log.warning("guard.proxy.response_stream_gate_error", err=str(_e))
+
+    return StreamingResponse(
+        _wrapped(),
+        media_type=response.media_type,
+        headers=dict(response.headers),
+        status_code=response.status_code,
+    )
+
 
 def _extract_member_token(raw: str, *, bearer: bool) -> str | None:
     """Extract guard-mt- or cond_agt_ token from header value."""

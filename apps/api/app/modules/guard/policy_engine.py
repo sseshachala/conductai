@@ -30,7 +30,7 @@ from app.modules.guard.models import (
     WorkspaceCustomRule,
     WorkspaceSkillPack,
 )
-from app.modules.guard.enforcement import rule_personas
+from app.modules.guard.enforcement import derive_gates, rule_personas
 
 PERSONAS = ["agent", "proxy"]
 
@@ -138,14 +138,29 @@ def invalidate_policy_cache(db: Session, workspace_id: uuid.UUID) -> None:
 
 # ── Internal ──────────────────────────────────────────────────────────────────
 
-def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dict]:
-    # 1. collect rules from installed packs, filtered by persona
-    installed = (
-        db.query(WorkspaceSkillPack)
-        .filter(WorkspaceSkillPack.workspace_id == workspace_id)
-        .order_by(WorkspaceSkillPack.installed_at)
-        .all()
-    )
+def _build_rules(
+    db: Session,
+    workspace_id: uuid.UUID,
+    persona: str,
+    restrict_to_pack: str | None = None,
+) -> list[dict]:
+    """Build the effective ruleset for a workspace + persona.
+
+    When ``restrict_to_pack`` is set (#1737 guard_test PR 5), the merge scope
+    narrows to ``conduct-base`` + the named pack, workspace custom rules and
+    overrides are skipped. The result is 'what this pack ships, in isolation'
+    — for pack authors and CI, not production traffic.
+    """
+    # 1. collect rules from installed packs, filtered by persona.
+    # Order: precedence ASC then installed_at ASC → higher-precedence packs
+    # process later and win on rule_id collision (last-write-wins). Default
+    # precedence 100 preserves pre-#1737 install-order semantics.
+    q = db.query(WorkspaceSkillPack).filter(WorkspaceSkillPack.workspace_id == workspace_id)
+    if restrict_to_pack:
+        q = q.filter(WorkspaceSkillPack.pack_slug.in_(["conduct-base", restrict_to_pack]))
+    installed = q.order_by(
+        WorkspaceSkillPack.precedence.asc(), WorkspaceSkillPack.installed_at.asc()
+    ).all()
 
     rules: dict[str, dict] = {}
     for wp in installed:
@@ -159,9 +174,14 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
             # #1048: stamp source_pack so downstream (sync response, audit,
             # debugging) can trace 'which pack put this rule into my cache'.
             body["source_pack"] = wp.pack_slug
+            # #1733/#1750-A: gates are locked to [action, prompt, response].
+            # Derived from persona for legacy rules; explicit on new rules.
+            body["gates"] = derive_gates(body)
             rules[rule["id"]] = body
 
     # 1b. merge workspace custom rules on top (workspace-defined wins on rule_id collision)
+    # Skipped in restrict_to_pack mode — guard_test wants 'what the pack ships,'
+    # not the workspace's full effective policy.
     customs = (
         db.query(WorkspaceCustomRule)
         .filter(
@@ -170,21 +190,22 @@ def _build_rules(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dic
             (WorkspaceCustomRule.persona == persona) | (WorkspaceCustomRule.persona.is_(None)),
         )
         .all()
-    )
+    ) if not restrict_to_pack else []
     for c in customs:
         body = dict(c.body or {})
         body.setdefault("id", c.rule_id)
         affinity = body.get("persona_affinity", PERSONAS)
         if persona not in affinity:
             continue
+        body["gates"] = derive_gates(body)  # #1733/#1750-A
         rules[c.rule_id] = body
 
-    # 2. apply workspace overrides
+    # 2. apply workspace overrides (skipped in restrict_to_pack mode)
     overrides = (
         db.query(GuardRuleOverride)
         .filter(GuardRuleOverride.workspace_id == workspace_id)
         .all()
-    )
+    ) if not restrict_to_pack else []
     now = datetime.now(timezone.utc)
     for o in overrides:
         if o.rule_id not in rules:

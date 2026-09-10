@@ -407,6 +407,7 @@ class WorkspaceSkillPack(Base):
     pinned_version  = Column(Text, nullable=True)   # null = always latest
     installed_by    = Column(Text, nullable=True)   # clerk_user_id
     installed_at    = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    precedence      = Column(Integer, nullable=False, server_default="100")  # higher wins on same-severity ties (#1737)
 
     __table_args__ = (
         Index("ix_workspace_skill_packs_workspace", "workspace_id"),

@@ -116,6 +116,7 @@ async def guarded_completion(
         body=body,
         input_tokens=0,
         db=None,
+        gate="prompt",  # #1733: outbound LLM proxy egress
     )
     _composed = _evaluate_composed(_ctx)
     decision = Decision(
@@ -371,6 +372,7 @@ def guarded_client_call(
         body=body,
         input_tokens=0,
         db=None,
+        gate="prompt",  # #1733: outbound LLM proxy egress
     )
     composed = _eval_composed(ctx)
 
@@ -461,6 +463,7 @@ def guarded_client_stream(
         body=body,
         input_tokens=0,
         db=None,
+        gate="prompt",  # #1733: outbound LLM proxy egress
     )
     composed = _eval_composed(ctx)
 
@@ -568,6 +571,7 @@ def guarded_llm_stream(
         body=payload,
         input_tokens=0,
         db=db,
+        gate="prompt",  # #1733: outbound LLM proxy egress
     )
     decision = _eval_composed(ctx)
 
