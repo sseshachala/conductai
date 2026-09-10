@@ -31,6 +31,10 @@ dev = [
     "pytest>=7",
     "pytest-asyncio>=0.21",
     "respx>=0.20",
+    # 0.2.1 regression test asserts ConductGuardBlocked inherits from
+    # fastapi.HTTPException. FastAPI is transitively present inside the
+    # LiteLLM proxy at runtime; adding it here so pytest CI can import it.
+    "fastapi>=0.100",
 ]
 
 [project.urls]
