@@ -59,36 +59,37 @@ def test_pack_arg_returns_deprecation_suffix_on_error_path():
 
 
 def test_divergence_log_line_fires_on_different_rule_ids():
-    """Pure-function coverage of the divergence-message builder — no
-    patching, no logger, no test-order coupling.
+    """Pure-function coverage of the divergence-message builder shape.
+    Injects a spy redactor so the assertion doesn't depend on which
+    version of app.core.pii is loaded in sys.modules — pre-existing
+    approval tests stub the module and the ratchet at #1075 forbids
+    poking sys.modules from new test files."""
+    spy_calls: list[str] = []
 
-    Pre-existing tests (test_guard_approval*.py) stub app.core.pii module
-    with a MagicMock at import time and never restore. Force-reload the
-    real module before this test runs so redaction actually executes."""
-    import sys, importlib
-    # Pre-existing tests stubbed sys.modules["app.core.pii"] = MagicMock().
-    # Drop the stub, force a fresh import of the real module.
-    sys.modules.pop("app.core.pii", None)
-    importlib.import_module("app.core.pii")
+    def _spy_redact(text: str):
+        spy_calls.append(text)
+        return ("[REDACTED]", ["secret_key"])
 
-    # Fake-format secret matching pii._SECRET_PATTERNS `sk-<20+>` regex.
-    # Built by concat so this fixture doesn't itself trip secret scanners.
-    secret = "sk" + "-" + ("X" * 30)
-    line = _build_divergence_log_line(
-        pack="conduct-fake",
-        tool_name="bash",
-        tool_input={"command": "ls", "token": secret},
-        pack_rid="pack-rule",
-        unified_rid="unified-rule",
-    )
+    with patch("app.core.pii.redact_secrets", side_effect=_spy_redact):
+        line = _build_divergence_log_line(
+            pack="conduct-fake",
+            tool_name="bash",
+            tool_input={"command": "ls", "token": "sk" + "-" + ("X" * 30)},
+            pack_rid="pack-rule",
+            unified_rid="unified-rule",
+        )
+
     assert line is not None
     fmt, args = line
     assert "shadow divergence" in fmt
     rendered = fmt % args
     assert "pack_rule=pack-rule" in rendered
     assert "unified_rule=unified-rule" in rendered
-    assert secret not in rendered, (
-        "raw secret leaked into shadow log — redact_secrets did not run"
+    # Property 9: builder MUST route the raw tool_input through
+    # redact_secrets before rendering it into the log message.
+    assert spy_calls, "redact_secrets was never called — Property 9 violated"
+    assert "[REDACTED]" in rendered, (
+        "redactor return value did not reach the rendered log line"
     )
 
 
