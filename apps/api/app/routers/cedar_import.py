@@ -14,6 +14,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+import uuid as _uuid
+
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
@@ -27,12 +29,56 @@ from app.guard.policy_types import PolicyAction, PolicyContext
 from app.modules.guard.cedar_adapter import cedar_json_bundle_to_pack, pack_to_cedar_text
 from app.modules.guard.models import SkillPack, WorkspaceSkillPack
 from app.modules.guard.policy_engine import invalidate_policy_cache
+from app.modules.guard.routers.mcp import _record_event
 
 
 log = structlog.get_logger(__name__)
 
 
 router = APIRouter(prefix="/guard/registry", tags=["cedar-import"])
+
+
+_DECISION_LABEL: dict[PolicyAction, str] = {
+    PolicyAction.ALLOW: "allowed",
+    PolicyAction.WARN: "warned",
+    PolicyAction.APPROVAL: "approval_pending",
+    PolicyAction.BLOCK: "blocked",
+}
+
+
+def _write_cedar_receipt(
+    db: Session,
+    workspace_id: str,
+    clerk_user_id: str | None,
+    tool_name: str,
+    payload: dict,
+    decision_label: str,
+    rule_id: str | None,
+) -> None:
+    """Land a hash-chained receipt on every Cedar import/export attempt.
+
+    Uses the same _record_event helper the MCP surface uses so the audit
+    row shape (hash chain, policy_hash, redacted input_summary) is
+    identical to MCP-recorded events. `source="http"` lets the Guard
+    Activity UI attribute the event to the REST endpoint.
+    """
+    try:
+        _record_event(
+            db=db,
+            ws_uuid=_uuid.UUID(workspace_id),
+            tool_name=tool_name,
+            tool_input=payload,
+            decision=decision_label,
+            rule_id=rule_id,
+            ai_tool="conduct-api",
+            user_email=clerk_user_id or "",
+            session_id="",
+            source="http",
+        )
+    except Exception as e:
+        # Never fail an import/export because the receipt write blew up.
+        # Same fail-open posture as guarded_client_call.audit_*_failed paths.
+        log.warning("cedar_gate.audit_write_failed", tool=tool_name, err=str(e))
 
 
 def _enforce_cedar_gate(
@@ -44,7 +90,11 @@ def _enforce_cedar_gate(
 ) -> None:
     """Run Guard policy against a Cedar import/export intent.
 
-    Composes the same evaluator every other surface uses (MCP, Lens, proxy).
+    Composes the same evaluator every other surface uses (MCP, Lens, proxy),
+    then writes a hash-chained audit receipt for every decision (including
+    ALLOW / no-match) so the Rule Fires panel and Guard Activity feed reflect
+    Cedar traffic like any other surface.
+
     Fail-open on evaluator errors — matches proxy / lens behavior.
     BLOCK → 403. APPROVAL → 428 (REST approval routing is a follow-up).
     ALLOW / WARN / no match → return silently.
@@ -62,9 +112,16 @@ def _enforce_cedar_gate(
         decision = evaluate_composed(ctx)
     except Exception as e:
         log.warning("cedar_gate.eval_failed", tool=tool_name, err=str(e))
+        _write_cedar_receipt(db, workspace_id, clerk_user_id, tool_name, payload, "allowed", None)
         return
+
     if decision is None:
+        _write_cedar_receipt(db, workspace_id, clerk_user_id, tool_name, payload, "allowed", None)
         return
+
+    decision_label = _DECISION_LABEL.get(decision.action, "allowed")
+    _write_cedar_receipt(db, workspace_id, clerk_user_id, tool_name, payload, decision_label, decision.rule_id)
+
     if decision.action == PolicyAction.BLOCK:
         log.warning("cedar_gate.blocked", tool=tool_name, rule=decision.rule_id)
         raise HTTPException(
