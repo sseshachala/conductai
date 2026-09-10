@@ -198,6 +198,10 @@ export function EnforcementCoverageMatrix({ workspaceId }: { workspaceId: string
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [pack, setPack] = useState("all")
+  // #1753 follow-up — filter to only rules whose hand-authored value
+  // disagrees with the derived one. Powers the Phase D cleanup workflow:
+  // compliance officers see the punch list without grepping server logs.
+  const [divergentOnly, setDivergentOnly] = useState(false)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [expandedRuleIds, setExpandedRuleIds] = useState<Set<string>>(new Set())
 
@@ -231,11 +235,29 @@ export function EnforcementCoverageMatrix({ workspaceId }: { workspaceId: string
     [rows],
   )
 
+  // Row is divergent if ANY surface's hand-authored value disagrees with derived.
+  // Mirrors the server-side `_divergent` check used to fire status_divergence warnings.
+  function _rowIsDivergent(row: GuardEnforcementCoverage): boolean {
+    const pairs: [EnforcementStatus, string | undefined][] = [
+      [row.proxy,   row.derived_proxy],
+      [row.hook,    row.derived_hook],
+      [row.mcp,     row.derived_mcp],
+      [row.runtime, row.derived_runtime],
+    ]
+    return pairs.some(([authored, derived]) => {
+      if (!derived) return false
+      // Skip deploy-caveat statuses derive_surface_status doesn't model.
+      if (authored === "conditional" || authored === "advisory") return false
+      return authored !== derived
+    })
+  }
+
   const filteredRows = useMemo(() => {
     const normalisedQuery = query.trim().toLowerCase()
     return rows.filter(row => {
       const rowPack = row.pack ?? "custom"
       if (pack !== "all" && rowPack !== pack) return false
+      if (divergentOnly && !_rowIsDivergent(row)) return false
       if (!normalisedQuery) return true
       return [
         row.rule_id,
@@ -245,7 +267,7 @@ export function EnforcementCoverageMatrix({ workspaceId }: { workspaceId: string
         ...row.personas,
       ].some(value => value.toLowerCase().includes(normalisedQuery))
     })
-  }, [pack, query, rows])
+  }, [pack, query, rows, divergentOnly])
 
   const visibleRows = filteredRows.slice(0, visibleCount)
 
@@ -318,6 +340,18 @@ export function EnforcementCoverageMatrix({ workspaceId }: { workspaceId: string
               </option>
             ))}
           </select>
+          {/* #1753 follow-up — Phase D cleanup workflow */}
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-2)", cursor: "pointer", whiteSpace: "nowrap" }}>
+            <input
+              type="checkbox"
+              checked={divergentOnly}
+              onChange={event => updateFilter(() => setDivergentOnly(event.target.checked))}
+              style={{ margin: 0 }}
+            />
+            <span title="Show only rules whose hand-authored enforcement.<surface> disagrees with the derived value (⚠ marker). Punch list for #1750 Phase D cleanup.">
+              Show only divergent ⚠
+            </span>
+          </label>
           <span style={{ color: "var(--text-muted)", fontSize: 11.5, whiteSpace: "nowrap" }}>
             {filteredRows.length} {filteredRows.length === 1 ? "rule" : "rules"}
           </span>
