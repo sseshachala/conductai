@@ -38,12 +38,18 @@ _PACK_ARG_DEPRECATION_SUFFIX = (
 
 
 def _shadow_log_pack_divergence(
-    db, ws_uuid, pack: str, tool_name: str, tool_input: dict, pack_rules: list[dict]
+    db, ws_uuid, pack: str, tool_name: str, tool_input: dict, pack_rules: list[dict],
+    *, log_fn=None,
 ) -> None:
     """#1737 PR 4: run the unified path in shadow when pack: is used and
     log any divergence in match result. Never raises — shadow eval failure
     must not affect the primary decision. All logged payloads route through
-    redact_secrets (reviewer edit 3) — raw tool_input never persists."""
+    redact_secrets (reviewer edit 3) — raw tool_input never persists.
+
+    ``log_fn`` is a dependency-injection hook: pass a callable(msg, *args)
+    to receive the log call directly (e.g. for tests). Defaults to
+    ``LOG.warning`` so production callers don't need to know it exists."""
+    warn = log_fn if log_fn is not None else LOG.warning
     try:
         unified_rules = _get_rules(db, ws_uuid)
         pack_match = _match_policy(tool_name, tool_input, pack_rules)
@@ -54,7 +60,7 @@ def _shadow_log_pack_divergence(
             return
         from app.core.pii import redact_secrets
         redacted_input, _found = redact_secrets(json.dumps(tool_input, default=str))
-        LOG.warning(
+        warn(
             "guard_check shadow divergence (#1737) "
             "pack=%s tool=%s pack_rule=%s unified_rule=%s input=%s",
             pack, tool_name, pack_rid, unified_rid, redacted_input,

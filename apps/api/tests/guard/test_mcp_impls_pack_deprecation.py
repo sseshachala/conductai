@@ -60,14 +60,14 @@ def test_pack_arg_returns_deprecation_suffix_on_error_path():
 
 def test_shadow_log_fires_on_divergent_match():
     """When pack-scoped and unified paths produce different rule matches,
-    the shadow log emits a warning with redacted input. Patch LOG.warning
-    directly — caplog capture is flaky across CI/local logging configs."""
+    the shadow log emits a warning with redacted input. Uses the log_fn DI
+    hook — no global patching, no logger reset ordering issues."""
     pack_rules = [{"id": "pack-rule", "action": "warn"}]
     unified_rules = [{"id": "unified-rule", "action": "block"}]
     db = MagicMock()
     ws_uuid = uuid.uuid4()
 
-    def match_side(_tool, _input, rules):
+    def match_side(_tool, _input, rules, gate=None):
         return {"rule_id": rules[0]["id"]} if rules else None
 
     # Fake-format secret matching pii._SECRET_PATTERNS `sk-<20+>` regex.
@@ -80,12 +80,12 @@ def test_shadow_log_fires_on_divergent_match():
         logged.append(msg % args if args else msg)
 
     with patch("app.modules.guard.mcp_impls._get_rules", return_value=unified_rules), \
-         patch("app.modules.guard.mcp_impls._match_policy", side_effect=match_side), \
-         patch("app.modules.guard.mcp_impls.LOG.warning", side_effect=_capture):
+         patch("app.modules.guard.mcp_impls._match_policy", side_effect=match_side):
         _shadow_log_pack_divergence(
             db, ws_uuid, "conduct-fake", "bash",
             {"command": "ls", "token": secret},
             pack_rules,
+            log_fn=_capture,
         )
 
     assert any("shadow divergence" in m for m in logged)
@@ -109,9 +109,10 @@ def test_shadow_log_silent_on_matching_result():
          patch(
              "app.modules.guard.mcp_impls._match_policy",
              return_value={"rule_id": "same-rule"},
-         ), patch("app.modules.guard.mcp_impls.LOG.warning", side_effect=_capture):
+         ):
         _shadow_log_pack_divergence(
             db, uuid.uuid4(), "conduct-fake", "bash", {"cmd": "ls"}, rules,
+            log_fn=_capture,
         )
     assert not any("shadow divergence" in m for m in logged)
 
