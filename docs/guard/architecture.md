@@ -237,8 +237,11 @@ Add here without migration.
 | Runtime | action (via PreBlock) | `apps/api/app/runtime/blocks/` |
 | CLI hook | action | `packages/conduct-cli/` PreToolUse |
 | Lens | action, prompt, response | `apps/api/app/modules/glens/routers/chat.py` + `tools/registrations/lens/` |
+| LiteLLM plugin | prompt (response deferred) | `packages/conduct-litellm-guard/` |
 
 Lens is a well-behaved caller — no special path. LLM calls route through `guarded_completion` → `LLMClient` → proxy. Tool calls route through Lens tool registry → `guard_check` → MCP PEP.
+
+The LiteLLM plugin is also a well-behaved caller: it sits at the LiteLLM `pre_call` boundary — a prompt-gate concern — and dispatches through the new `guard_check_prompt` MCP verb. Transport = MCP; enforcement point = the LLM proxy PEP (proxy-persona rules, `gate="prompt"`, audit `source="proxy"`). `PEP_CAPABILITIES["mcp"]` stays `{action}`; the plugin's row above documents the effective gate the caller reaches, not a new MCP capability.
 
 The four rows above (excluding Lens) are the source of truth for `PEP_CAPABILITIES` in `apps/api/app/modules/guard/pep_registry.py`. `derive_surface_status(rule, surface)` reads this table + the rule's `gates` to compute per-rule enforcement status. `pack_coverage_matrix(db, pack_slug)` aggregates across a pack; the Policies UI reads it via `GET /guard/policies/packs/{slug}/coverage-matrix`.
 

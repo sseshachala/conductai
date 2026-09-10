@@ -23,10 +23,10 @@ At `/theguard/policies`, enable one of the shipped packs
 `conduct-eu-ai-act`, `conduct-nist-ai-rmf`, `conduct-iso-42001`, and
 more), or author a custom rule with:
 
-- **TOOL:** `llm_call` — matches every LLM call routed through the
-  plugin.
-- **PATTERN:** any regex that should trigger the rule (matched against
-  the last user message in `tool_input.content`).
+- **PERSONA:** `proxy` — the plugin runs at the prompt gate, so proxy-persona
+  rules are the ones that fire against every outbound LLM prompt.
+- **PATTERN:** any regex that should trigger the rule (matched against the
+  outbound prompt text — same shape the LLM proxy sees).
 - **ACTION:** `block`, `warn`, `audit`, or `approval`.
 
 ## 2. Install the plugin
@@ -74,7 +74,7 @@ guardrails:
 | `api_base`      | no       | `https://api.conductai.ai` | Point at a self-hosted Conduct API when needed.                          |
 | `workspace_id`  | no       | resolved from the token    | Usually unnecessary — the token owns its workspace.                      |
 | `fail_mode`     | no       | `fail_closed`              | `fail_closed` blocks when Guard is unreachable; `fail_open` allows.      |
-| `tool_name`     | no       | `llm_call`                 | Guard tool scope. Set to `workflow` to reuse existing non-LLM packs.     |
+| `tool_name`     | no       | `llm_call`                 | Deprecated in 0.2.0 — accepted for config-compat, ignored at runtime. The plugin now hits the `guard_check_prompt` MCP verb, so rule matching is by `match_pattern` on the outbound prompt, not by `match_tool`. Delete the field on your next config edit. |
 | `timeout`       | no       | `8.0`                      | Seconds. Guard responds in <100ms in the healthy path.                   |
 
 ## 4. Start LiteLLM Gateway
@@ -105,12 +105,11 @@ the call in the Conduct console under **Guard → Activity**.
 </TabItem>
 <TabItem label="Blocked call" value="blocked">
 
-If your active packs include a rule that matches AWS access-key
-patterns (for example, `conduct-owasp` ships `no-aws-keys` scoped to
-`filesystem-write,workflow`), a request containing that pattern is
-blocked. Use a well-known-fake AWS access-key format (a string
-starting with `AKIA` followed by 16 uppercase alphanumerics) as the
-prompt:
+If your active packs include a proxy-persona rule that matches AWS access-key
+patterns (for example, `conduct-owasp` ships `no-aws-keys` at the prompt
+gate), a request containing that pattern is blocked. Use a well-known-fake
+AWS access-key format (a string starting with `AKIA` followed by 16
+uppercase alphanumerics) as the prompt:
 
 ```shell
 curl http://localhost:4000/v1/chat/completions \

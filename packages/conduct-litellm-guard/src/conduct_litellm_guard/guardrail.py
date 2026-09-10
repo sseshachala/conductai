@@ -167,10 +167,11 @@ class ConductGuard(CustomGuardrail):
         self._agent_token = token
         self._workspace_id = workspace_id or os.environ.get("CONDUCT_WORKSPACE_ID")
         self._fail_mode: FailMode = fail_mode
-        # Overridable per-config so existing pack rules that scope to
-        # 'workflow' / 'filesystem-write' can catch LLM traffic without
-        # editing the pack. Default 'llm_call' is what future packs will
-        # scope to natively.
+        # Kept for config-compat; no longer used. The plugin now routes
+        # through guard_check_prompt (prompt-gate → proxy-persona rules),
+        # so match_tool is not the filter — match_pattern on the prompt is.
+        # Existing configs that set `tool_name: llm_call` (or workflow /
+        # action) continue to load without error; the value is ignored.
         self._tool_name = tool_name
         self._client = GuardCheckClient(
             api_url=self._api_url,
@@ -211,17 +212,18 @@ class ConductGuard(CustomGuardrail):
     # ── Public helpers usable outside LiteLLM ─────────────────────────
 
     async def check(self, *, data: dict[str, Any], call_type: str) -> GuardDecision:
-        """Run one ``guard_check`` for the given LiteLLM request payload."""
-        tool_input = _build_tool_input(data, call_type)
+        """Run one ``guard_check_prompt`` for the given LiteLLM request payload."""
         session_id = _extract_session_id(data)
-        prompt = _extract_prompt_text(data)
+        prompt = _extract_prompt_text(data) or ""
+        model = data.get("model") or None
+        provider = _extract_provider(data)
 
         try:
             raw = await self._client.guard_check(
-                tool_name=self._tool_name,
-                tool_input=tool_input,
-                session_id=session_id,
                 prompt=prompt,
+                model=model,
+                provider=provider,
+                session_id=session_id,
             )
         except GuardCheckError as e:
             log.warning("conduct_guard: eval error %s — applying %s", e, self._fail_mode)
@@ -296,21 +298,17 @@ def _extract_prompt_text(data: dict[str, Any]) -> str | None:
     return None
 
 
-def _build_tool_input(data: dict[str, Any], call_type: str) -> dict[str, Any]:
-    """Compact payload for the ``tool_input`` field. Includes a truncated
-    view of the last user message so existing Guard rules that match
-    against ``tool_input`` fire the same way for LLM calls as they do
-    for shell / write_file. Truncation caps the field at 4KB so a
-    16-turn RAG conversation doesn't blow the audit row size."""
-    messages = data.get("messages") or []
-    return {
-        "model": data.get("model"),
-        "call_type": call_type,
-        "message_count": len(messages),
-        "temperature": data.get("temperature"),
-        "max_tokens": data.get("max_tokens"),
-        "stream": bool(data.get("stream")),
-        # Content is what content-match rules (prompt injection, secrets,
-        # PII, etc) look for. Same shape as tool_input.command for bash.
-        "content": _extract_prompt_text(data) or "",
-    }
+def _extract_provider(data: dict[str, Any]) -> str | None:
+    """Best-effort read of the upstream provider name from a LiteLLM request.
+
+    LiteLLM sometimes routes purely by ``model`` (``anthropic/claude-3-5-...``);
+    sometimes callers pass ``custom_llm_provider`` explicitly. Prefer the
+    explicit value; else split the model prefix on the first ``/``.
+    """
+    explicit = data.get("custom_llm_provider") or data.get("provider")
+    if explicit:
+        return str(explicit)
+    model = data.get("model") or ""
+    if "/" in model:
+        return model.split("/", 1)[0]
+    return None
