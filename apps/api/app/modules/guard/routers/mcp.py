@@ -413,6 +413,14 @@ def _match_policy(
     inp_text  = json.dumps(tool_input)
     path_keys = ["file_path", "path", "command"]
     path_text = " ".join(str(tool_input.get(k, "")) for k in path_keys)
+    # #1770 follow-up: proxy rules can carry match_prompt / match_provider /
+    # match_model (LLM-egress matchers). When the caller supplies these in
+    # tool_input (guard_check_prompt does), respect them so proxy rules match
+    # the same way they do through the LLM proxy PEP itself. Fields are inert
+    # for the action-gate path because legacy callers don't send them.
+    prompt_text = str(tool_input.get("prompt") or "")
+    provider = tool_input.get("provider")
+    model = tool_input.get("model")
 
     best: dict | None = None
     best_priority = 999
@@ -424,6 +432,25 @@ def _match_policy(
         if match_tool != "*":
             allowed = expand_match_tool(match_tool)
             if tool_name.lower() not in allowed:
+                continue
+
+        # Proxy-native filters — apply only when the rule declares them.
+        rp = rule.get("match_provider")
+        if rp is not None and rp != provider:
+            continue
+        rm = rule.get("match_model")
+        if rm:
+            try:
+                if not re.search(rm, model or "", re.IGNORECASE):
+                    continue
+            except re.error:
+                continue
+        mp = rule.get("match_prompt")
+        if mp:
+            try:
+                if not re.search(mp, prompt_text, re.IGNORECASE):
+                    continue
+            except re.error:
                 continue
 
         pattern = rule.get("match_pattern")
@@ -466,6 +493,13 @@ def _project_rule(r: dict) -> dict:
         "match_ai_tool":     r.get("match_ai_tool"),  # #1752: was dropped by projector
         "match_pattern":     r.get("match_pattern"),
         "match_path_pattern": r.get("match_path_pattern"),
+        # #1770 follow-up: proxy-native matchers preserved so guard_check_prompt
+        # honours them from the MCP transport. Legacy MCP callers pass no
+        # prompt/provider/model in tool_input, so these fields are inert
+        # for the action-gate path.
+        "match_prompt":      r.get("match_prompt"),
+        "match_provider":    r.get("match_provider"),
+        "match_model":       r.get("match_model"),
         "action":            r.get("action"),
         "message":           r.get("message"),
         "pack":              r.get("pack") or r.get("pack_slug"),
