@@ -204,7 +204,7 @@ Do not touch these without a schema migration.
 5. **Gate enum** — `{ action, prompt, response }`. Locked from day one.
 6. **Audit receipt shape** — `{ task_id, seq, prev_hash, this_hash, gate, surface, tool, verdict, rule_id, obligations_completed, ts }`.
 7. **Precedence** — most-restrictive action wins; `non_overridable: True` rules bypass workspace overrides; pack precedence is one admin dial.
-8. **PEP capability declarations are machine-verified.** Every PEP registers `provides_capabilities: {gate_types}`. CI runs one conformance test per declared capability per PEP. Failing test blocks merge. No PEP ships with an undeclared or unverified capability.
+8. **PEP capability declarations are machine-verified.** Every PEP registers `provides_capabilities: {gate_types}` in `apps/api/app/modules/guard/pep_registry.py`. Snapshot test in `tests/guard/test_pep_registry.py` locks the mapping against this doc — a PEP silently changing what it enforces fails CI. Per-rule surface status is derived on read via `derive_surface_status(rule, surface)`; hand-authored `enforcement.<surface>` values are compared against derived and divergence is warn-logged for #1750 Phase D cleanup. Full CI-run conformance test per capability is a follow-up.
 9. **Raw payload never persists outside ephemeral scope.** All log writes — divergence logs, debug tables, audit rows — route through `redact_secrets` at `apps/api/app/core/pii.py:86`. Matched-span + hash + size only. P0 security invariant.
 
 ## 6. Extension points (5)
@@ -239,6 +239,8 @@ Add here without migration.
 | Lens | action, prompt, response | `apps/api/app/modules/glens/routers/chat.py` + `tools/registrations/lens/` |
 
 Lens is a well-behaved caller — no special path. LLM calls route through `guarded_completion` → `LLMClient` → proxy. Tool calls route through Lens tool registry → `guard_check` → MCP PEP.
+
+The four rows above (excluding Lens) are the source of truth for `PEP_CAPABILITIES` in `apps/api/app/modules/guard/pep_registry.py`. `derive_surface_status(rule, surface)` reads this table + the rule's `gates` to compute per-rule enforcement status. `pack_coverage_matrix(db, pack_slug)` aggregates across a pack; the Policies UI reads it via `GET /guard/policies/packs/{slug}/coverage-matrix`.
 
 ---
 

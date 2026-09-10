@@ -110,6 +110,8 @@ Per surface, the rule declares whether it can enforce (`hard`), advise (`conditi
 | `mcp` | MCP `guard_check` — enforced when agent voluntarily calls it. |
 | `runtime` | Conduct workflow runtime — enforced during YAML playbook execution. |
 
+> **Deprecation window (#1751 shipped; #1750 Phase D cleanup pending).** The hand-authored `enforcement.proxy` / `hook` / `mcp` / `runtime` values are being supplemented by a **derived** status: `derive_surface_status(rule, surface)` reads `rule.gates` × the PEP capability registry and returns `"hard"` or `"not_supported"` per Property 8 of `docs/guard/architecture.md`. Callers should read the derived status; hand-authored values remain in the JSON but will be retired once telemetry shows zero divergence.
+
 ### Pack (bundles rules)
 
 | Field | Type | Notes |

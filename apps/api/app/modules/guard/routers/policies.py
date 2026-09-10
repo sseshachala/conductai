@@ -184,6 +184,26 @@ class PolicyGenerateOut(BaseModel):
     message: str
 
 
+class PackSurfaceCounts(BaseModel):
+    """Rule count per {hard, not_supported} for one PEP surface (#1751 PR 3)."""
+    hard: int = 0
+    not_supported: int = 0
+
+
+class PackCoverageMatrixOut(BaseModel):
+    """Per-pack coverage summary: rules per surface × per gate.
+
+    Response of ``GET /guard/policies/packs/{slug}/coverage-matrix`` (#1751 PR 5).
+    Feeds the pack-detail coverage table in the Policies UI (#1750 Phase B
+    Slice 2 / #1755).
+    """
+    pack: str
+    version: Optional[str] = None
+    total_rules: int
+    by_surface: dict[str, PackSurfaceCounts]
+    by_gate: dict[str, int]
+
+
 class EnforcementCoverageOut(BaseModel):
     rule_id: str
     name: str
@@ -748,6 +768,27 @@ def get_enforcement_coverage(
 ):
     """Generated enforcement matrix for the workspace's resolved policy sources."""
     return workspace_coverage_matrix(db, _ws_uuid(workspace_id))
+
+
+@router.get("/packs/{pack_slug}/coverage-matrix", response_model=PackCoverageMatrixOut)
+def get_pack_coverage_matrix(
+    pack_slug: str,
+    db: Session = Depends(get_db),
+    _workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.policies.view")),
+) -> PackCoverageMatrixOut:
+    """#1751 PR 5 — per-pack surface × gate coverage summary.
+
+    Answers "does conduct-hipaa cover response-gate leakage on the proxy?"
+    without walking every rule client-side. Feeds the Policies UI pack
+    detail table.
+
+    Missing pack returns a zero-filled envelope so callers can render an
+    empty state without null checks.
+    """
+    from app.modules.guard.coverage import pack_coverage_matrix
+
+    return PackCoverageMatrixOut(**pack_coverage_matrix(db, pack_slug))
 
 
 @router.post("", response_model=PolicyOut, status_code=201)
