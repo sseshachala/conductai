@@ -40,6 +40,7 @@ _ANNOTATIONS: dict[str, ToolAnnotations] = {
     "guard_status":              ToolAnnotations(read_only=True),
     "conduct_current_workspace": ToolAnnotations(read_only=True, idempotent=True),
     "guard_check":               ToolAnnotations(open_world=True),
+    "guard_check_prompt":        ToolAnnotations(open_world=True),
     "guard_test":                ToolAnnotations(read_only=True),
     "guard_sync":              ToolAnnotations(read_only=True),
     "guard_enable":            ToolAnnotations(read_only=True),

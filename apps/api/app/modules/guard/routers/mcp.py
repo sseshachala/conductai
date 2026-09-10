@@ -88,6 +88,29 @@ _TOOLS = [
         },
     },
     {
+        "name": "guard_check_prompt",
+        "description": (
+            "Prompt-gate variant of guard_check. Callers at the LLM egress "
+            "boundary (LiteLLM plugin, LangChain callbacks, custom proxies) "
+            "hit this before their prompt reaches the model. Evaluates "
+            "proxy-persona rules against the prompt text; returns the same "
+            "'ok' / 'WARNING —' / 'BLOCKED —' / 'PENDING approval —' envelope "
+            "guard_check does, so response parsers are shared. "
+            "MCP is the transport; the proxy PEP is what enforces (Property 8)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt":   {"type": "string", "description": "The outbound prompt text about to be sent to the model."},
+                "model":    {"type": "string", "description": "Model identifier, e.g. 'claude-3-5-sonnet', 'gpt-4o'."},
+                "provider": {"type": "string", "description": "Upstream provider, e.g. 'anthropic', 'openai', 'bedrock'."},
+                "conduct_run_id":   {"type": "string", "description": "Optional. Conduct run ID if called from within a workflow run."},
+                "conduct_workflow": {"type": "string", "description": "Optional. Conduct workflow slug if called from within a workflow run."},
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
         "name": "guard_test",
         "description": (
             "Dry-run a single pack against a candidate tool call. "
@@ -455,9 +478,22 @@ def _project_rule(r: dict) -> dict:
     return out
 
 
-def _get_rules(db: Session, ws_uuid: uuid.UUID) -> list[dict]:
-    """Active ruleset for the agent persona — governs what AI does on the machine."""
-    rules = compute_policy(db, ws_uuid, "agent")
+def _get_rules(db: Session, ws_uuid: uuid.UUID, persona: str = "agent") -> list[dict]:
+    """Active ruleset for the requested persona.
+
+    Two personas today (locked by rule schema, not this function):
+      - ``"agent"``  — governs what AI does on the machine. MCP + hook + runtime
+                        PEPs call this. Gate: ``action``.
+      - ``"proxy"``  — governs outbound LLM traffic. LLM proxy PEP calls this
+                        directly; the ``guard_check_prompt`` MCP verb also calls
+                        this so LiteLLM-style callers can reach proxy rules
+                        without a new transport. Gate: ``prompt`` (``response``
+                        when that path lands).
+
+    Property 8 stays clean: MCP is the *transport*; the proxy PEP is the
+    *enforcement point* that declares ``{prompt, response}`` capability.
+    """
+    rules = compute_policy(db, ws_uuid, persona)
     return [_project_rule(r) for r in rules]
 
 

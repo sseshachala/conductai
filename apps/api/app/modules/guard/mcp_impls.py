@@ -138,26 +138,33 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
     _run_id = arguments.get("conduct_run_id") or None
     _workflow = arguments.get("conduct_workflow") or None
     _prompt = arguments.get("prompt") or None
+    # Internal knobs (underscored so they never collide with JSON-Schema args)
+    # let guard_check_prompt_impl reuse this whole flow for the proxy PEP.
+    # Default preserves pre-#1770 behavior: agent persona, action gate,
+    # audit source="mcp".
+    _persona = arguments.get("_persona", "agent")
+    _gate = arguments.get("_gate", "action")
+    _source = arguments.get("_source", "mcp")
     # #1753 (2026-09-10): the `pack:` argument is retired. If a legacy client
     # still passes it, we ignore it silently and evaluate against the full
     # workspace policy (which is the correct behavior anyway — pack-scoping
     # was the buggy path that bypassed overrides).
     try:
-        rules = _get_rules(db, ws_uuid)
+        rules = _get_rules(db, ws_uuid, persona=_persona)
     except Exception as _eval_err:
         _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if _cfg and not _cfg.deny_on_error:
             return f"advisory: policy eval error (fail-open): {_eval_err}"
-        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "policy_eval_error", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
+        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "policy_eval_error", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
         return "BLOCKED — policy evaluation failed. Request denied by fail-closed default."
 
     _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     _advisory = _cfg.advisory_mode if _cfg else False
 
-    rule = _match_policy(inner_tool, inner_input, rules)
+    rule = _match_policy(inner_tool, inner_input, rules, gate=_gate)
 
     if rule is None:
-        _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
+        _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
         return "ok"
 
     action = rule.get("action", "audit")
@@ -169,11 +176,11 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
         _guidance_suffix = f"\n\nGUIDANCE — {_guidance_text}"
 
     if _advisory:
-        _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
+        _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
         return f"advisory: {message} [rule: {rule_id}]{_guidance_suffix}"
 
     if action == "block":
-        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
+        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
         return f"BLOCKED — {message}  [rule: {rule_id}]{_guidance_suffix}"
 
     if action == "warn":
@@ -185,7 +192,7 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
         ).first()
         if already_warned:
             return "ok"
-        _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
+        _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
         return f"WARNING — {message}  [rule: {rule_id}]{_guidance_suffix}"
 
     if action == "approval":
@@ -206,10 +213,10 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
 
         verdict, block_reason = _approval.resume_verdict(prior)
         if verdict == "proceed":
-            _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
+            _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
             return "ok"
         if verdict == "block":
-            _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
+            _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
             return f"BLOCKED — {block_reason}  [rule: {rule_id}]{_guidance_suffix}"
         if verdict == "wait":
             return _approval.pending_marker(prior)
@@ -229,8 +236,48 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
         return _approval.pending_marker(req)
 
     # audit action fires the side-effect but returns "ok" to the agent
-    _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt)
+    _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
     return "ok"
+
+
+def guard_check_prompt_impl(ctx: GuardCtx, **arguments) -> str:
+    """Prompt-gate variant of guard_check.
+
+    Callers at the LLM egress boundary (LiteLLM plugin, LangChain callbacks,
+    custom proxies) hit this before the prompt reaches the model. Evaluates
+    proxy-persona rules against the prompt text; returns the same envelope
+    guard_check does so response parsers stay shared.
+
+    Property 8: MCP is the *transport*; the proxy PEP is the *enforcement
+    point* — declared capabilities ``{prompt, response}`` unchanged.
+
+    Fixes silent pass-through where proxy rules (e.g. `no-conduct-tokens`,
+    `proxy-no-credential-leak`) never fired for LiteLLM plugin traffic
+    because the plugin was hitting the action-gate MCP path.
+    """
+    prompt = arguments.get("prompt") or ""
+    if not prompt:
+        return "ERROR — 'prompt' argument is required (the outbound LLM prompt text)."
+
+    tool_input = {"prompt": prompt}
+    model = arguments.get("model")
+    provider = arguments.get("provider")
+    if model:
+        tool_input["model"] = model
+    if provider:
+        tool_input["provider"] = provider
+
+    return guard_check_impl(
+        ctx,
+        tool_name="llm_call",
+        tool_input=tool_input,
+        prompt=prompt,
+        conduct_run_id=arguments.get("conduct_run_id"),
+        conduct_workflow=arguments.get("conduct_workflow"),
+        _persona="proxy",
+        _gate="prompt",
+        _source="proxy",
+    )
 
 
 def guard_test_impl(ctx: GuardCtx, **arguments) -> str:
@@ -744,6 +791,7 @@ _GUARD_TOOL_IMPLS: dict[str, Any] = {
     'guard_status': guard_status_impl,
     'conduct_current_workspace': conduct_current_workspace_impl,
     'guard_check': guard_check_impl,
+    'guard_check_prompt': guard_check_prompt_impl,
     'guard_test': guard_test_impl,
     'guard_sync': guard_sync_impl,
     'guard_enable': guard_enable_impl,
