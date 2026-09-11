@@ -29,7 +29,7 @@ function _cspFor(pathname: string): string {
   // theme init and JSON-LD are inlined; tighten in a follow-up once we
   // migrate those to a nonce-based approach.
   const _selfClerk = "'self' https://cdn.clerk.com https://clerk.conductai.ai"
-  const _connect = "'self' https://api.conductai.ai https://clerk.com https://*.clerk.accounts.dev wss:"
+  const _connect = "'self' https://api.conductai.ai https://clerk.conductai.ai https://clerk.com https://*.clerk.accounts.dev wss:"
   const _img = "'self' data: https:"
   const _font = "'self' https://fonts.gstatic.com data:"
   const _style = "'self' 'unsafe-inline' https://fonts.googleapis.com"
