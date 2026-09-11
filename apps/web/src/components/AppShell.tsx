@@ -140,7 +140,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
 
 const PALETTE_COMMANDS = [
   { group: "BUILD", label: "Projects", href: "/projects", icon: "Grid" as const },
-  { group: "BUILD", label: "Agents", href: "/workflows", icon: "Flow" as const },
+  { group: "BUILD", label: "Workflows", href: "/workflows", icon: "Flow" as const },
   { group: "BUILD", label: "Registry", href: "/packs", icon: "Store" as const },
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
@@ -1029,7 +1029,7 @@ function AppShellInnerContent({
 
             <SideNavItem
               href="/workflows"
-              label="Agents"
+              label="Workflows"
               icon={<Icons.Flow />}
               active={pathname.startsWith("/workflows")}
               collapsed={collapsed}
