@@ -255,6 +255,11 @@ export default function GuardTryPage() {
               "X-Conductai-Internal": session.token,
               "X-Conductai-Workspace-Id": session.workspace_id,
               "anthropic-version": "2023-06-01",
+              // Anthropic 401s browser-originated calls unless this header
+              // is set — it's their opt-in for browser demos. Our /proxy
+              // forwards the request as-is to Anthropic, so the header
+              // needs to be sent from the browser.
+              "anthropic-dangerous-direct-browser-access": "true",
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
