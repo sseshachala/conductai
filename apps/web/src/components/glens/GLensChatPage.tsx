@@ -30,7 +30,7 @@ interface PolicyMapping {
   description: string
 }
 
-type Message =
+type MessageBody =
   | { role: "user"; text: string }
   | { role: "assistant"; kind: "answer"; text: string; skill?: string; drilldown?: { path: string; filters?: Record<string, string> }; followups?: string[]; understoodAs?: string }
   | { role: "assistant"; kind: "streaming"; text: string }
@@ -42,6 +42,22 @@ type Message =
   | { role: "assistant"; kind: "run"; runId: string; workflowName: string; initialStatus: string }
   | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
   | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
+
+type Message = MessageBody & { id: string }
+
+// Stable ids so React keys on the message feed never depend on array index.
+// Index-based keys re-mount bubbles on every splice → scroll resets, flicker.
+let _msgSeq = 0
+const nextMsgId = () => `m${++_msgSeq}`
+const withId = <T extends MessageBody>(body: T): Message => ({ ...body, id: nextMsgId() } as Message)
+// Morph the last bubble in place (loading → answer, etc.) without changing its id.
+const replaceLast = (prev: Message[], body: MessageBody): Message[] => {
+  const last = prev[prev.length - 1]
+  return last ? [...prev.slice(0, -1), { ...body, id: last.id } as Message] : [withId(body)]
+}
+// Morph a specific bubble in place (approve → run/answer) without re-keying siblings.
+const replaceById = (prev: Message[], id: string, body: MessageBody): Message[] =>
+  prev.map(m => (m.id === id ? ({ ...body, id } as Message) : m))
 
 const DEFAULT_SUGGESTIONS = [
   "Who was blocked today?",
@@ -1864,7 +1880,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
       const res = await authFetch(`${API}/glens/sessions/${id}`)
       if (!res.ok) return
       const data = await res.json()
-      const thread: Message[] = []
+      const thread: MessageBody[] = []
       for (const m of (data.messages ?? [])) {
         if (m.role === "user") {
           thread.push({ role: "user", text: m.content })
@@ -1912,7 +1928,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
           thread.push({ role: "assistant", kind: "dashboard", spec: data.spec, sessionId: id })
         }
       } catch { /* malformed spec — skip dashboard bubble */ }
-      setMessages(thread)
+      setMessages(thread.map(withId))
     } finally {
       setLoading(false)
     }
@@ -1939,34 +1955,34 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
       setSessions(prev => [{ id: data.session_id as string, title: text.slice(0, 60), has_dashboard: !!data.spec, created_at: new Date().toISOString() }, ...prev])
     }
     if (data.clarification_required) {
-      setMessages(prev => [...prev.slice(0, -1), {
+      setMessages(prev => replaceLast(prev, {
         role: "assistant", kind: "answer",
         text: (data.answer as string) ?? "I need more detail to proceed.",
         skill: (data.skill as string) ?? "rules",
         followups: data.followups as string[] | undefined,
-      }])
+      }))
     } else if (data.run_started) {
       // Natural-language confirm path (#1480 PR 11): user typed "yes" and
       // the LLM called confirm_pending_action which returned a run_id.
       // Render <RunBubble> — same live surface the button-click path gets.
       const rs = data.run_started as { run_id: string; workflow_name: string; status: string }
-      setMessages(prev => [...prev.slice(0, -1), {
+      setMessages(prev => replaceLast(prev, {
         role: "assistant", kind: "run",
         runId: rs.run_id,
         workflowName: rs.workflow_name,
         initialStatus: rs.status ?? "pending",
-      }])
+      }))
     } else if (data.confirm_required && data.approval_request_id) {
-      setMessages(prev => [...prev.slice(0, -1), {
+      setMessages(prev => replaceLast(prev, {
         role: "assistant", kind: "action_confirm",
         toolName: data.tool_name as string,
         approvalRequestId: data.approval_request_id as string,
         summary: (data.summary as string) ?? "Confirm this action?",
         warnings: (data.warnings as string[] | undefined) ?? [],
         expiresAt: data.expires_at as string | undefined,
-      }])
+      }))
     } else if (data.confirm_required) {
-      setMessages(prev => [...prev.slice(0, -1), {
+      setMessages(prev => replaceLast(prev, {
         role: "assistant", kind: "policy_confirm",
         answer: (data.answer as string) ?? "Review the draft below:",
         action: data.action as string,
@@ -1976,9 +1992,9 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
         sessionId: data.session_id as string,
         skill: (data.skill as string) ?? "rules",
         warning: data.warning as string | undefined,
-      }])
+      }))
     } else if (data.page_kind && data.page_data) {
-      setMessages(prev => [...prev.slice(0, -1), {
+      setMessages(prev => replaceLast(prev, {
         role: "assistant", kind: "page",
         answer: (data.answer as string) ?? "",
         pageKind: data.page_kind as string,
@@ -1986,9 +2002,9 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
         warning: data.warning as string | undefined,
         skill: (data.skill as string) ?? "report",
         drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined,
-      }])
+      }))
     } else if (data.blocks) {
-      setMessages(prev => [...prev.slice(0, -1), {
+      setMessages(prev => replaceLast(prev, {
         role: "assistant", kind: "blocks",
         answer: (data.answer as string) ?? "",
         blocks: data.blocks as unknown[],
@@ -1996,9 +2012,9 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
         skill: (data.skill as string) ?? "report",
         understoodAs: data.query_understood_as as string | undefined,
         drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined,
-      }])
+      }))
     } else if (data.rows) {
-      setMessages(prev => [...prev.slice(0, -1), {
+      setMessages(prev => replaceLast(prev, {
         role: "assistant", kind: "table",
         answer: (data.answer as string) ?? "",
         columns: data.columns as unknown[] | undefined,
@@ -2007,11 +2023,11 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
         skill: (data.skill as string) ?? "report",
         drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined,
         understoodAs: data.query_understood_as as string | undefined,
-      }])
+      }))
     } else if (data.ready && data.spec) {
-      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "dashboard", spec: data.spec as GlensDashboardSpec, sessionId: data.session_id as string, drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined }])
+      setMessages(prev => replaceLast(prev, { role: "assistant", kind: "dashboard", spec: data.spec as GlensDashboardSpec, sessionId: data.session_id as string, drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined }))
     } else {
-      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: (data.answer as string) ?? "No answer returned.", skill: data.skill as string | undefined, drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined, followups: data.followups as string[] | undefined, understoodAs: data.query_understood_as as string | undefined }])
+      setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: (data.answer as string) ?? "No answer returned.", skill: data.skill as string | undefined, drilldown: data.drilldown as { path: string; filters?: Record<string, string> } | undefined, followups: data.followups as string[] | undefined, understoodAs: data.query_understood_as as string | undefined }))
     }
   }
 
@@ -2020,7 +2036,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
     const controller = new AbortController()
     abortRef.current = controller
 
-    setMessages(prev => [...prev, { role: "user", text }, { role: "assistant", kind: "loading" }])
+    setMessages(prev => [...prev, withId({ role: "user", text }), withId({ role: "assistant", kind: "loading" })])
     setLoading(true)
 
     try {
@@ -2036,7 +2052,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
       })
 
       if (!res.ok) {
-        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: `Request failed (${res.status}). Try again.` }])
+        setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: `Request failed (${res.status}). Try again.` }))
         return
       }
 
@@ -2057,7 +2073,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
             setMessages(prev => {
               const last = prev[prev.length - 1]
               if (last?.role === "assistant" && last.kind === "loading") {
-                return [...prev.slice(0, -1), { ...last, label: evt.label as string }]
+                return replaceLast(prev, { ...last, label: evt.label as string })
               }
               return prev
             })
@@ -2066,20 +2082,20 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
               const last = prev[prev.length - 1]
               if (last?.role === "assistant" && (last.kind === "loading" || last.kind === "streaming")) {
                 const current = last.kind === "streaming" ? (last as { text: string }).text : ""
-                return [...prev.slice(0, -1), { role: "assistant", kind: "streaming", text: current + (evt.text as string) }]
+                return replaceLast(prev, { role: "assistant", kind: "streaming", text: current + (evt.text as string) })
               }
               return prev
             })
           } else if (evt.type === "done") {
             _applyData(evt, text)
           } else if (evt.type === "error") {
-            setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: (evt.message as string) ?? "Something went wrong." }])
+            setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: (evt.message as string) ?? "Something went wrong." }))
           }
         }
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
-      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "answer", text: "Network error. Please try again." }])
+      setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: "Network error. Please try again." }))
     } finally {
       setLoading(false)
     }
@@ -2148,21 +2164,23 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
           )}
 
           <div style={{ maxWidth: 800, margin: "0 auto" }}>
-            {messages.map((msg, i) => {
+            {messages.map((msg) => {
               if (msg.role === "user") return (
                 <UserBubble
-                  key={i}
+                  key={msg.id}
                   text={msg.text}
                   onEdit={newText => {
-                    setMessages(prev => prev.slice(0, i))
+                    const cutId = msg.id
+                    setMessages(prev => {
+                      const cutIdx = prev.findIndex(m => m.id === cutId)
+                      return cutIdx >= 0 ? prev.slice(0, cutIdx) : prev
+                    })
                     sendMessage(newText)
                   }}
                 />
               )
-              if (msg.kind === "loading") return <LoadingBubble key={i} label={msg.label} />
-              if (msg.kind === "streaming") return <AnswerBubble key={i} text={msg.text} skill="governance" />
-              // Per-message copy text + stable id so feedback rows upsert on
-              // the same (session, message, user) key across re-renders.
+              if (msg.kind === "loading") return <LoadingBubble key={msg.id} label={msg.label} />
+              if (msg.kind === "streaming") return <AnswerBubble key={msg.id} text={msg.text} skill="governance" />
               const copyText =
                 msg.kind === "answer" ? msg.text :
                 msg.kind === "blocks" ? msg.answer :
@@ -2171,9 +2189,8 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
                 msg.kind === "policy_confirm" ? msg.answer :
                         msg.kind === "action_confirm" ? msg.summary :
                 undefined
-              const messageId = String(i)
               return (
-                <div key={i}>
+                <div key={msg.id}>
                   {msg.kind === "answer" && <AnswerBubble text={msg.text} skill={msg.skill} drilldown={msg.drilldown} followups={msg.followups} onFollowup={sendMessage} understoodAs={msg.understoodAs} />}
                   {msg.kind === "dashboard" && <DashboardBubble spec={msg.spec} sessionId={msg.sessionId} authFetch={authFetch} drilldown={msg.drilldown} />}
                   {msg.kind === "blocks" && <BlocksBubble answer={msg.answer} blocks={msg.blocks as any} warning={msg.warning} skill={msg.skill} understoodAs={msg.understoodAs} drilldown={msg.drilldown} />}
@@ -2188,19 +2205,11 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
                       expiresAt={msg.expiresAt}
                       authFetch={authFetch}
                       stream={lensStream}
-                      onResult={text => setMessages(prev => [
-                        ...prev.slice(0, i),
-                        { role: "assistant", kind: "answer", text },
-                        ...prev.slice(i + 1),
-                      ])}
-                      onRunStarted={lensStream ? (runId, wfName, initialStatus) => setMessages(prev => [
-                        ...prev.slice(0, i),
-                        { role: "assistant", kind: "run", runId, workflowName: wfName, initialStatus },
-                        ...prev.slice(i + 1),
-                      ]) : undefined}
+                      onResult={text => setMessages(prev => replaceById(prev, msg.id, { role: "assistant", kind: "answer", text }))}
+                      onRunStarted={lensStream ? (runId, wfName, initialStatus) => setMessages(prev => replaceById(prev, msg.id, { role: "assistant", kind: "run", runId, workflowName: wfName, initialStatus })) : undefined}
                       onRetry={(newRunId, wfName) => setMessages(prev => [
                         ...prev,
-                        { role: "assistant", kind: "run", runId: newRunId, workflowName: wfName, initialStatus: "pending" },
+                        withId({ role: "assistant", kind: "run", runId: newRunId, workflowName: wfName, initialStatus: "pending" }),
                       ])}
                     />
                   )}
@@ -2213,7 +2222,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
                       authFetch={authFetch}
                       onRetry={(newRunId, wfName) => setMessages(prev => [
                         ...prev,
-                        { role: "assistant", kind: "run", runId: newRunId, workflowName: wfName, initialStatus: "pending" },
+                        withId({ role: "assistant", kind: "run", runId: newRunId, workflowName: wfName, initialStatus: "pending" }),
                       ])}
                     />
                   )}
@@ -2228,14 +2237,10 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
                       sessionId={msg.sessionId}
                       authFetch={authFetch}
                       warning={msg.warning}
-                      onResult={text => setMessages(prev => [
-                        ...prev.slice(0, i),
-                        { role: "assistant", kind: "answer", text, skill: msg.skill },
-                        ...prev.slice(i + 1),
-                      ])}
+                      onResult={text => setMessages(prev => replaceById(prev, msg.id, { role: "assistant", kind: "answer", text, skill: msg.skill }))}
                     />
                   )}
-                  <MessageFooter text={copyText} sessionId={activeId} messageId={messageId} />
+                  <MessageFooter text={copyText} sessionId={activeId} messageId={msg.id} />
                 </div>
               )
             })}
