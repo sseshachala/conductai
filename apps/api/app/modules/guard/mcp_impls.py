@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+import structlog
 from sqlalchemy import text as _sql
 
 LOG = logging.getLogger("guard.mcp_impls")
@@ -36,6 +37,7 @@ LOG = logging.getLogger("guard.mcp_impls")
 
 from sqlalchemy.orm import Session
 
+from app.modules.behavior import arg_anomaly as _arg_anomaly
 from app.modules.guard import approval as _approval
 from app.modules.guard.models import (
     GuardApprovalRequest,
@@ -60,6 +62,9 @@ from app.modules.guard.routers.mcp import (  # noqa: E402
     _run_workflow,
     _get_run_status,
 )
+
+
+_log = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -162,6 +167,33 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
     _advisory = _cfg.advisory_mode if _cfg else False
 
     rule = _match_policy(inner_tool, inner_input, rules, gate=_gate)
+
+    # Record-only argument anomaly observation. Advisory audit events only —
+    # the decision below and the string returned to the agent are untouched.
+    # Runs only for calls that end allowed/audited: blocked or approval-gated
+    # calls must not train the baseline (that would normalize the rejected
+    # pattern), and approval polling re-sends identical input, which would
+    # collapse the variance. Skipped when no caller identity resolves, so
+    # unrelated callers are never pooled into one baseline. Fail-open: an
+    # error here must never affect the call; roll back so a dirty session
+    # cannot break the _record_event commits that follow.
+    _will_allow = rule is None or _advisory or rule.get("action", "audit") == "audit"
+    _agent_key = clerk_user_id or user_email
+    if _will_allow and _agent_key and _cfg and getattr(_cfg, "arg_anomaly_enabled", False):
+        try:
+            _anomalies = _arg_anomaly.observe(
+                db,
+                workspace_id=ws_uuid,
+                agent_key=_agent_key,
+                tool_name=inner_tool,
+                tool_input=inner_input,
+                thresholds=_arg_anomaly.Thresholds.from_config(_cfg),
+            )
+            for _finding in _anomalies:
+                _record_event(db, ws_uuid, inner_tool, inner_input, "audited", _finding["rule_id"], ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, rule_message=_finding["message"])
+        except Exception as _anomaly_err:
+            db.rollback()
+            _log.warning("behavior.arg_anomaly.observe_failed", err=str(_anomaly_err))
 
     if rule is None:
         _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
