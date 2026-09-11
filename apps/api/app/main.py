@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -102,10 +102,22 @@ async def favicon():
 
 
 @app.get("/metrics", include_in_schema=False)
-async def metrics():
+async def metrics(request: Request):
+    """Prometheus scrape endpoint. Audit O01 — was fully public.
+
+    Gated by header `X-Metrics-Token` matching `settings.metrics_token`.
+    Empty token in production refuses all callers (fail-closed). Local /
+    development still open so devs can `curl /metrics` without extra setup.
+    """
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-    from starlette.responses import Response
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    from starlette.responses import Response as _Response
+
+    _tok = (settings.metrics_token or "").strip()
+    _hdr = (request.headers.get("x-metrics-token") or "").strip()
+    if settings.environment not in ("local", "development"):
+        if not _tok or _hdr != _tok:
+            return JSONResponse(status_code=401, content={"detail": "metrics_token_required"})
+    return _Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 if not _origins:
@@ -240,7 +252,60 @@ def _startup() -> None:
 
 @app.get("/health")
 def health():
+    """Legacy alias for /live. render.yaml points healthCheckPath at /health;
+    kept for backward compat with existing deploys."""
     return {"status": "ok"}
+
+
+@app.get("/live")
+def live():
+    """Liveness — is this process running? Cheap, never touches DB/Redis.
+    Matches k8s liveness-probe semantics: return 200 if the event loop is
+    responsive, nothing else."""
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready(response: Response):
+    """Readiness — can this process serve traffic? Checks DB, Redis, and
+    schema head. Returns 503 if any dependency is unavailable so a load
+    balancer removes the pod until it recovers (audit O01).
+    """
+    from sqlalchemy import text as _t
+    from app.core.database import SessionLocal as _SL
+
+    checks: dict[str, str] = {}
+    ok = True
+
+    # DB — SELECT 1 with a short timeout. Also confirms Alembic head is
+    # readable, which is enough of a "schema present" signal without
+    # bolting on version comparisons.
+    db = _SL()
+    try:
+        db.execute(_t("SELECT 1"))
+        db.execute(_t("SELECT version_num FROM alembic_version LIMIT 1"))
+        checks["db"] = "ok"
+    except Exception as _exc:
+        checks["db"] = "unavailable"
+        ok = False
+        log.warning("ready.db_check_failed", err=str(_exc))
+    finally:
+        db.close()
+
+    # Redis — PING. Callers hit it for rate limits, queue, and challenge
+    # storage; skipping this would let a broken Redis serve 200s.
+    try:
+        import redis as _redis
+        r = _redis.Redis.from_url(settings.redis_url, socket_connect_timeout=1, socket_timeout=1)
+        r.ping()
+        checks["redis"] = "ok"
+    except Exception as _exc:
+        checks["redis"] = "unavailable"
+        ok = False
+        log.warning("ready.redis_check_failed", err=str(_exc))
+
+    response.status_code = 200 if ok else 503
+    return {"status": "ok" if ok else "not_ready", "checks": checks}
 
 
 @app.get("/health/sandbox")
