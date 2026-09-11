@@ -3,23 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useGuardRole } from "@/hooks/useGuardRole"
-import type { GuardRole } from "@/hooks/useGuardRole"
-
-// ─── Tab definitions ──────────────────────────────────────────────────────────
-
-type TabDef = { href: string; label: string; roles?: GuardRole[] }
-
-// roles = undefined means visible to all; otherwise restrict to listed roles
-export const GUARD_TABS: TabDef[] = [
-  { href: "/logs/guard",           label: "Activity"    },
-  { href: "/theguard/spend",      label: "Spend"       },
-  { href: "/theguard/policies",   label: "Policies"    },
-  { href: "/theguard/approvals",  label: "Approvals"   },
-  { href: "/theguard/discovery",  label: "Agent Discovery" },
-  { href: "/theguard/compliance", label: "Compliance", roles: ["admin", "security"] },
-  { href: "/theguard/settings",   label: "Settings",   roles: ["admin"] },
-]
+import { GUARD_SECTIONS, activeGuardSection } from "@/lib/navigation/guardSections"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -61,9 +45,7 @@ export function GuardShell({
 }: GuardShellProps) {
   const pathname = usePathname()
   const [, setTick] = useState(0)
-  const { role } = useGuardRole()
-
-  const visibleTabs = GUARD_TABS.filter(t => !t.roles || (role && t.roles.includes(role)))
+  const activeId = activeGuardSection(pathname ?? "")
 
   // Re-render every 10 s so the relative timestamp stays fresh
   useEffect(() => {
@@ -122,25 +104,38 @@ export function GuardShell({
         </div>
       </div>
 
-      {/* Tab nav */}
-      <div className="guard-tab-nav">
-        {visibleTabs.map(tab => {
-          const isActive = tab.href === "/theguard"
-            ? pathname === "/theguard"
-            : pathname?.startsWith(tab.href)
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={`guard-tab${isActive ? " active" : ""}`}
-            >
-              {tab.label}
-            </Link>
-          )
-        })}
-      </div>
+      {/* Vertical rail + content — matches SettingsShell's pattern. */}
+      <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 28, alignItems: "start" }}>
+        <nav aria-label="Guard sections" style={{ display: "flex", flexDirection: "column", gap: 2, borderRight: "1px solid var(--border)", paddingRight: 14 }}>
+          {GUARD_SECTIONS.map(s => {
+            const active = s.id === activeId
+            return (
+              <Link
+                key={s.id}
+                href={s.href}
+                aria-current={active ? "page" : undefined}
+                style={{
+                  display: "block",
+                  padding: "8px 12px",
+                  fontSize: 13.5,
+                  fontWeight: active ? 650 : 500,
+                  color: active ? "var(--text)" : "var(--text-3)",
+                  background: active ? "var(--surface-2)" : "transparent",
+                  borderRadius: 6,
+                  textDecoration: "none",
+                  transition: "background .12s, color .12s",
+                }}
+              >
+                {s.label}
+              </Link>
+            )
+          })}
+        </nav>
 
-      {children}
+        <div style={{ minWidth: 0 }}>
+          {children}
+        </div>
+      </div>
     </div>
   )
 }
