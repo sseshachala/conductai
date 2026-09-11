@@ -16,11 +16,22 @@ import { CtaLink } from "@/components/marketing/CtaLink"
 // app, same as any other cold entry point.
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="marketing-v2 min-h-screen bg-white flex flex-col">
-      <MarketingNav />
-      <main className="flex-1">{children}</main>
-      <MarketingFooter />
-    </div>
+    <>
+      <div className="marketing-v2 min-h-screen bg-white flex flex-col">
+        <MarketingNav />
+        <main className="flex-1">{children}</main>
+        <MarketingFooter />
+      </div>
+      {/*
+        Audit S13: Narratr blog widget + brand embed. Loaded here so they
+        only run on marketing routes — never on authenticated console pages
+        where a third-party script would see workspace data in the DOM.
+        The CSP in src/middleware.ts also enforces this at the browser as
+        belt-and-braces against a rogue future import.
+      */}
+      <script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" async></script>
+      <script src="https://narratr.ai/embed.js" data-brand="conductai" async></script>
+    </>
   )
 }
 

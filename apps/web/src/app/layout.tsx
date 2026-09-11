@@ -144,6 +144,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     for(var i=0;i<SEMANTIC.length;i++) r.removeProperty(SEMANTIC[i]);
   })()`
 
+  // Audit S13: Narratr scripts used to load here in the root layout, so
+  // they ran on every authenticated page — /theguard, /lens, /credentials,
+  // /logs, etc. A third-party script on those surfaces can read the DOM
+  // (workspace names, spend rows, rule bodies, event contents) and would
+  // deliver code execution to every dashboard if the vendor's domain were
+  // ever compromised. Moved to (marketing)/layout.tsx so only public pages
+  // load them. CSP set by src/middleware.ts enforces this at the browser
+  // as belt-and-braces against a rogue future import.
   if (clerkEnabled) {
     return (
       <ClerkProvider afterSignInUrl="/workflows" afterSignUpUrl="/setup">
@@ -154,8 +162,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </head>
           <body>
             {children}
-            <script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" async></script>
-            <script src="https://narratr.ai/embed.js" data-brand="conductai" async></script>
           </body>
         </html>
       </ClerkProvider>
@@ -169,7 +175,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         {children}
-        <script src="https://narratr.ai/widget.js" data-brand-key="c7ae7b0c-2b6" async></script>
       </body>
     </html>
   )
