@@ -1,0 +1,99 @@
+{
+  "review_date": "2026-09-11",
+  "repository": "sseshachala/conductai",
+  "commit": "c918c6e051c0718eb7e61659b61fc1b8987fe3d6",
+  "source_modifications": false,
+  "production_requests_or_data_access": false,
+  "local_runtime": {
+    "node": "24.19.0",
+    "npm": "11.9.0"
+  },
+  "repository_runtime_declarations": {
+    "ci_node": "20",
+    "package_manager": "npm@10.9.0"
+  },
+  "checks": [
+    {
+      "cwd": ".",
+      "command": "npm ci --ignore-scripts --no-fund --no-audit",
+      "exit_code": 0,
+      "result": "passed"
+    },
+    {
+      "cwd": ".",
+      "command": "npm run typecheck --workspace apps/web",
+      "exit_code": 0,
+      "result": "passed"
+    },
+    {
+      "cwd": ".",
+      "command": "npm run lint --workspace apps/web",
+      "exit_code": 0,
+      "warnings": 120
+    },
+    {
+      "cwd": ".",
+      "command": "npm run test --workspace apps/web",
+      "exit_code": 1,
+      "tests_passed": 79,
+      "tests_failed": 2,
+      "files_passed": 5,
+      "files_failed": 1,
+      "failure_scope": "GuardShell expected Discovery but navigation labels Agent Discovery"
+    },
+    {
+      "cwd": ".",
+      "command": "npm run build --workspace apps/web",
+      "exit_code": 0,
+      "auth_configuration": "no live Clerk keys",
+      "first_load_js_kb": {
+        "shared": 103,
+        "lens": 300,
+        "workflow_editor": 267,
+        "docs": 156,
+        "dashboard": 152
+      },
+      "measurement_type": "Next build estimates, not field performance"
+    },
+    {
+      "cwd": "apps/api",
+      "command": "python scripts/check_auth_coverage.py",
+      "exit_code": 0,
+      "limitation": "Structural scanner only; no endpoint authorization proof"
+    },
+    {
+      "cwd": ".",
+      "command": "npm audit --omit=dev --json",
+      "exit_code": 1,
+      "affected_dependency_entries": 7,
+      "severity_counts": {
+        "high": 6,
+        "moderate": 1
+      },
+      "limitation": "Transitive/meta entries can overlap; deployed exploitability not assessed"
+    },
+    {
+      "command": "offline source probes",
+      "confirmed": 6,
+      "method": "AST-selected functions executed with synthetic dependencies; annotations/decorators/default arguments adapted for isolated execution",
+      "limitation": "Not full application integration tests; no production exploit attempt"
+    }
+  ],
+  "not_run": [
+    "full API pytest",
+    "PostgreSQL/Redis integration or migrations",
+    "authenticated browser UX/auth",
+    "live production checks",
+    "representative API/worker/SSE load tests",
+    "Python or container vulnerability scan"
+  ],
+  "unknowns": [
+    "actual deployment secrets and auth mode",
+    "actual RLS application privileges",
+    "ingress/header policy",
+    "production dependency reachability",
+    "merge protection enforcement",
+    "field UX/performance",
+    "backup restoration"
+  ]
+}

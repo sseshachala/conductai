@@ -1,0 +1,260 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@clerk/backend": {
+      "name": "@clerk/backend",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@clerk/shared"
+      ],
+      "effects": [
+        "@clerk/nextjs"
+      ],
+      "range": "0.30.0-staging.131c831 - 1.24.3-snapshot.v20250303105446 || 3.0.0-canary.v20251209150846 - 3.0.0-snapshot.v20260303200735 || 3.0.1-canary.v20260303211310 - 3.0.1-canary.v20260304021901 || 3.0.2-canary.v20260304025552 - 3.0.2-snapshot.v20260309193756 || 3.0.3-canary.v20260309212303 - 3.2.0-snapshot.v20260310165744 || 3.2.1-canary.v20260311015003 - 3.2.1-snapshot.v20260320211535 || 3.2.2-canary.v20260317165823 - 3.2.2-canary.v20260320105540 || 3.2.3-canary.v20260320124654 - 3.2.3-snapshot.v20260327200941 || 3.2.4-canary.v20260325192814 - 3.2.4-snapshot.v20260331162920 || 3.2.5-canary.v20260401005640 - 3.2.7-canary.v20260407012548 || 3.2.8-canary.v20260407013936 - 3.2.8-snapshot.v20260408154640 || 3.2.9-canary.v20260408184934 - 3.2.9-snapshot.v20260413190318 || 3.2.10-canary.v20260413184503 - 3.2.10-snapshot.v20260414205636 || 3.2.11-canary.v20260414213403 - 3.2.11-canary.v20260415142102 || 3.2.12-canary.v20260415142548 - 3.2.12-snapshot.v20260416221307 || 3.2.13-canary.v20260416174321 - 3.2.13-canary.v20260417194309 || 3.2.14-canary.v20260417200155 - 3.2.14-snapshot.v20260421194054 || 3.2.15-canary.v20260422163039 - 3.3.0-canary.v20260422165959 || 3.3.1-canary.v20260422213819 - 3.4.0-canary.v20260424215946 || 3.4.1-canary.v20260424223357 - 3.4.1-canary.v20260425023419 || 3.4.2-canary.v20260425025027 - 3.4.2-snapshot.v20260429150611 || 3.4.3-canary.v20260429155628 - 3.4.3-canary.v20260430175623 || 3.4.4-canary.v20260430183935 - 3.4.4-canary.v20260501062222 || 3.4.5-canary.v20260501153259 - 3.4.5-snapshot.v20260501171802 || 3.4.6-canary.v20260505194523 - 3.4.6-canary.v20260506230029 || 3.4.7-canary.v20260507023520 - 3.4.7-snapshot.v20260508180306 || 3.4.8-canary.v20260508190534 - 3.4.8-snapshot.v20260513155808 || 3.4.9-canary.v20260514171305 - 3.4.9-snapshot.v20260515233846 || 3.4.10-canary.v20260515235351 - 3.4.10-snapshot.v20260522175603 || 3.4.11-canary.v20260518160549 - 3.4.11-canary.v20260518191051 || 3.4.12-canary.v20260518192440 - 3.4.12-snapshot.v20260527161602 || 3.4.13-canary.v20260521140614 - 3.4.13-canary.v20260522193509 || 3.4.15-canary.v20260527214303 - 3.5.0-snapshot.v20260520220646 || 3.6.1-canary.v20260610135056 - 3.6.1-canary.v20260610150055",
+      "nodes": [
+        "apps/web/node_modules/@clerk/backend"
+      ],
+      "fixAvailable": {
+        "name": "@clerk/nextjs",
+        "version": "7.9.2",
+        "isSemVerMajor": true
+      }
+    },
+    "@clerk/clerk-react": {
+      "name": "@clerk/clerk-react",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@clerk/shared",
+        {
+          "source": 1120349,
+          "name": "@clerk/clerk-react",
+          "dependency": "@clerk/clerk-react",
+          "title": "Clerk has an authorization bypass when combining organization, billing, or reverification checks",
+          "url": "https://github.com/advisories/GHSA-w24r-5266-9c3c",
+          "severity": "high",
+          "cwe": [
+            "CWE-754",
+            "CWE-863"
+          ],
+          "cvss": {
+            "score": 8.1,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N"
+          },
+          "range": ">=5.9.0 <=5.61.5"
+        }
+      ],
+      "effects": [
+        "@clerk/nextjs"
+      ],
+      "range": "3.0.0-alpha.0 || 4.20.0-staging.010484f - 5.61.5",
+      "nodes": [
+        "apps/web/node_modules/@clerk/clerk-react"
+      ],
+      "fixAvailable": {
+        "name": "@clerk/nextjs",
+        "version": "7.9.2",
+        "isSemVerMajor": true
+      }
+    },
+    "@clerk/nextjs": {
+      "name": "@clerk/nextjs",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@clerk/backend",
+        "@clerk/clerk-react",
+        "@clerk/shared"
+      ],
+      "effects": [],
+      "range": "1.1.1-staging.0 - 1.2.0-staging.0 || 1.2.1 - 1.4.2 || 4.24.3-snapshot.3bbf63f - 6.12.1-snapshot.v20250303105446 || 7.0.0-canary.v20251209150846 - 7.0.0-snapshot.v20260303200735 || 7.0.1-canary.v20260303211310 - 7.0.1-canary.v20260304021901 || 7.0.2-canary.v20260304025552 - 7.0.2-snapshot.v20260309193756 || 7.0.3-canary.v20260309212303 - 7.0.4-snapshot.v20260310165744 || 7.0.5-canary.v20260311015003 - 7.0.5-snapshot.v20260320211535 || 7.0.6-canary.v20260317165823 - 7.0.6-canary.v20260320105540 || 7.0.7-canary.v20260320124654 - 7.0.7-snapshot.v20260327200941 || 7.0.8-canary.v20260325192814 - 7.0.8-snapshot.v20260331162920 || 7.0.9-canary.v20260401005640 - 7.0.11-canary.v20260407012548 || 7.0.12-canary.v20260407013936 - 7.0.12-snapshot.v20260408154640 || 7.0.13-canary.v20260408184934 - 7.1.0-snapshot.v20260413190318 || 7.1.1-canary.v20260413184503 - 7.2.0-snapshot.v20260414205636 || 7.2.1-canary.v20260414213403 - 7.2.1-canary.v20260415142102 || 7.2.2-canary.v20260415142548 - 7.2.2-snapshot.v20260416221307 || 7.2.3-canary.v20260416174321 - 7.2.3-canary.v20260417194309 || 7.2.4-canary.v20260417200155 - 7.2.4-snapshot.v20260421194054 || 7.2.5-canary.v20260422163039 - 7.2.5-canary.v20260422165959 || 7.2.6-canary.v20260422213819 - 7.2.6-snapshot.v20260423044224 || 7.2.7-canary.v20260424223357 - 7.2.7-canary.v20260425023419 || 7.2.8-canary.v20260425025027 - 7.2.8-snapshot.v20260429150611 || 7.2.9-canary.v20260429155628 - 7.2.9-canary.v20260430175623 || 7.2.10-canary.v20260430183935 - 7.3.0-canary.v20260501062222 || 7.3.1-canary.v20260501153259 - 7.3.1-snapshot.v20260501171802 || 7.3.2-canary.v20260505194523 - 7.3.2-canary.v20260506230029 || 7.3.3-canary.v20260507023520 - 7.3.3-snapshot.v20260508180306 || 7.3.4-canary.v20260508190534 - 7.3.4-snapshot.v20260513155808 || 7.3.5-canary.v20260514171305 - 7.3.5-snapshot.v20260515233846 || 7.3.6-canary.v20260515235351 - 7.3.6-snapshot.v20260522175603 || 7.3.7-canary.v20260518160549 - 7.3.7-canary.v20260518191051 || 7.3.8-canary.v20260518192440 - 7.4.0-snapshot.v20260527161602 || 7.4.1-canary.v20260521140614 - 7.4.1-canary.v20260522193509 || 7.5.1-canary.v20260610135056 - 7.5.1-canary.v20260610150055 || 7.7.4-canary.v20260810205943 - 7.7.4-canary.v20260811115755",
+      "nodes": [
+        "apps/web/node_modules/@clerk/nextjs"
+      ],
+      "fixAvailable": {
+        "name": "@clerk/nextjs",
+        "version": "7.9.2",
+        "isSemVerMajor": true
+      }
+    },
+    "@clerk/shared": {
+      "name": "@clerk/shared",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "js-cookie"
+      ],
+      "effects": [
+        "@clerk/backend",
+        "@clerk/clerk-react",
+        "@clerk/nextjs"
+      ],
+      "range": "0.18.0-mytag.691991c - 3.47.5 || 4.0.0-canary.v20251209150846 - 4.13.1-canary.v20260522193509",
+      "nodes": [
+        "apps/web/node_modules/@clerk/shared"
+      ],
+      "fixAvailable": {
+        "name": "@clerk/nextjs",
+        "version": "7.9.2",
+        "isSemVerMajor": true
+      }
+    },
+    "js-cookie": {
+      "name": "js-cookie",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1120607,
+          "name": "js-cookie",
+          "dependency": "js-cookie",
+          "title": "JavaScript Cookie: Per-instance prototype hijack in assign() enables cookie-attribute injection",
+          "url": "https://github.com/advisories/GHSA-qjx8-664m-686j",
+          "severity": "high",
+          "cwe": [
+            "CWE-1321"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+          },
+          "range": "<=3.0.5"
+        }
+      ],
+      "effects": [
+        "@clerk/shared"
+      ],
+      "range": "<=3.0.5",
+      "nodes": [
+        "apps/web/node_modules/js-cookie"
+      ],
+      "fixAvailable": {
+        "name": "@clerk/nextjs",
+        "version": "7.9.2",
+        "isSemVerMajor": true
+      }
+    },
+    "next": {
+      "name": "next",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        "postcss"
+      ],
+      "effects": [],
+      "range": "9.3.4-canary.0 - 16.3.0-preview.10",
+      "nodes": [
+        "node_modules/next"
+      ],
+      "fixAvailable": {
+        "name": "next",
+        "version": "16.3.4",
+        "isSemVerMajor": true
+      }
+    },
+    "postcss": {
+      "name": "postcss",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1117015,
+          "name": "postcss",
+          "dependency": "postcss",
+          "title": "PostCSS has XSS via Unescaped </style> in its CSS Stringify Output",
+          "url": "https://github.com/advisories/GHSA-qx2v-qp2m-jg93",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-79"
+          ],
+          "cvss": {
+            "score": 6.1,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+          },
+          "range": "<8.5.10"
+        },
+        {
+          "source": 1124252,
+          "name": "postcss",
+          "dependency": "postcss",
+          "title": "PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments",
+          "url": "https://github.com/advisories/GHSA-6g55-p6wh-862q",
+          "severity": "high",
+          "cwe": [
+            "CWE-22",
+            "CWE-200"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+          },
+          "range": "<=8.5.11"
+        },
+        {
+          "source": 1130709,
+          "name": "postcss",
+          "dependency": "postcss",
+          "title": "PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset",
+          "url": "https://github.com/advisories/GHSA-fxqj-rqcc-2cmp",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-22",
+            "CWE-200"
+          ],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<=8.5.22"
+        },
+        {
+          "source": 1139510,
+          "name": "postcss",
+          "dependency": "postcss",
+          "title": "PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure",
+          "url": "https://github.com/advisories/GHSA-r28c-9q8g-f849",
+          "severity": "high",
+          "cwe": [
+            "CWE-22"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+          },
+          "range": "<=8.5.17"
+        }
+      ],
+      "effects": [
+        "next"
+      ],
+      "range": "<=8.5.22",
+      "nodes": [
+        "node_modules/postcss"
+      ],
+      "fixAvailable": {
+        "name": "next",
+        "version": "16.3.4",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 1,
+      "high": 6,
+      "critical": 0,
+      "total": 7
+    },
+    "dependencies": {
+      "prod": 174,
+      "dev": 555,
+      "optional": 98,
+      "peer": 3,
+      "peerOptional": 0,
+      "total": 766
+    }
+  }
+}
