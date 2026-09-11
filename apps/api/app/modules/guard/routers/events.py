@@ -5,6 +5,7 @@ GET  /guard/events/stream   — SSE real-time feed
 """
 import asyncio
 import hashlib
+import ipaddress
 import json
 from datetime import datetime, timezone
 
@@ -18,10 +19,54 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission, _clerk_enabled, _verify_clerk_token
+from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.pii import redact_secrets
 from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget, chain_hash_for_insert, get_policy_hash
+
+
+def _trusted_cidrs() -> list[ipaddress._BaseNetwork]:
+    """Parsed TRUSTED_PROXY_CIDRS. Small enough to recompute per call — the
+    hot path here is DB-bound, not this.
+    """
+    out: list[ipaddress._BaseNetwork] = []
+    for chunk in (settings.trusted_proxy_cidrs or "").split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        try:
+            out.append(ipaddress.ip_network(chunk, strict=False))
+        except ValueError:
+            log.warning("guard.events.trusted_proxy_cidr_invalid", cidr=chunk)
+    return out
+
+
+def _client_ip_from(request: Request) -> str | None:
+    """Extract the caller's IP, respecting only configured trusted proxies
+    (audit S12 — same rule as /guard/trial/*).
+
+    Without TRUSTED_PROXY_CIDRS, ignore X-Forwarded-For entirely and use
+    request.client.host — blindly trusting the first XFF value lets any
+    anonymous caller forge the recorded session IP. With CIDRs set, walk
+    XFF right-to-left and return the first non-trusted hop.
+    """
+    trusted = _trusted_cidrs()
+    if not trusted:
+        return request.client.host if request.client else None
+    xff = (request.headers.get("x-forwarded-for") or "").strip()
+    if not xff:
+        return request.client.host if request.client else None
+    hops = [h.strip() for h in xff.split(",") if h.strip()]
+    for hop in reversed(hops):
+        try:
+            ip = ipaddress.ip_address(hop)
+        except ValueError:
+            continue
+        if not any(ip in net for net in trusted):
+            return hop
+    log.warning("guard.events.all_xff_hops_trusted", xff=xff)
+    return hops[0] if hops else (request.client.host if request.client else None)
 
 router = APIRouter(prefix="/guard/events", tags=["guard"])
 
@@ -705,10 +750,12 @@ def ingest_event(
             session.event_count += 1
             if body.decision in ("blocked", "warned"):
                 session.violations_count += 1
-            # Capture IP and OS on first event for this session
+            # Capture IP and OS on first event for this session.
+            # Uses trusted-proxy-aware parsing (audit S12) — blindly reading
+            # the first X-Forwarded-For hop let a caller forge the recorded
+            # IP on their own session rows. See _client_ip_from above.
             if not session.client_ip:
-                forwarded = request.headers.get("x-forwarded-for")
-                session.client_ip = (forwarded.split(",")[0].strip() if forwarded else None) or (request.client.host if request.client else None)
+                session.client_ip = _client_ip_from(request)
             if not session.os_info and body.os_info:
                 session.os_info = body.os_info[:128]
             if not session.hostname and body.hostname:
