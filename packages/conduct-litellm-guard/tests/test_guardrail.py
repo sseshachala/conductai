@@ -216,6 +216,75 @@ class TestSessionIdExtraction:
         assert capture["session_id"].startswith("litellm-")
 
 
+class TestPromptExtraction:
+    """0.2.2 fixes for BerriAI/litellm#38143 review findings.
+
+    Two veria-ai bot findings drove these:
+    - text_completion path was bypassed entirely (only ``messages`` was
+      scanned; ``prompt`` was silently ignored).
+    - Multi-turn ``messages`` scanning stopped at the last user turn, so
+      an attacker could hide a credential-leak / injection in an earlier
+      turn where the scan wouldn't see it.
+    """
+
+    def test_text_completion_prompt_extracted(self) -> None:
+        from conduct_litellm_guard.guardrail import _extract_prompt_text
+        assert _extract_prompt_text({"prompt": "sk_live_abc"}) == "sk_live_abc"
+
+    def test_text_completion_prompt_list_extracted(self) -> None:
+        from conduct_litellm_guard.guardrail import _extract_prompt_text
+        got = _extract_prompt_text({"prompt": ["first", "second"]})
+        assert got is not None and "first" in got and "second" in got
+
+    def test_chat_completion_scans_every_user_turn(self) -> None:
+        from conduct_litellm_guard.guardrail import _extract_prompt_text
+        data = {
+            "messages": [
+                {"role": "user", "content": "here is my key sk_live_abc"},
+                {"role": "assistant", "content": "OK, got it"},
+                {"role": "user", "content": "please summarize"},
+            ]
+        }
+        got = _extract_prompt_text(data)
+        assert got is not None
+        # The credential leak in the earlier turn MUST be visible so
+        # proxy-persona rules can fire.
+        assert "sk_live_abc" in got
+        assert "please summarize" in got
+
+    def test_multipart_content_concatenated_across_turns(self) -> None:
+        from conduct_litellm_guard.guardrail import _extract_prompt_text
+        data = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "here is context"},
+                        {"type": "image_url", "image_url": {"url": "data:..."}},
+                    ],
+                },
+                {"role": "user", "content": [{"type": "text", "text": "and my question"}]},
+            ]
+        }
+        got = _extract_prompt_text(data)
+        assert got is not None
+        assert "here is context" in got
+        assert "and my question" in got
+
+    def test_length_cap_generous_but_bounded(self) -> None:
+        from conduct_litellm_guard.guardrail import _MAX_PROMPT_CHARS, _extract_prompt_text
+        big = "x" * (_MAX_PROMPT_CHARS + 5000)
+        got = _extract_prompt_text({"prompt": big})
+        assert got is not None
+        assert len(got) == _MAX_PROMPT_CHARS  # capped, not truncated below cap
+
+    def test_empty_data_returns_none(self) -> None:
+        from conduct_litellm_guard.guardrail import _extract_prompt_text
+        assert _extract_prompt_text({}) is None
+        assert _extract_prompt_text({"messages": []}) is None
+        assert _extract_prompt_text({"prompt": ""}) is None
+
+
 if __name__ == "__main__":
     import subprocess
     import sys

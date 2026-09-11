@@ -303,23 +303,60 @@ def _extract_session_id(data: dict[str, Any]) -> str | None:
     return f"litellm-{digest[:16]}"
 
 
+_MAX_PROMPT_CHARS = 200_000  # ~50k tokens; larger than any single-turn prompt
+                             # a modern model accepts. Effectively unbounded
+                             # for the scan while still capping runaway payloads.
+
+
 def _extract_prompt_text(data: dict[str, Any]) -> str | None:
-    """Return the last user message so it lands in the audit trail. We
-    intentionally do NOT send the full messages array — Guard only needs
-    enough context to render an audit entry."""
-    for m in reversed(data.get("messages") or []):
-        if isinstance(m, dict) and m.get("role") == "user":
-            content = m.get("content")
-            if isinstance(content, str):
-                return content[:4000]
-            if isinstance(content, list):
-                # OpenAI-style parts: concat the text ones.
-                parts = [
-                    p.get("text", "") for p in content
-                    if isinstance(p, dict) and p.get("type") == "text"
-                ]
-                return " ".join(parts)[:4000] or None
-    return None
+    """Return the prompt text so it lands in the audit trail AND is
+    scanned by Guard's proxy-persona rules.
+
+    Handles both LiteLLM request shapes:
+      - chat_completion: ``messages[]`` — scans every user message,
+        concatenated, so an attacker can't hide payload in an earlier
+        turn (BerriAI/litellm#38143 review, veria-ai finding).
+      - text_completion: ``prompt`` — the raw prompt string or list
+        (veria-ai finding — this path was previously bypassed entirely).
+
+    Length cap raised to 200k chars so realistic long-context prompts
+    are not silently truncated; policy scan sees the whole payload.
+    The audit trail's ``input_summary`` still redacts + trims to a
+    short preview at write time (Property 9), so no raw payload
+    lands in a receipt.
+    """
+    text_parts: list[str] = []
+
+    # text_completion path — prompt can be str or list[str] or list[list[int]]
+    prompt = data.get("prompt")
+    if isinstance(prompt, str):
+        text_parts.append(prompt)
+    elif isinstance(prompt, list):
+        for p in prompt:
+            if isinstance(p, str):
+                text_parts.append(p)
+            # token-id lists (list[int]) are unmodelled — pass on, they don't
+            # carry policy-relevant string content.
+
+    # chat_completion path — every user turn, not just the last one.
+    # Earlier turns can carry credential leaks / injection payloads that a
+    # last-message-only scan would miss.
+    for m in data.get("messages") or []:
+        if not isinstance(m, dict) or m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, str):
+            text_parts.append(content)
+        elif isinstance(content, list):
+            # OpenAI-style multipart: concat the text parts, skip images.
+            for p in content:
+                if isinstance(p, dict) and p.get("type") == "text":
+                    text_parts.append(p.get("text", ""))
+
+    if not text_parts:
+        return None
+    joined = "\n".join(text_parts)
+    return joined[:_MAX_PROMPT_CHARS] if joined else None
 
 
 def _extract_provider(data: dict[str, Any]) -> str | None:
