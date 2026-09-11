@@ -183,7 +183,7 @@ export function ActionConfirmBubble({
 
   const isMutation = toolName !== "decide_approval"  // heuristic — decide is itself an approve/reject
 
-  async function _postRunAction(url: string, body?: unknown, onOk?: (data: Record<string, unknown>) => void) {
+  async function _postRunAction(url: string, body?: unknown, onOk?: (data: Record<string, unknown>) => void, onError?: () => void) {
     if (runBusy || !runData?.workflow_id || !resolvedRunId) return
     setRunBusy(true); setRunActionErr(null)
     try {
@@ -195,12 +195,14 @@ export function ActionConfirmBubble({
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         setRunActionErr((err as { detail?: string }).detail ?? `Request failed (${res.status})`)
+        onError?.()
         return
       }
       const data = await res.json().catch(() => ({}))
       onOk?.(data as Record<string, unknown>)
     } catch {
       setRunActionErr("Network error")
+      onError?.()
     } finally {
       setRunBusy(false)
     }
@@ -208,8 +210,20 @@ export function ActionConfirmBubble({
 
   const runStatus = runData?.status ?? null
   const runCancel = () => _postRunAction(`${API}/workflows/${runData!.workflow_id}/runs/${resolvedRunId}/cancel`)
-  const runDecide = (decision: "approved" | "rejected") =>
-    _postRunAction(`${API}/workflows/${runData!.workflow_id}/runs/${resolvedRunId}/approve`, { decision })
+  // Optimistic — flip status locally so approve/reject buttons vanish and the
+  // panel updates instantly. If the POST fails _postRunAction surfaces the
+  // error via runActionErr and we revert; SSE otherwise confirms the transition.
+  const runDecide = (decision: "approved" | "rejected") => {
+    if (!runData || !resolvedRunId) return
+    const prevStatus = runData.status
+    setRunData(prev => prev ? { ...prev, status: decision === "approved" ? "running" : "cancelled" } : prev)
+    _postRunAction(
+      `${API}/workflows/${runData.workflow_id}/runs/${resolvedRunId}/approve`,
+      { decision },
+      undefined,
+      () => setRunData(prev => prev ? { ...prev, status: prevStatus } : prev),
+    )
+  }
   const runRetry = () => {
     // #1480 Gap 3 parity — reuse original inputs, strip block outputs + system keys.
     const runStateRec = (runData?.state ?? {}) as Record<string, unknown>

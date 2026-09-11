@@ -175,7 +175,7 @@ export function RunBubble({
     })
   })
 
-  async function _postAction(url: string, body?: unknown, onOk?: (data: Record<string, unknown>) => void) {
+  async function _postAction(url: string, body?: unknown, onOk?: (data: Record<string, unknown>) => void, onError?: () => void) {
     if (busy || !workflowId) return
     setBusy(true); setActionErr(null)
     try {
@@ -187,6 +187,7 @@ export function RunBubble({
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         setActionErr((err as { detail?: string }).detail ?? `Request failed (${res.status})`)
+        onError?.()
         setBusy(false)
         return
       }
@@ -194,14 +195,26 @@ export function RunBubble({
       onOk?.(data as Record<string, unknown>)
     } catch {
       setActionErr("Network error")
+      onError?.()
     } finally {
       setBusy(false)
     }
   }
 
   const cancelRun = () => _postAction(`${API}/workflows/${workflowId}/runs/${runId}/cancel`)
-  const decideRun = (decision: "approved" | "rejected") =>
-    _postAction(`${API}/workflows/${workflowId}/runs/${runId}/approve`, { decision })
+  // Optimistic — flip status locally so approve/reject buttons vanish and the
+  // bubble/panel updates instantly. SSE run.status_changed confirms; if the
+  // POST fails we revert and _postAction surfaces the error via actionErr.
+  const decideRun = (decision: "approved" | "rejected") => {
+    const prevStatus = status
+    setStatus(decision === "approved" ? "running" : "cancelled")
+    _postAction(
+      `${API}/workflows/${workflowId}/runs/${runId}/approve`,
+      { decision },
+      undefined,
+      () => setStatus(prevStatus),
+    )
+  }
   const retryRun = () => {
     // #1480 Gap 3 — reuse the original run's inputs. runState + blocks give
     // us enough to reconstruct: strip out per-block outputs (keys equal to
