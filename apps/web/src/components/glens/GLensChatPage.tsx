@@ -4,7 +4,7 @@ import { API } from "@/lib/api"
 import { useEffect, useRef, useState } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { useLensSessionStream, type LensSessionStream } from "@/hooks/useLensSessionStream"
+import { useLensSessionStream } from "@/hooks/useLensSessionStream"
 import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
 import { GlensPageBubble } from "@/components/glens/GlensPageBubble"
 import { GenericTableBubble } from "@/components/glens/GenericTableBubble"
@@ -22,7 +22,6 @@ import { DashboardBubble } from "@/components/glens/bubbles/DashboardBubble"
 import { PolicyConfirmBubble } from "@/components/glens/bubbles/PolicyConfirmBubble"
 import { ActionConfirmBubble } from "@/components/glens/bubbles/ActionConfirmBubble"
 import { RunBubble } from "@/components/glens/bubbles/RunBubble"
-
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
