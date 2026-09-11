@@ -123,17 +123,24 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
   }
 
   async function handleApproval(decision: "approved" | "rejected") {
+    // Optimistic — flip both approval bubble state and run status BEFORE the
+    // POST so the panel updates instantly. If the request fails, revert.
+    const prevStatus = run?.status
     setApprovingRun(true)
+    setApprovalDecision(decision)
+    setRun(prev => prev ? { ...prev, status: decision === "approved" ? "running" : "cancelled" } : prev)
     try {
-      await authFetch(
+      const res = await authFetch(
         `${API}/workflows/${workflowId}/runs/${runId}/approve`,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) }
       )
-      setApprovalDecision(decision)
-      setRun(prev => prev ? { ...prev, status: decision === "approved" ? "running" : "cancelled" } : prev)
+      if (!res.ok) {
+        setApprovalDecision(null)
+        if (prevStatus) setRun(prev => prev ? { ...prev, status: prevStatus } : prev)
+      }
     } catch {
-      // non-fatal — show decision optimistically
-      setApprovalDecision(decision)
+      setApprovalDecision(null)
+      if (prevStatus) setRun(prev => prev ? { ...prev, status: prevStatus } : prev)
     } finally { setApprovingRun(false) }
   }
 
