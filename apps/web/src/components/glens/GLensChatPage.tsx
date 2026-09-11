@@ -1299,7 +1299,6 @@ function RunBubble({
   const [actionErr, setActionErr] = useState<string | null>(null)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [completedAt, setCompletedAt] = useState<number | null>(null)
-  const [now, setNow] = useState<number>(() => Date.now())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // #1506 — top-level expand toggle for the embedded RunDetailPanel
   const [panelOpen, setPanelOpen] = useState(() => {
@@ -1387,12 +1386,9 @@ function RunBubble({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, terminalCount])
 
-  // Client-side elapsed clock — tick every second while the run is active.
-  useEffect(() => {
-    if (status !== "running" && status !== "pending") return
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [status])
+  // Elapsed clock lives inside <LiveElapsed/> below — it owns its own 1s
+  // tick so only that span re-renders each second, not the whole RunBubble
+  // (which includes the embedded RunDetailPanel and would flicker at 1Hz).
 
   // #1506 — auto-open the full detail panel when the run pauses for approval,
   // so the Approvals tab is one click away without hunting for a chevron.
@@ -1501,9 +1497,7 @@ function RunBubble({
             background: pillColor.bg, color: pillColor.fg, textTransform: "capitalize",
           }}>{status}</span>
           {startedAt && (
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              {formatElapsed(startedAt, completedAt ?? now)}
-            </span>
+            <LiveElapsed startedAt={startedAt} completedAt={completedAt} status={status} />
           )}
           <button
             onClick={() => setPanelOpen(o => !o)}
@@ -1663,6 +1657,25 @@ function RunBubble({
         )}
       </div>
     </div>
+  )
+}
+
+// Owns its own 1s tick so the elapsed badge updates without re-rendering
+// RunBubble (and, more importantly, the embedded RunDetailPanel below it).
+// Same pattern as <LiveDuration/> inside RunDetailPanel.
+function LiveElapsed({ startedAt, completedAt, status }: {
+  startedAt: number; completedAt: number | null; status: string
+}) {
+  const [now, setNow] = useState<number>(() => Date.now())
+  useEffect(() => {
+    if (completedAt || (status !== "running" && status !== "pending")) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [completedAt, status])
+  return (
+    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+      {formatElapsed(startedAt, completedAt ?? now)}
+    </span>
   )
 }
 
