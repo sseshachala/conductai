@@ -76,11 +76,13 @@ class TestGetWorkspaceIdRunToken:
                 self.name = name
             def __eq__(self, other): return True   # filter() accepts this
             def is_(self, v): return True
+            def __gt__(self, other): return True   # audit S04: expires_at > _now filter
 
         class ART:
             token_hash = _Col("token_hash")
             workspace_id = _Col("workspace_id")
             invalidated_at = _Col("invalidated_at")
+            expires_at = _Col("expires_at")
         return ART
 
     def _make_db(self, row):

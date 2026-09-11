@@ -326,7 +326,12 @@ def execute_run(run_id: str):
             import hashlib as _rth, uuid as _rtu
             from datetime import datetime as _rtdt, timedelta as _rttd, timezone as _rttz
             _pt = "cond_run_" + _rtu.uuid4().hex
-            _now = _rtdt.now(_rttz.utc)
+            # ponytail: local variable is _mint_now, not _now. The bare _now
+            # symbol is imported from app.runtime.runtime as a function used
+            # elsewhere in this file (execute_run:228/229/438) — a local
+            # rebind would shadow it function-wide and UnboundLocalError
+            # every caller that hits this branch first.
+            _mint_now = _rtdt.now(_rttz.utc)
             _mint_row = _AgentRunToken(
                 id=str(_rtu.uuid4()),
                 agent_identity_id=None,
@@ -335,11 +340,11 @@ def execute_run(run_id: str):
                 token_hash=_rth.sha256(_pt.encode()).hexdigest(),
                 token_prefix=_pt[:16],
                 token_encrypted=_rt_encrypt({"token": _pt}),
-                created_at=_now,
+                created_at=_mint_now,
                 # Bounded lifetime (audit S04). Runs that legitimately need
                 # longer than 24h are rare enough that re-minting on demand
                 # is fine; the alternative is unbounded token lifetime.
-                expires_at=_now + _rttd(hours=24),
+                expires_at=_mint_now + _rttd(hours=24),
             )
             try:
                 db.add(_mint_row)

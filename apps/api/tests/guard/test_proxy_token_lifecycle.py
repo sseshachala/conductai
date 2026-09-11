@@ -98,7 +98,7 @@ def test_run_token_expired_returns_none_from_auth_get_workspace_id():
 
     with patch("app.core.auth._clerk_enabled_dispatch", return_value=True):
         with pytest.raises(HTTPException) as exc:
-            get_workspace_id(explicit_ws=None, credentials=creds, db=db)
+            get_workspace_id(credentials=creds, ws_id=None, x_workspace_id=None, db=db)
     assert exc.value.status_code == 401
     assert "run token" in (exc.value.detail or "").lower()
 
