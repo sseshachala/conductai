@@ -131,11 +131,17 @@ jobs:
 
       - name: Upload auth-setup diagnostics on failure
         # auth-setup.ts writes URL/body dumps + screenshots under .auth/*.png
-        # when globalSetup fails. Grab them so we can see what the browser
-        # actually landed on.
+        # when globalSetup fails. ONLY the screenshots + text dumps — the
+        # same directory also holds Playwright storageState JSON with live
+        # session cookies for the test users, which must NEVER ship as an
+        # artifact (audit S14). Explicit allowlist by extension.
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: auth-setup-diagnostics
-          path: apps/web/.auth
+          path: |
+            apps/web/.auth/*.png
+            apps/web/.auth/*.txt
+            apps/web/.auth/*.log
+          if-no-files-found: ignore
           retention-days: 7
