@@ -14,86 +14,11 @@ import { BlocksBubble } from "@/components/glens/BlocksBubble"
 import { FeedbackButtons } from "@/components/glens/FeedbackButtons"
 import RunDetailPanel, { type RunMeta } from "@/components/runs/RunDetailPanel"
 import { SlashDropdown, SlashForm, filterTools, type SlashTool } from "@/components/glens/SlashPicker"
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface GLensSession {
-  id: string
-  title: string
-  has_dashboard: boolean
-  created_at: string
-}
-
-interface PolicyMapping {
-  field: string
-  column: string
-  description: string
-}
-
-type MessageBody =
-  | { role: "user"; text: string }
-  | { role: "assistant"; kind: "answer"; text: string; skill?: string; drilldown?: { path: string; filters?: Record<string, string> }; followups?: string[]; understoodAs?: string }
-  | { role: "assistant"; kind: "streaming"; text: string }
-  | { role: "assistant"; kind: "dashboard"; spec: GlensDashboardSpec; sessionId: string; drilldown?: { path: string; filters?: Record<string, string> } }
-  | { role: "assistant"; kind: "loading"; label?: string }
-  | { role: "assistant"; kind: "page"; answer: string; pageKind: string; pageData: Record<string, unknown>; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> } }
-  | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string; warning?: string }
-  | { role: "assistant"; kind: "action_confirm"; toolName: string; approvalRequestId: string; summary: string; warnings?: string[]; expiresAt?: string }
-  | { role: "assistant"; kind: "run"; runId: string; workflowName: string; initialStatus: string }
-  | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
-  | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
-
-type Message = MessageBody & { id: string }
-
-// Stable ids so React keys on the message feed never depend on array index.
-// Index-based keys re-mount bubbles on every splice → scroll resets, flicker.
-let _msgSeq = 0
-const nextMsgId = () => `m${++_msgSeq}`
-const withId = <T extends MessageBody>(body: T): Message => ({ ...body, id: nextMsgId() } as Message)
-// Morph the last bubble in place (loading → answer, etc.) without changing its id.
-const replaceLast = (prev: Message[], body: MessageBody): Message[] => {
-  const last = prev[prev.length - 1]
-  return last ? [...prev.slice(0, -1), { ...body, id: last.id } as Message] : [withId(body)]
-}
-// Morph a specific bubble in place (approve → run/answer) without re-keying siblings.
-const replaceById = (prev: Message[], id: string, body: MessageBody): Message[] =>
-  prev.map(m => (m.id === id ? ({ ...body, id } as Message) : m))
-
-const DEFAULT_SUGGESTIONS = [
-  "Who was blocked today?",
-  "Cost by AI tool this month",
-  "How many events today?",
-  "Show recent blocks",
-]
-
-// #C2 — per-page opener chips. First matching regex wins. Empty match falls
-// through to /glens/opener data-grounded chips → DEFAULT_SUGGESTIONS.
-const PAGE_SUGGESTIONS: Array<{ match: RegExp; chips: string[] }> = [
-  { match: /^\/runs\/[^/]+/,             chips: ["Why did this fail?", "Compare to last run", "Show block trace", "Cost breakdown"] },
-  { match: /^\/workflows\/[^/]+\/canvas/, chips: ["Explain this workflow", "Recent runs", "Which blocks fail most?"] },
-  { match: /^\/workflows\/[^/]+/,        chips: ["Explain this workflow", "Recent failures", "Who runs this most?"] },
-  { match: /^\/workflows\/?$/,           chips: ["Which workflows failed today?", "Most-run workflows", "Longest-running workflows"] },
-  { match: /^\/theguard\/policies/,      chips: ["Which rules block the most?", "Show rules with no hits", "Rules changed this week"] },
-  { match: /^\/theguard\/spend/,         chips: ["Top spenders this month", "Budgets near limit", "Cost by AI tool"] },
-  { match: /^\/theguard\/discovery/,     chips: ["Unguarded agents", "Coverage by framework", "High-risk agents"] },
-  { match: /^\/compliance/,              chips: ["Overall compliance grade", "Which frameworks are we missing?", "ASI control status"] },
-  { match: /^\/logs\/guard/,             chips: ["Show blocks today", "Warnings by tool", "Events by user"] },
-  { match: /^\/marketplace/,             chips: ["Recommend packs for us", "What's installed?", "Newest packs"] },
-]
-
-const SKILL_LABELS: Record<string, string> = {
-  report:       "Lens ·Report",
-  analytics:    "Lens ·Analytics",
-  extract:      "Lens ·Extract",
-  memory:       "Lens ·Memory",
-  session:      "Lens ·Session",
-  rules:        "Lens ·Rules",
-  guard_config: "Lens ·Guard Config",
-  spend_config: "Lens ·Spend Config",
-  discovery:    "Lens ·Discovery",
-  compliance:   "Lens ·Compliance",
-  governance:   "Lens ·Governance",
-}
+import type { GLensSession, PolicyMapping, MessageBody, Message, RunBlockState } from "@/components/glens/glensTypes"
+import { withId, replaceLast, replaceById } from "@/components/glens/glensTypes"
+import { DEFAULT_SUGGESTIONS, PAGE_SUGGESTIONS, SKILL_LABELS, SKILL_APPLY_URL, _applyBody } from "@/components/glens/glensConstants"
+import { renderMd } from "@/components/glens/glensMarkdown"
+import { formatElapsed } from "@/components/glens/formatElapsed"
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -470,79 +395,6 @@ function UserBubble({ text, onEdit }: { text: string; onEdit?: (newText: string)
   )
 }
 
-function renderInline(text: string): React.ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/).map((p, j) => {
-    if (p.startsWith("**")) return <strong key={j}>{p.slice(2, -2)}</strong>
-    const link = p.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
-    if (link) return <a key={j} href={link[2]} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent, #6366f1)", textDecoration: "underline" }}>{link[1]}</a>
-    return p
-  })
-}
-
-function isTableSeparator(line: string): boolean {
-  // e.g. "| --- | --- |" or "|:---|---:|"
-  return /^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$/.test(line)
-}
-
-function parseRow(line: string): string[] {
-  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "")
-  return trimmed.split("|").map(c => c.trim())
-}
-
-function renderTable(header: string[], rows: string[][], key: number): React.ReactNode {
-  return (
-    <div key={key} style={{ overflowX: "auto", margin: "8px 0" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--border)" }}>
-            {header.map((h, i) => (
-              <th key={i} style={{ textAlign: "left", padding: "6px 10px", color: "var(--text-muted)", fontWeight: 600, fontSize: 11.5, textTransform: "uppercase", letterSpacing: ".04em" }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri} style={{ borderBottom: ri < rows.length - 1 ? "1px solid var(--border)" : "none" }}>
-              {row.map((cell, ci) => (
-                <td key={ci} style={{ padding: "6px 10px", color: "var(--text)", verticalAlign: "top" }}>{renderInline(cell)}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function renderMd(text: string): React.ReactNode[] {
-  const lines = text.split("\n")
-  const out: React.ReactNode[] = []
-  let i = 0
-  while (i < lines.length) {
-    const line = lines[i]
-    // Detect markdown table: current line starts with | AND next line is separator
-    if (line.trim().startsWith("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
-      const header = parseRow(line)
-      const rows: string[][] = []
-      let j = i + 2
-      while (j < lines.length && lines[j].trim().startsWith("|") && !isTableSeparator(lines[j])) {
-        rows.push(parseRow(lines[j]))
-        j++
-      }
-      out.push(renderTable(header, rows, i))
-      i = j
-      continue
-    }
-    const bullet = line.match(/^[*-]\s+(.+)/)
-    const content = bullet ? bullet[1] : line
-    const parts = renderInline(content)
-    if (bullet) out.push(<div key={i} style={{ paddingLeft: 12, position: "relative" }}><span style={{ position: "absolute", left: 0 }}>•</span>{parts}</div>)
-    else out.push(<div key={i} style={{ minHeight: line ? undefined : "0.6em" }}>{parts}</div>)
-    i++
-  }
-  return out
-}
-
 function AnswerBubble({ text, skill, drilldown, followups, onFollowup, understoodAs }: { text: string; skill?: string; drilldown?: { path: string }; followups?: string[]; onFollowup?: (q: string) => void; understoodAs?: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
@@ -745,19 +597,6 @@ function DashboardBubble({
       </div>
     </div>
   )
-}
-
-const SKILL_APPLY_URL: Record<string, string> = {
-  rules:        "/glens/policy/apply",
-  guard_config: "/glens/guard_config/apply",
-  spend_config: "/glens/spend_config/apply",
-}
-
-function _applyBody(skill: string, action: string, draft: Record<string, unknown>, targetRuleId?: string) {
-  if (skill === "rules") return { action, draft, target_rule_id: targetRuleId }
-  if (skill === "guard_config") return { draft }
-  if (skill === "spend_config") return draft   // SpendConfigApplyRequest fields are top-level
-  return { action, draft }
 }
 
 function PolicyConfirmBubble({
@@ -1248,23 +1087,6 @@ function ActionConfirmBubble({
 
 // ─── Run bubble ──────────────────────────────────────────────────────────────
 
-function formatElapsed(startMs: number, endMs: number): string {
-  const secs = Math.max(0, Math.round((endMs - startMs) / 1000))
-  if (secs < 60) return `${secs}s`
-  const mins = Math.floor(secs / 60)
-  const rem = secs % 60
-  if (mins < 60) return rem ? `${mins}m ${rem}s` : `${mins}m`
-  const hrs = Math.floor(mins / 60)
-  const rmin = mins % 60
-  return rmin ? `${hrs}h ${rmin}m` : `${hrs}h`
-}
-
-type RunBlockState = {
-  id: string
-  status: "pending" | "running" | "succeeded" | "failed"
-  label?: string
-  error?: string
-}
 // #1480 PR 5 — live run status inline in chat. Subscribes to run.status_changed
 // events on the session stream and updates its pill in place. Always renders
 // the "View run →" link so the user can jump to the run detail page.
