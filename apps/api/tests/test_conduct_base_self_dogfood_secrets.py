@@ -38,8 +38,8 @@ def rules_by_id():
 
 def test_pack_version_bumped():
     data = json.loads(PACK_PATH.read_text())
-    assert data["version"] == "2.16.0", (
-        f"Expected pack version 2.16.0, got {data['version']}. "
+    assert data["version"] == "2.17.0", (
+        f"Expected pack version 2.17.0, got {data['version']}. "
         "Bump when adding rules so `conduct guard sync` picks up changes."
     )
 
