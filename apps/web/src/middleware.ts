@@ -95,6 +95,23 @@ function _applySecurityHeaders(res: NextResponse, pathname: string): NextRespons
 const isAppSubdomain = (req: NextRequest) =>
   req.headers.get("host")?.startsWith("app.")
 
+// Marketing-domain root hosts (prod only). Preview URLs, staging, and the
+// app subdomain are intentionally excluded so marketing→app redirects only
+// fire where the app subdomain actually exists.
+const MARKETING_PROD_HOSTS = new Set(["conductai.ai", "www.conductai.ai"])
+
+// Paths that only make sense on the app subdomain. Includes the console
+// prefixes plus Clerk's sign-in/sign-up routes — Clerk's SDK issues
+// relative redirects, so a click on conductai.ai/... clicked from marketing
+// nav would otherwise sign the user in on the wrong subdomain and scope
+// the session cookie to marketing (post-signup then lands on marketing
+// home instead of /theguard/try).
+const APP_ONLY_PATH_PREFIXES = [...APP_ROUTE_PREFIXES, "/sign-in", "/sign-up"]
+
+function _isAppOnlyPath(pathname: string): boolean {
+  return APP_ONLY_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))
+}
+
 const MARKETING_TO_APP: Record<string, string> = {
   "/guard": "/theguard",
   "/registry": "/packs",
@@ -125,6 +142,20 @@ const clerkHandler = clerkMiddleware(async (auth, req) => {
 })
 
 export default async function middleware(req: NextRequest, evt: unknown) {
+  // Marketing → app subdomain redirect. Fires before Clerk so unauthed
+  // navigations to /sign-in, /sign-up, /theguard/*, etc. from the
+  // marketing domain end up on app.conductai.ai — matches where Clerk
+  // sessions are scoped and where the CSP-protected console lives.
+  // Guarded to prod marketing hosts only (preview URLs untouched).
+  const _host = req.headers.get("host")
+  if (_host && MARKETING_PROD_HOSTS.has(_host) && _isAppOnlyPath(req.nextUrl.pathname)) {
+    const target = new URL(
+      req.nextUrl.pathname + req.nextUrl.search,
+      "https://app.conductai.ai",
+    )
+    return NextResponse.redirect(target, 308)
+  }
+
   // Run the Clerk handler first — it may redirect, in which case we still
   // want CSP headers on the redirect response so the browser never sees
   // an unprotected error page.
