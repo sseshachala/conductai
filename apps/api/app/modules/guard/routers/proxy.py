@@ -352,37 +352,42 @@ async def _proxy(
             if not _hdr_ws:
                 return _fail_closed(400, "X-Conductai-Workspace-Id required for run token calls")
             _token_hash = _rt_hashlib.sha256(_internal_key.encode()).hexdigest()
+            _now_rt = datetime.now(timezone.utc)
+            # Audit S04 — expires_at check. An abandoned or leaked run token
+            # can't authenticate past its bounded lifetime even if the run
+            # itself never got a chance to set invalidated_at.
             _rt = db.query(_AgentRunToken).filter(
                 _AgentRunToken.token_hash == _token_hash,
                 _AgentRunToken.workspace_id == uuid.UUID(_hdr_ws),
                 _AgentRunToken.invalidated_at == None,  # noqa: E711
+                _AgentRunToken.expires_at > _now_rt,
             ).first()
             if not _rt:
-                return _fail_closed(401, "Run token not found or already invalidated")
+                return _fail_closed(401, "Run token not found, expired, or already invalidated")
             _is_internal = True
             if not _rt.first_used_at:
-                _rt.first_used_at = datetime.now(timezone.utc)
+                _rt.first_used_at = _now_rt
                 db.commit()
 
         if _needs_agent_validation and not _is_internal:
+            # Audit S04 — was an inline decrypt loop over every AgentIdentity
+            # in the workspace, missing the lifecycle_state and token_type
+            # checks that _resolve_agent_token already applies. Now shares
+            # one code path so deactivated / expired / external identities
+            # are rejected here just like they are at the member-token door.
             _hdr_ws = request.headers.get("x-conductai-workspace-id", "")
             if not _hdr_ws:
                 return _fail_closed(400, "X-Conductai-Workspace-Id required for agent identity calls")
-            from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
-            from app.core.crypto import decrypt as _decrypt
-            for _cand in db.query(_AgentIdentity).filter(_AgentIdentity.workspace_id == _hdr_ws).all():
-                try:
-                    if _decrypt(_cand.token_encrypted).get("token") == _internal_key:
-                        from datetime import datetime, timezone as _tz
-                        if _cand.expires_at and _cand.expires_at < datetime.now(_tz.utc):
-                            return _fail_closed(401, "Agent Identity token expired — run `conduct guard sync` to refresh")
-                        _is_internal = True
-                        _agent_identity_id = _cand.id
-                        break
-                except Exception:
-                    pass
-            if not _is_internal:
-                return _fail_closed(401, "Agent Identity token not recognized")
+            from app.core.auth import _resolve_agent_token as _resolve_ai
+            from fastapi import HTTPException as _HTTPException
+            try:
+                _ai, _ = _resolve_ai(_internal_key, db)
+            except _HTTPException as _exc:
+                return _fail_closed(int(_exc.status_code), str(_exc.detail or "Agent Identity token not recognized"))
+            if str(_ai.workspace_id) != _hdr_ws:
+                return _fail_closed(401, "Agent Identity token does not belong to the requested workspace")
+            _is_internal = True
+            _agent_identity_id = _ai.id
 
         if _is_internal:
             workspace_id = request.headers.get("x-conductai-workspace-id", "")

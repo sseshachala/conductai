@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Text
+from sqlalchemy import Column, DateTime, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 
@@ -18,3 +18,11 @@ class AgentRunToken(Base):
     created_at = Column(DateTime(timezone=True), nullable=False)
     first_used_at = Column(DateTime(timezone=True), nullable=True)
     invalidated_at = Column(DateTime(timezone=True), nullable=True)
+    # Bounded lifetime — audit S04. Executor mints with created_at + 24h;
+    # proxy rejects a token whose expires_at is in the past even if
+    # invalidated_at is still NULL.
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_agent_run_tokens_expires_at", "expires_at"),
+    )

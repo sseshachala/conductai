@@ -466,12 +466,21 @@ def get_workspace_id(
     if not credentials:
         raise HTTPException(status_code=401, detail="Authorization header required")
 
-    # run_token (cond_run_*) — short-lived per-run token, validated by hash
+    # run_token (cond_run_*) — short-lived per-run token, validated by hash.
+    # Bounded lifetime (audit S04): reject expired tokens even when the
+    # run itself hasn't been invalidated yet. Matches the proxy check so a
+    # leaked cond_run_* can't authenticate via either surface.
     if credentials.credentials.startswith("cond_run_"):
         import hashlib as _h
+        from datetime import datetime as _dt, timezone as _tz
         from app.modules.agent_identity.run_token_model import AgentRunToken as _ART
         _hash = _h.sha256(credentials.credentials.encode()).hexdigest()
-        _rt = db.query(_ART).filter(_ART.token_hash == _hash, _ART.invalidated_at.is_(None)).first()
+        _now = _dt.now(_tz.utc)
+        _rt = db.query(_ART).filter(
+            _ART.token_hash == _hash,
+            _ART.invalidated_at.is_(None),
+            _ART.expires_at > _now,
+        ).first()
         if not _rt:
             raise HTTPException(status_code=401, detail="Invalid or expired run token")
         token_ws = str(_rt.workspace_id)
