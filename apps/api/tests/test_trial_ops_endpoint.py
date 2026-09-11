@@ -112,7 +112,11 @@ def workspaces():
 
 
 def _call(db):
-    return get_trial_ops(_perm="security", db=db)
+    # Endpoint dep name changed from `_perm` (guard.spend.view_all) to `_op`
+    # (require_platform_operator) — audit S05 fix in #1790. Test bypasses the
+    # dep by calling the function directly, so any string value satisfies the
+    # positional/keyword contract.
+    return get_trial_ops(_op="test_operator", db=db)
 
 
 def test_reports_active_workspaces_and_total_spend(workspaces):
