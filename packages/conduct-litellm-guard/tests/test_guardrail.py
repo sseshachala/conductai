@@ -216,6 +216,26 @@ class TestSessionIdExtraction:
         assert capture["session_id"].startswith("litellm-")
 
 
+class TestEventHooks:
+    """0.2.3 — SUPPORTED_EVENT_HOOKS + get_supported_event_hooks moved
+    from the LiteLLM shim onto ConductGuard itself. Lets upstream shims
+    stay pure aliases (no subclass), which satisfies LiteLLM's
+    type-discipline / basedpyright budget gates.
+    """
+
+    def test_supported_event_hooks_is_pre_call_only(self) -> None:
+        from conduct_litellm_guard import ConductGuard
+        assert ConductGuard.SUPPORTED_EVENT_HOOKS == ("pre_call",)
+
+    def test_get_supported_event_hooks_returns_list(self) -> None:
+        from conduct_litellm_guard import ConductGuard
+        hooks = ConductGuard.get_supported_event_hooks()
+        assert hooks == ["pre_call"]
+        # Must return a fresh list, not a reference to the ClassVar.
+        hooks.append("mutation")
+        assert ConductGuard.get_supported_event_hooks() == ["pre_call"]
+
+
 class TestPromptExtraction:
     """0.2.2 fixes for BerriAI/litellm#38143 review findings.
 

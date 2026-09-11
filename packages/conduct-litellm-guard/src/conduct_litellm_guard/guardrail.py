@@ -12,7 +12,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from conduct_litellm_guard._client import GuardCheckClient, GuardCheckError
 
@@ -163,6 +163,24 @@ class ConductGuard(CustomGuardrail):
     ``litellm_metadata.trace_id`` → ``X-Conduct-Session-Id`` header on
     the LiteLLM request → a deterministic hash of the user identifier
     plus the first user message. Documented in ``README.md``."""
+
+    # ── Event-hook advertisement ─────────────────────────────────────
+    # LiteLLM's guardrail-registration flow calls
+    # ``get_supported_event_hooks`` to validate the ``mode:`` in the
+    # config block. Ship the tuple + classmethod here so upstream shims
+    # (the ``litellm/proxy/guardrails/guardrail_hooks/conduct`` module)
+    # can be pure aliases with no subclass — keeps their type-discipline
+    # gates satisfied. Add ``response`` when ``guard_check_response``
+    # ships (plugin 0.3.x).
+    SUPPORTED_EVENT_HOOKS: ClassVar[tuple[str, ...]] = ("pre_call",)
+
+    @classmethod
+    def get_supported_event_hooks(cls) -> list[str]:
+        """Return the ``mode:`` values LiteLLM should accept for this
+        guardrail. LiteLLM rejects any config that requests an
+        unsupported mode at load time — prevents silent bypass of
+        e.g. ``during_call`` configurations."""
+        return list(cls.SUPPORTED_EVENT_HOOKS)
 
     def __init__(
         self,

@@ -19,5 +19,5 @@ Basic usage in a LiteLLM ``config.yaml``::
 """
 from conduct_litellm_guard.guardrail import ConductGuard, GuardDecision
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 __all__ = ["ConductGuard", "GuardDecision", "__version__"]
