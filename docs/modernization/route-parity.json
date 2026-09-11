@@ -1,0 +1,2362 @@
+{
+  "baseline_commit": "c918c6e051c0718eb7e61659b61fc1b8987fe3d6",
+  "entries": [
+    {
+      "id": "WEB-001",
+      "route": "/accept-invite",
+      "file": "apps/web/src/app/(app)/accept-invite/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 32,
+      "primary_task": "T01",
+      "related_tasks": [
+        "T02",
+        "T03",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-002",
+      "route": "/agent-identity",
+      "file": "apps/web/src/app/(app)/agent-identity/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 1059,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-003",
+      "route": "/audit",
+      "file": "apps/web/src/app/(app)/audit/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 48,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-004",
+      "route": "/cli-auth",
+      "file": "apps/web/src/app/(app)/cli-auth/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 93,
+      "primary_task": "T01",
+      "related_tasks": [
+        "T02",
+        "T03",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-005",
+      "route": "/dashboard",
+      "file": "apps/web/src/app/(app)/dashboard/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 1280,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-006",
+      "route": "/governance",
+      "file": "apps/web/src/app/(app)/governance/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 1113,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-007",
+      "route": "/integrations",
+      "file": "apps/web/src/app/(app)/integrations/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 668,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-008",
+      "route": "/lens/[sessionId]",
+      "file": "apps/web/src/app/(app)/lens/[sessionId]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 25,
+      "primary_task": "T10",
+      "related_tasks": [
+        "T02",
+        "T04",
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-009",
+      "route": "/lens",
+      "file": "apps/web/src/app/(app)/lens/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 12,
+      "primary_task": "T10",
+      "related_tasks": [
+        "T02",
+        "T04",
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-010",
+      "route": "/lens/report-builder",
+      "file": "apps/web/src/app/(app)/lens/report-builder/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 476,
+      "primary_task": "T10",
+      "related_tasks": [
+        "T02",
+        "T04",
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-011",
+      "route": "/logs/guard",
+      "file": "apps/web/src/app/(app)/logs/guard/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 1010,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-012",
+      "route": "/logs/observability",
+      "file": "apps/web/src/app/(app)/logs/observability/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 556,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-013",
+      "route": "/logs",
+      "file": "apps/web/src/app/(app)/logs/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 2,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-014",
+      "route": "/logs/runs",
+      "file": "apps/web/src/app/(app)/logs/runs/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 915,
+      "primary_task": "T11",
+      "related_tasks": [
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-015",
+      "route": "/oauth-authorize",
+      "file": "apps/web/src/app/(app)/oauth-authorize/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 94,
+      "primary_task": "T01",
+      "related_tasks": [
+        "T02",
+        "T03",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-016",
+      "route": "/observability/alerts",
+      "file": "apps/web/src/app/(app)/observability/alerts/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 370,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-017",
+      "route": "/observability",
+      "file": "apps/web/src/app/(app)/observability/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 2,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-018",
+      "route": "/packs/[slug]",
+      "file": "apps/web/src/app/(app)/packs/[slug]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 392,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-019",
+      "route": "/packs",
+      "file": "apps/web/src/app/(app)/packs/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 1753,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-020",
+      "route": "/playbooks/submit",
+      "file": "apps/web/src/app/(app)/playbooks/submit/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 248,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-021",
+      "route": "/projects/[id]",
+      "file": "apps/web/src/app/(app)/projects/[id]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 553,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-022",
+      "route": "/projects",
+      "file": "apps/web/src/app/(app)/projects/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 830,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-023",
+      "route": "/runs/[run_id]",
+      "file": "apps/web/src/app/(app)/runs/[run_id]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 72,
+      "primary_task": "T11",
+      "related_tasks": [
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-024",
+      "route": "/runs",
+      "file": "apps/web/src/app/(app)/runs/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 2,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-025",
+      "route": "/secure/activity",
+      "file": "apps/web/src/app/(app)/secure/activity/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 309,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-026",
+      "route": "/secure",
+      "file": "apps/web/src/app/(app)/secure/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 110,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-027",
+      "route": "/settings/modules",
+      "file": "apps/web/src/app/(app)/settings/modules/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 14,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-028",
+      "route": "/settings",
+      "file": "apps/web/src/app/(app)/settings/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 224,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-029",
+      "route": "/setup",
+      "file": "apps/web/src/app/(app)/setup/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 1039,
+      "primary_task": "T01",
+      "related_tasks": [
+        "T02",
+        "T03",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-030",
+      "route": "/sign-in/[[...sign-in]]",
+      "file": "apps/web/src/app/(app)/sign-in/[[...sign-in]]/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 15,
+      "primary_task": "T01",
+      "related_tasks": [
+        "T02",
+        "T03",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-031",
+      "route": "/sign-up/[[...sign-up]]",
+      "file": "apps/web/src/app/(app)/sign-up/[[...sign-up]]/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 15,
+      "primary_task": "T01",
+      "related_tasks": [
+        "T02",
+        "T03",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-032",
+      "route": "/theguard/activity",
+      "file": "apps/web/src/app/(app)/theguard/activity/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 2,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-033",
+      "route": "/theguard/approvals",
+      "file": "apps/web/src/app/(app)/theguard/approvals/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 400,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-034",
+      "route": "/theguard/blocks/[id]",
+      "file": "apps/web/src/app/(app)/theguard/blocks/[id]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 46,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-035",
+      "route": "/theguard/compliance",
+      "file": "apps/web/src/app/(app)/theguard/compliance/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 386,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-036",
+      "route": "/theguard/discovery",
+      "file": "apps/web/src/app/(app)/theguard/discovery/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 351,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-037",
+      "route": "/theguard",
+      "file": "apps/web/src/app/(app)/theguard/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 1522,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-038",
+      "route": "/theguard/policies/new",
+      "file": "apps/web/src/app/(app)/theguard/policies/new/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 521,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-039",
+      "route": "/theguard/policies",
+      "file": "apps/web/src/app/(app)/theguard/policies/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 1762,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-040",
+      "route": "/theguard/reports/soc2",
+      "file": "apps/web/src/app/(app)/theguard/reports/soc2/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 280,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-041",
+      "route": "/theguard/session-reports/[id]",
+      "file": "apps/web/src/app/(app)/theguard/session-reports/[id]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 309,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-042",
+      "route": "/theguard/session-reports",
+      "file": "apps/web/src/app/(app)/theguard/session-reports/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 242,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-043",
+      "route": "/theguard/settings",
+      "file": "apps/web/src/app/(app)/theguard/settings/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 940,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-044",
+      "route": "/theguard/spend",
+      "file": "apps/web/src/app/(app)/theguard/spend/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 963,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-045",
+      "route": "/theguard/team-memory",
+      "file": "apps/web/src/app/(app)/theguard/team-memory/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 288,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-046",
+      "route": "/theguard/team-os/ai-rollout",
+      "file": "apps/web/src/app/(app)/theguard/team-os/ai-rollout/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 433,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-047",
+      "route": "/theguard/team-os",
+      "file": "apps/web/src/app/(app)/theguard/team-os/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 356,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-048",
+      "route": "/theguard/try",
+      "file": "apps/web/src/app/(app)/theguard/try/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 353,
+      "primary_task": "T09",
+      "related_tasks": [
+        "T02",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-049",
+      "route": "/workflows/[id]",
+      "file": "apps/web/src/app/(app)/workflows/[id]/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 11,
+      "primary_task": "T11",
+      "related_tasks": [
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-050",
+      "route": "/workflows/[id]/runs/[run_id]",
+      "file": "apps/web/src/app/(app)/workflows/[id]/runs/[run_id]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 57,
+      "primary_task": "T11",
+      "related_tasks": [
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-051",
+      "route": "/workflows/[id]/runs",
+      "file": "apps/web/src/app/(app)/workflows/[id]/runs/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 202,
+      "primary_task": "T11",
+      "related_tasks": [
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-052",
+      "route": "/workflows/[id]/settings",
+      "file": "apps/web/src/app/(app)/workflows/[id]/settings/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 335,
+      "primary_task": "T11",
+      "related_tasks": [
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-053",
+      "route": "/workflows/new",
+      "file": "apps/web/src/app/(app)/workflows/new/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 417,
+      "primary_task": "T11",
+      "related_tasks": [
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-054",
+      "route": "/workflows",
+      "file": "apps/web/src/app/(app)/workflows/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 751,
+      "primary_task": "T11",
+      "related_tasks": [
+        "T07",
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-055",
+      "route": "/about",
+      "file": "apps/web/src/app/(marketing)/about/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 172,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-056",
+      "route": "/b/[id]/[token]",
+      "file": "apps/web/src/app/(marketing)/b/[id]/[token]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 55,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-057",
+      "route": "/benchmark/[edition]/[slug]",
+      "file": "apps/web/src/app/(marketing)/benchmark/[edition]/[slug]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 801,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-058",
+      "route": "/benchmark/[edition]",
+      "file": "apps/web/src/app/(marketing)/benchmark/[edition]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 400,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-059",
+      "route": "/benchmark",
+      "file": "apps/web/src/app/(marketing)/benchmark/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 8,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-060",
+      "route": "/blog/autonomous-agents-need-an-autonomous-guard",
+      "file": "apps/web/src/app/(marketing)/blog/autonomous-agents-need-an-autonomous-guard/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 147,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-061",
+      "route": "/blog/cedar-cant-say-warn",
+      "file": "apps/web/src/app/(marketing)/blog/cedar-cant-say-warn/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 359,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-062",
+      "route": "/blog/conduct-is-open-today",
+      "file": "apps/web/src/app/(marketing)/blog/conduct-is-open-today/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 249,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-063",
+      "route": "/blog/fix-this-code",
+      "file": "apps/web/src/app/(marketing)/blog/fix-this-code/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 211,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-064",
+      "route": "/blog/governing-37-ai-agents-in-production",
+      "file": "apps/web/src/app/(marketing)/blog/governing-37-ai-agents-in-production/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 361,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-065",
+      "route": "/blog/guard-and-security-loop",
+      "file": "apps/web/src/app/(marketing)/blog/guard-and-security-loop/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 143,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-066",
+      "route": "/blog/guard-on-agentic-governance-benchmark",
+      "file": "apps/web/src/app/(marketing)/blog/guard-on-agentic-governance-benchmark/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 259,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-067",
+      "route": "/blog/launch-hero",
+      "file": "apps/web/src/app/(marketing)/blog/launch-hero/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 212,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-068",
+      "route": "/blog/mcp-enterprise-ready-what-the-spec-doesnt-solve",
+      "file": "apps/web/src/app/(marketing)/blog/mcp-enterprise-ready-what-the-spec-doesnt-solve/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 195,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-069",
+      "route": "/blog/mcp-gateway-launch",
+      "file": "apps/web/src/app/(marketing)/blog/mcp-gateway-launch/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 165,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-070",
+      "route": "/blog/one-policy-every-llm-call",
+      "file": "apps/web/src/app/(marketing)/blog/one-policy-every-llm-call/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 198,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-071",
+      "route": "/blog/openrouter-one-policy-every-model",
+      "file": "apps/web/src/app/(marketing)/blog/openrouter-one-policy-every-model/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 152,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-072",
+      "route": "/blog",
+      "file": "apps/web/src/app/(marketing)/blog/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 144,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-073",
+      "route": "/blog/rtk-how-we-cut-93-percent-of-cli-tokens",
+      "file": "apps/web/src/app/(marketing)/blog/rtk-how-we-cut-93-percent-of-cli-tokens/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 219,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-074",
+      "route": "/blog/stop-paying-opus-prices-for-haiku-work",
+      "file": "apps/web/src/app/(marketing)/blog/stop-paying-opus-prices-for-haiku-work/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 185,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-075",
+      "route": "/blog/threat-modeling-is-a-playbook",
+      "file": "apps/web/src/app/(marketing)/blog/threat-modeling-is-a-playbook/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 128,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-076",
+      "route": "/blog/which-ai-model-for-which-task",
+      "file": "apps/web/src/app/(marketing)/blog/which-ai-model-for-which-task/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 439,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-077",
+      "route": "/blog/why-ai-reads-your-whole-file-when-it-only-needs-three-functions",
+      "file": "apps/web/src/app/(marketing)/blog/why-ai-reads-your-whole-file-when-it-only-needs-three-functions/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 216,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-078",
+      "route": "/book-demo",
+      "file": "apps/web/src/app/(marketing)/book-demo/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 43,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-079",
+      "route": "/cli-login-success",
+      "file": "apps/web/src/app/(marketing)/cli-login-success/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 31,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-080",
+      "route": "/compare",
+      "file": "apps/web/src/app/(marketing)/compare/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 23,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-081",
+      "route": "/deployment",
+      "file": "apps/web/src/app/(marketing)/deployment/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 136,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-082",
+      "route": "/discovery",
+      "file": "apps/web/src/app/(marketing)/discovery/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 44,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-083",
+      "route": "/docs/discovery",
+      "file": "apps/web/src/app/(marketing)/docs/discovery/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 58,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-084",
+      "route": "/docs/lens",
+      "file": "apps/web/src/app/(marketing)/docs/lens/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 72,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-085",
+      "route": "/docs/mcp-setup",
+      "file": "apps/web/src/app/(marketing)/docs/mcp-setup/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 5,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-086",
+      "route": "/docs",
+      "file": "apps/web/src/app/(marketing)/docs/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 2590,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-087",
+      "route": "/docs/schema",
+      "file": "apps/web/src/app/(marketing)/docs/schema/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 367,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-088",
+      "route": "/eval/[slug]",
+      "file": "apps/web/src/app/(marketing)/eval/[slug]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 641,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-089",
+      "route": "/eval",
+      "file": "apps/web/src/app/(marketing)/eval/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 287,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-090",
+      "route": "/evidence",
+      "file": "apps/web/src/app/(marketing)/evidence/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 167,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-091",
+      "route": "/frameworks",
+      "file": "apps/web/src/app/(marketing)/frameworks/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 372,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-092",
+      "route": "/guard",
+      "file": "apps/web/src/app/(marketing)/guard/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 258,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-093",
+      "route": "/mcp-gateway",
+      "file": "apps/web/src/app/(marketing)/mcp-gateway/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 221,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-094",
+      "route": "/open-source",
+      "file": "apps/web/src/app/(marketing)/open-source/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 185,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-095",
+      "route": "/",
+      "file": "apps/web/src/app/(marketing)/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 623,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-096",
+      "route": "/partners",
+      "file": "apps/web/src/app/(marketing)/partners/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 332,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-097",
+      "route": "/pricing",
+      "file": "apps/web/src/app/(marketing)/pricing/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 273,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-098",
+      "route": "/privacy",
+      "file": "apps/web/src/app/(marketing)/privacy/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 37,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-099",
+      "route": "/registry",
+      "file": "apps/web/src/app/(marketing)/registry/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 311,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-100",
+      "route": "/router",
+      "file": "apps/web/src/app/(marketing)/router/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 382,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-101",
+      "route": "/sdd",
+      "file": "apps/web/src/app/(marketing)/sdd/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 1046,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-102",
+      "route": "/security",
+      "file": "apps/web/src/app/(marketing)/security/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 251,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-103",
+      "route": "/solutions/action-governance",
+      "file": "apps/web/src/app/(marketing)/solutions/action-governance/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 163,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-104",
+      "route": "/solutions/engineering-leaders",
+      "file": "apps/web/src/app/(marketing)/solutions/engineering-leaders/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 180,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-105",
+      "route": "/solutions/financial-services",
+      "file": "apps/web/src/app/(marketing)/solutions/financial-services/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 245,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-106",
+      "route": "/solutions/life-sciences",
+      "file": "apps/web/src/app/(marketing)/solutions/life-sciences/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 254,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-107",
+      "route": "/solutions/memory-hardening",
+      "file": "apps/web/src/app/(marketing)/solutions/memory-hardening/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 266,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-108",
+      "route": "/solutions/nemo-guardrails",
+      "file": "apps/web/src/app/(marketing)/solutions/nemo-guardrails/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 256,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-109",
+      "route": "/solutions/okta-plus-conduct",
+      "file": "apps/web/src/app/(marketing)/solutions/okta-plus-conduct/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 301,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-110",
+      "route": "/solutions",
+      "file": "apps/web/src/app/(marketing)/solutions/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 166,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-111",
+      "route": "/solutions/security-compliance",
+      "file": "apps/web/src/app/(marketing)/solutions/security-compliance/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 210,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-112",
+      "route": "/solutions/security-loop",
+      "file": "apps/web/src/app/(marketing)/solutions/security-loop/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 231,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-113",
+      "route": "/team-os/license",
+      "file": "apps/web/src/app/(marketing)/team-os/license/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 156,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-114",
+      "route": "/team-os",
+      "file": "apps/web/src/app/(marketing)/team-os/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 606,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-115",
+      "route": "/terms",
+      "file": "apps/web/src/app/(marketing)/terms/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 45,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-116",
+      "route": "/token-guardrails",
+      "file": "apps/web/src/app/(marketing)/token-guardrails/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 5,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-117",
+      "route": "/tools/agent-booster",
+      "file": "apps/web/src/app/(marketing)/tools/agent-booster/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 5,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-118",
+      "route": "/tools/conduct-cli",
+      "file": "apps/web/src/app/(marketing)/tools/conduct-cli/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 1282,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-119",
+      "route": "/tools",
+      "file": "apps/web/src/app/(marketing)/tools/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 567,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-120",
+      "route": "/use-cases",
+      "file": "apps/web/src/app/(marketing)/use-cases/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 427,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-121",
+      "route": "/what-is-conduct-ai",
+      "file": "apps/web/src/app/(marketing)/what-is-conduct-ai/page.tsx",
+      "client": false,
+      "kind": "page.tsx",
+      "lines": 138,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-122",
+      "route": "/.well-known/oauth-authorization-server",
+      "file": "apps/web/src/app/.well-known/oauth-authorization-server/route.ts",
+      "client": false,
+      "kind": "route.ts",
+      "lines": 16,
+      "primary_task": "T13",
+      "related_tasks": [
+        "T02",
+        "T03"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-123",
+      "route": "/api/mcp/guard/oauth/authorize",
+      "file": "apps/web/src/app/api/mcp/guard/oauth/authorize/route.ts",
+      "client": false,
+      "kind": "route.ts",
+      "lines": 55,
+      "primary_task": "T13",
+      "related_tasks": [
+        "T02",
+        "T03"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-124",
+      "route": "/api/mcp/guard/oauth/callback",
+      "file": "apps/web/src/app/api/mcp/guard/oauth/callback/route.ts",
+      "client": false,
+      "kind": "route.ts",
+      "lines": 49,
+      "primary_task": "T13",
+      "related_tasks": [
+        "T02",
+        "T03"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-125",
+      "route": "/api/mcp/guard/oauth/complete",
+      "file": "apps/web/src/app/api/mcp/guard/oauth/complete/route.ts",
+      "client": false,
+      "kind": "route.ts",
+      "lines": 99,
+      "primary_task": "T13",
+      "related_tasks": [
+        "T02",
+        "T03"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-126",
+      "route": "/api/mcp/guard/oauth/register",
+      "file": "apps/web/src/app/api/mcp/guard/oauth/register/route.ts",
+      "client": false,
+      "kind": "route.ts",
+      "lines": 21,
+      "primary_task": "T13",
+      "related_tasks": [
+        "T02",
+        "T03"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    },
+    {
+      "id": "WEB-127",
+      "route": "/share/[token]",
+      "file": "apps/web/src/app/share/[token]/page.tsx",
+      "client": true,
+      "kind": "page.tsx",
+      "lines": 273,
+      "primary_task": "T12",
+      "related_tasks": [
+        "T08"
+      ],
+      "classification_basis": "source path and feature family; verify runtime auth/layout and unique controls in T00",
+      "disposition": "retain_pending_migration",
+      "replacement_path": null,
+      "compatibility_adapter": null,
+      "acceptance_test": null,
+      "verified_commit": null
+    }
+  ]
+}

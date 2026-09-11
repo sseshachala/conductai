@@ -1,0 +1,53 @@
+[
+  {
+    "probe": "public_trial_existing_user_returns_both_credentials",
+    "result": "confirmed",
+    "observation": true,
+    "source": "apps/api/app/modules/guard/routers/trial.py:326-443",
+    "method": "selected source function executed with synthetic dependencies"
+  },
+  {
+    "probe": "ModalSession_failure_invokes_local_backend",
+    "result": "confirmed",
+    "observation": [
+      "read_file"
+    ],
+    "source": "apps/api/app/runtime/sandbox_session.py",
+    "method": "selected source function executed with synthetic dependencies"
+  },
+  {
+    "probe": "E2BSession_failure_invokes_local_backend",
+    "result": "confirmed",
+    "observation": [
+      "read_file"
+    ],
+    "source": "apps/api/app/runtime/sandbox_session.py",
+    "method": "selected source function executed with synthetic dependencies"
+  },
+  {
+    "probe": "auth_dependency_missing_clerk_returns_dev",
+    "result": "confirmed",
+    "observation": "dev",
+    "source": "apps/api/app/core/auth.py:390-421",
+    "method": "selected source function executed with synthetic dependencies"
+  },
+  {
+    "probe": "lens_policy_exception_still_invokes_tool",
+    "result": "confirmed",
+    "observation": [
+      "invoked"
+    ],
+    "source": "apps/api/app/mcp/lens_adapter.py:49-104",
+    "method": "selected source function executed with synthetic dependencies"
+  },
+  {
+    "probe": "unhashed_event_reports_valid_and_checked",
+    "result": "confirmed",
+    "observation": {
+      "valid": true,
+      "events_checked": 1
+    },
+    "source": "apps/api/app/modules/guard/routers/verify.py:235-286",
+    "method": "selected source function executed with synthetic dependencies"
+  }
+]

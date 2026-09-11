@@ -1,0 +1,380 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "c918c6e051c0718eb7e61659b61fc1b8987fe3d6",
+  "execution_order": [
+    "T00",
+    "T01",
+    "T02",
+    "T03",
+    "T04",
+    "T05",
+    "T06",
+    "T07",
+    "T08",
+    "T09",
+    "T10",
+    "T11",
+    "T12",
+    "T13",
+    "T14",
+    "T15"
+  ],
+  "tasks": [
+    {
+      "id": "T00",
+      "title": "Pin, inventory, and reproduce",
+      "depends_on": [],
+      "addresses": [],
+      "status": "planned",
+      "specification_markdown": "Dependencies: none. Inputs: this plan, pinned SHA, existing docs/tests, open PRs.\n\n1. Create an isolated working branch from the current approved base; record differences from the audit SHA. Read applicable AGENTS/REVIEW/ROLES/DESIGN instructions. Reconcile #1785/#1783/#1466 and any subsequent fixes before editing.\n2. Add `docs/modernization/{decisions.md,route-parity.json,api-parity.json,progress.json}`. Seed route parity from the handoff; generate runtime OpenAPI including mounted prefixes; enumerate WebSockets, MCP tools, callbacks, CLI entry points, and scheduled jobs separately.\n3. Run the actual supported Node/npm and Python/Postgres/Redis development stack. Use isolated Clerk sandbox credentials and fake external provider adapters. Never substitute production data or paid agents for fixtures.\n4. Save baseline test/build/scan results, warnings, route bundle report, query counts and key screenshots. Identify fixture test skips explicitly.\n\nDeliverable: reproducible baseline and parity manifests. Gate: every existing page and mounted operation assigned a domain owner/task; expected failing tests recorded, not hidden; production remains untouched. Rollback: delete local branch only if requested; no data migrations yet.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T01",
+      "title": "Contain critical boundary failures",
+      "depends_on": [
+        "T00"
+      ],
+      "addresses": [
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05",
+        "S06",
+        "S12",
+        "S14"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T00. Addresses S01–S06, S12, S14; mandatory before feature refactoring.\n\nFiles: `modules/guard/routers/trial.py`, `modules/onboarding.py`, `core/auth.py`, `core/config.py`, `runtime/sandbox_session.py`, `runtime/sandbox.py`, `modules/guard/routers/proxy.py`, `mcp/{server,lens_adapter}.py`, `.github/workflows/web-smoke.yml`, `render.yaml`, installer/client onboarding code.\n\n1. Introduce an explicit `AUTH_MODE`/environment validation contract. Development bypass requires an explicit local setting; all nonlocal modes enforce authentication. Render API and worker both declare production settings; required secrets are references, never committed values.\n2. Disable unauthenticated credential issuance. Replace installer provisioning with verification challenge/device flow: create challenge → browser authenticates or verifies mailbox → server atomically completes subject binding → installer redeems short-lived single-use authorization. Return generic accepted status before verification. Do not reveal existing-user status/tokens.\n3. Remove all remote→local execution fallbacks and prohibit direct LocalSession construction outside explicitly local execution. Reject unconfined paths and ambient environment inheritance even in local fixtures.\n4. Require centralized lifecycle checks in internal proxy auth; use a temporary conservative run-token lifetime check while the full migration lands in T02.\n5. Restrict trial ops to platform operators or tenant scope. Correct anonymous rate-limit failure handling and trusted forwarded IP handling.\n6. Make policy errors/APPROVAL stop generic tool invocation. Add fail-mode audit reason, not a silent exception swallow.\n7. Remove broad `.auth` uploads and replace with sanitized screenshot/text allowlist.\n\nTests: actual endpoint requests using mocked Clerk/isolated DB; new/existing email; invalid challenge; replay/expired challenge; startup misconfiguration; all sandbox provider failure modes; deactivated agent over all auth headers; operator/tenant ops; engine exception and APPROVAL cause zero tool calls; artifact manifest contains no cookie storage state.\n\nGate: all critical regressions pass with real application DI. Safe rollout unit: a containment release independent of UI rewrite. Do not “roll back” by reinstating credential disclosure or local execution fallback; disable affected operations if needed.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T02",
+      "title": "Unify principals, tenant scope, and secrets",
+      "depends_on": [
+        "T01"
+      ],
+      "addresses": [
+        "S04",
+        "S05",
+        "S07",
+        "S10",
+        "S11",
+        "R03"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T01. Addresses S04/S05/S07/S10/S11, R03.\n\n1. Extract `RequestContext` and one token/principal resolver; retain existing entry points as adapters. Authenticate once per request, cache only within that request, and avoid repeated token decryption or Clerk queries.\n2. Implement permission checks in generic tool dispatch; require every ToolDef to declare its permission/classification. Propagate human actor and executing-agent separately through Lens, MCP, runs, and approvals.\n3. Use tenant repositories/UnitOfWork that cannot query tenant resources without authorized scope. Explicitly distinguish one workspace from organization-wide reads; validate membership across every workspace included.\n4. Add token expiry/hash/revocation schema and migrations from section 6. Remove plaintext token re-reveal except newly minted values returned once to an authenticated owner; existing trial UX uses rotation or a verified recovery flow.\n5. Bind stored credentials to approved endpoints and operation scopes; move secret decryption behind a credential service. Include key-version/rotation read compatibility.\n6. Add session visibility/ownership fields. Keep legacy-shared transcripts visibly classified; prohibit own-permission callers from reading another user’s new private session.\n\nTests: complete endpoint×role×tenant×principal-type matrix with valid resources and bodies; own/all scopes; unknown tool permission denied; role removal during stream and approval; run expiry/revoke; token replay; secret never attached to an unapproved destination. Gate: identical enforcement for HTTP/MCP/Lens/worker, with no system-user promotion of the requesting human.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T03",
+      "title": "Make quality and dependency gates real",
+      "depends_on": [
+        "T00",
+        "T01"
+      ],
+      "addresses": [
+        "Q01",
+        "Q02",
+        "Q03",
+        "Q04",
+        "S14"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T00/T01. Addresses Q01–Q04, S14.\n\n1. Fix GuardShell label tests after establishing intended navigation (`Discovery` vs `Agent Discovery`); assert user behavior as well as exported tab data.\n2. Require web typecheck, lint, unit tests, and production build on PRs. Add a small authenticated Playwright gate for sign-in, signup, refresh, workspace switch, and a protected page. Larger cross-browser/visual/load suites can run separately, but failed required smoke blocks release.\n3. Replace global permissive auth fixtures with test app factory injection. Keep matrix restoration until migrated; remove it only after equivalent real-auth cases pass. Forbidden cases must assert no DB/outbox/external mutation, not merely a 403.\n4. Introduce a Python dev dependency lock, actual Ruff/format/type checks for touched modules, then ratchet remaining debt. Remove `|| true`; scanner exceptions need advisory ID, owner, reason and expiry. Run CLI/adapter tests when those packages change.\n5. Resolve the npm graph. Current audit suggests Next 16.3.4 and Clerk 7.9.2 as upgrade candidates, but those are **not validated combinations**. Use PR #1466 to reproduce the login failure, fix provider/layout/session wiring and duplicate SDK versions, then pin a supported patched Next/React/Clerk combination proven by browser auth tests. A tested patched current-major route is preferable if available; do not mix React runtime and type major versions.\n6. Generate exact supported runtime locks from official package metadata at implementation time. Record them in an ADR and container/CI config. Do not keep Node/npm disagreement across machines.\n7. Enforce high/critical production-dependency and security regression gates after baseline triage; treat scanner graph entries as reachability review inputs, not proof of exploitation. Never auto-force a major upgrade to make the scanner green.\n\nGate: reproducible clean install/build and valid auth flow; 81 current web tests updated/passing plus meaningful additions; no silently skipped required security tests. Branch-protection enforcement must be checked by an authorized repository administrator because it could not be fully read during this audit.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T04",
+      "title": "One enforcement contract across surfaces",
+      "depends_on": [
+        "T02",
+        "T03"
+      ],
+      "addresses": [
+        "S06",
+        "S07",
+        "P02",
+        "I03"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T02/T03. Addresses S06/S07, P02, I03.\n\n1. Introduce the versioned Decision schema and explicit mapping to legacy text/provider errors. Reuse existing `PolicyAction`, precedence, gates and policy source composition.\n2. Consolidate context → permission → policy → obligation → audit intent → dispatch. Remove duplicate decision logic in proxy, Lens, MCP, runtime and adapters. Expose injectable clock/ID/provider interfaces for deterministic tests.\n3. Model failure classes independently: auth error, policy unavailable, invalid policy, audit unavailable, approval timeout, provider timeout. Fail-open is an explicit authorized policy mode with evidence and narrow scope, never a catch-all fallback.\n4. Carry policy version and input/action digest into approval requests; re-evaluate on resume. Unknown or unsupported obligations block execution with a structured explanation.\n5. Define response-inspection modes and bounds; preserve pre-call prevention claims only where enforced.\n\nTests: rule corpus differential tests old/new for intended unchanged behavior; cross-surface ALLOW/WARN/APPROVAL/BLOCK; combination precedence; invalid/unknown rule; expired exception; response chunks split at sensitive boundaries; pending approval invokes no provider/tool. Gate: all surfaces produce semantically identical decisions on the same normalized input, subject to documented surface capabilities.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T05",
+      "title": "Durable, verifiable evidence",
+      "depends_on": [
+        "T02",
+        "T04"
+      ],
+      "addresses": [
+        "S08",
+        "S09",
+        "S15"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T02/T04. Addresses S08/S09/S15.\n\n1. Implement audit v2 tables, immutable writer role, canonical serialization, stable chain-head locking, and per-tenant sequence.\n2. Move decision persistence ahead of protected effects; outbox outcome recording connects to T07. Return a receipt only after its durable intent exists. Record blocked/failed/cancelled/ambiguous paths too.\n3. Implement verifier statuses `complete`, `legacy_partial`, `broken`, `unavailable`; report total events, hashed events, missing ranges, sequence gaps, checkpoint coverage and legacy window separately. Do not label an unhashed history valid in the UI.\n4. Add external checkpoint format and signing-key rotation. Keep operational metrics mutable in separate tables; append corrections to evidence rather than overwriting history.\n5. Backfill read indexes/metadata without claiming retroactive integrity; make exporters permission-checked async jobs with redacted output and expiry.\n\nTests: concurrent first append, simultaneous append, tied timestamps, altered actor/rule/cost/payload, missing hash, missing middle/tail with checkpoint, cross-tenant interleaving, crash before/after effect, audit DB outage. Gate: 100% of protected fixture effects link to durable decision/outcome and verifier accurately distinguishes old partial evidence.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T06",
+      "title": "Bound latency, memory, and database work",
+      "depends_on": [
+        "T02",
+        "T04",
+        "T05"
+      ],
+      "addresses": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "R05",
+        "S10"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T02/T04; final measurements include T05.\n\n1. Add lifespan HTTP/Redis pools and instrument auth, policy, DB, provider, audit and queue latency. Set explicit bounded timeouts and concurrency.\n2. Move blocking work out of async streaming/event-loop execution; never share one SQLAlchemy session across concurrent threads. Compute DB pool budget as replicas×processes×pool limit with headroom for workers/migrations.\n3. Replace stream-wide accumulation with incremental parser and bounded inspection buffers. Close response/reader on every exit, including client cancellation; do not retry completed/maybe-completed model actions automatically.\n4. Rewrite `insights.get_agents` and analogous measured paths to grouped SQL. Add cursor pagination, response limits, bounded report ranges, and matching indexes only after inspecting current indexes/query plans.\n5. Cache immutable/versioned catalogs and compiled policies by workspace+policy version+gate. Publish invalidation after committed updates; test revocation/stale cache behavior. Do not cache authorization indefinitely.\n6. Add representative load scenarios and publish baselines versus section 8 budgets. Separate unknown token/cost from zero; reconcile estimates to actual usage.\n\nGate: no N+1 growth in target endpoints, bounded memory with longer streams, acceptable event-loop/pool lag, and no security relaxation to reach performance targets.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T07",
+      "title": "Durable workflow execution and isolated effects",
+      "depends_on": [
+        "T01",
+        "T02",
+        "T04",
+        "T05"
+      ],
+      "addresses": [
+        "S03",
+        "S11",
+        "R01",
+        "I02"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T01/T02/T04/T05.\n\n1. Add transactional outbox to run creation, approval resume, and webhook-triggered work. Existing Redis list remains transport during migration; DB is authoritative for intent/state.\n2. Add fenced worker leases, heartbeat, maximum duration, terminal/retryable/ambiguous errors, and durable node checkpoints. Replace age-only reaper assumptions; healthy long runs must not be marked dead.\n3. Define a single operation ID for every external effect. Propagate provider idempotency when available; query outcome or require reconciliation after ambiguous timeout. Never replay an entire DAG to recover one uncertain side effect.\n4. Consolidate sandbox provider interface; no fallback to worker host. Enforce resource/time/network/filesystem limits, explicit working root, credential allowlist, and cleanup. SSH destinations require host-key verification and explicit workspace configuration.\n5. Preserve pause/resume/cancel/approval semantics and dry-run guarantees. Dry run must not send notifications/create resources; credential availability may be validated without executing effects.\n\nTests: crash before DB commit, after commit/before enqueue, after queue move/before timestamp, during lease renewal, after provider success/before acknowledgment, Redis outage, provider outage, worker split-brain, concurrent approval clicks, expired approval, cancellation races, and sandbox cleanup. Gate: no lost durable intent or duplicated idempotent effect; uncertain external outcomes remain visible and reconcilable.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T08",
+      "title": "Shared console foundation",
+      "depends_on": [
+        "T02",
+        "T03"
+      ],
+      "addresses": [
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "P06",
+        "S13",
+        "Q05"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T02/T03.\n\n1. Implement auth group and bootstrap state machine: unknown → authenticating → workspace selection → permissions ready → application, with explicit error/no-membership states.\n2. Introduce tenant-scoped query provider and typed API error handling. Adapt `useAuthFetch`, `WorkspaceContext`, `GuardRoleContext`, PreferencesContext and existing API facade in place before deleting old hooks.\n3. Create tokens, accessible primitives, shell, command menu, navigation registry, five page templates and responsive inspector.\n4. Scope auth/third-party scripts correctly, add loading/error boundaries, and close/cancel tenant state on switch/logout.\n5. Seed visual fixtures and initial component interaction tests. Test that denied actions are hidden/disabled appropriately while server checks remain authoritative.\n\nGate: admin→viewer tenant switch never shows old data/permissions, stale responses are ignored, keyboard and mobile navigation work, and representative shell matches committed design references. Rollback: per-feature read/display flag; authorization fixes are always active.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T09",
+      "title": "Migrate governance and management features",
+      "depends_on": [
+        "T04",
+        "T05",
+        "T06",
+        "T08"
+      ],
+      "addresses": [
+        "U02",
+        "U04",
+        "U05",
+        "U06",
+        "U07",
+        "P05",
+        "Q05"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T04/T05/T06/T08.\n\nMigrate in this order: identities/discovery → activity/receipts → policies → approvals → spend → compliance/reports → settings/integrations/members → packs/projects. Each vertical slice includes typed API facade, query keys, forms, loading/error states, permissions, URL state, live-data behavior, accessible template and tests.\n\nUse the section 7 acceptance table as exact product requirements. Add optimistic-concurrency versions to policy/config editing; do not let stale forms overwrite newer settings. Publish policy updates transactionally with cache invalidation and evidence. Keep declared enforcement coverage separate from observed adoption.\n\nGate per slice: old URL works; critical action succeeds for the correct role and cannot execute for the wrong one; mutations survive retry correctly; data totals and detail links reconcile; responsive design checked; parity manifest marked migrated with test evidence.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T10",
+      "title": "Replace Lens state and streaming orchestration",
+      "depends_on": [
+        "T04",
+        "T07",
+        "T08",
+        "T09"
+      ],
+      "addresses": [
+        "R02",
+        "R03",
+        "U04",
+        "P05",
+        "Q05"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T04/T07/T08; report components from T09 where reused.\n\n1. Split `GLensChatPage.tsx` into session navigation, composer, message store/reducer, stream transport, message renderers, action controller and run inspector. Preserve baseline stable IDs and localized clock components.\n2. Persist message/event IDs and normalized message kinds. Use append-only message operations and version checks; retain transcript migration/rollback adapters.\n3. Implement shared SSE parser with CRLF, multiple data lines, partial UTF-8, comments, event IDs, reconnect/backoff, cursor dedupe and cancellation. Bind subscription lifetime to workspace+principal+session.\n4. Render pending/approved/executing/complete independently. Cancel generation explicitly; reconnect restores server truth. Preserve scroll unless user is following the latest messages; offer a new-events indicator.\n5. Propagate real authority through tools, show grounded data source/scope, and never allow model content to select a workspace, bypass permission, approve itself, or run arbitrary rendering code.\n\nGate: long session + reconnect + concurrent tool events + workspace switch produces no lost/duplicate action or stale data, no feed remount/flicker regression, and no execution on policy/approval error.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T11",
+      "title": "Replace workflow editing and run inspection",
+      "depends_on": [
+        "T07",
+        "T08",
+        "T10"
+      ],
+      "addresses": [
+        "U05",
+        "P05",
+        "Q05"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T07/T08/T10 shared stream infrastructure.\n\n1. Split editor state, graph transformations, validation, block catalog, block forms and transport. Retain React Flow/Dagre and existing schemas where suitable.\n2. Version graph state; protect against concurrent overwrite; preserve imported YAML and unknown optional fields according to schema compatibility policy. Add draft recovery and safe navigation away from unsaved work.\n3. Provide keyboard-accessible graph alternative, reorder/connect validation, readable trigger→environment→guard→brain execution preview, and field-level setup feedback.\n4. Lazy-load expensive inspectors/configuration. Use the shared run store/timeline for list, detail, workflow and Lens views; avoid four independent polling systems.\n\nTests: every bundled playbook import/export, cycles/invalid edges/missing blocks, invalid credential references, dry run, pause/approve/resume, retry/cancel, stale edit conflict, mobile inspection and long-run streaming. Gate: format and runtime parity with current workflows, plus section 8 editor budget.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T12",
+      "title": "Marketing, docs, sharing, and content truth",
+      "depends_on": [
+        "T03",
+        "T08",
+        "T05"
+      ],
+      "addresses": [
+        "U03",
+        "U07",
+        "U08",
+        "P05",
+        "P06",
+        "Q06",
+        "S13"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T03/T08; audit statements depend on T05.\n\n1. Remove WorkspaceProvider/private queries from public layout. Keep CTA authentication awareness in a small optional island. Replace hover-only menus with accessible controls.\n2. Convert docs page into server-rendered content modules with shared heading anchors/search/index. Reuse repository docs as source; do not duplicate them in a 2,590-line client file.\n3. Reuse exported logo/tokens/assets and existing copy. Make capability labels reflect release inventory; remove or qualify statements contradicted by actual enforcement/evidence.\n4. Correct canonicals, OpenGraph metadata, sitemap, redirects and robots/noindex/cache policy. Preserve inbound links, installation path and provider docs URLs. Shared secret URLs get explicit referrer/noindex/cache controls.\n5. Unify Markdown/report rendering without enabling untrusted HTML/JS; retain escaping or an explicitly constrained renderer. Optimize images/fonts and defer approved marketing widgets.\n\nGate: full public route/link check, keyboard navigation, no private API request on public load, correct metadata per representative route, no third-party widget on console/secret reports, and verified public performance targets.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T13",
+      "title": "CLI, MCP, adapter and local-tool contracts",
+      "depends_on": [
+        "T02",
+        "T03",
+        "T04",
+        "T07"
+      ],
+      "addresses": [
+        "S11",
+        "I01",
+        "I02",
+        "I03",
+        "Q05"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T02/T03/T04/T07.\n\n1. Inventory `conduct-cli`, `conduct-daemon`, `conduct-litellm-guard`, `conduct-nemo-guard`, and `tools/booster`: exported APIs, CLI commands, platform support, filesystem outputs, dependencies, release workflows, tests and users. Keep client policy logic thin and central enforcement authoritative.\n2. Generate typed Decision parsing and legacy text adapter with unknown/malformed outcomes covered. Keep package names and backward-compatible flags; version protocol behavior deliberately.\n3. Implement MCP lifecycle/version negotiation, strict argument schemas, supported capabilities, session binding and resource limits. Negotiate transport before mutations; no mutation fallback/retry on ambiguous response. Test strict HTTP/SSE servers and expired auth.\n4. Split large CLI files by commands and services without changing output/exit codes. Store local auth using OS keychain where available or mode-0600 files; atomically update config, preserve user edits, and provide uninstall/rollback.\n5. Test wheels/sdists in clean environments, including daemon build-backend validity, optional dependency installation, real supported LiteLLM/NeMo integration bases, and Windows/macOS/Linux CLI paths. Treat unbuilt package metadata as unverified until the build test passes.\n6. Add path containment, symlink, ignored-directory and input-size tests to local file indexing/hooks. Scope daemon binding/auth/IPC and prevent logs from containing credentials. Existing tooling must work offline only within the documented fail-mode guarantees.\n\nGate: clean install/import/command smoke per shipped package; old supported client/server contract tests; new protocol tests; no package publish during this planning/implementation step unless explicitly requested.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T14",
+      "title": "Reproducible deployment and operations",
+      "depends_on": [
+        "T03",
+        "T05",
+        "T06",
+        "T07"
+      ],
+      "addresses": [
+        "S02",
+        "S12",
+        "S13",
+        "S15",
+        "R04",
+        "Q04",
+        "O01"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: T03/T05/T06/T07.\n\n1. Build web from root lockfile/workspace manifest with npm ci; non-root runtime. API runtime image omits compilers/test packages; separate locked build/dev dependencies. Scan images and generate SBOMs.\n2. Separate migration/seed/release job from API process startup. Set environment/auth/origin/egress settings explicitly in both API and worker. Add graceful shutdown, bounded request/drain times, and queue/lease recovery.\n3. Implement `/live` and `/ready`; readiness checks DB/schema and required Redis/policy/audit availability without leaking details. Expose internal metrics via controlled access.\n4. Add structured redacted traces, route-specific headers, log retention, request IDs and actionable alerts. Protect operator actions separately from workspace admin.\n5. Document restore procedure, backup verification, key rotation, disabled integration behavior, incident containment, and exact feature rollback commands. Verify real ingress forwarded-header trust and actual RLS application role.\n\nGate: reproduce image from committed locks, staging restore+migration rehearsal, readiness fails accurately, worker can drain/restart, and no secrets in build artifacts/logs. Production rollout is a separately authorized action against a concrete staged result.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    },
+    {
+      "id": "T15",
+      "title": "Parity, staged cutover, and retirement",
+      "depends_on": [
+        "T00",
+        "T01",
+        "T02",
+        "T03",
+        "T04",
+        "T05",
+        "T06",
+        "T07",
+        "T08",
+        "T09",
+        "T10",
+        "T11",
+        "T12",
+        "T13",
+        "T14"
+      ],
+      "addresses": [
+        "Q06",
+        "R05",
+        "O01"
+      ],
+      "status": "planned",
+      "specification_markdown": "Dependencies: all prior tasks.\n\n1. Require every route/API/tool/CLI inventory entry to be migrated, deliberately compatible, or explicitly deferred with retained working implementation. No silent omissions.\n2. Shadow-read new query paths where useful. For new policy comparison, execute only one authoritative effect path; shadow policy results must never issue duplicate provider calls or approvals. Redact comparison telemetry.\n3. Roll out UI/read changes by workspace: internal fixtures → limited pilot → 25% → all, advancing on agreed observation windows and no P0/P1 regressions. Fix a production security flaw broadly; do not leave the vulnerable implementation selectable by a canary flag.\n4. Compare old/new query totals, audit coverage, policy decisions, denied-action counts, queue lag, stream stability, error rates, latency, cost and auth success. Threshold violations stop expansion automatically.\n5. After the compatibility period, remove dead code/import shims/flags, update product truth/versioning docs, and ensure no old client or stored graph depends on the removed contract.\n\nGate: section 11 completion checklist, migration reconciliation, security regression suite, and an implementation report with exact commit/versions/results. A successful build alone never closes modernization.",
+      "changed_paths": [],
+      "implementation_commits": [],
+      "verification_evidence": [],
+      "blockers": []
+    }
+  ]
+}

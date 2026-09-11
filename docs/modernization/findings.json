@@ -1,0 +1,922 @@
+{
+  "repository": "sseshachala/conductai",
+  "commit": "c918c6e051c0718eb7e61659b61fc1b8987fe3d6",
+  "findings": [
+    {
+      "id": "S01",
+      "priority": "P0",
+      "severity": "Critical",
+      "finding_and_evidence": "`modules/guard/routers/trial.py:326–443` accepts email/company without authentication, looks up the Clerk user, returns their existing workspace’s decrypted trial token, and mints a sign-in URL. `modules/onboarding.py` deliberately returns the oldest existing owned workspace. Confirmed with synthetic I/O. Exposure depends on this code being deployed with Clerk and an available trial identity.",
+      "required_correction_and_acceptance": "Remove credential issuance from unauthenticated email lookup. Use an authenticated browser/device flow or verified email challenge. Existing-user requests must never receive agent tokens or sign-in tickets. Invalid, existing, and new addresses receive the same generic response before verification. T01.",
+      "source_paths": [
+        "apps/api/app/modules/guard/routers/trial.py",
+        "apps/api/app/modules/onboarding.py",
+        "apps/api/app/core/clerk.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/routers/trial.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/onboarding.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/core/clerk.py"
+      ],
+      "implementation_tasks": [
+        "T01"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S02",
+      "priority": "P0",
+      "severity": "Critical",
+      "finding_and_evidence": "`core/auth.py` makes missing Clerk configuration a dev-user/admin path; `core/config.py` defaults `environment` to development. `render.yaml` does not set `ENVIRONMENT` and describes Clerk as optional. The auth dependency has no production check. Confirmed probe; deployed environment is unknown.",
+      "required_correction_and_acceptance": "Explicit local mode only. Refuse nonlocal startup without valid auth/environment settings. Use explicit service identity for self-hosting; missing keys must never grant admin. Reject externally supplied workspace identifiers without membership/identity binding. T01.",
+      "source_paths": [
+        "apps/api/app/core/auth.py",
+        "apps/api/app/core/config.py",
+        "render.yaml",
+        "apps/web/src/middleware.ts"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/core/auth.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/core/config.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/render.yaml",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/middleware.ts"
+      ],
+      "implementation_tasks": [
+        "T01",
+        "T14"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S03",
+      "priority": "P0",
+      "severity": "Critical",
+      "finding_and_evidence": "`runtime/sandbox_session.py:223–242,420–438` catches remote dispatch failures and constructs `LocalSession` directly. This bypasses the production prohibition in `create_session`. Local tools read/write arbitrary supplied paths and merge the worker environment. Legacy `runtime/sandbox.py` also falls back locally without a production guard. Both provider fallbacks were confirmed offline.",
+      "required_correction_and_acceptance": "Remove fallback across trust boundaries. Provider failure yields a typed execution failure; no local subprocess/file operation. Gate local backend construction itself, not only its factory. All tool processes get explicit allowlisted environment and a confined filesystem. T01/T07.",
+      "source_paths": [
+        "apps/api/app/runtime/sandbox_session.py",
+        "apps/api/app/runtime/sandbox.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/runtime/sandbox_session.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/runtime/sandbox.py"
+      ],
+      "implementation_tasks": [
+        "T01",
+        "T07"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S04",
+      "priority": "P0",
+      "severity": "High",
+      "finding_and_evidence": "`modules/guard/routers/proxy.py:367–383` independently authenticates internal agent tokens, checks expiry, but omits lifecycle rejection applied by `resolve_agent_token`. `agent_run_tokens` has no expiry column, and run-token lookups rely on invalidation.",
+      "required_correction_and_acceptance": "One principal resolver for every header/transport, with lifecycle, active membership, expiry, token scope, run state, and tenant checks. Add bounded run-token expiry and revocation tests for proxy, HTTP, MCP, hook, WebSocket, Lens, and worker. T01/T02.",
+      "source_paths": [
+        "apps/api/app/modules/guard/routers/proxy.py",
+        "apps/api/app/core/auth.py",
+        "apps/api/app/modules/agent_identity/run_token_model.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/routers/proxy.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/core/auth.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/agent_identity/run_token_model.py"
+      ],
+      "implementation_tasks": [
+        "T01",
+        "T02"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S05",
+      "priority": "P0",
+      "severity": "High",
+      "finding_and_evidence": "`/guard/trial/ops` uses workspace permission `guard.spend.view_all` but queries all trial workspaces and exposes workspace names/IDs and spend. A tenant security/admin role is not a platform operator. Code-confirmed.",
+      "required_correction_and_acceptance": "Require a separately administered platform-operator principal and audit that access, or make all queries tenant-scoped. Seed two unrelated tenants; each tenant role must be unable to inspect the other through ops. T01/T02.",
+      "source_paths": [
+        "apps/api/app/modules/guard/routers/trial.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/routers/trial.py"
+      ],
+      "implementation_tasks": [
+        "T01",
+        "T02"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S06",
+      "priority": "P0",
+      "severity": "High",
+      "finding_and_evidence": "`mcp/lens_adapter.py` and `mcp/server.py` continue dispatch after policy evaluation throws. They only stop on BLOCK, although the enum also includes APPROVAL. Lens exception behavior was confirmed offline.",
+      "required_correction_and_acceptance": "Shared enforcement middleware must handle ALLOW, WARN, APPROVAL, BLOCK and engine errors explicitly. APPROVAL creates/resolves a gate; never invoke implementation while pending. Failure policy must be explicit and recorded; protected actions fail closed by default. T01/T04.",
+      "source_paths": [
+        "apps/api/app/mcp/server.py",
+        "apps/api/app/mcp/lens_adapter.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/mcp/server.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/mcp/lens_adapter.py"
+      ],
+      "implementation_tasks": [
+        "T01",
+        "T04"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S07",
+      "priority": "P0",
+      "severity": "High",
+      "finding_and_evidence": "`ToolDef.permission` exists, but generic MCP/Lens dispatch does not enforce it. Lens chat supplies `system:lens` instead of the requesting human. Read tools such as `get_recent_events` and `get_spend_summary` can read workspace/org-wide data despite entry permission `guard.activity.view_own`. Some mutating actor tools have additional checks; do not assume all tools are unguarded.",
+      "required_correction_and_acceptance": "Propagate the real actor plus a separate executing-agent identity. Apply tool permission and row scope before policy evaluation/invocation. Enforce both own/all restrictions and organization membership. Deny unclassified tools. T02/T04.",
+      "source_paths": [
+        "apps/api/app/tools/registry.py",
+        "apps/api/app/tools/registrations/lens/guard_core.py",
+        "apps/api/app/modules/glens/routers/chat.py",
+        "apps/api/app/mcp/lens_adapter.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/tools/registry.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/tools/registrations/lens/guard_core.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/glens/routers/chat.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/mcp/lens_adapter.py"
+      ],
+      "implementation_tasks": [
+        "T02",
+        "T04"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S08",
+      "priority": "P1",
+      "severity": "High",
+      "finding_and_evidence": "Proxy audit insertion in `guard/audit.py` omits chain hashes and is best-effort after the response. `verify.py` counts unhashed rows as checked/valid; another verifier filters them away. Hash material includes only timestamp/tool/decision/previous hash, omitting actor, rule, cost, and input metadata. Confirmed null-hash probe.",
+      "required_correction_and_acceptance": "Implement a versioned append-only decision ledger, complete coverage reporting, canonical full-envelope hashing, and stable per-workspace sequence. Preserve old evidence as legacy/unverified; do not invent historical hashes. Persist enforcement intent durably before effects; append outcome separately. T05.",
+      "source_paths": [
+        "apps/api/app/guard/audit.py",
+        "apps/api/app/modules/guard/routers/verify.py",
+        "apps/api/app/modules/guard/routers/events.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/guard/audit.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/routers/verify.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/routers/events.py"
+      ],
+      "implementation_tasks": [
+        "T05"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S09",
+      "priority": "P1",
+      "severity": "High",
+      "finding_and_evidence": "`chain_hash_for_insert` locks the last event, not a stable workspace chain head. Empty chains have no row to lock; ordering uses timestamp alone. `/guard/verify/chain` combines organization workspaces while carrying one previous hash.",
+      "required_correction_and_acceptance": "Lock a dedicated chain-head row, use sequence IDs and per-workspace verification, test empty-chain concurrency/tied timestamps/interleaved tenants, and require an external checkpoint for truncation detection. T05.",
+      "source_paths": [
+        "apps/api/app/modules/guard/models.py",
+        "apps/api/app/modules/guard/routers/verify.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/models.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/routers/verify.py"
+      ],
+      "implementation_tasks": [
+        "T05"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S10",
+      "priority": "P1",
+      "severity": "High",
+      "finding_and_evidence": "RLS migration 0004 covers five tables with SELECT policies; the context setter is called manually, and SET LOCAL disappears after transaction commit. Many sensitive tables are outside that migration. DB roles/owner bypass were not inspected.",
+      "required_correction_and_acceptance": "Adopt a tenant UnitOfWork that establishes context on every transaction. Inventory RLS policies and privileges with a real non-owner role; add USING/WITH CHECK policies per operation and intentional service-role exceptions. Keep explicit application predicates too. T02/T06.",
+      "source_paths": [
+        "apps/api/alembic/versions/0004_rls_workspace_isolation.py",
+        "apps/api/app/core/database.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/alembic/versions/0004_rls_workspace_isolation.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/core/database.py"
+      ],
+      "implementation_tasks": [
+        "T02",
+        "T06"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S11",
+      "priority": "P1",
+      "severity": "High",
+      "finding_and_evidence": "MCP test-connection sends a provided or stored credential to `body.url`; the shared MCP client accepts arbitrary URLs. No shared URL/DNS/egress validator was found on that path. Workflow integration hostname checks exist but do not secure all outbound transports.",
+      "required_correction_and_acceptance": "Centralize outbound URL validation and credential-to-destination binding. Hosted control plane blocks loopback, link-local, private, metadata, and unsupported schemes, including redirected/rebound destinations. Approved private connections execute in the workspace’s isolated environment. T02/T07/T13.",
+      "source_paths": [
+        "apps/api/app/routers/mcp_servers.py",
+        "apps/api/app/runtime/integrations/mcp_client.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/routers/mcp_servers.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/runtime/integrations/mcp_client.py"
+      ],
+      "implementation_tasks": [
+        "T02",
+        "T07",
+        "T13"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S12",
+      "priority": "P1",
+      "severity": "High",
+      "finding_and_evidence": "Trial rate limiting trusts the first `X-Forwarded-For` value and fails open on Redis errors. API Docker startup trusts all forwarded proxies. Real ingress sanitization is unknown.",
+      "required_correction_and_acceptance": "Trust only configured ingress proxy CIDRs; use validated client IP plus subject/device/global budget limits. Fail closed for anonymous credential/cost provisioning when abuse controls are unavailable. T01/T14.",
+      "source_paths": [
+        "apps/api/app/modules/guard/routers/trial.py",
+        "apps/api/Dockerfile"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/routers/trial.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/Dockerfile"
+      ],
+      "implementation_tasks": [
+        "T01",
+        "T14"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S13",
+      "priority": "P1",
+      "severity": "Medium",
+      "finding_and_evidence": "Root web layout loads Narratr scripts in authenticated pages and reports as well as marketing. No application CSP/security-header configuration was found in reviewed web/API sources. Hosting may add headers.",
+      "required_correction_and_acceptance": "Limit approved marketing scripts to marketing layouts. Add tested route-specific CSP, referrer, frame, MIME, and cache controls; validate actual deployed headers. Keep secrets/reports away from third-party scripts. T08/T12/T14.",
+      "source_paths": [
+        "apps/web/src/app/layout.tsx",
+        "apps/web/next.config.js"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/layout.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/next.config.js"
+      ],
+      "implementation_tasks": [
+        "T08",
+        "T12",
+        "T14"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S14",
+      "priority": "P0",
+      "severity": "High",
+      "finding_and_evidence": "`web-smoke.yml` uploads the entire `apps/web/.auth` directory on failure; Playwright uses role storage-state JSON in that directory. This can package session cookies if present at failure. No historical artifact was accessed.",
+      "required_correction_and_acceptance": "Upload an explicit allowlist of sanitized diagnostics; exclude storage-state files and secrets. Review affected artifact retention/access and revoke exposed test sessions if exposure is established. T01/T03.",
+      "source_paths": [
+        ".github/workflows/web-smoke.yml",
+        "apps/web/e2e/auth-setup.ts"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/.github/workflows/web-smoke.yml",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/e2e/auth-setup.ts"
+      ],
+      "implementation_tasks": [
+        "T01",
+        "T03"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "S15",
+      "priority": "P1",
+      "severity": "Medium",
+      "finding_and_evidence": "Provider error handling can log response snippets and upstream URLs and return exception strings. Authentication helpers log email/error details.",
+      "required_correction_and_acceptance": "Redact structured fields at sink, remove payload/secret logging, use request IDs and typed user-safe errors, and test canary secrets across logs/traces/artifacts. T05/T14.",
+      "source_paths": [
+        "apps/api/app/guard/router.py",
+        "apps/api/app/core/clerk.py",
+        "apps/api/app/runtime/integrations/mcp_client.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/guard/router.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/core/clerk.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/runtime/integrations/mcp_client.py"
+      ],
+      "implementation_tasks": [
+        "T05",
+        "T14"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "P01",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "Async proxy/MCP handlers run synchronous SQLAlchemy/JWT/helper work directly. Slow DB or key retrieval can block the event loop. `database.py` configures a 5+10 pool per process.",
+      "required_correction_and_acceptance": "Keep ordinary synchronous REST handlers synchronous. For streaming routes, execute DB/auth units in bounded worker threads with their own sessions; use async HTTP/Redis. Introduce fully async DB only for measured hot paths. Prove event-loop lag and pool budgets under representative concurrency. T06.",
+      "source_paths": [
+        "apps/api/app/modules/guard/routers/proxy.py",
+        "apps/api/app/mcp/server.py",
+        "apps/api/app/core/database.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/routers/proxy.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/mcp/server.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/core/database.py"
+      ],
+      "implementation_tasks": [
+        "T06"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "P02",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "`guard/router.py::_stream_chunks` retains the entire provider output in a bytearray. Proxy response inspection adds another collection path. Large concurrent outputs multiply memory.",
+      "required_correction_and_acceptance": "Incremental usage parsing and bounded response inspection; no full output retention by default. Define explicit maximum body, chunk, duration, and concurrent-stream limits. Cancel upstream when clients disconnect. T04/T06.",
+      "source_paths": [
+        "apps/api/app/guard/router.py",
+        "apps/api/app/modules/guard/routers/proxy.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/guard/router.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/routers/proxy.py"
+      ],
+      "implementation_tasks": [
+        "T04",
+        "T06"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "P03",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "The provider router creates/closes an AsyncClient per request with a 600-second timeout. Circuit-breaker identity is provider-wide, including different BYO endpoints.",
+      "required_correction_and_acceptance": "Lifespan-scoped pools; separate connect/read/write/pool/overall deadlines. Breakers and bulkheads keyed by provider+normalized endpoint and safe tenant/account boundary; bounded cardinality. Preserve provider error shape without leaking credentials. T06.",
+      "source_paths": [
+        "apps/api/app/guard/router.py",
+        "apps/api/app/modules/guard/circuit_breaker.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/guard/router.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/guard/circuit_breaker.py"
+      ],
+      "implementation_tasks": [
+        "T06"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "P04",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "`routers/insights.py::get_agents` queries workflows, then repeatedly loads their runs and computes aggregates in Python. Other summary paths load whole periods.",
+      "required_correction_and_acceptance": "Replace N+1 loops with grouped SQL and cursor pagination; use EXPLAIN on seeded volume. Add targeted composite indexes after checking existing indexes. Introduce rollups only when measured necessary. T06.",
+      "source_paths": [
+        "apps/api/app/routers/insights.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/routers/insights.py"
+      ],
+      "implementation_tasks": [
+        "T06"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "P05",
+      "priority": "P2",
+      "severity": null,
+      "finding_and_evidence": "Lens initial JS is 300 kB; editor 267 kB; docs page contains a large client-side documentation payload. Large client components eagerly import complex renderers.",
+      "required_correction_and_acceptance": "Lazy-load charts, inspector, editor panels, and advanced renderers; keep public documentation server-rendered with a small interactive search/navigation island. Measure in comparable builds. T09–T12.",
+      "source_paths": [
+        "apps/web/src/components/glens/GLensChatPage.tsx",
+        "apps/web/src/components/canvas/CanvasEditor.tsx",
+        "apps/web/src/app/(marketing)/docs/page.tsx"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/components/glens/GLensChatPage.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/components/canvas/CanvasEditor.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/%28marketing%29/docs/page.tsx"
+      ],
+      "implementation_tasks": [
+        "T09",
+        "T10",
+        "T11",
+        "T12"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "P06",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "Marketing layout mounts WorkspaceProvider, whose refresh requests `/projects`; public browsing is coupled to workspace bootstrap. Client fetch/state management is repeated despite an existing API facade.",
+      "required_correction_and_acceptance": "Public pages must not fetch private workspace data. Use one app bootstrap and tenant-keyed query cache for the console; migrate existing API facade rather than replacing every call independently. T08/T12.",
+      "source_paths": [
+        "apps/web/src/app/(marketing)/layout.tsx",
+        "apps/web/src/lib/WorkspaceContext.tsx"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/%28marketing%29/layout.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/lib/WorkspaceContext.tsx"
+      ],
+      "implementation_tasks": [
+        "T08",
+        "T12"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "R01",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "Redis queue already uses BLMOVE, but claim timestamp is written separately; recovery only scans timestamps. Requeue uses separate Redis mutations; executor accepts limited statuses, while reaper marks old `running` jobs failed based on initial `locked_at`. No progress heartbeat was found on the reviewed path.",
+      "required_correction_and_acceptance": "DB outbox plus atomic worker lease/heartbeat/fencing. Explicit resumable/ambiguous/terminal states and an external-effect ledger. Recover crashes before/after enqueue, claim, side effect, and acknowledgment. Never promise exactly-once delivery to arbitrary external APIs. T07.",
+      "source_paths": [
+        "apps/api/app/core/queue.py",
+        "apps/api/app/runtime/executor.py",
+        "apps/api/app/worker.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/core/queue.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/runtime/executor.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/worker.py"
+      ],
+      "implementation_tasks": [
+        "T07"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "R02",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "Lens session replay subscribes before replay, correctly avoiding a gap, but may deliver an event through both replay and pub/sub. Client dispatch has no general dedupe and reconnects every 3 seconds, including auth failures. Its effect excludes auth/workspace dependencies.",
+      "required_correction_and_acceptance": "Monotonic cursor/dedupe, bounded replay, backoff+jitter, stop on 401/403, visible reconnect state, workspace-bound subscriptions, periodic reauthorization, and transport parser tests. T10.",
+      "source_paths": [
+        "apps/api/app/modules/glens/routers/session_stream.py",
+        "apps/web/src/hooks/useLensSessionStream.ts"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/glens/routers/session_stream.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/hooks/useLensSessionStream.ts"
+      ],
+      "implementation_tasks": [
+        "T10"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "R03",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "Session messages are serialized as one JSON text field; request-bound work and streaming increase the risk of last-writer overwrite and long transactions. Session access is workspace-wide under an own-activity permission.",
+      "required_correction_and_acceptance": "Normalize messages/events with stable IDs and optimistic concurrency. Explicitly model private/shared sessions; migrate existing sessions as legacy-shared with visible provenance rather than guessing historical ownership. T02/T10.",
+      "source_paths": [
+        "apps/api/app/modules/glens/models.py",
+        "apps/api/app/modules/glens/routers/lens_sessions.py",
+        "apps/api/app/modules/glens/routers/chat.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/glens/models.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/glens/routers/lens_sessions.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/modules/glens/routers/chat.py"
+      ],
+      "implementation_tasks": [
+        "T02",
+        "T10"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "R04",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "API containers run migrations during startup; two Uvicorn workers each run startup threads for seeding/warming. This couples deploy health with mutating initialization.",
+      "required_correction_and_acceptance": "One migration release job, idempotent versioned seed job, readiness checks, managed lifecycle tasks, graceful worker drain, and backward-compatible deployment order. T14.",
+      "source_paths": [
+        "apps/api/Dockerfile",
+        "apps/api/app/main.py",
+        "apps/api/app/worker.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/Dockerfile",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/main.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/worker.py"
+      ],
+      "implementation_tasks": [
+        "T14"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "R05",
+      "priority": "P2",
+      "severity": null,
+      "finding_and_evidence": "Current load scenario exercises `/health` at 50 rps for 30 seconds. It does not measure Guard, SQL aggregation, queue lag, or SSE.",
+      "required_correction_and_acceptance": "Add deterministic load fixtures for real principal/policy/audit paths, concurrent streams, and long-running worker recovery. Use test provider stubs, not paid live model calls. T06/T15.",
+      "source_paths": [
+        "load/health-baseline.js",
+        ".github/workflows/load-baseline.yml"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/load/health-baseline.js",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/.github/workflows/load-baseline.yml"
+      ],
+      "implementation_tasks": [
+        "T06",
+        "T15"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "U01",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "WorkspaceProvider can retain the previous workspace when refresh returns no matches; GuardRoleContext keeps previous permissions on some failed/empty/new-workspace paths. Source confirms state is not cleared at transition start. Backend remains the security boundary.",
+      "required_correction_and_acceptance": "Reset tenant-scoped state synchronously, cancel old requests, discard late responses, show loading with no privileges, and clear caches on sign-out. Test admin A→viewer B→failure→no-membership. T08.",
+      "source_paths": [
+        "apps/web/src/lib/WorkspaceContext.tsx",
+        "apps/web/src/lib/GuardRoleContext.tsx"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/lib/WorkspaceContext.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/lib/GuardRoleContext.tsx"
+      ],
+      "implementation_tasks": [
+        "T08"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "U02",
+      "priority": "P2",
+      "severity": null,
+      "finding_and_evidence": "Console design exports specify dark navigation/light operational canvas, but AppShell uses the light `--surface` sidebar in light mode. Thousands of inline style occurrences make token consistency difficult.",
+      "required_correction_and_acceptance": "Build five shared screen templates from committed exports; map existing semantic colors and logo into versioned tokens. Migrate routes by template and visually verify desktop/mobile/light/dark. T08/T09.",
+      "source_paths": [
+        "apps/web/src/components/AppShell.tsx",
+        "apps/web/src/app/globals.css",
+        "docs/design/figma-console-2027/manifest.json",
+        "docs/design/figma-console-2027/tokens.css"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/components/AppShell.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/globals.css",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/docs/design/figma-console-2027/manifest.json",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/docs/design/figma-console-2027/tokens.css"
+      ],
+      "implementation_tasks": [
+        "T08",
+        "T09"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "U03",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "Marketing dropdowns use hover-only visibility with `href=\"#\"` triggers. AppShell’s command palette is custom markup rather than a focus-managed dialog.",
+      "required_correction_and_acceptance": "Accessible menu/dialog primitives with keyboard navigation, focus trap/restore, Escape, ARIA names, reduced motion, and touch support. Test by keyboard and screen-reader-oriented assertions. T08/T12.",
+      "source_paths": [
+        "apps/web/src/app/(marketing)/layout.tsx",
+        "apps/web/src/components/AppShell.tsx"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/%28marketing%29/layout.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/components/AppShell.tsx"
+      ],
+      "implementation_tasks": [
+        "T08",
+        "T12"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "U04",
+      "priority": "P2",
+      "severity": null,
+      "finding_and_evidence": "Only one route-local error file was found; no route-local loading files were found. Forms and screens hand-roll loading/error behavior.",
+      "required_correction_and_acceptance": "Shared page-level skeleton/error/empty/offline/forbidden patterns and per-feature boundaries. Never render network failure as a zero metric or an empty success. T08–T12.",
+      "source_paths": [
+        "apps/web/src/app/(app)/layout.tsx",
+        "apps/web/src/app/(app)/workflows/[id]/error.tsx"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/%28app%29/layout.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/%28app%29/workflows/%5Bid%5D/error.tsx"
+      ],
+      "implementation_tasks": [
+        "T08",
+        "T09",
+        "T10"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "U05",
+      "priority": "P2",
+      "severity": null,
+      "finding_and_evidence": "CanvasEditor/BlockEditor and policies/settings pages combine form rules, transport, and presentation. This makes validation, draft safety, and responsive editing hard to maintain.",
+      "required_correction_and_acceptance": "Schema-driven forms, field errors, dirty-state confirmation, conflict-aware save, undo/redo for canvas, keyboard-operable node list, and a readable execution preview. Preserve working current behavior where already implemented. T09/T11.",
+      "source_paths": [
+        "apps/web/src/components/canvas/BlockEditor.tsx",
+        "apps/web/src/components/canvas/CanvasEditor.tsx",
+        "apps/web/src/app/(app)/theguard/policies/page.tsx"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/components/canvas/BlockEditor.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/components/canvas/CanvasEditor.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/%28app%29/theguard/policies/page.tsx"
+      ],
+      "implementation_tasks": [
+        "T09",
+        "T11"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "U06",
+      "priority": "P2",
+      "severity": null,
+      "finding_and_evidence": "Lists, activity logs, inspectors, charts, and action status implement separate state patterns. This is an improvement opportunity across the indexed routes, not a claim that every screen lacks pagination.",
+      "required_correction_and_acceptance": "Standard URL filters, server pagination/sorting, selected-row deep links, named time windows/timezone, last-updated timestamps, safe bulk actions, and query-cache invalidation. T09/T10.",
+      "source_paths": [
+        "apps/web/src/app/(app)/logs/guard/page.tsx",
+        "apps/web/src/app/(app)/theguard/spend/page.tsx"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/%28app%29/logs/guard/page.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/%28app%29/theguard/spend/page.tsx"
+      ],
+      "implementation_tasks": [
+        "T09"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "U07",
+      "priority": "P2",
+      "severity": null,
+      "finding_and_evidence": "Shared report views contain their own branding/colors and hand-built Markdown formatting. Existing escaping reduces HTML injection risk; raw HTML presence alone is not an XSS finding.",
+      "required_correction_and_acceptance": "Shared safe Markdown renderer, report provenance and scope, expiry/revocation controls, accessible tables, export status, and no third-party script on private/shared-report surfaces. T09/T12.",
+      "source_paths": [
+        "apps/web/src/app/share/[token]/page.tsx",
+        "apps/web/src/app/(app)/lens/report-builder/page.tsx"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/share/%5Btoken%5D/page.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/%28app%29/lens/report-builder/page.tsx"
+      ],
+      "implementation_tasks": [
+        "T09",
+        "T12"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "U08",
+      "priority": "P2",
+      "severity": null,
+      "finding_and_evidence": "Root metadata defaults every inheriting page to the homepage canonical and indexing; robots omits some modern private route families. Authenticated visitors are redirected away from `/guard` and `/registry` marketing content.",
+      "required_correction_and_acceptance": "Route-specific canonicals, explicit noindex/private cache headers on console and shared secrets, complete sitemap policy, and a stable public/product navigation model. Verify links against the full route manifest. T12.",
+      "source_paths": [
+        "apps/web/src/app/layout.tsx",
+        "apps/web/src/app/robots.ts",
+        "apps/web/src/middleware.ts"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/layout.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/app/robots.ts",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/middleware.ts"
+      ],
+      "implementation_tasks": [
+        "T12"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "Q01",
+      "priority": "P0",
+      "severity": null,
+      "finding_and_evidence": "Web unit tests are not a required CI job; two navigation-label tests fail locally. API lint is `flake8 ... || true`; security scanners use `continue-on-error`. API job title promises typecheck but no Python typecheck step is present.",
+      "required_correction_and_acceptance": "Add actual blocking web tests/build, meaningful lint/type gates, and severity-based scanner enforcement. Establish a documented legacy-warning baseline, then block additions. Correct tests to intended navigation, not whatever markup happens to exist. T03.",
+      "source_paths": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/dependency-security.yml",
+        "apps/web/src/components/guard/__tests__/GuardShell.test.tsx"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/.github/workflows/ci.yml",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/.github/workflows/dependency-security.yml",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/components/guard/__tests__/GuardShell.test.tsx"
+      ],
+      "implementation_tasks": [
+        "T03"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "Q02",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "API global conftest replaces permission factories with admin noops. The matrix restores checks, which is useful, but many general tests run with synthetic authorization. The matrix permits authorized paths to return statuses other than 403 rather than requiring valid successful behavior.",
+      "required_correction_and_acceptance": "Separate test app factories/fixtures; real authorization by default for integration tests. Seed valid requests/resources for allowed cases, verify denied cases cause zero effects, and add cross-tenant/own-vs-all tests. Keep the existing matrix as a structural layer. T03.",
+      "source_paths": [
+        "apps/api/tests/conftest.py",
+        "apps/api/tests/test_endpoint_matrix.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/tests/conftest.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/tests/test_endpoint_matrix.py"
+      ],
+      "implementation_tasks": [
+        "T03"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "Q03",
+      "priority": "P0",
+      "severity": null,
+      "finding_and_evidence": "npm scan reports Clerk dependency chains, js-cookie 3.0.5, and nested PostCSS 8.4.31 among affected entries; Next is also a flagged meta dependency. A direct newer PostCSS declaration does not remove nested older copies. Exploitability of each advisory was not established.",
+      "required_correction_and_acceptance": "Resolve actual dependency graph and patch compatible versions. Do not blindly run `npm audit fix --force`. Complete login, signup, OAuth, tenant switch, and session refresh tests before framework changes; reconcile PR #1466. T03.",
+      "source_paths": [
+        "package-lock.json",
+        "apps/web/package.json"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/package-lock.json",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/package.json"
+      ],
+      "implementation_tasks": [
+        "T03"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "Q04",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "Python requirements mix runtime/test dependencies and several open version ranges. Web Dockerfile installs from `apps/web/package*.json` using `npm install`, bypassing the authoritative root lockfile. It runs as root; API production image includes build tools.",
+      "required_correction_and_acceptance": "Reproducible runtime/dev locks, deterministic workspace-aware npm ci image, non-root web runtime, minimal API runtime stage, pinned build inputs, and SBOMs for shipped packages. T03/T14.",
+      "source_paths": [
+        "apps/api/requirements.txt",
+        "apps/api/Dockerfile",
+        "apps/web/Dockerfile",
+        "package.json"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/requirements.txt",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/Dockerfile",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/Dockerfile",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/package.json"
+      ],
+      "implementation_tasks": [
+        "T03",
+        "T14"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "Q05",
+      "priority": "P2",
+      "severity": null,
+      "finding_and_evidence": "Large CLI/UI/router files, manually duplicated API types, legacy names, and limited web tests increase coupling. Root npm workspaces excludes the existing `packages/shared`. Static counts include 44 exhaustive-deps suppression occurrences.",
+      "required_correction_and_acceptance": "Define domain boundaries; generate transport types from OpenAPI; keep domain state typed; either wire shared contracts into workspaces or remove unused package after import proof. Ratchet warning suppression and module complexity. T08–T13.",
+      "source_paths": [
+        "packages/conduct-cli/src/conduct_cli/main.py",
+        "apps/api/app/routers/workflows.py",
+        "apps/web/src/components/glens/GLensChatPage.tsx",
+        "package.json",
+        "packages/shared/package.json"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/packages/conduct-cli/src/conduct_cli/main.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/routers/workflows.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/web/src/components/glens/GLensChatPage.tsx",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/package.json",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/packages/shared/package.json"
+      ],
+      "implementation_tasks": [
+        "T08",
+        "T09",
+        "T10",
+        "T11",
+        "T13"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "Q06",
+      "priority": "P2",
+      "severity": null,
+      "finding_and_evidence": "README/contributor/versioning docs and code disagree on framework version, protocol version, product names, and some guarantees. REVIEW.md’s claimed gates do not match workflow behavior.",
+      "required_correction_and_acceptance": "Generate or verify inventories in CI; document shipped/conditional/advisory capabilities, supported versions, exact commands, and deliberate exceptions. Ensure evidence claims follow the new ledger’s actual guarantees. T12/T15.",
+      "source_paths": [
+        "README.md",
+        "REVIEW.md",
+        "docs/api-versioning.md",
+        "docs/design/figma-console-2027/README.md"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/README.md",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/REVIEW.md",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/docs/api-versioning.md",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/docs/design/figma-console-2027/README.md"
+      ],
+      "implementation_tasks": [
+        "T12",
+        "T15"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "I01",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "Generic MCP client’s primary path directly posts tools/list or tools/call without initialization/session negotiation. MCP server echoes arbitrary requested protocol versions. This can work for permissive stateless endpoints but is not general interoperability.",
+      "required_correction_and_acceptance": "Implement supported-version negotiation and lifecycle with pinned SDK/transport adapters, session headers, bounded cleanup, and strict-server contract tests. Preserve existing working clients via explicit compatibility adapters. T13.",
+      "source_paths": [
+        "apps/api/app/runtime/integrations/mcp_client.py",
+        "apps/api/app/mcp/server.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/runtime/integrations/mcp_client.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/mcp/server.py"
+      ],
+      "implementation_tasks": [
+        "T13"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "I02",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "MCP `call_tool(transport=\"auto\")` retries via SSE after general HTTP failure. If a remote mutation completed but its response was lost, the fallback can execute it again.",
+      "required_correction_and_acceptance": "Negotiate transport with a read-only handshake; never retry a mutation after an ambiguous outcome unless the operation is idempotent under a provider-recognized key. Return unknown/reconcile state otherwise. T07/T13.",
+      "source_paths": [
+        "apps/api/app/runtime/integrations/mcp_client.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/runtime/integrations/mcp_client.py"
+      ],
+      "implementation_tasks": [
+        "T07",
+        "T13"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "I03",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "LiteLLM/NeMo compatibility parses text prefixes, including empty/`ok` text as allow. The server’s structured decision contract is richer than client handling.",
+      "required_correction_and_acceptance": "Introduce versioned typed decisions and strict validation while preserving legacy text in a compatibility adapter. Unknown/malformed decision fails according to explicit policy; never default a malformed modern envelope to allow. Keep policy evaluation central. T04/T13.",
+      "source_paths": [
+        "packages/conduct-litellm-guard/src/conduct_litellm_guard/_client.py",
+        "packages/conduct-nemo-guard/src/conduct_nemo_guard/_decisions.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/packages/conduct-litellm-guard/src/conduct_litellm_guard/_client.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/packages/conduct-nemo-guard/src/conduct_nemo_guard/_decisions.py"
+      ],
+      "implementation_tasks": [
+        "T04",
+        "T13"
+      ],
+      "status": "identified; implementation not performed"
+    },
+    {
+      "id": "O01",
+      "priority": "P1",
+      "severity": null,
+      "finding_and_evidence": "`/health` returns a constant success; `/metrics` is public in source. Worker health and migration/schema readiness are not part of that response.",
+      "required_correction_and_acceptance": "Separate liveness/readiness, expose internal metrics through controlled ingress, and alert on queue age, stale leases, audit lag/failure, stream errors, and policy latency. T14/T15.",
+      "source_paths": [
+        "apps/api/app/main.py",
+        "apps/api/app/worker.py"
+      ],
+      "source_urls": [
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/main.py",
+        "https://github.com/sseshachala/conductai/blob/c918c6e051c0718eb7e61659b61fc1b8987fe3d6/apps/api/app/worker.py"
+      ],
+      "implementation_tasks": [
+        "T14",
+        "T15"
+      ],
+      "status": "identified; implementation not performed"
+    }
+  ]
+}
