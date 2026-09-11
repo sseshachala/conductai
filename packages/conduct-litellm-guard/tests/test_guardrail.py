@@ -217,23 +217,30 @@ class TestSessionIdExtraction:
 
 
 class TestEventHooks:
-    """0.2.3 — SUPPORTED_EVENT_HOOKS + get_supported_event_hooks moved
-    from the LiteLLM shim onto ConductGuard itself. Lets upstream shims
-    stay pure aliases (no subclass), which satisfies LiteLLM's
-    type-discipline / basedpyright budget gates.
+    """0.2.3+ — SUPPORTED_EVENT_HOOKS + get_supported_event_hooks live on
+    ConductGuard so upstream shims stay pure aliases. 0.2.4 changes the
+    entry type from ``str`` to the ``GuardrailEventHooks`` enum member
+    because LiteLLM's guardrail registry scans SUPPORTED_EVENT_HOOKS and
+    calls ``.value`` on each entry — the string version tripped
+    AttributeError on other guardrails' tests.
     """
 
-    def test_supported_event_hooks_is_pre_call_only(self) -> None:
+    def test_supported_event_hooks_carries_pre_call(self) -> None:
         from conduct_litellm_guard import ConductGuard
-        assert ConductGuard.SUPPORTED_EVENT_HOOKS == ("pre_call",)
+        assert len(ConductGuard.SUPPORTED_EVENT_HOOKS) == 1
+        (entry,) = ConductGuard.SUPPORTED_EVENT_HOOKS
+        # LiteLLM's registry does ``entry.value`` — that expression must
+        # yield the wire string ``"pre_call"``.
+        assert getattr(entry, "value", entry) == "pre_call"
 
-    def test_get_supported_event_hooks_returns_list(self) -> None:
+    def test_get_supported_event_hooks_returns_fresh_list(self) -> None:
         from conduct_litellm_guard import ConductGuard
         hooks = ConductGuard.get_supported_event_hooks()
-        assert hooks == ["pre_call"]
+        assert len(hooks) == 1
+        assert getattr(hooks[0], "value", hooks[0]) == "pre_call"
         # Must return a fresh list, not a reference to the ClassVar.
         hooks.append("mutation")
-        assert ConductGuard.get_supported_event_hooks() == ["pre_call"]
+        assert len(ConductGuard.get_supported_event_hooks()) == 1
 
 
 class TestPromptExtraction:
