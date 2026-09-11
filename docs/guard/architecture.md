@@ -6,6 +6,8 @@
 
 Locked 2026-09-09 across #1740 / #1750 / #1751 / #1739 / #1737. Reviewer edits 1–5 incorporated.
 
+![Guard, explained in one picture](architecture.png)
+
 ---
 
 ## 1. North star
