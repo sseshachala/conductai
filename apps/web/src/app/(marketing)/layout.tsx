@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { CtaLink } from "@/components/marketing/CtaLink"
 
 // Audit P06: WorkspaceProvider used to wrap this layout so its refresh()
@@ -36,83 +36,126 @@ function ChevronDown() {
 
 function NavItem({ href, title, desc }: { href: string; title: string; desc: string }) {
   return (
-    <a href={href} className="flex flex-col px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+    <a href={href} role="menuitem" className="flex flex-col px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 focus:bg-stone-50 focus:outline-none transition-colors">
       <span className="font-semibold text-stone-900">{title}</span>
       <span className="text-xs text-stone-400 mt-0.5">{desc}</span>
     </a>
   )
 }
 
+// Audit U03: the three marketing dropdowns used `<a href="#">` triggers
+// with `hidden group-hover:block` visibility — invisible to keyboard users,
+// clicked-in-place URL bar pollution, no ARIA state. This shared component
+// gives every dropdown a real button trigger with aria-haspopup/expanded,
+// click-toggle for pointer + keyboard + touch, hover-open preserved for
+// mouse, Escape to close (returning focus to the trigger), and outside-click
+// dismissal. `role="menu"` on the popup + `role="menuitem"` on each entry.
+function Dropdown({ label, minWidth = 220, children }: { label: string; minWidth?: number; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDocPointer(e: MouseEvent | TouchEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    document.addEventListener("mousedown", onDocPointer)
+    document.addEventListener("touchstart", onDocPointer)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDocPointer)
+      document.removeEventListener("touchstart", onDocPointer)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open])
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 focus:text-stone-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300 rounded-md px-1 py-1 -mx-1 transition-colors"
+      >
+        {label}
+        <ChevronDown />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          aria-label={label}
+          className="absolute left-0 top-full pt-2 z-50"
+          style={{ minWidth }}
+        >
+          <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
+            {children}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ProductDropdown() {
   return (
-    <div className="relative group">
-      <a href="#" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-        Product
-        <ChevronDown />
-      </a>
-      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[220px]">
-        <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <NavItem href="/guard" title="Guard" desc="Runtime policy enforcement for every AI agent" />
-          <NavItem href="/playbooks" title="Playbooks" desc="35 pre-built automations with Guard built in" />
-          <NavItem href="/evidence" title="Evidence" desc="Hash-chained audit trail for every decision" />
-          <NavItem href="/mcp-gateway" title="MCP" desc="Policy for every MCP tool invocation" />
-        </div>
-      </div>
-    </div>
+    <Dropdown label="Product" minWidth={220}>
+      <NavItem href="/guard" title="Guard" desc="Runtime policy enforcement for every AI agent" />
+      <NavItem href="/playbooks" title="Playbooks" desc="35 pre-built automations with Guard built in" />
+      <NavItem href="/evidence" title="Evidence" desc="Hash-chained audit trail for every decision" />
+      <NavItem href="/mcp-gateway" title="MCP" desc="Policy for every MCP tool invocation" />
+    </Dropdown>
   )
 }
 
 function SolutionsDropdown() {
   return (
-    <div className="relative group">
-      <a href="#" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-        Solutions
-        <ChevronDown />
-      </a>
-      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[240px]">
-        <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <NavItem href="/use-cases" title="Use cases" desc="Prove, kill, contain, answer, discover" />
-          <div className="my-1 border-t border-stone-100" />
-          <div className="px-4 py-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">By team</p>
-          </div>
-          <NavItem href="/solutions/engineering-leaders" title="Engineering Agents" desc="Consistent policy across your agent fleet" />
-          <NavItem href="/solutions/security-compliance" title="Security Teams" desc="Enforcement, evidence, and compliance reports" />
-          <NavItem href="/solutions/action-governance" title="Business Actions" desc="Control before a refund, deploy, or email sends" />
-          <div className="my-1 border-t border-stone-100" />
-          <div className="px-4 py-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Industry</p>
-          </div>
-          <NavItem href="/solutions/financial-services" title="Financial Services" desc="PCI DSS 4.0 · refund controls · audit" />
-          <NavItem href="/solutions/life-sciences" title="Life Sciences" desc="HIPAA · 21 CFR Part 11 · validation" />
-          <div className="my-1 border-t border-stone-100" />
-          <div className="px-4 py-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Integrations</p>
-          </div>
-          <NavItem href="/solutions/nemo-guardrails" title="NeMo Guardrails + Conduct" desc="App safety layer + org governance layer" />
-        </div>
+    <Dropdown label="Solutions" minWidth={240}>
+      <NavItem href="/use-cases" title="Use cases" desc="Prove, kill, contain, answer, discover" />
+      <div className="my-1 border-t border-stone-100" role="separator" />
+      <div className="px-4 py-1.5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">By team</p>
       </div>
-    </div>
+      <NavItem href="/solutions/engineering-leaders" title="Engineering Agents" desc="Consistent policy across your agent fleet" />
+      <NavItem href="/solutions/security-compliance" title="Security Teams" desc="Enforcement, evidence, and compliance reports" />
+      <NavItem href="/solutions/action-governance" title="Business Actions" desc="Control before a refund, deploy, or email sends" />
+      <div className="my-1 border-t border-stone-100" role="separator" />
+      <div className="px-4 py-1.5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Industry</p>
+      </div>
+      <NavItem href="/solutions/financial-services" title="Financial Services" desc="PCI DSS 4.0 · refund controls · audit" />
+      <NavItem href="/solutions/life-sciences" title="Life Sciences" desc="HIPAA · 21 CFR Part 11 · validation" />
+      <div className="my-1 border-t border-stone-100" role="separator" />
+      <div className="px-4 py-1.5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Integrations</p>
+      </div>
+      <NavItem href="/solutions/nemo-guardrails" title="NeMo Guardrails + Conduct" desc="App safety layer + org governance layer" />
+    </Dropdown>
   )
 }
 
 function DevelopersDropdown() {
   return (
-    <div className="relative group">
-      <a href="#" className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-900 transition-colors">
-        Developers
-        <ChevronDown />
-      </a>
-      <div className="absolute left-0 top-full pt-2 hidden group-hover:block z-50 min-w-[200px]">
-        <div className="bg-white border border-stone-200 rounded-xl shadow-lg py-2">
-          <NavItem href="/docs" title="Docs" desc="Full API and integration reference" />
-          <NavItem href="/tools/conduct-cli" title="CLI" desc="Agent lifecycle and Guard sync" />
-          <NavItem href="/docs/lens" title="Lens" desc="Chat tools for Guard, playbooks, and evidence" />
-          <NavItem href="/open-source" title="Open Source" desc="Apache-2.0 components" />
-          <NavItem href="https://github.com/sseshachala/conductai" title="GitHub" desc="Source, issues, and releases" />
-        </div>
-      </div>
-    </div>
+    <Dropdown label="Developers" minWidth={200}>
+      <NavItem href="/docs" title="Docs" desc="Full API and integration reference" />
+      <NavItem href="/tools/conduct-cli" title="CLI" desc="Agent lifecycle and Guard sync" />
+      <NavItem href="/docs/lens" title="Lens" desc="Chat tools for Guard, playbooks, and evidence" />
+      <NavItem href="/open-source" title="Open Source" desc="Apache-2.0 components" />
+      <NavItem href="https://github.com/sseshachala/conductai" title="GitHub" desc="Source, issues, and releases" />
+    </Dropdown>
   )
 }
 
