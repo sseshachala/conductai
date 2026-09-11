@@ -229,10 +229,10 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: "rotate(180deg)" }}>
             <path d="M9 18l6-6-6-6" />
           </svg>
-          Agents
+          Workflows
         </div>
 
-        <h1 className="page-title" style={{ fontSize: 22 }}>New agent</h1>
+        <h1 className="page-title" style={{ fontSize: 22 }}>New workflow</h1>
         <p className="page-sub" style={{ marginBottom: 22 }}>Choose a playbook and configure it — the webhook is registered automatically on create.</p>
 
         {/* Second pill routes to Lens — NL → block graph moved there. */}
@@ -244,7 +244,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" /><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z" />
             </svg>
-            Build agents from Lens
+            Build workflows from Lens
           </button>
         </div>
 
@@ -303,7 +303,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
                 {/* Agent name */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>
-                    Agent name <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>— e.g. &ldquo;Autopilot — conductai prod&rdquo;</span>
+                    Workflow name <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>— e.g. &ldquo;Autopilot — conductai prod&rdquo;</span>
                   </label>
                   <input value={agentName} onChange={e => setAgentName(e.target.value)}
                     placeholder={FRIENDLY_NAMES[template] ?? template} style={ni} />
@@ -405,7 +405,7 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
                 <button className="btn btn-primary" style={{ height: 42, justifyContent: "center", marginTop: 4 }}
                   onClick={handleCreate}
                   disabled={loading || (GITHUB_WEBHOOK_SLUGS.has(template) && !selectedRepo)}>
-                  {loading ? "Creating…" : "Create agent"}
+                  {loading ? "Creating…" : "Create workflow"}
                 </button>
               </>
             )}

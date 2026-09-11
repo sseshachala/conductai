@@ -263,7 +263,7 @@ function ProjectContent({ getToken, currentUserId }: {
           </div>
           <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
             <Link href={`/workflows/new?project_id=${projectId}`} className="btn btn-primary" style={{ textDecoration: "none" }}>
-              + New agent
+              + New workflow
             </Link>
           </div>
         </div>
@@ -279,7 +279,7 @@ function ProjectContent({ getToken, currentUserId }: {
                 className="chip"
                 style={{ height: 30, cursor: "pointer", fontWeight: 600, background: on ? "var(--accent-weak)" : "var(--surface)", borderColor: on ? "var(--accent-ring)" : "var(--border)", color: on ? "var(--accent-text)" : "var(--text-2)" }}
               >
-                {t}
+                {t === "Agents" ? "Workflows" : "Runs"}
                 {/* P1-2: only show count when it has been loaded (not · 0 placeholder) */}
                 {t === "Agents" && <span style={{ opacity: .6, marginLeft: 1 }}>· {workflows.length}</span>}
                 {t === "Runs" && runs.length > 0 && <span style={{ opacity: .6, marginLeft: 1 }}>· {runs.length}</span>}
@@ -300,8 +300,8 @@ function ProjectContent({ getToken, currentUserId }: {
                 <input
                   value={q}
                   onChange={e => setQ(e.target.value)}
-                  placeholder="Search agents…"
-                  aria-label="Search agents"
+                  placeholder="Search workflows…"
+                  aria-label="Search workflows"
                   style={{ width: "100%", height: 36, padding: "0 12px 0 33px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: 13.5, outline: "none" }}
                 />
               </div>
@@ -358,7 +358,7 @@ function ProjectContent({ getToken, currentUserId }: {
               </div>
             ) : workflows.length === 0 ? (
               <div style={{ padding: "60px 20px", textAlign: "center" }}>
-                <p style={{ fontWeight: 650, fontSize: 16, color: "var(--text)", marginBottom: 8 }}>No agents in this project</p>
+                <p style={{ fontWeight: 650, fontSize: 16, color: "var(--text)", marginBottom: 8 }}>No workflows in this project</p>
                 <p style={{ fontSize: 13.5, color: "var(--text-3)", marginBottom: 20 }}>Create a new agent or start from an agent template.</p>
                 <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
                   <Link href={`/workflows/new?project_id=${projectId}`} className="btn btn-primary" style={{ textDecoration: "none" }}>+ New agent</Link>
@@ -373,7 +373,7 @@ function ProjectContent({ getToken, currentUserId }: {
                   ))}
                 </div>
                 {rows.length === 0 && (
-                  <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>No agents match.</div>
+                  <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>No workflows match.</div>
                 )}
                 {rows.map(w => {
                   if (confirming === w.id) {

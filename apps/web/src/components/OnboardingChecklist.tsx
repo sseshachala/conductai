@@ -77,7 +77,7 @@ export default function OnboardingChecklist({ hasProject, onNewProject }: Props)
     },
     {
       id: "agent",
-      label: "Create your first agent",
+      label: "Create your first workflow",
       detail: "Pick a template — Autopilot is a good start. It pre-wires a GitHub trigger and a Slack approval gate.",
       cta: "Choose template",
       href: "/workflows/new",
@@ -85,9 +85,9 @@ export default function OnboardingChecklist({ hasProject, onNewProject }: Props)
     },
     {
       id: "run",
-      label: "Run the agent",
-      detail: "Open the agent canvas, assign your environment from the dropdown, then hit ▶ Run.",
-      cta: "View agents",
+      label: "Run the workflow",
+      detail: "Open the workflow canvas, assign your environment from the dropdown, then hit ▶ Run.",
+      cta: "View workflows",
       href: "/workflows",
       done: hasRun,
     },
@@ -108,7 +108,7 @@ export default function OnboardingChecklist({ hasProject, onNewProject }: Props)
           </p>
           <p className="text-xs text-stone-400 mt-0.5">
             {allDone
-              ? "All steps complete — your first agent is ready to run."
+              ? "All steps complete — your first workflow is ready to run."
               : `${completedCount} of ${steps.length} steps done`}
           </p>
         </div>
