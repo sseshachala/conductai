@@ -279,11 +279,11 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
         {/* #14: "Agent" → "Workflow" in page headings */}
         <div className="page-head" style={{ display: "flex", alignItems: "flex-end" }}>
           <div>
-            <h1 className="page-title">Agents</h1>
-            <p className="page-sub">Every agent in this workspace — status, triggers, and 30-day reliability at a glance.</p>
+            <h1 className="page-title">Workflows</h1>
+            <p className="page-sub">Every workflow in this workspace — status, triggers, and 30-day reliability at a glance.</p>
           </div>
           <div style={{ marginLeft: "auto", display: "flex", gap: 9 }}>
-            <Link href="/workflows/new" className="btn btn-primary"><span>+</span> New agent</Link>
+            <Link href="/workflows/new" className="btn btn-primary"><span>+</span> New workflow</Link>
           </div>
         </div>
 
@@ -389,9 +389,9 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
         ) : !wfLoading && workflows.length === 0 ? (
           <div style={{ padding: "60px 20px", textAlign: "center" }}>
             {/* #14: "agent" → "workflow" in empty state */}
-            <p style={{ fontWeight: 650, fontSize: 16, color: "var(--text)", marginBottom: 8 }}>No agents yet</p>
-            <p style={{ fontSize: 13.5, color: "var(--text-3)", marginBottom: 20 }}>Pick a playbook template to create your first agent.</p>
-            <Link href="/workflows/new" className="btn btn-primary">+ New agent</Link>
+            <p style={{ fontWeight: 650, fontSize: 16, color: "var(--text)", marginBottom: 8 }}>No workflows yet</p>
+            <p style={{ fontSize: 13.5, color: "var(--text-3)", marginBottom: 20 }}>Pick a playbook template to create your first workflow.</p>
+            <Link href="/workflows/new" className="btn btn-primary">+ New workflow</Link>
           </div>
         ) : (
           <>
@@ -404,7 +404,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
                   ))}
                 </div>
                 {rows.length === 0 && (
-                  <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>No agents match.</div>
+                  <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>No workflows match.</div>
                 )}
                 {rows.map(w => {
                   if (confirming === w.id) {

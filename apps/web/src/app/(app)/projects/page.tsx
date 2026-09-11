@@ -687,9 +687,9 @@ function ProjectGridCard({
       <div style={{ borderTop: "1px solid var(--border)" }}>
         {agents.length === 0 ? (
           <div style={{ padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No agents yet</span>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>No workflows yet</span>
             <Link href={`/workflows/new?project_id=${project.id}`} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}>
-              + New agent
+              + New workflow
             </Link>
           </div>
         ) : (

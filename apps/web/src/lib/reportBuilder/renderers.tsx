@@ -315,7 +315,7 @@ function ListBody({ data }: { data: WidgetData }) {
   }
   if (data.tool === "list_agent_status") {
     const rows = data.data
-    if (rows.length === 0) return <EmptyBody>No agents.</EmptyBody>
+    if (rows.length === 0) return <EmptyBody>No workflows.</EmptyBody>
     return (
       <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 12 }}>
         {rows.slice(0, 8).map((r, i) => (
@@ -423,7 +423,7 @@ function TableBody({ data }: { data: WidgetData }) {
 function AgentRowBody({ data }: { data: WidgetData }) {
   if (data.tool !== "list_agent_health") return null
   const rows = data.data
-  if (rows.length === 0) return <EmptyBody>No agents.</EmptyBody>
+  if (rows.length === 0) return <EmptyBody>No workflows.</EmptyBody>
   return (
     <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
       {rows.slice(0, 12).map((r) => {
