@@ -39,6 +39,14 @@ function _cspFor(pathname: string): string {
     `font-src ${_font}`,
     `style-src ${_style}`,
     `connect-src ${_connect}`,
+    // worker-src: Clerk's browser SDK creates blob-URL web workers for
+    // background session-token refresh. Without an explicit worker-src
+    // directive browsers fall back to script-src, which doesn't allow
+    // blob:. Result: workers get blocked, Clerk can't refresh tokens,
+    // every authenticated API call returns 401. Third CSP escape hatch
+    // found the hard way (S13 shipped without clerk.conductai.ai in
+    // connect-src → #1801; then this).
+    "worker-src 'self' blob:",
     "frame-ancestors 'none'",
     "form-action 'self'",
     "base-uri 'self'",
