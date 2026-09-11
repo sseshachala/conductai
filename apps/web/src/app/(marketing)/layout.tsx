@@ -1,19 +1,26 @@
 "use client"
 
 import { useState } from "react"
-import { WorkspaceProvider } from "@/lib/WorkspaceContext"
 import { CtaLink } from "@/components/marketing/CtaLink"
 
+// Audit P06: WorkspaceProvider used to wrap this layout so its refresh()
+// hit /projects on every marketing pageload (home, blog, docs, ...).
+// Anonymous visitors got a 401 they never saw; signed-in visitors paid a
+// wasted round trip on pages that don't need workspace state. Removed the
+// provider — useWorkspace() returns a safe default (activeWorkspace: null)
+// with no fetch when there is no provider up-tree. The four pages under
+// (marketing)/eval and (marketing)/benchmark still call useWorkspace() and
+// now render with activeWorkspace=null, which their downstream components
+// already handle. Signed-in users hitting those pages from marketing don't
+// get an auto-selected workspace — they pick one after clicking into the
+// app, same as any other cold entry point.
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   return (
-    <WorkspaceProvider clerkEnabled={clerkEnabled}>
-      <div className="marketing-v2 min-h-screen bg-white flex flex-col">
-        <MarketingNav />
-        <main className="flex-1">{children}</main>
-        <MarketingFooter />
-      </div>
-    </WorkspaceProvider>
+    <div className="marketing-v2 min-h-screen bg-white flex flex-col">
+      <MarketingNav />
+      <main className="flex-1">{children}</main>
+      <MarketingFooter />
+    </div>
   )
 }
 
