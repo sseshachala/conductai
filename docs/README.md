@@ -51,7 +51,6 @@ Stable contracts and vocabulary. Read these when you need the *exact* answer.
 - [API versioning](api-versioning.md) — how API versions are declared, deprecated, and served
 - [Policy decision contract](policy-decision-contract.md) — allow / warn / block / audit semantics
 - [Guard token model](specs/GUARD_TOKEN_MODEL.md) — token types (`cond_agt_*`, `cond_run_*`, `cond_cred_*`), lifetimes, scopes
-- [Guard capability inventory](modules/conductguard/CAPABILITY_INVENTORY.md) — what Guard does, mapped to controls
 - [Guard rule packs](reference/guard-rule-packs.md) — every rule in every shipping pack (183 rules across 15 packs)
 - [Playbook block reference](reference/blocks.md) — every block type, required fields, examples
 

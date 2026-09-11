@@ -1,20 +1,20 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # self-driving-network-approval-demo — HITL on multi-fabric config push
 #
-# An HPE / Aruba Central + Juniper Mist self-driving network agent detects
-# config drift across both fabrics and proposes a synchronized remediation.
-# Any push targeting a prod fabric is intercepted by Guard's
-# approve-prod-deploy rule — a NOC engineer clicks Approve or Reject in
-# Slack. Approve → both fabrics converge. Reject → run halts, audit chain
-# preserved. One rule, one Slack notification, works across every network
-# vendor: the point of a single control plane for autonomous NetOps.
+# A multi-vendor self-driving network agent detects config drift across two
+# SDN fabrics and proposes a synchronized remediation. Any push targeting a
+# prod fabric is intercepted by Guard's approve-prod-deploy rule — a NOC
+# engineer clicks Approve or Reject in Slack. Approve → both fabrics
+# converge. Reject → run halts, audit chain preserved. One rule, one Slack
+# notification, works across every network vendor: the point of a single
+# control plane for autonomous NetOps.
 # ──────────────────────────────────────────────────────────────────────────────
 name: Self-Driving Network — Prod Config Push (HITL)
 version: 1
 description: >
-  Multi-fabric NetOps agent (Juniper Mist + Aruba Central) proposes a
-  synchronized config push. Guard's approve-prod-deploy rule pauses the run
-  for NOC sign-off in Slack; approve resumes the deploy, reject halts it.
+  Multi-fabric NetOps agent (two SDN controllers) proposes a synchronized
+  config push. Guard's approve-prod-deploy rule pauses the run for NOC
+  sign-off in Slack; approve resumes the deploy, reject halts it.
   Sandbox-safe — the deploy CLI does not exist, so no real network is
   touched; the demo focuses on the Guard verdict + Slack Approve/Reject
   round-trip.
@@ -60,7 +60,7 @@ blocks:
     description: Score current fabric telemetry and produce a remediation plan for both Juniper Mist and Aruba Central.
     next: deploy_prod
     system: |
-      You are a self-driving network agent that fronts HPE Aruba Central +
+      You are a self-driving network agent that fronts Aruba Central +
       Juniper Mist AI. Your job is to read the current inbox of anomalies
       and produce a synchronized remediation plan. Fabric scope for this
       run: {{inputs.fabric_scope}}.

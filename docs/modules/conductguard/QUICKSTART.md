@@ -6,7 +6,6 @@
 
 Related docs:
 - [`overview.md`](./overview.md) — what Guard is and why
-- [`CAPABILITY_INVENTORY.md`](./CAPABILITY_INVENTORY.md) — every shipped Guard capability with file:line refs
 - [`enforcement_coverage.generated.md`](./enforcement_coverage.generated.md) — auto-generated coverage matrix
 
 ---
@@ -39,7 +38,7 @@ curl -sf "$API/openapi.json" | python3 -c "import json,sys; \
   print('guard routes:', sum(1 for p in paths if p.startswith('/guard/')))"
 ```
 
-Expect ≥ 60 guard routes (see [routers inventory](./CAPABILITY_INVENTORY.md#3-routers-20-files-81-endpoints)).
+Expect ≥ 60 guard routes.
 
 ---
 
@@ -116,7 +115,6 @@ For richer rule types (proxy-side prompt matching, per-workspace overrides), see
 
 | I want to... | Look at |
 |---|---|
-| Understand what Guard already ships | [`CAPABILITY_INVENTORY.md`](./CAPABILITY_INVENTORY.md) |
 | Change a proxy behavior | `apps/api/app/modules/guard/routers/proxy.py` |
 | Add a new API endpoint | `apps/api/app/modules/guard/routers/` |
 | Modify the rule engine | `apps/api/app/modules/guard/policy_engine.py` |
@@ -143,5 +141,4 @@ For richer rule types (proxy-side prompt matching, per-workspace overrides), see
 ## Next steps
 
 - Read [`overview.md`](./overview.md) for the mental model
-- Skim [`CAPABILITY_INVENTORY.md`](./CAPABILITY_INVENTORY.md) before proposing new Guard features (avoids rebuilding shipped things)
 - If you're on-call, keep [`RUNBOOK.md`](./RUNBOOK.md) open

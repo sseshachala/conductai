@@ -1,7 +1,7 @@
 # ConductGuard — Ops Runbook
 
 **Audience:** on-call responders, SREs, and anyone paged on a Guard-related alert.
-**Not a tutorial.** For getting-started, see [`QUICKSTART.md`](./QUICKSTART.md). For capabilities inventory, see [`CAPABILITY_INVENTORY.md`](./CAPABILITY_INVENTORY.md).
+**Not a tutorial.** For getting-started, see [`QUICKSTART.md`](./QUICKSTART.md).
 
 **How to use:** find the symptom in Section 2, follow the remediation. If no match, check Section 3 (rollback) or Section 6 (escalation).
 
@@ -242,4 +242,3 @@ ORDER BY created_at;
 Related:
 - [`overview.md`](./overview.md) — how Guard fits together
 - [`QUICKSTART.md`](./QUICKSTART.md) — dev onboarding
-- [`CAPABILITY_INVENTORY.md`](./CAPABILITY_INVENTORY.md) — every shipped capability with source refs

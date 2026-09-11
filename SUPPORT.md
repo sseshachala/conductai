@@ -31,5 +31,5 @@ the [Apache 2.0](./LICENSE) core), email
 ## Docs
 
 - Product docs: [conductai.ai/docs](https://conductai.ai/docs)
-- Architecture: `SPEC.md`, `NORTHSTAR.md`, `DESIGN.md`, `ROLES.md` at
-  the repo root.
+- Architecture: `docs/ARCHITECTURE.md`, `architecture-decisions/`, and
+  `docs/adr/` at the repo root.

@@ -5,7 +5,7 @@ and detects ROT13. Rules matched against normalised variants catch subtle
 evasions that per-rule regex on raw text would miss.
 
 Constants and functions ported (with adaptation) from
-poojakira/mcp-agent-security-gateway (MIT). See CAPABILITY_INVENTORY.md.
+poojakira/mcp-agent-security-gateway (MIT).
 """
 from __future__ import annotations
 

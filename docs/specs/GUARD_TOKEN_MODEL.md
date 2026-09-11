@@ -480,7 +480,6 @@ Backwards compatible — existing tokens keep working until they hit grandfather
 
 ## 13. Related spec docs
 
-- `NORTHSTAR.md` — Layer 6 (Trust & Compliance) where governance lives
-- `NORTHSTAR_GOVERNANCE.md` — operational spec for the AI Governance surface
-- `ROLES.md` — RBAC model that token scopes inherit
-- `DESIGN.md` — UI rules for the tokens settings page
+- `docs/ARCHITECTURE.md` — where token issuance sits in the stack
+- `docs/modules/conductguard/roles_permissions.md` — RBAC model that token scopes inherit
+- `architecture-decisions/` — decision records for the auth model

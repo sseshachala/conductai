@@ -9,7 +9,7 @@
 #     export OPENAI_API_KEY=sk-...
 #     python run.py "delete my account"
 #
-# See README.md for the walk-through the HPE PCAI screencast follows.
+# See README.md for the walk-through.
 
 models:
   - type: main

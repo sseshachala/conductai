@@ -5,7 +5,7 @@ EvalReport wraps a list of PlaybookScore objects and knows how to render
 them as a human-readable table or a structured JSON benchmark document.
 
 The JSON format is stable across releases — downstream tools (dashboard,
-CI checks, NORTHSTAR moat tracker) can parse it without breaking.
+CI checks, moat tracker) can parse it without breaking.
 """
 from __future__ import annotations
 
