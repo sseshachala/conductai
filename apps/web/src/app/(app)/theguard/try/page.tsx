@@ -15,6 +15,7 @@ interface TrialSession {
   days_remaining: number
   token: string | null
   gateway_url: string
+  workspace_id: string
   cap_used: number
   cap_max: number
 }
@@ -241,12 +242,18 @@ export default function GuardTryPage() {
       const path = verb.key === "prove"
         ? `${API}/guard/events/audit/verify`
         : `${session.gateway_url}/anthropic/v1/messages`
+      // /guard/events/audit/verify (prove) accepts the agent token via
+      // Authorization: Bearer directly. /proxy/* requires the agent token
+      // via X-Conductai-Internal + X-Conductai-Workspace-Id — that's the
+      // agent-mode auth path (see #1804/#1805 for why we don't widen the
+      // Bearer slot at /proxy).
       const opts: RequestInit = verb.key === "prove"
         ? { method: "GET", headers: { Authorization: `Bearer ${session.token}` } }
         : {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${session.token}`,
+              "X-Conductai-Internal": session.token,
+              "X-Conductai-Workspace-Id": session.workspace_id,
               "anthropic-version": "2023-06-01",
               "Content-Type": "application/json",
             },
