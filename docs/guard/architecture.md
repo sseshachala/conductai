@@ -309,4 +309,4 @@ Nothing left to move — everything that could change is either data (packs), a 
 - #1752 — `_project_rule` projection fix (reviewer edit 5)
 - #1193 — Cedar interchange
 - #663 — skill-pack model + `compute_policy` foundation
-- conduct-internal #42 — 2nd provisional patent (unification + Phase 5)
+- Provisional patent (unification + Phase 5) — private tracker

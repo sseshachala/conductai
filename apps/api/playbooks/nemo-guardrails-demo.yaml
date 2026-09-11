@@ -1,27 +1,23 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# nemo-guardrails-demo — DETECT & ENFORCE on HPE AI TRiSM (L4 AI RUNTIME TRUST)
+# nemo-guardrails-demo — DETECT & ENFORCE at L4 AI RUNTIME TRUST
 #
-# 5-beat, ~90-second demo playbook. Runs live inside Lens and walks the HPE
+# 5-beat, ~90-second demo playbook. Runs live inside Lens and walks the
 # AI TRiSM reference architecture story: PREVENT (DSPM) → DETECT & ENFORCE
-# (Conduct) → RECOVER (Zerto/Veeam). Conduct sits at L4 AI RUNTIME TRUST as
+# (Conduct) → RECOVER (backup/DR). Conduct sits at L4 AI RUNTIME TRUST as
 # the substrate connecting the three legs: Guardrails · Gateway · Observability.
 #
 # The NeMo Guardrails input-rail story is the framing; Conduct's own
 # guard_check delivers the real verdict against the conduct-prompt-injection
 # pack. Zero external deps, deterministic across workspaces with the pack
 # enabled.
-#
-# Positioning source: /Users/sudhiseshachala/Downloads/Where-Conduct-Fits-in-the-PCAI-Stack (1).pdf
-# See #1631 for design context.
 # ──────────────────────────────────────────────────────────────────────────────
 name: NeMo Guardrails × Conduct — DETECT & ENFORCE demo
 version: 3
 description: >
   5-beat live demo showing Conduct as the DETECT & ENFORCE layer at L4
-  AI RUNTIME TRUST on HPE PCAI. A NeMo-style input rail hits guard_check,
-  Conduct blocks a prompt-injection payload with a real verdict + rule ID,
-  and the hash-chained audit row proves the observability leg. Anchors the
-  "Deeper Live Demo · 60 min" ask from the PCAI substrate deck.
+  AI RUNTIME TRUST. A NeMo-style input rail hits guard_check, Conduct
+  blocks a prompt-injection payload with a real verdict + rule ID, and the
+  hash-chained audit row proves the observability leg.
 
 inputs:
   demo_prompt:
@@ -47,7 +43,7 @@ blocks:
     type: brain
     mode: single
     label: L4 · AI RUNTIME TRUST
-    description: Plants the HPE AI TRiSM frame — Conduct is the DETECT & ENFORCE box, the three legs are Guardrails · Gateway · Observability.
+    description: Plants the AI TRiSM frame — Conduct is the DETECT & ENFORCE box, the three legs are Guardrails · Gateway · Observability.
     max_turns: 1
     next: call_guard_check
     system: |
@@ -57,12 +53,12 @@ blocks:
     prompt: |
       Output this markdown exactly as-is:
 
-      **L4 · AI RUNTIME TRUST.** The DETECT & ENFORCE box in HPE's AI TRiSM
+      **L4 · AI RUNTIME TRUST.** The DETECT & ENFORCE box in the AI TRiSM
       reference architecture. Three legs: **Guardrails · Gateway · Observability**.
       NeMo Guardrails is the rails engine. LiteLLM is the gateway engine.
       Conduct is the substrate that makes all three auditable in one ledger.
 
-      _PREVENT (DSPM) is upstream. RECOVER (Zerto · Veeam) is downstream.
+      _PREVENT (DSPM) is upstream. RECOVER (backup / DR) is downstream.
       This demo lives in the middle box._
 
       _Sending a prompt-injection payload to Conduct's guard_check for evaluation._
@@ -148,7 +144,7 @@ blocks:
     type: brain
     mode: single
     label: Close — the substrate story
-    description: Closes with the PCAI substrate pitch line and reconnects to the PREVENT → DETECT & ENFORCE → RECOVER arrow row from the TRiSM diagram.
+    description: Closes with the substrate pitch line and reconnects to the PREVENT → DETECT & ENFORCE → RECOVER arrow row from the TRiSM diagram.
     max_turns: 1
     system: |
       You output the closing markdown verbatim. Do not add or remove text.
@@ -160,9 +156,9 @@ blocks:
       customers already sign.
 
       **On the TRiSM diagram.** PREVENT is upstream — that's DSPM. RECOVER
-      is downstream — that's Veeam and Zerto. Conduct is the middle arrow:
-      DETECT & ENFORCE at L4 AI RUNTIME TRUST. On PCAI. Deployed as a
-      Blueprint. Reference deployment slot open for Unleash AI.
+      is downstream — that's backup / DR. Conduct is the middle arrow:
+      DETECT & ENFORCE at L4 AI RUNTIME TRUST. Deployable anywhere your
+      compliance boundary needs it.
 
 test_trigger:
   payload:

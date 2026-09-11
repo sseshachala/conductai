@@ -5,8 +5,6 @@ into an input rail. Every user turn hits Conduct's Guard policy before
 the model runs. Blocked or pending-approval verdicts short-circuit the
 conversation with a policy-safe response and never reach the LLM.
 
-This is the demo path the HPE PCAI PM screencast walks through.
-
 ## Prereqs
 
 ```bash

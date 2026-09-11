@@ -35,7 +35,7 @@ Key paths:
 - DSL schema: YAML playbook format, validation, error messages
 - Compiler: parsing YAML, building run graphs, resolving block dependencies
 - Runtime: execution loop, block state machine, timeout handling, retry logic, Modal sandbox integration (ephemeral sandboxes per run)
-- Eval harness: per-playbook quality scoring, fixture promotion loop, benchmark reporting (NORTHSTAR priority)
+- Eval harness: per-playbook quality scoring, fixture promotion loop, benchmark reporting (top roadmap priority)
 - New integrations: adding Linear, Vercel, Railway, DigitalOcean block support
 - YAML playbook authoring: writing or debugging the 18 pre-built playbooks
 
@@ -47,7 +47,7 @@ Key paths:
 
 ## Key context
 
-The eval harness is the highest-priority NORTHSTAR accumulator. When building it, each playbook should have a fixture set, a scoring rubric, and a promotion loop that surfaces high-quality community playbooks. This is what turns the run-data flywheel into a defensible moat.
+The eval harness is the highest-priority accumulator on the roadmap. When building it, each playbook should have a fixture set, a scoring rubric, and a promotion loop that surfaces high-quality community playbooks. This is what turns the run-data flywheel into a defensible moat.
 
 Brain blocks call Claude (ANTHROPIC_API_KEY). Every Brain block has bounded autonomy — it gets tool access scoped to what the playbook author configured. Never expand tool access beyond what the playbook declares.
 

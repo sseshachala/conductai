@@ -30,8 +30,8 @@ cp .env.example .env         # required — Compose declares env_file: .env on a
 docker compose up            # API on :8000, web on :3000, worker + redis
 ```
 
-Docs on architecture: `SPEC.md`, `NORTHSTAR.md`, `DESIGN.md`, `ROLES.md`
-at the repo root.
+Docs on architecture: `docs/ARCHITECTURE.md`, `architecture-decisions/`,
+and `docs/adr/` at the repo root.
 
 ## What to work on
 
