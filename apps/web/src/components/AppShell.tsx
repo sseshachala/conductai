@@ -13,6 +13,7 @@ import ErrorBoundary from "@/components/ui/ErrorBoundary"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { reportLayoutsApi, type ReportLayout } from "@/lib/reportBuilder/api"
 import { workspaces as workspacesApi, projects as projectsApi, organizations, runs, guard, workflows } from "@/lib/api"
+import { GUARD_SECTIONS } from "@/lib/navigation/guardSections"
 
 interface Project { id: string; name: string; agent_count: number; project_type?: string }
 
@@ -104,9 +105,12 @@ const Icons = {
 function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/dashboard')) return ['Dashboard']
   if (pathname.startsWith('/theguard/spend')) return ['Guard', 'Spend']
-  if (pathname.startsWith('/theguard/policies')) return ['Guard', 'Policies']
-  if (pathname.startsWith('/theguard/discovery')) return ['Guard', 'Discovery']
+  if (pathname.startsWith('/theguard/policies')) return ['Guard', 'Controls', 'Policies']
+  if (pathname.startsWith('/theguard/approvals')) return ['Guard', 'Controls', 'Approvals']
+  if (pathname.startsWith('/theguard/discovery')) return ['Guard', 'Agents', 'Discovery']
   if (pathname.startsWith('/theguard/activity')) return ['Guard', 'Activity']
+  if (pathname.startsWith('/theguard/connections/proxy')) return ['Guard', 'Connections', 'Proxy & gateways']
+  if (pathname.startsWith('/theguard/connections')) return ['Guard', 'Connections']
   if (pathname.startsWith('/theguard/settings')) return ['Guard', 'Settings']
   if (pathname.startsWith('/theguard/compliance')) return ['Guard', 'Compliance']
   if (pathname.startsWith('/governance')) return ['Governance']
@@ -122,8 +126,8 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/logs')) return ['Logs']
   if (pathname.startsWith('/runs')) return ['Runs']
   if (pathname.startsWith('/observability')) return ['Observability']
-  if (pathname === '/workflows') return ['Agents']
-  if (pathname.startsWith('/workflows/new')) return ['Canvas', 'New agent']
+  if (pathname === '/workflows') return ['Workflows']
+  if (pathname.startsWith('/workflows/new')) return ['Canvas', 'New workflow']
   if (pathname.startsWith('/workflows/')) return ['Canvas']
   const projectMatch = pathname.match(/\/projects\/([^/]+)/)
   if (projectMatch) {
@@ -146,11 +150,9 @@ const PALETTE_COMMANDS = [
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
   { group: "GOVERN", label: "Runtime Governance", href: "/governance", icon: "Shield" as const },
   { group: "ASK", label: "Lens", href: "/lens", icon: "Spark" as const },
-  { group: "GOVERN", label: "Guard · Overview", href: "/theguard", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Spend", href: "/theguard/spend", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Policies", href: "/theguard/policies", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Agent Discovery", href: "/theguard/discovery", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Activity", href: "/theguard/activity", icon: "Shield" as const },
+  ...GUARD_SECTIONS.map(s => ({ group: "GOVERN" as const, label: `Guard · ${s.label}`, href: s.href, icon: "Shield" as const })),
+  { group: "GOVERN", label: "Guard · Compliance", href: "/theguard/compliance", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Settings", href: "/theguard/settings", icon: "Shield" as const },
   { group: "WORKSPACE", label: "Integrations", href: "/integrations", icon: "Gear" as const },
   { group: "WORKSPACE", label: "Agent ID", href: "/agent-identity", icon: "Gear" as const },
   { group: "WORKSPACE", label: "Settings · Vault", href: "/settings", icon: "Gear" as const },
@@ -844,20 +846,17 @@ function AppShellInnerContent({
                 href="/theguard"
                 label="Guard"
                 icon={<Icons.Shield />}
-                active={pathname.startsWith("/theguard")}
+                active={pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard")}
                 collapsed={collapsed}
               />
-              {/* Guard sub-nav */}
-              {pathname.startsWith("/theguard") && !collapsed && (
+              {/* Guard sub-nav — six-section IA. Compliance/Settings/Team Memory reachable via ⌘K.
+                  /logs/guard is Guard's Activity section, so it also opens this sub-nav. */}
+              {(pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard")) && !collapsed && (
                 <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                  {[
-                    { label: "Overview",    href: "/theguard" },
-                    { label: "Policies",    href: "/theguard/policies" },
-                    { label: "Compliance",  href: "/theguard/compliance" },
-                    { label: "Team Memory", href: "/theguard/team-memory" },
-                    { label: "Settings",    href: "/theguard/settings", adminOnly: true },
-                  ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
-                    const subActive = sub.href === "/theguard" ? pathname === "/theguard" : pathname.startsWith(sub.href)
+                  {GUARD_SECTIONS.map(sub => {
+                    const subActive = sub.id === "overview"
+                      ? pathname === "/theguard"
+                      : sub.activePrefixes.some(p => pathname === p || pathname.startsWith(p + "/"))
                     return (
                       <Link
                         key={sub.href}
