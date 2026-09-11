@@ -3,13 +3,14 @@ import { redirect } from "next/navigation"
 // Guard IA 1c: Agents section canonical URL. Redirects to the existing
 // Agent Identity page until the physical move in Phase 2.
 // Preserves any incoming query (e.g. ?tab=tokens) so deep links keep working.
-export default function GuardAgentsPage({
+export default async function GuardAgentsPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const params = (await searchParams) ?? {}
   const qs = new URLSearchParams()
-  for (const [k, v] of Object.entries(searchParams ?? {})) {
+  for (const [k, v] of Object.entries(params)) {
     if (typeof v === "string") qs.set(k, v)
     else if (Array.isArray(v) && v[0]) qs.set(k, v[0])
   }
