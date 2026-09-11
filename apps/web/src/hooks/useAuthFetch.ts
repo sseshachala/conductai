@@ -29,13 +29,30 @@ export function useAuthFetch() {
 
   const authFetch = useCallback(
     async (url: string, options: RequestInit = {}): Promise<Response> => {
-      const token = await getToken()
-      const headers: Record<string, string> = {
-        ...(options.headers as Record<string, string> | undefined),
+      const buildHeaders = (bearer: string | null) => {
+        const h: Record<string, string> = {
+          ...(options.headers as Record<string, string> | undefined),
+        }
+        if (bearer) h["Authorization"] = `Bearer ${bearer}`
+        if (activeWorkspace?.id) h["X-Workspace-ID"] = activeWorkspace.id
+        return h
       }
-      if (token) headers["Authorization"] = `Bearer ${token}`
-      if (activeWorkspace?.id) headers["X-Workspace-ID"] = activeWorkspace.id
-      return fetch(url, { ...options, headers })
+
+      const token = await getToken()
+      const res = await fetch(url, { ...options, headers: buildHeaders(token) })
+
+      // 401-then-retry: Clerk's SDK refreshes session tokens in a background
+      // web worker. First page load can fire an authFetch before the worker
+      // has minted a fresh JWT — first call returns 401, retry with a
+      // just-refreshed token succeeds. One retry only; genuine auth
+      // failures still surface to the caller after that.
+      if (res.status === 401) {
+        const retried = await getToken({ skipCache: true } as never)
+        if (retried && retried !== token) {
+          return fetch(url, { ...options, headers: buildHeaders(retried) })
+        }
+      }
+      return res
     },
     [getToken, activeWorkspace],
   )
