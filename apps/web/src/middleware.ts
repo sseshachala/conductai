@@ -33,7 +33,13 @@ function _cspFor(pathname: string): string {
   // theme init and JSON-LD are inlined; tighten in a follow-up once we
   // migrate those to a nonce-based approach.
   const _selfClerk = "'self' https://cdn.clerk.com https://clerk.conductai.ai https://challenges.cloudflare.com"
-  const _connect = "'self' https://api.conductai.ai https://clerk.conductai.ai https://clerk.com https://*.clerk.accounts.dev wss:"
+  // img.clerk.com — Clerk's UserButton avatar loader uses fetch() (not
+  // an <img> tag), so it goes through connect-src instead of img-src.
+  // Missed in the 2026-09-11 CSP audit because we assumed the img-src
+  // wildcard covered it. Silent break: user avatars fail + Clerk's SDK
+  // logs repeated CSP violations, which correlates with a session-token
+  // stall we saw around the same time.
+  const _connect = "'self' https://api.conductai.ai https://clerk.conductai.ai https://clerk.com https://*.clerk.accounts.dev https://img.clerk.com wss:"
   const _img = "'self' data: https:"
   const _font = "'self' https://fonts.gstatic.com data:"
   const _style = "'self' 'unsafe-inline' https://fonts.googleapis.com"
