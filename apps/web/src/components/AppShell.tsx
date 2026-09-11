@@ -846,12 +846,12 @@ function AppShellInnerContent({
                 href="/theguard"
                 label="Guard"
                 icon={<Icons.Shield />}
-                active={pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard")}
+                active={pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard") || pathname.startsWith("/agent-identity")}
                 collapsed={collapsed}
               />
               {/* Guard sub-nav — six-section IA. Compliance/Settings/Team Memory reachable via ⌘K.
                   /logs/guard is Guard's Activity section, so it also opens this sub-nav. */}
-              {(pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard")) && !collapsed && (
+              {(pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard") || pathname.startsWith("/agent-identity")) && !collapsed && (
                 <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                   {GUARD_SECTIONS.map(sub => {
                     const subActive = sub.id === "overview"

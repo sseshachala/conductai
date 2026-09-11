@@ -16,7 +16,8 @@
  * title — SettingsShell then renders only the left rail + panels.
  */
 
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import AppShell from "@/components/AppShell"
 
 export interface SettingsTab<K extends string> {
@@ -48,7 +49,26 @@ export function SettingsShell<K extends string>({
 }) {
   const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin)
   const firstKey = visibleTabs[0]?.key as K
-  const [activeTab, setActiveTab] = useState<K>(initialTab ?? firstKey)
+
+  // URL-aware: ?tab=<key> wins over initialTab. Falls back cleanly when no query.
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const urlTab = searchParams?.get("tab") as K | null
+  const urlTabValid = urlTab != null && visibleTabs.some(t => t.key === urlTab)
+  const [activeTab, setActiveTab] = useState<K>(urlTabValid ? (urlTab as K) : (initialTab ?? firstKey))
+
+  // Sync selection when browser back/forward changes ?tab=
+  useEffect(() => {
+    if (urlTabValid && urlTab !== activeTab) setActiveTab(urlTab as K)
+  }, [urlTab, urlTabValid, activeTab])
+
+  function selectTab(key: K) {
+    setActiveTab(key)
+    const params = new URLSearchParams(searchParams?.toString() ?? "")
+    params.set("tab", key)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
 
   const body = (
     <>
@@ -81,7 +101,7 @@ export function SettingsShell<K extends string>({
                 aria-selected={active}
                 aria-controls={`tabpanel-${t.key}`}
                 id={`tab-${t.key}`}
-                onClick={() => setActiveTab(t.key)}
+                onClick={() => selectTab(t.key)}
                 style={{
                   textAlign: "left",
                   padding: "8px 12px",
