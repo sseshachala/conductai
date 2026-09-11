@@ -155,6 +155,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   if (clerkEnabled) {
     return (
       <ClerkProvider
+        signInUrl="/sign-in"
+        signUpUrl="/sign-up"
         signInFallbackRedirectUrl="/theguard"
         signUpFallbackRedirectUrl="/theguard/try"
       >
