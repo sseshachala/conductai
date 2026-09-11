@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_permission
+from app.core.auth import get_workspace_id, require_permission, require_platform_operator
 from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.database import get_db
@@ -161,14 +161,16 @@ class TrialOpsOut(BaseModel):
 
 @router.get("/ops", response_model=TrialOpsOut)
 def get_trial_ops(
-    _perm: str = Depends(require_permission("guard.spend.view_all")),
+    _op: str = Depends(require_platform_operator()),
     db: Session = Depends(get_db),
 ) -> TrialOpsOut:
     """Platform-ops view of trial-key burn across all workspaces.
 
-    Restricted to `guard.spend.view_all` (security+) — this crosses tenant
-    boundaries by design. Every metric derives from `guard_audit_events`
-    joined against the trial `AgentIdentity` name filter.
+    Restricted to platform operators only (audit S05 — a tenant admin
+    with `guard.spend.view_all` must NEVER be able to enumerate other
+    tenants). Configure the allowlist via PLATFORM_OPERATOR_CLERK_IDS.
+    Every metric derives from `guard_audit_events` joined against the
+    trial `AgentIdentity` name filter.
     """
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=24)
@@ -230,31 +232,41 @@ def get_trial_ops(
     )
 
 
-# ─── /guard/trial/provision — self-service curl-install endpoint (#1712 Track 1) ─
+# ─── /guard/trial/provision + /guard/trial/redeem — self-service signup ─────
 #
-# `curl -fsSL conduct.ai/install | sh` posts an email + optional company to
-# this endpoint. Unauthenticated (no Clerk session, no Bearer token) but
-# email is REQUIRED — this is a signup form, not an identity-anonymous
-# mint. We provision a trial workspace + agent identity token and return
-# them so the shell script can drop `~/.conduct/env` on the caller's laptop.
+# Hardened flow (audit S01 / S12). The old `/provision` endpoint took an
+# email and immediately returned the caller's existing trial token if the
+# address matched a Clerk user — trivially exploitable enumeration path.
 #
-# The email is stashed on workspace.owner_id as a plain string (not yet a
-# Clerk user id). A later `conduct claim` / magic-link flow can bind the
-# workspace to a real Clerk account.
+# New two-step:
+#   1. POST /guard/trial/provision  — mints a challenge + emails a
+#      verification link. Returns a generic accepted response regardless
+#      of whether the email exists in Clerk. Never leaks user existence.
+#   2. POST /guard/trial/redeem     — validates the challenge (single
+#      use, 30-min TTL). NEW emails get a workspace + trial token.
+#      Existing emails get a sign-in link only — no token.
 #
-# Anti-abuse:
-#   - IP rate-limit: 5 provisions per hour (Redis atomic INCR)
-#   - Email idempotency: repeat POST with same email within the trial
-#     window returns the SAME trial token instead of minting a second
-#     workspace. Protects platform-key spend and keeps ~/.conduct/env
-#     stable when the user re-runs the installer.
+# Anti-abuse layered:
+#   - Per-IP hourly cap (Redis) — trusted-proxy CIDR aware (audit S12)
+#   - Per-email hourly cap (Redis)
+#   - Global anonymous-flow budget (Redis)
+#   - All three FAIL CLOSED when Redis is unreachable — no free
+#     credential issuance without abuse controls in effect (audit S12).
 
 
 import re as _re
 
 from fastapi import HTTPException, Request
 
+from app.core.email import send_template_email
 from app.guard.receipts import web_base_url as _web_base_url
+from app.modules.guard.trial_challenges import (
+    check_email_rate as _check_email_rate,
+    check_global_rate as _check_global_rate,
+    client_ip_from as _client_ip_from,
+    mint as _mint_challenge,
+    redeem as _redeem_challenge,
+)
 
 _EMAIL_RE = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _PROVISION_IP_CAP = 5   # per hour
@@ -270,28 +282,37 @@ class TrialProvisionIn(BaseModel):
     source: str | None = None
 
 
-class TrialProvisionOut(BaseModel):
-    workspace_id: str
-    agent_token: str
-    # `gateway_url` — Anthropic-specific route (`.../proxy/anthropic`).
-    # The Anthropic SDK does `POST {base}/v1/messages`; other vendors
-    # follow the same pattern under their own `/proxy/<vendor>` prefix.
-    # Kept as-is for backwards compat with older install scripts.
-    gateway_url: str
-    # `proxy_base_url` — vendor-agnostic root (`.../proxy`). Newer install
-    # scripts derive OpenAI / Perplexity URLs from this so we don't need
-    # a new response field per provider.
-    proxy_base_url: str
-    workspace_url: str
-    # Clerk one-time sign-in URL — click to land signed-in in dashboard.
-    # Optional: null if Clerk isn't configured (local dev) or minting failed.
+class TrialProvisionAck(BaseModel):
+    """Generic accepted response. Body is identical regardless of whether
+    the email exists in Clerk — audit S01 requires that we NEVER leak
+    user-existence to unauthenticated callers.
+    """
+    status: str = "accepted"
+    message: str = "If the address is valid, a verification email is on the way."
+
+
+class TrialRedeemIn(BaseModel):
+    ct: str    # opaque challenge token from the verification email link
+
+
+class TrialRedeemOut(BaseModel):
+    # Either "new" (workspace + token returned) or "existing" (sign-in URL only).
+    status: str
+    workspace_id: str | None = None
+    agent_token: str | None = None
+    gateway_url: str | None = None
+    proxy_base_url: str | None = None
+    workspace_url: str | None = None
     sign_in_url: str | None = None
+    # For the "existing" branch — where to send the user to log in.
+    recovery_url: str | None = None
 
 
-def _redis_or_none():
-    """Best-effort Redis handle — fail-open on outage (matches trial_upstream
-    convention). No throttle when Redis is down is preferable to blocking
-    installs entirely."""
+def _redis_or_fail_closed():
+    """Return a Redis handle or None. Callers use None to reject the
+    request — anonymous credential issuance without abuse controls in
+    place is worse than a brief outage (audit S12).
+    """
     try:
         from app.modules.guard.trial_upstream import _redis_client
         return _redis_client()
@@ -299,19 +320,13 @@ def _redis_or_none():
         return None
 
 
-def _ip_of(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for") or ""
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
 def _throttle_by_ip(ip: str) -> bool:
-    """Return True if under the per-hour cap; False if the cap is hit.
-    Fails open when Redis is unreachable."""
-    r = _redis_or_none()
+    """Return True if under the per-hour cap; False if hit or Redis is
+    unreachable. Fails CLOSED — audit S12 flagged the previous fail-open.
+    """
+    r = _redis_or_fail_closed()
     if r is None:
-        return True
+        return False
     key = f"guard:provision:ip:{ip}:{datetime.now(timezone.utc).strftime('%Y%m%d%H')}"
     try:
         pipe = r.pipeline()
@@ -320,33 +335,26 @@ def _throttle_by_ip(ip: str) -> bool:
         count, _ = pipe.execute()
         return int(count or 0) <= _PROVISION_IP_CAP
     except Exception:
-        return True
+        return False
 
 
-@router.post("/provision", response_model=TrialProvisionOut)
+@router.post("/provision", response_model=TrialProvisionAck)
 def provision_trial(
     body: TrialProvisionIn,
     request: Request,
     db: Session = Depends(get_db),
-) -> TrialProvisionOut:
-    """Self-service trial workspace provisioning (public signup endpoint).
+) -> TrialProvisionAck:
+    """Kick off a verified trial signup (audit S01).
 
-    Called by `apps/web/public/install.sh` (curl | sh). Converged with the
-    UI signup flow — a Clerk user is created here, then the same shared
-    `provision_workspace_for_user` runs that the `user.created` webhook
-    uses. Result: one workspace-creation code path, no bifurcation.
-
-    Response includes an optional one-time sign-in URL so the CLI can
-    print "click here to view your dashboard" — user lands signed in with
-    zero password prompts.
+    Validates input, checks per-IP / per-email / global caps, mints a
+    challenge, and emails a verification link. ALWAYS returns the same
+    generic ack — no user-existence signal. Real token issuance happens
+    in `/redeem` after the user clicks the emailed link.
     """
     from app.core.clerk import (
         ClerkError as _ClerkError,
-        create_user as _clerk_create_user,
         find_user_by_email as _clerk_find_user_by_email,
-        mint_sign_in_token as _clerk_mint_sign_in_token,
     )
-    from app.modules.onboarding import provision_workspace_for_user
 
     email = (body.email or "").strip().lower()
     if not _EMAIL_RE.match(email):
@@ -356,64 +364,119 @@ def provision_trial(
     if not company:
         raise HTTPException(status_code=422, detail="company_required")
 
-    ip = _ip_of(request)
+    ip = _client_ip_from(request)
     if not _throttle_by_ip(ip):
-        raise HTTPException(
-            status_code=429,
-            detail=f"provision_rate_limited: {_PROVISION_IP_CAP}/hour per IP",
-        )
+        raise HTTPException(status_code=429, detail="rate_limited")
+    if not _check_email_rate(email):
+        raise HTTPException(status_code=429, detail="rate_limited")
+    if not _check_global_rate():
+        raise HTTPException(status_code=429, detail="rate_limited")
 
-    # Look up first — same email hitting the endpoint twice OR after a
-    # browser signup should short-circuit to a sign-in prompt rather than
-    # spawning a second Clerk user + workspace. Clerk enforces email
-    # uniqueness, so we can trust its answer as the source of truth.
-    def _map_clerk_error(exc: _ClerkError, *, on_422: int = 502) -> HTTPException:
-        """Translate Clerk API failures to caller-facing HTTP responses.
-
-        - 429 passes through unchanged so a rate-limited caller can back
-          off instead of retrying against what looks like a server error.
-        - 422 usually means "email already exists" (racy signup) — caller
-          decides whether to surface as 409 (create path) or 502
-          (lookup path).
-        - Anything else is an upstream failure → 502.
-        """
-        if exc.status == 429:
-            return HTTPException(status_code=429, detail="clerk_rate_limited")
-        if exc.status == 422:
-            return HTTPException(status_code=on_422, detail="clerk_create_user_failed")
-        return HTTPException(status_code=502, detail="clerk_unavailable")
-
+    # Best-effort Clerk lookup — record whether the email is known so the
+    # redeem path knows whether to mint a new workspace or return a
+    # sign-in URL. Lookup failures are non-fatal: if Clerk is down, we
+    # store existing_user_id=None and the redeem flow proceeds as "new"
+    # (Clerk's create-user call at redeem time will 422 if it's actually
+    # existing, and we can degrade to the sign-in path there).
+    existing_user_id: str | None = None
     try:
-        clerk_user_id = _clerk_find_user_by_email(email)
+        existing_user_id = _clerk_find_user_by_email(email)
     except _ClerkError as exc:
         log.warning("guard.trial.provision.clerk_lookup_failed", email=email, err=str(exc))
-        raise _map_clerk_error(exc)
 
-    if clerk_user_id is None:
-        # Fresh email — create the Clerk user via backend API. Same code
-        # path Clerk fires webhooks for; our webhook handler is idempotent
-        # so a duplicate `user.created` (if delivered late) is a no-op.
-        try:
-            clerk_user_id = _clerk_create_user(email)
-        except _ClerkError as exc:
-            log.warning("guard.trial.provision.clerk_create_failed", email=email, status=exc.status, body=exc.body)
-            # 422 in the create path → 409 to hint "sign in" rather than
-            # "server error". 429 passes through unchanged for backoff.
-            raise _map_clerk_error(exc, on_422=409)
+    token = _mint_challenge(email, company[:60], existing_user_id)
+    if token is None:
+        # Redis outage during mint — fail closed to match rate-limit behaviour.
+        raise HTTPException(status_code=503, detail="verification_unavailable")
 
-    # Shared onboarding — same function the Clerk webhook calls. Idempotent
-    # so a race between webhook + this call is safe (whoever wins, later
-    # caller returns the existing workspace).
-    ws_id_uuid = provision_workspace_for_user(db, clerk_user_id, name=company[:60])
+    verify_url = f"{_web_base_url()}/onboard/verify?ct={token}"
+    sent = send_template_email(
+        slug="trial_verify",
+        to=email,
+        context={"email": email, "verify_url": verify_url},
+    )
+    log.info(
+        "guard.trial.provision.challenge_sent",
+        email=email, company=company, ip=ip,
+        existing_user=bool(existing_user_id), email_sent=sent,
+    )
+    return TrialProvisionAck()
+
+
+@router.post("/redeem", response_model=TrialRedeemOut)
+def redeem_trial(
+    body: TrialRedeemIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> TrialRedeemOut:
+    """Redeem a verified challenge (audit S01).
+
+    Called by the web page the verification email links to. Atomic
+    single-use consumption via Redis GETDEL — no double-redeem race even
+    under concurrent clicks. NEW emails get a workspace + trial token.
+    Existing emails get a sign-in URL only, never a token.
+    """
+    from app.core.clerk import (
+        ClerkError as _ClerkError,
+        create_user as _clerk_create_user,
+        mint_sign_in_token as _clerk_mint_sign_in_token,
+    )
+    from app.modules.onboarding import provision_workspace_for_user
+
+    # Per-IP throttle on redeem too — a leaked link is one thing, but a
+    # botnet trying random challenge tokens against /redeem is another.
+    ip = _client_ip_from(request)
+    if not _throttle_by_ip(ip):
+        raise HTTPException(status_code=429, detail="rate_limited")
+
+    ct = (body.ct or "").strip()
+    if not ct:
+        raise HTTPException(status_code=422, detail="challenge_required")
+
+    ch = _redeem_challenge(ct)
+    if ch is None:
+        # Unknown / expired / already redeemed — same generic response
+        # regardless of which, so an attacker can't distinguish.
+        raise HTTPException(status_code=410, detail="challenge_invalid_or_expired")
+
+    _proxy_base = settings.conduct_proxy_url.rstrip("/")
+    _web = _web_base_url()
+
+    # Existing-email path — never issue an agent token here. The user
+    # should sign in through their normal path; the verification just
+    # confirmed the mailbox is reachable, not that they own the account
+    # tied to it (the two are usually equivalent, but the security
+    # invariant we care about is "no anonymous token issuance").
+    if ch.existing_user_id:
+        log.info("guard.trial.redeem.existing", email=ch.email, clerk_user_id=ch.existing_user_id, ip=ip)
+        return TrialRedeemOut(
+            status="existing",
+            recovery_url=f"{_web}/sign-in",
+        )
+
+    # New-email path — create Clerk user + workspace atomically.
+    try:
+        clerk_user_id = _clerk_create_user(ch.email)
+    except _ClerkError as exc:
+        # 422 from Clerk means the address was actually taken between
+        # mint and redeem (race with a browser signup). Degrade to the
+        # existing-user response so we still never leak a token.
+        if exc.status == 422:
+            log.info("guard.trial.redeem.race_became_existing", email=ch.email, ip=ip)
+            return TrialRedeemOut(status="existing", recovery_url=f"{_web}/sign-in")
+        log.warning("guard.trial.redeem.clerk_create_failed", email=ch.email, status=exc.status, body=exc.body)
+        if exc.status == 429:
+            raise HTTPException(status_code=429, detail="rate_limited")
+        raise HTTPException(status_code=502, detail="clerk_unavailable")
+
+    # Shared onboarding — same function the `user.created` webhook uses.
+    # Idempotent under the (extremely narrow) race where the webhook lands
+    # before our commit: whoever wins, the loser returns the same row.
+    ws_id_uuid = provision_workspace_for_user(db, clerk_user_id, name=ch.company[:60])
     db.commit()
     ws_id = str(ws_id_uuid)
-    log.info(
-        "guard.trial.provisioned",
-        workspace_id=ws_id, clerk_user_id=clerk_user_id,
-        email=email, company=company, ip=ip,
-    )
+    log.info("guard.trial.redeem.provisioned", workspace_id=ws_id, clerk_user_id=clerk_user_id, email=ch.email, ip=ip)
 
-    # Fetch + decrypt the trial identity token to return to the caller.
     row = _load_trial_identity(db, ws_id)
     if row is None:
         raise HTTPException(status_code=500, detail="trial_seed_failed")
@@ -422,23 +485,13 @@ def provision_trial(
     except Exception:
         raise HTTPException(status_code=500, detail="trial_token_decrypt_failed")
 
-    # Best-effort sign-in URL — CLI prints it so user can click straight
-    # into the dashboard. None if Clerk not configured or mint failed;
-    # curl-install still works, user just goes to /sign-in manually.
     sign_in_url = _clerk_mint_sign_in_token(clerk_user_id)
-
-    # `gateway_url` is Anthropic-shaped because that's what the trial
-    # upstream key covers today. `proxy_base_url` is the vendor-agnostic
-    # root so newer install scripts can derive OpenAI / Perplexity URLs
-    # (`{proxy_base_url}/openai`, `.../perplexity`) without another API
-    # round-trip. Both routes accept the same trial token; Guard policy
-    # and hash-chained audit apply uniformly.
-    _proxy_base = settings.conduct_proxy_url.rstrip("/")
-    return TrialProvisionOut(
+    return TrialRedeemOut(
+        status="new",
         workspace_id=ws_id,
         agent_token=token,
         gateway_url=f"{_proxy_base}/anthropic",
         proxy_base_url=_proxy_base,
-        workspace_url=f"{_web_base_url()}/theguard",
+        workspace_url=f"{_web}/theguard",
         sign_in_url=sign_in_url,
     )
