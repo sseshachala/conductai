@@ -77,7 +77,7 @@ class GuardCheckClient:
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
-            "User-Agent": "conduct-litellm-guard/0.2.2",
+            "User-Agent": "conduct-litellm-guard/0.2.3",
             # Server reads this to populate the DEVELOPER/TOOL column
             # in the audit dashboard. Defaults to 'litellm' so audit
             # rows land under a clear surface name instead of 'unknown'.
