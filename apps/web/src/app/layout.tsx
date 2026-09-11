@@ -154,7 +154,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // as belt-and-braces against a rogue future import.
   if (clerkEnabled) {
     return (
-      <ClerkProvider afterSignInUrl="/workflows" afterSignUpUrl="/setup">
+      <ClerkProvider
+        signInFallbackRedirectUrl="/theguard"
+        signUpFallbackRedirectUrl="/theguard/try"
+      >
         <html lang="en">
           <head>
             {jsonLd}
