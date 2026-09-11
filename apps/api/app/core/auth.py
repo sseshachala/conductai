@@ -517,11 +517,47 @@ def get_workspace_id(
         _assert_workspace_member(db, explicit_ws, user_id)
         return explicit_ws
 
-    workspace_id = claims.get("org_id") or claims.get("sub")
-    if not workspace_id:
-        raise HTTPException(status_code=401, detail="No workspace in token claims")
+    # Prefer JWT org_id claim when it's a real workspace UUID we know about.
+    # Fresh signups often haven't refreshed the JWT to include org_id yet
+    # (Clerk creates the org async), so we fall through to a DB lookup.
+    import re as _re
+    import uuid as _uuid
+    _uuid_re = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 
-    return workspace_id
+    org_claim = claims.get("org_id")
+    if org_claim and _re.match(_uuid_re, str(org_claim), _re.I):
+        return str(org_claim)
+
+    # Fallback: resolve the user's own workspace from the DB. Owner path
+    # first (matches provision_workspace_for_user + /projects auto-create),
+    # then workspace_users for invited/added members.
+    from sqlalchemy import text as _text
+    row = db.execute(
+        _text("SELECT id FROM workspaces WHERE owner_id = :uid ORDER BY created_at ASC LIMIT 1"),
+        {"uid": user_id},
+    ).fetchone()
+    if row:
+        return str(row.id)
+
+    row = db.execute(
+        _text(
+            "SELECT workspace_id FROM workspace_users "
+            "WHERE clerk_user_id = :uid ORDER BY joined_at ASC LIMIT 1"
+        ),
+        {"uid": user_id},
+    ).fetchone()
+    if row:
+        return str(row.workspace_id)
+
+    # No workspace resolvable. Previously we returned claims.get("sub") here
+    # (the Clerk user_id), which then failed the UUID regex downstream and
+    # surfaced as 403 "Not a member of this workspace" — misleading. Now we
+    # 401 with a clear message so operators know the user has no provisioned
+    # workspace yet (webhook race or provisioning failure).
+    raise HTTPException(
+        status_code=401,
+        detail="No workspace found for user — sign in again or wait for org provisioning to complete",
+    )
 
 
 def get_user_workspace_role(
