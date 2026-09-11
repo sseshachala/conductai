@@ -23,7 +23,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         # structured logs). Render's nginx access log is outside our control;
         # the long-term mitigation is #800 (header auth) + #810 (drop URL
         # fallback when Claude.ai web supports headers).
-        if request.url.path not in ("/health", "/health/sandbox"):
+        if request.url.path not in ("/health", "/health/sandbox", "/live", "/ready"):
             log.info(
                 "http.request",
                 method=request.method,
