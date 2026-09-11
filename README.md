@@ -10,6 +10,7 @@
 [![Dependency Security](https://github.com/sseshachala/conductai/actions/workflows/dependency-security.yml/badge.svg)](https://github.com/sseshachala/conductai/actions/workflows/dependency-security.yml)
 [![Container Security](https://github.com/sseshachala/conductai/actions/workflows/container-security.yml/badge.svg)](https://github.com/sseshachala/conductai/actions/workflows/container-security.yml)
 [![SBOM](https://github.com/sseshachala/conductai/actions/workflows/sbom.yml/badge.svg)](https://github.com/sseshachala/conductai/actions/workflows/sbom.yml)
+[![License Scan](https://github.com/sseshachala/conductai/actions/workflows/license-scan.yml/badge.svg)](https://github.com/sseshachala/conductai/actions/workflows/license-scan.yml)
 
 # Conduct
 
