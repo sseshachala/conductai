@@ -23,7 +23,12 @@ log = logging.getLogger(__name__)
 # (e.g. running the unit tests without a real LiteLLM install).
 try:
     from litellm.integrations.custom_guardrail import CustomGuardrail  # type: ignore
+    from litellm.types.guardrails import GuardrailEventHooks as _LiteLLMHooks  # type: ignore
     _LITELLM_AVAILABLE = True
+    # LiteLLM's guardrail registry scans SUPPORTED_EVENT_HOOKS and calls
+    # ``.value`` on each entry — must be the ``GuardrailEventHooks`` enum,
+    # not a bare string. Regression fix in 0.2.4 (BerriAI/litellm#38143).
+    _PRE_CALL_HOOK: Any = _LiteLLMHooks.pre_call
 except Exception:  # pragma: no cover — exercised via test double
     _LITELLM_AVAILABLE = False
 
@@ -35,6 +40,8 @@ except Exception:  # pragma: no cover — exercised via test double
             self.guardrail_name = kwargs.get("guardrail_name")
             self.event_hook = kwargs.get("event_hook")
             self.default_on = kwargs.get("default_on", True)
+
+    _PRE_CALL_HOOK = "pre_call"
 
 
 Verdict = Literal["allow", "advisory", "warning", "block", "approval", "unknown"]
@@ -172,10 +179,13 @@ class ConductGuard(CustomGuardrail):
     # can be pure aliases with no subclass — keeps their type-discipline
     # gates satisfied. Add ``response`` when ``guard_check_response``
     # ships (plugin 0.3.x).
-    SUPPORTED_EVENT_HOOKS: ClassVar[tuple[str, ...]] = ("pre_call",)
+    # LiteLLM's registry scan calls ``.value`` on each entry — must be
+    # the ``GuardrailEventHooks`` enum member when LiteLLM is installed
+    # (the only case anyone actually uses this class in prod).
+    SUPPORTED_EVENT_HOOKS: ClassVar[tuple[Any, ...]] = (_PRE_CALL_HOOK,)
 
     @classmethod
-    def get_supported_event_hooks(cls) -> list[str]:
+    def get_supported_event_hooks(cls) -> list:
         """Return the ``mode:`` values LiteLLM should accept for this
         guardrail. LiteLLM rejects any config that requests an
         unsupported mode at load time — prevents silent bypass of
