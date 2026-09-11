@@ -40,6 +40,7 @@ class TrialSessionOut(BaseModel):
     days_remaining: int
     token: str | None
     gateway_url: str
+    workspace_id: str  # /theguard/try browser sends this in X-Conductai-Workspace-Id
     cap_used: int
     cap_max: int
 
@@ -98,6 +99,7 @@ def get_trial_session(
                 plan=plan, expired=False, ineligible=True, reason="active_workspace",
                 days_remaining=0, token=None,
                 gateway_url=settings.conduct_proxy_url,
+                workspace_id=workspace_id,
                 cap_used=0, cap_max=TRIAL_DAILY_CAP,
             )
         seed_trial(db, workspace_id)
@@ -116,6 +118,7 @@ def get_trial_session(
         return TrialSessionOut(
             plan=plan, expired=True, days_remaining=0,
             token=None, gateway_url=settings.conduct_proxy_url,
+            workspace_id=workspace_id,
             cap_used=0, cap_max=TRIAL_DAILY_CAP,
         )
 
@@ -137,6 +140,7 @@ def get_trial_session(
         days_remaining=days_remaining if not expired else 0,
         token=token,
         gateway_url=settings.conduct_proxy_url,
+        workspace_id=workspace_id,
         cap_used=get_trial_cap_used(db, workspace_id, str(identity.id)),
         cap_max=TRIAL_DAILY_CAP,
     )

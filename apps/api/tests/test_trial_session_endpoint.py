@@ -83,6 +83,9 @@ def test_on_demand_seed_when_no_trial_identity(empty_ws):
     assert out.cap_used == 0
     assert out.cap_max == TRIAL_DAILY_CAP
     assert out.gateway_url  # non-empty
+    # #1804 — workspace_id must be surfaced so the browser can send it
+    # in X-Conductai-Workspace-Id when calling /proxy in agent-mode.
+    assert out.workspace_id == ws_id
 
     plan_now = db.execute(
         text("SELECT plan FROM workspaces WHERE id = :ws"), {"ws": ws_id},
