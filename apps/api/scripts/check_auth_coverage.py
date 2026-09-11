@@ -28,6 +28,7 @@ AUTH_DEPS = {
     "get_user_workspace_role_sse",
     "get_guard_org_id",
     "get_guard_hook_auth",
+    "require_platform_operator",
     "_require_admin",
     "_require_super_admin",
     "_bearer",
@@ -94,6 +95,11 @@ ALLOWLIST = {
     # created here — email stashed on workspace.owner_id for later
     # magic-link claim.
     "modules/guard/routers/trial.py::provision_trial",
+    # Trial redemption — public endpoint (#1790 audit S01 challenge/redeem flow).
+    # Auth: opaque single-use challenge token in the body must match a Redis
+    # entry that was minted by /provision after email format + rate-limit
+    # gates passed. Existing-user challenges NEVER return an agent token.
+    "modules/guard/routers/trial.py::redeem_trial",
     # Guard budget check (workspace_id validated against guard_config — called pre-tool-use)
     "modules/guard/routers/spend.py::budget_check",
     # Telemetry ingest (auth via Authorization or X-Workspace-Id header — alternative auth)

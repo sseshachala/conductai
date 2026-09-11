@@ -88,6 +88,12 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     app_version: str = "1.0.0"
 
+    # Platform operators — Clerk user IDs that can access cross-tenant ops
+    # endpoints (e.g. /guard/trial/ops). Comma-separated. Empty = nobody,
+    # which is the correct default; grant explicitly to on-call staff only.
+    # A tenant admin role must NEVER be enough on its own — see audit S05.
+    platform_operator_clerk_ids: str = ""
+
     # Trusted ingress proxies — comma-separated CIDR list of load balancers
     # whose X-Forwarded-For headers we trust (e.g. "10.0.0.0/8" for Render's
     # internal LB). If unset, X-Forwarded-For is ignored and request.client.host

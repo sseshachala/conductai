@@ -28,6 +28,46 @@ _jinja = JinjaEnv(loader=BaseLoader(), autoescape=True)
 # ---------------------------------------------------------------------------
 
 _FALLBACK_TEMPLATES: dict[str, dict] = {
+    "trial_verify": {
+        "subject": "Verify your Conduct AI trial",
+        "html_body": """<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Verify your Conduct AI trial</title></head>
+<body style="margin:0;padding:0;background:#f5f5f4;font-family:-apple-system,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f4;padding:40px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+        <tr><td align="center" style="padding-bottom:24px;">
+          <span style="font-size:20px;font-weight:700;color:#1c1917;">Conduct AI</span>
+        </td></tr>
+        <tr><td style="background:#fff;border-radius:16px;border:1px solid #e7e5e4;padding:40px;">
+          <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1c1917;">
+            Verify your email to start your trial
+          </p>
+          <p style="margin:0 0 24px;font-size:14px;color:#78716c;">
+            Someone (hopefully you) requested a Conduct AI trial for
+            <b>{{ email }}</b>. Click below to verify and finish setup.
+            The link expires in 30 minutes.
+          </p>
+          <table cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+            <tr><td style="background:#1c1917;border-radius:10px;">
+              <a href="{{ verify_url }}"
+                 style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#fff;text-decoration:none;">
+                Verify email →
+              </a>
+            </td></tr>
+          </table>
+          <p style="margin:0;font-size:12px;color:#a8a29e;">
+            If you didn't request this, ignore the message. No account or
+            token is created until you click the button above.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>""",
+    },
     "workspace_invite": {
         "subject": "You're invited to {{ workspace_name }} on Conduct AI",
         "html_body": """<!DOCTYPE html>

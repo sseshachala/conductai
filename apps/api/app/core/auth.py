@@ -941,6 +941,26 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
     return (row[0], row[1]) if row else None
 
 
+def require_platform_operator():
+    """FastAPI dep — 403s unless the caller's Clerk user_id is in
+    settings.platform_operator_clerk_ids. Used to gate cross-tenant ops
+    endpoints (e.g. /guard/trial/ops). A tenant admin role must NEVER
+    be enough on its own — see audit S05.
+    """
+    from app.core.config import settings as _s
+
+    def _dep(user_id: str = Depends(get_user_id)) -> str:
+        # In local/dev mode (no Clerk) user_id == DEV_USER_ID; explicit
+        # opt-in required: set PLATFORM_OPERATOR_CLERK_IDS=dev to enable
+        # ops endpoints on a dev box, otherwise 403 even there.
+        allowed = {s.strip() for s in _s.platform_operator_clerk_ids.split(",") if s.strip()}
+        if user_id and user_id in allowed:
+            return user_id
+        raise HTTPException(status_code=403, detail="platform_operator_only")
+
+    return _dep
+
+
 def token_is_expired(token: str, db: Session) -> bool:
     """True iff token matches a real AgentIdentity row whose expires_at has passed.
 
