@@ -119,7 +119,11 @@ function curlFor(verb: Verb, token: string, gatewayUrl: string): string {
   -H "Authorization: Bearer ${token}"`
   }
   const body = JSON.stringify({
-    model: "claude-3-5-haiku-20241022",
+    // Display-only reference model for the "Copy curl" panel. The actual
+    // demo call goes through /guard/trial/demo/{verb} which resolves the
+    // model server-side from workspace_llm_primitives. Kept as a current
+    // Anthropic Haiku so anyone copying the curl reaches a real model.
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 128,
     messages: [{ role: "user", content: verb.prompt }],
   })
@@ -239,47 +243,30 @@ export default function GuardTryPage() {
     setRunning(r => ({ ...r, [verb.key]: true }))
     setVerdicts(v => ({ ...v, [verb.key]: null }))
     try {
-      const path = verb.key === "prove"
-        ? `${API}/guard/events/audit/verify`
-        : `${session.gateway_url}/anthropic/v1/messages`
-      // /guard/events/audit/verify (prove) accepts the agent token via
-      // Authorization: Bearer directly. /proxy/* requires the agent token
-      // via X-Conductai-Internal + X-Conductai-Workspace-Id — that's the
-      // agent-mode auth path (see #1804/#1805 for why we don't widen the
-      // Bearer slot at /proxy).
-      const opts: RequestInit = verb.key === "prove"
-        ? { method: "GET", headers: { Authorization: `Bearer ${session.token}` } }
-        : {
-            method: "POST",
-            headers: {
-              "X-Conductai-Internal": session.token,
-              "X-Conductai-Workspace-Id": session.workspace_id,
-              "anthropic-version": "2023-06-01",
-              // Anthropic 401s browser-originated calls unless this header
-              // is set — it's their opt-in for browser demos. Our /proxy
-              // forwards the request as-is to Anthropic, so the header
-              // needs to be sent from the browser.
-              "anthropic-dangerous-direct-browser-access": "true",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "claude-3-5-haiku-20241022",
-              max_tokens: 128,
-              messages: [{ role: "user", content: verb.prompt }],
-            }),
-          }
-      const r = await fetch(path, opts)
-      const text = await r.text()
-      let pretty = text
-      try { pretty = JSON.stringify(JSON.parse(text), null, 2) } catch { /* keep raw */ }
-      setVerdicts(v => ({ ...v, [verb.key]: `HTTP ${r.status}\n${pretty}` }))
+      // Server-owned demo flow: browser posts just the verb name; server
+      // resolves the model via workspace_llm_primitives, loads the trial
+      // token, calls /proxy internally, and returns the upstream response.
+      // No more hardcoded model, no more Anthropic-specific headers in
+      // the browser, no more agent-mode header plumbing here.
+      const r = await authFetch(`${API}/guard/trial/demo/${verb.key}`, { method: "POST" })
+      const data = await r.json()
+      const bodyPretty = (() => {
+        try { return JSON.stringify(JSON.parse(data.upstream_body || ""), null, 2) }
+        catch { return data.upstream_body || "" }
+      })()
+      const rulePart = data.rule_id ? `  [rule: ${data.rule_id}]` : ""
+      const modelPart = data.model ? `  (model: ${data.model})` : ""
+      setVerdicts(v => ({
+        ...v,
+        [verb.key]: `HTTP ${data.upstream_status}${rulePart}${modelPart}\n${bodyPretty}`,
+      }))
       void load()  // refresh cap_used
     } catch (e) {
       setVerdicts(v => ({ ...v, [verb.key]: `error: ${e instanceof Error ? e.message : String(e)}` }))
     } finally {
       setRunning(r => ({ ...r, [verb.key]: false }))
     }
-  }, [session, load])
+  }, [session, load, authFetch])
 
   return (
     <AppShell>
