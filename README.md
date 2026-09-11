@@ -5,6 +5,12 @@
 [![License Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/conduct-cli?style=for-the-badge&logo=pypi&logoColor=white&color=0073b7)](https://pypi.org/project/conduct-cli/)
 
+[![CI](https://github.com/sseshachala/conductai/actions/workflows/ci.yml/badge.svg)](https://github.com/sseshachala/conductai/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/sseshachala/conductai/actions/workflows/codeql.yml/badge.svg)](https://github.com/sseshachala/conductai/actions/workflows/codeql.yml)
+[![Dependency Security](https://github.com/sseshachala/conductai/actions/workflows/dependency-security.yml/badge.svg)](https://github.com/sseshachala/conductai/actions/workflows/dependency-security.yml)
+[![Container Security](https://github.com/sseshachala/conductai/actions/workflows/container-security.yml/badge.svg)](https://github.com/sseshachala/conductai/actions/workflows/container-security.yml)
+[![SBOM](https://github.com/sseshachala/conductai/actions/workflows/sbom.yml/badge.svg)](https://github.com/sseshachala/conductai/actions/workflows/sbom.yml)
+
 # Conduct
 
 **Governance for AI agents. Ship in 60 seconds.**

@@ -1,0 +1,48 @@
+name: DCO
+
+# Enforces the Developer Certificate of Origin — every commit in a PR must
+# carry a `Signed-off-by: Name <email>` trailer. Contributors sign off with
+# `git commit -s`. See CONTRIBUTING.md.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Signed-off-by trailer
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify all commits are signed off
+        run: |
+          set -e
+          base="origin/${{ github.event.pull_request.base.ref }}"
+          missing=0
+          while read -r sha; do
+            [ -z "$sha" ] && continue
+            if ! git log -1 --format=%B "$sha" | grep -qE '^Signed-off-by: .+ <.+@.+>$'; then
+              subject=$(git log -1 --format='%h %s' "$sha")
+              echo "::error::Missing Signed-off-by on commit: $subject"
+              missing=1
+            fi
+          done < <(git log --format=%H "$base"..HEAD)
+
+          if [ "$missing" -eq 1 ]; then
+            echo ""
+            echo "One or more commits in this PR are missing the DCO trailer."
+            echo "Sign off each commit with: git commit -s"
+            echo "To fix the last commit: git commit --amend --signoff"
+            echo "To fix all commits in the branch: git rebase --signoff $base"
+            exit 1
+          fi
+
+          echo "All commits are properly signed off."
