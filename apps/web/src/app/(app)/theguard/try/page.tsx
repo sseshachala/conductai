@@ -119,7 +119,7 @@ function curlFor(verb: Verb, token: string, gatewayUrl: string): string {
   -H "Authorization: Bearer ${token}"`
   }
   const body = JSON.stringify({
-    model: "claude-3-5-haiku-20241022",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 128,
     messages: [{ role: "user", content: verb.prompt }],
   })
@@ -258,7 +258,7 @@ export default function GuardTryPage() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "claude-3-5-haiku-20241022",
+              model: "claude-haiku-4-5-20251001",
               max_tokens: 128,
               messages: [{ role: "user", content: verb.prompt }],
             }),
