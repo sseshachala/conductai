@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from app.modules.auth import cli_token
 from app.modules.auth.oauth import authorize
+from app.core import auth
 from fastapi import HTTPException
 
 WORKSPACE_ID = "11111111-1111-4111-8111-111111111111"
@@ -109,6 +110,45 @@ def test_refresh_for_current_member_rotates_without_enrollment(monkeypatch):
     assert refresh.startswith("cond_ref_")
     db.commit.assert_called_once()
     _assert_no_membership_writes(db)
+
+
+def test_shared_agent_token_resolver_rejects_removed_cli_member(monkeypatch):
+    token = "cond_agt_test-token"
+    identity = _identity()
+    identity.expires_at = None
+    identity.lifecycle_state = "active"
+    identity.token_type = "cli"
+    identity.created_by_clerk_user_id = None
+    identity.token_name = None
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [identity]
+    db.execute.side_effect = [
+        _result((WORKSPACE_ID, "removed")),
+        _result(None),
+    ]
+    monkeypatch.setattr("app.core.crypto.decrypt", lambda _: {"token": token})
+
+    assert auth.resolve_agent_token(token, db) is None
+
+
+def test_dependency_agent_token_resolver_rejects_removed_cli_member(monkeypatch):
+    token = "cond_agt_test-token"
+    identity = _identity()
+    identity.expires_at = None
+    identity.lifecycle_state = "active"
+    identity.token_type = "cli"
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [identity]
+    db.execute.side_effect = [
+        _result(SimpleNamespace(clerk_user_id="removed")),
+        _result(None),
+    ]
+    monkeypatch.setattr("app.core.crypto.decrypt", lambda _: {"token": token})
+
+    with pytest.raises(HTTPException) as exc:
+        auth._resolve_agent_token(token, db)
+
+    assert exc.value.status_code == 401
 
 
 @pytest.mark.parametrize("workspace_id", [UNKNOWN_WORKSPACE_ID, WORKSPACE_ID])

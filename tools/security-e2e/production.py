@@ -1,4 +1,4 @@
-"""Run the bounded production credential-boundary journey from this machine."""
+"""Run bounded production security canaries from this machine."""
 import argparse
 import os
 import re
@@ -20,6 +20,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--credentials-file", required=True, type=Path)
     parser.add_argument("--allow-disposable-workspaces", action="store_true")
+    parser.add_argument("--grep", help="Run only production canaries matching this pattern")
     args = parser.parse_args()
     if not args.allow_disposable_workspaces:
         parser.error("explicit --allow-disposable-workspaces consent is required")
@@ -41,6 +42,8 @@ def main() -> int:
         "rtk", "proxy", "npx", "playwright", "test",
         "--config", "playwright.production-security.config.ts",
     ]
+    if args.grep:
+        command.extend(["--grep", args.grep])
     with subprocess.Popen(
         command,
         cwd=ROOT / "apps/web",
