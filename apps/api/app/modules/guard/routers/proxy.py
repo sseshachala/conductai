@@ -337,6 +337,7 @@ async def _proxy(
     _needs_run_token_validation = bool(_internal_key and _internal_key.startswith("cond_run_"))
     _needs_agent_validation = bool(_internal_key and _internal_key.startswith("cond_agt_"))
     _agent_identity_id: str | None = None
+    _agent_risk_tier: str | None = None
 
     if not token and not _is_internal and not _needs_agent_validation and not _needs_run_token_validation:
         return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct login`")
@@ -388,6 +389,7 @@ async def _proxy(
                 return _fail_closed(401, "Agent Identity token does not belong to the requested workspace")
             _is_internal = True
             _agent_identity_id = _ai.id
+            _agent_risk_tier = getattr(_ai, "risk_tier", None)
 
         if _is_internal:
             workspace_id = request.headers.get("x-conductai-workspace-id", "")
@@ -411,6 +413,15 @@ async def _proxy(
                 return _fail_closed(401, "Conduct member token not recognized — run `conduct login`")
             workspace_id, clerk_user_id = ident
             set_workspace_rls(db, workspace_id)
+            # Best-effort risk_tier lookup for tier-gated policies. Legacy
+            # guard-mt-* member tokens have no identity row → None.
+            try:
+                from app.core.auth import resolve_agent_identity_row as _rair
+                _proxy_ai_row = _rair(token, db)
+                if _proxy_ai_row:
+                    _agent_risk_tier = getattr(_proxy_ai_row, "risk_tier", None)
+            except Exception:
+                pass
 
         # 3. Parse request body
         try:
@@ -484,6 +495,7 @@ async def _proxy(
             input_tokens=_estimate_input_tokens(body),
             db=db,
             gate="prompt",  # #1733: outbound LLM proxy egress
+            risk_tier=_agent_risk_tier,
         )
         _pd = _eval_composed(_ctx)
         decision = _pd.extras.get("raw") or {
@@ -619,12 +631,14 @@ async def _proxy(
         _response = _apply_response_gate(
             _response, workspace_id=workspace_id, provider=provider, model=model,
             clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
+            agent_risk_tier=_agent_risk_tier,
         )
     # #1733 PR 5: response gate (streaming, buffered end-of-stream scan).
     elif is_stream and isinstance(_response, StreamingResponse) and _response.status_code < 400:
         _response = _wrap_streaming_response(
             _response, workspace_id=workspace_id, provider=provider, model=model,
             clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
+            agent_risk_tier=_agent_risk_tier,
         )
     return _response
 
@@ -639,6 +653,7 @@ def _evaluate_response_body(
     model: str,
     clerk_user_id: str | None,
     agent_identity_id: str | None,
+    agent_risk_tier: str | None = None,
 ):
     """#1733 PRs 4+5 — shared response-gate evaluator. Called by both the
     non-streaming path (post-upstream, pre-return) and the streaming path
@@ -658,6 +673,7 @@ def _evaluate_response_body(
             input_tokens=0,
             db=None,
             gate="response",  # #1733: inbound model reply
+            risk_tier=agent_risk_tier,
         )
         return _eval_composed(_ctx)
     except Exception as _e:
@@ -673,6 +689,7 @@ def _apply_response_gate(
     model: str,
     clerk_user_id: str | None,
     agent_identity_id: str | None,
+    agent_risk_tier: str | None = None,
 ) -> JSONResponse:
     """#1733 PR 4 — evaluate the response body against gate='response' rules.
 
@@ -691,6 +708,7 @@ def _apply_response_gate(
             resp_body,
             workspace_id=workspace_id, provider=provider, model=model,
             clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
+            agent_risk_tier=agent_risk_tier,
         )
         if decision is None or decision.action != _PA.BLOCK:
             return response
@@ -754,6 +772,7 @@ def _wrap_streaming_response(
     model: str,
     clerk_user_id: str | None,
     agent_identity_id: str | None,
+    agent_risk_tier: str | None = None,
 ) -> StreamingResponse:
     """#1733 PR 5 — buffered end-of-stream response gate.
 
@@ -788,6 +807,7 @@ def _wrap_streaming_response(
                 synthetic,
                 workspace_id=workspace_id, provider=provider, model=model,
                 clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
+                agent_risk_tier=agent_risk_tier,
             )
             if decision is None:
                 return

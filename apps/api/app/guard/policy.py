@@ -108,16 +108,31 @@ def _is_proxy_rule(rule: dict) -> bool:
 
 
 def _rule_matches(
-    rule: dict, provider: str, model: str, prompt_text: str, gate: str | None = "prompt"
+    rule: dict,
+    provider: str,
+    model: str,
+    prompt_text: str,
+    gate: str | None = "prompt",
+    agent_risk_tier: str | None = None,
 ) -> bool:
     """Proxy-side rule matcher. ``gate`` filters by declared rule gates —
     default ``"prompt"`` because every existing proxy caller today evaluates
     outbound prompts (pre-#1733 baseline). Pass ``gate=None`` to skip gate
     filtering — used by pack-authoring tests that assert rule matcher shape
-    without gate semantics."""
+    without gate semantics.
+
+    ``agent_risk_tier`` is the caller identity's tier (populated by the PEP
+    from AgentIdentity.risk_tier). When a rule sets ``match_agent_risk_tier``
+    it only fires for callers whose tier matches exactly. Rules without this
+    field are unaffected. A null tier never matches a rule that requires
+    one — safe for legacy identities that pre-date the risk_tier column.
+    """
     from app.modules.guard.enforcement import rule_matches_gate
 
     if gate is not None and not rule_matches_gate(rule, gate):
+        return False
+    required_tier = rule.get("match_agent_risk_tier")
+    if required_tier is not None and required_tier != agent_risk_tier:
         return False
     p = rule.get("match_provider")
     if p is not None and p != provider:
@@ -145,6 +160,7 @@ def evaluate(
     model: str,
     body: dict,
     gate: str = "prompt",
+    agent_risk_tier: str | None = None,
 ) -> dict:
     """Pre-call Guard policy evaluation.
 
@@ -198,7 +214,7 @@ def evaluate(
         for r in rules:
             if not _is_proxy_rule(r):
                 continue
-            if not _rule_matches(r, provider, model, prompt_text, gate=gate):
+            if not _rule_matches(r, provider, model, prompt_text, gate=gate, agent_risk_tier=agent_risk_tier):
                 continue
             rule_id = r.get("rule_id") or r.get("id")
             action = (r.get("action") or "warn").lower()

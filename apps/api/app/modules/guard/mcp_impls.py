@@ -78,6 +78,11 @@ class GuardCtx:
     user_email: str | None
     ai_tool: str
     session_id: str
+    # Caller identity's risk_tier (tier_1 | tier_2 | tier_3 | None). Populated
+    # by the transport when the token resolves to an AgentIdentity row. Used
+    # by rules with `match_agent_risk_tier` set — null tier never matches a
+    # tier-requiring rule.
+    agent_risk_tier: str | None = None
 
 
 def guard_status_impl(ctx: GuardCtx, **arguments) -> str:
@@ -161,7 +166,7 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
     _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     _advisory = _cfg.advisory_mode if _cfg else False
 
-    rule = _match_policy(inner_tool, inner_input, rules, gate=_gate)
+    rule = _match_policy(inner_tool, inner_input, rules, gate=_gate, agent_risk_tier=ctx.agent_risk_tier)
 
     if rule is None:
         _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)

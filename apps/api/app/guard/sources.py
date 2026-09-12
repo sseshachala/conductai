@@ -33,7 +33,7 @@ class RulePolicySource:
 
     def evaluate(self, ctx: PolicyContext) -> PolicyDecision:
         evaluator = self._evaluator or self._default_evaluator()
-        raw = evaluator(ctx.workspace_id, ctx.provider, ctx.model, ctx.body, gate=ctx.gate)
+        raw = evaluator(ctx.workspace_id, ctx.provider, ctx.model, ctx.body, gate=ctx.gate, agent_risk_tier=ctx.risk_tier)
         action_str = (raw.get("action") or "ALLOW").upper()
         try:
             action = PolicyAction(action_str)

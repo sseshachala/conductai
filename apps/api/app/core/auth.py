@@ -986,6 +986,40 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
     return (row[0], row[1]) if row else None
 
 
+def resolve_agent_identity_row(token: str, db: Session):
+    """Same lookup semantics as ``resolve_agent_token`` but returns the
+    AgentIdentity row instead of the (ws, user) tuple.
+
+    Returns None for unknown / expired / deactivated tokens and for legacy
+    ``guard-mt-*`` member tokens (which don't have a 1:1 AgentIdentity row).
+
+    Used by PEPs that need identity fields beyond auth — e.g. ``risk_tier``
+    to populate PolicyContext for tier-gated policies.
+    """
+    from datetime import datetime, timezone as _tz
+
+    if not token.startswith((_AGENT_PREFIX, _API_PREFIX)):
+        return None
+
+    from app.core.crypto import decrypt as _decrypt
+    from app.modules.agent_identity.models import AgentIdentity
+
+    prefix = token[:_PREFIX_LOOKUP_LEN]
+    for ai_row in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == prefix).all():
+        try:
+            if _decrypt(ai_row.token_encrypted).get("token") != token:
+                continue
+        except Exception:
+            continue
+        if ai_row.expires_at and ai_row.expires_at < datetime.now(_tz.utc):
+            return None
+        _lifecycle = getattr(ai_row, "lifecycle_state", None)
+        if _lifecycle in ("deactivated", "expired"):
+            return None
+        return ai_row
+    return None
+
+
 def require_platform_operator():
     """FastAPI dep — 403s unless the caller's Clerk user_id is in
     settings.platform_operator_clerk_ids. Used to gate cross-tenant ops
