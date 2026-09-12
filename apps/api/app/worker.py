@@ -58,6 +58,10 @@ STALE_RUN_THRESHOLD_MINUTES        = int(os.environ.get("STALE_RUN_THRESHOLD_MIN
 STALE_PENDING_THRESHOLD_MINUTES    = int(os.environ.get("STALE_PENDING_THRESHOLD_MINUTES", "10"))
 STALE_RUN_REAPER_INTERVAL          = int(os.environ.get("STALE_RUN_REAPER_INTERVAL", "120"))  # seconds
 TRIAL_TEARDOWN_INTERVAL            = int(os.environ.get("TRIAL_TEARDOWN_INTERVAL", "3600"))    # seconds
+# Guard Inbox auto-close: check every 6h so a workspace admin's config
+# change lands within a working day. The SQL itself is cheap (indexed on
+# workspace_id, last_seen_at) so more frequent checks would be harmless.
+GUARD_INBOX_AUTO_CLOSE_INTERVAL    = int(os.environ.get("GUARD_INBOX_AUTO_CLOSE_INTERVAL", "21600"))  # 6h
 
 
 # -- stale-run reaper ----------------------------------------------------------
@@ -213,6 +217,58 @@ def _trial_teardown_loop() -> None:
             log.exception("trial_teardown.loop_error")
 
 
+def _guard_inbox_auto_close_once() -> int:
+    """Flip stale open guard_inbox rows to resolved:auto based on the
+    per-workspace inbox_auto_close_days setting. 0 opts out of auto-close.
+
+    Uses one UPDATE with a join against guard_config so all workspaces
+    are processed in a single transaction. Returns the row count for the
+    log line.
+    """
+    from sqlalchemy import text
+    from app.core.database import SessionLocal
+
+    with SessionLocal() as db:
+        result = db.execute(text("""
+            UPDATE guard_inbox
+               SET status = 'resolved',
+                   resolved_reason = 'auto',
+                   resolved_at = NOW(),
+                   resolved_by = NULL
+              FROM guard_config gc
+             WHERE guard_inbox.workspace_id = gc.workspace_id
+               AND guard_inbox.status = 'open'
+               AND gc.inbox_auto_close_days > 0
+               AND guard_inbox.last_seen_at < NOW()
+                   - (gc.inbox_auto_close_days || ' days')::interval
+        """))
+        db.commit()
+        return result.rowcount or 0
+
+
+def _guard_inbox_auto_close_loop() -> None:
+    """Daemon: every GUARD_INBOX_AUTO_CLOSE_INTERVAL seconds, close stale
+    open inbox rows per each workspace's inbox_auto_close_days config.
+
+    The existing guard_inbox_populate_trg trigger (migration 0123) handles
+    the re-fire case: if a resolved:auto row's dedup key fires again, the
+    trigger flips it back to status='open' and clears the resolution
+    metadata. So auto-close is safe — never permanently swallows an issue
+    that starts reoccurring.
+    """
+    log.info(
+        "guard_inbox_auto_close.started",
+        interval_seconds=GUARD_INBOX_AUTO_CLOSE_INTERVAL,
+    )
+    while True:
+        time.sleep(GUARD_INBOX_AUTO_CLOSE_INTERVAL)
+        try:
+            closed = _guard_inbox_auto_close_once()
+            if closed:
+                log.info("guard_inbox_auto_close.cycle", closed=closed)
+        except Exception:
+            log.exception("guard_inbox_auto_close.loop_error")
+
 
 def _online_eval_loop() -> None:
     """Daemon thread: consume the online eval queue and score each completed run."""
@@ -340,6 +396,11 @@ def main() -> None:
 
     trial_teardown = threading.Thread(target=_trial_teardown_loop, daemon=True, name="trial-teardown")
     trial_teardown.start()
+
+    guard_inbox_auto_close = threading.Thread(
+        target=_guard_inbox_auto_close_loop, daemon=True, name="guard-inbox-auto-close"
+    )
+    guard_inbox_auto_close.start()
 
     if CONCURRENCY == 1:
         _loop(0)

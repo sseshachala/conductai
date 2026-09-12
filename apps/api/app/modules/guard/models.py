@@ -62,6 +62,12 @@ class GuardConfig(Base):
     deny_on_error = Column(Boolean, nullable=False, default=True)  # fail-closed on policy eval error
     notify_on_fail_open = Column(Boolean, nullable=False, default=True)  # customer-facing WARNING when Guard engine falls open (#1520)
     advisory_mode = Column(Boolean, nullable=False, default=False)  # log all, block nothing
+    # Days to keep a Guard Inbox row open before the auto-close worker flips
+    # it to resolved:auto. 0 = never auto-close (opt-out). Default 30 matches
+    # the migration 0123 initial backfill window.
+    inbox_auto_close_days = Column(
+        Integer, nullable=False, default=30, server_default=sa.text("30")
+    )
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
