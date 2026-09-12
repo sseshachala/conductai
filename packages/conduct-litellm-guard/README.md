@@ -32,7 +32,7 @@ pip install conduct-litellm-guard
          mode: pre_call
          api_url: https://api.conductai.ai
          agent_token: os.environ/CONDUCT_AGENT_TOKEN
-         fail_mode: fail_closed
+         unreachable_fallback: fail_closed
    ```
 
    **Native (once [BerriAI/litellm#38143](https://github.com/BerriAI/litellm/pull/38143) merges):**
@@ -43,7 +43,7 @@ pip install conduct-litellm-guard
          guardrail: conduct
          mode: pre_call
          api_key: os.environ/CONDUCT_AGENT_TOKEN
-         fail_mode: fail_closed
+         unreachable_fallback: fail_closed
    ```
    The native form uses LiteLLM's idiomatic `api_base` / `api_key`
    parameter names. You still install this package —
@@ -82,7 +82,7 @@ Guard returns one of five verdicts:
 | `api_url`     | no       | `https://api.conductai.ai` | Point at a self-hosted Conduct API when needed.           |
 | `agent_token` | yes      | `CONDUCT_AGENT_TOKEN` env  | `cond_agt_*` token minted in the Conduct console.         |
 | `workspace_id`| no       | resolved from the token    | Usually unnecessary — the token owns its workspace.       |
-| `fail_mode`   | no       | `fail_closed`              | `fail_closed` blocks when Guard is unreachable, `fail_open` allows. |
+| `unreachable_fallback`   | no       | `fail_closed`              | `fail_closed` blocks when Guard is unreachable, `fail_open` allows. Renamed from `fail_mode` in v0.2.5 — the old name still works with a DeprecationWarning and is removed in v0.3.0. |
 | `timeout`     | no       | `8.0`                      | Seconds. Guard checks return in <100ms in the healthy path. |
 
 ## Session tracking
