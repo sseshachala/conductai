@@ -79,13 +79,12 @@ export default function BlogPost() {
 
         <h2 className="text-2xl font-bold text-stone-900 mt-12 mb-4">What Conduct adds</h2>
         <p className="text-stone-700 leading-relaxed">
-          {/* href includes ?ref= so the marketing-v2 global CSS
-              attribute-selector for [href="/sign-up"] doesn't turn
-              this inline link into a pill button. Also gives us
-              attribution data for the blog. */}
+          {/* .mkt-inline-link opts out of the marketing CTA pill
+              styling defined in globals.css so this inline mention
+              renders as a plain hyperlink. */}
           <a
-            href="/sign-up?ref=litellm-blog"
-            className="text-orange-700 underline"
+            href="/sign-up"
+            className="mkt-inline-link text-orange-700 underline"
           >
             Conduct
           </a>{" "}

@@ -107,8 +107,23 @@
 .marketing-v2 .border-stone-100,
 .marketing-v2 .border-stone-200 { border-color: var(--mkt-line) !important; }
 
-.marketing-v2 main a[href="/sign-up"],
-.marketing-v2 main a[href="/discovery"] {
+/*
+ * Marketing CTA button styling.
+ *
+ * Auto-styles anchors that point at the primary conversion routes so
+ * every landing page CTA looks the same without every page having to
+ * remember the button classes. Kept aggressive (!important) because
+ * pages ship Tailwind classes that would otherwise leak through.
+ *
+ * ESCAPE HATCH: any anchor with `.mkt-inline-link` is excluded from
+ * the button styling — use it when the same href needs to appear as
+ * a plain inline hyperlink inside prose (e.g. "read more about
+ * <a href='/sign-up' class='mkt-inline-link'>Conduct</a> below").
+ * Without the escape hatch, inline mentions of these routes render
+ * as oversized indigo pills that break paragraph flow.
+ */
+.marketing-v2 main a[href="/sign-up"]:not(.mkt-inline-link),
+.marketing-v2 main a[href="/discovery"]:not(.mkt-inline-link) {
   border: 1px solid var(--mkt-line-strong);
   border-radius: 999px !important;
   background: var(--mkt-indigo) !important;
@@ -116,8 +131,8 @@
   padding: 15px 24px;
 }
 
-.marketing-v2 main a[href="/demo"],
-.marketing-v2 main a[href="/book-demo"] {
+.marketing-v2 main a[href="/demo"]:not(.mkt-inline-link),
+.marketing-v2 main a[href="/book-demo"]:not(.mkt-inline-link) {
   border: 1px solid var(--mkt-line);
   border-radius: 999px !important;
   background: #fff;
