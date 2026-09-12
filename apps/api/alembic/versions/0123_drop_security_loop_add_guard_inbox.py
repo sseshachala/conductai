@@ -182,13 +182,20 @@ def upgrade() -> None:
         "DROP INDEX IF EXISTS projects_workspace_security_automation_uniq"
     )
 
-    op.drop_column("projects", "security_finding_id")
-    op.drop_column("workspaces", "security_automation_project_id")
+    # Use raw DDL with IF EXISTS so the up/down cycle CI test survives.
+    # The downgrade is best-effort and doesn't recreate security_config /
+    # security_findings tables (data is gone by design). Without IF EXISTS
+    # a downgrade-then-upgrade would fail here on the second upgrade pass.
+    op.execute("ALTER TABLE projects DROP COLUMN IF EXISTS security_finding_id")
+    op.execute(
+        "ALTER TABLE workspaces "
+        "DROP COLUMN IF EXISTS security_automation_project_id"
+    )
 
     # Dependent tables first — security_config had a workspace_id FK
     # with ON DELETE CASCADE but no other table depends on it.
-    op.drop_table("security_config")
-    op.drop_table("security_findings")
+    op.execute("DROP TABLE IF EXISTS security_config")
+    op.execute("DROP TABLE IF EXISTS security_findings")
 
     # ── Create guard_inbox ──────────────────────────────────────────────
     op.create_table(
