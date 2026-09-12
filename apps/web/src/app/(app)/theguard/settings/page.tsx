@@ -33,12 +33,10 @@ interface TeamPrefs {
 type GuardSettingsTab =
   | "enforcement"
   | "guardrails"
-  | "sync"
 
 const GUARD_SETTINGS_TABS: readonly SettingsTab<GuardSettingsTab>[] = [
   { key: "enforcement",   label: "Enforcement" },
   { key: "guardrails",    label: "Cost & performance" },
-  { key: "sync",          label: "Sync status" },
 ]
 
 
@@ -96,11 +94,11 @@ function SettingsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Legacy ?tab=notifications bookmarks: Notifications panel now lives at its own URL.
+  // Legacy ?tab=notifications and ?tab=sync bookmarks — panels now live at their own URLs.
   useEffect(() => {
-    if (searchParams?.get("tab") === "notifications") {
-      router.replace("/theguard/connections/notifications")
-    }
+    const tab = searchParams?.get("tab")
+    if (tab === "notifications") router.replace("/theguard/connections/notifications")
+    else if (tab === "sync") router.replace("/theguard/connections/sync")
   }, [searchParams, router])
 
   useEffect(() => {
@@ -129,17 +127,10 @@ function SettingsContent() {
   const [notifyOnFailOpen, setNotifyOnFailOpen] = useState(true)
   const [enforcementError, setEnforcementError] = useState<string | null>(null)
 
-  // Re-sync state
-  const [resyncing, setResyncing] = useState(false)
-  const [resyncDone, setResyncDone] = useState(false)
-
   // Token guardrails
   const { guardrails: tokenGuardrails, refresh: refreshGuardrails } = useTokenGuardrails(activeWorkspace?.id ?? null)
   const [guardrailState, setGuardrailState] = useState({ prompt_caching: true, model_routing: true, prompt_splitting: true })
   const [guardrailSaved, setGuardrailSaved] = useState(false)
-
-  // Sync status
-  const [toolCoverage, setToolCoverage] = useState<Array<{ detected_tools: string[]; mcp_registered: string[]; hook_registered: string[] }> | null>(null)
 
   // MCP connect
 
@@ -168,10 +159,6 @@ function SettingsContent() {
       if (data.deny_on_error !== undefined) setDenyOnError(data.deny_on_error)
       if (data.notify_on_fail_open !== undefined) setNotifyOnFailOpen(data.notify_on_fail_open)
       setLastFetched(new Date())
-      // Load sync coverage in parallel — non-fatal
-      guard.developerTools.list(authFetch, wsId)
-        .then(d => { if (d) setToolCoverage(d) })
-        .catch(() => {})
     } catch (e: any) {
       if (e?.message?.includes("404") || String(e).includes("404")) { setLoading(false); return }
       setError(e instanceof Error ? e.message : "Failed to load settings")
@@ -196,23 +183,6 @@ function SettingsContent() {
     if (!res.ok) throw new Error(`Save failed (${res.status})`)
     return res.json()
   }
-
-  async function handleResync() {
-    if (!wsId || resyncing) return
-    setResyncing(true)
-    setResyncDone(false)
-    try {
-      const res = await guard.config.resync(authFetch, wsId)
-      if (!res.ok) throw new Error(`Resync failed (${res.status})`)
-      setResyncDone(true)
-      setTimeout(() => setResyncDone(false), 2000)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Resync failed")
-    } finally {
-      setResyncing(false)
-    }
-  }
-
 
   async function handleToggle(field: "notify_on_block" | "notify_on_budget", value: boolean) {
     setPrefs(p => ({ ...p, [field]: value }))
@@ -283,59 +253,6 @@ function SettingsContent() {
           isAdmin={isAdmin}
           initialTab="enforcement"
           panels={{
-            sync: (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-              <div className="card" style={{ padding: "18px 20px", minWidth: 0 }}>
-                <div className="eyebrow" style={{ marginBottom: 12 }}>Sync status</div>
-                {toolCoverage === null ? (
-                  <div style={{ height: 40 }} />
-                ) : (() => {
-                  const total = toolCoverage.length
-                  const synced = toolCoverage.filter(dev =>
-                    dev.detected_tools.every(t =>
-                      dev.mcp_registered.includes(t) || dev.hook_registered.includes(t)
-                    )
-                  ).length
-                  const allGood = total === 0 || synced === total
-                  return (
-                    <>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                        <span style={{ fontSize: 26, fontWeight: 700, color: allGood ? "var(--ok)" : "var(--warn)" }}>
-                          {total === 0 ? "—" : `${synced}/${total}`}
-                        </span>
-                        <span style={{ fontSize: 13, color: "var(--text-3)" }}>machines in sync</span>
-                      </div>
-                      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
-                        Policies propagate within <strong style={{ color: "var(--text-2)" }}>60s</strong> of a change.
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 14, fontSize: 12.5, color: allGood ? "var(--ok)" : "var(--warn)" }}>
-                        <span className="conduct-pulse-dot" style={{ background: allGood ? "var(--ok)" : "var(--warn)" }} />
-                        {total === 0 ? "No developers connected yet" : allGood ? "All developers up to date" : `${total - synced} developer${total - synced !== 1 ? "s" : ""} need sync — run: conduct guard sync`}
-                      </div>
-                    </>
-                  )
-                })()}
-              </div>
-              <div className="card" style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 4v6h-6M1 20v-6h6" />
-                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                </svg>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>Re-sync all machines</div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Force a policy push now</div>
-                </div>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  disabled={!isAdmin || resyncing}
-                  style={{ opacity: isAdmin ? 1 : 0.5 }}
-                  onClick={handleResync}
-                >
-                  {resyncing ? "Syncing…" : resyncDone ? "Synced" : "Re-sync"}
-                </button>
-              </div>
-              </div>
-            ),
             enforcement: (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 20, alignItems: "stretch" }}>
               <div className="card" style={{ padding: "18px 20px", minWidth: 0 }}>
