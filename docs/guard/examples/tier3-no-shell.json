@@ -1,0 +1,31 @@
+{
+  "format": "cedar_json",
+  "pack_slug": "tier-controls",
+  "pack_name": "Tier Controls (verification)",
+  "pack_version": "1.0.0",
+  "pack_description": "Sample tier-based enforcement rules for /docs/guard/examples/verify_tier.sh",
+  "preview_only": false,
+  "policies": [
+    {
+      "effect": "forbid",
+      "annotations": {
+        "id": "tier3-no-shell",
+        "advice": "block",
+        "message": "Tier 3 agents cannot execute shell commands. Use a Tier 1/2 identity or request a policy exception."
+      },
+      "principal": {},
+      "action": {},
+      "conditions": [
+        {
+          "kind": "when",
+          "body": {
+            "==": [
+              {".": {"left": {"Var": "context"}, "attr": "risk_tier"}},
+              {"Value": "tier_3"}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
