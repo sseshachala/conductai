@@ -846,7 +846,7 @@ function AppShellInnerContent({
                 href="/theguard"
                 label="Guard"
                 icon={<Icons.Shield />}
-                active={pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard") || pathname.startsWith("/agent-identity")}
+                active={pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard")}
                 collapsed={collapsed}
               />
               {/* Guard sub-nav removed — GuardShell now owns the section rail so both don't render the same six items. */}
