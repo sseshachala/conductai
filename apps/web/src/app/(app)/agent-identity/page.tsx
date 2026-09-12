@@ -967,7 +967,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         <div role="tabpanel" id="tabpanel-identities" aria-labelledby="tab-identities" hidden={activeTab !== "identities"} style={{ display: activeTab === "identities" ? "block" : "none" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Agent identities</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
-            Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Lifecycle is enforced immediately — deactivated or expired identities cannot authenticate. Tier is a policy label Guard rules can gate on; no built-in rule uses it yet.
+            Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Lifecycle is enforced immediately — deactivated or expired identities cannot authenticate. Tier is enforced by Cedar rules referencing <code>context.risk_tier</code> — see <code>docs/guard/examples/</code> for a working sample.
           </p>
           {sourceFilter && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12, color: "var(--text-2)" }}>
@@ -1125,7 +1125,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
             })()}
           </div>
           <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0" }}>
-            Tier is a policy label — write a Cedar rule matching <code>context.risk_tier == &quot;tier_3&quot;</code> to require stricter handling for regulated decisions. Setting Lifecycle to Deactivated or Expired blocks authentication on the next call. Only workspace admins can change tier, lifecycle, or certify.
+            Tier gates enforcement via Cedar rules like <code>context.risk_tier == &quot;tier_3&quot;</code> — matcher runs at every MCP + LLM proxy call. Full example at <code>docs/guard/examples/tier3-no-shell.json</code>; run <code>bash docs/guard/examples/verify_tier.sh</code> to see it fire end-to-end. Setting Lifecycle to Deactivated or Expired blocks authentication on the next call. Only workspace admins can change tier, lifecycle, or certify.
           </p>
         </div>
 
