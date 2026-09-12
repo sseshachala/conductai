@@ -967,7 +967,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         <div role="tabpanel" id="tabpanel-identities" aria-labelledby="tab-identities" hidden={activeTab !== "identities"} style={{ display: activeTab === "identities" ? "block" : "none" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Agent identities</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
-            Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Tier drives what the agent is allowed to do; lifecycle drives whether it can act at all. Deactivating an identity revokes its tokens on the next check.
+            Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Lifecycle is enforced immediately — deactivated or expired identities cannot authenticate. Tier is a policy label Guard rules can gate on; no built-in rule uses it yet.
           </p>
           {sourceFilter && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12, color: "var(--text-2)" }}>
@@ -1125,7 +1125,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
             })()}
           </div>
           <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0" }}>
-            Tier 3 agents are the strictest (regulated decisions, requires human oversight); Tier 1 is drafting-adjacent (reversible, low blast radius). Only workspace admins can change tier, lifecycle, or certify.
+            Tier is a policy label — write a Cedar rule matching <code>context.risk_tier == &quot;tier_3&quot;</code> to require stricter handling for regulated decisions. Setting Lifecycle to Deactivated or Expired blocks authentication on the next call. Only workspace admins can change tier, lifecycle, or certify.
           </p>
         </div>
 
