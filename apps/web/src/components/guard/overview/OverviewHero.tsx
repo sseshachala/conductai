@@ -149,9 +149,9 @@ export function OverviewHero({
     }}>
       <Link href="/logs/guard" style={{ textDecoration: "none" }}>
         <HeroTile
-          title="Live Activity"
+          title="Activity Today"
           value={loading ? "—" : eventsToday.toLocaleString()}
-          sub={loading ? "loading…" : `${blockedToday} blocked · ${warnedToday} warned today`}
+          sub={loading ? "loading…" : `${blockedToday} blocked · ${warnedToday} warned`}
           tone={blockedToday > 0 ? "err" : "ok"}
         />
       </Link>
@@ -159,13 +159,13 @@ export function OverviewHero({
         <HeroTile
           title="Inbox"
           value={inboxCounts == null ? "—" : inboxCounts.open}
-          sub={inboxCounts == null ? "loading…" : `${inboxCounts.triaging} triaging · click to resolve`}
+          sub={inboxCounts == null ? "loading…" : `${inboxCounts.open} open · ${inboxCounts.triaging} triaging`}
           tone={inboxCounts != null && inboxCounts.open > 0 ? "warn" : "ok"}
         />
       </Link>
       <Link href="/theguard/policies" style={{ textDecoration: "none" }}>
         <HeroTile
-          title="Controls"
+          title="Active Policies"
           value={
             agentPolicies == null && proxyPolicies == null
               ? "—"
