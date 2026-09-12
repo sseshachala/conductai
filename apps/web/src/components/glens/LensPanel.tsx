@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { API } from "@/lib/api"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { AnswerBubble } from "@/components/glens/bubbles/AnswerBubble"
 
 type Message =
   | { role: "user"; text: string }
@@ -314,59 +315,31 @@ function MsgBubble({ m, onExpand }: { m: Message; onExpand: (sessionId?: string)
   }
 
   if (m.kind === "streaming") {
-    return (
-      <AssistantWrap>
-        <span style={{ whiteSpace: "pre-wrap" }}>{m.text}</span>
-        <span style={{ opacity: .5 }}>▍</span>
-      </AssistantWrap>
-    )
+    return <AnswerBubble dense streaming text={m.text} />
   }
 
   if (m.kind === "error") {
-    return (
-      <AssistantWrap tone="error">{m.text}</AssistantWrap>
-    )
+    return <AnswerBubble dense tone="error" text={m.text} />
   }
 
   // answer
   return (
-    <AssistantWrap>
-      <span style={{ whiteSpace: "pre-wrap" }}>{m.text}</span>
-      {(m.drilldown || m.complex) && (
-        <div style={{ marginTop: 8, display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          {m.drilldown && (
-            <a href={m.drilldown} style={{ fontSize: 11, color: "var(--accent, #6366f1)", textDecoration: "none", fontWeight: 500 }}>
-              View full &rarr;
-            </a>
-          )}
-          {m.complex && (
-            <button
-              onClick={() => onExpand(m.sessionId)}
-              style={{
-                border: "none", background: "transparent",
-                fontSize: 11, color: "var(--accent, #6366f1)", cursor: "pointer",
-                fontWeight: 500, padding: 0,
-              }}
-            >Open in Lens →</button>
-          )}
+    <AnswerBubble
+      dense
+      text={m.text}
+      drilldown={m.drilldown ? { path: m.drilldown } : undefined}
+      footer={m.complex && (
+        <div style={{ marginTop: 6, textAlign: "right" }}>
+          <button
+            onClick={() => onExpand(m.sessionId)}
+            style={{
+              border: "none", background: "transparent",
+              fontSize: 11, color: "var(--accent, #6366f1)", cursor: "pointer",
+              fontWeight: 500, padding: 0,
+            }}
+          >Open in Lens →</button>
         </div>
       )}
-    </AssistantWrap>
-  )
-}
-
-
-function AssistantWrap({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 10 }}>
-      <div style={{
-        maxWidth: "92%",
-        background: tone === "error" ? "rgba(239,68,68,.08)" : "var(--surface-2)",
-        border: `1px solid ${tone === "error" ? "rgba(239,68,68,.35)" : "var(--border)"}`,
-        color: tone === "error" ? "#ef4444" : "var(--text)",
-        borderRadius: "4px 14px 14px 14px",
-        padding: "8px 12px", fontSize: 13, lineHeight: 1.5,
-      }}>{children}</div>
-    </div>
+    />
   )
 }

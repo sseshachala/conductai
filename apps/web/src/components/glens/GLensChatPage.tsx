@@ -425,7 +425,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
                 />
               )
               if (msg.kind === "loading") return <LoadingBubble key={msg.id} label={msg.label} />
-              if (msg.kind === "streaming") return <AnswerBubble key={msg.id} text={msg.text} skill="governance" />
+              if (msg.kind === "streaming") return <AnswerBubble key={msg.id} streaming text={msg.text} skill="governance" />
               const copyText =
                 msg.kind === "answer" ? msg.text :
                 msg.kind === "blocks" ? msg.answer :
