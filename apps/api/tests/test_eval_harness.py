@@ -221,7 +221,6 @@ def test_outcome_map_coverage(all_scores):
 @pytest.mark.parametrize("slug,expected_blocks", [
     ("pr_reviewer",       {"recall_context", "review_pr", "has_critical"}),
     ("issue_triage",      {"recall_context", "triage_issue", "record_outcome"}),
-    ("security_scanner",  {"recall_context", "fetch_pr_diff", "security_scan", "has_critical"}),
     ("autopilot",         {"fetch_issue", "implement_fix", "run_tests", "tests_pass", "push_pr"}),
 ])
 def test_expected_blocks_present(slug, expected_blocks):
@@ -290,9 +289,9 @@ def test_report_to_json_is_valid():
 
 def test_report_summary_contains_grade():
     """EvalReport.summary() must mention the grade for each playbook."""
-    report = run_one("security_scanner")
+    report = run_one("pr_reviewer")
     text = report.summary()
-    assert "security_scanner" in text
+    assert "pr_reviewer" in text
     assert any(g in text for g in ("A", "B", "C", "D", "F"))
 
 

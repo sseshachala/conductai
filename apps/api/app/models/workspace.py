@@ -26,15 +26,6 @@ class Workspace(Base):
     # NULLs allowed for workspaces not yet linked to Clerk.
     clerk_org_id = sa.Column(sa.Text(), nullable=True)
 
-    # Authoritative pointer to the Security Automation project for this workspace.
-    # See conductai#1005 — replaces .first() dispatch roulette for security_loop /
-    # security-autopilot-fix.
-    security_automation_project_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
     __table_args__ = (
         sa.Index(
             "ix_workspaces_clerk_org_id",

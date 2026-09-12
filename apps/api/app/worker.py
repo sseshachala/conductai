@@ -58,7 +58,6 @@ STALE_RUN_THRESHOLD_MINUTES        = int(os.environ.get("STALE_RUN_THRESHOLD_MIN
 STALE_PENDING_THRESHOLD_MINUTES    = int(os.environ.get("STALE_PENDING_THRESHOLD_MINUTES", "10"))
 STALE_RUN_REAPER_INTERVAL          = int(os.environ.get("STALE_RUN_REAPER_INTERVAL", "120"))  # seconds
 TRIAL_TEARDOWN_INTERVAL            = int(os.environ.get("TRIAL_TEARDOWN_INTERVAL", "3600"))    # seconds
-AUTOMATION_PROJECT_RETENTION_DAYS  = int(os.environ.get("AUTOMATION_PROJECT_RETENTION_DAYS", "30"))
 
 
 # -- stale-run reaper ----------------------------------------------------------
@@ -166,65 +165,6 @@ def _reap_stale_pending_runs() -> int:
         db.close()
 
 
-def _purge_old_automation_projects() -> int:
-    """Delete Security Automation projects older than AUTOMATION_PROJECT_RETENTION_DAYS,
-    keeping the most recent one per workspace."""
-    from app.core.database import SessionLocal
-    from app.models.project import Project
-
-    cutoff = datetime.now(timezone.utc) - timedelta(days=AUTOMATION_PROJECT_RETENTION_DAYS)
-    db = SessionLocal()
-    try:
-        old = (
-            db.query(Project)
-            .filter(
-                Project.project_type == "security_automation",
-                Project.created_at < cutoff,
-            )
-            .all()
-        )
-        if not old:
-            return 0
-
-        # Per workspace: keep the most recent, delete the rest
-        from collections import defaultdict
-        by_ws: dict = defaultdict(list)
-        for p in old:
-            by_ws[str(p.workspace_id)].append(p)
-
-        purged = 0
-        for ws_id, projects in by_ws.items():
-            # Check if there's a newer project for this workspace
-            from app.models.workflow import Workflow
-            import uuid as _uuid
-            ws_uuid = _uuid.UUID(ws_id)
-            newer_exists = (
-                db.query(Project)
-                .filter(
-                    Project.workspace_id == ws_uuid,
-                    Project.project_type == "security_automation",
-                    Project.created_at >= cutoff,
-                )
-                .first()
-            )
-            if newer_exists:
-                for p in projects:
-                    db.delete(p)
-                    purged += 1
-
-        db.commit()
-        return purged
-    except Exception:
-        log.exception("reaper.purge_automation_error")
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        return 0
-    finally:
-        db.close()
-
-
 def _reaper_loop() -> None:
     """Daemon thread: sleep, then reap, repeat."""
     log.info(
@@ -252,12 +192,6 @@ def _reaper_loop() -> None:
                 log.warning("reaper.stale_pending_reaped", count=stale_pending)
         except Exception:
             log.exception("reaper.pending_loop_error")
-        try:
-            purged = _purge_old_automation_projects()
-            if purged > 0:
-                log.info("reaper.automation_projects_purged", count=purged)
-        except Exception:
-            log.exception("reaper.purge_loop_error")
 
 
 # -- online eval scorer --------------------------------------------------------

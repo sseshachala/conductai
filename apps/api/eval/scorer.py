@@ -202,16 +202,6 @@ for _slug in _REVIEWER_SLUGS:
         },
     ])
 
-_SLUG_RUBRICS["security_scanner"] = [
-    {
-        "name": "scanner_outputs_severity_counts",
-        "check": lambda _wf, blocks: _brain_output_has_key(blocks, "critical", "high", "medium"),
-        "detail_pass": 'Brain block outputs JSON with "critical", "high", "medium" keys',
-        "detail_fail": 'Brain block missing severity count keys in JSON contract',
-        "points": 5,
-    },
-]
-
 _SLUG_RUBRICS["issue_triage"] = [
     {
         "name": "triage_outputs_type_priority",
