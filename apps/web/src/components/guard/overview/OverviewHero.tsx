@@ -12,15 +12,17 @@
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import type { AuthFetch } from "@/lib/api"
-import { guardInbox } from "@/lib/api"
+import { guard, guardInbox } from "@/lib/api"
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
 type Tone = "accent" | "ok" | "warn" | "err" | "plain"
 
-interface CoverageRow {
-  mcp_registered?: string[]
-  hook_registered?: string[]
+interface DiscoverySummary {
+  total: number
+  under_guard: number
+  missing: number
+  coverage_pct: number
 }
 
 export interface OverviewHeroProps {
@@ -32,7 +34,6 @@ export interface OverviewHeroProps {
   warnedToday: number
   agentPolicies: number | null
   proxyPolicies: number | null
-  toolCoverage: CoverageRow[]
 }
 
 // ─── Tile primitive ───────────────────────────────────────────────────────
@@ -102,6 +103,28 @@ function useInboxCounts(authFetch: AuthFetch, teamId: string | null) {
   return counts
 }
 
+// Agent Discovery summary — same source /theguard/discovery uses so the
+// hero count matches the drill-in page. Fetching here (rather than
+// receiving from the parent) keeps the tile independent of Overview
+// state and matches the pattern useInboxCounts uses.
+function useDiscoverySummary(authFetch: AuthFetch, teamId: string | null) {
+  const [summary, setSummary] = useState<DiscoverySummary | null>(null)
+
+  const load = useCallback(async () => {
+    if (!teamId) return
+    try {
+      const data = await guard.discover.summary(authFetch)
+      setSummary(data as DiscoverySummary)
+    } catch {
+      // Non-fatal — hero tile shows "—" instead
+    }
+  }, [authFetch, teamId])
+
+  useEffect(() => { void load() }, [load])
+
+  return summary
+}
+
 // ─── Component ────────────────────────────────────────────────────────────
 
 export function OverviewHero({
@@ -113,13 +136,9 @@ export function OverviewHero({
   warnedToday,
   agentPolicies,
   proxyPolicies,
-  toolCoverage,
 }: OverviewHeroProps) {
   const inboxCounts = useInboxCounts(authFetch, teamId)
-
-  const coveredDevs = toolCoverage.filter(
-    d => (d.mcp_registered?.length ?? 0) + (d.hook_registered?.length ?? 0) > 0,
-  ).length
+  const discovery = useDiscoverySummary(authFetch, teamId)
 
   return (
     <div style={{
@@ -163,13 +182,19 @@ export function OverviewHero({
       <Link href="/theguard/discovery" style={{ textDecoration: "none" }}>
         <HeroTile
           title="Agents Discovered"
-          value={toolCoverage.length}
+          value={discovery == null ? "—" : discovery.total}
           sub={
-            toolCoverage.length === 0
-              ? "run discovery to populate"
-              : `${coveredDevs}/${toolCoverage.length} under Guard`
+            discovery == null
+              ? "loading…"
+              : discovery.total === 0
+                ? "run discovery to populate"
+                : `${discovery.under_guard}/${discovery.total} under Guard · ${discovery.missing} missing`
           }
-          tone={toolCoverage.length === 0 ? "plain" : "ok"}
+          tone={
+            discovery == null || discovery.total === 0
+              ? "plain"
+              : discovery.missing > 0 ? "warn" : "ok"
+          }
         />
       </Link>
     </div>
