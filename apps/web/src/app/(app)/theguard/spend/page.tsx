@@ -2,16 +2,21 @@
 
 // Guard · Spend → Configure tab.
 //
-// The dashboard/metric surface that used to live here moved to
-// /theguard/spend/glance (peer of Overview on /theguard). This tab
-// is now focused on setting budgets + caps + alert thresholds.
+// Focused on setting budgets + caps + alert thresholds. Currency +
+// month picker sit at the top so the budget's progress bar reflects
+// the picked month (e.g. "how are we tracking against the $5k budget
+// for October?") without leaving the tab.
+//
+// Metric-surface view (currency, stat cards, savings, by-dev, by-tool)
+// lives in-page on /theguard as the "Spend at a glance" view.
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { GuardSectionTabs, SPEND_TABS } from "@/features/guard/GuardSectionTabs"
-import { SpendControlsPanel } from "@/features/guard/spend/components"
+import { MonthPicker, SpendControlsPanel } from "@/features/guard/spend/components"
+import type { Currency } from "@/features/guard/spend/shared"
 import { useSpendState } from "@/features/guard/spend/useSpendState"
 
 export default function SpendPage() {
@@ -42,6 +47,31 @@ function SpendConfigureContent() {
   return (
     <GuardShell lastFetched={s.lastUpdated}>
       <GuardSectionTabs tabs={SPEND_TABS} />
+
+      {/* Currency + month picker — wired to useSpendState so switching
+          the month re-fetches spend for that period and the budget
+          progress bar reflects it. */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 20 }}>
+        <select
+          value={s.currency}
+          onChange={e => s.setCurrency(e.target.value as Currency)}
+          style={{
+            fontSize: 12,
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "5px 10px",
+            color: "var(--text-3)",
+            background: "var(--surface)",
+            outline: "none",
+            cursor: "pointer",
+          }}
+        >
+          <option value="USD">$ USD</option>
+          <option value="EUR">€ EUR</option>
+          <option value="INR">₹ INR</option>
+        </select>
+        <MonthPicker value={s.month} onChange={s.setMonth} />
+      </div>
 
       {s.error && (
         <div style={{
