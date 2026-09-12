@@ -8,6 +8,7 @@ import { useGuardRole } from "@/hooks/useGuardRole"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import SyncPanel from "@/features/guard/connections/sync/Panel"
+import { GuardSectionTabs, CONNECTIONS_TABS } from "@/features/guard/GuardSectionTabs"
 
 export default function GuardSyncPage() {
   return (
@@ -29,6 +30,7 @@ function SyncContent() {
 
   return (
     <GuardShell>
+      <GuardSectionTabs tabs={CONNECTIONS_TABS} />
       <SyncPanel
         workspaceId={activeWorkspace?.id ?? null}
         isAdmin={permissions.canEditSettings}

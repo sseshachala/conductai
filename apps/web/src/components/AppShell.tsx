@@ -153,7 +153,7 @@ const PALETTE_COMMANDS = [
   { group: "ASK", label: "Lens", href: "/lens", icon: "Spark" as const },
   ...GUARD_SECTIONS.map(s => ({ group: "GOVERN" as const, label: `Guard · ${s.label}`, href: s.href, icon: "Shield" as const })),
   { group: "GOVERN", label: "Guard · Compliance", href: "/theguard/compliance", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Settings", href: "/theguard/settings", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Enforcement", href: "/theguard/policies/enforcement", icon: "Shield" as const },
   { group: "WORKSPACE", label: "Integrations", href: "/integrations", icon: "Gear" as const },
   { group: "WORKSPACE", label: "Agent ID", href: "/agent-identity", icon: "Gear" as const },
   { group: "WORKSPACE", label: "Settings · Vault", href: "/settings", icon: "Gear" as const },

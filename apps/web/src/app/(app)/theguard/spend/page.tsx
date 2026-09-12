@@ -11,6 +11,7 @@ import { useGuardSavings } from "@/hooks/useGuardSavings"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { ByAiToolTable } from "@/components/guard/ByAiToolTable"
+import { GuardSectionTabs, SPEND_TABS } from "@/features/guard/GuardSectionTabs"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -668,6 +669,7 @@ function SpendContent() {
   if (!roleLoading && !canViewSpend) {
     return (
       <GuardShell lastFetched={lastUpdated}>
+        <GuardSectionTabs tabs={SPEND_TABS} />
         <div className="card" style={{ padding: "64px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
           You don&apos;t have access to spend data. Contact your admin.
         </div>
@@ -677,6 +679,7 @@ function SpendContent() {
 
   return (
     <GuardShell lastFetched={lastUpdated}>
+      <GuardSectionTabs tabs={SPEND_TABS} />
       {/* Page controls row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 20 }}>
         <select

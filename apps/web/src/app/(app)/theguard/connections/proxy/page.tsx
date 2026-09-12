@@ -4,6 +4,7 @@ import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import ProxySettings from "@/components/settings/ProxySettings"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { GuardSectionTabs, CONNECTIONS_TABS } from "@/features/guard/GuardSectionTabs"
 
 export default function GuardProxyConnectionsPage() {
   const { activeWorkspace } = useWorkspace()
@@ -12,6 +13,7 @@ export default function GuardProxyConnectionsPage() {
   return (
     <AppShell>
       <GuardShell>
+        <GuardSectionTabs tabs={CONNECTIONS_TABS} />
         <div style={{ maxWidth: 960 }}>
           <h2 style={{ fontSize: 18, fontWeight: 650, margin: "8px 0 4px" }}>
             Proxy &amp; gateways
