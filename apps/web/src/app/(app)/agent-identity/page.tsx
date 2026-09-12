@@ -454,7 +454,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0 }}>Agent Identity</h1>
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0" }}>
@@ -462,9 +462,10 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
           </p>
         </div>
 
-        <div style={{ marginBottom: -8 }}>
-          <TabBar tabs={TABS} labels={TAB_LABELS} activeTab={activeTab} onSelect={selectTab} />
-        </div>
+        {/* Vertical tab rail (left) + content column (right) — mirrors SettingsShell / GuardShell pattern. */}
+        <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 24, alignItems: "start" }}>
+          <TabBar tabs={TABS} labels={TAB_LABELS} activeTab={activeTab} onSelect={selectTab} orientation="vertical" />
+          <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 20 }}>
 
         {/* CLI Developer Token */}
         <div role="tabpanel" id="tabpanel-tokens" aria-labelledby="tab-tokens" hidden={activeTab !== "tokens"} style={{ display: activeTab === "tokens" ? "flex" : "none", flexDirection: "column", gap: 20 }}>
@@ -1127,6 +1128,9 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
             Tier 3 agents are the strictest (regulated decisions, requires human oversight); Tier 1 is drafting-adjacent (reversible, low blast radius). Only workspace admins can change tier, lifecycle, or certify.
           </p>
         </div>
+
+          </div>{/* /content column */}
+        </div>{/* /grid */}
       </div>
     </AppShell>
   )
