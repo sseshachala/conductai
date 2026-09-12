@@ -8,9 +8,10 @@
 export type GuardSectionId =
   | "overview"
   | "inbox"
+  | "approvals"
+  | "activity"
   | "agents"
   | "controls"
-  | "activity"
   | "spend"
   | "connections"
 
@@ -28,9 +29,13 @@ export const GUARD_SECTIONS: readonly GuardSection[] = [
   // (Slack, Linear, GitHub notifications) uses.
   { id: "overview",    label: "Overview",    href: "/theguard",                   activePrefixes: ["/theguard"] },
   { id: "inbox",       label: "Inbox",       href: "/theguard/inbox",             activePrefixes: ["/theguard/inbox"] },
-  { id: "activity",    label: "Activity",    href: "/logs/guard",                 activePrefixes: ["/logs/guard", "/theguard/activity", "/theguard/blocks"] },
+  // Approvals promoted from a nested surface under Controls to a first-class
+  // triage section. Semantically it's a sibling of Inbox (both are queues that
+  // need human action) — sits right next to it. Route unchanged.
+  { id: "approvals",   label: "Approvals",   href: "/theguard/approvals",         activePrefixes: ["/theguard/approvals"] },
+  { id: "activity",    label: "Activity",    href: "/logs/guard",                 activePrefixes: ["/logs/guard", "/theguard/activity", "/theguard/blocks", "/theguard/session-reports"] },
   { id: "agents",      label: "Agents Discovered", href: "/theguard/discovery",   activePrefixes: ["/theguard/discovery", "/theguard/agents", "/agent-identity"] },
-  { id: "controls",    label: "Controls",    href: "/theguard/policies",          activePrefixes: ["/theguard/policies", "/theguard/approvals"] },
+  { id: "controls",    label: "Controls",    href: "/theguard/policies",          activePrefixes: ["/theguard/policies"] },
   { id: "spend",       label: "Spend",       href: "/theguard/spend",             activePrefixes: ["/theguard/spend"] },
   { id: "connections", label: "Connections", href: "/theguard/connections/proxy", activePrefixes: ["/theguard/connections"] },
 ]
