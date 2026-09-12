@@ -68,6 +68,12 @@ class GuardConfig(Base):
     inbox_auto_close_days = Column(
         Integer, nullable=False, default=30, server_default=sa.text("30")
     )
+    arg_anomaly_enabled = Column(Boolean, nullable=False, default=False)  # record-only arg-drift observation, advisory audit events only
+    # Tunables for the record-only checkpoint, so thresholds move by config
+    # PATCH instead of a deploy. NULL = use the module default in
+    # app.modules.behavior.arg_anomaly, keeping the default in one place.
+    arg_anomaly_zscore_threshold = Column(Float, nullable=True)
+    arg_anomaly_min_samples = Column(Integer, nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
