@@ -243,14 +243,18 @@ def _resolve_agent_token(token: str, db: Session):
                 # #1036 defense-in-depth against auth confusion.
                 if getattr(ai, "token_type", "cli") == "external":
                     raise HTTPException(status_code=401, detail="External agent identity cannot authenticate via Conduct token path")
-                # api tokens have no guard_member_config row by design
-                if getattr(ai, 'token_type', 'cli') == 'api':
+                token_type = getattr(ai, 'token_type', 'cli')
+                # API tokens have no guard_member_config row by design and are
+                # workspace credentials rather than a user's login session.
+                if token_type == 'api':
                     return ai, None
                 row = db.execute(
                     _t("SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid LIMIT 1"),
                     {"aid": ai.id},
                 ).fetchone()
                 clerk_user_id = row.clerk_user_id if row else None
+                if not clerk_user_id or not _has_workspace_membership(db, ai.workspace_id, clerk_user_id):
+                    raise HTTPException(status_code=401, detail="Agent token membership revoked")
                 return ai, clerk_user_id
         except HTTPException:
             raise
@@ -911,6 +915,19 @@ _MEMBER_PREFIX = "guard-mt-"
 _PREFIX_LOOKUP_LEN = len(_AGENT_PREFIX) + 4  # same length for all conduct token types
 
 
+def _has_workspace_membership(db: Session, workspace_id, clerk_user_id: str) -> bool:
+    from sqlalchemy import text as _text
+
+    return db.execute(
+        _text("""
+            SELECT 1 FROM workspace_users
+            WHERE workspace_id = :ws AND clerk_user_id = :uid
+            LIMIT 1
+        """),
+        {"ws": str(workspace_id), "uid": clerk_user_id},
+    ).fetchone() is not None
+
+
 def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
     """Resolve any Conduct agent token → (workspace_id, clerk_user_id) or None.
 
@@ -960,9 +977,16 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
                 {"aid": ai_row.id},
             ).fetchone()
             if member:
+                if not _has_workspace_membership(db, member[0], member[1]):
+                    return None
                 return (member[0], member[1])
 
-            # API tokens: fall back to creator or synthetic label
+            # A session token must always remain linked to a live member. Do
+            # not reinterpret an unlinked/revoked session token as an API key.
+            if token.startswith(_AGENT_PREFIX):
+                return None
+
+            # API tokens: fall back to creator or synthetic label.
             creator = getattr(ai_row, "created_by_clerk_user_id", None)
             if creator:
                 return (str(ai_row.workspace_id), creator)
@@ -976,9 +1000,12 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
     bare = token[len(_MEMBER_PREFIX):] if token.startswith(_MEMBER_PREFIX) else token
     row = db.execute(
         _text("""
-            SELECT workspace_id::text, clerk_user_id
-            FROM guard_member_config
-            WHERE member_token = :tok AND active = true
+            SELECT gmc.workspace_id::text, gmc.clerk_user_id
+            FROM guard_member_config gmc
+            JOIN workspace_users wu
+              ON wu.workspace_id = gmc.workspace_id
+             AND wu.clerk_user_id = gmc.clerk_user_id
+            WHERE gmc.member_token = :tok AND gmc.active = true
             LIMIT 1
         """),
         {"tok": bare},

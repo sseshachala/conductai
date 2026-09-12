@@ -23,6 +23,7 @@ from app.core.auth import get_user_id, get_workspace_id, require_permission, get
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.email import send_template_email, APP_URL
+from app.core.workspace_context import set_workspace_rls
 from app.models.audit_log import AuditLog
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -31,6 +32,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 def _audit(db, *, workspace_id: str, actor_id: str, actor_email: str | None,
            actor_role: str | None, action: str, resource_type: str,
            resource_id: str | None = None, meta: dict | None = None) -> None:
+    set_workspace_rls(db, workspace_id)
     db.add(AuditLog(
         workspace_id=workspace_id,
         actor_id=actor_id,

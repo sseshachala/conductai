@@ -115,11 +115,17 @@ rtk proxy python3.11 tools/security-e2e/production.py \
   --allow-disposable-workspaces
 ```
 
-The production journey does not create or delete accounts or workspaces. It
-checks owner issuance, MCP access, unrelated-tenant and unknown-workspace
-denial, then temporarily adds account A to account B's workspace to verify
-member issuance and post-removal refresh denial. Cleanup restores the original
-membership set. Production Clerk may require interactive second-factor entry;
+Use `--grep '<pattern>'` to rerun a named canary or a bounded subset after a
+failure. The same preflight and cleanup guards run for targeted selections.
+
+The production suite does not create or delete accounts or workspaces. Its ten
+independently reported canaries check account/workspace preflight, anonymous
+and forged-header rejection, owner MCP access, foreign and unknown workspace
+denial, direct tenant path enforcement, environment isolation, both Agent
+Identity reference boundaries, refresh-token replay, and post-removal access,
+refresh, and issuance denial. Temporary environments, identities, and
+memberships are removed by the test that created them, with a final membership
+cleanup guard. Production Clerk may require interactive second-factor entry;
 the browser is visible and waits for the operator without persisting browser
 state or verification codes.
 
