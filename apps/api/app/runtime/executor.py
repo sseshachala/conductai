@@ -48,7 +48,6 @@ _OUTCOME_MAP: dict[str, tuple[str, list[str], bool]] = {
     "smoke_test":             ("pipeline_verified",      [],           False),
     "pr_reviewer":            ("review_completed",       [],           False),
     "copilot_reviewer":       ("review_completed",       [],           False),
-    "security_scanner":       ("review_completed",       [],           False),
     "issue_triage":           ("issue_triaged",          [],           False),
     "ci_notify":              ("ci_alert_sent",          [],           False),
     "flaky_test_detective":   ("flaky_test_filed",       ["issue_url"], True),

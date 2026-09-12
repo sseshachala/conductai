@@ -654,3 +654,43 @@ class GuardApprovalRequest(Base):
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     timeout_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class GuardInbox(Base):
+    """Dedup'd triage inbox for Guard enforcement outcomes.
+
+    Populated by the AFTER INSERT trigger on guard_audit_events
+    (migration 0122). Only blocked/warned/approved decisions land
+    here — plain 'allowed' stays in the audit firehose.
+
+    Dedup key = sha256(workspace_id || rule_id || source || LEFT(description, 200))
+    computed in the trigger. Same key hits UPSERT: occurrences += 1,
+    last_seen_at updated, latest_event_id pointer moves. Resolved
+    rows auto-reopen on re-fire.
+
+    See #1840 for the design; migration 0122 for the DDL + trigger.
+    """
+    __tablename__ = "guard_inbox"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id   = Column(UUID(as_uuid=True), nullable=False)
+    dedup_key      = Column(Text, nullable=False)
+    rule_id        = Column(Text, nullable=False)
+    source         = Column(Text, nullable=False)
+    severity       = Column(Text, nullable=False)
+    description    = Column(Text, nullable=True)
+    occurrences    = Column(Integer, nullable=False, default=1)
+    first_seen_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_seen_at   = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    status         = Column(Text, nullable=False, default="open")
+    resolved_reason = Column(Text, nullable=True)
+    resolved_note  = Column(Text, nullable=True)
+    resolved_at    = Column(DateTime(timezone=True), nullable=True)
+    resolved_by    = Column(Text, nullable=True)
+    latest_event_id = Column(UUID(as_uuid=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "dedup_key", name="guard_inbox_workspace_dedup_uniq"),
+        Index("guard_inbox_ws_status_last_seen_idx", "workspace_id", "status", sa.text("last_seen_at DESC")),
+        Index("guard_inbox_ws_severity_last_seen_idx", "workspace_id", "severity", sa.text("last_seen_at DESC")),
+    )

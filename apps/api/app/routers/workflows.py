@@ -160,7 +160,6 @@ FRIENDLY_NAMES_SERVER = {
     "incident_responder": "Incident Responder",
     "dependency_updater": "Dependency Updater",
     "copilot_reviewer":   "Copilot / AI PR Reviewer",
-    "security_scanner":   "Security Scanner",
     "smoke_test":             "Smoke Test",
     "thirdparty_autopilot_fix": "Third-Party Autopilot Fix",
 }

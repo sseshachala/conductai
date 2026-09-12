@@ -86,7 +86,7 @@ _OUTPUT_COST_PER_M = 15.0
 ATTENTION_STATUSES = ["failed", "paused", "cancelled"]
 
 # Playbook slugs that produce each outcome type (used for heuristic fallback)
-_REVIEW_SLUGS   = {"pr_reviewer", "copilot_reviewer", "security_scanner"}
+_REVIEW_SLUGS   = {"pr_reviewer", "copilot_reviewer"}
 _INCIDENT_SLUGS = {"incident_responder", "postmortem_drafter"}
 _TRIAGE_SLUGS   = {"issue_triage"}
 _PR_SLUGS       = {"autopilot_full", "autopilot_approved",

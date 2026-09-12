@@ -794,7 +794,7 @@ def get_scenario_set(
             status_code=404,
             detail=f"No multi-scenario fixture file found for '{slug}'. "
                    f"Only the following playbooks have multi-scenario fixtures: "
-                   f"pr_reviewer, security_scanner, issue_triage, incident_responder.",
+                   f"pr_reviewer, issue_triage, incident_responder.",
         )
 
     return {

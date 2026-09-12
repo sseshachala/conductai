@@ -178,13 +178,13 @@ def conflict_check(
     Conflict rules:
     - ISSUES_LABELED templates (autopilot variants): conflict = same repo + same label
       -> 3 agents on same repo with different labels is valid
-    - PULL_REQUEST templates (pr-reviewer, security-scanner, copilot-reviewer): never conflict
+    - PULL_REQUEST templates (pr-reviewer, copilot-reviewer): never conflict
       -> they complement each other, all run independently on PR open
     - SINGLE_TRIGGER templates (issue-triage, ci-notify, release-notes): conflict = same repo
       -> only one instance makes sense
     """
     # Pull-request playbooks never conflict — they complement each other
-    _PR_TEMPLATES = {"pr_reviewer", "copilot_reviewer", "security_scanner"}
+    _PR_TEMPLATES = {"pr_reviewer", "copilot_reviewer"}
     if template in _PR_TEMPLATES:
         return {"conflicts": [], "conflict_type": None}
 
