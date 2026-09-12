@@ -15,7 +15,11 @@ export const CONNECTIONS_TABS: readonly GuardSectionTab[] = [
 ]
 
 export const SPEND_TABS: readonly GuardSectionTab[] = [
-  { href: "/theguard/spend",              label: "Overview" },
+  // Configure = budget controls. Optimization = savings actions.
+  // "Spend at a glance" content moved out of this section entirely and
+  // now lives on /theguard/spend/glance, surfaced as a peer view of
+  // Overview on the /theguard landing page.
+  { href: "/theguard/spend",              label: "Configure" },
   { href: "/theguard/spend/optimization", label: "Optimization" },
 ]
 
