@@ -150,12 +150,39 @@ export function GuardShell({
       <aside style={{
         width: railWidth,
         borderRight: "1px solid var(--border)",
-        padding: "24px 8px 16px",
+        padding: "12px 8px 16px",
         display: "flex",
         flexDirection: "column",
         gap: 2,
         transition: "width .15s ease",
       }}>
+        {/* Collapse toggle — top of rail, right-aligned when expanded, centered when collapsed. */}
+        <div style={{ display: "flex", justifyContent: collapsed ? "center" : "flex-end", marginBottom: 8 }}>
+          <button
+            onClick={() => setCollapsed(c => !c)}
+            aria-label={collapsed ? "Expand Guard nav" : "Collapse Guard nav"}
+            title={collapsed ? "Expand" : "Collapse"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              color: "var(--text-3)",
+              cursor: "pointer",
+              borderRadius: 6,
+              transition: "background .12s",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)" }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent" }}
+          >
+            {collapsed ? <ChevronRight /> : <ChevronLeft />}
+          </button>
+        </div>
+
         <nav aria-label="Guard sections" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {GUARD_SECTIONS.map(s => (
             <RailItem
@@ -196,30 +223,6 @@ export function GuardShell({
           </>
         )}
 
-        {/* Collapse toggle */}
-        <button
-          onClick={() => setCollapsed(c => !c)}
-          aria-label={collapsed ? "Expand Guard nav" : "Collapse Guard nav"}
-          title={collapsed ? "Expand" : "Collapse"}
-          style={{
-            marginTop: "auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            padding: "8px",
-            border: "none",
-            background: "transparent",
-            color: "var(--text-3)",
-            cursor: "pointer",
-            fontSize: 12,
-            borderRadius: 6,
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)" }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent" }}
-        >
-          {collapsed ? <ChevronRight /> : <><ChevronLeft /><span>Collapse</span></>}
-        </button>
       </aside>
 
       {/* Right column: header + content, centered inside. */}
