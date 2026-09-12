@@ -984,8 +984,12 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                           transition: "background 400ms ease-out",
                         }}
                       >
-                        <td style={{ padding: "8px 12px" }}>
-                          <div style={{ fontWeight: 500, color: "var(--text)" }}>{id.name}</div>
+                        <td style={{ padding: "8px 12px" }} title={id.name}>
+                          {/* Display name: raw Clerk user IDs with backend-added "(auto)" suffix
+                              render as a friendlier label. Hover the cell to see the original. */}
+                          <div style={{ fontWeight: 500, color: "var(--text)" }}>
+                            {(id.name.startsWith("user_") && id.name.includes("(auto)")) ? "Auto-provisioned agent" : id.name}
+                          </div>
                           <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{id.token_prefix?.startsWith("okta_import") ? "external identity" : id.token_prefix}</div>
                         </td>
                         <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-2)" }}>
@@ -1023,12 +1027,12 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                         <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }}>
                           {id.last_certified_at
                             ? id.last_certified_at.slice(0, 10)
-                            : <span>never</span>}
+                            : <span style={{ fontStyle: "italic", opacity: 0.7 }}>not yet</span>}
                         </td>
                         <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }} title={id.last_used_at ?? undefined}>
                           {id.last_used_at
                             ? id.last_used_at.slice(0, 16).replace("T", " ") + " UTC"
-                            : <span>never</span>}
+                            : <span style={{ fontStyle: "italic", opacity: 0.7 }}>not yet used</span>}
                         </td>
                         <td style={{ padding: "8px 12px", textAlign: "right" }}>
                           {isAdmin && (
