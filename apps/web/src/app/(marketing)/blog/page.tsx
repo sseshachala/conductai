@@ -143,9 +143,13 @@ export default function BlogIndex() {
           </span>
           <span className="text-xs text-stone-400">{featured.date}</span>
         </div>
-        <h2 className="text-2xl font-bold text-stone-900 mb-3 group-hover:text-indigo-600 transition-colors leading-tight">
+        {/* Using h3 rather than h2 — the marketing-v2 global CSS in
+            globals.css forces every h2 to clamp(30px, 3.2vw, 42px)
+            which blows out card titles. h3 falls through to the
+            Tailwind size class. */}
+        <h3 className="text-2xl font-bold text-stone-900 mb-3 group-hover:text-indigo-600 transition-colors leading-tight">
           {featured.title}
-        </h2>
+        </h3>
         <p className="text-base text-stone-500 leading-relaxed max-w-3xl">
           {featured.excerpt}
         </p>
@@ -166,9 +170,9 @@ export default function BlogIndex() {
               </span>
               <span className="text-xs text-stone-400">{post.date}</span>
             </div>
-            <h2 className="text-base font-bold text-stone-900 mb-2 group-hover:text-indigo-600 transition-colors leading-snug">
+            <h3 className="text-base font-bold text-stone-900 mb-2 group-hover:text-indigo-600 transition-colors leading-snug">
               {post.title}
-            </h2>
+            </h3>
             <p className="text-sm text-stone-500 leading-relaxed line-clamp-3">
               {post.excerpt}
             </p>
