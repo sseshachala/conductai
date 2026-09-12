@@ -104,6 +104,7 @@ const Icons = {
 
 function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/dashboard')) return ['Dashboard']
+  if (pathname.startsWith('/theguard/inbox')) return ['Guard', 'Inbox']
   if (pathname.startsWith('/theguard/spend')) return ['Guard', 'Spend']
   if (pathname.startsWith('/theguard/policies')) return ['Guard', 'Controls', 'Policies']
   if (pathname.startsWith('/theguard/approvals')) return ['Guard', 'Controls', 'Approvals']
