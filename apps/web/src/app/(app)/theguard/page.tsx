@@ -871,7 +871,6 @@ function GuardDashboard() {
         warnedToday={events.filter(e => e.decision === "warned").length}
         agentPolicies={agentCount}
         proxyPolicies={proxyCount}
-        toolCoverage={toolCoverage}
       />
 
       {/* Everything below is legacy secondary — spend, sessions, tokens saved,
