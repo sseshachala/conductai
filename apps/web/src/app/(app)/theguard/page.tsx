@@ -27,6 +27,7 @@ import { ByAiToolTable, type ByAiToolRow } from "@/components/guard/ByAiToolTabl
 import { formatToolCall } from "@/components/guard/ActivityRow"
 import { DecisionBadge } from "@/components/guard/DecisionBadge"
 import { OverviewHero } from "@/components/guard/overview/OverviewHero"
+import { SpendGlance } from "@/features/guard/spend/SpendGlance"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -481,6 +482,7 @@ function GuardDashboard() {
   const [filterDev, setFilterDev]             = useState("all")
   const [filterDateRange, setFilterDateRange] = useState("7d")
   const [filterSearch, setFilterSearch]       = useState("")
+  const [view, setView]                       = useState<"overview" | "spend_glance">("overview")
 
   const esRef = useRef<EventSource | null>(null)
 
@@ -812,44 +814,38 @@ function GuardDashboard() {
         </div>
       )}
 
-      {/* ── View toggle — Overview (this page) | Spend at a glance (link) ── */}
-      {/* Insights was retired here; workspace-wide metric surfaces now live
-          on /theguard/spend/glance. The old view state stays as a no-op so
-          the Insights block below can still key off it during a follow-up
-          cleanup pass without breaking a large diff. */}
+      {/* ── View toggle — in-page tabs: Overview | Spend at a glance ── */}
+      {/* Insights was retired here; Spend at a glance replaces it with the
+          Spend metric surface (currency + month picker + stat cards +
+          savings + by-dev / by-tool tables). No URL change — stays on
+          /theguard for context. */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div style={{ display: "flex", background: "var(--surface-3)", borderRadius: 8, padding: 3 }}>
-          <span
-            style={{
-              background: "var(--inverse)",
-              color: "var(--on-inverse)",
-              fontSize: 12,
-              fontWeight: 600,
-              padding: "5px 14px",
-              borderRadius: 6,
-            }}
-          >
-            Overview
-          </span>
-          <Link
-            href="/theguard/spend/glance"
-            style={{
-              background: "transparent",
-              color: "var(--text-3)",
-              fontSize: 12,
-              fontWeight: 600,
-              padding: "5px 14px",
-              borderRadius: 6,
-              textDecoration: "none",
-            }}
-          >
-            Spend at a glance
-          </Link>
+          {(["overview", "spend_glance"] as const).map(v => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              style={{
+                border: "none",
+                background: view === v ? "var(--inverse)" : "transparent",
+                color: view === v ? "var(--on-inverse)" : "var(--text-3)",
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "5px 14px",
+                borderRadius: 6,
+                cursor: "pointer",
+              }}
+            >
+              {v === "overview" ? "Overview" : "Spend at a glance"}
+            </button>
+          ))}
         </div>
       </div>
 
+      {view === "spend_glance" && <SpendGlance />}
+
       {/* ── Overview ───────────────────────────────────────────────────────── */}
-      <>
+      {view === "overview" && <>
 
       <OverviewHero
         authFetch={authFetch}
@@ -1333,7 +1329,7 @@ function GuardDashboard() {
         </>
       )}
 
-      </>
+      </>}
 
 
     </GuardShell>

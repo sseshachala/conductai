@@ -1,87 +1,64 @@
 "use client"
 
-// Guard · Spend at a glance.
+// Spend at a glance — the metric surface (currency + month picker,
+// stat cards, RTK + Booster savings, By-developer table, By-AI-tool
+// table). Rendered in-page on /theguard as the "Spend at a glance"
+// view; also composable anywhere else that needs the same numbers.
 //
-// The metric surface — currency + month picker, top stat cards, RTK +
-// Booster savings, By-developer table, By-AI-tool table. Split out of
-// the old Spend Overview so /theguard/spend can focus on Configure.
-//
-// Presented on the Guard rail under Spend (highlights while here), but
-// mentally sits next to /theguard's Overview — no SPEND_TABS on this
-// page so users can jump back via the "Spend at a glance" toggle on
-// /theguard.
+// Owns nothing — pulls everything from useSpendState() so /theguard
+// (glance view) and any future callers stay in sync.
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
-import AppShell from "@/components/AppShell"
-import { GuardShell } from "@/components/guard/GuardShell"
-import { GuardPageHeader, GuardSectionHeader } from "@/components/guard/common"
 import { ByAiToolTable } from "@/components/guard/ByAiToolTable"
+import { GuardSectionHeader } from "@/components/guard/common"
 import {
   BudgetBar,
   BudgetInput,
   MonthPicker,
-} from "@/features/guard/spend/components"
-import { useSpendState } from "@/features/guard/spend/useSpendState"
+} from "./components"
 import {
   CURRENCY_SYMBOLS,
   TOOL_LABELS,
   formatTokens,
   fromUsd,
-} from "@/features/guard/spend/shared"
+  type Currency,
+} from "./shared"
+import { useSpendState } from "./useSpendState"
 
-export default function SpendGlancePage() {
-  return <AppShell><SpendGlanceContent /></AppShell>
-}
-
-function SpendGlanceContent() {
-  const router = useRouter()
+export function SpendGlance() {
   const s = useSpendState()
-
-  useEffect(() => {
-    if (!s.roleLoading && !s.canViewSpend) router.replace("/theguard")
-  }, [s.roleLoading, s.canViewSpend, router])
 
   if (!s.roleLoading && !s.canViewSpend) {
     return (
-      <GuardShell lastFetched={s.lastUpdated}>
-        <div className="card" style={{ padding: "64px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-          You don&apos;t have access to spend data. Contact your admin.
-        </div>
-      </GuardShell>
+      <div className="card" style={{ padding: "64px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+        You don&apos;t have access to spend data. Contact your admin.
+      </div>
     )
   }
 
   return (
-    <GuardShell lastFetched={s.lastUpdated}>
-      <GuardPageHeader
-        title="Spend at a glance"
-        description="Cost, tokens, savings, and per-developer breakdown for the selected month. Configure budgets and caps under Guard → Spend → Configure."
-        lastUpdated={s.lastUpdated}
-        right={
-          <>
-            <select
-              value={s.currency}
-              onChange={e => s.setCurrency(e.target.value as typeof s.currency)}
-              style={{
-                fontSize: 12,
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: "5px 10px",
-                color: "var(--text-3)",
-                background: "var(--surface)",
-                outline: "none",
-                cursor: "pointer",
-              }}
-            >
-              <option value="USD">$ USD</option>
-              <option value="EUR">€ EUR</option>
-              <option value="INR">₹ INR</option>
-            </select>
-            <MonthPicker value={s.month} onChange={s.setMonth} />
-          </>
-        }
-      />
+    <>
+      {/* Currency + month picker */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 20 }}>
+        <select
+          value={s.currency}
+          onChange={e => s.setCurrency(e.target.value as Currency)}
+          style={{
+            fontSize: 12,
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "5px 10px",
+            color: "var(--text-3)",
+            background: "var(--surface)",
+            outline: "none",
+            cursor: "pointer",
+          }}
+        >
+          <option value="USD">$ USD</option>
+          <option value="EUR">€ EUR</option>
+          <option value="INR">₹ INR</option>
+        </select>
+        <MonthPicker value={s.month} onChange={s.setMonth} />
+      </div>
 
       {s.error && (
         <div style={{
@@ -273,7 +250,7 @@ function SpendGlanceContent() {
         )}
       </div>
 
-      {/* By AI tool table — uses the shared <ByAiToolTable /> renderer */}
+      {/* By AI tool table */}
       {s.data && s.data.by_ai_tool.length > 0 && (() => {
         const totalAfter = s.data.total_tokens_after
         return (
@@ -293,6 +270,6 @@ function SpendGlanceContent() {
           />
         )
       })()}
-    </GuardShell>
+    </>
   )
 }
