@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "guard-lands-in-litellm-mainline",
+      title: "LiteLLM sends AI requests. Conduct decides which ones shouldn't be sent.",
+      excerpt: "Conduct is now a native LiteLLM guardrail. Add six lines of YAML and every AI request LiteLLM sends gets checked by your policy first. Six things you can't do with LiteLLM alone but can do with Conduct plugged in.",
+      date: "September 12, 2026",
+      tag: "Integrations",
+      tagColor: "text-orange-700 bg-orange-50 border-orange-200",
+    },
+    {
       slug: "cedar-cant-say-warn",
       title: "Cedar can't say \"warn\". Here's why we shipped our own schema.",
       excerpt: "We support AWS Cedar first because Verified Permissions is the largest existing base of policies teams already have. We didn't stop at Cedar because Cedar-only means AWS-only. The honest audit — what we adopted, what Cedar can't express, and how the same schema roundtrips to OPA, Kyverno, and Sentinel next.",
@@ -114,17 +122,43 @@ export default function BlogIndex() {
     },
   ]
 
-  return (
-    <div className="max-w-2xl mx-auto px-6 py-16 w-full">
-      <h1 className="text-3xl font-bold text-stone-900 mb-2">Blog</h1>
-      <p className="text-stone-500 mb-12">Thoughts on AI cost, context efficiency, and agentic development.</p>
+  const [featured, ...rest] = posts
 
-      <div className="flex flex-col gap-8">
-        {posts.map(post => (
+  return (
+    <div className="max-w-6xl mx-auto px-6 py-16 w-full">
+      <h1 className="text-3xl font-bold text-stone-900 mb-2">Blog</h1>
+      <p className="text-stone-500 mb-12">
+        Thoughts on AI cost, context efficiency, and agentic development.
+      </p>
+
+      {/* Featured post — spans full width, larger visual weight so the newest
+          story gets the top spot without the wall-of-cards feel. */}
+      <a
+        href={`/blog/${featured.slug}`}
+        className="group block rounded-2xl border border-stone-200 px-7 py-7 mb-10 hover:border-stone-300 hover:shadow-sm transition-all"
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <span className={`text-xs font-semibold border px-2.5 py-1 rounded-full uppercase tracking-widest ${featured.tagColor}`}>
+            {featured.tag}
+          </span>
+          <span className="text-xs text-stone-400">{featured.date}</span>
+        </div>
+        <h2 className="text-2xl font-bold text-stone-900 mb-3 group-hover:text-indigo-600 transition-colors leading-tight">
+          {featured.title}
+        </h2>
+        <p className="text-base text-stone-500 leading-relaxed max-w-3xl">
+          {featured.excerpt}
+        </p>
+      </a>
+
+      {/* Rest — two-column grid on md+, single-column on mobile. Card
+          content is tighter so the wall doesn't dominate. */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {rest.map(post => (
           <a
             key={post.slug}
             href={`/blog/${post.slug}`}
-            className="group block rounded-2xl border border-stone-200 px-7 py-6 hover:border-stone-300 hover:shadow-sm transition-all"
+            className="group block rounded-2xl border border-stone-200 px-6 py-5 hover:border-stone-300 hover:shadow-sm transition-all"
           >
             <div className="flex items-center gap-3 mb-3">
               <span className={`text-xs font-semibold border px-2.5 py-1 rounded-full uppercase tracking-widest ${post.tagColor}`}>
@@ -132,10 +166,12 @@ export default function BlogIndex() {
               </span>
               <span className="text-xs text-stone-400">{post.date}</span>
             </div>
-            <h2 className="text-lg font-bold text-stone-900 mb-2 group-hover:text-indigo-600 transition-colors">
+            <h2 className="text-base font-bold text-stone-900 mb-2 group-hover:text-indigo-600 transition-colors leading-snug">
               {post.title}
             </h2>
-            <p className="text-sm text-stone-500 leading-relaxed">{post.excerpt}</p>
+            <p className="text-sm text-stone-500 leading-relaxed line-clamp-3">
+              {post.excerpt}
+            </p>
           </a>
         ))}
       </div>
