@@ -8,7 +8,7 @@ export const metadata = {
 
 export default function BlogPost() {
   return (
-    <article className="max-w-2xl mx-auto px-6 py-16">
+    <article className="max-w-3xl mx-auto px-6 py-16">
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-6">
           <span className="text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 px-2.5 py-1 rounded-full uppercase tracking-widest">

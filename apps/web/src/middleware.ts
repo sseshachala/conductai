@@ -75,10 +75,12 @@ function _cspFor(pathname: string): string {
     ].join("; ")
   }
   // Marketing — permit narratr.ai and standard analytics; still deny inline
-  // frames from anywhere except self+clerk.
+  // frames from anywhere except self+clerk. YouTube nocookie origin
+  // (youtube-nocookie.com) is preferred for privacy but www.youtube.com
+  // is what /watch → /embed defaults to, so allow both.
   return [
     `script-src ${_selfClerk} https://narratr.ai 'unsafe-inline' 'unsafe-eval'`,
-    `frame-src ${_selfClerk} https://narratr.ai`,
+    `frame-src ${_selfClerk} https://narratr.ai https://www.youtube.com https://www.youtube-nocookie.com`,
     ...(_base),
   ].join("; ")
 }
