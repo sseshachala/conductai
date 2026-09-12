@@ -3,11 +3,26 @@
 import { useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import { WorkspaceProvider } from "@/lib/WorkspaceContext"
+import { WorkspaceProvider, useWorkspace } from "@/lib/WorkspaceContext"
 import { GuardRoleClerkProvider, GuardRoleAdminProvider } from "@/lib/GuardRoleContext"
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ""
 const SETUP_VERIFIED_KEY = "conduct_setup_verified"
+
+function WorkspaceReady({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const { loading, error, activeWorkspace, refresh } = useWorkspace()
+  // Clerk must remain mounted while sign-in and required session tasks run.
+  if (/^\/(sign-in|sign-up|accept-invite)(\/|$)/.test(pathname)) return <>{children}</>
+  if (loading) return <div role="status" className="p-8 text-sm text-gray-600">Loading workspace...</div>
+  if (error || !activeWorkspace) return (
+    <div role="alert" className="p-8 space-y-3">
+      <p>{error || 'No workspace available.'}</p>
+      <button type="button" onClick={() => void refresh()} className="underline">Retry</button>
+    </div>
+  )
+  return <>{children}</>
+}
 
 function GuardRoleProviderBranch({ children }: { children: React.ReactNode }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -57,9 +72,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   return (
     <WorkspaceProvider clerkEnabled={clerkEnabled}>
+      <WorkspaceReady>
       <GuardRoleProviderBranch>
         {clerkEnabled ? <SetupGate>{children}</SetupGate> : children}
       </GuardRoleProviderBranch>
+      </WorkspaceReady>
     </WorkspaceProvider>
   )
 }

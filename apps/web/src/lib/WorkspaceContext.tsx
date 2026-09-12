@@ -1,7 +1,8 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react"
+import { useAuth, useSession } from "@clerk/nextjs"
+import { sessionFetch, type GetSessionToken } from "./sessionFetch"
 
 export interface Workspace {
   id: string
@@ -53,40 +54,40 @@ export function WorkspaceProvider({ children, clerkEnabled }: Props) {
 }
 
 function WorkspaceProviderWithAuth({ children }: { children: ReactNode }) {
-  const { getToken } = useAuth()
-  return <WorkspaceProviderInner getToken={getToken}>{children}</WorkspaceProviderInner>
+  const { getToken, isLoaded, isSignedIn, sessionId } = useAuth()
+  const { session } = useSession()
+  return <WorkspaceProviderInner key={sessionId ?? 'signed-out'} getToken={getToken} ready={isLoaded && !!isSignedIn && session?.status === 'active'}>{children}</WorkspaceProviderInner>
 }
 
 function WorkspaceProviderInner({
   children,
   getToken,
+  ready = true,
 }: {
   children: ReactNode
-  getToken: (() => Promise<string | null>) | null
+  getToken: GetSessionToken | null
+  ready?: boolean
 }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
-  const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(() => {
-    const id = getCookie("delegator_project_id")
-    const name = getCookie("delegator_project_name")
-    return id ? { id, name: name ? decodeURIComponent(name) : "" } as Workspace : null
-  })
+  const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const requestVersion = useRef(0)
 
   const refresh = useCallback(async () => {
+    if (!ready) return
+    const version = ++requestVersion.current
+    setLoading(true)
     setError(null)
     try {
-      const headers: Record<string, string> = {}
-      if (getToken) {
-        const token = await getToken()
-        if (token) headers["Authorization"] = `Bearer ${token}`
-      }
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, { headers })
+      const res = await sessionFetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, {}, getToken)
+      if (version !== requestVersion.current) return
       if (!res.ok) {
         setError(`Failed to load workspaces (${res.status})`)
         return
       }
       const data: Workspace[] = await res.json()
+      if (version !== requestVersion.current) return
       if (!Array.isArray(data)) { setError("Unexpected response from workspace API"); return }
       setWorkspaces(data)
 
@@ -94,19 +95,25 @@ function WorkspaceProviderInner({
       const storedId = getCookie("delegator_project_id")
       const match = storedId ? data.find(w => w.id === storedId) : null
       const resolved = match ?? data[0] ?? null
+      setActiveWorkspaceState(resolved)
       if (resolved) {
-        setActiveWorkspaceState(resolved)
         setCookie("delegator_project_id", resolved.id)
         setCookie("delegator_project_name", encodeURIComponent(resolved.name))
+      } else {
+        setCookie("delegator_project_id", "")
+        setCookie("delegator_project_name", "")
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Network error loading workspaces")
+      if (version === requestVersion.current) setError(e instanceof Error ? e.message : "Network error loading workspaces")
     } finally {
-      setLoading(false)
+      if (version === requestVersion.current) setLoading(false)
     }
-  }, [getToken])
+  }, [getToken, ready])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    void refresh()
+    return () => { requestVersion.current++ }
+  }, [refresh])
 
   function setActiveWorkspace(ws: Workspace) {
     setActiveWorkspaceState(ws)

@@ -1,13 +1,17 @@
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, get_user_id, get_user_workspace_role, require_permission
+from app.core.auth import (
+    get_user_id,
+    get_user_workspace_role,
+    get_workspace_id,
+    require_permission,
+)
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.integration import Integration
@@ -23,9 +27,20 @@ from app.modules.agent_identity.schemas import (
     ApiTokenOut,
 )
 
+
+def _require_path_workspace(
+    workspace_id: str,
+    authorized_workspace_id: str = Depends(get_workspace_id),
+) -> None:
+    """Bind every route's data scope to the scope used by permission checks."""
+    if workspace_id != authorized_workspace_id:
+        raise HTTPException(status_code=403, detail="Workspace path does not match authorized workspace")
+
+
 router = APIRouter(
     prefix="/workspaces/{workspace_id}",
     tags=["agent-identities"],
+    dependencies=[Depends(_require_path_workspace)],
 )
 
 _DISPLAY_PREFIX_LEN = len(TOKEN_PREFIX) + 4
@@ -349,9 +364,9 @@ def list_run_tokens(
     _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
-    from app.modules.agent_identity.run_token_model import AgentRunToken
     from app.models.run import Run
     from app.models.workflow import Workflow, WorkflowVersion
+    from app.modules.agent_identity.run_token_model import AgentRunToken
 
     rows = (
         db.query(AgentRunToken)
@@ -399,9 +414,9 @@ def list_workspace_run_tokens(
     _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
-    from app.modules.agent_identity.run_token_model import AgentRunToken
     from app.models.run import Run
     from app.models.workflow import Workflow, WorkflowVersion
+    from app.modules.agent_identity.run_token_model import AgentRunToken
 
     rows = (
         db.query(AgentRunToken)
