@@ -108,7 +108,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/theguard/spend')) return ['Guard', 'Spend']
   if (pathname.startsWith('/theguard/policies')) return ['Guard', 'Controls', 'Policies']
   if (pathname.startsWith('/theguard/approvals')) return ['Guard', 'Controls', 'Approvals']
-  if (pathname.startsWith('/theguard/discovery')) return ['Guard', 'Agents', 'Discovery']
+  if (pathname.startsWith('/theguard/discovery')) return ['Guard', 'Agents Discovered']
   if (pathname.startsWith('/theguard/activity')) return ['Guard', 'Activity']
   if (pathname.startsWith('/theguard/connections/proxy')) return ['Guard', 'Connections', 'Proxy & gateways']
   if (pathname.startsWith('/theguard/connections')) return ['Guard', 'Connections']
