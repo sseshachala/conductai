@@ -26,6 +26,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import { ByAiToolTable, type ByAiToolRow } from "@/components/guard/ByAiToolTable"
 import { formatToolCall } from "@/components/guard/ActivityRow"
 import { DecisionBadge } from "@/components/guard/DecisionBadge"
+import { OverviewHero } from "@/components/guard/overview/OverviewHero"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -860,6 +861,29 @@ function GuardDashboard() {
 
       {/* ── Overview ───────────────────────────────────────────────────────── */}
       {view === "overview" && <>
+
+      <OverviewHero
+        authFetch={authFetch}
+        teamId={teamId}
+        loading={loading}
+        eventsToday={stats?.events_today ?? derivedStats.events_today}
+        blockedToday={blockedToday}
+        warnedToday={events.filter(e => e.decision === "warned").length}
+        agentPolicies={agentCount}
+        proxyPolicies={proxyCount}
+        toolCoverage={toolCoverage}
+      />
+
+      {/* Everything below is legacy secondary — spend, sessions, tokens saved,
+          tool coverage table, cost chart. Kept for continuity; kept below the
+          hero so the daily loop lands on the four primary surfaces first. */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, marginBottom: 12,
+        fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-muted)",
+      }}>
+        <span>More metrics</span>
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      </div>
 
       {/* 6 stat cards */}
       {(() => {
