@@ -198,7 +198,17 @@ class ConductGuard(CustomGuardrail):
         api_url: str | None = None,
         agent_token: str | None = None,
         workspace_id: str | None = None,
-        fail_mode: FailMode = "fail_closed",
+        # Rename per BerriAI/litellm#38143 (yucheng-berri, Sep 2026).
+        # `fail_mode` silently defaulted to fail-open on typo in the config
+        # field name. `unreachable_fallback` matches the typed field in
+        # LitellmParams (Pydantic-validated), so a typo now surfaces a
+        # config error instead of quietly bypassing the safe default.
+        unreachable_fallback: FailMode | None = None,
+        # Deprecated alias — keep for one release cycle (through 0.2.x).
+        # Callers using the old name get a DeprecationWarning; combined
+        # with the ``or`` chain below, an unset value falls through to
+        # the ``fail_closed`` default.
+        fail_mode: FailMode | None = None,
         tool_name: str = "llm_call",
         timeout: float = 8.0,
         # LiteLLM CustomGuardrail kwargs — accept and forward.
@@ -218,7 +228,15 @@ class ConductGuard(CustomGuardrail):
             )
         self._agent_token = token
         self._workspace_id = workspace_id or os.environ.get("CONDUCT_WORKSPACE_ID")
-        self._fail_mode: FailMode = fail_mode
+        if fail_mode is not None:
+            import warnings as _w
+            _w.warn(
+                "ConductGuard: `fail_mode=` is deprecated in favor of "
+                "`unreachable_fallback=` and will be removed in v0.3.0.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        self._unreachable_fallback: FailMode = unreachable_fallback or fail_mode or "fail_closed"
         # Kept for config-compat; no longer used. The plugin now routes
         # through guard_check_prompt (prompt-gate → proxy-persona rules),
         # so match_tool is not the filter — match_pattern on the prompt is.
@@ -278,8 +296,8 @@ class ConductGuard(CustomGuardrail):
                 session_id=session_id,
             )
         except GuardCheckError as e:
-            log.warning("conduct_guard: eval error %s — applying %s", e, self._fail_mode)
-            if self._fail_mode == "fail_closed":
+            log.warning("conduct_guard: eval error %s — applying %s", e, self._unreachable_fallback)
+            if self._unreachable_fallback == "fail_closed":
                 return GuardDecision(
                     verdict="block",
                     raw=str(e),
@@ -287,8 +305,8 @@ class ConductGuard(CustomGuardrail):
                 )
             return GuardDecision(verdict="allow", raw="fail_open")
         except Exception as e:  # network, timeout, unexpected
-            log.warning("conduct_guard: transport error %s — applying %s", e, self._fail_mode)
-            if self._fail_mode == "fail_closed":
+            log.warning("conduct_guard: transport error %s — applying %s", e, self._unreachable_fallback)
+            if self._unreachable_fallback == "fail_closed":
                 return GuardDecision(
                     verdict="block",
                     raw=str(e),
