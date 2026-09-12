@@ -28,7 +28,6 @@ class ProjectOut(BaseModel):
     created_at: datetime
     agent_count: int = 0
     project_type: str = "user"
-    security_finding_id: str | None = None
 
     @field_validator("workspace_id", mode="before")
     @classmethod
@@ -117,38 +116,6 @@ def list_notifications(
             }
         )
 
-    # Merge in recent critical/high security findings
-    try:
-        findings = db.execute(
-            text(
-                """
-                SELECT id, severity, type, description, tool, created_at
-                FROM security_findings
-                WHERE workspace_id = :ws
-                  AND severity IN ('critical', 'high')
-                  AND status = 'open'
-                ORDER BY created_at DESC
-                LIMIT 10
-                """
-            ),
-            {"ws": workspace_id},
-        ).fetchall()
-        for f in findings:
-            tone = "err" if f.severity == "critical" else "warn"
-            sev = f.severity.upper()
-            items.append({
-                "id": f"sf-{f.id}",
-                "title": f"[{sev}] {f.type.replace('-', ' ').title()}",
-                "tone": tone,
-                "desc": f"{f.description} · {f.tool or 'claude-code'}",
-                "time": _to_relative_time(f.created_at),
-                "unread": True,
-                "created_at": f.created_at.isoformat() if f.created_at else None,
-                "href": "/secure/activity",
-            })
-    except Exception:
-        pass
-
     # Merge in recent Guard blocked events
     try:
         guard_rows = db.execute(
@@ -224,7 +191,7 @@ def list_projects(
     _enforce_workspace(workspace_id, active_workspace_id)
     rows = db.execute(text("""
         SELECT p.id, p.workspace_id, p.name, p.slug, p.created_at,
-               p.project_type, p.security_finding_id,
+               p.project_type,
                COUNT(w.id) AS agent_count
         FROM projects p
         LEFT JOIN workflows w ON w.project_id = p.id
@@ -234,8 +201,7 @@ def list_projects(
     """), {"ws": workspace_id}).fetchall()
     return [ProjectOut(id=str(r.id), workspace_id=str(r.workspace_id), name=r.name,
                        slug=r.slug or "", created_at=r.created_at, agent_count=r.agent_count or 0,
-                       project_type=r.project_type or "user",
-                       security_finding_id=r.security_finding_id)
+                       project_type=r.project_type or "user")
             for r in rows]
 
 

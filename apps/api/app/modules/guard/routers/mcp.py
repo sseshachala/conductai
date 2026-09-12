@@ -232,43 +232,6 @@ _TOOLS = [
         },
     },
     {
-        "name": "post_finding",
-        "description": (
-            "Report a security vulnerability or finding directly to Conduct's Security Loop. "
-            "Use this when you detect a secret leak, injection risk, path traversal, auth bypass, "
-            "or any other security issue in the code you're reviewing. "
-            "Conduct will auto-triage it and can trigger an automated fix via the security-autopilot-fix playbook."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "tool":         {"type": "string", "description": "Tool or scanner that found this (e.g. 'claude_code', 'semgrep', 'bughunter')"},
-                "severity":     {"type": "string", "description": "critical | high | medium | low | info"},
-                "type":         {"type": "string", "description": "injection | path-traversal | secret-leak | auth-bypass | crypto | guard_violation | other"},
-                "description":  {"type": "string", "description": "Clear description of the vulnerability"},
-                "file":         {"type": "string", "description": "File path where the issue was found"},
-                "line":         {"type": "integer", "description": "Line number"},
-                "repo_full_name": {"type": "string", "description": "GitHub repo (e.g. 'org/repo') — required for trigger_fix to open a PR"},
-                "suggested_fix": {"type": "string", "description": "Optional suggested remediation"},
-            },
-            "required": ["tool", "severity", "type", "description"],
-        },
-    },
-    {
-        "name": "trigger_fix",
-        "description": (
-            "Trigger the security-autopilot-fix playbook for a finding that was previously reported via post_finding. "
-            "Conduct will open a PR with an automated fix. The finding must have a repo_full_name set."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "finding_id": {"type": "string", "description": "Finding UUID returned by post_finding"},
-            },
-            "required": ["finding_id"],
-        },
-    },
-    {
         "name": "conduct_list_agents",
         "description": "List all installed agents in your Conduct workspace.",
         "inputSchema": {"type": "object", "properties": {}, "required": []},

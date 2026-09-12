@@ -15,7 +15,7 @@ const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "
 // the other unprotected.
 const APP_ROUTE_PREFIXES = [
   "/agent-identity", "/cli-auth", "/credentials", "/dashboard", "/integrations",
-  "/lens", "/logs", "/marketplace", "/packs", "/projects", "/secure", "/settings",
+  "/lens", "/logs", "/marketplace", "/packs", "/projects", "/settings",
   "/setup", "/theguard", "/workflows",
 ]
 

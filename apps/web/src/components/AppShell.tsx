@@ -850,44 +850,6 @@ function AppShellInnerContent({
                 collapsed={collapsed}
               />
               {/* Guard sub-nav removed — GuardShell now owns the section rail so both don't render the same six items. */}
-              <SideNavItem
-                href="/secure"
-                label="Secure"
-                icon={<Icons.Lock />}
-                active={pathname.startsWith("/secure")}
-                collapsed={collapsed}
-              />
-              {/* Secure sub-nav */}
-              {pathname.startsWith("/secure") && !collapsed && (
-                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                  {[
-                    { label: "Overview",  href: "/secure" },
-                    { label: "Findings",  href: "/secure/activity" },
-                  ].map(sub => {
-                    const subActive = sub.href === "/secure" ? pathname === "/secure" : pathname.startsWith(sub.href)
-                    return (
-                      <Link
-                        key={sub.href}
-                        href={sub.href}
-                        style={{
-                          display: "block",
-                          padding: "5px 10px",
-                          borderRadius: 7,
-                          fontSize: 13,
-                          fontWeight: subActive ? 600 : 400,
-                          color: subActive ? "var(--accent-text)" : "var(--text-3)",
-                          background: subActive ? "var(--accent-weak)" : "transparent",
-                          textDecoration: "none",
-                        }}
-                        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
-                        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
-                      >
-                        {sub.label}
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
             </div>
           )}
           {/* BUILD group */}
