@@ -57,11 +57,19 @@ export default function BlogPost() {
       <div className="prose prose-stone max-w-none">
         <h2 className="text-2xl font-bold text-stone-900 mt-4 mb-4">What LiteLLM does</h2>
         <p className="text-stone-700 leading-relaxed">
-          LiteLLM is the middleman between your code and the model
-          providers. Your app says &ldquo;call an AI&rdquo;; LiteLLM
-          figures out whether that means OpenAI, Claude, Gemini, or a
-          fallback if the first one is down. It tracks how much you
-          spent. It handles rate limits. It is very good at that job.
+          <a
+            href="https://www.litellm.ai"
+            className="text-orange-700 underline"
+            target="_blank"
+            rel="noopener"
+          >
+            LiteLLM
+          </a>{" "}
+          is the middleman between your code and the model providers.
+          Your app says &ldquo;call an AI&rdquo;; LiteLLM figures out
+          whether that means OpenAI, Claude, Gemini, or a fallback if
+          the first one is down. It tracks how much you spent. It
+          handles rate limits. It is very good at that job.
         </p>
         <p className="text-stone-700 leading-relaxed">
           But LiteLLM doesn&apos;t decide{" "}
@@ -71,9 +79,15 @@ export default function BlogPost() {
 
         <h2 className="text-2xl font-bold text-stone-900 mt-12 mb-4">What Conduct adds</h2>
         <p className="text-stone-700 leading-relaxed">
-          Conduct plugs into LiteLLM as a guardrail. Every request
-          LiteLLM is about to send goes through Conduct first. Conduct
-          checks it against your policy rules and answers:{" "}
+          <a
+            href="/sign-up"
+            className="text-orange-700 underline"
+          >
+            Conduct
+          </a>{" "}
+          plugs into LiteLLM as a guardrail. Every request LiteLLM is
+          about to send goes through Conduct first. Conduct checks it
+          against your policy rules and answers:{" "}
           <strong>yes send it, send it with a warning, or no,
           don&apos;t send it.</strong>
         </p>
@@ -200,12 +214,10 @@ export default function BlogPost() {
         <h2 className="text-2xl font-bold text-stone-900 mt-12 mb-4">Get started</h2>
         <div className="not-prose flex flex-wrap gap-3 mt-4 mb-8">
           <a
-            href="https://docs.litellm.ai/docs/proxy/guardrails/conduct"
-            target="_blank"
-            rel="noopener"
+            href="/sign-up"
             className="inline-flex items-center gap-2 rounded-lg bg-stone-900 text-white px-5 py-3 text-sm font-semibold hover:bg-stone-800 transition-colors"
           >
-            LiteLLM docs page
+            Sign up for Conduct — free
           </a>
           <a
             href="https://pypi.org/project/conduct-litellm-guard/"
@@ -213,7 +225,23 @@ export default function BlogPost() {
             rel="noopener"
             className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-white text-stone-700 px-5 py-3 text-sm font-semibold hover:border-stone-300 hover:shadow-sm transition-all"
           >
-            PyPI package
+            Plugin on PyPI
+          </a>
+          <a
+            href="https://docs.litellm.ai/docs/proxy/guardrails/conduct"
+            target="_blank"
+            rel="noopener"
+            className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-white text-stone-700 px-5 py-3 text-sm font-semibold hover:border-stone-300 hover:shadow-sm transition-all"
+          >
+            LiteLLM docs
+          </a>
+          <a
+            href="https://github.com/BerriAI/litellm"
+            target="_blank"
+            rel="noopener"
+            className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-white text-stone-700 px-5 py-3 text-sm font-semibold hover:border-stone-300 hover:shadow-sm transition-all"
+          >
+            LiteLLM on GitHub
           </a>
         </div>
 
