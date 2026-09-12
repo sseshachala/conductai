@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
@@ -43,9 +43,17 @@ interface ApprovalRow {
   url: string
 }
 
+interface ApprovalCounts {
+  pending: number
+  approved: number
+  rejected: number
+  timed_out: number
+}
+
 interface ListOut {
   workspace_id: string
   items: ApprovalRow[]
+  counts?: ApprovalCounts
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -75,6 +83,11 @@ export default function ApprovalsPage() {
   const highlight = searchParams?.get("highlight") ?? null
   const [filter, setFilter] = useState<ApprovalStatus | "all">(highlight ? "all" : "pending")
   const [items, setItems] = useState<ApprovalRow[]>([])
+  // Workspace-wide status counts — filled from data.counts each load so
+  // the pills show real numbers regardless of the active filter (#1887).
+  const [statusCounts, setStatusCounts] = useState<ApprovalCounts>({
+    pending: 0, approved: 0, rejected: 0, timed_out: 0,
+  })
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -92,6 +105,7 @@ export default function ApprovalsPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data: ListOut = await res.json()
       setItems(data.items)
+      if (data.counts) setStatusCounts(data.counts)
       setLastFetched(new Date())
     } catch (e) {
       setErr((e as Error).message)
@@ -144,11 +158,10 @@ export default function ApprovalsPage() {
     [authFetch, load, reasonMap],
   )
 
-  const counts = useMemo(() => {
-    const c = { pending: 0, approved: 0, rejected: 0, timed_out: 0 }
-    for (const r of items) c[r.status] += 1
-    return c
-  }, [items])
+  // Pill counts read from the workspace-wide statusCounts returned by
+  // the API (populated in `load` above). Kept as a local `counts` alias
+  // so the FilterBar wiring below doesn't change shape.
+  const counts = statusCounts
 
   return (
     <AppShell>
