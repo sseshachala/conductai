@@ -269,3 +269,110 @@ def test_proxy_prompt_gate_tier1_caller_not_blocked_by_tier3_rule(proxy_client, 
     assert captured[0]["risk_tier"] == "tier_1"
     assert resp.status_code == 200, f"expected pass, got {resp.status_code}: {resp.text}"
     assert len(forwards) == 1, "upstream should be called on a pass"
+
+
+# ─── Wiring: proxy response gate honors tier ─────────────────────────────────
+
+def test_proxy_response_gate_threads_risk_tier_to_context():
+    """_evaluate_response_body populates PolicyContext.risk_tier from the
+    agent_risk_tier kwarg. Response-gate rules with match_agent_risk_tier
+    fire based on the caller identity's tier."""
+    from unittest.mock import patch
+    from app.modules.guard.routers import proxy as proxy_mod
+    from app.guard.policy_types import PolicyAction, PolicyDecision
+
+    seen: list = []
+
+    def _capture(ctx):
+        seen.append({"risk_tier": ctx.risk_tier, "gate": ctx.gate})
+        return PolicyDecision(action=PolicyAction.ALLOW, source="test")
+
+    with patch("app.guard.policy.evaluate_composed", _capture):
+        result = proxy_mod._evaluate_response_body(
+            {"content": [{"type": "text", "text": "reply"}]},
+            workspace_id="ws-1", provider="anthropic", model="claude-opus-4-7",
+            clerk_user_id="user-1", agent_identity_id="agent-1",
+            agent_risk_tier="tier_3",
+        )
+    assert result is not None
+    assert seen[0]["risk_tier"] == "tier_3"
+    assert seen[0]["gate"] == "response"
+
+
+# ─── Wiring: MCP dispatch threads tier from GuardCtx to _match_policy ────────
+
+def test_mcp_dispatch_threads_ctx_tier_to_match_policy(monkeypatch):
+    """guard_check_impl passes GuardCtx.agent_risk_tier into _match_policy.
+    Proves the wiring from the MCP transport (which populates the tier from
+    resolve_agent_identity_row) reaches the matcher."""
+    import uuid as _uuid
+    from app.modules.guard import mcp_impls
+
+    seen_tier: list = []
+
+    def _fake_match_policy(tool_name, tool_input, rules, gate=None, agent_risk_tier=None):
+        seen_tier.append(agent_risk_tier)
+        return None  # no match → return "ok" path
+
+    monkeypatch.setattr(mcp_impls, "_match_policy", _fake_match_policy)
+    monkeypatch.setattr(mcp_impls, "_get_rules", lambda db, ws_uuid, persona="agent": [])
+    monkeypatch.setattr(mcp_impls, "_record_event", lambda *a, **kw: None)
+
+    # Minimal DB stub — guard_check_impl reads GuardConfig (advisory flag) once.
+    class _FakeQuery:
+        def filter(self, *_a, **_kw): return self
+        def first(self): return None
+    class _FakeDb:
+        def query(self, *_a, **_kw): return _FakeQuery()
+        def commit(self): pass
+        def execute(self, *_a, **_kw):
+            class _R:
+                def fetchone(self): return None
+            return _R()
+
+    ctx = mcp_impls.GuardCtx(
+        db=_FakeDb(),
+        ws_uuid=_uuid.uuid4(),
+        workspace_id="ws-1",
+        resolved_token="cond_agt_test",
+        clerk_user_id="user-1",
+        user_email="u@x.com",
+        ai_tool="test-tool",
+        session_id="sess-1",
+        agent_risk_tier="tier_2",
+    )
+    mcp_impls.guard_check_impl(ctx, tool_name="shell", tool_input={"command": "ls"})
+    assert seen_tier == ["tier_2"], f"expected tier_2 passed to matcher, got {seen_tier}"
+
+
+# ─── End-to-end: full Cedar policy → pack rule ───────────────────────────────
+
+def test_cedar_json_to_rule_full_policy_with_risk_tier():
+    """Full public-API Cedar → Guard rule conversion. Proves the entire
+    parse chain (not just the internal _apply_comparison helper) writes
+    match_agent_risk_tier for policies referencing context.risk_tier."""
+    from app.modules.guard.cedar_adapter.mapper import cedar_json_to_rule
+
+    policy = {
+        "effect": "forbid",
+        "annotations": {
+            "id": "tier3-shell-block",
+            "advice": "block",
+            "message": "Tier 3 agents cannot run shell",
+        },
+        "principal": {},
+        "action": {},
+        "conditions": [{
+            "kind": "when",
+            "body": {
+                "==": [
+                    {".": {"left": {"Var": "context"}, "attr": "risk_tier"}},
+                    {"Value": "tier_3"},
+                ]
+            },
+        }],
+    }
+    rule = cedar_json_to_rule(policy)
+    assert rule["action"] == "block"
+    assert rule["id"] == "tier3-shell-block"
+    assert rule.get("match_agent_risk_tier") == "tier_3"
