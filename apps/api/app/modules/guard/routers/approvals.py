@@ -23,6 +23,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
@@ -75,9 +76,21 @@ class ApprovalOut(BaseModel):
     url: str
 
 
+class ApprovalCounts(BaseModel):
+    """Workspace-wide status counts for the filter pills. Populated
+    regardless of the client's active `status` filter so the pills can
+    show real numbers for every status, not just the selected one.
+    """
+    pending: int = 0
+    approved: int = 0
+    rejected: int = 0
+    timed_out: int = 0
+
+
 class ListOut(BaseModel):
     workspace_id: str
     items: list[ApprovalOut]
+    counts: ApprovalCounts
 
 
 class DecisionIn(BaseModel):
@@ -317,7 +330,28 @@ def list_approvals(
             if r.status == "pending" and r.timeout_at <= now:
                 sweep_if_timed_out(db, r, now=now)
 
-    return ListOut(workspace_id=workspace_id, items=[_serialize(r) for r in rows])
+    # Workspace-wide status counts for the filter pills. One GROUP BY
+    # query independent of the client's status filter — otherwise the
+    # pills always show 0 for inactive statuses (#1887).
+    count_rows = (
+        db.query(GuardApprovalRequest.status, func.count(GuardApprovalRequest.id))
+        .filter(GuardApprovalRequest.workspace_id == ws)
+        .group_by(GuardApprovalRequest.status)
+        .all()
+    )
+    counts_map = {s: int(n) for s, n in count_rows}
+    counts = ApprovalCounts(
+        pending=counts_map.get("pending", 0),
+        approved=counts_map.get("approved", 0),
+        rejected=counts_map.get("rejected", 0),
+        timed_out=counts_map.get("timed_out", 0),
+    )
+
+    return ListOut(
+        workspace_id=workspace_id,
+        items=[_serialize(r) for r in rows],
+        counts=counts,
+    )
 
 
 @router.get("/{request_id}", response_model=ApprovalOut)
