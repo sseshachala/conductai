@@ -10,6 +10,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardSavings } from "@/hooks/useGuardSavings"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
+import { GuardSectionHeader } from "@/components/guard/common"
 import { ByAiToolTable } from "@/components/guard/ByAiToolTable"
 import { GuardSectionTabs, SPEND_TABS } from "@/features/guard/GuardSectionTabs"
 
@@ -748,7 +749,7 @@ function SpendContent() {
         </div>
       ) : data ? (
         <>
-          <div className="eyebrow" style={{ marginBottom: 11 }}>Spend for {monthLabel}</div>
+          <GuardSectionHeader title={`Spend for ${monthLabel}`} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 22 }}>
             {[
               [`${CURRENCY_SYMBOLS[currency]}${fromUsd(data.total_cost_usd, currency).toFixed(2)}`, "Est. cost this month", "plain"],
