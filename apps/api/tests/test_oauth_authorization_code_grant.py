@@ -12,9 +12,8 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
-
 from app.modules.auth.oauth.grants import authorization_code as grant
+from fastapi import HTTPException
 
 
 class _StubDb:
@@ -116,6 +115,28 @@ def test_rejects_row_without_identity_binding(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         _call(_make_row(clerk_user_id=None))
     assert "identity binding" in str(exc.value.detail)
+
+
+def test_rejects_revoked_member_before_consuming_code(monkeypatch):
+    row = _make_row()
+    db = _StubDb(row)
+    monkeypatch.setattr(grant, "verify_s256", lambda v, c: True)
+    monkeypatch.setattr(
+        grant,
+        "_assert_workspace_member",
+        lambda *_a: (_ for _ in ()).throw(HTTPException(403, detail="Not a member")),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        grant.handle(
+            code="raw", code_verifier="v", client_id="cid-1",
+            redirect_uri="https://x/cb", db=db,
+        )
+
+    assert exc.value.status_code == 403
+    assert row.status == "issued"
+    assert row.used_at is None
+    assert db.committed == 0
 
 
 def test_rejects_missing_required_params():

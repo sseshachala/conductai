@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.auth import _assert_workspace_member
 from app.models.oauth import OauthAuthCode
 from app.modules.auth.cli_token import _AGENT_TOKEN_TTL, _upsert_identity
 from app.modules.auth.oauth.pkce import verify_s256
@@ -54,6 +55,10 @@ def handle(
         raise HTTPException(400, detail="invalid_grant: PKCE verification failed")
     if row.clerk_user_id is None or row.workspace_id is None:
         raise HTTPException(400, detail="invalid_grant: code has no identity binding")
+
+    # Membership may have been revoked after browser confirmation. Deny before
+    # consuming the code, then let _upsert_identity re-check before token minting.
+    _assert_workspace_member(db, str(row.workspace_id), row.clerk_user_id)
 
     # Flip status BEFORE minting — otherwise a mint failure rolls back the
     # consume too and the code becomes replayable. Fail-safe direction is
