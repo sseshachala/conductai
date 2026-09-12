@@ -849,37 +849,7 @@ function AppShellInnerContent({
                 active={pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard") || pathname.startsWith("/agent-identity")}
                 collapsed={collapsed}
               />
-              {/* Guard sub-nav — six-section IA. Compliance/Settings/Team Memory reachable via ⌘K.
-                  /logs/guard is Guard's Activity section, so it also opens this sub-nav. */}
-              {(pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard") || pathname.startsWith("/agent-identity")) && !collapsed && (
-                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                  {GUARD_SECTIONS.map(sub => {
-                    const subActive = sub.id === "overview"
-                      ? pathname === "/theguard"
-                      : sub.activePrefixes.some(p => pathname === p || pathname.startsWith(p + "/"))
-                    return (
-                      <Link
-                        key={sub.href}
-                        href={sub.href}
-                        style={{
-                          display: "block",
-                          padding: "5px 10px",
-                          borderRadius: 7,
-                          fontSize: 13,
-                          fontWeight: subActive ? 600 : 400,
-                          color: subActive ? "var(--accent-text)" : "var(--text-3)",
-                          background: subActive ? "var(--accent-weak)" : "transparent",
-                          textDecoration: "none",
-                        }}
-                        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
-                        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
-                      >
-                        {sub.label}
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
+              {/* Guard sub-nav removed — GuardShell now owns the section rail so both don't render the same six items. */}
               <SideNavItem
                 href="/secure"
                 label="Secure"
