@@ -8,7 +8,7 @@ import {
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { guard } from "@/lib/api"
+import { guard, guardInbox } from "@/lib/api"
 import { API } from "@/lib/api/client"
 import { timeAgo } from "@/lib/runUtils"
 
@@ -290,6 +290,50 @@ function formatTokensUsed(input: number | null, output: number | null): string |
 
 type StatTone = "ok" | "err" | "warn" | "accent" | "plain"
 
+// HeroTile — the four primary Guard surfaces at the top of Overview.
+// Larger + link-styled (parent <Link/> wraps this) so the daily loop
+// (Activity → Inbox → Controls → Discovery) is unmissable.
+function HeroTile({
+  title,
+  value,
+  sub,
+  tone = "plain",
+}: {
+  title: string
+  value: number | string
+  sub?: React.ReactNode
+  tone?: StatTone
+}) {
+  const toneColor: Record<StatTone, string> = {
+    accent: "var(--accent-text)",
+    ok:     "var(--ok)",
+    warn:   "var(--warn)",
+    err:    "var(--err)",
+    plain:  "var(--text)",
+  }
+  return (
+    <div className="card" style={{ padding: "18px 20px", cursor: "pointer", height: "100%" }}>
+      <div style={{
+        fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5,
+        color: "var(--text-muted)", marginBottom: 8, fontWeight: 600,
+      }}>
+        {title}
+      </div>
+      <div style={{
+        fontSize: 34, fontWeight: 700, letterSpacing: "-.02em",
+        color: toneColor[tone], lineHeight: 1.1,
+      }}>
+        {value}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
+          {sub}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function GuardStatCard({
   label,
   value,
@@ -466,6 +510,7 @@ function GuardDashboard() {
   const [chartToken, setChartToken]   = useState<string | null>(null)
   const [agentCount, setAgentCount]   = useState<number | null>(null)
   const [proxyCount, setProxyCount]   = useState<number | null>(null)
+  const [inboxCounts, setInboxCounts] = useState<{ open: number; triaging: number } | null>(null)
   const [trialSession, setTrialSession] = useState<{
     ineligible: boolean
     expired: boolean
@@ -554,6 +599,14 @@ function GuardDashboard() {
         setAgentCount(active.filter((r: any) => r.persona === "agent").length)
         setProxyCount(active.filter((r: any) => r.persona === "proxy").length)
       }
+    } catch { /* non-fatal */ }
+    // Inbox counts — best-effort, keeps the hero tile responsive.
+    try {
+      const rows = await guardInbox.list(authFetch, { limit: 500 })
+      setInboxCounts({
+        open: rows.filter(r => r.status === "open").length,
+        triaging: rows.filter(r => r.status === "triaging").length,
+      })
     } catch { /* non-fatal */ }
   }, [authFetch, teamId])
 
@@ -860,6 +913,75 @@ function GuardDashboard() {
 
       {/* ── Overview ───────────────────────────────────────────────────────── */}
       {view === "overview" && <>
+
+      {/* ── Hero row: Activity · Inbox · Controls · Agents ─────────────────── */}
+      {/* Four primary Guard surfaces — everything else on this page relegated
+          below the "More metrics" divider so this row anchors the daily loop. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 20 }}>
+        <Link href="/logs/guard" style={{ textDecoration: "none" }}>
+          <HeroTile
+            title="Live Activity"
+            value={loading ? "—" : (stats?.events_today ?? derivedStats.events_today).toLocaleString()}
+            sub={
+              loading
+                ? "loading…"
+                : `${blockedToday} blocked · ${events.filter(e => e.decision === "warned").length} warned today`
+            }
+            tone={blockedToday > 0 ? "err" : "ok"}
+          />
+        </Link>
+        <Link href="/theguard/inbox" style={{ textDecoration: "none" }}>
+          <HeroTile
+            title="Inbox"
+            value={inboxCounts == null ? "—" : inboxCounts.open}
+            sub={
+              inboxCounts == null
+                ? "loading…"
+                : `${inboxCounts.triaging} triaging · click to resolve`
+            }
+            tone={inboxCounts != null && inboxCounts.open > 0 ? "warn" : "ok"}
+          />
+        </Link>
+        <Link href="/theguard/policies" style={{ textDecoration: "none" }}>
+          <HeroTile
+            title="Controls"
+            value={
+              agentCount == null && proxyCount == null
+                ? "—"
+                : (agentCount ?? 0) + (proxyCount ?? 0)
+            }
+            sub={
+              agentCount == null && proxyCount == null
+                ? "loading…"
+                : `${agentCount ?? 0} agent · ${proxyCount ?? 0} proxy`
+            }
+            tone="plain"
+          />
+        </Link>
+        <Link href="/theguard/discovery" style={{ textDecoration: "none" }}>
+          <HeroTile
+            title="Agents Discovered"
+            value={toolCoverage.length}
+            sub={
+              toolCoverage.length === 0
+                ? "run discovery to populate"
+                : `${toolCoverage.filter(d => (d.mcp_registered?.length ?? 0) + (d.hook_registered?.length ?? 0) > 0).length}/${toolCoverage.length} under Guard`
+            }
+            tone={toolCoverage.length === 0 ? "plain" : "ok"}
+          />
+        </Link>
+      </div>
+
+      {/* Everything below is legacy secondary — spend, sessions, tokens saved,
+          tool coverage table, cost chart. Kept for continuity; kept below the
+          hero so the daily loop lands on the four primary surfaces first. */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, marginBottom: 12,
+        fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-muted)",
+      }}>
+        <span>More metrics</span>
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      </div>
 
       {/* 6 stat cards */}
       {(() => {
