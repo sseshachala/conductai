@@ -155,8 +155,8 @@ const PALETTE_COMMANDS = [
   ...GUARD_SECTIONS.map(s => ({ group: "GOVERN" as const, label: `Guard · ${s.label}`, href: s.href, icon: "Shield" as const })),
   { group: "GOVERN", label: "Guard · Compliance", href: "/theguard/compliance", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Enforcement", href: "/theguard/policies/enforcement", icon: "Shield" as const },
-  { group: "WORKSPACE", label: "Integrations", href: "/integrations", icon: "Gear" as const },
-  { group: "WORKSPACE", label: "Agent ID", href: "/agent-identity", icon: "Gear" as const },
+  { group: "CONNECT", label: "Agent ID", href: "/agent-identity", icon: "Lock" as const },
+  { group: "CONNECT", label: "MCP Registry", href: "/integrations", icon: "Plug" as const },
   { group: "WORKSPACE", label: "Settings · Vault", href: "/settings", icon: "Gear" as const },
 ]
 
@@ -205,10 +205,7 @@ function AppShellInnerContent({
 
   // Workspace footer group (Integrations / Agent ID / Settings) — collapsed
   // by default; auto-expands when any of its routes is active.
-  const workspaceRouteActive =
-    pathname.startsWith("/integrations") ||
-    pathname.startsWith("/agent-identity") ||
-    pathname.startsWith("/settings")
+  const workspaceRouteActive = pathname.startsWith("/settings")
   const [workspaceGroupOpen, setWorkspaceGroupOpen] = useState(false)
 
   // User menu (not used in new design — kept for UserMenu component)
@@ -994,6 +991,30 @@ function AppShellInnerContent({
             />
           </div>
 
+          {/* CONNECT group */}
+          <div>
+            {!collapsed && (
+              <div style={{ padding: "12px 10px 5px", fontSize: 10, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+                Connect
+              </div>
+            )}
+            {collapsed && <div style={{ borderTop: "1px solid var(--border)", margin: "6px 0" }} />}
+            <SideNavItem
+              href="/agent-identity"
+              label="Agent ID"
+              icon={<Icons.Lock />}
+              active={pathname.startsWith("/agent-identity")}
+              collapsed={collapsed}
+            />
+            <SideNavItem
+              href="/integrations"
+              label="MCP Registry"
+              icon={<Icons.Plug />}
+              active={pathname.startsWith("/integrations")}
+              collapsed={collapsed}
+            />
+          </div>
+
           {/* OBSERVE group */}
           <div>
             {!collapsed && (
@@ -1083,20 +1104,6 @@ function AppShellInnerContent({
           )}
           {(collapsed || workspaceGroupOpen || workspaceRouteActive) && (
             <>
-              <SideNavItem
-                href="/integrations"
-                label="Integrations"
-                icon={<Icons.Plug />}
-                active={pathname.startsWith("/integrations")}
-                collapsed={collapsed}
-              />
-              <SideNavItem
-                href="/agent-identity"
-                label="Agent ID"
-                icon={<Icons.Lock />}
-                active={pathname.startsWith("/agent-identity")}
-                collapsed={collapsed}
-              />
               <SideNavItem
                 href="/settings"
                 label="Settings"
