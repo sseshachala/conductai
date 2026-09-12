@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
+import {
+  GuardBadge,
+  GuardFilterBar,
+  GuardPageHeader,
+  GuardSectionHeader,
+  timeAgo,
+  type FilterPill,
+} from "@/components/guard/common"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guardInbox } from "@/lib/api"
 import type {
@@ -13,31 +21,6 @@ import type {
   InboxSource,
   ResolvedReason,
 } from "@/lib/api"
-
-// ─── Formatting helpers ───────────────────────────────────────────────────
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const sec = Math.floor(diff / 1000)
-  if (sec < 60) return `${Math.max(sec, 0)}s ago`
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min}m ago`
-  const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr}h ago`
-  return `${Math.floor(hr / 24)}d ago`
-}
-
-const SEVERITY_COLOR: Record<string, { bg: string; fg: string }> = {
-  critical: { bg: "var(--err-bg)",  fg: "var(--err)"  },
-  medium:   { bg: "var(--warn-bg)", fg: "var(--warn)" },
-  low:      { bg: "var(--info-bg)", fg: "var(--info)" },
-}
-
-const STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
-  open:     { bg: "var(--warn-bg)", fg: "var(--warn)" },
-  triaging: { bg: "var(--info-bg)", fg: "var(--info)" },
-  resolved: { bg: "var(--ok-bg)",   fg: "var(--ok)"   },
-}
 
 const REASON_LABEL: Record<ResolvedReason, string> = {
   expected:         "Expected — working as intended",
@@ -154,49 +137,48 @@ export default function GuardInboxPage() {
   return (
     <AppShell>
       <GuardShell lastFetched={lastFetched}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--text)" }}>Inbox</h2>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-              Deduped triage of blocked, warned, and approved events. One row per rule × source × message.
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)" }}>
-            <span>Sync events from the last</span>
-            <select
-              value={backfillDays}
-              onChange={e => setBackfillDays(Number(e.target.value))}
-              disabled={backfillBusy}
-              style={{
-                background: "var(--surface)",
-                color: "var(--text)",
-                border: "1px solid var(--border)",
-                borderRadius: 4,
-                padding: "4px 8px",
-                fontSize: 12,
-              }}
-            >
-              <option value={30}>30 days</option>
-              <option value={60}>60 days</option>
-              <option value={90}>90 days</option>
-            </select>
-            <button
-              onClick={runBackfill}
-              disabled={backfillBusy}
-              style={{
-                background: "var(--surface)",
-                color: "var(--text)",
-                border: "1px solid var(--border)",
-                borderRadius: 4,
-                padding: "4px 12px",
-                fontSize: 12,
-                cursor: backfillBusy ? "wait" : "pointer",
-              }}
-            >
-              {backfillBusy ? "Syncing…" : "Sync now"}
-            </button>
-          </div>
-        </div>
+        <GuardPageHeader
+          title="Inbox"
+          description="Deduped triage of blocked, warned, and approved events. One row per rule × source × message."
+          lastUpdated={lastFetched}
+          right={
+            <>
+              <span>Sync last</span>
+              <select
+                value={backfillDays}
+                onChange={e => setBackfillDays(Number(e.target.value))}
+                disabled={backfillBusy}
+                style={{
+                  background: "var(--surface)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 4,
+                  padding: "4px 8px",
+                  fontSize: 12,
+                }}
+              >
+                <option value={30}>30 days</option>
+                <option value={60}>60 days</option>
+                <option value={90}>90 days</option>
+              </select>
+              <button
+                onClick={runBackfill}
+                disabled={backfillBusy}
+                style={{
+                  background: "var(--surface)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 4,
+                  padding: "4px 12px",
+                  fontSize: 12,
+                  cursor: backfillBusy ? "wait" : "pointer",
+                }}
+              >
+                {backfillBusy ? "Syncing…" : "Sync now"}
+              </button>
+            </>
+          }
+        />
 
         {backfillMsg && (
           <div style={{
@@ -208,32 +190,16 @@ export default function GuardInboxPage() {
           </div>
         )}
 
-        {/* Filter bar */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-          {(["open", "triaging", "resolved", "all"] as const).map(k => (
-            <button
-              key={k}
-              onClick={() => setStatusFilter(k)}
-              style={{
-                padding: "6px 12px",
-                fontSize: 12,
-                borderRadius: 4,
-                border: "1px solid var(--border)",
-                background: statusFilter === k ? "var(--accent-bg)" : "var(--surface)",
-                color: statusFilter === k ? "var(--accent)" : "var(--text-muted)",
-                fontWeight: statusFilter === k ? 600 : 400,
-                cursor: "pointer",
-              }}
-            >
-              {k === "all" ? "All" : k[0].toUpperCase() + k.slice(1)}
-              {k !== "all" && counts[k as keyof typeof counts] > 0 && (
-                <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>
-                  {counts[k as keyof typeof counts]}
-                </span>
-              )}
-            </button>
-          ))}
-          <div style={{ width: 1, background: "var(--border)", margin: "0 4px" }} />
+        <GuardFilterBar<InboxStatus | "all">
+          pills={([
+            { value: "open",     label: "Open",     count: counts.open },
+            { value: "triaging", label: "Triaging", count: counts.triaging },
+            { value: "resolved", label: "Resolved", count: counts.resolved },
+            { value: "all",      label: "All" },
+          ] as const) as readonly FilterPill<InboxStatus | "all">[]}
+          active={statusFilter}
+          onChange={setStatusFilter}
+        >
           <select
             value={severityFilter}
             onChange={e => setSeverityFilter(e.target.value as InboxSeverity | "all")}
@@ -263,7 +229,7 @@ export default function GuardInboxPage() {
             <option value="hook">Hook</option>
             <option value="runtime">Runtime</option>
           </select>
-        </div>
+        </GuardFilterBar>
 
         {error && (
           <div style={{
@@ -292,8 +258,6 @@ export default function GuardInboxPage() {
         {rows.length > 0 && (
           <div style={{ border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>
             {rows.map((row, idx) => {
-              const sevColor = SEVERITY_COLOR[row.severity] ?? SEVERITY_COLOR.medium
-              const statusColor = STATUS_COLOR[row.status] ?? STATUS_COLOR.open
               const isExpanded = expandedId === row.id
               const rowEvents = events[row.id] ?? []
               return (
@@ -313,13 +277,7 @@ export default function GuardInboxPage() {
                       fontSize: 13,
                     }}
                   >
-                    <span style={{
-                      display: "inline-block", padding: "2px 8px", fontSize: 11,
-                      borderRadius: 4, background: sevColor.bg, color: sevColor.fg, fontWeight: 600,
-                      textAlign: "center",
-                    }}>
-                      {row.severity}
-                    </span>
+                    <GuardBadge kind="severity" value={row.severity} />
                     <div style={{ overflow: "hidden" }}>
                       <div style={{ color: "var(--text)", fontWeight: 500, marginBottom: 2 }}>
                         {row.rule_id}
@@ -337,13 +295,7 @@ export default function GuardInboxPage() {
                     <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
                       {row.occurrences}× · {timeAgo(row.last_seen_at)}
                     </span>
-                    <span style={{
-                      display: "inline-block", padding: "2px 8px", fontSize: 11,
-                      borderRadius: 4, background: statusColor.bg, color: statusColor.fg,
-                      textAlign: "center",
-                    }}>
-                      {row.status}
-                    </span>
+                    <GuardBadge kind="status" value={row.status} />
                     <span style={{ color: "var(--text-muted)", textAlign: "right" }}>
                       {isExpanded ? "▾" : "▸"}
                     </span>
@@ -353,9 +305,7 @@ export default function GuardInboxPage() {
                     <div style={{ padding: "0 16px 16px 16px", borderTop: "1px solid var(--border)" }}>
                       {/* Recent events */}
                       <div style={{ marginTop: 12, marginBottom: 16 }}>
-                        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-muted)", marginBottom: 8 }}>
-                          Recent events ({rowEvents.length})
-                        </div>
+                        <GuardSectionHeader title="Recent events" subtitle={`${rowEvents.length}`} />
                         {rowEvents.length === 0 && (
                           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No events loaded yet.</div>
                         )}
@@ -368,7 +318,7 @@ export default function GuardInboxPage() {
                                 background: "var(--surface)", borderRadius: 3, color: "var(--text-muted)",
                               }}>
                                 <span>{timeAgo(e.ts)}</span>
-                                <span style={{ fontWeight: 500 }}>{e.decision}</span>
+                                <GuardBadge kind="decision" value={e.decision} />
                                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                   {e.ai_tool ?? "-"} {e.user_email ? `· ${e.user_email}` : ""}
                                 </span>
@@ -387,9 +337,7 @@ export default function GuardInboxPage() {
                           padding: 12, background: "var(--surface)", borderRadius: 6,
                           border: "1px solid var(--border)",
                         }}>
-                          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-muted)", marginBottom: 8 }}>
-                            Resolve
-                          </div>
+                          <GuardSectionHeader title="Resolve" />
                           <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
                             {(Object.keys(REASON_LABEL) as ResolvedReason[]).map(r => (
                               <label key={r} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)" }}>
