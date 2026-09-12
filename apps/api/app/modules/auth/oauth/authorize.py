@@ -24,7 +24,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import _verify_clerk_token
+from app.core.auth import _assert_workspace_member, _verify_clerk_token
 from app.models.oauth import OauthAuthCode, OauthClient
 
 _PENDING_TTL = timedelta(minutes=5)   # time user has to complete Clerk sign-in
@@ -128,6 +128,10 @@ def confirm_authorize(body: ConfirmRequest, db: Session) -> dict:
         ws_uuid = uuid.UUID(body.workspace_id)
     except (ValueError, TypeError):
         raise HTTPException(400, detail="invalid_request: workspace_id must be a UUID")
+
+    # Confirming an OAuth request must consume existing authority, never create it.
+    # Check before minting or mutating the pending authorization-code row.
+    _assert_workspace_member(db, str(ws_uuid), clerk_user_id)
 
     raw_code = "oauth_code_" + secrets.token_urlsafe(32)
     row.code_hash = _hash_code(raw_code)

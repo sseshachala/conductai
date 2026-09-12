@@ -3,7 +3,6 @@ import hashlib
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_user_id, get_workspace_id
+from app.core.auth import _assert_workspace_member, get_user_id, get_workspace_id
 from app.core.crypto import encrypt
 from app.core.database import get_db
 from app.modules.agent_identity.adapters import TOKEN_PREFIX
@@ -40,6 +39,7 @@ def _upsert_identity(
     db: Session, workspace_id: str, clerk_user_id: str
 ) -> tuple[AgentIdentity, str, str]:
     """Find or create AgentIdentity for this user, rotate agent_token + refresh_token."""
+    _assert_workspace_member(db, workspace_id, clerk_user_id)
     now = datetime.now(timezone.utc)
 
     # Find existing identity linked via guard_member_config
@@ -48,6 +48,7 @@ def _upsert_identity(
             SELECT ai.id FROM agent_identities ai
             JOIN guard_member_config gmc ON gmc.agent_identity_id = ai.id
             WHERE gmc.workspace_id = :ws AND gmc.clerk_user_id = :uid
+              AND ai.workspace_id = :ws
             LIMIT 1
         """),
         {"ws": workspace_id, "uid": clerk_user_id},
@@ -96,20 +97,6 @@ def _upsert_identity(
             {"ws": workspace_id, "uid": clerk_user_id, "mt": _sec.token_hex(32), "aid": identity.id},
         )
 
-    # Ensure workspace_users has this user so require_permission passes.
-    # DO NOTHING preserves existing role; owner gets admin, everyone else developer.
-    db.execute(
-        text("""
-            INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
-            SELECT :ws, :uid,
-                   CASE WHEN w.owner_id = :uid THEN 'admin' ELSE 'developer' END,
-                   now()
-            FROM workspaces w WHERE w.id = :ws
-            ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
-        """),
-        {"ws": workspace_id, "uid": clerk_user_id},
-    )
-
     db.commit()
     return identity, agent_raw, refresh_raw
 
@@ -148,7 +135,7 @@ def rotate_identity_by_refresh(
     db: Session,
 ) -> tuple[AgentIdentity, str, str]:
     """Look up AgentIdentity by refresh-token hash, rotate the token pair,
-    ensure workspace_users membership, and commit.
+    verify existing workspace membership, and commit.
 
     Shared by /auth/refresh (CLI, this file) and the OAuth 2.1 refresh_token
     grant (app/modules/auth/oauth/grants/refresh_token.py). Both callers
@@ -172,6 +159,19 @@ def rotate_identity_by_refresh(
     if identity.refresh_token_expires_at and identity.refresh_token_expires_at < now:
         raise HTTPException(status_code=401, detail="Refresh token expired — run `conduct login`")
 
+    # A refresh token is not authority to recreate a removed membership.
+    gmc = db.execute(
+        text("""
+            SELECT clerk_user_id FROM guard_member_config
+            WHERE agent_identity_id = :aid AND workspace_id = :ws
+            LIMIT 1
+        """),
+        {"aid": str(identity.id), "ws": str(identity.workspace_id)},
+    ).fetchone()
+    if not gmc or not gmc.clerk_user_id:
+        raise HTTPException(status_code=401, detail="Refresh token has no linked user")
+    _assert_workspace_member(db, str(identity.workspace_id), gmc.clerk_user_id)
+
     agent_raw, agent_prefix = _mint_agent_token()
     refresh_raw, refresh_hash = _mint_refresh_token()
 
@@ -181,24 +181,6 @@ def rotate_identity_by_refresh(
     identity.refresh_token_hash = refresh_hash
     identity.refresh_token_expires_at = now + _REFRESH_TOKEN_TTL
     identity.last_used_at = now
-
-    # Ensure workspace_users row exists (may be missing if Clerk webhook never fired)
-    gmc = db.execute(
-        text("SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid LIMIT 1"),
-        {"aid": str(identity.id)},
-    ).fetchone()
-    if gmc and gmc.clerk_user_id:
-        db.execute(
-            text("""
-                INSERT INTO workspace_users (workspace_id, clerk_user_id, role, joined_at)
-                SELECT :ws, :uid,
-                       CASE WHEN w.owner_id = :uid THEN 'admin' ELSE 'developer' END,
-                       now()
-                FROM workspaces w WHERE w.id = :ws
-                ON CONFLICT (workspace_id, clerk_user_id) DO NOTHING
-            """),
-            {"ws": str(identity.workspace_id), "uid": gmc.clerk_user_id},
-        )
 
     db.commit()
     return identity, agent_raw, refresh_raw
