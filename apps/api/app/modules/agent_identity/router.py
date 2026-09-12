@@ -36,11 +36,11 @@ def _generate_token() -> tuple[str, str]:
     return raw, raw[:_DISPLAY_PREFIX_LEN]
 
 
-def mint_agent_identity(db: Session, workspace_id: str, name: str) -> tuple[AgentIdentity, str]:
+def mint_agent_identity(db: Session, workspace_id: str, name: str, source: str = "conduct_auto") -> tuple[AgentIdentity, str]:
     """Internal helper — mint an Agent Identity for a user without auth checks.
 
     Returns (AgentIdentity row, plaintext token). Caller must commit if needed.
-    Used by guard join flow to auto-mint on invite accept.
+    Used by guard join flow to auto-mint on invite accept (default source).
     """
     plaintext, prefix = _generate_token()
     now = datetime.now(timezone.utc)
@@ -49,6 +49,7 @@ def mint_agent_identity(db: Session, workspace_id: str, name: str) -> tuple[Agen
         workspace_id=workspace_id,
         name=name,
         provider="conduct",
+        source=source,
         token_prefix=prefix,
         token_encrypted=encrypt({"token": plaintext}),
         environment_id=None,
@@ -111,6 +112,7 @@ def create_agent_identity(
         workspace_id=workspace_id,
         name=body.name.strip(),
         provider="conduct",
+        source="conduct_api",
         token_prefix=prefix,
         token_encrypted=encrypted,
         environment_id=body.environment_id,
@@ -134,6 +136,7 @@ def create_agent_identity(
         lifecycle_state=row.lifecycle_state, last_certified_at=row.last_certified_at,
         certification_cadence_days=row.certification_cadence_days,
         risk_tier=row.risk_tier, deactivated_at=row.deactivated_at,
+        expires_at=row.expires_at,
         token=plaintext,
     )
 
@@ -160,6 +163,7 @@ def list_agent_identities(
         lifecycle_state=r.lifecycle_state, last_certified_at=r.last_certified_at,
         certification_cadence_days=r.certification_cadence_days,
         risk_tier=r.risk_tier, deactivated_at=r.deactivated_at,
+        expires_at=r.expires_at,
     ) for r in rows]
 
 
@@ -264,6 +268,7 @@ def patch_agent_identity(
         lifecycle_state=row.lifecycle_state, last_certified_at=row.last_certified_at,
         certification_cadence_days=row.certification_cadence_days,
         risk_tier=row.risk_tier, deactivated_at=row.deactivated_at,
+        expires_at=row.expires_at,
     )
 
 
@@ -300,6 +305,7 @@ def certify_agent_identity(
         lifecycle_state=row.lifecycle_state, last_certified_at=row.last_certified_at,
         certification_cadence_days=row.certification_cadence_days,
         risk_tier=row.risk_tier, deactivated_at=row.deactivated_at,
+        expires_at=row.expires_at,
     )
 
 

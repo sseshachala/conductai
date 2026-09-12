@@ -850,6 +850,7 @@ function AppShellInnerContent({
                 collapsed={collapsed}
               />
               {/* Guard sub-nav removed — GuardShell now owns the section rail so both don't render the same six items. */}
+              {/* Secure nav item removed entirely (PR #1846 / issue #1840) — code-scan module deleted; Guard Inbox tab lands in PR 2. */}
             </div>
           )}
           {/* BUILD group */}

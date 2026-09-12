@@ -58,7 +58,45 @@ interface Identity {
   certification_cadence_days: number | null
   risk_tier: string | null
   deactivated_at: string | null
+  // expires_at is exposed by the API after backend PR normalizes sources.
+  // Older responses omit it — treat as null.
+  expires_at?: string | null
 }
+
+type IdentityKind = "trial" | "auto" | "human"
+
+// Classify by explicit source first (backend PR 1 normalizes these), then
+// fall back to name-pattern heuristics for legacy rows that pre-date the
+// backfill migration.
+function classifyIdentity(id: Identity): IdentityKind {
+  switch (id.source) {
+    case "conduct_trial": return "trial"
+    case "conduct_cli":
+    case "conduct_auto": return "auto"
+    case "okta_jwt":
+    case "okta":
+    case "conduct_api": return "human"
+  }
+  // Legacy fallbacks.
+  if (id.name === "Trial (7 days)") return "trial"
+  if (id.name.includes("(CLI)")) return "auto"
+  if (id.name.includes("(auto)")) return "auto"
+  return "human"
+}
+
+function trialCountdown(expiresAt: string): { label: string; expired: boolean } {
+  const diffMs = new Date(expiresAt).getTime() - Date.now()
+  if (diffMs <= 0) return { label: "expired", expired: true }
+  const days  = Math.floor(diffMs / 86_400_000)
+  const hours = Math.floor((diffMs % 86_400_000) / 3_600_000)
+  return { label: days > 0 ? `${days}d ${hours}h left` : `${hours}h left`, expired: false }
+}
+
+const KIND_SECTIONS: readonly { id: IdentityKind; label: string; description: string }[] = [
+  { id: "trial", label: "Time-limited",      description: "Trials and short-lived tokens — expire automatically." },
+  { id: "auto",  label: "Auto-provisioned",  description: "Machine-issued identities from CLI login, guard join, and other flows." },
+  { id: "human", label: "Human",             description: "Real users signed in via Clerk or imported via Okta." },
+]
 
 interface LensSession {
   id: string
@@ -416,7 +454,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0 }}>Agent Identity</h1>
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0" }}>
@@ -424,9 +462,10 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
           </p>
         </div>
 
-        <div style={{ marginBottom: -8 }}>
-          <TabBar tabs={TABS} labels={TAB_LABELS} activeTab={activeTab} onSelect={selectTab} />
-        </div>
+        {/* Vertical tab rail (left) + content column (right) — mirrors SettingsShell / GuardShell pattern. */}
+        <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 24, alignItems: "start" }}>
+          <TabBar tabs={TABS} labels={TAB_LABELS} activeTab={activeTab} onSelect={selectTab} orientation="vertical" />
+          <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 20 }}>
 
         {/* CLI Developer Token */}
         <div role="tabpanel" id="tabpanel-tokens" aria-labelledby="tab-tokens" hidden={activeTab !== "tokens"} style={{ display: activeTab === "tokens" ? "flex" : "none", flexDirection: "column", gap: 20 }}>
@@ -928,7 +967,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         <div role="tabpanel" id="tabpanel-identities" aria-labelledby="tab-identities" hidden={activeTab !== "identities"} style={{ display: activeTab === "identities" ? "block" : "none" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Agent identities</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
-            Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Tier drives what the agent is allowed to do; lifecycle drives whether it can act at all. Deactivating an identity revokes its tokens on the next check.
+            Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Lifecycle is enforced immediately — deactivated or expired identities cannot authenticate. Tier is a policy label Guard rules can gate on; no built-in rule uses it yet.
           </p>
           {sourceFilter && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12, color: "var(--text-2)" }}>
@@ -954,105 +993,144 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
               if (visibleIdentities.length === 0) {
                 return <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)" }}>{sourceFilter ? `No identities with source “${sourceFilter}”.` : "No agent identities yet."}</div>
               }
-              return (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Name</th>
-                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Source</th>
-                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Owner</th>
-                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Tier</th>
-                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Lifecycle</th>
-                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Last certified</th>
-                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Last used</th>
-                    <th style={{ padding: "8px 12px" }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleIdentities.map(id => {
-                    const tier = TIER_STYLE[id.risk_tier ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)" }
-                    const lc   = LIFECYCLE_STYLE[id.lifecycle_state ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)", label: id.lifecycle_state ?? "—" }
-                    const busy = savingIdentity === id.id
-                    const isHighlighted = highlightId === id.id
-                    return (
-                      <tr
-                        key={id.id}
-                        id={`identity-row-${id.id}`}
-                        style={{
-                          borderBottom: "1px solid var(--border)",
-                          background: isHighlighted ? "#fef3c7" : undefined,
-                          transition: "background 400ms ease-out",
-                        }}
+              // Group by lifecycle. When a source filter is active, skip
+              // grouping (user asked for a specific subset — show flat).
+              const grouped: Record<IdentityKind, Identity[]> = { trial: [], auto: [], human: [] }
+              for (const id of visibleIdentities) grouped[classifyIdentity(id)].push(id)
+              grouped.trial.sort((a, b) => (a.expires_at ?? "").localeCompare(b.expires_at ?? ""))
+              grouped.auto.sort((a, b)  => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+              grouped.human.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+
+              function renderIdentityRow(id: Identity) {
+                const tier = TIER_STYLE[id.risk_tier ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)" }
+                const lc   = LIFECYCLE_STYLE[id.lifecycle_state ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)", label: id.lifecycle_state ?? "—" }
+                const busy = savingIdentity === id.id
+                const isHighlighted = highlightId === id.id
+                const countdown = id.expires_at ? trialCountdown(id.expires_at) : null
+                return (
+                  <tr
+                    key={id.id}
+                    id={`identity-row-${id.id}`}
+                    style={{
+                      borderBottom: "1px solid var(--border)",
+                      background: isHighlighted ? "#fef3c7" : undefined,
+                      transition: "background 400ms ease-out",
+                    }}
+                  >
+                    <td style={{ padding: "8px 12px" }} title={id.name}>
+                      <div style={{ fontWeight: 500, color: "var(--text)" }}>
+                        {(id.name.startsWith("user_") && id.name.includes("(auto)")) ? "Auto-provisioned agent" : id.name}
+                      </div>
+                      <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{id.token_prefix?.startsWith("okta_import") ? "external identity" : id.token_prefix}</div>
+                      {countdown && (
+                        <div style={{ fontSize: 10.5, color: countdown.expired ? "var(--err)" : "var(--warn)", marginTop: 2, fontWeight: 600 }}>
+                          {countdown.expired ? "Expired" : `⏱ ${countdown.label}`}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-2)" }}>
+                      <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 4, background: "var(--surface-2)", border: "1px solid var(--border)", fontFamily: "monospace", fontSize: 10.5 }}>
+                        {id.source ?? "conduct"}
+                      </span>
+                      {id.platform_of_origin && <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>· {id.platform_of_origin}</span>}
+                    </td>
+                    <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-2)" }}>
+                      {id.owner_user_id ?? <span style={{ color: "var(--text-muted)" }}>unassigned</span>}
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>
+                      <select
+                        value={id.risk_tier ?? "tier_1"}
+                        disabled={busy || !isAdmin}
+                        onChange={e => patchIdentity(id.id, { risk_tier: e.target.value })}
+                        style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)", background: tier.bg, color: tier.fg }}
                       >
-                        <td style={{ padding: "8px 12px" }}>
-                          <div style={{ fontWeight: 500, color: "var(--text)" }}>{id.name}</div>
-                          <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{id.token_prefix?.startsWith("okta_import") ? "external identity" : id.token_prefix}</div>
-                        </td>
-                        <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-2)" }}>
-                          {id.source ?? "conduct"}
-                          {id.platform_of_origin && <span style={{ color: "var(--text-muted)" }}> · {id.platform_of_origin}</span>}
-                        </td>
-                        <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-2)" }}>
-                          {id.owner_user_id ?? <span style={{ color: "var(--text-muted)" }}>unassigned</span>}
-                        </td>
-                        <td style={{ padding: "8px 12px" }}>
-                          <select
-                            value={id.risk_tier ?? "tier_1"}
-                            disabled={busy || !isAdmin}
-                            onChange={e => patchIdentity(id.id, { risk_tier: e.target.value })}
-                            style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)", background: tier.bg, color: tier.fg }}
-                          >
-                            <option value="tier_1">Tier 1</option>
-                            <option value="tier_2">Tier 2</option>
-                            <option value="tier_3">Tier 3</option>
-                          </select>
-                        </td>
-                        <td style={{ padding: "8px 12px" }}>
-                          <select
-                            value={id.lifecycle_state ?? "active"}
-                            disabled={busy || !isAdmin}
-                            onChange={e => patchIdentity(id.id, { lifecycle_state: e.target.value })}
-                            style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)", background: lc.bg, color: lc.fg }}
-                          >
-                            <option value="active">Active</option>
-                            <option value="pending_review">Pending review</option>
-                            <option value="deactivated">Deactivated</option>
-                            <option value="expired">Expired</option>
-                          </select>
-                        </td>
-                        <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }}>
-                          {id.last_certified_at
-                            ? id.last_certified_at.slice(0, 10)
-                            : <span>never</span>}
-                        </td>
-                        <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }} title={id.last_used_at ?? undefined}>
-                          {id.last_used_at
-                            ? id.last_used_at.slice(0, 16).replace("T", " ") + " UTC"
-                            : <span>never</span>}
-                        </td>
-                        <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                          {isAdmin && (
-                            <button
-                              onClick={() => certifyIdentity(id.id)}
-                              disabled={busy}
-                              style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-2)", cursor: busy ? "not-allowed" : "pointer" }}
-                            >
-                              {busy ? "…" : "Certify"}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                        <option value="tier_1">Tier 1</option>
+                        <option value="tier_2">Tier 2</option>
+                        <option value="tier_3">Tier 3</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>
+                      <select
+                        value={id.lifecycle_state ?? "active"}
+                        disabled={busy || !isAdmin}
+                        onChange={e => patchIdentity(id.id, { lifecycle_state: e.target.value })}
+                        style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)", background: lc.bg, color: lc.fg }}
+                      >
+                        <option value="active">Active</option>
+                        <option value="pending_review">Pending review</option>
+                        <option value="deactivated">Deactivated</option>
+                        <option value="expired">Expired</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }}>
+                      {id.last_certified_at
+                        ? id.last_certified_at.slice(0, 10)
+                        : <span style={{ fontStyle: "italic", opacity: 0.7 }}>not yet</span>}
+                    </td>
+                    <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }} title={id.last_used_at ?? undefined}>
+                      {id.last_used_at
+                        ? id.last_used_at.slice(0, 16).replace("T", " ") + " UTC"
+                        : <span style={{ fontStyle: "italic", opacity: 0.7 }}>not yet used</span>}
+                    </td>
+                    <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                      {isAdmin && (
+                        <button
+                          onClick={() => certifyIdentity(id.id)}
+                          disabled={busy}
+                          style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-2)", cursor: busy ? "not-allowed" : "pointer" }}
+                        >
+                          {busy ? "…" : "Certify"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              }
+
+              return (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                      <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Name</th>
+                      <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Source</th>
+                      <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Owner</th>
+                      <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Tier</th>
+                      <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Lifecycle</th>
+                      <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Last certified</th>
+                      <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--text-muted)" }}>Last used</th>
+                      <th style={{ padding: "8px 12px" }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sourceFilter
+                      ? visibleIdentities.map(id => renderIdentityRow(id))
+                      : KIND_SECTIONS.flatMap(section => {
+                          const rows = grouped[section.id]
+                          if (rows.length === 0) return []
+                          return [
+                            <tr key={`section-${section.id}`}>
+                              <td colSpan={8} style={{ padding: "10px 12px 6px", background: "var(--surface-2)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
+                                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-2)", letterSpacing: ".04em", textTransform: "uppercase" }}>
+                                  {section.label} · {rows.length}
+                                </span>
+                                <span style={{ marginLeft: 10, fontSize: 11, color: "var(--text-muted)" }}>{section.description}</span>
+                              </td>
+                            </tr>,
+                            ...rows.map(id => renderIdentityRow(id)),
+                          ]
+                        })}
+                  </tbody>
+                </table>
               )
             })()}
           </div>
           <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "8px 0 0" }}>
-            Tier 3 agents are the strictest (regulated decisions, requires human oversight); Tier 1 is drafting-adjacent (reversible, low blast radius). Only workspace admins can change tier, lifecycle, or certify.
+            Tier is a policy label — write a Cedar rule matching <code>context.risk_tier == &quot;tier_3&quot;</code> to require stricter handling for regulated decisions. Setting Lifecycle to Deactivated or Expired blocks authentication on the next call. Only workspace admins can change tier, lifecycle, or certify.
           </p>
         </div>
+
+          </div>{/* /content column */}
+        </div>{/* /grid */}
       </div>
     </AppShell>
   )
