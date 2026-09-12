@@ -45,6 +45,37 @@ export function LensPanel({
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const initialQuerySentRef = useRef<string | null>(null)
 
+  // Persisted, drag-to-resize width (min 320, max 720).
+  const [width, setWidth] = useState(420)
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("lens:panelWidth")
+      const n = raw ? parseInt(raw, 10) : NaN
+      if (Number.isFinite(n) && n >= 320 && n <= 720) setWidth(n)
+    } catch { /* ignore */ }
+  }, [])
+  const startDrag = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = width
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.min(720, Math.max(320, startW + (startX - ev.clientX)))
+      setWidth(next)
+    }
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+      document.body.style.cursor = ""
+      try { window.localStorage.setItem("lens:panelWidth", String(widthRef.current)) } catch { /* ignore */ }
+    }
+    document.body.style.cursor = "col-resize"
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+  }
+  // ponytail: mirror width into a ref so the mouseup handler reads the latest value
+  const widthRef = useRef(width)
+  useEffect(() => { widthRef.current = width }, [width])
+
   // Auto-send the initial query once per open/query pair.
   useEffect(() => {
     if (!open || !initialQuery) return
@@ -150,16 +181,26 @@ export function LensPanel({
   if (!open) return null
 
   return (
-    <div
+    <aside
       style={{
-        position: "fixed", top: 0, right: 0, bottom: 0, width: 420, zIndex: 300,
+        width, flexShrink: 0, height: "100vh",
         background: "var(--surface)", borderLeft: "1px solid var(--border)",
         display: "flex", flexDirection: "column",
-        boxShadow: "-4px 0 20px rgba(0,0,0,.12)",
+        boxShadow: "-4px 0 20px rgba(0,0,0,.06)",
+        position: "relative",
       }}
-      role="dialog"
+      role="complementary"
       aria-label="Ask Lens panel"
     >
+      {/* Drag handle — thin invisible strip on the left border */}
+      <div
+        onMouseDown={startDrag}
+        aria-hidden
+        style={{
+          position: "absolute", top: 0, bottom: 0, left: -3, width: 6,
+          cursor: "col-resize", zIndex: 1,
+        }}
+      />
       {/* Header */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -255,7 +296,7 @@ export function LensPanel({
           }}
         />
       </form>
-    </div>
+    </aside>
   )
 }
 

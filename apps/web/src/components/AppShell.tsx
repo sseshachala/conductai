@@ -232,6 +232,9 @@ function AppShellInnerContent({
   const [lensPanelOpen, setLensPanelOpen] = useState(false)
   const [lensPanelInitialQuery, setLensPanelInitialQuery] = useState<string | null>(null)
 
+  // Suppress side panel on full-page Lens routes (would render Lens twice).
+  const lensPanelSuppressed = pathname?.startsWith("/lens") ?? false
+
   // Persist open/closed state (#B5). localStorage read is client-only.
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -241,6 +244,19 @@ function AppShellInnerContent({
     if (typeof window === "undefined") return
     try { window.localStorage.setItem("lens:panelOpen", lensPanelOpen ? "1" : "0") } catch { /* ignore */ }
   }, [lensPanelOpen])
+
+  // ⌘. / Ctrl+. toggles Lens panel from anywhere.
+  useEffect(() => {
+    if (lensPanelSuppressed) return
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ".") {
+        e.preventDefault()
+        setLensPanelOpen(v => !v)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [lensPanelSuppressed])
 
   // Team rename/create/delete state
   const [creatingTeam, setCreatingTeam] = useState(false)
@@ -1288,15 +1304,17 @@ function AppShellInnerContent({
           <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
-    </div>
 
-    {/* Command Palette */}
-    <LensPanel
-      open={lensPanelOpen}
-      initialQuery={lensPanelInitialQuery}
-      pathname={pathname}
-      onClose={() => { setLensPanelOpen(false); setLensPanelInitialQuery(null) }}
-    />
+      {/* Lens — docked side panel (pushes content, not an overlay) */}
+      {!lensPanelSuppressed && (
+        <LensPanel
+          open={lensPanelOpen}
+          initialQuery={lensPanelInitialQuery}
+          pathname={pathname}
+          onClose={() => { setLensPanelOpen(false); setLensPanelInitialQuery(null) }}
+        />
+      )}
+    </div>
 
     {paletteOpen && (
       <div
