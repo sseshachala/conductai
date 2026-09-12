@@ -669,6 +669,7 @@ function GuardDashboard() {
       active_developers: distinctDevs > 0 ? distinctDevs : events.length > 0 ? 1 : 0,
       events_today:      todayEvents.length,
       blocked_today:     todayEvents.filter(e => e.decision === "blocked").length,
+      warned_today:      todayEvents.filter(e => e.decision === "warned").length,
       tokens_saved_today: todayEvents.reduce(
         (s, e) => s + Math.max(0, (e.tokens_before ?? 0) - (e.tokens_after ?? 0)), 0
       ),
@@ -868,7 +869,7 @@ function GuardDashboard() {
         loading={loading}
         eventsToday={stats?.events_today ?? derivedStats.events_today}
         blockedToday={blockedToday}
-        warnedToday={events.filter(e => e.decision === "warned").length}
+        warnedToday={derivedStats.warned_today}
         agentPolicies={agentCount}
         proxyPolicies={proxyCount}
       />
