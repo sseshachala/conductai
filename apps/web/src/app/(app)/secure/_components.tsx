@@ -2,7 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
 import { timeAgo } from "@/lib/runUtils"
+import { SECURE_SECTIONS, activeSecureSection, type SecureSectionId } from "@/lib/navigation/secureSections"
+
+const COLLAPSE_KEY = "secure:railCollapsed"
+const RAIL_EXPANDED = 200
+const RAIL_COLLAPSED = 56
 
 export function SecureLoopIcon({ size = 20 }: { size?: number }) {
   return (
@@ -52,47 +58,153 @@ export const STATUS_STYLES: Record<FindingStatus, { bg: string; color: string; l
   dismissed: { bg: "var(--surface-3)", color: "var(--text-muted)", label: "Dismissed" },
 }
 
-const SECURE_TABS = [
-  { href: "/secure",          label: "Overview" },
-  { href: "/secure/activity", label: "Activity" },
-]
+function SectionIcon({ id }: { id: SecureSectionId }) {
+  const common = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const }
+  switch (id) {
+    case "overview": return <svg {...common}><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z" /></svg>
+    case "findings": return <svg {...common}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+  }
+}
+
+function ChevronLeft() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+}
+
+function ChevronRight() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+}
+
+function RailItem({
+  href, label, icon, active, collapsed,
+}: {
+  href: string
+  label: string
+  icon: React.ReactNode
+  active: boolean
+  collapsed: boolean
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      aria-label={collapsed ? label : undefined}
+      title={collapsed ? label : undefined}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: collapsed ? "8px" : "8px 12px",
+        justifyContent: collapsed ? "center" : "flex-start",
+        fontSize: 13.5,
+        fontWeight: active ? 650 : 500,
+        color: active ? "var(--text)" : "var(--text-3)",
+        background: active ? "var(--surface-2)" : "transparent",
+        borderRadius: 6,
+        textDecoration: "none",
+        transition: "background .12s, color .12s",
+      }}
+    >
+      <span style={{ display: "flex", flexShrink: 0 }}>{icon}</span>
+      {!collapsed && <span>{label}</span>}
+    </Link>
+  )
+}
 
 export function SecureShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const activeId = activeSecureSection(pathname ?? "")
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try { if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true) } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try { window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0") } catch { /* ignore */ }
+  }, [collapsed])
+
+  const railWidth = collapsed ? RAIL_COLLAPSED : RAIL_EXPANDED
+
   return (
-    <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px 48px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-            <span style={{ width: 32, height: 32, borderRadius: 9, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <SecureLoopIcon size={16} />
-            </span>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
-              Secure
-            </h1>
-            <span className="sbadge ok" style={{ marginTop: 2 }}>
-              <span className="conduct-pulse-dot" />
-              active
-            </span>
+    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", minHeight: "100%" }}>
+      {/* Truly-left rail — mirrors GuardShell. */}
+      <aside style={{
+        width: railWidth,
+        borderRight: "1px solid var(--border)",
+        padding: "12px 8px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        transition: "width .15s ease",
+      }}>
+        {/* Collapse toggle at top, right-aligned when expanded, centered when collapsed. */}
+        <div style={{ display: "flex", justifyContent: collapsed ? "center" : "flex-end", marginBottom: 8 }}>
+          <button
+            onClick={() => setCollapsed(c => !c)}
+            aria-label={collapsed ? "Expand Secure nav" : "Collapse Secure nav"}
+            title={collapsed ? "Expand" : "Collapse"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              color: "var(--text-3)",
+              cursor: "pointer",
+              borderRadius: 6,
+              transition: "background .12s",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)" }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent" }}
+          >
+            {collapsed ? <ChevronRight /> : <ChevronLeft />}
+          </button>
+        </div>
+
+        <nav aria-label="Secure sections" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {SECURE_SECTIONS.map(s => (
+            <RailItem
+              key={s.id}
+              href={s.href}
+              label={s.label}
+              icon={<SectionIcon id={s.id} />}
+              active={s.id === activeId}
+              collapsed={collapsed}
+            />
+          ))}
+        </nav>
+      </aside>
+
+      {/* Right column: header + content, centered inside. */}
+      <div style={{ padding: "28px 24px 48px", minWidth: 0 }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", marginBottom: 20 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                <span style={{ width: 32, height: 32, borderRadius: 9, background: "#dc2626", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  <SecureLoopIcon size={16} />
+                </span>
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-.02em", margin: 0 }}>
+                  Secure
+                </h1>
+                <span className="sbadge ok" style={{ marginTop: 2 }}>
+                  <span className="conduct-pulse-dot" />
+                  active
+                </span>
+              </div>
+              <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
+                Security findings from every scan — PR reviews, BugHunter, Guard violations. Triages automatically, triggers fixes.
+              </p>
+            </div>
           </div>
-          <p style={{ fontSize: 13, color: "var(--text-3)", marginTop: 5 }}>
-            Security findings from every scan — PR reviews, BugHunter, Guard violations. Triages automatically, triggers fixes.
-          </p>
+          {children}
         </div>
       </div>
-      <div className="guard-tab-nav">
-        {SECURE_TABS.map(tab => {
-          const isActive = tab.href === "/secure"
-            ? pathname === "/secure"
-            : pathname?.startsWith(tab.href)
-          return (
-            <Link key={tab.href} href={tab.href} className={`guard-tab${isActive ? " active" : ""}`}>
-              {tab.label}
-            </Link>
-          )
-        })}
-      </div>
-      {children}
     </div>
   )
 }
