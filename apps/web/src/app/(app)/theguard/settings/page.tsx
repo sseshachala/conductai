@@ -2,17 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
-import { API } from "@/lib/api/client"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
-import { useTokenGuardrails, patchTokenGuardrails } from "@/hooks/useTokenGuardrails"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { SettingsShell, type SettingsTab } from "@/components/SettingsShell"
+import { GuardToggle } from "@/features/guard/GuardToggle"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,52 +30,10 @@ interface TeamPrefs {
 
 type GuardSettingsTab =
   | "enforcement"
-  | "guardrails"
 
 const GUARD_SETTINGS_TABS: readonly SettingsTab<GuardSettingsTab>[] = [
   { key: "enforcement",   label: "Enforcement" },
-  { key: "guardrails",    label: "Cost & performance" },
 ]
-
-
-// ─── Toggle ───────────────────────────────────────────────────────────────────
-
-function GuardToggle({ on, onClick, disabled }: { on: boolean; onClick: () => void; disabled?: boolean }) {
-  return (
-    <span
-      onClick={disabled ? undefined : onClick}
-      role="switch"
-      aria-checked={on}
-      aria-disabled={disabled}
-      style={{
-        width: 40,
-        height: 23,
-        borderRadius: 20,
-        background: on ? "var(--accent)" : "var(--border-2)",
-        position: "relative",
-        cursor: disabled ? "default" : "pointer",
-        flexShrink: 0,
-        transition: "background .15s",
-        display: "inline-block",
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 2.5,
-          left: on ? 19.5 : 2.5,
-          width: 18,
-          height: 18,
-          borderRadius: "50%",
-          background: "#fff",
-          transition: "left .15s",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      />
-    </span>
-  )
-}
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -87,18 +43,18 @@ export default function GuardSettingsPage() {
 
 function SettingsContent() {
   const { authFetch } = useAuthFetch()
-  const { getToken } = useAuth()
   const { activeWorkspace } = useWorkspace()
   const { teamId } = useGuardTeam()
   const { permissions, role: resolvedRole } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Legacy ?tab=notifications and ?tab=sync bookmarks — panels now live at their own URLs.
+  // Legacy ?tab=* bookmarks — panels moved to their own URLs.
   useEffect(() => {
     const tab = searchParams?.get("tab")
     if (tab === "notifications") router.replace("/theguard/connections/notifications")
     else if (tab === "sync") router.replace("/theguard/connections/sync")
+    else if (tab === "guardrails") router.replace("/theguard/spend/optimization")
   }, [searchParams, router])
 
   useEffect(() => {
@@ -127,10 +83,6 @@ function SettingsContent() {
   const [notifyOnFailOpen, setNotifyOnFailOpen] = useState(true)
   const [enforcementError, setEnforcementError] = useState<string | null>(null)
 
-  // Token guardrails
-  const { guardrails: tokenGuardrails, refresh: refreshGuardrails } = useTokenGuardrails(activeWorkspace?.id ?? null)
-  const [guardrailState, setGuardrailState] = useState({ prompt_caching: true, model_routing: true, prompt_splitting: true })
-  const [guardrailSaved, setGuardrailSaved] = useState(false)
 
   // MCP connect
 
@@ -168,14 +120,6 @@ function SettingsContent() {
   }, [authFetch, wsId])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => {
-    if (!tokenGuardrails) return
-    setGuardrailState({
-      prompt_caching:   tokenGuardrails.prompt_caching,
-      model_routing:    tokenGuardrails.model_routing,
-      prompt_splitting: tokenGuardrails.prompt_splitting,
-    })
-  }, [tokenGuardrails])
 
   async function patchConfig(body: Partial<TeamPrefs>) {
     if (!wsId) return
@@ -191,20 +135,6 @@ function SettingsContent() {
     } catch (e) {
       setPrefs(p => ({ ...p, [field]: !value }))
       setError(e instanceof Error ? e.message : "Save failed")
-    }
-  }
-
-  async function handleGuardrailToggle(field: "prompt_caching" | "model_routing" | "prompt_splitting", value: boolean) {
-    if (!wsId) return
-    setGuardrailState(s => ({ ...s, [field]: value }))
-    try {
-      const token = await getToken()
-      await patchTokenGuardrails(wsId, token ?? "", API, { [field]: value })
-      refreshGuardrails()
-      setGuardrailSaved(true)
-      setTimeout(() => setGuardrailSaved(false), 2000)
-    } catch {
-      setGuardrailState(s => ({ ...s, [field]: !value }))
     }
   }
 
@@ -412,85 +342,6 @@ function SettingsContent() {
                     </div>
                   </div>
                 </label>
-              </div>
-              </div>
-            ),
-            guardrails: (
-              <div className="card" style={{ overflow: "hidden" }}>
-            <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-                </svg>
-              </span>
-              <div style={{ fontWeight: 650, fontSize: 14.5 }}>Token guardrails</div>
-              <a href="/token-guardrails" target="_blank" style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", textDecoration: "none" }}>
-                Learn more →
-              </a>
-              {guardrailSaved && (
-                <span style={{ fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>
-              )}
-            </div>
-
-            {/* Detected (auto) status — shown first */}
-            <div style={{ padding: "4px 20px 8px" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Detected</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Passive detection from installed tools and active policies. Full enforcement coming in a future release.</div>
-              {tokenGuardrails === null ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {[...Array(4)].map((_, i) => (
-                    <div key={i} style={{ height: 36, background: "var(--surface-2)", borderRadius: 6, opacity: 0.6 }} />
-                  ))}
-                </div>
-              ) : (
-                ([
-                  { key: "deterministic_offload", label: "Deterministic offload", desc: "Detects whether the warn-deterministic-compute policy is active. In-sandbox offloading coming soon." },
-                  { key: "output_compression",    label: "Output compression",    desc: "Detects RTK install. RTK compresses terminal output today — sandbox run compression coming soon." },
-                  { key: "structured_retrieval",  label: "Structured retrieval",  desc: "Detects Agent Booster install. Smart file reads inside sandbox runs coming soon." },
-                  { key: "metrics_budgets",       label: "Metrics & budgets",     desc: "Spend budgets enforced on proxy traffic. Workflow run budget enforcement coming soon." },
-                ] as const).map((item, i) => {
-                  const detected = tokenGuardrails[item.key] ?? false
-                  return (
-                    <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 0", borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
-                      <div>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{item.label}</div>
-                        <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</div>
-                      </div>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: detected ? "var(--ok)" : "var(--text-3)", flexShrink: 0, marginLeft: 12 }}>
-                        {detected ? "Detected" : "Not detected"}
-                      </span>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-
-            {/* Manual toggles — shown below Detected */}
-            <div style={{ padding: "4px 20px 16px", borderTop: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 4px" }}>Toggleable</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Workspace-wide controls — flip off to opt the whole team out.</div>
-              {([
-                { key: "prompt_caching",   label: "Prompt caching",   desc: "System prompts cached on every agent run — repeat calls don't re-pay for the same tokens. Enforced.", pending: false },
-                { key: "model_routing",    label: "Model routing",    desc: "Each run routes to the cheapest model tier that can handle the task — Haiku for simple, Opus for complex. Enforced.", pending: false },
-                { key: "prompt_splitting", label: "Prompt splitting", desc: "Split large prompts into chunks to stay within context limits. Not yet implemented.", pending: true },
-              ] as const).map(item => (
-                <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 0", borderTop: "1px solid var(--border)" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13.5, display: "flex", alignItems: "center", gap: 8 }}>
-                      {item.label}
-                      {item.pending && (
-                        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".04em", color: "#92400e", background: "#fef3c7", borderRadius: 4, padding: "1px 5px" }}>PENDING</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{item.desc}</div>
-                  </div>
-                  <GuardToggle
-                    on={guardrailState[item.key]}
-                    onClick={() => handleGuardrailToggle(item.key, !guardrailState[item.key])}
-                    disabled={!isAdmin || item.pending}
-                  />
-                </div>
-              ))}
               </div>
               </div>
             ),
