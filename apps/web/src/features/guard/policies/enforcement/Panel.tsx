@@ -17,6 +17,7 @@ export default function EnforcementPanel({
   const [failMode, setFailMode] = useState<"fail_open" | "fail_closed">("fail_open")
   const [denyOnError, setDenyOnError] = useState(true)
   const [notifyOnFailOpen, setNotifyOnFailOpen] = useState(true)
+  const [argAnomalyEnabled, setArgAnomalyEnabled] = useState(false)
   const [enforcementError, setEnforcementError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -31,6 +32,9 @@ export default function EnforcementPanel({
       if (data.fail_mode) setFailMode(data.fail_mode as "fail_open" | "fail_closed")
       if (data.deny_on_error !== undefined) setDenyOnError(data.deny_on_error)
       if (data.notify_on_fail_open !== undefined) setNotifyOnFailOpen(data.notify_on_fail_open)
+      // arg_anomaly_enabled ships from #1715 — until that lands the API omits
+      // the field and the toggle stays at its default of false.
+      if (data.arg_anomaly_enabled !== undefined) setArgAnomalyEnabled(data.arg_anomaly_enabled)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       if (msg.includes("404")) { setLoading(false); return }
@@ -216,6 +220,32 @@ export default function EnforcementPanel({
             <div style={{ fontWeight: 600, fontSize: 13 }}>Notify on fail-open</div>
             <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
               Post a Slack warning to your workspace channel when Guard could not evaluate policy and allowed the request through. Requires a Slack webhook configured for the workspace.
+            </div>
+          </div>
+        </label>
+      </div>
+      <div className="card" style={{ padding: "18px 20px", minWidth: 0 }}>
+        <div className="eyebrow" style={{ marginBottom: 4 }}>Behavioral observation</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+          Record-only — flags unusual tool arguments in the audit log without
+          blocking. Baselines build over time as your agents run.
+        </div>
+        <label style={{ display: "flex", gap: 11, alignItems: "flex-start", cursor: isAdmin ? "pointer" : "default" }}
+          onClick={async () => {
+            if (!isAdmin) return
+            const next = !argAnomalyEnabled
+            setArgAnomalyEnabled(next)
+            try { await patchConfig({ arg_anomaly_enabled: next }) }
+            catch { setArgAnomalyEnabled(!next) }
+          }}>
+          <GuardToggle on={argAnomalyEnabled} onClick={() => {}} disabled={!isAdmin} />
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>Argument anomaly observation</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+              Score arguments to filesystem-write tool calls against per-workspace
+              rolling baselines. Numeric args use z-score, string args track
+              never-seen hashes. Advisory audit events only — no enforcement.
+              Thresholds (z-score, minimum samples) tuned via API PATCH.
             </div>
           </div>
         </label>
