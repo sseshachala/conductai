@@ -13,6 +13,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, call
 
 import pytest
@@ -316,6 +317,7 @@ class TestModalSession:
         with patch("subprocess.Popen") as mock_popen:
             mock_popen.return_value = MagicMock()
             mock_popen.return_value.stdin = MagicMock()
+            mock_popen.return_value.stdout.readline.return_value = '{"sandbox_id":"sandbox-1"}\n'
             s._ensure_started()
 
         mock_popen.assert_called_once()
@@ -331,6 +333,7 @@ class TestModalSession:
         s = ModalSession("id", "secret")
         proc = MagicMock()
         proc.stdin = MagicMock()
+        proc.stdout.readline.return_value = '{"sandbox_id":"sandbox-1"}\n'
         with patch("subprocess.Popen", return_value=proc) as mock_popen:
             s._ensure_started()
             s._ensure_started()
@@ -511,3 +514,105 @@ class TestCreateSession:
         }
         session = create_session(None, creds, runs_on={"provider": "e2b"})
         assert isinstance(session, E2BSession)
+
+
+class TestSandboxFailureIsolation:
+    @pytest.mark.parametrize("session_cls", [ModalSession, E2BSession])
+    def test_malformed_remote_response_never_writes_locally(self, session_cls, tmp_path):
+        session = session_cls("id", "secret") if session_cls is ModalSession else session_cls("key")
+        proc = MagicMock()
+        proc.stdin = MagicMock()
+        proc.stdout.readline.return_value = "not-json\n"
+        session._proc = proc
+        session._started = True
+        canary = tmp_path / "must-not-exist"
+
+        result = session.dispatch("write_file", {"path": str(canary), "content": "unsafe"})
+
+        assert result.startswith("Error:")
+        assert not canary.exists()
+
+    @pytest.mark.parametrize("session_cls", [ModalSession, E2BSession])
+    def test_dispatch_failure_never_constructs_local_session(self, session_cls):
+        session = session_cls("id", "secret") if session_cls is ModalSession else session_cls("key")
+        proc = MagicMock()
+        proc.stdin.write.side_effect = BrokenPipeError("closed")
+        session._proc = proc
+        session._started = True
+
+        with patch("app.runtime.sandbox_session.LocalSession") as local_session:
+            result = session.dispatch("run_shell", {"command": "printf unsafe"})
+
+        assert result.startswith("Error:")
+        local_session.assert_not_called()
+
+    @pytest.mark.parametrize("session_cls", [ModalSession, E2BSession])
+    def test_process_termination_never_constructs_local_session(self, session_cls):
+        session = session_cls("id", "secret") if session_cls is ModalSession else session_cls("key")
+        proc = MagicMock()
+        proc.stdin = MagicMock()
+        proc.stdout.readline.return_value = ""
+        session._proc = proc
+        session._started = True
+
+        with patch("app.runtime.sandbox_session.LocalSession") as local_session:
+            result = session.dispatch("run_shell", {"command": "printf unsafe"})
+
+        assert "terminated unexpectedly" in result
+        local_session.assert_not_called()
+
+    @pytest.mark.parametrize("session_cls", [ModalSession, E2BSession])
+    def test_malformed_startup_response_is_an_explicit_failure(self, session_cls):
+        session = session_cls("id", "secret") if session_cls is ModalSession else session_cls("key")
+        proc = MagicMock()
+        proc.stdin = MagicMock()
+        proc.stdout.readline.return_value = "not-json\n"
+
+        with patch("subprocess.Popen", return_value=proc), pytest.raises(RuntimeError, match="startup"):
+            session._ensure_started()
+
+        proc.kill.assert_called_once()
+
+    def test_local_session_constructor_rejects_production(self):
+        with patch("app.core.config.settings", SimpleNamespace(environment="production")), \
+             patch("tempfile.mkdtemp") as mkdtemp, \
+             pytest.raises(RuntimeError, match="disabled in production"):
+            LocalSession()
+        mkdtemp.assert_not_called()
+
+    def test_legacy_dispatcher_rejects_local_execution_in_production(self):
+        from app.runtime import sandbox
+
+        with patch("app.core.config.settings", SimpleNamespace(environment="production")), \
+             patch.object(sandbox, "_dispatch_local") as local_dispatch, \
+             pytest.raises(RuntimeError, match="disabled in production"):
+            sandbox.dispatch_brain_tool("run_shell", {"command": "printf unsafe"})
+        local_dispatch.assert_not_called()
+
+    def test_legacy_remote_failure_never_dispatches_locally(self):
+        from app.runtime import remote_sandbox, sandbox
+
+        with patch.object(remote_sandbox, "remote_dispatch", side_effect=RuntimeError("remote failed")), \
+             patch.object(sandbox, "_dispatch_local") as local_dispatch, \
+             pytest.raises(RuntimeError, match="remote failed"):
+            sandbox.dispatch_brain_tool(
+                "write_file",
+                {"path": "/tmp/must-not-exist", "content": "unsafe"},
+                remote_host={"ip": "192.0.2.10"},
+            )
+        local_dispatch.assert_not_called()
+
+    def test_legacy_modal_failure_never_dispatches_locally(self):
+        from app.runtime import sandbox
+
+        failed = MagicMock(returncode=1, stderr="remote failed", stdout="")
+        credentials = {"modal": {"token_id": "id", "token_secret": "secret"}}
+        with patch("subprocess.run", return_value=failed), \
+             patch.object(sandbox, "_dispatch_local") as local_dispatch, \
+             pytest.raises(RuntimeError, match="Modal sandbox failed"):
+            sandbox.dispatch_brain_tool(
+                "write_file",
+                {"path": "/tmp/must-not-exist", "content": "unsafe"},
+                credentials=credentials,
+            )
+        local_dispatch.assert_not_called()

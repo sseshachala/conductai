@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from app.guard.policy_types import PolicyAction, PolicyDecision
 from app.mcp.server import (
     MCPContext,
@@ -207,9 +209,11 @@ def test_tools_call_blocked_by_policy_returns_error_envelope():
     assert not called  # tool impl never invoked
 
 
-def test_tools_call_policy_eval_failure_fails_open():
+def test_tools_call_policy_eval_failure_fails_closed():
+    called = []
     def impl():
-        return "fallback"
+        called.append(True)
+        return "must not run"
     registry = _registry_with([_tool("thing", impl=impl)])
     request = {
         "jsonrpc": "2.0", "id": 3, "method": "tools/call",
@@ -218,8 +222,43 @@ def test_tools_call_policy_eval_failure_fails_open():
     with patch("app.mcp.server.evaluate_composed", side_effect=RuntimeError("db down")):
         response = dispatch(request, _ctx(), registry)
     result = response["result"]
-    assert result["content"][0]["text"] == "fallback"
-    assert "isError" not in result
+    assert result["isError"] is True
+    assert "Policy evaluation failed" in result["content"][0]["text"]
+    assert not called
+
+
+@pytest.mark.parametrize("decision", [
+    PolicyDecision(action=PolicyAction.APPROVAL, source="rule", rule_id="approve-1"),
+    PolicyDecision(action="UNKNOWN", source="broken"),
+    PolicyDecision(action="REJECTED", source="approval"),
+    PolicyDecision(action="EXPIRED", source="approval"),
+    None,
+])
+def test_tools_call_non_executable_policy_states_never_invoke_tool(decision):
+    called = []
+    registry = _registry_with([_tool("mutate", impl=lambda: called.append(True))])
+    request = {
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": "mutate"},
+    }
+
+    with patch("app.mcp.server.evaluate_composed", return_value=decision):
+        response = dispatch(request, _ctx(), registry)
+
+    assert response["result"]["isError"] is True
+    assert not called
+
+
+def test_tools_call_warn_runs_tool():
+    warned = PolicyDecision(action=PolicyAction.WARN, source="rule", reason="review this")
+    registry = _registry_with([_tool("read", impl=lambda: "done")])
+    request = {
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": "read"},
+    }
+    with patch("app.mcp.server.evaluate_composed", return_value=warned):
+        response = dispatch(request, _ctx(), registry)
+    assert response["result"]["content"][0]["text"] == "done"
 
 
 def test_tools_call_impl_exception_returns_error_envelope():

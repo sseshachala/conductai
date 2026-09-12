@@ -31,7 +31,7 @@ import json
 import structlog
 
 from app.guard.policy import evaluate_composed
-from app.guard.policy_types import PolicyAction, PolicyContext
+from app.guard.policy_types import PolicyAction, PolicyContext, PolicyDecision
 from app.mcp.server import MCPContext
 from app.tools.registry import default_registry
 
@@ -68,9 +68,18 @@ def dispatch(name: str, arguments_json: str, ctx: MCPContext) -> str:
     try:
         decision = evaluate_composed(policy_ctx)
     except Exception as e:
-        # Guard eval itself broke — fail-open, matches Executor.call behaviour.
         log.warning("lens_adapter.guard_check_failed", tool=name, err=str(e))
-        decision = None
+        return json.dumps({
+            "error": "Policy evaluation failed; tool execution was denied",
+            "blocked_by": "policy_error",
+        })
+
+    if not isinstance(decision, PolicyDecision) or not isinstance(decision.action, PolicyAction):
+        log.warning("lens_adapter.invalid_decision", tool=name)
+        return json.dumps({
+            "error": "Policy evaluation returned an invalid decision; tool execution was denied",
+            "blocked_by": "policy_error",
+        })
 
     if decision is not None and decision.action == PolicyAction.BLOCK:
         log.warning("lens_adapter.blocked",
@@ -83,6 +92,17 @@ def dispatch(name: str, arguments_json: str, ctx: MCPContext) -> str:
                 f"{decision.reason or 'policy violation'}"
             ),
             "blocked_by": decision.source,
+            "rule_id": decision.rule_id,
+        })
+
+    if decision.action == PolicyAction.APPROVAL:
+        log.info("lens_adapter.approval_pending", tool=name, rule=decision.rule_id)
+        return json.dumps({
+            "error": (
+                f"Approval required by Guard rule {decision.rule_id}: "
+                f"{decision.reason or 'approval required'}. The tool was not executed."
+            ),
+            "approval_pending": True,
             "rule_id": decision.rule_id,
         })
 
