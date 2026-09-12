@@ -14,6 +14,7 @@ from app.core.auth import (
 )
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
+from app.models.environment import Environment
 from app.models.integration import Integration
 from app.modules.agent_identity.adapters import TOKEN_PREFIX
 from app.modules.agent_identity.models import AgentIdentity
@@ -51,6 +52,29 @@ def _generate_token() -> tuple[str, str]:
     return raw, raw[:_DISPLAY_PREFIX_LEN]
 
 
+def _require_workspace_environment(db: Session, workspace_id: str, environment_id: str) -> None:
+    try:
+        environment_uuid = uuid.UUID(environment_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="Environment not found") from None
+    row = db.query(Environment).filter(
+        Environment.id == environment_uuid,
+        Environment.workspace_id == uuid.UUID(workspace_id),
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Environment not found")
+
+
+def _require_workspace_identity(db: Session, workspace_id: str, identity_id: str) -> AgentIdentity:
+    row = db.query(AgentIdentity).filter(
+        AgentIdentity.id == identity_id,
+        AgentIdentity.workspace_id == workspace_id,
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Agent identity not found")
+    return row
+
+
 def mint_agent_identity(db: Session, workspace_id: str, name: str, source: str = "conduct_auto") -> tuple[AgentIdentity, str]:
     """Internal helper — mint an Agent Identity for a user without auth checks.
 
@@ -78,6 +102,7 @@ def mint_agent_identity(db: Session, workspace_id: str, name: str, source: str =
 
 def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, plaintext: str) -> None:
     """Merge CONDUCT_AGENT_TOKEN into the env_vars credential blob for the environment."""
+    _require_workspace_environment(db, workspace_id, environment_id)
     existing = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
         Integration.handle == "env_vars",
@@ -118,6 +143,8 @@ def create_agent_identity(
 ):
     if not body.name.strip():
         raise HTTPException(status_code=422, detail="Name cannot be empty")
+    if body.environment_id:
+        _require_workspace_environment(db, workspace_id, body.environment_id)
 
     plaintext, prefix = _generate_token()
     encrypted = encrypt({"token": plaintext})
@@ -338,6 +365,8 @@ def regenerate_agent_identity(
     ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Agent identity not found")
+    if row.environment_id:
+        _require_workspace_environment(db, workspace_id, str(row.environment_id))
 
     plaintext, prefix = _generate_token()
     row.token_prefix = prefix
@@ -367,6 +396,8 @@ def list_run_tokens(
     from app.models.run import Run
     from app.models.workflow import Workflow, WorkflowVersion
     from app.modules.agent_identity.run_token_model import AgentRunToken
+
+    _require_workspace_identity(db, workspace_id, identity_id)
 
     rows = (
         db.query(AgentRunToken)

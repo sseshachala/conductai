@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 from app.guard.policy_types import PolicyAction, PolicyDecision
 from app.mcp.lens_adapter import dispatch as lens_dispatch
 from app.mcp.server import MCPContext
@@ -66,14 +68,37 @@ def test_dispatch_blocked_tool_returns_error_envelope():
     assert parsed["rule_id"] == "lens.no_secrets_search"
 
 
-def test_dispatch_guard_check_failure_fails_open():
-    """If the composable engine itself crashes, we fail-open (log + proceed)
-    so a broken policy source can't lock Lens out of all tools."""
+def test_dispatch_guard_check_failure_fails_closed():
     with patch("app.mcp.lens_adapter.evaluate_composed",
                side_effect=RuntimeError("db down")), \
-         _patch_tool_impl("get_spend_summary", return_value={"fallback": True}):
+         _patch_tool_impl("get_spend_summary", return_value={"must_not": "run"}) as impl:
         result = lens_dispatch("get_spend_summary", "{}", _CTX)
-    assert json.loads(result) == {"fallback": True}
+    assert "Policy evaluation failed" in json.loads(result)["error"]
+    impl.assert_not_called()
+
+
+@pytest.mark.parametrize("decision", [
+    PolicyDecision(action=PolicyAction.APPROVAL, source="rule", rule_id="approve-1"),
+    PolicyDecision(action="UNKNOWN", source="broken"),
+    PolicyDecision(action="REJECTED", source="approval"),
+    PolicyDecision(action="EXPIRED", source="approval"),
+    None,
+])
+def test_dispatch_non_executable_policy_states_never_invoke_tool(decision):
+    with patch("app.mcp.lens_adapter.evaluate_composed", return_value=decision), \
+         _patch_tool_impl("get_spend_summary", return_value={"must_not": "run"}) as impl:
+        result = lens_dispatch("get_spend_summary", "{}", _CTX)
+    assert "error" in json.loads(result)
+    impl.assert_not_called()
+
+
+def test_dispatch_warn_runs_tool():
+    warned = PolicyDecision(action=PolicyAction.WARN, source="rule", reason="review this")
+    with patch("app.mcp.lens_adapter.evaluate_composed", return_value=warned), \
+         _patch_tool_impl("get_spend_summary", return_value={"ok": True}) as impl:
+        result = lens_dispatch("get_spend_summary", "{}", _CTX)
+    assert json.loads(result) == {"ok": True}
+    impl.assert_called_once()
 
 
 def test_dispatch_tool_exception_returns_error_envelope():
