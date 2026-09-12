@@ -70,7 +70,12 @@ class InboxEventOut(BaseModel):
 # Enum enforcement is the whole reason for the rename to `unreachable_fallback`
 # on the LiteLLM shim — same pattern here for resolve reasons so callers can't
 # scribble arbitrary strings into a triage taxonomy.
-ResolvedReason = Literal["expected", "escalated", "exception_added", "false_positive"]
+# `auto` is set by the guard_inbox_auto_close background worker when a
+# row's dedup key hasn't fired in guard_config.inbox_auto_close_days days.
+# Human triagers can also pick it manually via the API (e.g. batch triage
+# scripts), but the UI doesn't offer it as a resolution reason — the
+# admin should pick a real reason if they're closing a row by hand.
+ResolvedReason = Literal["expected", "escalated", "exception_added", "false_positive", "auto"]
 InboxStatus = Literal["open", "triaging", "resolved"]
 
 

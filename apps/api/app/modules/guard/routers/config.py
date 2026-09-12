@@ -48,6 +48,7 @@ class ConfigOut(BaseModel):
     deny_on_error: bool = True
     advisory_mode: bool = False
     notify_on_fail_open: bool = True
+    inbox_auto_close_days: int = 30
     spend_limit_usd: float | None = None
 
     class Config:
@@ -66,6 +67,10 @@ class ConfigPatch(BaseModel):
     deny_on_error: bool | None = None
     advisory_mode: bool | None = None
     notify_on_fail_open: bool | None = None
+    # Days to keep a Guard Inbox row open before auto-close flips it to
+    # resolved:auto. 0 = never (compliance-heavy opt-out). Cap at 90 to
+    # match the manual backfill ceiling on /guard/inbox/backfill.
+    inbox_auto_close_days: int | None = None
 
 
 class InstallStatusOut(BaseModel):
@@ -119,6 +124,7 @@ def _config_to_out(cfg: GuardConfig) -> ConfigOut:
         deny_on_error=getattr(cfg, "deny_on_error", True),
         advisory_mode=bool(getattr(cfg, "advisory_mode", False)),
         notify_on_fail_open=bool(getattr(cfg, "notify_on_fail_open", True)),
+        inbox_auto_close_days=int(getattr(cfg, "inbox_auto_close_days", 30)),
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
     )
@@ -310,6 +316,14 @@ def patch_config(
         config.notify_on_fail_open = body.notify_on_fail_open
     if body.advisory_mode is not None:
         config.advisory_mode = body.advisory_mode
+    if body.inbox_auto_close_days is not None:
+        # 0 = opt out; cap at 90 to align with /guard/inbox/backfill.
+        if body.inbox_auto_close_days < 0 or body.inbox_auto_close_days > 90:
+            raise HTTPException(
+                status_code=422,
+                detail="inbox_auto_close_days must be between 0 (opt-out) and 90",
+            )
+        config.inbox_auto_close_days = body.inbox_auto_close_days
     config.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(config)

@@ -12,7 +12,7 @@ import {
   type FilterPill,
 } from "@/components/guard/common"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { guardInbox } from "@/lib/api"
+import { guard, guardInbox } from "@/lib/api"
 import type {
   InboxRow,
   InboxEvent,
@@ -32,7 +32,7 @@ const REASON_LABEL: Record<ResolvedReason, string> = {
 // ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function GuardInboxPage() {
-  const { authFetch } = useAuthFetch()
+  const { authFetch, workspaceId } = useAuthFetch()
   const [rows, setRows] = useState<InboxRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -55,6 +55,12 @@ export default function GuardInboxPage() {
   const [backfillBusy, setBackfillBusy] = useState(false)
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null)
 
+  // Auto-close config state — persisted server-side on guard_config.
+  // null = still loading / not applicable.
+  const [autoCloseDays, setAutoCloseDays] = useState<number | null>(null)
+  const [autoCloseSaving, setAutoCloseSaving] = useState(false)
+  const [autoCloseMsg, setAutoCloseMsg] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -75,6 +81,46 @@ export default function GuardInboxPage() {
   }, [authFetch, statusFilter, severityFilter, sourceFilter])
 
   useEffect(() => { void load() }, [load])
+
+  // Load auto-close config once we have a workspace.
+  useEffect(() => {
+    if (!workspaceId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const cfg = await guard.config.get(authFetch, workspaceId)
+        if (!cancelled && cfg) {
+          setAutoCloseDays(
+            typeof cfg.inbox_auto_close_days === "number"
+              ? cfg.inbox_auto_close_days
+              : 30,
+          )
+        }
+      } catch {
+        // Non-fatal — settings row hides if we couldn't load.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [authFetch, workspaceId])
+
+  const saveAutoCloseDays = useCallback(async (next: number) => {
+    if (!workspaceId) return
+    setAutoCloseSaving(true)
+    setAutoCloseMsg(null)
+    try {
+      await guard.config.patch(authFetch, workspaceId, { inbox_auto_close_days: next })
+      setAutoCloseDays(next)
+      setAutoCloseMsg(
+        next === 0
+          ? "Auto-close disabled — no rows will resolve automatically."
+          : `Open rows auto-close after ${next} days without re-fire.`,
+      )
+    } catch (e) {
+      setAutoCloseMsg(e instanceof Error ? e.message : "Save failed")
+    } finally {
+      setAutoCloseSaving(false)
+    }
+  }, [authFetch, workspaceId])
 
   const toggleExpand = useCallback(async (row: InboxRow) => {
     if (expandedId === row.id) {
@@ -187,6 +233,44 @@ export default function GuardInboxPage() {
             borderRadius: 4, marginBottom: 12,
           }}>
             {backfillMsg}
+          </div>
+        )}
+
+        {/* Auto-close settings row — persisted on guard_config. Hidden
+            until the config request lands so we don't flash "30" and
+            then jump to the real value. The backend caps this at 0-90
+            to match /guard/inbox/backfill semantics. */}
+        {autoCloseDays !== null && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            fontSize: 12, color: "var(--text-muted)",
+            padding: "8px 12px", background: "var(--surface)",
+            border: "1px solid var(--border)", borderRadius: 4,
+            marginBottom: 12,
+          }}>
+            <span>Auto-close open rows after</span>
+            <select
+              value={autoCloseDays}
+              disabled={autoCloseSaving}
+              onChange={e => saveAutoCloseDays(Number(e.target.value))}
+              style={{
+                background: "var(--surface)", color: "var(--text)",
+                border: "1px solid var(--border)", borderRadius: 4,
+                padding: "3px 8px", fontSize: 12,
+              }}
+            >
+              <option value={0}>never</option>
+              <option value={7}>7 days</option>
+              <option value={14}>14 days</option>
+              <option value={30}>30 days</option>
+              <option value={60}>60 days</option>
+              <option value={90}>90 days</option>
+            </select>
+            <span>without re-fire</span>
+            {autoCloseSaving && <span style={{ opacity: 0.6 }}>saving…</span>}
+            {autoCloseMsg && !autoCloseSaving && (
+              <span style={{ marginLeft: "auto", fontStyle: "italic" }}>{autoCloseMsg}</span>
+            )}
           </div>
         )}
 
