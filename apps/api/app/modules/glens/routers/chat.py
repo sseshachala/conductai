@@ -803,9 +803,11 @@ async def glens_chat_stream(
                 check_grounded(answer, tool_results, skill="governance")
                 if drilldown:
                     answer += f"\n\n[View all →]({drilldown})"
-                for char in answer:
-                    await event_q.put({"type": "token", "text": char})
-                    await asyncio.sleep(0)
+                # ponytail: fake-stream at ~4-char/8ms — matches GPT/Claude cadence.
+                # Real Phase-1 streaming would need tool_use detection mid-stream; not worth it yet.
+                for i in range(0, len(answer), 4):
+                    await event_q.put({"type": "token", "text": answer[i:i + 4]})
+                    await asyncio.sleep(0.008)
                 await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope})
                 return
 
@@ -818,9 +820,9 @@ async def glens_chat_stream(
             check_grounded(answer, tool_results, skill="governance")
             if drilldown and not _answer_is_apology(answer):
                 link = f"\n\n[View all →]({drilldown})"
-                for char in link:
-                    await event_q.put({"type": "token", "text": char})
-                    await asyncio.sleep(0)
+                for i in range(0, len(link), 4):
+                    await event_q.put({"type": "token", "text": link[i:i + 4]})
+                    await asyncio.sleep(0.008)
                 answer += link
             await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope})
         except Exception as e:
@@ -882,4 +884,15 @@ async def glens_chat_stream(
         finally:
             task.cancel()
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            # Force upstream proxies (nginx, Render, Cloudflare) to flush each
+            # SSE frame instead of buffering. Without these, tokens arrive in
+            # one dump at end-of-stream instead of streaming like GPT/Claude.
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
