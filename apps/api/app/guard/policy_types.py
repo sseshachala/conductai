@@ -43,6 +43,11 @@ class PolicyContext:
     # "prompt" = outbound LLM proxy egress; "response" = inbound LLM proxy
     # ingress; "action" = tool call. Default "action" for pre-#1733 callers.
     gate: str = "action"
+    # Caller's AgentIdentity.risk_tier, populated by each PEP at request
+    # entry. Used by rules with `match_agent_risk_tier` set. None = unknown
+    # (legacy row or non-agent caller) — matcher treats null tier as
+    # "no match" for any rule requiring a specific tier.
+    risk_tier: str | None = None
 
 
 @dataclass

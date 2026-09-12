@@ -362,7 +362,11 @@ _ACTION_PRIORITY = {"block": 0, "approval": 1, "warn": 2, "audit": 3}
 
 
 def _match_policy(
-    tool_name: str, tool_input: dict, rules: list, gate: str | None = "action"
+    tool_name: str,
+    tool_input: dict,
+    rules: list,
+    gate: str | None = "action",
+    agent_risk_tier: str | None = None,
 ) -> dict | None:
     """Return the most restrictive matching rule (block > approval > warn > audit).
 
@@ -370,6 +374,10 @@ def _match_policy(
     list includes the given gate fire. Default ``"action"`` preserves
     pre-#1733 MCP behavior for every existing caller. Pass ``gate=None`` to
     skip gate filtering — used by pack-authoring tests.
+
+    ``agent_risk_tier`` is the caller identity's tier. Rules with
+    ``match_agent_risk_tier`` set only fire for callers whose tier matches
+    exactly; null tier never matches a tier-requiring rule.
     """
     from app.modules.guard.enforcement import rule_matches_gate
 
@@ -390,6 +398,9 @@ def _match_policy(
 
     for rule in rules:
         if gate is not None and not rule_matches_gate(rule, gate):
+            continue
+        required_tier = rule.get("match_agent_risk_tier")
+        if required_tier is not None and required_tier != agent_risk_tier:
             continue
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
@@ -789,10 +800,21 @@ async def mcp_endpoint(
             # /mcp adapter (Phase 3b Chunk B2) can call the same code path.
             # Byte-parity across the two endpoints is guaranteed by construction.
             from app.modules.guard.mcp_impls import GuardCtx, dispatch_guard_tool
+            # Look up caller identity's risk_tier for tier-gated policies.
+            # Best-effort: guard-mt-* member tokens have no AgentIdentity row,
+            # legacy identities may have null tier. Matcher treats null as
+            # "no match" for any tier-requiring rule.
+            try:
+                from app.core.auth import resolve_agent_identity_row
+                _ai = resolve_agent_identity_row(resolved_token, db)
+                _agent_risk_tier = getattr(_ai, "risk_tier", None) if _ai else None
+            except Exception:
+                _agent_risk_tier = None
             _gctx = GuardCtx(
                 db=db, ws_uuid=ws_uuid, workspace_id=workspace_id,
                 resolved_token=resolved_token, clerk_user_id=clerk_user_id,
                 user_email=user_email, ai_tool=ai_tool, session_id=session_id,
+                agent_risk_tier=_agent_risk_tier,
             )
             return JSONResponse(_text(msg_id, dispatch_guard_tool(tool_name, arguments, _gctx)))
 
