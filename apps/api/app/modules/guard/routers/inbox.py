@@ -178,6 +178,94 @@ def list_events_for_row(
     ]
 
 
+class BackfillOut(BaseModel):
+    """Result of a manual backfill run."""
+    days: int
+    inserted: int
+
+
+# Same UPSERT logic the migration + trigger use. Kept in the router so the
+# admin-facing sync button doesn't have to touch DDL. If the trigger's
+# dedup formula changes, this string must change too.
+_BACKFILL_SQL = """
+INSERT INTO guard_inbox (
+    id, workspace_id, dedup_key, rule_id, source, severity, description,
+    occurrences, first_seen_at, last_seen_at, status, latest_event_id
+)
+SELECT
+    gen_random_uuid(),
+    ae.workspace_id,
+    encode(
+        digest(
+            ae.workspace_id::text
+            || COALESCE(ae.rule_id, '')
+            || COALESCE(ae.source, '')
+            || LEFT(COALESCE(ae.rule_message, ''), 200),
+            'sha256'
+        ),
+        'hex'
+    ),
+    COALESCE(ae.rule_id, ''),
+    COALESCE(ae.source, 'unknown'),
+    CASE ae.decision
+        WHEN 'blocked'  THEN 'critical'
+        WHEN 'warned'   THEN 'medium'
+        WHEN 'approved' THEN 'low'
+        ELSE 'medium'
+    END,
+    ae.rule_message,
+    1,
+    ae.ts,
+    ae.ts,
+    'open',
+    ae.id
+FROM guard_audit_events ae
+WHERE ae.workspace_id = :ws
+  AND ae.decision IN ('blocked', 'warned', 'approved')
+  AND ae.ts > NOW() - (:days || ' days')::interval
+ON CONFLICT (workspace_id, dedup_key) DO UPDATE
+    SET occurrences   = guard_inbox.occurrences + 1,
+        last_seen_at   = GREATEST(guard_inbox.last_seen_at, EXCLUDED.last_seen_at),
+        first_seen_at  = LEAST(guard_inbox.first_seen_at, EXCLUDED.first_seen_at),
+        latest_event_id = EXCLUDED.latest_event_id,
+        status = CASE WHEN guard_inbox.status = 'resolved' THEN 'open' ELSE guard_inbox.status END,
+        resolved_reason = CASE WHEN guard_inbox.status = 'resolved' THEN NULL ELSE guard_inbox.resolved_reason END,
+        resolved_note   = CASE WHEN guard_inbox.status = 'resolved' THEN NULL ELSE guard_inbox.resolved_note END,
+        resolved_at     = CASE WHEN guard_inbox.status = 'resolved' THEN NULL ELSE guard_inbox.resolved_at END,
+        resolved_by     = CASE WHEN guard_inbox.status = 'resolved' THEN NULL ELSE guard_inbox.resolved_by END
+"""
+
+
+@router.post("/backfill", response_model=BackfillOut)
+def backfill_inbox(
+    days: int = Query(default=30, ge=1, le=90),
+    workspace_id: str = Depends(get_workspace_id),
+    _perm: str = Depends(require_permission("guard.policies.edit")),
+    db: Session = Depends(get_db),
+) -> BackfillOut:
+    """Re-run the migration's UPSERT for the last N days (1-90).
+
+    Migration seeds 30 days by default. This endpoint lets admins pull in
+    older events (up to 90 days) on demand. Idempotent — running twice does
+    not double-count because the UPSERT keys on the dedup hash.
+
+    The 90-day ceiling is arbitrary but bounded: events older than that
+    live in the guard_audit_events firehose and can still be viewed there.
+    """
+    result = db.execute(
+        text(_BACKFILL_SQL),
+        {"ws": _uuid.UUID(workspace_id), "days": days},
+    )
+    db.commit()
+    log.info(
+        "guard_inbox.backfill",
+        workspace_id=workspace_id,
+        days=days,
+        rowcount=result.rowcount,
+    )
+    return BackfillOut(days=days, inserted=result.rowcount or 0)
+
+
 @router.patch("/{inbox_id}", response_model=InboxRowOut)
 def update_inbox_row(
     inbox_id: str,

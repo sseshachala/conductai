@@ -7,6 +7,7 @@
 
 export type GuardSectionId =
   | "overview"
+  | "inbox"
   | "agents"
   | "controls"
   | "activity"
@@ -22,6 +23,7 @@ export interface GuardSection {
 
 export const GUARD_SECTIONS: readonly GuardSection[] = [
   { id: "overview",    label: "Overview",    href: "/theguard",                   activePrefixes: ["/theguard"] },
+  { id: "inbox",       label: "Inbox",       href: "/theguard/inbox",             activePrefixes: ["/theguard/inbox"] },
   { id: "agents",      label: "Agents",      href: "/theguard/discovery",         activePrefixes: ["/theguard/discovery", "/theguard/agents", "/agent-identity"] },
   { id: "controls",    label: "Controls",    href: "/theguard/policies",          activePrefixes: ["/theguard/policies", "/theguard/approvals"] },
   { id: "activity",    label: "Activity",    href: "/logs/guard",                 activePrefixes: ["/logs/guard", "/theguard/activity", "/theguard/blocks"] },
