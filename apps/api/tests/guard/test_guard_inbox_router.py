@@ -219,3 +219,63 @@ def test_detail_400_on_bad_uuid():
         assert res.status_code == 400
     finally:
         _teardown()
+
+
+# ── Backfill endpoint ────────────────────────────────────────────────────
+# Extends the migration's 30-day default up to 90 days on demand. Same
+# UPSERT semantics as the trigger + migration, so tests only need to
+# verify the days-window plumbing and the workspace scoping.
+
+
+def test_backfill_default_30_days_and_scopes_to_workspace():
+    db = MagicMock()
+    result = MagicMock()
+    result.rowcount = 42
+    db.execute.return_value = result
+
+    client = _make_client(db)
+    try:
+        res = client.post("/guard/inbox/backfill")
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body == {"days": 30, "inserted": 42}
+        # SQL executed with workspace-scoped param + 30-day window
+        args, _ = db.execute.call_args
+        params = args[1]
+        assert params["days"] == 30
+        assert str(params["ws"]) == WS_ID
+        assert db.commit.called
+    finally:
+        _teardown()
+
+
+def test_backfill_accepts_90_day_ceiling():
+    """90 is the documented max — anything higher should 422."""
+    db = MagicMock()
+    result = MagicMock()
+    result.rowcount = 0
+    db.execute.return_value = result
+
+    client = _make_client(db)
+    try:
+        res_ok = client.post("/guard/inbox/backfill?days=90")
+        assert res_ok.status_code == 200, res_ok.text
+        assert res_ok.json()["days"] == 90
+
+        res_over = client.post("/guard/inbox/backfill?days=91")
+        assert res_over.status_code == 422
+    finally:
+        _teardown()
+
+
+def test_backfill_rejects_zero_or_negative_days():
+    db = MagicMock()
+
+    client = _make_client(db)
+    try:
+        res = client.post("/guard/inbox/backfill?days=0")
+        assert res.status_code == 422
+        res_neg = client.post("/guard/inbox/backfill?days=-1")
+        assert res_neg.status_code == 422
+    finally:
+        _teardown()
