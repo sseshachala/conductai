@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { type NextRequest, NextResponse } from "next/server"
+import { clerkDevelopmentOrigin } from "./lib/clerk-development-origin"
 
 const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "/compare", "/privacy", "/terms", "/benchmark(.*)", "/eval(.*)", "/registry", "/playbooks", "/token-guardrails", "/docs(.*)", "/accept-invite(.*)", "/sdd(.*)", "/tools(.*)", "/about(.*)", "/blog(.*)", "/share(.*)", "/solutions(.*)", "/partners(.*)", "/guard", "/evidence", "/mcp-gateway", "/security", "/deployment", "/pricing", "/open-source", "/router", "/team-os", "/frameworks(.*)", "/discovery", "/book-demo", "/use-cases", "/what-is-conduct-ai", "/api/mcp/guard/oauth/(.*)", "/.well-known/(.*)",])
 
@@ -32,7 +33,8 @@ function _cspFor(pathname: string): string {
   // 'unsafe-inline' on script-src is retained on marketing because the current
   // theme init and JSON-LD are inlined; tighten in a follow-up once we
   // migrate those to a nonce-based approach.
-  const _selfClerk = "'self' https://cdn.clerk.com https://clerk.conductai.ai https://challenges.cloudflare.com"
+  const developmentOrigin = clerkDevelopmentOrigin(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "")
+  const _selfClerk = ["'self' https://cdn.clerk.com https://clerk.conductai.ai https://challenges.cloudflare.com", developmentOrigin].filter(Boolean).join(" ")
   // img.clerk.com — Clerk's UserButton avatar loader uses fetch() (not
   // an <img> tag), so it goes through connect-src instead of img-src.
   // Missed in the 2026-09-11 CSP audit because we assumed the img-src

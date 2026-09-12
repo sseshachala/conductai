@@ -3,6 +3,7 @@
 import { useCallback } from "react"
 import { useAuth } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { sessionFetch } from "@/lib/sessionFetch"
 
 // Local-dev bypass: when Clerk publishable key is unset, ClerkProvider is
 // not mounted (see apps/web/src/app/layout.tsx). Calling useAuth() in that
@@ -29,30 +30,9 @@ export function useAuthFetch() {
 
   const authFetch = useCallback(
     async (url: string, options: RequestInit = {}): Promise<Response> => {
-      const buildHeaders = (bearer: string | null) => {
-        const h: Record<string, string> = {
-          ...(options.headers as Record<string, string> | undefined),
-        }
-        if (bearer) h["Authorization"] = `Bearer ${bearer}`
-        if (activeWorkspace?.id) h["X-Workspace-ID"] = activeWorkspace.id
-        return h
-      }
-
-      const token = await getToken()
-      const res = await fetch(url, { ...options, headers: buildHeaders(token) })
-
-      // 401-then-retry: Clerk's SDK refreshes session tokens in a background
-      // web worker. First page load can fire an authFetch before the worker
-      // has minted a fresh JWT — first call returns 401, retry with a
-      // just-refreshed token succeeds. One retry only; genuine auth
-      // failures still surface to the caller after that.
-      if (res.status === 401) {
-        const retried = await getToken({ skipCache: true } as never)
-        if (retried && retried !== token) {
-          return fetch(url, { ...options, headers: buildHeaders(retried) })
-        }
-      }
-      return res
+      const headers = new Headers(options.headers)
+      if (activeWorkspace?.id) headers.set("X-Workspace-ID", activeWorkspace.id)
+      return sessionFetch(url, { ...options, headers }, CLERK_ENABLED ? getToken : null)
     },
     [getToken, activeWorkspace],
   )

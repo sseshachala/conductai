@@ -1,0 +1,118 @@
+name: conduct-e2e
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: conduct_e2e
+      POSTGRES_USER: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - database:/var/lib/postgresql/data
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d conduct_e2e]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    networks: [data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    profiles: [application]
+    build:
+      context: ../..
+      dockerfile: tools/security-e2e/api.Dockerfile
+    command: [python, /harness/bootstrap.py]
+    environment:
+      DATABASE_URL: postgresql://postgres@postgres/conduct_e2e
+      REDIS_URL: redis://redis:6379
+    networks: [data]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    profiles: [application]
+    build:
+      context: ../..
+      dockerfile: tools/security-e2e/api.Dockerfile
+    command: [python, /harness/serve.py]
+    environment:
+      DATABASE_URL: postgresql://${E2E_DATABASE_ROLE:-conduct_e2e_app}@postgres/conduct_e2e
+      REDIS_URL: redis://redis:6379
+      ENVIRONMENT: production
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      ALLOWED_ORIGINS: http://localhost:3100
+      APP_URL: http://localhost:3100
+      API_BASE_URL: http://localhost:3100/api
+      CONDUCT_PROXY_URL: http://ingress:8080/api/proxy
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      CLERK_FRONTEND_API: ${CLERK_FRONTEND_API:-}
+      CLERK_AUDIENCE: ${CLERK_AUDIENCE:-}
+      TRUSTED_PROXY_CIDRS: 172.29.231.10/32
+    networks:
+      data:
+      edge:
+        ipv4_address: 172.29.231.20
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=5)"]
+      interval: 5s
+      timeout: 8s
+      retries: 30
+
+  web:
+    profiles: [application]
+    build:
+      context: ../..
+      dockerfile: tools/security-e2e/web.Dockerfile
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+    environment:
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      NEXT_PUBLIC_API_URL: /api
+    networks: [edge]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:3000/sign-in').then(r => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 8s
+      retries: 30
+
+  ingress:
+    profiles: [application]
+    image: nginx:1.28-alpine
+    ports:
+      - 127.0.0.1:3100:8080
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      edge:
+        ipv4_address: 172.29.231.10
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+networks:
+  data:
+    internal: true
+  edge:
+    ipam:
+      config:
+        - subnet: 172.29.231.0/24
+
+volumes:
+  database:

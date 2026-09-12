@@ -57,6 +57,8 @@ apps/web/e2e/auth-states/*.json
 **/.DS_Store
 
 # Secrets / keys
+.local_secret
+.prod_e2e_secret
 *.pem
 *.key
 *.p12
