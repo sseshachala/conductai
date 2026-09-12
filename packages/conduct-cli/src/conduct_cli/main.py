@@ -2244,67 +2244,6 @@ def cmd_sessions(args):
     print(_render_table(rows))
 
 
-# ── Security finding classifier ───────────────────────────────────────────────
-
-import re as _re
-
-_SEVERITY_KEYWORDS = {
-    "critical": ["rce", "remote code execution", "sql injection", "sqli", "command injection"],
-    "high": ["xss", "cross-site", "path traversal", "directory traversal", "auth bypass",
-             "authentication bypass", "idor", "privilege escalation", "ssrf"],
-    "medium": ["csrf", "open redirect", "clickjacking", "insecure deserialization", "xxe"],
-    "low": ["information disclosure", "verbose error", "stack trace exposed", "version disclosure"],
-    "info": ["todo security", "fixme security", "hardcoded", "weak cipher"],
-}
-
-_SECRET_PATTERNS = [
-    r'(?i)(api[_-]?key|secret|password|token|private[_-]?key)\s*[:=]\s*["\']?[\w\-]{8,}',
-    r'(?i)sk-[a-zA-Z0-9]{20,}',   # OpenAI key pattern
-    r'(?i)ghp_[a-zA-Z0-9]{36}',   # GitHub PAT
-]
-
-_VULN_TYPES = {
-    "injection": ["sql injection", "sqli", "command injection", "code injection", "ldap injection"],
-    "path-traversal": ["path traversal", "directory traversal", "../"],
-    "secret-leak": ["hardcoded", "secret", "api key", "password", "token", "private key"],
-    "auth-bypass": ["auth bypass", "authentication bypass", "idor", "privilege escalation"],
-    "crypto": ["weak cipher", "md5", "sha1", "tls 1.0", "ssl 2.0", "cert_none"],
-}
-
-
-def classify_finding(text: str) -> "dict | None":
-    """
-    Fast-path classifier. Returns structured finding dict or None if not a security issue.
-    Checks secret patterns first (regex), then keyword severity matching.
-    """
-    text_lower = text.lower()
-
-    # Secret detection (regex fast path)
-    for pattern in _SECRET_PATTERNS:
-        if _re.search(pattern, text):
-            return {
-                "severity": "high",
-                "type": "secret-leak",
-                "description": text[:500],
-            }
-
-    # Severity + type matching
-    for severity, keywords in _SEVERITY_KEYWORDS.items():
-        for kw in keywords:
-            if kw in text_lower:
-                vuln_type = "other"
-                for vtype, vkws in _VULN_TYPES.items():
-                    if any(vk in text_lower for vk in vkws):
-                        vuln_type = vtype
-                        break
-                return {
-                    "severity": severity,
-                    "type": vuln_type,
-                    "description": text[:500],
-                }
-    return None
-
-
 def cmd_session_report(args):
     """Run paxel analysis and open an HTML report in the local browser."""
     import json as _json
@@ -2465,46 +2404,6 @@ def cmd_session_report(args):
             print("  (Could not push to dashboard — run 'conduct login' to enable)")
         else:
             print(f"  (Dashboard push failed: {_push_err})")
-
-
-def cmd_emit_finding(args):
-    """POST a security finding to /security-findings."""
-    server, workspace_id, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json")
-
-    from_stdin = getattr(args, "from_stdin", False)
-
-    if from_stdin:
-        raw = sys.stdin.read()
-        result = classify_finding(raw)
-        if result is None:
-            print("No security finding detected")
-            sys.exit(0)
-        severity    = result["severity"]
-        vuln_type   = result["type"]
-        description = result["description"]
-    else:
-        severity    = args.severity
-        vuln_type   = args.type
-        description = args.description
-
-    payload: dict = {
-        "severity":    severity,
-        "type":        vuln_type,
-        "description": description,
-    }
-    if getattr(args, "file", None):
-        payload["file"] = args.file
-    if getattr(args, "line", None) is not None:
-        payload["line"] = args.line
-    if getattr(args, "repo", None):
-        payload["repo"] = args.repo
-
-    result = api.req("POST", f"{server}/security-findings", hdrs, payload)
-    finding_id = result.get("id", result.get("finding_id", ""))
-    print(f"[FINDING] {severity} · {vuln_type} · {finding_id}")
-    if finding_id:
-        print(finding_id)
 
 
 def _gh_api_get(url: str, token: str):
@@ -2715,7 +2614,7 @@ def cmd_run(args):
     _stream_run(server, workflow_id, run_id, workspace_id, token)
 
 
-# ── conduct sync / test-guard / test-security ────────────────────────────────
+# ── conduct sync / test-guard ────────────────────────────────
 
 def _refresh_agent_token() -> bool:
     """Silently rotate agent_token using refresh_token. Returns True if refreshed."""
@@ -2762,271 +2661,6 @@ def cmd_sync(args):
     print(f"\n{BOLD}▶ conduct sync{RESET}\n")
     _g.cmd_guard_sync(args)
     print(f"\n{GREEN}Sync complete.{RESET}\n")
-
-
-_SECURITY_TEST_CASES = [
-    # (name, type, severity, description, file, line)
-    ("AWS Access Key",       "secret-leak",     "critical", "AKIA1234567890ABCDEF found in output",                    "test_vuln.py",  7),
-    ("OpenAI API Key",       "secret-leak",     "high",     "sk-abcdefghijklmnopqrstuvwx1234567890 in response",       "test_vuln.py",  8),
-    ("GitHub PAT",           "secret-leak",     "high",     "ghp_" + "A" * 36 + " token present",                     "test_vuln.py",  8),
-    ("Bearer Token",         "secret-leak",     "high",     "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.test.sig",     "test_vuln.py",  None),
-    ("Hardcoded Password",   "secret-leak",     "high",     "password = 'hardcoded_secret_here'",                      "test_vuln.py",  11),
-    ("Hardcoded API Key",    "secret-leak",     "high",     "api_key = 'abc123def456ghi789'",                          "test_vuln.py",  12),
-    ("Path Traversal",       "path-traversal",  "medium",   "../../etc/passwd accessed",                               "test_vuln.py",  32),
-    ("File URI",             "path-traversal",  "medium",   "file:///etc/passwd read",                                 "test_vuln.py",  None),
-    ("eval() Injection",     "injection",       "high",     "eval(user_input) called in output",                       "test_vuln.py",  16),
-    ("exec() Injection",     "injection",       "high",     "exec(command) called in output",                          "test_vuln.py",  20),
-    ("SSL Disabled",         "crypto",          "high",     "ssl.CERT_NONE used — verification disabled",              "test_vuln.py",  28),
-    ("TLS Bypass",           "crypto",          "medium",   "verify=False passed to requests",                         "test_vuln.py",  23),
-    ("SQL Injection",        "injection",       "high",     "sql injection vulnerability in query",                    "test_vuln.py",  None),
-    ("XSS",                  "injection",       "high",     "cross-site scripting detected in output",                 "test_vuln.py",  None),
-    ("Auth Bypass",          "auth-bypass",     "high",     "auth bypass possible via missing check",                  "test_vuln.py",  None),
-]
-
-
-def cmd_test_security(args):
-    """Fire synthetic security findings for every classifier pattern."""
-    from conduct_cli.guard import CONFIG_PATH
-    try:
-        import json as _json
-        cfg = _json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
-    except Exception:
-        cfg = {}
-
-    workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("agent_token", "")
-    user_email   = cfg.get("user_email", "")
-    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-
-    if not workspace_id:
-        print(f"{RED}Not configured. Run: conduct guard setup{RESET}")
-        sys.exit(1)
-
-    import urllib.request
-    import json as _json
-
-    print(f"\n{BOLD}▶ conduct test-security — {len(_SECURITY_TEST_CASES)} patterns{RESET}\n")
-
-    # Clean up previous test run findings before inserting fresh ones
-    try:
-        req = urllib.request.Request(
-            f"{api_url}/security-findings?workspace_id={workspace_id}&source_run_id=conduct-test-security",
-            headers={"Authorization": f"Bearer {api_key}"},
-            method="DELETE",
-        )
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            r = _json.loads(resp.read())
-            n = r.get("deleted", 0)
-            if n:
-                print(f"  {GRAY}↺ Cleaned {n} previous test finding{'s' if n != 1 else ''}{RESET}\n")
-    except Exception:
-        pass  # cleanup is best-effort
-
-    passed = 0
-    failed = 0
-    for name, vtype, severity, description, test_file, test_line in _SECURITY_TEST_CASES:
-        body: dict = {
-            "tool": "claude-code",
-            "severity": severity,
-            "type": vtype,
-            "description": f"[TEST] {description}",
-            "reporter_email": user_email,
-            "source_run_id": "conduct-test-security",
-        }
-        if test_file:
-            body["file"] = test_file
-        if test_line is not None:
-            body["line"] = test_line
-        payload = _json.dumps(body).encode()
-        try:
-            req = urllib.request.Request(
-                f"{api_url}/security-findings?workspace_id={workspace_id}",
-                data=payload,
-                headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                r = _json.loads(resp.read())
-                fid = r.get("id", "")[:8]
-                sev_color = RED if severity == "critical" else (YELLOW if severity == "high" else CYAN)
-                print(f"  {GREEN}✓{RESET}  {name:<22} {sev_color}{severity:<8}{RESET}  {GRAY}{fid}{RESET}")
-                passed += 1
-        except Exception as e:
-            print(f"  {RED}✕{RESET}  {name:<22} {RED}FAILED — {e}{RESET}")
-            failed += 1
-
-    print(f"\n  {passed} posted · {failed} failed")
-    print(f"\n  {CYAN}→ View findings: {api_url.replace('api.', 'app.')}/secure/activity{RESET}\n")
-
-
-def cmd_test_security_verify(args):
-    """Post test findings and verify the full triage pipeline end-to-end."""
-    from conduct_cli.guard import CONFIG_PATH
-    import json as _json
-    import time as _time
-
-    try:
-        cfg = _json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
-    except Exception:
-        cfg = {}
-
-    workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("agent_token", "")
-    user_email   = cfg.get("user_email", "")
-    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-
-    if not workspace_id:
-        print(f"{RED}Not configured. Run: conduct guard setup{RESET}")
-        sys.exit(1)
-
-    import urllib.request
-
-    TIMEOUT   = 300  # 15 runs × ~28s / 4 workers ≈ 105s; 300s gives headroom for queue variance
-    POLL_SECS = 5
-
-    # ── Step 0: fresh Security Automation project ─────────────────────────
-    print(f"\n{BOLD}▶ conduct test-security-verify{RESET}")
-    print(f"  {GRAY}Step 0/3 — refreshing Security Automation project…{RESET}")
-    try:
-        req = urllib.request.Request(
-            f"{api_url}/secure/refresh-automation?workspace_id={workspace_id}",
-            data=b"{}",
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            _json.loads(resp.read())
-            print(f"  {GREEN}✓{RESET}  Fresh project created with latest YAML\n")
-    except Exception as e:
-        print(f"  {YELLOW}⚠ refresh failed ({e}) — using existing project{RESET}\n")
-
-    # ── Step 1: post test findings ────────────────────────────────────────
-    print(f"  {GRAY}Step 1/3 — posting {len(_SECURITY_TEST_CASES)} test findings…{RESET}\n")
-
-    # Clean previous run
-    try:
-        req = urllib.request.Request(
-            f"{api_url}/security-findings?workspace_id={workspace_id}&source_run_id=conduct-test-security",
-            headers={"Authorization": f"Bearer {api_key}"},
-            method="DELETE",
-        )
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            r = _json.loads(resp.read())
-            n = r.get("deleted", 0)
-            if n:
-                print(f"  {GRAY}↺ Cleaned {n} previous test finding{'s' if n != 1 else ''}{RESET}\n")
-    except Exception:
-        pass
-
-    finding_ids: list[str] = []
-    for name, vtype, severity, description, test_file, test_line in _SECURITY_TEST_CASES:
-        body: dict = {
-            "tool": "claude-code",
-            "severity": severity,
-            "type": vtype,
-            "description": f"[TEST] {description}",
-            "reporter_email": user_email,
-            "source_run_id": "conduct-test-security",
-        }
-        if test_file:
-            body["file"] = test_file
-        if test_line is not None:
-            body["line"] = test_line
-        payload = _json.dumps(body).encode()
-        try:
-            req = urllib.request.Request(
-                f"{api_url}/security-findings?workspace_id={workspace_id}",
-                data=payload,
-                headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                r = _json.loads(resp.read())
-                fid = r.get("id", "")
-                finding_ids.append(fid)
-                sev_color = RED if severity == "critical" else (YELLOW if severity == "high" else CYAN)
-                print(f"  {GREEN}✓{RESET}  {name:<22} {sev_color}{severity:<8}{RESET}  {GRAY}{fid[:8]}{RESET}")
-        except Exception as e:
-            print(f"  {RED}✕{RESET}  {name:<22} {RED}FAILED — {e}{RESET}")
-
-    if not finding_ids:
-        print(f"\n{RED}✗ No findings posted — aborting.{RESET}\n")
-        sys.exit(1)
-
-    # ── Step 2: poll until all findings move off "open" ───────────────────
-    print(f"\n  {GRAY}Step 2/3 — waiting for triage pipeline (timeout {TIMEOUT}s)…{RESET}\n")
-
-    deadline = _time.time() + TIMEOUT
-    final_statuses: dict[str, str] = {}
-
-    while _time.time() < deadline:
-        try:
-            req = urllib.request.Request(
-                f"{api_url}/security-findings?workspace_id={workspace_id}&source_run_id=conduct-test-security&limit=100",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                findings = _json.loads(resp.read())
-        except Exception as e:
-            print(f"  {YELLOW}⚠ poll error: {e}{RESET}")
-            _time.sleep(POLL_SECS)
-            continue
-
-        for f in findings:
-            if f["id"] in finding_ids:
-                final_statuses[f["id"]] = f["status"]
-
-        still_open = [fid for fid in finding_ids if final_statuses.get(fid) == "open"]
-        done_count = len(finding_ids) - len(still_open)
-        elapsed = int(_time.time() - (deadline - TIMEOUT))
-        print(f"  {GRAY}[{elapsed:>3}s] {done_count}/{len(finding_ids)} processed…{RESET}", end="\r")
-
-        if not still_open:
-            print()  # newline after \r
-            break
-        _time.sleep(POLL_SECS)
-    else:
-        print(f"\n\n  {RED}✗ Timeout — {len(still_open)} finding(s) still 'open' after {TIMEOUT}s{RESET}\n")
-
-    # ── Step 3: report per-finding results ────────────────────────────────
-    print(f"\n  {GRAY}Step 3/3 — results{RESET}\n")
-
-
-    all_pass = True
-    name_by_id = {}
-    for i, (name, *_) in enumerate(_SECURITY_TEST_CASES):
-        if i < len(finding_ids):
-            name_by_id[finding_ids[i]] = name
-
-    for fid in finding_ids:
-        status = final_statuses.get(fid, "open")
-        name   = name_by_id.get(fid, fid[:8])
-        if status == "open":
-            icon = f"{RED}✗{RESET}"
-            note = f"{RED}still open — triage did not run{RESET}"
-            all_pass = False
-        elif status == "dismissed":
-            icon = f"{CYAN}○{RESET}"
-            note = f"{CYAN}dismissed (false positive){RESET}"
-        elif status == "triaging":
-            icon = f"{YELLOW}◑{RESET}"
-            note = f"{YELLOW}triaging (real finding, no autopilot fix){RESET}"
-        elif status == "fixed":
-            icon = f"{GREEN}✓{RESET}"
-            note = f"{GREEN}fixed{RESET}"
-        else:
-            icon = f"{GRAY}?{RESET}"
-            note = f"{GRAY}{status}{RESET}"
-        print(f"  {icon}  {name:<22} → {note}")
-
-    print()
-    if all_pass:
-        print(f"  {GREEN}{BOLD}✓ All findings processed — triage pipeline OK{RESET}\n")
-    else:
-        print(f"  {RED}{BOLD}✗ Some findings were not processed — check Security Automation project runs{RESET}")
-        app_url = api_url.replace("api.", "app.")
-        print(f"  {CYAN}→ {app_url}/projects{RESET}\n")
-        sys.exit(1)
 
 
 def cmd_test_guard(args):
@@ -3418,22 +3052,6 @@ def main():
     ia_p.add_argument("--input",    action="append", metavar="key=value",
                       help="Input value applied to all playbooks (repeatable)")
 
-    # conduct emit finding
-    emit_p = sub.add_parser("emit", help="Emit events to Conduct (e.g. security findings)")
-    emit_sub = emit_p.add_subparsers(dest="emit_command")
-
-    finding_p = emit_sub.add_parser("finding", help="Emit a security finding to POST /security-findings")
-    finding_p.add_argument("--severity",    choices=["critical", "high", "medium", "low", "info"],
-                           help="Finding severity")
-    finding_p.add_argument("--type",        dest="type",        metavar="TYPE",
-                           help="Vulnerability type (e.g. secret-leak, injection, path-traversal)")
-    finding_p.add_argument("--file",        metavar="PATH",     help="Source file path where finding was detected")
-    finding_p.add_argument("--line",        type=int,           metavar="N",    help="Line number of finding")
-    finding_p.add_argument("--description", metavar="TEXT",     help="Human-readable description of the finding")
-    finding_p.add_argument("--repo",        metavar="owner/repo", help="Repository where finding was detected")
-    finding_p.add_argument("--from-stdin",  dest="from_stdin",  action="store_true",
-                           help="Read raw tool output from stdin and auto-classify the finding")
-
     # conduct run (existing)
     run_p = sub.add_parser("run", help="Run an installed agent by name")
     run_p.add_argument("agent",       help="Agent name (e.g. 'security_autopilot_fix')")
@@ -3491,7 +3109,7 @@ def main():
     # conduct sync
     sub.add_parser("sync", help="Sync Guard policies (and Security Loop policies if installed)")
 
-    # conduct test-guard / test-security / test-security-verify
+    # conduct test-guard / verify
     verify_p = sub.add_parser("verify", help="OWASP Agentic Top 10 coverage + governance grade")
     verify_p.add_argument("--evidence",  metavar="FILE", default=None, help="Write evidence artifact to FILE.")
     verify_p.add_argument("--badge",     action="store_true",          help="Print markdown badge and exit.")
@@ -3501,8 +3119,6 @@ def main():
     verify_p.add_argument("--since",     default="24h",                help="Time window for blocked event check (e.g. 7d, 24h)")
     verify_p.add_argument("--run",       action="store_true",          help="Fire live adversarial test battery and show per-test verdicts.")
     sub.add_parser("test-guard",            help="Fire a synthetic event per guard policy rule and show decisions")
-    sub.add_parser("test-security",         help="Post a synthetic finding per security classifier pattern")
-    sub.add_parser("test-security-verify",  help="Post test findings and verify full triage pipeline end-to-end")
     sr_p = sub.add_parser("session-report", help="Analyse local AI coding sessions with paxel and send report to admin")
     sr_p.add_argument("--developer", default=None, help="Developer name (defaults to OS username)")
 
@@ -3584,16 +3200,6 @@ def main():
         cmd_sessions(args)
     elif args.command == "guard":
         _guard.dispatch_guard(args, guard_p)
-    elif args.command == "emit":
-        emit_command = getattr(args, "emit_command", None)
-        if emit_command == "finding":
-            from_stdin = getattr(args, "from_stdin", False)
-            if not from_stdin and not (args.severity and args.type and args.description):
-                finding_p.print_help()
-                sys.exit(1)
-            cmd_emit_finding(args)
-        else:
-            emit_p.print_help()
     elif args.command == "mcp":
         if getattr(args, "mcp_command", None) == "install":
             cmd_mcp_install(args)
@@ -3609,10 +3215,6 @@ def main():
         _guard.cmd_verify(args)
     elif args.command == "test-guard":
         cmd_test_guard(args)
-    elif args.command == "test-security":
-        cmd_test_security(args)
-    elif args.command == "test-security-verify":
-        cmd_test_security_verify(args)
     elif args.command == "session-report":
         cmd_session_report(args)
     elif args.command == "memory":

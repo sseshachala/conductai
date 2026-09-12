@@ -11,8 +11,8 @@ Contract:
   wraps it in MCP text-content envelope (both endpoints do).
 - Impls read + write via ctx.db but do NOT open/close the session — the
   caller owns the session lifecycle (matches the pre-refactor behavior).
-- Impls call ctx.db.commit() where the pre-refactor code did (post_finding,
-  trigger_fix, guard_discover_register).
+- Impls call ctx.db.commit() where the pre-refactor code did
+  (guard_discover_register).
 """
 from __future__ import annotations
 
@@ -574,120 +574,6 @@ def guard_discover_register_impl(ctx: GuardCtx, **arguments) -> str:
 
 
 
-def post_finding_impl(ctx: GuardCtx, **arguments) -> str:
-    db = ctx.db
-    ws_uuid = ctx.ws_uuid
-    workspace_id = ctx.workspace_id
-    user_email = ctx.user_email
-
-    from app.models.security_finding import SecurityFinding as SF
-    from app.core.queue import enqueue_run
-    _sev = arguments.get("severity", "info")
-    _typ = arguments.get("type", "other")
-    _valid_sev = {"critical", "high", "medium", "low", "info"}
-    _valid_typ = {"injection", "path-traversal", "secret-leak", "auth-bypass", "crypto", "guard_violation", "other"}
-    if _sev not in _valid_sev:
-        return f"Error — severity must be one of: {', '.join(sorted(_valid_sev))}"
-    if _typ not in _valid_typ:
-        return f"Error — type must be one of: {', '.join(sorted(_valid_typ))}"
-    _now_dt = datetime.now(timezone.utc)
-    finding = SF(
-        id=uuid.uuid4(),
-        workspace_id=ws_uuid,
-        tool=arguments.get("tool", "mcp"),
-        severity=_sev,
-        type=_typ,
-        description=arguments.get("description", ""),
-        file=arguments.get("file"),
-        line=arguments.get("line"),
-        repo_full_name=arguments.get("repo_full_name"),
-        suggested_fix=arguments.get("suggested_fix"),
-        reporter_email=user_email,
-        status="open",
-        created_at=_now_dt,
-        updated_at=_now_dt,
-    )
-    db.add(finding)
-    db.flush()
-    try:
-        from app.models.run import Run
-        from app.routers.security import (
-            _SECURITY_LOOP_SLUG,
-            _build_finding_trigger_state,
-            _find_security_workflow,
-            _load_security_config_defaults,
-        )
-        _wf = _find_security_workflow(db, ws_uuid, _SECURITY_LOOP_SLUG)
-        if _wf and _wf.current_version_id:
-            _cfg = _load_security_config_defaults(db, ws_uuid)
-            _run = Run(
-                workflow_version_id=_wf.current_version_id,
-                triggered_by="security_finding",
-                status="pending",
-                state=_build_finding_trigger_state(finding, _cfg, "security_finding"),
-            )
-            db.add(_run)
-            db.flush()
-            finding.run_id = str(_run.id)
-            enqueue_run(str(_run.id))
-    except Exception:
-        pass
-    db.commit()
-    return json.dumps({
-        "finding_id": str(finding.id),
-        "status": "open",
-        "message": f"Finding reported — severity={_sev}, type={_typ}. Use trigger_fix to enqueue an automated fix.",
-    }, indent=2)
-
-
-
-def trigger_fix_impl(ctx: GuardCtx, **arguments) -> str:
-    db = ctx.db
-    ws_uuid = ctx.ws_uuid
-    workspace_id = ctx.workspace_id
-
-    from app.models.security_finding import SecurityFinding as SF
-    from app.models.run import Run
-    from app.core.queue import enqueue_run
-    _fid = arguments.get("finding_id", "")
-    try:
-        _fid_uuid = uuid.UUID(_fid)
-    except ValueError:
-        return "Error — finding_id must be a valid UUID"
-    finding = db.query(SF).filter(SF.id == _fid_uuid, SF.workspace_id == ws_uuid).first()
-    if not finding:
-        return f"Error — finding {_fid} not found"
-    from app.routers.security import (
-        _SECURITY_AUTOPILOT_FIX_SLUG,
-        _build_finding_trigger_state,
-        _find_security_workflow,
-        _load_security_config_defaults,
-    )
-    _wf = _find_security_workflow(db, ws_uuid, _SECURITY_AUTOPILOT_FIX_SLUG)
-    if not _wf or not _wf.current_version_id:
-        return "Error — security-autopilot-fix playbook is not installed in this workspace"
-    _cfg = _load_security_config_defaults(db, ws_uuid)
-    _run = Run(
-        workflow_version_id=_wf.current_version_id,
-        triggered_by="security_finding_fix",
-        status="pending",
-        state=_build_finding_trigger_state(finding, _cfg, "security_finding_fix"),
-    )
-    db.add(_run)
-    db.flush()
-    enqueue_run(str(_run.id))
-    finding.status = "triaging"
-    finding.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    return json.dumps({
-        "run_id": str(_run.id),
-        "finding_id": str(finding.id),
-        "status": "triaging",
-        "message": "security-autopilot-fix enqueued — finding set to triaging.",
-    }, indent=2)
-
-
-
 def conduct_list_agents_impl(ctx: GuardCtx, **arguments) -> str:
     db = ctx.db
     ws_uuid = ctx.ws_uuid
@@ -801,8 +687,6 @@ _GUARD_TOOL_IMPLS: dict[str, Any] = {
     'guard_recent_activity': guard_recent_activity_impl,
     'guard_discover': guard_discover_impl,
     'guard_discover_register': guard_discover_register_impl,
-    'post_finding': post_finding_impl,
-    'trigger_fix': trigger_fix_impl,
     'conduct_list_agents': conduct_list_agents_impl,
     'conduct_list_projects': conduct_list_projects_impl,
     'conduct_list_playbooks': conduct_list_playbooks_impl,

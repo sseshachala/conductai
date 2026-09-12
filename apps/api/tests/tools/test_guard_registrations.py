@@ -40,7 +40,7 @@ def test_all_guard_tools_have_annotations():
 
 
 def test_write_tools_are_not_read_only():
-    for name in ("guard_activity", "post_finding", "trigger_fix",
+    for name in ("guard_activity",
                  "conduct_run_workflow", "guard_discover_register", "guard_check"):
         tool = next(t for t in guard_reg._TOOLS if t.name == name)
         assert not tool.annotations.read_only, f"{name} should not be read_only"
@@ -48,7 +48,7 @@ def test_write_tools_are_not_read_only():
 
 def test_destructive_tools_are_the_two_expected():
     destructive = {t.name for t in guard_reg._TOOLS if t.annotations.destructive}
-    assert destructive == {"trigger_fix", "conduct_run_workflow"}
+    assert destructive == {"conduct_run_workflow"}
 
 
 def test_build_gctx_from_minimal_mcp_context():

@@ -1,4 +1,4 @@
-"""ConductGuard PostToolUse hook — token tracking + security classifier."""
+"""ConductGuard PostToolUse hook — token tracking."""
 from __future__ import annotations
 
 import json
@@ -19,139 +19,6 @@ from conduct_cli.hooks.pretooluse import (
     _record_session_warn,
     check_policy,
 )
-
-# ── Security classifier ───────────────────────────────────────────────────────
-
-SECRET_PATTERNS = [
-    (r"sk-[A-Za-z0-9]{20,}",             "secret-leak",    "high",     "Potential OpenAI/Anthropic API key"),
-    (r"ghp_[A-Za-z0-9]{36}",              "secret-leak",    "high",     "GitHub Personal Access Token"),
-    (r"AKIA[0-9A-Z]{16}",                 "secret-leak",    "critical", "AWS Access Key ID"),
-    (r"Bearer\s+[A-Za-z0-9+/=]{20,}",     "secret-leak",    "high",     "Bearer token in output"),
-    (r"""password\s*=\s*['"][^'"]{4,}""", "secret-leak",    "high",     "Hardcoded password"),
-    (r"""api[_-]?key\s*=\s*['"][^'"]{4,}""", "secret-leak", "high",    "Hardcoded API key"),
-    (r"\.\./\.\./\.\./",                  "path-traversal", "medium",   "Path traversal sequence"),
-    (r"file://",                           "path-traversal", "medium",   "File URI scheme in output"),
-    (r"eval\s*\(",                         "injection",      "high",     "eval() in output"),
-    (r"exec\s*\(",                         "injection",      "high",     "exec() in output"),
-    (r"__import__\s*\(",                   "injection",      "high",     "__import__() in output"),
-    (r"ssl\.CERT_NONE",                    "crypto",         "high",     "SSL verification disabled"),
-    (r"verify\s*=\s*False",                "crypto",         "medium",   "TLS verification bypassed"),
-]
-OWASP_KEYWORDS = [
-    ("sql injection",     "injection",    "high",   "SQL injection mentioned in AI output"),
-    ("cross-site scripting", "injection", "high",   "XSS mentioned in AI output"),
-    (" xss ",             "injection",    "high",   "XSS mentioned in AI output"),
-    ("idor",              "injection",    "medium", "IDOR mentioned in AI output"),
-    ("ssrf",              "injection",    "high",   "SSRF mentioned in AI output"),
-    ("command injection", "injection",    "high",   "Command injection mentioned in AI output"),
-    ("auth bypass",       "auth-bypass",  "high",   "Auth bypass mentioned in AI output"),
-]
-
-
-def _classify_text(text: str):
-    import re as _re
-    for pattern, ftype, sev, desc in SECRET_PATTERNS:
-        if _re.search(pattern, text, _re.IGNORECASE):
-            return ftype, sev, desc, pattern
-    lower = text.lower()
-    for kw, ftype, sev, desc in OWASP_KEYWORDS:
-        if kw in lower:
-            return ftype, sev, desc, kw
-    return None, None, None, None
-
-
-def _line_number_from_text(text: str, matched_pattern: str):
-    import re as _re
-    if not matched_pattern:
-        return None
-    try:
-        for raw_line in text.splitlines():
-            m = _re.match(r"^\s*(\d+)\t(.*)$", raw_line)
-            if m:
-                lineno, content = int(m.group(1)), m.group(2)
-                try:
-                    if _re.search(matched_pattern, content, _re.IGNORECASE):
-                        return lineno
-                except Exception:
-                    if matched_pattern.lower() in content.lower():
-                        return lineno
-        m = _re.search(matched_pattern, text, _re.IGNORECASE)
-        if m:
-            return text[:m.start()].count(chr(10)) + 1
-    except Exception:
-        pass
-    return None
-
-
-def _maybe_emit_security_finding(tool_response, session_id, tool_name, tool_input=None) -> None:
-    """Classify tool output + input for security findings; POST if flag ON. Never raises."""
-    try:
-        cfg = load_config()
-    except Exception:
-        return
-    if not cfg.get("security_emit_enabled", False):
-        return
-    workspace_id = cfg.get("workspace_id")
-    agent_token = cfg.get("agent_token", "")
-    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-    if not workspace_id:
-        return
-
-    ti = tool_input or {}
-    candidates = [("response", str(tool_response))]
-    if tool_name in ("edit", "multiedit"):
-        candidates.append(("input", ti.get("new_string", "")))
-    elif tool_name == "write":
-        candidates.append(("input", ti.get("content", "")))
-    elif tool_name in ("bash", "terminal"):
-        candidates.append(("input", ti.get("command", "")))
-
-    finding_type = severity = description = matched_pattern = scan_text = None
-    for _src, text in candidates:
-        ft, sv, desc, pat = _classify_text(text)
-        if ft:
-            finding_type, severity, description, matched_pattern, scan_text = ft, sv, desc, pat, text
-            break
-
-    if not finding_type:
-        return
-
-    file_path = (
-        ti.get("file_path") or ti.get("path") or
-        (ti.get("command", "")[:120] if tool_name in ("bash", "terminal") else None)
-    ) or None
-
-    line_no = _line_number_from_text(scan_text, matched_pattern) if scan_text else None
-
-    payload = json.dumps({
-        "tool":          detect_ai_tool(),
-        "severity":      severity,
-        "type":          finding_type,
-        "description":   description,
-        "source_run_id": session_id,
-        "reporter_email": cfg.get("user_email") or "",
-        "file":          file_path,
-        "line":          line_no,
-    })
-    script = (
-        "import urllib.request\n"
-        "try:\n"
-        f"    req = urllib.request.Request(\"{api_url}/security-findings?workspace_id={workspace_id}\","
-        f" data={repr(payload.encode())}, headers={{\"Content-Type\": \"application/json\","
-        f" \"Authorization\": \"Bearer {agent_token}\"}}, method=\"POST\")\n"
-        "    urllib.request.urlopen(req, timeout=5)\n"
-        "except: pass\n"
-    )
-    try:
-        import subprocess as _sp
-        _sp.Popen(
-            [sys.executable, "-c", script],
-            stdout=_sp.DEVNULL,
-            stderr=_sp.DEVNULL,
-            start_new_session=True,
-        )
-    except Exception:
-        pass
 
 
 # ── Token reading ─────────────────────────────────────────────────────────────
@@ -442,7 +309,6 @@ def main() -> None:
                 if action == "warn" and session_id and rule_id:
                     _record_session_warn(session_id, rule_id)
                 post_event(tool_name, {}, decision, rule_id, message, session_id, drain_via=_this_file, blast_radius=blast_radius)
-    _maybe_emit_security_finding(str(tool_response), session_id, tool_name, tool_input)
 
     sys.exit(0)
 

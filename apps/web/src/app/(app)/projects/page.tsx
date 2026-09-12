@@ -21,7 +21,6 @@ interface Project {
   created_at: string
   workspace_id?: string
   project_type?: string
-  security_finding_id?: string
 }
 
 interface Workflow {

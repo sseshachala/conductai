@@ -67,7 +67,6 @@ from app.routers.team_memory import router as team_memory_router
 from app.routers.meta import router as meta_router
 from app.routers.share import router as share_router
 from app.modules.agent_identity.router import router as agent_identity_router
-from app.routers.security import router as security_findings_router
 from app.modules.auth.cli_token import router as cli_auth_router
 from app.modules.auth.oauth import (
     router as oauth_router,
@@ -222,7 +221,6 @@ app.include_router(cli_auth_router)
 app.include_router(oauth_router)
 app.include_router(oauth_well_known_router)
 app.include_router(oauth_legacy_token_router)
-app.include_router(security_findings_router)
 app.include_router(team_os_router)
 
 

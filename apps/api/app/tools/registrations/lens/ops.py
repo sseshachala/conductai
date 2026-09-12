@@ -26,55 +26,6 @@ from app.tools.registrations.lens._shared import (
 )
 
 
-# ── Free-function tool implementations ─────────────────────────────────
-def get_autopilot_activity(ctx, since: str | None = None, limit: int = 50, status: str | None = None):
-    """Feed of autopilot-driven security activity. Synthesized from
-    SecurityFinding rows scoped to this workspace, ordered by updated_at
-    desc. Optional since (ISO-8601 lower bound on updated_at), status
-    (open/triaging/fixed/dismissed), limit (default 50, max 500).
-    """
-    import uuid as _uuid
-    from datetime import datetime
-    from app.core.database import SessionLocal
-    from app.models.security_finding import SecurityFinding
-    limit = min(max(int(limit or 50), 1), 500)
-    db = SessionLocal()
-    try:
-        ws_uuid = _uuid.UUID(ctx.workspace_id)
-        q = db.query(SecurityFinding).filter(SecurityFinding.workspace_id == ws_uuid)
-        if status:
-            q = q.filter(SecurityFinding.status == status)
-        if since:
-            try:
-                q = q.filter(SecurityFinding.updated_at >= datetime.fromisoformat(since))
-            except ValueError:
-                pass
-        rows = q.order_by(SecurityFinding.updated_at.desc()).limit(limit).all()
-        return {
-            "count": len(rows),
-            "findings": [
-                {
-                    "id": str(r.id),
-                    "tool": r.tool,
-                    "severity": r.severity,
-                    "type": r.type,
-                    "file": r.file,
-                    "line": r.line,
-                    "description": r.description,
-                    "status": r.status,
-                    "repo_full_name": r.repo_full_name,
-                    "run_id": r.run_id,
-                    "github_issue_url": r.github_issue_url,
-                    "created_at": r.created_at.isoformat() if r.created_at else None,
-                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-                }
-                for r in rows
-            ],
-        }
-    finally:
-        db.close()
-
-
 # ── Migrated from Executor (epic #1655 PR 6/9) ─────────────────────────
 def list_pending_approvals(ctx, status: str = "pending", limit: int = 20, since: str | None = None):
     """List HITL approval requests."""
@@ -343,22 +294,6 @@ TOOLS: list[ToolDef] = [
             "required": ["id"],
         },
         impl=get_alert,
-        annotations=_READ_ONLY,
-        tags=_LENS_TAGS,
-    ),
-    ToolDef(
-        name="get_autopilot_activity",
-        description="Autopilot feed — recent SecurityFinding rows (open/triaging/fixed/dismissed). Optional since (ISO-8601) + status filter + limit (default 50, max 500).",
-        input_schema={
-            "type": "object",
-            "properties": {
-                "since": {"type": "string", "description": "ISO-8601 lower bound on updated_at"},
-                "status": {"type": "string", "description": "Filter: open/triaging/fixed/dismissed"},
-                "limit": {"type": "integer", "minimum": 1},
-            },
-            "required": [],
-        },
-        impl=get_autopilot_activity,
         annotations=_READ_ONLY,
         tags=_LENS_TAGS,
     ),

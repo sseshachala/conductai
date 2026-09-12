@@ -9,12 +9,7 @@ class InputContractError(ValueError):
 
 
 # Canonical trigger shape definitions — used for documentation and future validation.
-TRIGGER_SHAPES: dict[str, dict] = {
-    "security_finding": {
-        "required": ["tool", "severity", "type", "description"],
-        "optional": ["file", "line", "suggested_fix", "repo_full_name", "commit_sha", "source_run_id"],
-    },
-}
+TRIGGER_SHAPES: dict[str, dict] = {}
 
 
 def _is_non_empty_dict(value: Any) -> bool:
