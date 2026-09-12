@@ -60,6 +60,9 @@ class LocalSession:
         return cls()
 
     def __init__(self) -> None:
+        from app.core.config import settings
+        if settings.environment == "production":
+            raise RuntimeError("LocalSession is disabled in production environments")
         self._tmpdir = tempfile.mkdtemp(prefix="conduct_brain_")
         self.working_dir: str | None = self._tmpdir
         log.debug("sandbox_session.local.started", tmpdir=self._tmpdir)
@@ -214,8 +217,13 @@ class ModalSession:
             first_line = self._proc.stdout.readline()
             data = _json.loads(first_line)
             self._sandbox_id = data.get("sandbox_id")
-        except Exception:
+            if not isinstance(self._sandbox_id, str) or not self._sandbox_id:
+                raise ValueError("runner did not return a sandbox_id")
+        except Exception as e:
             self._sandbox_id = None
+            self._proc.kill()
+            self._proc = None
+            raise RuntimeError(f"Modal sandbox startup failed: {e}") from e
         self._started = True
         log.debug("sandbox_session.modal.started", sandbox_id=self._sandbox_id)
 
@@ -235,12 +243,7 @@ class ModalSession:
             return data.get("result", "(no output)")
         except Exception as e:
             log.warning("sandbox_session.modal.dispatch_error", error=str(e))
-            local = LocalSession()
-            result = local.dispatch(tool_name, tool_input)
-            # Don't adopt the fallback tmpdir as working_dir — it's deleted on close()
-            # and would cause FileNotFoundError in capture_artifacts.
-            local.close()
-            return result
+            return f"Error: Modal sandbox execution failed: {e}"
 
     def capture_artifacts(self) -> tuple[list[dict], str]:
         if not self.working_dir or not self._started:
@@ -411,8 +414,13 @@ class E2BSession:
             first_line = self._proc.stdout.readline()
             data = _json.loads(first_line)
             self._sandbox_id = data.get("sandbox_id")
-        except Exception:
+            if not isinstance(self._sandbox_id, str) or not self._sandbox_id:
+                raise ValueError("runner did not return a sandbox_id")
+        except Exception as e:
             self._sandbox_id = None
+            self._proc.kill()
+            self._proc = None
+            raise RuntimeError(f"E2B sandbox startup failed: {e}") from e
         self._started = True
         log.debug("sandbox_session.e2b.started", sandbox_id=self._sandbox_id)
 
@@ -432,11 +440,7 @@ class E2BSession:
             return data.get("result", "(no output)")
         except Exception as e:
             log.warning("sandbox_session.e2b.dispatch_error", error=str(e))
-            local = LocalSession()
-            result = local.dispatch(tool_name, tool_input)
-            self.working_dir = local.working_dir
-            local.close()
-            return result
+            return f"Error: E2B sandbox execution failed: {e}"
 
     def capture_artifacts(self) -> tuple[list[dict], str]:
         if not self.working_dir or not self._started:

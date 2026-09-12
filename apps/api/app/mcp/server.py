@@ -22,7 +22,7 @@ from typing import Any
 import structlog
 
 from app.guard.policy import evaluate_composed
-from app.guard.policy_types import PolicyAction, PolicyContext
+from app.guard.policy_types import PolicyAction, PolicyContext, PolicyDecision
 from app.tools.registry import ToolRegistry
 from app.tools.types import ToolDef
 
@@ -188,7 +188,19 @@ def _handle_tools_call(
         decision = evaluate_composed(policy_ctx)
     except Exception as e:
         log.warning("mcp.policy_eval.failed", tool=tool_name, err=str(e))
-        decision = None
+        return _ok(msg_id, {
+            **_text_result("Policy evaluation failed; tool execution was denied"),
+            "isError": True,
+            "_blockedBy": "policy_error",
+        })
+
+    if not isinstance(decision, PolicyDecision) or not isinstance(decision.action, PolicyAction):
+        log.warning("mcp.policy_eval.invalid", tool=tool_name)
+        return _ok(msg_id, {
+            **_text_result("Policy evaluation returned an invalid decision; tool execution was denied"),
+            "isError": True,
+            "_blockedBy": "policy_error",
+        })
 
     if decision is not None and decision.action == PolicyAction.BLOCK:
         log.warning("mcp.tool.blocked",
@@ -202,6 +214,18 @@ def _handle_tools_call(
             ),
             "isError": True,
             "_blockedBy": decision.source,
+            "_ruleId": decision.rule_id,
+        })
+
+    if decision.action == PolicyAction.APPROVAL:
+        log.info("mcp.tool.approval_pending", tool=tool_name, rule=decision.rule_id)
+        return _ok(msg_id, {
+            **_text_result(
+                f"Approval required by Guard rule {decision.rule_id}: "
+                f"{decision.reason or 'approval required'}. The tool was not executed."
+            ),
+            "isError": True,
+            "_approvalPending": True,
             "_ruleId": decision.rule_id,
         })
 
