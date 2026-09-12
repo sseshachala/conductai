@@ -34,7 +34,6 @@ OFFLINE_ONLY: set[tuple[str, ...]] = {
     ("mcp", "install"),            # writes local Claude/Codex config
     ("session-report",),           # scans local files
     ("test-guard",),               # local synthetic events
-    ("test-security",),            # local synthetic findings
     ("sessions",),                 # reads local Claude Code session directory
     ("whoami",),                   # status query — prints config state, no API call when unauth'd
     ("guard", "audit"),            # reads local ~/.conduct/audit.log

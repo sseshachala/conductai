@@ -90,6 +90,7 @@ def seed_trial(db: Session, workspace_id: str) -> str | None:
         workspace_id=workspace_id,
         name=TRIAL_IDENTITY_NAME,
         provider="conduct",
+        source="conduct_trial",
         token_prefix=prefix,
         token_encrypted=encrypt({"token": plaintext}),
         environment_id=None,

@@ -126,7 +126,6 @@ class ProjectOut(BaseModel):
     created_at: datetime
     workflow_count: int = 0
     project_type: str = "user"
-    security_finding_id: str | None = None
 
 
 class ProjectDetailOut(BaseModel):

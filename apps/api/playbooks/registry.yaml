@@ -105,15 +105,6 @@ playbooks:
     featured: true
     description: "Quarterly AI incident drill — simulates a realistic governance failure scenario, scores your team's readiness against the response plan, and posts a gap analysis to Slack."
 
-  security_scanner:
-    file: security-scanner.yaml
-    icon: "🔒"
-    category: Code Review
-    tags: [github, code-review, code]
-    featured: true
-    description: "PR opened → AI scans for OWASP Top 10, hardcoded secrets, auth bypasses, weak crypto → posts structured security report → creates fix issue for critical findings."
-    github_events: [pull_request]
-
   bulk_pr_reviewer:
     file: bulk-pr-reviewer.yaml
     icon: "📚"
@@ -207,33 +198,6 @@ playbooks:
     featured: true
     description: "Dependabot alert fires → AI applies the security patch → runs tests → opens a PR with CVE reference. No waiting for the weekly cron."
     github_events: [repository_vulnerability_alert, dependabot_alert]
-
-  security_loop:
-    file: security_loop.yaml
-    icon: "🔐"
-    category: Security
-    tags: [security, agentic, autopilot]
-    featured: true
-    bundled_with: security-loop-module
-    description: "Security Loop Automation — AI agent triages every finding from Security Loop for Claude. Dismisses false positives instantly, escalates real threats, and with Agentic Autopilot opens fix PRs autonomously."
-
-  security-autopilot-fix:
-    file: security-autopilot-fix.yaml
-    icon: "🔧"
-    category: Security
-    tags: [security, github, autopilot]
-    featured: true
-    bundled_with: security-loop-module
-    description: "Security finding → reads affected file → writes targeted patch → opens PR → notifies Slack. Triggered from the Security Loop activity page."
-
-  threat_modeler:
-    file: threat-modeler.yaml
-    icon: "🛡️"
-    category: Security
-    tags: [security, threat-model, stride, github]
-    featured: true
-    description: "PR opens → STRIDE threat model auto-drafted → each threat filed as a security finding → same MTTR clock as scanner output. Compliance evidence for SOC 2 CC7.3, PCI 12.3.1, ISO 27001 A.14.2.1."
-    github_events: [pull_request]
 
   bughunter_active_scan:
     file: bughunter-active-scan.yaml

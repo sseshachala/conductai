@@ -53,13 +53,6 @@ For an AI PR reviewer:
 - Actionability: Does each finding have a concrete suggested fix, not just a description of the problem?\
 """,
 
-    "security_scanner": """\
-For a security scanner:
-- Correctness: Are reported findings genuinely present in the PR diff? No phantom vulnerabilities.
-- Completeness: Are all severity levels (critical, high, medium) classified correctly? Are false negatives minimal?
-- Actionability: Does each finding include CWE/CVE reference, affected code location, and remediation steps?\
-""",
-
     "issue_triage": """\
 For an issue triager:
 - Correctness: Is the assigned type (bug/feature/security) correct for this issue? Is priority calibrated correctly?

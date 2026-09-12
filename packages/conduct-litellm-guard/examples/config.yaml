@@ -31,7 +31,7 @@ guardrails:
       workspace_id: os.environ/CONDUCT_WORKSPACE_ID
       # fail_closed = deny if Guard is unreachable. Matches Conduct's
       # default posture across every enforcement surface.
-      fail_mode: fail_closed
+      unreachable_fallback: fail_closed
       # How long a single guard_check may take before the fail-mode
       # kicks in. 8s is generous — a healthy Guard responds in <100ms.
       timeout: 8.0

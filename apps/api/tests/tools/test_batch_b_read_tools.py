@@ -20,7 +20,6 @@ def test_batch_b_tools_registered():
         "get_workspace_kpis",
         "list_discovered_agents",
         "list_credentials",
-        "get_autopilot_activity",
     ):
         tool = default_registry.get(name)
         assert tool is not None, f"{name} missing"
@@ -233,81 +232,3 @@ def test_list_credentials_returns_metadata():
     assert cred["scopes"] == ["chat:write"]
 
 
-# ── #1296 Autopilot activity ─────────────────────────────────────────────────
-
-def test_get_autopilot_activity_empty():
-    class _Q:
-        def filter(self, *_a, **_k): return self
-        def order_by(self, *_a, **_k): return self
-        def limit(self, _n): return self
-        def all(self): return []
-
-    class _DB:
-        def query(self, *_a, **_k): return _Q()
-        def close(self): pass
-
-    with patch("app.core.database.SessionLocal", return_value=_DB()):
-        from app.tools.registrations.lens import get_autopilot_activity
-        out = get_autopilot_activity(_CTX)
-
-    assert out["count"] == 0
-    assert out["findings"] == []
-
-
-def test_get_autopilot_activity_limit_clamped():
-    """limit above 500 clamps to 500; below 1 clamps to 1."""
-    captured = {}
-
-    class _Q:
-        def filter(self, *_a, **_k): return self
-        def order_by(self, *_a, **_k): return self
-        def limit(self, n):
-            captured["limit"] = n
-            return self
-        def all(self): return []
-
-    class _DB:
-        def query(self, *_a, **_k): return _Q()
-        def close(self): pass
-
-    with patch("app.core.database.SessionLocal", return_value=_DB()):
-        from app.tools.registrations.lens import get_autopilot_activity
-        get_autopilot_activity(_CTX, limit=9999)
-    assert captured["limit"] == 500
-
-
-def test_get_autopilot_activity_shape():
-    class _F:
-        id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
-        tool = "claude-code"
-        severity = "high"
-        type = "injection"
-        file = "app/routes/user.py"
-        line = 42
-        description = "SQL string concatenation with user input"
-        status = "open"
-        repo_full_name = "acme/webapp"
-        run_id = "run_abc"
-        github_issue_url = "https://github.com/acme/webapp/issues/1"
-        created_at = datetime(2026, 8, 29, 10, 0, tzinfo=timezone.utc)
-        updated_at = datetime(2026, 8, 29, 11, 0, tzinfo=timezone.utc)
-
-    class _Q:
-        def filter(self, *_a, **_k): return self
-        def order_by(self, *_a, **_k): return self
-        def limit(self, _n): return self
-        def all(self): return [_F()]
-
-    class _DB:
-        def query(self, *_a, **_k): return _Q()
-        def close(self): pass
-
-    with patch("app.core.database.SessionLocal", return_value=_DB()):
-        from app.tools.registrations.lens import get_autopilot_activity
-        out = get_autopilot_activity(_CTX, status="open")
-
-    assert out["count"] == 1
-    f = out["findings"][0]
-    assert f["tool"] == "claude-code"
-    assert f["severity"] == "high"
-    assert f["status"] == "open"

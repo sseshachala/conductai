@@ -11,7 +11,7 @@ const displayEmail = (v: string | null | undefined): string => {
   return v
 }
 import { useEffect, useState, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react"
-import { useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useAuth, useUser } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
 import ToolActivityTable from "@/components/guard/ToolActivityTable"
@@ -22,6 +22,11 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { ActivityRow, ActivityHeader, ToolBadge, DecisionBadge, BlastRadiusBadge, formatTs, type AuditEvent } from "@/components/guard/ActivityRow"
+import {
+  GuardFilterBar,
+  GuardPageHeader,
+  type FilterPill,
+} from "@/components/guard/common"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,7 +114,7 @@ function ActivityContent() {
   const { teamId, loading: teamLoading } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
-  const [activeView, setActiveView] = useState<"events" | "sessions" | "tools" | "session_reports">("events")
+  const [activeView, _setActiveView] = useState<"events" | "sessions" | "tools" | "session_reports">("events")
   const [reports, setReports] = useState<SessionReport[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsError, setReportsError] = useState<string | null>(null)
@@ -155,11 +160,30 @@ function ActivityContent() {
       .catch(() => {})
   }, [teamId])
 
-  // Hydrate filters from URL on first load — lets callers like the governance
-  // dashboard deep-link with ?rule_id=foo or ?decision=blocked.
+  // Hydrate filters + active view from URL on first load — lets callers like
+  // the governance dashboard deep-link with ?rule_id=foo or ?decision=blocked,
+  // and lets the Session Reports redirect land on ?view=session_reports.
   const searchParams = useSearchParams()
+  const _router = useRouter()
+  const _pathname = usePathname()
+
+  // Setter used by view-toggle buttons: writes the new view to the URL so
+  // deep links (/logs/guard?view=session_reports) round-trip cleanly.
+  // Uses replace so tab-switching doesn't stack history entries.
+  const setActiveView = useCallback((v: "events" | "sessions" | "tools" | "session_reports") => {
+    _setActiveView(v)
+    const params = new URLSearchParams(searchParams?.toString() ?? "")
+    if (v === "events") params.delete("view")
+    else params.set("view", v)
+    const qs = params.toString()
+    _router.replace(qs ? `${_pathname}?${qs}` : (_pathname ?? "/logs/guard"))
+  }, [_pathname, _router, searchParams])
   useEffect(() => {
     if (!searchParams) return
+    const v = searchParams.get("view")
+    if (v === "events" || v === "sessions" || v === "tools" || v === "session_reports") {
+      _setActiveView(v)
+    }
     const d = searchParams.get("decision")
     if (d) setFilterDecision(d)
     const t = searchParams.get("ai_tool")
@@ -392,6 +416,12 @@ function ActivityContent() {
         </div>
       )}
 
+      <GuardPageHeader
+        title="Activity"
+        description="Real-time firehose of every AI tool call routed through Guard. Every row is chained and audit-verifiable."
+        lastUpdated={lastUpdated}
+      />
+
       {/* Audit chain badge */}
       {chainStatus && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
@@ -430,31 +460,17 @@ function ActivityContent() {
         ))}
       </div>
 
-      {/* Filter chips + realtime indicator */}
-      {activeView === "events" && (<div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, flexWrap: "wrap" }}>
-        {/* Decision filter chips */}
-        {["", "blocked", "warned", "allowed"].map(d => {
-          const label = d === "" ? "All" : d.charAt(0).toUpperCase() + d.slice(1)
-          const active = filterDecision === d
-          return (
-            <button
-              key={d}
-              onClick={() => setFilterDecision(d)}
-              className="chip"
-              style={{
-                height: 30,
-                fontWeight: 600,
-                background: active ? "var(--accent-weak)" : "var(--surface)",
-                borderColor: active ? "var(--accent-ring)" : "var(--border)",
-                color: active ? "var(--accent-text)" : "var(--text-2)",
-              }}
-            >
-              {label}
-            </button>
-          )
-        })}
-
-        {/* More filters */}
+      {/* Filter bar + realtime indicator */}
+      {activeView === "events" && (<GuardFilterBar<string>
+        pills={([
+          { value: "",        label: "All" },
+          { value: "blocked", label: "Blocked" },
+          { value: "warned",  label: "Warned" },
+          { value: "allowed", label: "Allowed" },
+        ]) as readonly FilterPill<string>[]}
+        active={filterDecision}
+        onChange={setFilterDecision}
+      >
         {!permissionsLoading && permissions.canViewAllActivity && (
           <select
             value={filterDeveloper}
@@ -573,7 +589,7 @@ function ActivityContent() {
             SOC 2 Report →
           </a>
         )}
-      </div>)}
+      </GuardFilterBar>)}
 
       {/* Sessions & Machines view */}
       {activeView === "sessions" && sessionsError && (

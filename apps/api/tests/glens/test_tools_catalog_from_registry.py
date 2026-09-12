@@ -32,7 +32,7 @@ def test_new_read_tools_are_reachable_by_llm():
         "get_llm_primitives", "get_rate_limits",
         # Batch B (#1414, #1415, #1417, #1296)
         "get_workspace_kpis", "list_discovered_agents",
-        "list_credentials", "get_autopilot_activity",
+        "list_credentials",
     }
     catalog_names = {t["name"] for t in TOOLS}
     missing = expected_new - catalog_names

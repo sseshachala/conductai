@@ -707,7 +707,7 @@ function EmptyChecklist() {
     >
       <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Get started with Conduct</div>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 22 }}>
-        No agents yet. Follow these steps to automate your first engineering task.
+        No workflows yet. Follow these steps to automate your first engineering task.
       </div>
       <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
         {steps.map((s, i) => (

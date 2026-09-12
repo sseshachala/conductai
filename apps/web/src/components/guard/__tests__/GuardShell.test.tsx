@@ -1,127 +1,81 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { render } from "@testing-library/react"
 import { screen } from "@testing-library/dom"
 import type { GuardRole } from "@/hooks/useGuardRole"
-import { GuardShell, GUARD_TABS } from "../GuardShell"
+import { GuardShell } from "../GuardShell"
+import { GUARD_SECTIONS } from "@/lib/navigation/guardSections"
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/theguard",
 }))
 
-const mockUseGuardRole = vi.fn<() => { role: GuardRole | null }>()
+const mockUseGuardRole = vi.fn<() => { role: GuardRole | null; permissions: unknown; loading: boolean }>()
 vi.mock("@/hooks/useGuardRole", async () => {
-  const actual = await vi.importActual<typeof import("@/hooks/useGuardRole")>(
-    "@/hooks/useGuardRole",
-  )
-  return {
-    ...actual,
-    useGuardRole: () => mockUseGuardRole(),
-  }
+  const actual = await vi.importActual<typeof import("@/hooks/useGuardRole")>("@/hooks/useGuardRole")
+  return { ...actual, useGuardRole: () => mockUseGuardRole() }
 })
 
 function setRole(role: GuardRole | null) {
-  mockUseGuardRole.mockReturnValue({ role })
+  mockUseGuardRole.mockReturnValue({ role, permissions: {}, loading: false })
 }
 
-const PUBLIC_LABELS = ["Activity", "Spend", "Policies", "Approvals", "Discovery"]
-
-describe("GUARD_TABS static shape", () => {
-  it("restricts Compliance to admin + security", () => {
-    const compliance = GUARD_TABS.find(t => t.label === "Compliance")
-    expect(compliance?.roles).toEqual(["admin", "security"])
-  })
-
-  it("restricts Settings to admin only", () => {
-    const settings = GUARD_TABS.find(t => t.label === "Settings")
-    expect(settings?.roles).toEqual(["admin"])
-  })
-
-  it("marks public tabs (Activity, Spend, Policies, Approvals, Discovery) with no role gate", () => {
-    for (const label of PUBLIC_LABELS) {
-      const tab = GUARD_TABS.find(t => t.label === label)
-      expect(tab?.roles).toBeUndefined()
+describe("GuardShell — six-section IA", () => {
+  it("renders every GUARD_SECTIONS entry as a nav link", () => {
+    setRole(null)
+    render(<GuardShell>content</GuardShell>)
+    for (const s of GUARD_SECTIONS) {
+      expect(screen.getByRole("link", { name: s.label })).toBeInTheDocument()
     }
+  })
+
+  it("renders children in the content column", () => {
+    setRole(null)
+    render(<GuardShell>hello body</GuardShell>)
+    expect(screen.getByText("hello body")).toBeInTheDocument()
   })
 })
 
-describe("GuardShell nav rendering by role", () => {
-  beforeEach(() => {
-    mockUseGuardRole.mockReset()
-  })
-
-  it("shows all 5 public tabs regardless of role (admin case)", () => {
-    setRole("admin")
-    render(<GuardShell>content</GuardShell>)
-    for (const label of PUBLIC_LABELS) {
-      expect(screen.getByRole("link", { name: label })).toBeInTheDocument()
-    }
-  })
-
-  it("shows all 5 public tabs when role is null (unauthenticated / loading)", () => {
+describe("GuardShell — admin cluster", () => {
+  it("hides Compliance and Settings when role is null (loading)", () => {
     setRole(null)
     render(<GuardShell>content</GuardShell>)
-    for (const label of PUBLIC_LABELS) {
-      expect(screen.getByRole("link", { name: label })).toBeInTheDocument()
-    }
-  })
-
-  it("shows Compliance for admin", () => {
-    setRole("admin")
-    render(<GuardShell>content</GuardShell>)
-    expect(screen.getByRole("link", { name: "Compliance" })).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Compliance" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
   })
 
   it("shows Compliance for security", () => {
     setRole("security")
     render(<GuardShell>content</GuardShell>)
     expect(screen.getByRole("link", { name: "Compliance" })).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
   })
 
-  it("hides Compliance from developer", () => {
-    setRole("developer")
-    render(<GuardShell>content</GuardShell>)
-    expect(screen.queryByRole("link", { name: "Compliance" })).not.toBeInTheDocument()
-  })
-
-  it("hides Compliance from viewer", () => {
-    setRole("viewer")
-    render(<GuardShell>content</GuardShell>)
-    expect(screen.queryByRole("link", { name: "Compliance" })).not.toBeInTheDocument()
-  })
-
-  it("hides Compliance when role is null", () => {
-    setRole(null)
-    render(<GuardShell>content</GuardShell>)
-    expect(screen.queryByRole("link", { name: "Compliance" })).not.toBeInTheDocument()
-  })
-
-  it("shows Settings for admin only", () => {
+  it("shows Compliance and Settings for admin", () => {
     setRole("admin")
     render(<GuardShell>content</GuardShell>)
+    expect(screen.getByRole("link", { name: "Compliance" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument()
   })
 
-  it("hides Settings from security", () => {
-    setRole("security")
-    render(<GuardShell>content</GuardShell>)
-    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
-  })
-
-  it("hides Settings from developer", () => {
+  it("hides both from developer", () => {
     setRole("developer")
     render(<GuardShell>content</GuardShell>)
+    expect(screen.queryByRole("link", { name: "Compliance" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
   })
 
-  it("hides Settings from viewer", () => {
+  it("hides both from viewer", () => {
     setRole("viewer")
     render(<GuardShell>content</GuardShell>)
+    expect(screen.queryByRole("link", { name: "Compliance" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
   })
+})
 
-  it("renders children inside the shell", () => {
+describe("GuardShell — collapse toggle", () => {
+  it("renders the collapse toggle button", () => {
     setRole("admin")
-    render(<GuardShell>hello body</GuardShell>)
-    expect(screen.getByText("hello body")).toBeInTheDocument()
+    render(<GuardShell>content</GuardShell>)
+    expect(screen.getByRole("button", { name: /collapse guard nav/i })).toBeInTheDocument()
   })
 })

@@ -15,7 +15,7 @@ Basic usage in a LiteLLM ``config.yaml``::
           mode: pre_call
           api_url: https://api.conductai.ai
           agent_token: os.environ/CONDUCT_AGENT_TOKEN
-          fail_mode: fail_closed
+          unreachable_fallback: fail_closed
 """
 from conduct_litellm_guard.guardrail import ConductGuard, GuardDecision
 

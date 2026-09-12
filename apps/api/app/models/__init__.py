@@ -22,7 +22,6 @@ from app.models.agent_memory import AgentMemory  # noqa
 from app.models.mcp_server import McpServer  # noqa
 from app.models.run_block_state import RunBlockState  # noqa
 from app.models.run_online_score import RunOnlineScore  # noqa
-from app.models.security_finding import SecurityFinding  # noqa
 from app.models.team_session_memory import TeamSessionMemory  # noqa
 from app.models.watchdog_event import WatchdogEvent  # noqa
 from app.models.workspace_config import WorkspaceConfig  # noqa
@@ -30,7 +29,6 @@ from app.models.workspace_instructions import WorkspaceInstructions  # noqa
 from app.models.project_template import ProjectTemplate  # noqa
 from app.models.workspace_invite import WorkspaceInvite  # noqa
 from app.models.workspace_report_layout import WorkspaceReportLayout  # noqa
-from app.models.security_config import SecurityConfig  # noqa
 from app.models.security_policy import SecurityPolicy  # noqa
 from app.models.model_routing_policy import ModelRoutingPolicy  # noqa
 from app.models.cred_retrieval_token import CredRetrievalToken  # noqa
@@ -55,9 +53,9 @@ __all__ = [
     "RunAnalyticsEvent", "RunTrace", "AuditLog", "EmailTemplate",
     "PlaybookSubmission",
     "AgentMemory", "McpServer", "RunBlockState", "RunOnlineScore",
-    "SecurityFinding", "TeamSessionMemory", "WatchdogEvent",
+    "TeamSessionMemory", "WatchdogEvent",
     "WorkspaceConfig", "WorkspaceInstructions",
-    "ProjectTemplate", "WorkspaceInvite", "SecurityConfig",
+    "ProjectTemplate", "WorkspaceInvite",
     "SecurityPolicy", "ModelRoutingPolicy", "CredRetrievalToken",
     "GuardConfig", "GuardMemberConfig", "GuardSession",
     "GuardAuditEvent", "GuardSpendBudget",

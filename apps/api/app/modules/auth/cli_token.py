@@ -73,6 +73,7 @@ def _upsert_identity(
             workspace_id=uuid.UUID(workspace_id),
             name=f"{clerk_user_id} (CLI)",
             provider="conduct",
+            source="conduct_cli",
             token_prefix=agent_prefix,
             token_encrypted=encrypt({"token": agent_raw}),
             environment_id=None,

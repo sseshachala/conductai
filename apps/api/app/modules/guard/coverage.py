@@ -12,6 +12,7 @@ log = structlog.get_logger(__name__)
 
 from app.modules.guard.enforcement import (
     GATES,
+    EnforcementMetadataError,
     conservative_custom_enforcement,
     derive_gates,
     derive_surface_status,
@@ -79,12 +80,25 @@ def workspace_coverage_matrix(db: Session, workspace_id: uuid.UUID) -> list[dict
     matrix: list[dict[str, Any]] = []
     for rule_id, rule in resolved.items():
         metadata = rule.get("enforcement")
-        if metadata is None:
-            if rule.get("_builtin"):
+        # Validate what we have; fall back to the conservative contract when
+        # metadata is missing. A single stale rule must not crash the whole
+        # coverage endpoint — log + skip it instead so the matrix still
+        # renders for every other rule in the workspace.
+        try:
+            if metadata is None:
+                metadata = conservative_custom_enforcement(rule)
+            else:
                 validate_enforcement_metadata(rule)
-            metadata = conservative_custom_enforcement(rule)
-        else:
-            validate_enforcement_metadata(rule)
+        except EnforcementMetadataError as exc:
+            log.warning(
+                "guard.coverage.rule_metadata_invalid",
+                rule_id=rule_id,
+                pack=rule.get("_pack_slug"),
+                pack_version=rule.get("_pack_version"),
+                builtin=bool(rule.get("_builtin")),
+                error=str(exc),
+            )
+            continue
 
         base_action = rule.get("action", "audit")
         effective_action = base_action

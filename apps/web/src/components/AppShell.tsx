@@ -13,6 +13,7 @@ import ErrorBoundary from "@/components/ui/ErrorBoundary"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { reportLayoutsApi, type ReportLayout } from "@/lib/reportBuilder/api"
 import { workspaces as workspacesApi, projects as projectsApi, organizations, runs, guard, workflows } from "@/lib/api"
+import { GUARD_SECTIONS } from "@/lib/navigation/guardSections"
 
 interface Project { id: string; name: string; agent_count: number; project_type?: string }
 
@@ -103,10 +104,15 @@ const Icons = {
 
 function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/dashboard')) return ['Dashboard']
+  if (pathname.startsWith('/theguard/inbox')) return ['Guard', 'Inbox']
   if (pathname.startsWith('/theguard/spend')) return ['Guard', 'Spend']
-  if (pathname.startsWith('/theguard/policies')) return ['Guard', 'Policies']
-  if (pathname.startsWith('/theguard/discovery')) return ['Guard', 'Discovery']
+  if (pathname.startsWith('/theguard/policies')) return ['Guard', 'Controls', 'Policies']
+  if (pathname.startsWith('/theguard/approvals')) return ['Guard', 'Approvals']
+  if (pathname.startsWith('/theguard/discovery')) return ['Guard', 'Agents Discovered']
+  if (pathname.startsWith('/theguard/session-reports')) return ['Guard', 'Activity', 'Session Reports']
   if (pathname.startsWith('/theguard/activity')) return ['Guard', 'Activity']
+  if (pathname.startsWith('/theguard/connections/proxy')) return ['Guard', 'Connections', 'Proxy & gateways']
+  if (pathname.startsWith('/theguard/connections')) return ['Guard', 'Connections']
   if (pathname.startsWith('/theguard/settings')) return ['Guard', 'Settings']
   if (pathname.startsWith('/theguard/compliance')) return ['Guard', 'Compliance']
   if (pathname.startsWith('/governance')) return ['Governance']
@@ -122,8 +128,8 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/logs')) return ['Logs']
   if (pathname.startsWith('/runs')) return ['Runs']
   if (pathname.startsWith('/observability')) return ['Observability']
-  if (pathname === '/workflows') return ['Agents']
-  if (pathname.startsWith('/workflows/new')) return ['Canvas', 'New agent']
+  if (pathname === '/workflows') return ['Workflows']
+  if (pathname.startsWith('/workflows/new')) return ['Canvas', 'New workflow']
   if (pathname.startsWith('/workflows/')) return ['Canvas']
   const projectMatch = pathname.match(/\/projects\/([^/]+)/)
   if (projectMatch) {
@@ -140,19 +146,17 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
 
 const PALETTE_COMMANDS = [
   { group: "BUILD", label: "Projects", href: "/projects", icon: "Grid" as const },
-  { group: "BUILD", label: "Agents", href: "/workflows", icon: "Flow" as const },
+  { group: "BUILD", label: "Workflows", href: "/workflows", icon: "Flow" as const },
   { group: "BUILD", label: "Registry", href: "/packs", icon: "Store" as const },
   { group: "OBSERVE", label: "Dashboard", href: "/dashboard", icon: "Spark" as const },
   { group: "OBSERVE", label: "Runs", href: "/runs", icon: "Pulse" as const },
   { group: "GOVERN", label: "Runtime Governance", href: "/governance", icon: "Shield" as const },
   { group: "ASK", label: "Lens", href: "/lens", icon: "Spark" as const },
-  { group: "GOVERN", label: "Guard · Overview", href: "/theguard", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Spend", href: "/theguard/spend", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Policies", href: "/theguard/policies", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Agent Discovery", href: "/theguard/discovery", icon: "Shield" as const },
-  { group: "GOVERN", label: "Guard · Activity", href: "/theguard/activity", icon: "Shield" as const },
-  { group: "WORKSPACE", label: "Integrations", href: "/integrations", icon: "Gear" as const },
-  { group: "WORKSPACE", label: "Agent ID", href: "/agent-identity", icon: "Gear" as const },
+  ...GUARD_SECTIONS.map(s => ({ group: "GOVERN" as const, label: `Guard · ${s.label}`, href: s.href, icon: "Shield" as const })),
+  { group: "GOVERN", label: "Guard · Compliance", href: "/theguard/compliance", icon: "Shield" as const },
+  { group: "GOVERN", label: "Guard · Enforcement", href: "/theguard/policies/enforcement", icon: "Shield" as const },
+  { group: "CONNECT", label: "Agent ID", href: "/agent-identity", icon: "Lock" as const },
+  { group: "CONNECT", label: "MCP Registry", href: "/integrations", icon: "Plug" as const },
   { group: "WORKSPACE", label: "Settings · Vault", href: "/settings", icon: "Gear" as const },
 ]
 
@@ -201,10 +205,7 @@ function AppShellInnerContent({
 
   // Workspace footer group (Integrations / Agent ID / Settings) — collapsed
   // by default; auto-expands when any of its routes is active.
-  const workspaceRouteActive =
-    pathname.startsWith("/integrations") ||
-    pathname.startsWith("/agent-identity") ||
-    pathname.startsWith("/settings")
+  const workspaceRouteActive = pathname.startsWith("/settings")
   const [workspaceGroupOpen, setWorkspaceGroupOpen] = useState(false)
 
   // User menu (not used in new design — kept for UserMenu component)
@@ -229,6 +230,9 @@ function AppShellInnerContent({
   const [lensPanelOpen, setLensPanelOpen] = useState(false)
   const [lensPanelInitialQuery, setLensPanelInitialQuery] = useState<string | null>(null)
 
+  // Suppress side panel on full-page Lens routes (would render Lens twice).
+  const lensPanelSuppressed = pathname?.startsWith("/lens") ?? false
+
   // Persist open/closed state (#B5). localStorage read is client-only.
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -238,6 +242,19 @@ function AppShellInnerContent({
     if (typeof window === "undefined") return
     try { window.localStorage.setItem("lens:panelOpen", lensPanelOpen ? "1" : "0") } catch { /* ignore */ }
   }, [lensPanelOpen])
+
+  // ⌘. / Ctrl+. toggles Lens panel from anywhere.
+  useEffect(() => {
+    if (lensPanelSuppressed) return
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ".") {
+        e.preventDefault()
+        setLensPanelOpen(v => !v)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [lensPanelSuppressed])
 
   // Team rename/create/delete state
   const [creatingTeam, setCreatingTeam] = useState(false)
@@ -844,81 +861,11 @@ function AppShellInnerContent({
                 href="/theguard"
                 label="Guard"
                 icon={<Icons.Shield />}
-                active={pathname.startsWith("/theguard")}
+                active={pathname.startsWith("/theguard") || pathname.startsWith("/logs/guard")}
                 collapsed={collapsed}
               />
-              {/* Guard sub-nav */}
-              {pathname.startsWith("/theguard") && !collapsed && (
-                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                  {[
-                    { label: "Overview",    href: "/theguard" },
-                    { label: "Policies",    href: "/theguard/policies" },
-                    { label: "Compliance",  href: "/theguard/compliance" },
-                    { label: "Team Memory", href: "/theguard/team-memory" },
-                    { label: "Settings",    href: "/theguard/settings", adminOnly: true },
-                  ].filter(sub => !sub.adminOnly || userRole === "admin").map(sub => {
-                    const subActive = sub.href === "/theguard" ? pathname === "/theguard" : pathname.startsWith(sub.href)
-                    return (
-                      <Link
-                        key={sub.href}
-                        href={sub.href}
-                        style={{
-                          display: "block",
-                          padding: "5px 10px",
-                          borderRadius: 7,
-                          fontSize: 13,
-                          fontWeight: subActive ? 600 : 400,
-                          color: subActive ? "var(--accent-text)" : "var(--text-3)",
-                          background: subActive ? "var(--accent-weak)" : "transparent",
-                          textDecoration: "none",
-                        }}
-                        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
-                        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
-                      >
-                        {sub.label}
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
-              <SideNavItem
-                href="/secure"
-                label="Secure"
-                icon={<Icons.Lock />}
-                active={pathname.startsWith("/secure")}
-                collapsed={collapsed}
-              />
-              {/* Secure sub-nav */}
-              {pathname.startsWith("/secure") && !collapsed && (
-                <div style={{ marginLeft: 28, marginTop: 2, marginBottom: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                  {[
-                    { label: "Overview",  href: "/secure" },
-                    { label: "Findings",  href: "/secure/activity" },
-                  ].map(sub => {
-                    const subActive = sub.href === "/secure" ? pathname === "/secure" : pathname.startsWith(sub.href)
-                    return (
-                      <Link
-                        key={sub.href}
-                        href={sub.href}
-                        style={{
-                          display: "block",
-                          padding: "5px 10px",
-                          borderRadius: 7,
-                          fontSize: 13,
-                          fontWeight: subActive ? 600 : 400,
-                          color: subActive ? "var(--accent-text)" : "var(--text-3)",
-                          background: subActive ? "var(--accent-weak)" : "transparent",
-                          textDecoration: "none",
-                        }}
-                        onMouseEnter={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)" }}
-                        onMouseLeave={(e: ReactMouseEvent<HTMLElement>) => { if (!subActive) (e.currentTarget as HTMLAnchorElement).style.background = "transparent" }}
-                      >
-                        {sub.label}
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
+              {/* Guard sub-nav removed — GuardShell now owns the section rail so both don't render the same six items. */}
+              {/* Secure nav item removed entirely (PR #1846 / issue #1840) — code-scan module deleted; Guard Inbox tab lands in PR 2. */}
             </div>
           )}
           {/* BUILD group */}
@@ -1029,7 +976,7 @@ function AppShellInnerContent({
 
             <SideNavItem
               href="/workflows"
-              label="Agents"
+              label="Workflows"
               icon={<Icons.Flow />}
               active={pathname.startsWith("/workflows")}
               collapsed={collapsed}
@@ -1041,6 +988,30 @@ function AppShellInnerContent({
               active={pathname.startsWith("/packs")}
               collapsed={collapsed}
               badge={playbookCount}
+            />
+          </div>
+
+          {/* CONNECT group */}
+          <div>
+            {!collapsed && (
+              <div style={{ padding: "12px 10px 5px", fontSize: 10, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+                Connect
+              </div>
+            )}
+            {collapsed && <div style={{ borderTop: "1px solid var(--border)", margin: "6px 0" }} />}
+            <SideNavItem
+              href="/agent-identity"
+              label="Agent ID"
+              icon={<Icons.Lock />}
+              active={pathname.startsWith("/agent-identity")}
+              collapsed={collapsed}
+            />
+            <SideNavItem
+              href="/integrations"
+              label="MCP Registry"
+              icon={<Icons.Plug />}
+              active={pathname.startsWith("/integrations")}
+              collapsed={collapsed}
             />
           </div>
 
@@ -1133,20 +1104,6 @@ function AppShellInnerContent({
           )}
           {(collapsed || workspaceGroupOpen || workspaceRouteActive) && (
             <>
-              <SideNavItem
-                href="/integrations"
-                label="Integrations"
-                icon={<Icons.Plug />}
-                active={pathname.startsWith("/integrations")}
-                collapsed={collapsed}
-              />
-              <SideNavItem
-                href="/agent-identity"
-                label="Agent ID"
-                icon={<Icons.Lock />}
-                active={pathname.startsWith("/agent-identity")}
-                collapsed={collapsed}
-              />
               <SideNavItem
                 href="/settings"
                 label="Settings"
@@ -1355,15 +1312,17 @@ function AppShellInnerContent({
           <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
-    </div>
 
-    {/* Command Palette */}
-    <LensPanel
-      open={lensPanelOpen}
-      initialQuery={lensPanelInitialQuery}
-      pathname={pathname}
-      onClose={() => { setLensPanelOpen(false); setLensPanelInitialQuery(null) }}
-    />
+      {/* Lens — docked side panel (pushes content, not an overlay) */}
+      {!lensPanelSuppressed && (
+        <LensPanel
+          open={lensPanelOpen}
+          initialQuery={lensPanelInitialQuery}
+          pathname={pathname}
+          onClose={() => { setLensPanelOpen(false); setLensPanelInitialQuery(null) }}
+        />
+      )}
+    </div>
 
     {paletteOpen && (
       <div

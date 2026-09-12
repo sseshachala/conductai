@@ -22,6 +22,7 @@ from app.modules.guard.routers import developer_tools as guard_developer_tools
 from app.modules.guard.routers import token_guardrails as guard_token_guardrails
 from app.modules.guard.routers import notifications as guard_notifications
 from app.modules.guard.routers import trial as guard_trial
+from app.modules.guard.routers import inbox as guard_inbox
 from app.modules.guard.routers import approvals as guard_approvals
 from app.modules.guard.routers import blocks as guard_blocks
 from app.modules.guard.routers import session_reports as guard_session_reports
@@ -67,7 +68,6 @@ from app.routers.team_memory import router as team_memory_router
 from app.routers.meta import router as meta_router
 from app.routers.share import router as share_router
 from app.modules.agent_identity.router import router as agent_identity_router
-from app.routers.security import router as security_findings_router
 from app.modules.auth.cli_token import router as cli_auth_router
 from app.modules.auth.oauth import (
     router as oauth_router,
@@ -177,6 +177,7 @@ app.include_router(guard_developer_tools.router)
 app.include_router(guard_token_guardrails.router)
 app.include_router(guard_notifications.router)
 app.include_router(guard_trial.router)
+app.include_router(guard_inbox.router)
 app.include_router(guard_approvals.router)
 app.include_router(guard_blocks.router)
 app.include_router(guard_session_reports.router)
@@ -222,7 +223,6 @@ app.include_router(cli_auth_router)
 app.include_router(oauth_router)
 app.include_router(oauth_well_known_router)
 app.include_router(oauth_legacy_token_router)
-app.include_router(security_findings_router)
 app.include_router(team_os_router)
 
 

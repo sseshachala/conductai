@@ -23,7 +23,7 @@
       "id": 31
     },
     "custom_assertions": [
-      {"kind": "tools_include", "names": ["guard_status", "guard_check", "guard_sync", "guard_activity", "conduct_list_agents", "conduct_list_projects", "conduct_list_playbooks", "conduct_run_workflow", "conduct_get_run", "post_finding", "trigger_fix"]}
+      {"kind": "tools_include", "names": ["guard_status", "guard_check", "guard_sync", "guard_activity", "conduct_list_agents", "conduct_list_projects", "conduct_list_playbooks", "conduct_run_workflow", "conduct_get_run"]}
     ]
   }
 }

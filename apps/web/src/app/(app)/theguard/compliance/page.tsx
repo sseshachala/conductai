@@ -6,6 +6,7 @@ import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
+import { GuardPageHeader } from "@/components/guard/common"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
 
@@ -312,6 +313,11 @@ function ComplianceContent() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <GuardPageHeader
+        title="Compliance"
+        description="Audit-ready evidence, hook policy simulation, and workspace grade. Snapshot generated on demand from Guard's live data."
+        lastUpdated={new Date(generated_at)}
+      />
       {/* Grade + summary */}
       <div className="card" style={{ padding: "20px 24px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 20 }}>

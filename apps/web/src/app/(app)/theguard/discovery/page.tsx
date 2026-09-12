@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
+import { GuardPageHeader, GuardSectionHeader } from "@/components/guard/common"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
@@ -204,13 +205,10 @@ export default function DiscoveryPage() {
       {modalAgent && <RemediationModal agent={modalAgent} onClose={() => setModalAgent(null)} />}
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
 
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-semibold text-stone-900">Agent Discovery</h1>
-          <p className="text-sm text-stone-500 mt-1">
-            Every hook, MCP call, and proxy request registers the agent automatically. Shadow AI surfaces here — and how many Guard governs.
-          </p>
-        </div>
+        <GuardPageHeader
+          title="Agent Discovery"
+          description="Every hook, MCP call, and proxy request registers the agent automatically. Shadow AI surfaces here — and how many Guard governs."
+        />
 
         {loading ? (
           <p className="text-sm text-stone-400">Loading...</p>
@@ -312,7 +310,7 @@ export default function DiscoveryPage() {
             {scans.length > 0 && (
               <div className="card" style={{ overflow: "hidden" }}>
                 <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                  <p className="eyebrow">Scan History</p>
+                  <GuardSectionHeader title="Scan History" />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1.2fr 0.8fr 0.8fr 0.8fr", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
                   {["When", "Triggered by", "Agents found", "Under Guard", "Status"].map((h, i) => (

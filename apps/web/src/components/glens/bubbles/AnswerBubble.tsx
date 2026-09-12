@@ -1,34 +1,73 @@
 "use client"
+import React from "react"
 import { SKILL_LABELS } from "@/components/glens/glensConstants"
 import { renderMd } from "@/components/glens/glensMarkdown"
 
-export function AnswerBubble({ text, skill, drilldown, followups, onFollowup, understoodAs }: { text: string; skill?: string; drilldown?: { path: string }; followups?: string[]; onFollowup?: (q: string) => void; understoodAs?: string }) {
+/**
+ * Shared assistant bubble for both Lens surfaces.
+ *
+ * - Full-page canvas (`GLensChatPage`) uses defaults: skill label, `maxWidth: 75%`,
+ *   14px, followup chips row.
+ * - Docked side panel (`LensPanel`) passes `dense`: no skill label, `maxWidth: 92%`,
+ *   13px, tighter padding. Streaming state adds a blinking cursor; error tone
+ *   flips to red styling. Docked passes its own `footer` (e.g. "Open in Lens →").
+ *
+ * All markdown flows through `renderMd` — one parser, identical output on both
+ * surfaces.
+ */
+export function AnswerBubble({
+  text,
+  skill,
+  drilldown,
+  followups,
+  onFollowup,
+  understoodAs,
+  streaming = false,
+  dense = false,
+  tone,
+  footer,
+}: {
+  text: string
+  skill?: string
+  drilldown?: { path: string }
+  followups?: string[]
+  onFollowup?: (q: string) => void
+  understoodAs?: string
+  streaming?: boolean
+  dense?: boolean
+  tone?: "error"
+  footer?: React.ReactNode
+}) {
+  const isError = tone === "error"
   return (
-    <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
-      <div style={{ maxWidth: "75%" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          {skill && (
-            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
-              {SKILL_LABELS[skill] ?? skill}
-            </div>
-          )}
-          {understoodAs && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
-              · {understoodAs}
-            </div>
-          )}
-        </div>
+    <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: dense ? 10 : 16 }}>
+      <div style={{ maxWidth: dense ? "92%" : "75%" }}>
+        {!dense && (skill || understoodAs) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            {skill && (
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+                {SKILL_LABELS[skill] ?? skill}
+              </div>
+            )}
+            {understoodAs && (
+              <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
+                · {understoodAs}
+              </div>
+            )}
+          </div>
+        )}
         <div style={{
-          background: "var(--surface-2)",
-          border: "1px solid var(--border)",
+          background: isError ? "rgba(239,68,68,.08)" : "var(--surface-2)",
+          border: `1px solid ${isError ? "rgba(239,68,68,.35)" : "var(--border)"}`,
           borderRadius: "4px 14px 14px 14px",
-          padding: "10px 16px",
-          fontSize: 14,
-          color: "var(--text)",
-          lineHeight: 1.6,
+          padding: dense ? "8px 12px" : "10px 16px",
+          fontSize: dense ? 13 : 14,
+          color: isError ? "#ef4444" : "var(--text)",
+          lineHeight: dense ? 1.5 : 1.6,
         }}>
-          {renderMd(text)}
-          {drilldown && (
+          <div>{renderMd(text)}</div>
+          {streaming && <span style={{ opacity: .5 }}>▍</span>}
+          {drilldown && !streaming && (
             <div style={{ marginTop: 8, textAlign: "right" }}>
               <a href={drilldown.path} style={{ fontSize: 12, color: "var(--accent, #6366f1)", textDecoration: "none", fontWeight: 500 }}>
                 View full &rarr;
@@ -53,6 +92,7 @@ export function AnswerBubble({ text, skill, drilldown, followups, onFollowup, un
             ))}
           </div>
         )}
+        {footer}
       </div>
     </div>
   )

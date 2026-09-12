@@ -55,7 +55,7 @@ guardrails:
       mode: pre_call
       api_key: os.environ/CONDUCT_AGENT_TOKEN
       api_base: https://api.conductai.ai         # optional, defaults to hosted
-      fail_mode: fail_closed                      # or fail_open
+      unreachable_fallback: fail_closed                      # or fail_open
       default_on: true
 ```
 
@@ -73,7 +73,7 @@ guardrails:
 | `api_key`       | yes      | `CONDUCT_AGENT_TOKEN` env  | `cond_agt_*` token minted in the Conduct console.                        |
 | `api_base`      | no       | `https://api.conductai.ai` | Point at a self-hosted Conduct API when needed.                          |
 | `workspace_id`  | no       | resolved from the token    | Usually unnecessary — the token owns its workspace.                      |
-| `fail_mode`     | no       | `fail_closed`              | `fail_closed` blocks when Guard is unreachable; `fail_open` allows.      |
+| `unreachable_fallback`     | no       | `fail_closed`              | `fail_closed` blocks when Guard is unreachable; `fail_open` allows.      |
 | `tool_name`     | no       | `llm_call`                 | Deprecated in 0.2.0 — accepted for config-compat, ignored at runtime. The plugin now hits the `guard_check_prompt` MCP verb, so rule matching is by `match_pattern` on the outbound prompt, not by `match_tool`. Delete the field on your next config edit. |
 | `timeout`       | no       | `8.0`                      | Seconds. Guard responds in <100ms in the healthy path.                   |
 

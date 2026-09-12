@@ -971,7 +971,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
 
             {/* Agent name */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-stone-500">Agent name</label>
+              <label className="text-xs font-medium text-stone-500">Workflow name</label>
               <input
                 type="text"
                 value={agentName}

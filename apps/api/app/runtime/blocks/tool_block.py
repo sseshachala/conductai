@@ -19,7 +19,7 @@ def _execute_tool(
     db=None,
     workspace_id: str = "",
 ) -> dict:
-    from app.runtime.integrations import github, slack, linear, digitalocean, vercel, railway, conduct
+    from app.runtime.integrations import github, slack, linear, digitalocean, vercel, railway
     from app.runtime.tool_engine import (
         _check_egress,
         _dry_run_mock,
@@ -38,9 +38,6 @@ def _execute_tool(
         return {"skipped": True, "reason": "No integration configured"}
 
     action = config.get("action", "")
-
-    if integration == "conduct":
-        return conduct.execute(action, params, creds={}, db=db, workspace_id=workspace_id)
 
     from app.runtime.run_contract import cred_from_state
     _cred_token, _cred_api_url, _cred_handles = cred_from_state(state)

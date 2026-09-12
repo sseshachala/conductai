@@ -11,6 +11,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { EnforcementCoverageMatrix } from "@/components/guard/EnforcementCoverageMatrix"
+import EnforcementPanel from "@/features/guard/policies/enforcement/Panel"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1038,6 +1039,10 @@ function PoliciesContent() {
   useEffect(() => {
     const p = searchParams.get("persona")
     if (p) setTimeout(() => document.getElementById(`section-${p}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 300)
+    // Land on the Enforcement coverage tab when redirected from the old
+    // /theguard/policies/enforcement URL (or any ?view=coverage deep link).
+    const v = searchParams.get("view")
+    if (v === "policies" || v === "coverage") setPageView(v)
   }, [searchParams])
   const { teamId, loading: teamLoading, error: teamError } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()
@@ -1354,7 +1359,19 @@ function PoliciesContent() {
         </div>
 
         {pageView === "coverage" ? (
-          <EnforcementCoverageMatrix workspaceId={teamId} />
+          <>
+            {/* Enforcement settings — merged here from the standalone
+                /theguard/policies/enforcement page. One home for
+                everything enforcement: settings on top, coverage matrix
+                below. Old URL now redirects to ?view=coverage. */}
+            <div style={{ marginBottom: 20 }}>
+              <EnforcementPanel
+                workspaceId={activeWorkspace?.id ?? null}
+                isAdmin={permissions.canEditSettings}
+              />
+            </div>
+            <EnforcementCoverageMatrix workspaceId={teamId} />
+          </>
         ) : (
           <>
         {/* Sub-header row */}

@@ -133,7 +133,6 @@ from app.tools.registrations.lens.workflows import (  # noqa: F401,E402
 from app.tools.registrations.lens.workspace import get_workspace_kpis  # noqa: F401,E402
 from app.tools.registrations.lens.discovery import list_discovered_agents  # noqa: F401,E402
 from app.tools.registrations.lens.policies import list_credentials  # noqa: F401,E402
-from app.tools.registrations.lens.ops import get_autopilot_activity  # noqa: F401,E402
 from app.tools.registrations.lens.primitives import (  # noqa: F401,E402
     list_machines_sync_state,
     get_llm_primitives,

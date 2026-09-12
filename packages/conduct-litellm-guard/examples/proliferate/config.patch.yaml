@@ -11,7 +11,7 @@ guardrails:
       mode: pre_call
       api_url: https://api.conductai.ai
       agent_token: os.environ/CONDUCT_AGENT_TOKEN
-      fail_mode: fail_closed
+      unreachable_fallback: fail_closed
       # tool_name=workflow reuses existing pack rules that scope to
       # filesystem-write,workflow (e.g. conduct-owasp:no-aws-keys).
       # Drop this line once packs ship the llm_call scope natively.

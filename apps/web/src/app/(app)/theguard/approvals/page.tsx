@@ -4,6 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
+import {
+  GuardBadge,
+  GuardFilterBar,
+  GuardPageHeader,
+  timeAgo,
+  type FilterPill,
+} from "@/components/guard/common"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api/client"
 
@@ -43,15 +50,6 @@ interface ListOut {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const sec = Math.floor(diff / 1000)
-  if (sec < 60) return `${Math.max(sec, 0)}s ago`
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min}m ago`
-  return `${Math.floor(min / 60)}h ago`
-}
-
 function timeUntil(iso: string): string {
   const diff = new Date(iso).getTime() - Date.now()
   if (diff <= 0) return "expired"
@@ -67,13 +65,6 @@ const STATUS_LABEL: Record<ApprovalStatus, string> = {
   approved:  "Approved",
   rejected:  "Rejected",
   timed_out: "Timed out",
-}
-
-const STATUS_COLOR: Record<ApprovalStatus, { bg: string; fg: string }> = {
-  pending:   { bg: "var(--warn-bg)", fg: "var(--warn)" },
-  approved:  { bg: "var(--ok-bg)",   fg: "var(--ok)"   },
-  rejected:  { bg: "var(--err-bg)",  fg: "var(--err)"  },
-  timed_out: { bg: "var(--info-bg)", fg: "var(--info)" },
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────
@@ -162,37 +153,22 @@ export default function ApprovalsPage() {
   return (
     <AppShell>
       <GuardShell lastFetched={lastFetched}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--text)" }}>Approvals</h2>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-              Human-in-the-loop pauses triggered by Guard rules with action=approval.
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {(["pending", "approved", "rejected", "timed_out", "all"] as const).map(k => (
-              <button
-                key={k}
-                onClick={() => setFilter(k)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  background: filter === k ? "var(--surface-2)" : "transparent",
-                  color: "var(--text)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {k === "all" ? "All" : STATUS_LABEL[k as ApprovalStatus]}
-                {k !== "all" && filter !== k && counts[k as ApprovalStatus] > 0 && (
-                  <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>{counts[k as ApprovalStatus]}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
+        <GuardPageHeader
+          title="Approvals"
+          description="Human-in-the-loop pauses triggered by Guard rules with action=approval."
+          lastUpdated={lastFetched}
+        />
+        <GuardFilterBar<ApprovalStatus | "all">
+          pills={([
+            { value: "pending",   label: "Pending",   count: counts.pending },
+            { value: "approved",  label: "Approved",  count: counts.approved },
+            { value: "rejected",  label: "Rejected",  count: counts.rejected },
+            { value: "timed_out", label: "Timed out", count: counts.timed_out },
+            { value: "all",       label: "All" },
+          ] as const) as readonly FilterPill<ApprovalStatus | "all">[]}
+          active={filter as ApprovalStatus | "all"}
+          onChange={setFilter as (v: ApprovalStatus | "all") => void}
+        />
 
         {err && (
           <div style={{ padding: 12, borderRadius: 6, background: "var(--err-bg)", color: "var(--err)", fontSize: 13, marginBottom: 16 }}>
@@ -213,7 +189,6 @@ export default function ApprovalsPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {items.map(row => {
             const isExpanded = expandedId === row.id
-            const color = STATUS_COLOR[row.status]
             const isPending = row.status === "pending"
             return (
               <div
@@ -230,20 +205,7 @@ export default function ApprovalsPage() {
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span
-                        style={{
-                          padding: "2px 8px",
-                          borderRadius: 4,
-                          background: color.bg,
-                          color: color.fg,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          letterSpacing: 0.4,
-                        }}
-                      >
-                        {STATUS_LABEL[row.status]}
-                      </span>
+                      <GuardBadge kind="status" value={row.status} label={STATUS_LABEL[row.status]} />
                       <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12, color: "var(--text)" }}>
                         {row.rule_id}
                       </span>

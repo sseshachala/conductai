@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, ForeignKey, Index, Text, UniqueConstraint, text
+from sqlalchemy import Column, String, DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -14,17 +14,11 @@ class Project(Base):
     name = Column(String(255), nullable=False)
     slug = Column(String(100), nullable=True)
     project_type = Column(String(32), nullable=False, default="user")
-    security_finding_id = Column(String(36), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         UniqueConstraint("workspace_id", "slug", name="uq_projects_slug_workspace"),
         Index("ix_projects_project_type", "project_type"),
-        Index(
-            "projects_workspace_security_automation_uniq", "workspace_id",
-            unique=True,
-            postgresql_where=text("project_type = 'security_automation'"),
-        ),
     )
 
     workspace = relationship("Workspace", back_populates="projects", foreign_keys=[workspace_id])

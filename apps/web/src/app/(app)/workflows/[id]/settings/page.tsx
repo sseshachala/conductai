@@ -271,7 +271,7 @@ export default function AgentSettingsPage() {
                             setDeleteError(null)
                           }
                         }}
-                        placeholder={workflow?.name ?? "Agent name"}
+                        placeholder={workflow?.name ?? "Workflow name"}
                         style={{
                           flex: 1,
                           border: "1px solid var(--err-bd)",

@@ -139,13 +139,13 @@ class TestPreCallHook:
 
 class TestFailModes:
     async def test_fail_closed_blocks_on_network_error(self) -> None:
-        g = ConductGuard(fail_mode="fail_closed")
+        g = ConductGuard(unreachable_fallback="fail_closed")
         g._client.guard_check = AsyncMock(side_effect=RuntimeError("connection refused"))
         decision = await g.check(data={}, call_type="completion")
         assert decision.verdict == "block"
 
     async def test_fail_open_allows_on_network_error(self) -> None:
-        g = ConductGuard(fail_mode="fail_open")
+        g = ConductGuard(unreachable_fallback="fail_open")
         g._client.guard_check = AsyncMock(side_effect=RuntimeError("connection refused"))
         decision = await g.check(data={}, call_type="completion")
         assert decision.verdict == "allow"
@@ -156,6 +156,22 @@ class TestFailModes:
         monkeypatch.delenv("CONDUCT_AGENT_TOKEN", raising=False)
         with pytest.raises(ValueError, match="agent_token"):
             ConductGuard()
+
+    def test_legacy_fail_mode_kwarg_still_works_with_deprecation_warning(self) -> None:
+        """`fail_mode=` was renamed to `unreachable_fallback=` per
+        BerriAI/litellm#38143 (yucheng-berri, Sep 2026). Legacy callers
+        (v0.2.4 and earlier) must keep working for one release cycle with
+        a DeprecationWarning nudging them to migrate. Removal in v0.3.0."""
+        with pytest.warns(DeprecationWarning, match="fail_mode.*deprecated"):
+            g = ConductGuard(fail_mode="fail_open")
+        assert g._unreachable_fallback == "fail_open"
+
+    def test_unreachable_fallback_wins_over_legacy_fail_mode_when_both_given(self) -> None:
+        """If a caller passes both, the new name wins so nobody is
+        surprised by a silent downgrade to the deprecated field."""
+        with pytest.warns(DeprecationWarning):
+            g = ConductGuard(unreachable_fallback="fail_closed", fail_mode="fail_open")
+        assert g._unreachable_fallback == "fail_closed"
 
 
 # ── Session-ID chain ───────────────────────────────────────────────────

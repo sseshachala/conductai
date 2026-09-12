@@ -268,7 +268,6 @@ def get_project(ctx, id_or_slug: str):
             return {"error": "Project not found"}
         return {"id": str(r.id), "name": r.name, "slug": r.slug,
                 "project_type": r.project_type,
-                "security_finding_id": r.security_finding_id,
                 "created_at": r.created_at.isoformat() if r.created_at else None}
     finally:
         db.close()

@@ -28,6 +28,8 @@ class AgentIdentityOut(BaseModel):
     certification_cadence_days: Optional[int] = None
     risk_tier:           Optional[str] = None
     deactivated_at:      Optional[datetime] = None
+    # Expiry — set for trials and CLI-minted tokens; null for perpetual credentials.
+    expires_at:          Optional[datetime] = None
 
 
 class AgentIdentityCreated(AgentIdentityOut):

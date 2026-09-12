@@ -26,6 +26,8 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import { ByAiToolTable, type ByAiToolRow } from "@/components/guard/ByAiToolTable"
 import { formatToolCall } from "@/components/guard/ActivityRow"
 import { DecisionBadge } from "@/components/guard/DecisionBadge"
+import { OverviewHero } from "@/components/guard/overview/OverviewHero"
+import { SpendGlance } from "@/features/guard/spend/SpendGlance"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -480,8 +482,7 @@ function GuardDashboard() {
   const [filterDev, setFilterDev]             = useState("all")
   const [filterDateRange, setFilterDateRange] = useState("7d")
   const [filterSearch, setFilterSearch]       = useState("")
-  const [view, setView]                       = useState<"overview" | "insights">("overview")
-  const [insightsPeriod, setInsightsPeriod]   = useState<"7d" | "30d">("7d")
+  const [view, setView]                       = useState<"overview" | "spend_glance">("overview")
 
   const esRef = useRef<EventSource | null>(null)
 
@@ -638,10 +639,6 @@ function GuardDashboard() {
   }, [filterDecision, filterDateRange, loadEvents])
 
   useEffect(() => {
-    if (view === "insights") loadEvents(undefined, insightsPeriod)
-  }, [view, insightsPeriod, loadEvents])
-
-  useEffect(() => {
     if (!teamId) return
     getToken().then(t => { if (t) setChartToken(t) })
   }, [teamId, getToken])
@@ -668,6 +665,7 @@ function GuardDashboard() {
       active_developers: distinctDevs > 0 ? distinctDevs : events.length > 0 ? 1 : 0,
       events_today:      todayEvents.length,
       blocked_today:     todayEvents.filter(e => e.decision === "blocked").length,
+      warned_today:      todayEvents.filter(e => e.decision === "warned").length,
       tokens_saved_today: todayEvents.reduce(
         (s, e) => s + Math.max(0, (e.tokens_before ?? 0) - (e.tokens_after ?? 0)), 0
       ),
@@ -687,14 +685,6 @@ function GuardDashboard() {
     const flaggedTokens = flagged.reduce((s, e) => s + (e.tokens_before ?? 0), 0)
     return { count: flagged.length, tokens: flaggedTokens }
   }, [events])
-
-  const insightsStats = useMemo(() => {
-    const blocks        = events.filter(e => e.decision === "blocked")
-    const activeDevs    = new Set(events.map(e => e.user_email).filter(Boolean)).size
-    const totalSaved    = savings ? savings.team_total.rtk_saved_usd + savings.team_total.booster_saved_usd : 0
-    const totalSavedTok = savings ? savings.team_total.rtk_saved_tokens + savings.team_total.booster_saved_tokens : 0
-    return { blocks, blockCount: blocks.length, activeDevs, totalSaved, totalSavedTok }
-  }, [events, savings])
 
   const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
@@ -824,10 +814,14 @@ function GuardDashboard() {
         </div>
       )}
 
-      {/* ── View toggle ────────────────────────────────────────────────────── */}
+      {/* ── View toggle — in-page tabs: Overview | Spend at a glance ── */}
+      {/* Insights was retired here; Spend at a glance replaces it with the
+          Spend metric surface (currency + month picker + stat cards +
+          savings + by-dev / by-tool tables). No URL change — stays on
+          /theguard for context. */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div style={{ display: "flex", background: "var(--surface-3)", borderRadius: 8, padding: 3 }}>
-          {(["overview", "insights"] as const).map(v => (
+          {(["overview", "spend_glance"] as const).map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -842,24 +836,38 @@ function GuardDashboard() {
                 cursor: "pointer",
               }}
             >
-              {v === "overview" ? "Overview" : "Insights"}
+              {v === "overview" ? "Overview" : "Spend at a glance"}
             </button>
           ))}
         </div>
-        {view === "insights" && (
-          <select
-            value={insightsPeriod}
-            onChange={e => setInsightsPeriod(e.target.value as "7d" | "30d")}
-            style={selectStyle}
-          >
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-          </select>
-        )}
       </div>
+
+      {view === "spend_glance" && <SpendGlance />}
 
       {/* ── Overview ───────────────────────────────────────────────────────── */}
       {view === "overview" && <>
+
+      <OverviewHero
+        authFetch={authFetch}
+        teamId={teamId}
+        loading={loading}
+        eventsToday={stats?.events_today ?? derivedStats.events_today}
+        blockedToday={blockedToday}
+        warnedToday={derivedStats.warned_today}
+        agentPolicies={agentCount}
+        proxyPolicies={proxyCount}
+      />
+
+      {/* Everything below is legacy secondary — spend, sessions, tokens saved,
+          tool coverage table, cost chart. Kept for continuity; kept below the
+          hero so the daily loop lands on the four primary surfaces first. */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, marginBottom: 12,
+        fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-muted)",
+      }}>
+        <span>More metrics</span>
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      </div>
 
       {/* 6 stat cards */}
       {(() => {
@@ -1323,199 +1331,6 @@ function GuardDashboard() {
 
       </>}
 
-      {/* ── Insights ───────────────────────────────────────────────────────── */}
-      {view === "insights" && <>
-
-        {!loading && events.length === 0 && (
-          <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 6, background: "var(--surface-2)", border: "1px solid var(--border)", fontSize: 12, color: "var(--text-3)" }}>
-            No activity yet. Run{" "}
-            <code style={{ fontFamily: "monospace", color: "var(--text)" }}>conduct switch &lt;workspace-name&gt;</code>{" "}
-            to align your CLI workspace, then{" "}
-            <code style={{ fontFamily: "monospace", color: "var(--text)" }}>conduct whoami</code>{" "}
-            to confirm.
-          </div>
-        )}
-
-        {/* KPI cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 24 }}>
-          <GuardStatCard label="Tool calls" value={events.length} tone="plain" sub="in period" />
-          <GuardStatCard
-            label="Blocks"
-            value={insightsStats.blockCount}
-            tone={insightsStats.blockCount > 0 ? "err" : "plain"}
-            sub={events.length > 0 ? `${((insightsStats.blockCount / events.length) * 100).toFixed(1)}% block rate` : "no calls yet"}
-          />
-          <GuardStatCard label="Active developers" value={insightsStats.activeDevs} tone="plain" sub="unique emails" />
-          <GuardStatCard
-            label="Est. savings"
-            value={savingsLoading ? "…" : `$${insightsStats.totalSaved.toFixed(2)}`}
-            tone="accent"
-            sub={savingsLoading ? undefined : `${formatTotalTokensSaved(insightsStats.totalSavedTok)} tokens`}
-          />
-          <GuardStatCard
-            label="Active machines"
-            value={new Set(recentSessions.map(s => s.hostname).filter(Boolean)).size}
-            tone="plain"
-            sub="distinct hostnames"
-          />
-        </div>
-
-        {/* Recent blocks + All activity */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
-
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Recent blocks</span>
-              <span style={{ fontSize: 11, color: "var(--text-3)" }}>{insightsStats.blockCount} in period</span>
-            </div>
-            {loading ? (
-              <div style={{ padding: 24, color: "var(--text-3)", fontSize: 13 }}>Loading…</div>
-            ) : insightsStats.blocks.length === 0 ? (
-              <div style={{ padding: 24, color: "var(--text-3)", fontSize: 13 }}>No blocks in this period</div>
-            ) : (
-              <div style={{ maxHeight: 320, overflowY: "auto" }}>
-                {insightsStats.blocks.slice(0, 20).map(e => (
-                  <div key={e.id} style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 3 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", fontFamily: "monospace" }}>{formatToolCall(e.tool_call)}</span>
-                      <span style={{ fontSize: 10, color: "var(--text-3)" }}>{new Date(e.ts).toLocaleTimeString()}</span>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <DecisionBadge decision={e.decision} />
-                      {e.rule_id && <span style={{ fontSize: 10, color: "var(--text-3)", fontFamily: "monospace" }}>{e.rule_id}</span>}
-                    </div>
-                    {e.input_summary && (
-                      <div style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.input_summary}</div>
-                    )}
-                    {e.user_email && <div style={{ fontSize: 10, color: "var(--text-3)" }}>{displayEmail(e.user_email)}</div>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>All activity</span>
-            </div>
-            {loading ? (
-              <div style={{ padding: 24, color: "var(--text-3)", fontSize: 13 }}>Loading…</div>
-            ) : events.length === 0 ? (
-              <div style={{ padding: 24, color: "var(--text-3)", fontSize: 13 }}>No activity in this period</div>
-            ) : (
-              <div style={{ maxHeight: 320, overflowY: "auto" }}>
-                {events.slice(0, 20).map(e => {
-                  const dotColors: Record<string, string> = { blocked: "#dc2626", warned: "#d97706", allowed: "#16a34a", approval: "#2563eb" }
-                  return (
-                    <div key={e.id} style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 3, borderRadius: 2, alignSelf: "stretch", background: dotColors[e.decision] ?? "var(--border)", flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", fontFamily: "monospace" }}>{formatToolCall(e.tool_call)}</span>
-                          <DecisionBadge decision={e.decision} />
-                        </div>
-                        <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 2 }}>
-                          {displayEmail(e.user_email)} · {new Date(e.ts).toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Recent sessions panel */}
-        <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
-          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Recent sessions</span>
-            <a href="/theguard/activity" style={{ fontSize: 11, color: "var(--accent-text)", textDecoration: "none" }}>View all →</a>
-          </div>
-          {recentSessions.length === 0 ? (
-            <div style={{ padding: 24, color: "var(--text-3)", fontSize: 13 }}>No sessions yet</div>
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: "var(--surface-2)" }}>
-                  {["Actor", "Tool", "Machine", "IP", "OS", "Events", "Started"].map(h => (
-                    <th key={h} style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600, color: "var(--text-3)", fontSize: 11 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {recentSessions.slice(0, 8).map((s, i) => (
-                  <tr key={s.id} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-2)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayEmail(s.user_email)}</td>
-                    <td style={{ padding: "9px 16px" }}><span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-text)", background: "var(--surface-3)", borderRadius: 4, padding: "1px 6px" }}>{s.ai_tool}</span></td>
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, fontWeight: 600, color: "var(--text)" }}>{s.hostname ?? "—"}</td>
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-3)" }}>{s.client_ip ?? "—"}</td>
-                    <td style={{ padding: "9px 16px", fontSize: 11, color: "var(--text-3)", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.os_info ?? "—"}</td>
-                    <td style={{ padding: "9px 16px", fontSize: 12, color: s.violations_count > 0 ? "var(--err)" : "var(--text-2)", fontWeight: s.violations_count > 0 ? 600 : 400 }}>{s.event_count}{s.violations_count > 0 ? ` (${s.violations_count} ⚠)` : ""}</td>
-                    <td style={{ padding: "9px 16px", fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}>{s.started_at ? new Date(s.started_at).toLocaleTimeString() : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Developer coverage */}
-        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Developer coverage</span>
-            {toolCoverage.length > 0 && (() => {
-              const covered = toolCoverage.filter(d => (d.mcp_registered?.length > 0) || (d.hook_registered?.length > 0)).length
-              return (
-                <span style={{ fontSize: 11, color: covered === toolCoverage.length ? "var(--ok)" : "var(--warn)" }}>
-                  {covered}/{toolCoverage.length} covered
-                </span>
-              )
-            })()}
-          </div>
-          {toolCoverage.length === 0 ? (
-            <div style={{ padding: 24, color: "var(--text-3)", fontSize: 13 }}>No developer data yet</div>
-          ) : (
-            <>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: "var(--surface-2)" }}>
-                    {["Actor", "AI tools detected", "Hook installed", "MCP registered"].map(h => (
-                      <th key={h} style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600, color: "var(--text-3)", fontSize: 11 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {toolCoverage.map(d => {
-                    const hookOk = d.hook_registered?.length > 0
-                    const mcpOk  = d.mcp_registered?.length > 0
-                    return (
-                      <tr key={d.email} style={{ borderTop: "1px solid var(--border)" }}>
-                        <td style={{ padding: "10px 16px", color: "var(--text)", fontWeight: 500 }}>{d.email}</td>
-                        <td style={{ padding: "10px 16px", color: "var(--text-3)" }}>{d.detected_tools?.join(", ") || "—"}</td>
-                        <td style={{ padding: "10px 16px" }}>
-                          <span style={{ color: hookOk ? "var(--ok)" : "var(--err)", fontWeight: 600 }}>{hookOk ? "✓" : "✗"}</span>
-                          {!hookOk && <span style={{ color: "var(--text-3)", fontSize: 10, marginLeft: 6 }}>run conduct guard sync</span>}
-                        </td>
-                        <td style={{ padding: "10px 16px" }}>
-                          <span style={{ color: mcpOk ? "var(--ok)" : "var(--text-3)", fontWeight: 600 }}>{mcpOk ? "✓" : "—"}</span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-              {toolCoverage.filter(d => !d.hook_registered?.length).length > 0 && (
-                <div style={{ padding: "10px 16px", background: "var(--warn-bg, #fffbeb)", borderTop: "1px solid var(--warn-bd, #fde68a)", fontSize: 12, color: "var(--warn, #d97706)" }}>
-                  {toolCoverage.filter(d => !d.hook_registered?.length).length} developer(s) without Guard hook — ask them to run:{" "}
-                  <code style={{ fontFamily: "monospace" }}>conduct guard sync</code>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-      </>}
 
     </GuardShell>
   )

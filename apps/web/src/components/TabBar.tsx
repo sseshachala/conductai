@@ -22,15 +22,32 @@ export function TabBar<T extends string>({
   activeTab,
   onSelect,
   idPrefix = "tab",
+  orientation = "horizontal",
 }: {
   tabs: readonly T[]
   labels: Record<T, string>
   activeTab: T
   onSelect: (tab: T) => void
   idPrefix?: string
+  orientation?: "horizontal" | "vertical"
 }) {
+  const isVertical = orientation === "vertical"
   return (
-    <div role="tablist" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)" }}>
+    <div
+      role="tablist"
+      aria-orientation={orientation}
+      style={isVertical ? {
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        borderRight: "1px solid var(--border)",
+        paddingRight: 14,
+      } : {
+        display: "flex",
+        gap: 4,
+        borderBottom: "1px solid var(--border)",
+      }}
+    >
       {tabs.map(tab => (
         <button
           key={tab}
@@ -39,7 +56,18 @@ export function TabBar<T extends string>({
           aria-controls={`tabpanel-${tab}`}
           id={`${idPrefix}-${tab}`}
           onClick={() => onSelect(tab)}
-          style={{
+          style={isVertical ? {
+            background: activeTab === tab ? "var(--surface-2)" : "transparent",
+            border: "none",
+            padding: "8px 12px",
+            fontSize: 13.5,
+            fontWeight: activeTab === tab ? 650 : 500,
+            cursor: "pointer",
+            textAlign: "left",
+            color: activeTab === tab ? "var(--text)" : "var(--text-3)",
+            borderRadius: 6,
+            transition: "background .12s, color .12s",
+          } : {
             background: "none",
             border: "none",
             padding: "9px 14px",
