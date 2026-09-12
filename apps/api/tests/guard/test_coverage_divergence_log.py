@@ -190,3 +190,51 @@ def test_derived_fields_land_on_coverage_row():
     assert row["derived_hook"] == "hard"
     assert row["derived_runtime"] == "hard"
     assert row["derived_proxy"] == "not_supported"
+
+
+def test_stale_rule_is_skipped_not_500():
+    """One rule with invalid enforcement metadata must not crash the whole
+    coverage endpoint. Skip the bad rule, log a warning, keep the rest.
+
+    Repro for the /theguard/policies "Enforcement coverage" 500 seen in
+    prod 2026-09-12 (error_id a9e4c83e). Ariba workspace had a pack whose
+    rule was missing enforcement metadata — one raise from
+    validate_enforcement_metadata took the whole matrix down.
+    """
+    good = {
+        "id": "good-rule",
+        "action": "block",
+        "persona": "agent",
+        "gates": ["action"],
+        "enforcement": _authored({
+            "proxy": "not_supported", "mcp": "hard",
+            "hook": "hard", "runtime": "hard",
+        }),
+    }
+    # Stale rule: enforcement key exists but version is wrong → validator raises.
+    bad = {
+        "id": "stale-rule",
+        "action": "block",
+        "persona": "agent",
+        "gates": ["action"],
+        "enforcement": {
+            "version": 999,  # not the accepted CONTRACT_VERSION
+            "proxy": "not_supported", "mcp": "hard",
+            "hook": "hard", "runtime": "hard",
+            "guarantee": "test", "requires": [], "known_limitations": [],
+        },
+    }
+    db = _make_db([good, bad])
+    calls: list[tuple[str, dict]] = []
+    with patch(
+        "app.modules.guard.coverage._get_pack",
+        return_value=_pack_object([good, bad]),
+    ), patch("app.modules.guard.coverage.log.warning",
+             side_effect=lambda event, **kw: calls.append((event, kw))):
+        matrix = workspace_coverage_matrix(db, uuid.uuid4())
+
+    ids = [row["rule_id"] for row in matrix]
+    assert "good-rule" in ids
+    assert "stale-rule" not in ids
+    invalid = [kw for ev, kw in calls if ev == "guard.coverage.rule_metadata_invalid"]
+    assert any(kw["rule_id"] == "stale-rule" for kw in invalid)
