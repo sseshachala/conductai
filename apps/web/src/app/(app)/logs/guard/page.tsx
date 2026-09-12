@@ -22,6 +22,11 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { ActivityRow, ActivityHeader, ToolBadge, DecisionBadge, BlastRadiusBadge, formatTs, type AuditEvent } from "@/components/guard/ActivityRow"
+import {
+  GuardFilterBar,
+  GuardPageHeader,
+  type FilterPill,
+} from "@/components/guard/common"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -392,6 +397,12 @@ function ActivityContent() {
         </div>
       )}
 
+      <GuardPageHeader
+        title="Activity"
+        description="Real-time firehose of every AI tool call routed through Guard. Every row is chained and audit-verifiable."
+        lastUpdated={lastUpdated}
+      />
+
       {/* Audit chain badge */}
       {chainStatus && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
@@ -430,31 +441,17 @@ function ActivityContent() {
         ))}
       </div>
 
-      {/* Filter chips + realtime indicator */}
-      {activeView === "events" && (<div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, flexWrap: "wrap" }}>
-        {/* Decision filter chips */}
-        {["", "blocked", "warned", "allowed"].map(d => {
-          const label = d === "" ? "All" : d.charAt(0).toUpperCase() + d.slice(1)
-          const active = filterDecision === d
-          return (
-            <button
-              key={d}
-              onClick={() => setFilterDecision(d)}
-              className="chip"
-              style={{
-                height: 30,
-                fontWeight: 600,
-                background: active ? "var(--accent-weak)" : "var(--surface)",
-                borderColor: active ? "var(--accent-ring)" : "var(--border)",
-                color: active ? "var(--accent-text)" : "var(--text-2)",
-              }}
-            >
-              {label}
-            </button>
-          )
-        })}
-
-        {/* More filters */}
+      {/* Filter bar + realtime indicator */}
+      {activeView === "events" && (<GuardFilterBar<string>
+        pills={([
+          { value: "",        label: "All" },
+          { value: "blocked", label: "Blocked" },
+          { value: "warned",  label: "Warned" },
+          { value: "allowed", label: "Allowed" },
+        ]) as readonly FilterPill<string>[]}
+        active={filterDecision}
+        onChange={setFilterDecision}
+      >
         {!permissionsLoading && permissions.canViewAllActivity && (
           <select
             value={filterDeveloper}
@@ -573,7 +570,7 @@ function ActivityContent() {
             SOC 2 Report →
           </a>
         )}
-      </div>)}
+      </GuardFilterBar>)}
 
       {/* Sessions & Machines view */}
       {activeView === "sessions" && sessionsError && (
