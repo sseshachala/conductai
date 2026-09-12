@@ -8,6 +8,7 @@ import { useGuardRole } from "@/hooks/useGuardRole"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import CostPerformancePanel from "@/features/guard/spend/optimization/Panel"
+import { GuardSectionTabs, SPEND_TABS } from "@/features/guard/GuardSectionTabs"
 
 export default function GuardCostPerformancePage() {
   return (
@@ -29,6 +30,7 @@ function CostPerformanceContent() {
 
   return (
     <GuardShell>
+      <GuardSectionTabs tabs={SPEND_TABS} />
       <CostPerformancePanel
         workspaceId={activeWorkspace?.id ?? null}
         isAdmin={permissions.canEditSettings}
