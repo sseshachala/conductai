@@ -6,6 +6,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.13.0] - 2026-09-12
+
+### Removed
+- **Security-loop code surface deleted.** The `conduct emit finding`
+  and `conduct test security` commands, plus the
+  `_maybe_emit_security_finding` classifier, are gone. Same job (blocked
+  / warned / approved decisions) now lives server-side inside Guard
+  rules — one source of truth instead of duplicated client + server
+  logic.
+- Dropped the `security_scanner` slug from `_ALL_SLUGS` and
+  `_FRIENDLY_NAMES`. The `security-scanner.yaml`, `security_loop.yaml`,
+  `security-autopilot-fix.yaml`, and `threat-modeler.yaml` playbooks
+  were deleted from the server in #1846; the CLI's slug lists still
+  referenced the scanner. `conduct install --all` or
+  `conduct install security_scanner` would previously fail with
+  "playbook not found."
+- `security_patch_updater` (a different, still-shipping playbook) is
+  untouched.
+
+### Related
+- Backend: migration 0123 dropped the `security_findings` and
+  `security_config` tables + related columns, and created the
+  `guard_inbox` table + trigger + 30-day backfill (Guard's new triage
+  surface).
+- Frontend: `/secure/` route retired; **Guard → Inbox** is the new
+  triage entry point.
+
+---
+
 ## [0.11.0] - 2026-09-08
 
 ### Added
