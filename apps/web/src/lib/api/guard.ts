@@ -319,6 +319,8 @@ export const guard = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
+    push: (f: AuthFetch, workspaceId: string, id: string, environmentId: string) =>
+      post(f, `${API}/workspaces/${workspaceId}/gateways/${id}/push`, { environment_id: environmentId }),
   },
 
   notifications: {

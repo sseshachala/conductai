@@ -10,7 +10,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
+from app.core.credentials import get_credential
 from app.models.gateway_profile import GatewayProfile as GatewayProfileRow
+from app.models.integration import Integration
+from app.core.crypto import decrypt, encrypt
 from app.modules.guard.gateway_config import GatewayProfile as GatewayProfileConfig
 from app.modules.guard.gateway_config import LiteLLMOptions
 from app.modules.guard.gateway_config import profile_from_legacy
@@ -41,6 +44,10 @@ class GatewayProfileOut(GatewayProfileInput):
     schema_version: int = 1
     created_at: str | None = None
     updated_at: str | None = None
+
+
+class GatewayProfilePushInput(BaseModel):
+    environment_id: str
 
 
 def _config_from_body(body: GatewayProfileInput) -> GatewayProfileConfig:
@@ -170,6 +177,65 @@ def validate_gateway(
         raise HTTPException(status_code=403, detail="Workspace mismatch")
     _config_from_body(body)
     return {"valid": True, "warnings": []}
+
+
+@router.post("/{workspace_id}/gateways/{gateway_id}/push")
+def push_gateway(
+    workspace_id: str,
+    gateway_id: str,
+    body: GatewayProfilePushInput,
+    db: Session = Depends(get_db),
+    scoped_ws_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.credentials.manage")),
+):
+    """Project a canonical profile into an environment's encrypted env vars."""
+    if str(workspace_id) != str(scoped_ws_id):
+        raise HTTPException(status_code=403, detail="Workspace mismatch")
+    row = db.query(GatewayProfileRow).filter(
+        GatewayProfileRow.id == gateway_id,
+        GatewayProfileRow.workspace_id == scoped_ws_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Gateway profile not found")
+    config = GatewayProfileConfig.model_validate({"name": row.name, "environment_id": row.environment_id, **(row.config or {})})
+    if not config.upstream_url:
+        raise HTTPException(status_code=422, detail="Gateway profile has no upstream URL")
+
+    # Resolve the referenced Vault handle without persisting or returning its value.
+    upstream_key = ""
+    if config.credential_ref:
+        handle = config.credential_ref.removeprefix("vault://").strip("/").split("/")[-1]
+        for env_id in (body.environment_id, None):
+            creds = get_credential(db, scoped_ws_id, handle, env_id)
+            upstream_key = creds.get("LLM_UPSTREAM_API_KEY") or creds.get("api_key") or creds.get(f"{config.provider.upper()}_API_KEY") or creds.get(f"{config.provider.lower()}_api_key") or ""
+            if upstream_key:
+                break
+
+    ev_row = db.query(Integration).filter(
+        Integration.workspace_id == scoped_ws_id,
+        Integration.handle == "env_vars",
+        Integration.environment_id == body.environment_id,
+    ).first()
+    ev_creds: dict[str, Any] = {}
+    if ev_row and ev_row.encrypted_credentials:
+        ev_creds = decrypt(ev_row.encrypted_credentials) or {}
+    ev_creds["PROXY_CONFIG_LLM_UPSTREAM"] = config.upstream_url
+    if upstream_key:
+        ev_creds["PROXY_CONFIG_LLM_UPSTREAM_API_KEY"] = upstream_key
+    encrypted = encrypt(ev_creds)
+    if ev_row:
+        ev_row.encrypted_credentials = encrypted
+    else:
+        db.add(Integration(
+            workspace_id=scoped_ws_id,
+            service="env_vars",
+            handle="env_vars",
+            auth_method="api_key",
+            encrypted_credentials=encrypted,
+            environment_id=body.environment_id,
+        ))
+    db.commit()
+    return {"pushed": True, "credential_resolved": bool(upstream_key), "environment_id": body.environment_id}
 
 
 @router.get("/{workspace_id}/gateways/{gateway_id}", response_model=GatewayProfileOut)
