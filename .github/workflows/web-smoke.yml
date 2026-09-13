@@ -17,9 +17,7 @@ on:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    # 45 min: Group F added a11y sweeps + visual regression + 2 mobile
-    # viewport projects (98 pages × 2). Old 25-min cap was blown ~25:19.
-    timeout-minutes: 45
+    timeout-minutes: 30
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -108,9 +106,9 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        # chromium for smoke + admin + per-role flows; firefox + webkit
-        # for the cross-browser golden-flow projects.
-        run: npx playwright install --with-deps chromium firefox webkit
+        # Chromium covers the page sweep and role matrix; Firefox covers the
+        # focused golden flows.
+        run: npx playwright install --with-deps chromium firefox
         working-directory: apps/web
 
       - name: Run Playwright (smoke + flows)

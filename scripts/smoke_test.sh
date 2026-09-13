@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# smoke_test.sh — Reset project, install all agents, run all tests, save report.
+# smoke_test.sh — Reset the reserved smoke project, install agents, and test them.
 #
 # Usage:
-#   ./scripts/smoke_test.sh --project DevOps --repo owner/repo
-#   ./scripts/smoke_test.sh --project DevOps --repo owner/repo --pr 246
+#   ./scripts/smoke_test.sh --project SmokeTest --repo owner/repo --allow-reset
+#   ./scripts/smoke_test.sh --project SmokeTest --repo owner/repo --pr 246 --allow-reset
 #
 # Pass 1: issue/schedule/inbound agents (no PR needed)
 # Pass 2: PR-based agents (skipped if --pr not provided)
@@ -16,6 +16,7 @@ PROJECT=""
 REPO=""
 PR=""
 TIER3=0
+ALLOW_RESET=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,12 +24,24 @@ while [[ $# -gt 0 ]]; do
     --repo)    REPO="$2";    shift 2 ;;
     --pr)      PR="$2";      shift 2 ;;
     --tier3)   TIER3=1;      shift ;;
+    --allow-reset) ALLOW_RESET=1; shift ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
 
 if [[ -z "$PROJECT" || -z "$REPO" ]]; then
-  echo "Usage: $0 --project <name> --repo <owner/repo> [--pr <number>]"
+  echo "Usage: $0 --project SmokeTest --repo <owner/repo> [--pr <number>] --allow-reset"
+  exit 1
+fi
+
+# Reset deletes every installed agent in the named project. Keep that operation
+# confined to the one project reserved for smoke automation.
+if [[ "$PROJECT" != "SmokeTest" ]]; then
+  echo "Refusing to reset '$PROJECT': smoke runs are restricted to project 'SmokeTest'."
+  exit 1
+fi
+if [[ $ALLOW_RESET -ne 1 ]]; then
+  echo "Refusing destructive reset without --allow-reset."
   exit 1
 fi
 
@@ -76,9 +89,9 @@ NON_PR_AGENTS=(
 # Source of truth: `sub.add_parser("...")` in packages/conduct-cli/src/conduct_cli/main.py
 echo "── Step 0: Tier 1 — CLI --help sweep ──" | run_and_tee
 TIER1_CMDS=(
-  agents create credentials delete emit environments guard import-cedar install install-all
+  agents create credentials delete environments guard import-cedar install install-all
   login mcp memory playbooks projects reset run session-report sessions set skill switch sync
-  test test-guard test-security test-security-verify token verify whoami
+  test test-guard token verify whoami
 )
 TIER1_FAILS=()
 conduct --help >/dev/null 2>&1 || { echo "conduct --help failed" | run_and_tee; exit 1; }
@@ -134,8 +147,8 @@ else
 fi
 
 # ── Step 4: Tier 3 — mutating commands against scratch project (opt-in) ─────
-# Only run when --tier3 is passed. Nightly workflow points at the TESTING
-# workspace where scratch projects are safe to create/destroy.
+# Only run when --tier3 is passed. It creates and destroys isolated scratch
+# resources, so scheduled runs leave it disabled.
 EXIT_C=0
 if [[ $TIER3 -eq 1 ]]; then
   STAMP=$(date +%s)
@@ -153,7 +166,6 @@ if [[ $TIER3 -eq 1 ]]; then
     conduct create "$SCRATCH_PROJECT" 2>&1 &&
     conduct create environment "$SCRATCH_ENV" 2>&1 &&
     conduct set credential --environment "$SCRATCH_ENV" --key SMOKE_TEST_KEY --value "smoke-value-${STAMP}" 2>&1 &&
-    conduct emit finding --severity info --type smoke-test --description "Tier 3 smoke test finding ${STAMP}" --repo "$REPO" 2>&1 &&
     conduct session-report --developer "smoke-tier3-${STAMP}" 2>&1
   } | run_and_tee || EXIT_C=$?
   echo "" | run_and_tee

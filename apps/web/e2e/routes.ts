@@ -43,6 +43,7 @@ export interface Route {
   url: string
   file: string
   isMarketing: boolean
+  isDynamic: boolean
 }
 
 export function discoverRoutes(): Route[] {
@@ -52,6 +53,8 @@ export function discoverRoutes(): Route[] {
   for (const file of files) {
     const rel = relative(APP_ROOT, file).replace(new RegExp(`\\${sep}`, "g"), "/")
     let path = "/" + rel.replace(/\/page\.tsx$/, "").replace(/^page\.tsx$/, "")
+    const isDynamic = DYNAMIC_RE.test(path)
+    DYNAMIC_RE.lastIndex = 0
 
     if (CATCHALL_RE.test(path)) continue
 
@@ -70,6 +73,7 @@ export function discoverRoutes(): Route[] {
       url: path,
       file: rel,
       isMarketing: rel.startsWith("(marketing)"),
+      isDynamic,
     })
   }
 
