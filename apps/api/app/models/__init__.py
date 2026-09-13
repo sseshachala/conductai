@@ -1,6 +1,7 @@
 from app.models.organization import Organization
 from app.models.workspace import Workspace
 from app.models.workspace_llm_primitives import WorkspaceLLMPrimitives
+from app.models.gateway_profile import GatewayProfile
 from app.models.rbac import Role, Permission  # noqa
 from app.models.user import User
 from app.models.workspace_user import WorkspaceUser
@@ -65,4 +66,5 @@ __all__ = [
     "AgentIdentity",
     "AgentRunToken",
     "WorkspaceLLMPrimitives",
+    "GatewayProfile",
 ]
