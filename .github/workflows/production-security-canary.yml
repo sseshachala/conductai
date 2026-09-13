@@ -77,7 +77,10 @@ jobs:
         run: |
           python3 -m pip install python-dotenv==1.2.2
           npm ci
-          npx playwright install --with-deps chromium
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
 
       - name: Run bounded production canary
         run: |
