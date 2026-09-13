@@ -50,6 +50,7 @@ from app.modules.guard.policy_engine import compute_policy, canonical_workspace_
 from app.modules.guard.detectors.normalizer import normalize as _normalize_text
 from app.modules.guard.circuit_breaker import get_breaker as _get_breaker
 from app.runtime.pricing import get_model_rates
+from app.runtime.provider_transport import get_provider_transport_registry
 
 
 log = structlog.get_logger(__name__)
@@ -576,15 +577,18 @@ async def _proxy(
         upstream = _upstream_url(db, workspace_id, provider, _environment_id)
         _upstream_key = _upstream_api_key(db, workspace_id, _environment_id)
         _vault_key_val = _vault_key(db, workspace_id, provider, _environment_id)
+        transport = get_provider_transport_registry().for_provider(provider)
         if canonical_profile:
-            from app.modules.guard.gateway_runtime import resolve_profile_runtime
-            profile_upstream, profile_key, profile = resolve_profile_runtime(
+            from app.modules.guard.gateway_runtime import TransportResolver
+
+            profile_runtime = TransportResolver().resolve(
                 db, workspace_id, provider, _environment_id,
             )
-            if profile:
-                upstream = profile_upstream or upstream
-                _upstream_key = profile_key or _upstream_key
-                if profile.provider == "litellm":
+            if profile_runtime:
+                upstream = profile_runtime.upstream_url or upstream
+                _upstream_key = profile_runtime.api_key or _upstream_key
+                transport = profile_runtime.transport
+                if profile_runtime.profile.provider == "litellm":
                     _vault_key_val = None
                 real_key = _upstream_key or _vault_key_val
             else:
@@ -644,7 +648,8 @@ async def _proxy(
         k.lower(): v for k, v in request.headers.items()
         if k.lower() not in _skip and not k.lower().startswith("x-conduct")
     }
-    _response = await _forward(
+    _response = await transport.forward(
+        sender=_forward,
         upstream=upstream,
         path=upstream_path,
         body=body,
