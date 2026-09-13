@@ -6,6 +6,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.14.0] - 2026-09-13
+
+### Added
+- `conduct guard sync` now configures Codex to use Conduct's canonical
+  OpenAI Responses gateway. Use `--no-codex-proxy` to retain an existing
+  Codex model provider intentionally.
+- Guard hooks write a data-minimal local heartbeat so `conduct guard status`
+  can report whether interception is active.
+- Permanently rejected or repeatedly failing journal events move to a private
+  dead-letter directory instead of blocking later activity delivery.
+
+### Changed
+- Generated provider URLs now match the canonical gateway routes:
+  `/gateway/v1/anthropic`, `/gateway/v1/openai/v1`, and
+  `/gateway/v1/perplexity`.
+- Codex hook installation removes duplicate current registrations and stale
+  registrations from the retired `~/.conductguard/hook.py` location.
+- `conduct guard status` reports queued and dead-letter journal counts.
+
+---
+
 ## [0.13.0] - 2026-09-12
 
 ### Removed
