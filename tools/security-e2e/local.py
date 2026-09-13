@@ -28,7 +28,7 @@ def container_encryption_key(environment, initialize=False):
             name, _, value = entry.partition('=')
             if name == 'ENCRYPTION_KEY' and value:
                 existing = value
-    elif 'No such' not in inspected.stderr:
+    elif 'no such' not in (getattr(inspected, 'stdout', '') + inspected.stderr).lower():
         raise ValueError('Cannot inspect local API container; check Docker access')
     configured = environment.get('ENCRYPTION_KEY')
     # A development placeholder is not a usable key for this production-mode stack.
@@ -60,9 +60,17 @@ def preflight(environment):
     return errors
 
 
+def web_preflight(environment):
+    errors = preflight(environment)
+    for role in ('admin', 'security', 'developer', 'viewer'):
+        if not environment.get(role):
+            errors.append(f"Missing Clerk sandbox password '{role}'")
+    return errors
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['check', 'infra', 'up', 'test', 'stop', 'status'])
+    parser.add_argument('action', choices=['check', 'infra', 'up', 'test', 'web-test', 'stop', 'status'])
     parser.add_argument('--credentials-file', type=Path)
     parser.add_argument('--allow-test-users', action='store_true')
     parser.add_argument('--database-mode', choices=['restricted', 'owner'], default='restricted')
@@ -80,7 +88,11 @@ def main():
         if not args.credentials_file.is_file():
             parser.error('Credential file does not exist')
         values = dotenv_values(args.credentials_file, interpolate=False)
-        for key in ('CLERK_SECRET_KEY', 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'CLERK_FRONTEND_API', 'CLERK_AUDIENCE', 'ENCRYPTION_KEY'):
+        for key in (
+            'CLERK_SECRET_KEY', 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY',
+            'CLERK_FRONTEND_API', 'CLERK_AUDIENCE', 'ENCRYPTION_KEY',
+            'admin', 'security', 'developer', 'viewer',
+        ):
             if values.get(key):
                 environment[key] = values[key].strip()
     frontend = environment.get('CLERK_FRONTEND_API', '')
@@ -91,8 +103,8 @@ def main():
         environment['CLERK_FRONTEND_API'] = parsed.hostname or ''
     if args.allow_test_users:
         environment['E2E_ALLOW_TEST_USERS'] = '1'
-    if action in ('check', 'up', 'test'):
-        errors = preflight(environment)
+    if action in ('check', 'up', 'test', 'web-test'):
+        errors = web_preflight(environment) if action == 'web-test' else preflight(environment)
         if errors:
             print('Authenticated E2E prerequisites missing:', file=sys.stderr)
             for error in errors:
@@ -112,11 +124,16 @@ def main():
         'stop': COMPOSE + ['--profile', 'application', 'stop'],
         'status': COMPOSE + ['--profile', 'application', 'ps'],
         'test': ['rtk', 'proxy', 'npx', 'playwright', 'test', '--config', 'playwright.security.config.ts'],
+        'web-test': ['rtk', 'proxy', 'npx', 'playwright', 'test', '--config', 'playwright.config.ts'],
     }
-    cwd = ROOT / 'apps/web' if action == 'test' else ROOT
-    if args.grep and action == 'test':
-        commands['test'] += ['--grep', args.grep]
-    if action == 'test':
+    browser_test = action in ('test', 'web-test')
+    cwd = ROOT / 'apps/web' if browser_test else ROOT
+    if action == 'web-test':
+        environment['PLAYWRIGHT_BASE_URL'] = 'http://localhost:3100'
+        environment['NEXT_PUBLIC_API_URL'] = '/api'
+    if args.grep and browser_test:
+        commands[action] += ['--grep', args.grep]
+    if browser_test:
         with subprocess.Popen(commands[action], cwd=cwd, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as process:
             for line in process.stdout:
                 line = re.sub(r'(__clerk_db_jwt|__clerk_testing_token)=[^&\s)]+', r'\1=[redacted]', line)

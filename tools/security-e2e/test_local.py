@@ -28,6 +28,16 @@ class PreflightTests(unittest.TestCase):
                    CLERK_FRONTEND_API='synthetic.clerk.accounts.dev', E2E_ALLOW_TEST_USERS='1')
         self.assertEqual(local.preflight(env), [])
 
+    def test_web_preflight_requires_every_role_password(self):
+        env = dict(CLERK_SECRET_KEY=fake_clerk_key('sk', 'test'), NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=fake_clerk_key('pk', 'test'),
+                   CLERK_FRONTEND_API='synthetic.clerk.accounts.dev', E2E_ALLOW_TEST_USERS='1')
+        self.assertEqual(
+            local.web_preflight(env),
+            [f"Missing Clerk sandbox password '{role}'" for role in ('admin', 'security', 'developer', 'viewer')],
+        )
+        env.update({role: 'synthetic-password' for role in ('admin', 'security', 'developer', 'viewer')})
+        self.assertEqual(local.web_preflight(env), [])
+
 
 class DatabaseModeTests(unittest.TestCase):
     def check_mode(self, flags, expected_role, expected_mode):
@@ -80,6 +90,11 @@ class EncryptionKeyTests(unittest.TestCase):
         with patch.object(local.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stderr='permission denied')):
             with self.assertRaises(ValueError):
                 local.container_encryption_key({}, True)
+
+    def test_missing_container_can_initialize_a_key(self):
+        missing = SimpleNamespace(returncode=1, stdout='[]\n', stderr='error: no such object')
+        with patch.object(local.subprocess, 'run', return_value=missing):
+            self.assertGreaterEqual(len(local.container_encryption_key({}, True)), 32)
 
 
 if __name__ == '__main__':

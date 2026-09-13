@@ -10,6 +10,7 @@ parsed = urlparse(url)
 if parsed.hostname != 'postgres' or parsed.path != '/conduct_e2e' or parsed.username != 'postgres':
     raise SystemExit('Refusing to migrate anything except the isolated conduct_e2e database')
 subprocess.run(['alembic', 'upgrade', 'head'], check=True)
+subprocess.run(['python', 'scripts/seed_e2e_workspace.py'], check=True)
 with create_engine(url).begin() as db:
     db.execute(text("""
         DO $$ BEGIN

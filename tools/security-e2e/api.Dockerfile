@@ -8,5 +8,6 @@ COPY apps/api/alembic ./alembic
 COPY apps/api/alembic.ini ./
 COPY apps/api/playbooks ./playbooks
 COPY apps/api/prompts ./prompts
+COPY apps/api/scripts ./scripts
 COPY tools/security-e2e/bootstrap.py tools/security-e2e/serve.py /harness/
 ENV PYTHONPATH=/app
