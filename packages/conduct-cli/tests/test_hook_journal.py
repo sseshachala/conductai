@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from urllib.error import HTTPError
 
 from conduct_cli.hooks import base
@@ -28,7 +29,8 @@ def test_permanent_delivery_failure_moves_event_to_dead_letter(tmp_path, monkeyp
     assert not list(journal.glob("*.json"))
     dead = list((journal / "dead-letter").glob("*.json"))
     assert len(dead) == 1
-    assert dead[0].stat().st_mode & 0o077 == 0
+    if os.name != "nt":
+        assert dead[0].stat().st_mode & 0o077 == 0
     entry = json.loads(dead[0].read_text())
     assert entry["attempts"] == 1
     assert entry["last_error"] == "HTTP 400"
@@ -58,4 +60,5 @@ def test_hook_heartbeat_contains_no_request_data(tmp_path, monkeypatch):
     data = json.loads(heartbeat.read_text())
     assert data["event"] == "post_tool_use"
     assert set(data) == {"event", "ts"}
-    assert heartbeat.stat().st_mode & 0o077 == 0
+    if os.name != "nt":
+        assert heartbeat.stat().st_mode & 0o077 == 0
