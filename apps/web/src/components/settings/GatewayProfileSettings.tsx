@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { guard, environments } from "@/lib/api"
+import { guard, environments, credentials as credentialsApi } from "@/lib/api"
 
 type Profile = Record<string, any> & { id?: string }
 
@@ -29,6 +29,7 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const [vaults, setVaults] = useState<Array<{ id: string; name: string }>>([])
+  const [credentialOptions, setCredentialOptions] = useState<Array<{ ref: string; label: string }>>([])
   const [pushVaultId, setPushVaultId] = useState("")
   const [pushing, setPushing] = useState(false)
 
@@ -40,6 +41,14 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
       const envRows = await environments.list(authFetch)
       setVaults(envRows)
       setPushVaultId(current => current || envRows[0]?.id || "")
+      const credentialRows = await Promise.all(envRows.map(async env => ({
+        env,
+        rows: await credentialsApi.byEnvironment(authFetch, env.id),
+      })))
+      const options = credentialRows.flatMap(({ env, rows }) => rows
+        .filter((row: any) => row.handle !== "env_vars")
+        .map((row: any) => ({ ref: `vault://${row.handle}`, label: `${env.name} · ${row.service || row.handle} / ${row.handle}` })))
+      setCredentialOptions(options.filter((option, index, all) => all.findIndex(item => item.ref === option.ref) === index))
       const next = rows[0] as Profile | undefined
       if (next) {
         setProfile(next)
@@ -150,7 +159,13 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
         <label style={{ fontSize: 12 }}>Provider<select value={provider} disabled={!isAdmin} onChange={e => { setProvider(e.target.value); setProtocol(e.target.value === "anthropic" ? "anthropic" : "openai_compatible") }} style={inputStyle}>{PROVIDERS.map(p => <option key={p}>{p}</option>)}</select></label>
       </div>
       <label style={{ fontSize: 12 }}>Upstream URL<input value={upstream} disabled={!isAdmin} onChange={e => setUpstream(e.target.value)} placeholder="https://api.example.com/v1" style={inputStyle} /></label>
-      <label style={{ fontSize: 12 }}>Vault credential reference<input value={credentialRef} disabled={!isAdmin} onChange={e => setCredentialRef(e.target.value)} placeholder="vault://providers/anthropic" style={inputStyle} /></label>
+      <label style={{ fontSize: 12 }}>Vault credential
+        <select value={credentialRef} disabled={!isAdmin} onChange={e => setCredentialRef(e.target.value)} style={inputStyle}>
+          <option value="">No credential selected</option>
+          {credentialRef && !credentialOptions.some(option => option.ref === credentialRef) && <option value={credentialRef}>{credentialRef}</option>}
+          {credentialOptions.map(option => <option key={option.ref} value={option.ref}>{option.label}</option>)}
+        </select>
+      </label>
       <label style={{ fontSize: 12 }}>Model aliases<textarea value={deployments} disabled={!isAdmin} onChange={e => setDeployments(e.target.value)} rows={5} spellCheck={false} style={{ ...inputStyle, fontFamily: "monospace", resize: "vertical" }} /></label>
       <details>
         <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 600 }}>LiteLLM transport options</summary>
