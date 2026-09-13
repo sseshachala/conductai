@@ -18,7 +18,7 @@ jobs:
   canary:
     name: Production credential boundary
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     environment: production-e2e
     env:
       E2E_SECRET_DIR: ${{ runner.temp }}/conduct-e2e
