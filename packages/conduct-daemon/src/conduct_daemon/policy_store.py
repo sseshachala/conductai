@@ -6,13 +6,15 @@ import time
 from pathlib import Path
 from threading import Lock
 
-_DB_PATH = Path.home() / ".conductguard" / "daemon.db"
+_DB_PATH = Path.home() / ".conduct" / "daemon.db"
 _lock    = Lock()
 
 
 def _conn() -> sqlite3.Connection:
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _DB_PATH.parent.chmod(0o700)
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
+    _DB_PATH.chmod(0o600)
     conn.row_factory = sqlite3.Row
     return conn
 

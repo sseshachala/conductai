@@ -32,7 +32,7 @@ class SigningKeyMeta(BaseModel):
 
 class SigningKeyCreated(BaseModel):
     """Returned only at POST time. raw_key is shown once and never stored in plaintext."""
-    raw_key: str           # hex-encoded 32-byte key -- write to ~/.conductguard/signing.key
+    raw_key: str           # hex-encoded 32-byte key -- write to ~/.conduct/signing.key
     fingerprint: str
     created_at: datetime
     rotated_at: Optional[datetime] = None

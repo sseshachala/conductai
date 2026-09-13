@@ -25,7 +25,7 @@ GUARD_DIR  = Path(__file__).parent.parent / "src" / "conduct_cli"
 # ── 1. hook.py dispatch ───────────────────────────────────────────────────────
 
 def _hook_py_content() -> str:
-    """Read the thin-launcher template that gets written to ~/.conductguard/hook.py."""
+    """Read the thin-launcher template that gets written to ~/.conduct/hook.py."""
     from conduct_cli.guard import _THIN_LAUNCHERS
     return _THIN_LAUNCHERS["pretooluse"]
 

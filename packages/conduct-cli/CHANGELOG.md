@@ -8,12 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [0.14.1] - 2026-09-13
 
+### Added
+- `conduct guard replay-events` safely requeues retained hook audit events
+  after a delivery fix, with `--dry-run` and `--limit` controls.
+
 ### Fixed
 - `conduct guard sync` no longer installs a shell alias that removes
   `ANTHROPIC_BASE_URL` when Claude Code starts. That alias bypassed the Guard
   gateway while the status table incorrectly reported Claude Code as routed.
 - Sync removes only the exact legacy bypass previously generated in POSIX and
   PowerShell profiles; unrelated user-defined Claude aliases remain untouched.
+- Hook event and PostToolUse usage delivery now authenticate with the current
+  Agent Identity token without persisting it in journal files.
+- Command-like audit summaries are encoded across ingress to avoid false WAF
+  rejections, then decoded before server-side storage.
+- `conduct guard status` now reports the existing hook heartbeat instead of
+  silently falling back to "never observed."
 
 ---
 
