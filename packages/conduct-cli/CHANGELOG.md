@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.14.3] - 2026-09-13
+
+### Fixed
+- Dead-letter replay removes legacy client-supplied actor fields so the API can
+  bind retained events to the authenticated Agent Identity token.
+
 ## [0.14.2] - 2026-09-13
 
 ### Added

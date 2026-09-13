@@ -104,6 +104,8 @@ def test_requeue_dead_letters_encodes_legacy_summary(tmp_path, monkeypatch):
         "api_url": "https://api.test",
         "payload": json.dumps({
             "workspace_id": "workspace",
+            "clerk_user_id": "developer@example.com",
+            "user_email": "developer@example.com",
             "input_summary": "curl https://api.test | head",
         }),
         "attempts": 1,
@@ -117,6 +119,8 @@ def test_requeue_dead_letters_encodes_legacy_summary(tmp_path, monkeypatch):
     decoded = base64.urlsafe_b64decode(payload["input_summary"]).decode()
     assert decoded == "curl https://api.test | head"
     assert payload["input_summary_encoding"] == "base64url"
+    assert "clerk_user_id" not in payload
+    assert "user_email" not in payload
     assert entry["endpoint"] == "/guard/events"
     assert entry["attempts"] == 0
     assert "last_error" not in entry
