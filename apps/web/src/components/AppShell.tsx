@@ -156,8 +156,8 @@ const PALETTE_COMMANDS = [
   { group: "GOVERN", label: "Guard · Compliance", href: "/theguard/compliance", icon: "Shield" as const },
   { group: "GOVERN", label: "Guard · Enforcement", href: "/theguard/policies/enforcement", icon: "Shield" as const },
   { group: "CONNECT", label: "Agent ID", href: "/agent-identity", icon: "Lock" as const },
-  { group: "CONNECT", label: "Proxy & Gateways", href: "/proxy", icon: "Plug" as const },
   { group: "CONNECT", label: "MCP Registry", href: "/integrations", icon: "Plug" as const },
+  { group: "CONNECT", label: "Proxy & Gateways", href: "/proxy", icon: "Plug" as const },
   { group: "WORKSPACE", label: "Settings · Vault", href: "/settings", icon: "Gear" as const },
 ]
 
@@ -1008,17 +1008,17 @@ function AppShellInnerContent({
               collapsed={collapsed}
             />
             <SideNavItem
-              href="/proxy"
-              label="Proxy & Gateways"
-              icon={<Icons.Plug />}
-              active={pathname.startsWith("/proxy")}
-              collapsed={collapsed}
-            />
-            <SideNavItem
               href="/integrations"
               label="MCP Registry"
               icon={<Icons.Plug />}
               active={pathname.startsWith("/integrations")}
+              collapsed={collapsed}
+            />
+            <SideNavItem
+              href="/proxy"
+              label="Proxy & Gateways"
+              icon={<Icons.Plug />}
+              active={pathname.startsWith("/proxy")}
               collapsed={collapsed}
             />
           </div>
