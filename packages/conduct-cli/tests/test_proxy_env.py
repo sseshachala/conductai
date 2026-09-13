@@ -41,6 +41,7 @@ def test_env_file_written_with_all_three_pairs(tmp_path, monkeypatch):
     env = (tmp_path / ".conduct" / "env").read_text()
     assert 'export ANTHROPIC_BASE_URL="https://api.conductai.ai/proxy/anthropic"' in env
     assert 'export ANTHROPIC_API_KEY="abc123"' in env
+    assert 'export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="1"' in env
     assert 'export OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai/v1"' in env
     assert 'export OPENAI_API_KEY="abc123"' in env
     assert 'export PERPLEXITY_BASE_URL="https://api.conductai.ai/proxy/perplexity"' in env
@@ -214,6 +215,7 @@ def test_windows_writes_ps1_env_file(tmp_path, monkeypatch):
     text = ps1.read_text()
     assert '$env:ANTHROPIC_BASE_URL = "https://api.conductai.ai/proxy/anthropic"' in text
     assert '$env:ANTHROPIC_API_KEY  = "abc123"' in text
+    assert '$env:CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = "1"' in text
     assert '$env:OPENAI_BASE_URL = "https://api.conductai.ai/proxy/openai/v1"' in text
     assert '$env:OPENAI_API_KEY  = "abc123"' in text
     assert '$env:PERPLEXITY_BASE_URL = "https://api.conductai.ai/proxy/perplexity"' in text
