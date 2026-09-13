@@ -28,6 +28,7 @@ from app.modules.guard.routers import blocks as guard_blocks
 from app.modules.guard.routers import session_reports as guard_session_reports
 from app.modules.guard.routers import mcp as guard_mcp
 from app.modules.guard.routers import proxy as guard_proxy
+from app.modules.guard.routers import gateway_proxy
 from app.modules.guard.routers import ws as guard_ws
 from app.modules.guard.routers import signing_key as guard_signing_key
 from app.modules.guard.routers import sessions as guard_sessions
@@ -187,6 +188,7 @@ app.include_router(guard_mcp.router)
 app.include_router(guard_mcp.well_known_router)
 app.include_router(guard_proxy.router)
 app.include_router(guard_proxy.guard_router)
+app.include_router(gateway_proxy.router)
 app.include_router(guard_ws.router)
 app.include_router(guard_signing_key.router)
 app.include_router(guard_sessions.router)
