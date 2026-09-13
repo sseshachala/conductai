@@ -98,6 +98,35 @@ def test_upstream_error_schedules_flight_recorder_audit(monkeypatch):
     assert background.tasks[0].kwargs["result_summary"] == "Upstream HTTP 429"
 
 
+def test_gateway_credential_is_absent_from_response_logs_and_audit(monkeypatch, capsys):
+    secret = "sk-ant-production-canary-secret-value"
+
+    async def _send(self, request, **kwargs):
+        return _Response()
+
+    monkeypatch.setattr("app.guard.router._get_breaker", lambda: _Breaker())
+    monkeypatch.setattr("httpx.AsyncClient.send", _send)
+    background = BackgroundTasks()
+    response = asyncio.run(upstream(
+        upstream="https://provider.test",
+        path="/v1/messages",
+        body={"model": "claude-test", "messages": []},
+        real_key=secret,
+        auth_header_out="x-api-key",
+        bearer=False,
+        is_stream=False,
+        background=background,
+        audit_args=_audit_args(),
+        provider="anthropic",
+    ))
+
+    assert secret.encode() not in response.body
+    assert secret not in repr(background.tasks[0].kwargs)
+    captured = capsys.readouterr()
+    assert secret not in captured.out
+    assert secret not in captured.err
+
+
 def test_token_count_timeout_is_an_audited_gateway_error(monkeypatch):
     async def _send(self, request, **kwargs):
         raise httpx.ReadTimeout("timed out", request=request)

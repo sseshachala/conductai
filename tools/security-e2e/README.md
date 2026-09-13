@@ -120,7 +120,7 @@ rtk proxy python3.11 tools/security-e2e/production.py \
 Use `--grep '<pattern>'` to rerun a named canary or a bounded subset after a
 failure. The same preflight and cleanup guards run for targeted selections.
 
-The production suite does not create or delete accounts or workspaces. Its 23
+The production suite does not create or delete accounts or workspaces. Its 30
 independently reported canaries check account/workspace preflight, anonymous
 and forged-header rejection, owner MCP access, foreign and unknown workspace
 denial, direct tenant path enforcement, environment isolation, both Agent
@@ -133,6 +133,19 @@ evidence, membership restoration, and member mutation protections. Temporary
 environments, identities, API tokens, policies, and memberships are removed by
 the test that created them. A following run removes stale `prod-e2e-*` resources
 left by an interrupted process, with a final membership cleanup guard.
+
+Seven `@prod-gateway` canaries cover the canonical AI transport surface: the
+Claude compatibility probe, authentication denial, profile-scoped model
+discovery, Vault-backed token counting, non-streaming and streaming Anthropic
+inference, OpenAI Responses regression coverage, non-billable utility audit
+metadata, billable inference attribution, credential-material exclusion from
+responses/audit output, and PreToolUse/PostToolUse session correlation. Account
+A's disposable workspace must have exactly one persisted default Anthropic
+(or compatible LiteLLM) Gateway Profile. Account B's must have exactly one
+persisted default OpenAI (or compatible LiteLLM) Gateway Profile. Each profile
+must reference a `vault://` credential and expose at least one deployment. The
+runner validates these prerequisites and never creates, changes, or prints
+Gateway Profiles or provider credentials.
 
 The first command is a one-time Gmail read-only authorization. It discovers the
 single OAuth desktop-client JSON in `~/.conduct/e2e/otpbroker/` and writes the
