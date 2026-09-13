@@ -23,6 +23,7 @@ async def gateway_anthropic(request: Request, background: BackgroundTasks):
         upstream_path="/v1/messages",
         auth_header_in="x-api-key",
         auth_header_out="x-api-key",
+        canonical_profile=True,
     )
 
 
@@ -36,6 +37,7 @@ async def gateway_openai(request: Request, background: BackgroundTasks):
         auth_header_in="authorization",
         auth_header_out="authorization",
         bearer=True,
+        canonical_profile=True,
     )
 
 
@@ -49,4 +51,5 @@ async def gateway_perplexity(request: Request, background: BackgroundTasks):
         auth_header_in="authorization",
         auth_header_out="authorization",
         bearer=True,
+        canonical_profile=True,
     )

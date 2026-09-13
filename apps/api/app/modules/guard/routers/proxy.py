@@ -321,6 +321,7 @@ async def _proxy(
     auth_header_in: str,
     auth_header_out: str,
     bearer: bool = False,
+    canonical_profile: bool = False,
 ) -> StreamingResponse | JSONResponse:
     """One implementation, three providers — only the URL + auth header shape differs."""
     started = time.monotonic()
@@ -560,7 +561,21 @@ async def _proxy(
         upstream = _upstream_url(db, workspace_id, provider, _environment_id)
         _upstream_key = _upstream_api_key(db, workspace_id, _environment_id)
         _vault_key_val = _vault_key(db, workspace_id, provider, _environment_id)
-        real_key = _upstream_key or _vault_key_val
+        if canonical_profile:
+            from app.modules.guard.gateway_runtime import resolve_profile_runtime
+            profile_upstream, profile_key, profile = resolve_profile_runtime(
+                db, workspace_id, provider, _environment_id,
+            )
+            if profile:
+                upstream = profile_upstream or upstream
+                _upstream_key = profile_key or _upstream_key
+                if profile.provider == "litellm":
+                    _vault_key_val = None
+                real_key = _upstream_key or _vault_key_val
+            else:
+                real_key = _upstream_key or _vault_key_val
+        else:
+            real_key = _upstream_key or _vault_key_val
         if not real_key:
             # #1567 PR 2: trial workspaces with no BYO key fall through to a
             # platform-funded env key, fenced by plan + provider + identity + daily cap.

@@ -56,6 +56,7 @@ async def test_gateway_route_contract(monkeypatch, handler, provider, upstream_p
                 "upstream_path": upstream_path,
                 "auth_header_in": auth_header_in,
                 "auth_header_out": auth_header_out,
+                "canonical_profile": True,
                 **({"bearer": True} if bearer else {}),
             },
         )
