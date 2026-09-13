@@ -48,7 +48,7 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
       })))
       const options = credentialRows.flatMap(({ env, rows }) => rows
         .filter((row: any) => row.handle !== "env_vars")
-        .map((row: any) => ({ ref: `vault://${row.handle}`, label: `${env.name} · ${row.service || row.handle} / ${row.handle}` })))
+        .map((row: any) => ({ ref: `vault://${row.handle}`, label: env.name })))
       setCredentialOptions(options.filter((option, index, all) => all.findIndex(item => item.ref === option.ref) === index))
       const next = rows[0] as Profile | undefined
       if (next) {
@@ -163,7 +163,7 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
       <label style={{ fontSize: 12 }}>Vault credential
         <select value={credentialRef} disabled={!isAdmin} onChange={e => setCredentialRef(e.target.value)} style={inputStyle}>
           <option value="">No credential selected</option>
-          {credentialRef && !credentialOptions.some(option => option.ref === credentialRef) && <option value={credentialRef}>{credentialRef}</option>}
+          {credentialRef && !credentialOptions.some(option => option.ref === credentialRef) && <option value={credentialRef}>Configured Vault credential</option>}
           {credentialOptions.map(option => <option key={option.ref} value={option.ref}>{option.label}</option>)}
         </select>
       </label>
