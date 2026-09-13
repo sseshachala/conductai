@@ -51,6 +51,27 @@ class StreamingPolicy(BaseModel):
     no_retry_after_first_byte: bool = True
 
 
+class LiteLLMOptions(BaseModel):
+    """Provider-agnostic LiteLLM knobs kept separate from credentials."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    api_base: str | None = Field(default=None, max_length=2048)
+    api_version: str | None = Field(default=None, max_length=128)
+    custom_llm_provider: str | None = Field(default=None, max_length=64)
+    drop_params: bool = False
+    request_timeout_seconds: float | None = Field(default=None, gt=0, le=600)
+    num_retries: int = Field(default=0, ge=0, le=5)
+    stream_options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("api_base")
+    @classmethod
+    def validate_api_base(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(("https://", "http://")):
+            raise ValueError("api_base must use http:// or https://")
+        return value.rstrip("/") if value else value
+
+
 class GatewayProfile(BaseModel):
     """Versioned, secret-free configuration for one workspace gateway."""
 
@@ -68,6 +89,7 @@ class GatewayProfile(BaseModel):
     reliability: ReliabilityPolicy = Field(default_factory=ReliabilityPolicy)
     limits: RateLimitPolicy = Field(default_factory=RateLimitPolicy)
     streaming: StreamingPolicy = Field(default_factory=StreamingPolicy)
+    litellm: LiteLLMOptions = Field(default_factory=LiteLLMOptions)
     provider_options: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("provider", mode="before")

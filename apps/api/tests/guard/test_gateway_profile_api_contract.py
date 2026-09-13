@@ -9,12 +9,14 @@ def test_gateway_profile_round_trip_keeps_advanced_settings():
         deployments=[{"alias": "balanced", "model": "gpt-4.1", "weight": 2}],
         reliability={"timeout_seconds": 45, "max_retries": 2},
         provider_options={"api_version": "2025-01-01"},
+        litellm={"api_base": "https://litellm.example.test/v1", "num_retries": 2},
     )
 
     restored = GatewayProfile.model_validate(profile.model_dump())
     assert restored.deployments[0].model == "gpt-4.1"
     assert restored.reliability.max_retries == 2
     assert restored.provider_options["api_version"] == "2025-01-01"
+    assert restored.litellm.api_base == "https://litellm.example.test/v1"
 
 
 def test_legacy_profile_does_not_copy_provider_secret():
