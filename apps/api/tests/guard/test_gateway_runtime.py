@@ -24,7 +24,7 @@ class _Db:
 
 
 def test_runtime_resolves_litellm_profile_without_profile_secret(monkeypatch):
-    monkeypatch.setattr("app.modules.guard.gateway_runtime.get_credential", lambda *args, **kwargs: {})
+    monkeypatch.setattr("app.modules.guard.gateway_credentials.get_credential", lambda *args, **kwargs: {})
     upstream, key, profile = resolve_profile_runtime(_Db(), "workspace", "openai", None)
     assert upstream == "https://litellm.test/v1"
     assert key is None

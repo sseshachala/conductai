@@ -16,6 +16,7 @@ from app.models.integration import Integration
 from app.core.crypto import decrypt, encrypt
 from app.modules.guard.gateway_config import GatewayProfile as GatewayProfileConfig
 from app.modules.guard.gateway_config import LiteLLMOptions
+from app.modules.guard.gateway_credentials import resolve_gateway_key
 from app.modules.guard.gateway_config import profile_from_legacy
 
 router = APIRouter(prefix="/workspaces", tags=["gateway-profiles"])
@@ -202,14 +203,9 @@ def push_gateway(
         raise HTTPException(status_code=422, detail="Gateway profile has no upstream URL")
 
     # Resolve the referenced Vault handle without persisting or returning its value.
-    upstream_key = ""
-    if config.credential_ref:
-        handle = config.credential_ref.removeprefix("vault://").strip("/").split("/")[-1]
-        for env_id in (body.environment_id, None):
-            creds = get_credential(db, scoped_ws_id, handle, env_id)
-            upstream_key = creds.get("LLM_UPSTREAM_API_KEY") or creds.get("api_key") or creds.get(f"{config.provider.upper()}_API_KEY") or creds.get(f"{config.provider.lower()}_api_key") or ""
-            if upstream_key:
-                break
+    upstream_key = resolve_gateway_key(
+        db, scoped_ws_id, config.credential_ref, config.provider, body.environment_id,
+    )
 
     ev_row = db.query(Integration).filter(
         Integration.workspace_id == scoped_ws_id,

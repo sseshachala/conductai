@@ -1,14 +1,11 @@
 """Runtime resolution for canonical Gateway Profiles."""
 from __future__ import annotations
 
-from typing import Any
-
 from sqlalchemy.orm import Session
 
-from app.core.credentials import get_credential
-from app.core.crypto import decrypt
 from app.models.gateway_profile import GatewayProfile as GatewayProfileRow
 from app.modules.guard.gateway_config import GatewayProfile as GatewayProfileConfig
+from app.modules.guard.gateway_credentials import resolve_gateway_key
 
 
 def resolve_profile_runtime(
@@ -32,15 +29,5 @@ def resolve_profile_runtime(
     if config.provider not in {provider, "litellm"}:
         return None, None, None
 
-    key = ""
-    if environment_id:
-        env = get_credential(db, workspace_id, "env_vars", environment_id)
-        key = env.get("PROXY_CONFIG_LLM_UPSTREAM_API_KEY") or ""
-    if not key and config.credential_ref:
-        handle = config.credential_ref.removeprefix("vault://").strip("/").split("/")[-1]
-        for env_id in (environment_id, None):
-            creds = get_credential(db, workspace_id, handle, env_id)
-            key = creds.get("LLM_UPSTREAM_API_KEY") or creds.get("api_key") or creds.get(f"{provider.upper()}_API_KEY") or ""
-            if key:
-                break
-    return config.upstream_url, key or None, config
+    key = resolve_gateway_key(db, workspace_id, config.credential_ref, provider, environment_id)
+    return config.upstream_url, key, config
