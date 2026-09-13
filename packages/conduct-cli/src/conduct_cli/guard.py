@@ -471,7 +471,7 @@ def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
     shell env vars, so ANTHROPIC_BASE_URL has no effect. We write the proxy
     URL directly so PII blocking, spend limits, and audit apply to Desktop too.
     """
-    proxy_url = f"{api_url}/proxy/anthropic"
+    proxy_url = f"{api_url.rstrip('/')}/gateway/v1/anthropic"
     candidates = [
         Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json",
         Path.home() / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json",
@@ -1520,7 +1520,8 @@ def cmd_guard_sync(args):
     # Write LLM proxy env vars so any AI tool (Claude Code, Cursor, Codex, …)
     # routes through Conduct Guard. Customer-overridable via --proxy-url or
     # CONDUCT_PROXY_URL env var; otherwise fetched from server (workspace_config).
-    proxy_url = getattr(args, "proxy_url", None) or os.environ.get("CONDUCT_PROXY_URL")
+    explicit_proxy_url = getattr(args, "proxy_url", None) or os.environ.get("CONDUCT_PROXY_URL")
+    proxy_url = explicit_proxy_url
     if not proxy_url:
         try:
             import urllib.request as _ur, urllib.error as _ue
@@ -1533,6 +1534,8 @@ def cmd_guard_sync(args):
                 proxy_url = json.loads(_resp.read()).get("conduct_proxy_url") or DEFAULT_PROXY_URL
         except Exception:
             proxy_url = DEFAULT_PROXY_URL
+    if not explicit_proxy_url:
+        proxy_url = _gateway_v1_url(proxy_url)
     agent_token = cfg.get("agent_token", "")
     rc_path, newly_sourced = _write_proxy_env(agent_token, proxy_url)
     if agent_token:
@@ -1628,9 +1631,17 @@ def cmd_guard_sync(args):
 CONDUCT_DIR        = Path.home() / ".conduct"
 PROXY_ENV_FILE     = CONDUCT_DIR / "env"
 PROXY_OVERRIDE     = CONDUCT_DIR / "env-override"
-DEFAULT_PROXY_URL  = "https://api.conductai.ai/proxy"
+DEFAULT_PROXY_URL  = "https://api.conductai.ai/gateway/v1"
 SHELL_RC_MARKER    = "# Conduct Guard Proxy — managed by `conduct guard sync`"
 SHELL_SOURCE_LINE  = "[ -f ~/.conduct/env ] && . ~/.conduct/env"
+
+
+def _gateway_v1_url(proxy_url: str) -> str:
+    """Convert a legacy server proxy URL to the parallel gateway surface."""
+    base = proxy_url.rstrip("/")
+    if base.endswith("/proxy"):
+        return base[:-len("/proxy")] + "/gateway/v1"
+    return base
 
 
 # ── Local key audit ──────────────────────────────────────────────────────────
