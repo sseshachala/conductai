@@ -7,6 +7,9 @@ type Workspace = { id: string; name: string; owner_id: string }
 type Member = { clerk_user_id: string; role: string }
 type Identity = { id: string; name: string }
 type Environment = { id: string; name: string }
+type ApiToken = { id: string; token_name: string; token_prefix: string; token?: string }
+type Policy = { workspace_id: string; rule_id: string; action: string; enabled: boolean }
+type AuditEntry = { id: string; actor_id: string | null; action: string; resource_id: string | null }
 
 const apiBase = "https://api.conductai.ai"
 const accountA = (): Account => ({
@@ -158,9 +161,26 @@ async function removeIdentity(page: Page, workspaceId: string, identityId: strin
 }
 
 async function removeStaleCanaryIdentities(page: Page, workspaceId: string): Promise<void> {
-  const staleName = /^prod-e2e-[0-9a-f]{8}-(?:must-not-exist|foreign-identity)$/
+  const staleName = /^prod-e2e-[0-9a-f]{8}-/
   const stale = (await identities(page, workspaceId)).filter(identity => staleName.test(identity.name))
   for (const identity of stale) await removeIdentity(page, workspaceId, identity.id)
+}
+
+async function removeStaleCanaryEnvironments(page: Page, workspaceId: string): Promise<void> {
+  const staleName = /^prod-e2e-[0-9a-f]{8}-/
+  const stale = (await environments(page, workspaceId)).filter(environment => staleName.test(environment.name))
+  for (const environment of stale) {
+    const response = await api(page, `/environments/${environment.id}`, "DELETE", undefined, workspaceId)
+    expect(response.status()).toBe(204)
+  }
+}
+
+async function removeStaleCanaryPolicies(page: Page, workspaceId: string): Promise<void> {
+  const staleName = /^prod-e2e-[0-9a-f]{8}-/
+  const stale = (await policies(page, workspaceId)).filter(
+    policy => policy.workspace_id === workspaceId && staleName.test(policy.rule_id),
+  )
+  for (const policy of stale) await removePolicy(page, workspaceId, policy.rule_id)
 }
 
 async function exchange(page: Page, workspaceId: string) {
@@ -216,6 +236,67 @@ async function mcp(page: Page, workspaceId: string, accessToken: string): Promis
   })
 }
 
+async function setMemberRole(owner: Session, workspaceId: string, userId: string, role: string): Promise<void> {
+  const response = await api(
+    owner.page,
+    `/projects/${workspaceId}/members/${userId}`,
+    "PATCH",
+    { role },
+    workspaceId,
+  )
+  expect(response.status()).toBe(200)
+}
+
+async function apiTokens(page: Page, workspaceId: string): Promise<ApiToken[]> {
+  const response = await api(page, `/workspaces/${workspaceId}/api-tokens`, "GET", undefined, workspaceId)
+  expect(response.status()).toBe(200)
+  return (await response.json() as ApiToken[])
+    .map(({ id, token_name, token_prefix }) => ({ id, token_name, token_prefix }))
+    .sort((a, b) => a.id.localeCompare(b.id))
+}
+
+async function createApiToken(page: Page, workspaceId: string, name: string): Promise<ApiToken & { token: string }> {
+  const response = await api(
+    page,
+    `/workspaces/${workspaceId}/api-tokens`,
+    "POST",
+    { name, expires_in_days: 1 },
+    workspaceId,
+  )
+  expect(response.status()).toBe(200)
+  return await response.json() as ApiToken & { token: string }
+}
+
+async function removeApiToken(page: Page, workspaceId: string, tokenId: string): Promise<void> {
+  const response = await api(
+    page,
+    `/workspaces/${workspaceId}/api-tokens/${tokenId}`,
+    "DELETE",
+    undefined,
+    workspaceId,
+  )
+  expect(response.status()).toBe(204)
+}
+
+async function policies(page: Page, workspaceId: string): Promise<Policy[]> {
+  const response = await api(page, "/guard/policies", "GET", undefined, workspaceId)
+  expect(response.status()).toBe(200)
+  return (await response.json() as Policy[])
+    .map(({ workspace_id, rule_id, action, enabled }) => ({ workspace_id, rule_id, action, enabled }))
+    .sort((a, b) => a.rule_id.localeCompare(b.rule_id))
+}
+
+async function removePolicy(page: Page, workspaceId: string, ruleId: string): Promise<void> {
+  const response = await api(page, `/guard/policies/${ruleId}`, "DELETE", undefined, workspaceId)
+  expect(response.status()).toBe(204)
+}
+
+async function auditLog(page: Page, workspaceId: string): Promise<AuditEntry[]> {
+  const response = await api(page, `/workspaces/${workspaceId}/audit-log?limit=200`, "GET", undefined, workspaceId)
+  expect(response.status()).toBe(200)
+  return await response.json() as AuditEntry[]
+}
+
 type Harness = {
   a: Session
   b: Session
@@ -241,10 +322,18 @@ test.describe("bounded production security canaries", () => {
 
       await removeStaleCanaryIdentities(a.page, workspaceA.id)
       await removeStaleCanaryIdentities(b.page, workspaceB.id)
+      await removeStaleCanaryEnvironments(a.page, workspaceA.id)
+      await removeStaleCanaryEnvironments(b.page, workspaceB.id)
+      await removeStaleCanaryPolicies(a.page, workspaceA.id)
+      await removeStaleCanaryPolicies(b.page, workspaceB.id)
 
-      const originalMembersB = await members(b.page, workspaceB.id)
+      let originalMembersB = await members(b.page, workspaceB.id)
       if (originalMembersB.some(member => member.clerk_user_id === a.userId)) {
-        throw new Error("Account A must begin outside account B's disposable workspace")
+        await removeMember(b, workspaceB.id, a.userId)
+        originalMembersB = await members(b.page, workspaceB.id)
+      }
+      if (originalMembersB.some(member => member.clerk_user_id === a.userId)) {
+        throw new Error("Could not restore account A to outsider status in account B's disposable workspace")
       }
       harness = { a, b, workspaceA, workspaceB, originalMembersB }
     } catch (error) {
@@ -471,6 +560,325 @@ test.describe("bounded production security canaries", () => {
     } finally {
       if (!removed) await removeMember(b, workspaceB.id, a.userId).catch(() => undefined)
     }
+    expect(await members(b.page, workspaceB.id)).toEqual(originalMembersB)
+  })
+
+  test("@prod malformed and retired Conduct token formats are rejected", async () => {
+    const { a, workspaceA } = harness
+    for (const token of [
+      `cond_live_${randomUUID().replaceAll("-", "")}`,
+      `cond_agt_${randomUUID().replaceAll("-", "")}`,
+      `cond_api_${randomUUID().replaceAll("-", "")}`,
+    ]) {
+      expect((await mcp(a.page, workspaceA.id, token)).status()).toBe(401)
+    }
+  })
+
+  test("@prod issued access token is bound to its workspace", async () => {
+    const { a, workspaceA, workspaceB } = harness
+    const issued = await exchange(a.page, workspaceA.id)
+    expect(issued.status()).toBe(200)
+    const pair = await issued.json()
+
+    expect((await mcp(a.page, workspaceA.id, pair.access_token)).status()).toBe(200)
+    expect([401, 403]).toContain((await mcp(a.page, workspaceB.id, pair.access_token)).status())
+    expect([401, 403]).toContain((await mcp(a.page, randomUUID(), pair.access_token)).status())
+  })
+
+  test("@prod foreign identity metadata, regeneration, and deletion are denied", async () => {
+    const { a, b, workspaceA, workspaceB } = harness
+    const before = await identities(b.page, workspaceB.id)
+    const created = await api(
+      b.page,
+      `/workspaces/${workspaceB.id}/agent-identities`,
+      "POST",
+      { name: `${runPrefix}-foreign-mutations` },
+      workspaceB.id,
+    )
+    expect(created.status()).toBe(201)
+    const identity = await created.json() as Identity
+    const expected = await identities(b.page, workspaceB.id)
+
+    try {
+      const attacks: [string, string, unknown][] = [
+        [`/workspaces/${workspaceA.id}/agent-identities/${identity.id}`, "PATCH", { risk_tier: "tier_3" }],
+        [`/workspaces/${workspaceA.id}/agent-identities/${identity.id}/regenerate`, "POST", undefined],
+        [`/workspaces/${workspaceA.id}/agent-identities/${identity.id}`, "DELETE", undefined],
+      ]
+      for (const [path, method, body] of attacks) {
+        const rejected = await api(a.page, path, method, body, workspaceA.id)
+        expect([403, 404]).toContain(rejected.status())
+      }
+      expect(await identities(b.page, workspaceB.id)).toEqual(expected)
+    } finally {
+      await removeIdentity(b.page, workspaceB.id, identity.id)
+    }
+    expect(await identities(b.page, workspaceB.id)).toEqual(before)
+  })
+
+  test("@prod foreign environment deletion is denied", async () => {
+    const { a, b, workspaceA, workspaceB } = harness
+    const before = await environments(b.page, workspaceB.id)
+    const created = await api(
+      b.page,
+      "/environments",
+      "POST",
+      { name: `${runPrefix}-foreign-delete` },
+      workspaceB.id,
+    )
+    expect(created.status()).toBe(201)
+    const environment = await created.json() as Environment
+
+    try {
+      const rejected = await api(
+        a.page,
+        `/environments/${environment.id}`,
+        "DELETE",
+        undefined,
+        workspaceA.id,
+      )
+      expect([403, 404]).toContain(rejected.status())
+      expect((await environments(b.page, workspaceB.id)).some(row => row.id === environment.id)).toBe(true)
+    } finally {
+      const removed = await api(b.page, `/environments/${environment.id}`, "DELETE", undefined, workspaceB.id)
+      expect(removed.status()).toBe(204)
+    }
+    expect(await environments(b.page, workspaceB.id)).toEqual(before)
+  })
+
+  test("@prod owned environment updates normalize and cleanly restore", async () => {
+    const { a, workspaceA } = harness
+    const before = await environments(a.page, workspaceA.id)
+    const created = await api(
+      a.page,
+      "/environments",
+      "POST",
+      { name: `${runPrefix}-owned-update` },
+      workspaceA.id,
+    )
+    expect(created.status()).toBe(201)
+    const environment = await created.json() as Environment
+
+    try {
+      const updated = await api(
+        a.page,
+        `/environments/${environment.id}`,
+        "PATCH",
+        { allowed_hosts: [" EXAMPLE.INVALID "] },
+        workspaceA.id,
+      )
+      expect(updated.status()).toBe(200)
+      expect((await updated.json()).allowed_hosts).toEqual(["example.invalid"])
+    } finally {
+      const removed = await api(a.page, `/environments/${environment.id}`, "DELETE", undefined, workspaceA.id)
+      expect(removed.status()).toBe(204)
+    }
+    expect(await environments(a.page, workspaceA.id)).toEqual(before)
+  })
+
+  test("@prod concurrent refresh permits only one rotation", async () => {
+    const { a, b, workspaceB, originalMembersB } = harness
+    await addMember(b, workspaceB.id, a.userId)
+    try {
+      const issued = await exchange(a.page, workspaceB.id)
+      expect(issued.status()).toBe(200)
+      const pair = await issued.json()
+      const attempts = await Promise.all([
+        refresh(a.page, pair.refresh_token),
+        refresh(a.page, pair.refresh_token),
+      ])
+      const statuses = attempts.map(response => response.status())
+      expect(statuses.filter(status => status === 200)).toHaveLength(1)
+      expect(statuses.filter(status => [401, 403].includes(status))).toHaveLength(1)
+    } finally {
+      await removeMember(b, workspaceB.id, a.userId).catch(() => undefined)
+    }
+    expect(await members(b.page, workspaceB.id)).toEqual(originalMembersB)
+  })
+
+  test("@prod role downgrade immediately removes policy-write permission", async () => {
+    const { a, b, workspaceB, originalMembersB } = harness
+    const before = await policies(b.page, workspaceB.id)
+    const ruleId = `${runPrefix}-role-policy`
+    let created = false
+    await addMember(b, workspaceB.id, a.userId)
+    try {
+      await setMemberRole(b, workspaceB.id, a.userId, "security")
+      await policies(a.page, workspaceB.id)
+      await setMemberRole(b, workspaceB.id, a.userId, "viewer")
+      await policies(a.page, workspaceB.id)
+
+      const denied = await api(
+        a.page,
+        "/guard/policies",
+        "POST",
+        { rule_id: ruleId, action: "block", match_pattern: "prod-e2e-never" },
+        workspaceB.id,
+      )
+      expect(denied.status()).toBe(403)
+
+      await setMemberRole(b, workspaceB.id, a.userId, "security")
+      const allowed = await api(
+        a.page,
+        "/guard/policies",
+        "POST",
+        { rule_id: ruleId, action: "block", match_pattern: "prod-e2e-never" },
+        workspaceB.id,
+      )
+      expect(allowed.status()).toBe(201)
+      created = true
+    } finally {
+      if (created) await removePolicy(b.page, workspaceB.id, ruleId).catch(() => undefined)
+      await removeMember(b, workspaceB.id, a.userId).catch(() => undefined)
+    }
+    expect(await policies(b.page, workspaceB.id)).toEqual(before)
+    expect(await members(b.page, workspaceB.id)).toEqual(originalMembersB)
+  })
+
+  test("@prod policy body cannot redirect a write into another workspace", async () => {
+    const { a, b, workspaceA, workspaceB } = harness
+    const before = await policies(b.page, workspaceB.id)
+    const ruleId = `${runPrefix}-foreign-policy`
+    const response = await api(
+      a.page,
+      "/guard/policies",
+      "POST",
+      { rule_id: ruleId, action: "block", workspace_id: workspaceB.id },
+      workspaceA.id,
+    )
+    if (response.status() === 201) {
+      await removePolicy(b.page, workspaceB.id, ruleId).catch(() => undefined)
+    }
+    expect([403, 404]).toContain(response.status())
+    expect(await policies(b.page, workspaceB.id)).toEqual(before)
+  })
+
+  test("@prod API token is workspace-bound and deletion revokes it", async () => {
+    const { a, workspaceA, workspaceB } = harness
+    const before = await apiTokens(a.page, workspaceA.id)
+    const created = await createApiToken(a.page, workspaceA.id, `${runPrefix}-api-revoke`)
+    let removed = false
+    try {
+      expect(created.token.startsWith("cond_api_")).toBe(true)
+      expect((await mcp(a.page, workspaceA.id, created.token)).status()).toBe(200)
+      expect([401, 403]).toContain((await mcp(a.page, workspaceB.id, created.token)).status())
+      await removeApiToken(a.page, workspaceA.id, created.id)
+      removed = true
+      expect((await mcp(a.page, workspaceA.id, created.token)).status()).toBe(401)
+    } finally {
+      if (!removed) await removeApiToken(a.page, workspaceA.id, created.id).catch(() => undefined)
+    }
+    expect(await apiTokens(a.page, workspaceA.id)).toEqual(before)
+  })
+
+  test("@prod API token deactivation and reactivation take effect immediately", async () => {
+    const { a, workspaceA } = harness
+    const before = await apiTokens(a.page, workspaceA.id)
+    const created = await createApiToken(a.page, workspaceA.id, `${runPrefix}-api-lifecycle`)
+    try {
+      expect((await mcp(a.page, workspaceA.id, created.token)).status()).toBe(200)
+      const deactivated = await api(
+        a.page,
+        `/workspaces/${workspaceA.id}/agent-identities/${created.id}`,
+        "PATCH",
+        { lifecycle_state: "deactivated" },
+        workspaceA.id,
+      )
+      expect(deactivated.status()).toBe(200)
+      expect((await mcp(a.page, workspaceA.id, created.token)).status()).toBe(401)
+
+      const reactivated = await api(
+        a.page,
+        `/workspaces/${workspaceA.id}/agent-identities/${created.id}`,
+        "PATCH",
+        { lifecycle_state: "active" },
+        workspaceA.id,
+      )
+      expect(reactivated.status()).toBe(200)
+      expect((await mcp(a.page, workspaceA.id, created.token)).status()).toBe(200)
+    } finally {
+      await removeApiToken(a.page, workspaceA.id, created.id).catch(() => undefined)
+    }
+    expect(await apiTokens(a.page, workspaceA.id)).toEqual(before)
+  })
+
+  test("@prod membership changes produce tenant-scoped audit evidence", async () => {
+    const { a, b, workspaceA, workspaceB, originalMembersB } = harness
+    const beforeIds = new Set((await auditLog(b.page, workspaceB.id)).map(entry => entry.id))
+    await addMember(b, workspaceB.id, a.userId)
+    try {
+      await setMemberRole(b, workspaceB.id, a.userId, "security")
+      const newEntries = (await auditLog(b.page, workspaceB.id)).filter(entry => !beforeIds.has(entry.id))
+      expect(newEntries).toContainEqual(expect.objectContaining({
+        actor_id: b.userId,
+        action: "member.role_changed",
+        resource_id: a.userId,
+      }))
+      const foreign = await api(
+        a.page,
+        `/workspaces/${workspaceB.id}/audit-log?limit=1`,
+        "GET",
+        undefined,
+        workspaceA.id,
+      )
+      expect([403, 404]).toContain(foreign.status())
+    } finally {
+      await removeMember(b, workspaceB.id, a.userId).catch(() => undefined)
+    }
+    expect(await members(b.page, workspaceB.id)).toEqual(originalMembersB)
+  })
+
+  test("@prod membership can be safely restored after revocation", async () => {
+    const { a, b, workspaceB, originalMembersB } = harness
+    let present = false
+    await addMember(b, workspaceB.id, a.userId)
+    present = true
+    try {
+      expect((await exchange(a.page, workspaceB.id)).status()).toBe(200)
+      await removeMember(b, workspaceB.id, a.userId)
+      present = false
+      expect((await exchange(a.page, workspaceB.id)).status()).toBe(403)
+
+      await addMember(b, workspaceB.id, a.userId)
+      present = true
+      const restored = await exchange(a.page, workspaceB.id)
+      expect(restored.status()).toBe(200)
+      const pair = await restored.json()
+      expect((await mcp(a.page, workspaceB.id, pair.access_token)).status()).toBe(200)
+    } finally {
+      if (present) await removeMember(b, workspaceB.id, a.userId).catch(() => undefined)
+    }
+    expect(await members(b.page, workspaceB.id)).toEqual(originalMembersB)
+  })
+
+  test("@prod foreign member mutations and owner self-removal are denied", async () => {
+    const { a, b, workspaceA, workspaceB, originalMembersB } = harness
+    const foreignRole = await api(
+      a.page,
+      `/projects/${workspaceB.id}/members/${b.userId}`,
+      "PATCH",
+      { role: "viewer" },
+      workspaceA.id,
+    )
+    expect([403, 404]).toContain(foreignRole.status())
+
+    const foreignRemoval = await api(
+      a.page,
+      `/projects/${workspaceB.id}/members/${b.userId}`,
+      "DELETE",
+      undefined,
+      workspaceA.id,
+    )
+    expect([403, 404]).toContain(foreignRemoval.status())
+
+    const selfRemoval = await api(
+      b.page,
+      `/projects/${workspaceB.id}/members/${b.userId}`,
+      "DELETE",
+      undefined,
+      workspaceB.id,
+    )
+    expect(selfRemoval.status()).toBe(400)
     expect(await members(b.page, workspaceB.id)).toEqual(originalMembersB)
   })
 })

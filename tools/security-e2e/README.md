@@ -120,14 +120,19 @@ rtk proxy python3.11 tools/security-e2e/production.py \
 Use `--grep '<pattern>'` to rerun a named canary or a bounded subset after a
 failure. The same preflight and cleanup guards run for targeted selections.
 
-The production suite does not create or delete accounts or workspaces. Its ten
+The production suite does not create or delete accounts or workspaces. Its 23
 independently reported canaries check account/workspace preflight, anonymous
 and forged-header rejection, owner MCP access, foreign and unknown workspace
 denial, direct tenant path enforcement, environment isolation, both Agent
 Identity reference boundaries, refresh-token replay, and post-removal access,
-refresh, and issuance denial. Temporary environments, identities, and
-memberships are removed by the test that created them, with a final membership
-cleanup guard.
+refresh, and issuance denial. The expanded set also covers retired and malformed
+tokens, access-token workspace binding, identity mutation boundaries,
+environment update/delete isolation, concurrent refresh replay, role downgrade,
+policy body scoping, API-token lifecycle and revocation, tenant-scoped audit
+evidence, membership restoration, and member mutation protections. Temporary
+environments, identities, API tokens, policies, and memberships are removed by
+the test that created them. A following run removes stale `prod-e2e-*` resources
+left by an interrupted process, with a final membership cleanup guard.
 
 The first command is a one-time Gmail read-only authorization. It discovers the
 single OAuth desktop-client JSON in `~/.conduct/e2e/otpbroker/` and writes the
@@ -152,12 +157,12 @@ seven days for Gmail scopes. Before relying on the daily schedule, make this an
 Internal app in the mailbox's Google Workspace organization, have the Workspace
 administrator mark it trusted, or complete Google's production verification.
 
-The production journey does not create or delete accounts or workspaces. It
-checks owner issuance, MCP access, unrelated-tenant and unknown-workspace
-denial, then temporarily adds account A to account B's workspace to verify
-member issuance and post-removal refresh denial. Cleanup restores the original
-membership set. Gmail authorization removes interactive second-factor entry
-without persisting browser state or verification codes.
+The production journey does not create or delete accounts or workspaces. Its
+temporary mutations are confined to the two dedicated disposable workspaces,
+and cleanup restores their original resource and membership sets. Immutable
+audit rows remain as evidence of the canary's security-sensitive actions. Gmail
+authorization removes interactive second-factor entry without persisting
+browser state or verification codes.
 
 The runner loads only the four allowlisted fields, redacts them from output,
 and requires explicit mutation consent. Traces, screenshots, videos, retries,

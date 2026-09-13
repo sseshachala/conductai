@@ -837,8 +837,10 @@ def create_policy(
             detail=f"Invalid action '{body.action}'. Must be one of: {sorted(_VALID_ACTIONS)}",
         )
 
-    resolved_ws = body.workspace_id or workspace_id
-    ws_uuid = _ws_uuid(resolved_ws)
+    if body.workspace_id is not None and body.workspace_id != workspace_id:
+        raise HTTPException(status_code=403, detail="Policy workspace does not match authorized workspace")
+    resolved_ws = workspace_id
+    ws_uuid = _ws_uuid(workspace_id)
 
     existing = db.get(WorkspaceCustomRule, (ws_uuid, body.rule_id))
     if existing:
