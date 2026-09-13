@@ -24,7 +24,7 @@ function _isAppRoute(pathname: string): boolean {
   return APP_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))
 }
 
-function _cspFor(pathname: string): string {
+function _cspFor(pathname: string, enforce: boolean): string {
   // Common building blocks. Clerk lives on cdn.clerk.com / *.clerk.accounts.dev.
   // challenges.cloudflare.com is Clerk's bot-detection provider (Cloudflare
   // Turnstile) — Clerk 5 uses it by default for suspicious sign-ups. Must
@@ -63,7 +63,7 @@ function _cspFor(pathname: string): string {
     "form-action 'self'",
     "base-uri 'self'",
     "object-src 'none'",
-    "upgrade-insecure-requests",
+    ...(enforce ? ["upgrade-insecure-requests"] : []),
   ]
 
   if (_isAppRoute(pathname)) {
@@ -91,10 +91,11 @@ function _applySecurityHeaders(res: NextResponse, pathname: string): NextRespons
   // aren't easily enumerated in a static header — we ship Report-Only there
   // so the console flags violations without breaking work-in-progress
   // deploys. Prod gets the enforcing header that actually protects users.
-  const _cspHeader = process.env.NODE_ENV === "production"
+  const enforce = process.env.NODE_ENV === "production"
+  const _cspHeader = enforce
     ? "Content-Security-Policy"
     : "Content-Security-Policy-Report-Only"
-  res.headers.set(_cspHeader, _cspFor(pathname))
+  res.headers.set(_cspHeader, _cspFor(pathname, enforce))
   res.headers.set("X-Content-Type-Options", "nosniff")
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
   res.headers.set("X-Frame-Options", "DENY")

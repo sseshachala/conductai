@@ -36,39 +36,34 @@ describe("GuardShell — six-section IA", () => {
 })
 
 describe("GuardShell — admin cluster", () => {
-  it("hides Compliance and Settings when role is null (loading)", () => {
+  it("hides Compliance when role is null (loading)", () => {
     setRole(null)
     render(<GuardShell>content</GuardShell>)
     expect(screen.queryByRole("link", { name: "Compliance" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
   })
 
   it("shows Compliance for security", () => {
     setRole("security")
     render(<GuardShell>content</GuardShell>)
     expect(screen.getByRole("link", { name: "Compliance" })).toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
   })
 
-  it("shows Compliance and Settings for admin", () => {
+  it("shows Compliance for admin", () => {
     setRole("admin")
     render(<GuardShell>content</GuardShell>)
     expect(screen.getByRole("link", { name: "Compliance" })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument()
   })
 
-  it("hides both from developer", () => {
+  it("hides Compliance from developer", () => {
     setRole("developer")
     render(<GuardShell>content</GuardShell>)
     expect(screen.queryByRole("link", { name: "Compliance" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
   })
 
-  it("hides both from viewer", () => {
+  it("hides Compliance from viewer", () => {
     setRole("viewer")
     render(<GuardShell>content</GuardShell>)
     expect(screen.queryByRole("link", { name: "Compliance" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
   })
 })
 

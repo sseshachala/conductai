@@ -1409,7 +1409,6 @@ _FRIENDLY_NAMES = {
 
 def cmd_install_all(args):
     server, workspace_id, token = _require_auth(args)
-    hdrs = api.headers(workspace_id, token, "application/json")
 
     slugs = _ALL_SLUGS
 
@@ -1435,7 +1434,6 @@ def cmd_install_all(args):
         # Patch server/workspace/auth into the namespace so _require_auth works
         a.server    = server
         a.workspace = workspace_id
-        a.api_key   = api_key
         a.token     = token
 
         try:

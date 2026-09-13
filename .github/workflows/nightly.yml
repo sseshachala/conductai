@@ -14,6 +14,10 @@ on:
 # Nightly — full-matrix coverage that per-PR CI opts out of.
 # See epic #1092. Failures auto-open a GH issue.
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   api-matrix:
     if: ${{ github.event.inputs.only == '' || github.event.inputs.only == 'all' || github.event.inputs.only == 'api-matrix' }}
@@ -28,7 +32,7 @@ jobs:
           POSTGRES_DB: marshal_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U marshal -d marshal_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
@@ -115,7 +119,7 @@ jobs:
           POSTGRES_DB: marshal_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U marshal -d marshal_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
@@ -176,8 +180,8 @@ jobs:
         # apps/web is an npm workspace — install at repo root.
         run: npm ci
       - name: Install Playwright browsers
-        # webkit required by smoke-mobile-iphone (iPhone 14 device uses WebKit engine).
-        run: npx playwright install --with-deps chromium firefox webkit
+        # WebKit is disabled in playwright.config.ts; install only active engines.
+        run: npx playwright install --with-deps chromium firefox
         working-directory: apps/web
       - name: Run Playwright
         run: npm run test:e2e
