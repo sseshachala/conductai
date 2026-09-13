@@ -6,12 +6,31 @@ stable migration target for canonical Gateway Profiles and LiteLLM routing.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi.responses import JSONResponse
 
+from app.core.auth import get_workspace_id
 from app.modules.guard.routers.proxy import _proxy
 
 
 router = APIRouter(prefix="/gateway/v1", tags=["gateway-proxy"])
+
+
+@router.get("/openai/v1/models")
+async def gateway_openai_models(
+    _workspace_id: str = Depends(get_workspace_id),
+) -> JSONResponse:
+    """Let Codex retain its bundled model catalog for this custom provider.
+
+    Codex expects its own rich ``{"models": [...]}`` schema here, not the
+    public OpenAI ``/v1/models`` response. An empty successful catalog is the
+    documented merge signal for Codex's bundled metadata and requires no
+    upstream provider credential.
+    """
+    return JSONResponse(
+        content={"models": []},
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 @router.post("/anthropic/v1/messages")

@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from app.modules.guard.routers import gateway_proxy
@@ -15,9 +17,23 @@ class _Background:
 def test_parallel_gateway_proxy_routes_are_registered():
     paths = {route.path for route in gateway_proxy.router.routes}
     assert "/gateway/v1/anthropic/v1/messages" in paths
+    assert "/gateway/v1/openai/v1/models" in paths
     assert "/gateway/v1/openai/v1/chat/completions" in paths
     assert "/gateway/v1/openai/v1/responses" in paths
     assert "/gateway/v1/perplexity/chat/completions" in paths
+
+
+def test_gateway_openai_models_requires_workspace_authentication():
+    route = next(
+        route
+        for route in gateway_proxy.router.routes
+        if route.path == "/gateway/v1/openai/v1/models"
+    )
+
+    assert any(
+        dependency.call is gateway_proxy.get_workspace_id
+        for dependency in route.dependant.dependencies
+    )
 
 
 def test_legacy_proxy_routes_remain_registered():
@@ -25,6 +41,15 @@ def test_legacy_proxy_routes_remain_registered():
     assert "/proxy/anthropic/v1/messages" in paths
     assert "/proxy/openai/v1/chat/completions" in paths
     assert "/proxy/openai/v1/responses" not in paths
+
+
+@pytest.mark.anyio
+async def test_gateway_openai_models_uses_codex_bundled_catalog():
+    response = await gateway_proxy.gateway_openai_models("workspace-test")
+
+    assert response.status_code == 200
+    assert json.loads(response.body) == {"models": []}
+    assert response.headers["cache-control"] == "private, max-age=300"
 
 
 @pytest.mark.anyio
