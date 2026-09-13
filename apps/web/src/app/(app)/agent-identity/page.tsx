@@ -207,31 +207,30 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const [oktaJwtSaving, setOktaJwtSaving] = useState(false)
 
 
-  const load = useCallback(async () => {
+  // Each request unblocks its own consumer — no Promise.all barrier so the
+  // Tokens tab paints as soon as api-tokens + installed return, without
+  // waiting on agent-run-tokens or agent-identities (which scan history and
+  // dominate p95).
+  const load = useCallback(() => {
     if (!workspaceId) return
-    try {
-      const [tokensRes, installedRes, apiTokensRes, roleRes, identitiesRes] = await Promise.all([
-        authFetch(`${API}/workspaces/${workspaceId}/agent-run-tokens`),
-        authFetch(`${API}/guard/config/installed?workspace_id=${workspaceId}`),
-        authFetch(`${API}/workspaces/${workspaceId}/api-tokens`),
-        authFetch(`${API}/projects/${workspaceId}/my-role`),
-        authFetch(`${API}/workspaces/${workspaceId}/agent-identities?workspace_id=${workspaceId}`),
-      ])
-      if (tokensRes.ok) setTokens(await tokensRes.json())
-      if (installedRes.ok) {
-        const data = await installedRes.json()
-        if (data.agent_token) setCliToken(data.agent_token)
-      }
-      if (apiTokensRes.ok) setApiTokens(await apiTokensRes.json())
-      if (roleRes.ok) {
-        const data = await roleRes.json()
-        setIsAdmin(data.role === "admin")
-      }
-      if (identitiesRes.ok) setIdentities(await identitiesRes.json())
-      setIdentitiesLoading(false)
-    } catch {}
-    setLoading(false)
-    setApiLoading(false)
+    const w = workspaceId
+    authFetch(`${API}/workspaces/${w}/api-tokens`)
+      .then(r => r.ok ? r.json() : []).then(setApiTokens)
+      .catch(() => {}).finally(() => setApiLoading(false))
+    authFetch(`${API}/guard/config/installed?workspace_id=${w}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.agent_token) setCliToken(d.agent_token) })
+      .catch(() => {}).finally(() => setLoading(false))
+    authFetch(`${API}/projects/${w}/my-role`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setIsAdmin(d?.role === "admin"))
+      .catch(() => {})
+    authFetch(`${API}/workspaces/${w}/agent-run-tokens`)
+      .then(r => r.ok ? r.json() : []).then(setTokens)
+      .catch(() => {})
+    authFetch(`${API}/workspaces/${w}/agent-identities?workspace_id=${w}`)
+      .then(r => r.ok ? r.json() : []).then(setIdentities)
+      .catch(() => {}).finally(() => setIdentitiesLoading(false))
   }, [workspaceId, authFetch])
 
   useEffect(() => { load() }, [load])
