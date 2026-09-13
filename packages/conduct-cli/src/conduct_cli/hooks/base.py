@@ -28,7 +28,9 @@ VERSION_CACHE_TTL  = 60    # seconds
 WARNED_RULES_PATH  = GUARD_DIR / "warned_rules.json"
 SIGNING_KEY_PATH   = GUARD_DIR / "signing.key"
 JOURNAL_DIR        = GUARD_DIR / "journal"
+JOURNAL_DEAD_DIR   = JOURNAL_DIR / "dead-letter"
 JOURNAL_PID_PATH   = JOURNAL_DIR / "drain.pid"
+HOOK_HEARTBEAT_PATH = GUARD_DIR / "hook-heartbeat.json"
 
 SNAPSHOT_PATH    = GUARD_DIR / "session_snapshot.json"
 CONDUCT_ENV_PATH = Path.home() / ".conduct" / "env"
@@ -40,6 +42,18 @@ class HookResult:
     action: Literal["allow", "block", "warn"]
     reason: Optional[str] = None
     metadata: dict = field(default_factory=dict)
+
+
+def record_hook_heartbeat(event_name: str) -> None:
+    """Record local hook liveness without storing request or user data."""
+    try:
+        GUARD_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = HOOK_HEARTBEAT_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"event": event_name, "ts": time.time()}))
+        tmp.chmod(0o600)
+        tmp.replace(HOOK_HEARTBEAT_PATH)
+    except Exception:
+        pass
 
 
 # ── Config loading ────────────────────────────────────────────────────────────
@@ -155,11 +169,13 @@ def journal_append(payload_str: str, api_url: str) -> None:
     """Atomically write one event to the journal for the drain daemon to pick up."""
     try:
         JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
+        JOURNAL_DIR.chmod(0o700)
         import random
         name = f"{time.time_ns()}_{random.randint(0, 9999):04d}.json"
-        entry = json.dumps({"api_url": api_url, "payload": payload_str})
+        entry = json.dumps({"api_url": api_url, "payload": payload_str, "attempts": 0})
         tmp = JOURNAL_DIR / (name + ".tmp")
         tmp.write_text(entry)
+        tmp.chmod(0o600)
         tmp.rename(JOURNAL_DIR / name)
     except Exception:
         pass
@@ -256,6 +272,7 @@ def run_drain_daemon() -> None:
     try:
         JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
         JOURNAL_PID_PATH.write_text(str(_os.getpid()))
+        JOURNAL_PID_PATH.chmod(0o600)
     except Exception:
         return
     empty_scans = 0
@@ -268,6 +285,7 @@ def run_drain_daemon() -> None:
             continue
         posted_any = False
         for f in files:
+            entry: dict = {}
             try:
                 entry = json.loads(f.read_text())
                 api_url = entry["api_url"]
@@ -293,8 +311,29 @@ def run_drain_daemon() -> None:
                 urllib.request.urlopen(req, timeout=8)
                 f.unlink(missing_ok=True)
                 posted_any = True
-            except Exception:
-                pass
+            except Exception as exc:
+                attempts = int(entry.get("attempts", 0)) + 1
+                status = getattr(exc, "code", None)
+                permanent = isinstance(status, int) and 400 <= status < 500 and status not in (408, 429)
+                try:
+                    if permanent or attempts >= 5:
+                        JOURNAL_DEAD_DIR.mkdir(parents=True, exist_ok=True)
+                        JOURNAL_DEAD_DIR.chmod(0o700)
+                        entry["attempts"] = attempts
+                        entry["last_error"] = f"HTTP {status}" if status else type(exc).__name__
+                        destination = JOURNAL_DEAD_DIR / f.name
+                        destination.write_text(json.dumps(entry))
+                        destination.chmod(0o600)
+                        f.unlink(missing_ok=True)
+                    else:
+                        entry["attempts"] = attempts
+                        entry["last_error"] = f"HTTP {status}" if status else type(exc).__name__
+                        tmp = f.with_suffix(".tmp")
+                        tmp.write_text(json.dumps(entry))
+                        tmp.chmod(0o600)
+                        tmp.replace(f)
+                except Exception:
+                    pass
         if not posted_any:
             empty_scans += 1
             time.sleep(2)

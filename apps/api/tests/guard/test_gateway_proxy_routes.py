@@ -16,6 +16,7 @@ def test_parallel_gateway_proxy_routes_are_registered():
     paths = {route.path for route in gateway_proxy.router.routes}
     assert "/gateway/v1/anthropic/v1/messages" in paths
     assert "/gateway/v1/openai/v1/chat/completions" in paths
+    assert "/gateway/v1/openai/v1/responses" in paths
     assert "/gateway/v1/perplexity/chat/completions" in paths
 
 
@@ -23,6 +24,7 @@ def test_legacy_proxy_routes_remain_registered():
     paths = {route.path for route in legacy_proxy.router.routes}
     assert "/proxy/anthropic/v1/messages" in paths
     assert "/proxy/openai/v1/chat/completions" in paths
+    assert "/proxy/openai/v1/responses" not in paths
 
 
 @pytest.mark.anyio
@@ -31,6 +33,7 @@ def test_legacy_proxy_routes_remain_registered():
     [
         (gateway_proxy.gateway_anthropic, "anthropic", "/v1/messages", "x-api-key", "x-api-key", False),
         (gateway_proxy.gateway_openai, "openai", "/v1/chat/completions", "authorization", "authorization", True),
+        (gateway_proxy.gateway_openai_responses, "openai", "/v1/responses", "authorization", "authorization", True),
         (gateway_proxy.gateway_perplexity, "perplexity", "/chat/completions", "authorization", "authorization", True),
     ],
 )

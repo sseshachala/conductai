@@ -41,7 +41,7 @@ _PROXY = "https://api.conductai.ai/proxy"
 def test_all_three_active():
     env = {
         "ANTHROPIC_BASE_URL":  _PROXY,
-        "OPENAI_BASE_URL":     f"{_PROXY}/openai",
+        "OPENAI_BASE_URL":     f"{_PROXY}/openai/v1",
         "PERPLEXITY_BASE_URL": f"{_PROXY}/perplexity",
     }
     line = _run_coverage_block(env, _CFG)

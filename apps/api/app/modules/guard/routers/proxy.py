@@ -533,6 +533,20 @@ async def _proxy(
         _audit_decision = "warned" if _action == "WARN" else "allowed"
         _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
 
+        def _record_failure(status: int, message: str, *, rule_id: str | None = None) -> None:
+            background.add_task(
+                _record_audit,
+                workspace_id, clerk_user_id, ai_tool, provider, model,
+                "blocked" if status in (403, 429) else _audit_decision,
+                rule_id or _audit_rule_id,
+                int((time.monotonic() - started) * 1000),
+                body=body, response_bytes=None, prompt_summary=prompt_summary,
+                user_email=_user_email, conductai_run_id=_run_id,
+                conductai_workflow=_workflow, conductai_workflow_id=_workflow_id,
+                hook_session_id=_hook_session_id, routing_meta=_routing_meta,
+                execution_status="error", result_summary=f"HTTP {status}: {message}"[:500],
+            )
+
         # 4d. Per-key RPM/TPM rate limiting (#980, #1587 E1). Fires for
         # vault-key + trial-key + platform-key traffic — enforcement is
         # opt-in per workspace via guard_rate_limits rows. If no row
@@ -554,6 +568,7 @@ async def _proxy(
                 limit=_rate.limit,
                 current=_rate.current,
             )
+            _record_failure(429, _rate.reason, rule_id="rate-limit")
             return _fail_closed(429, _rate.reason)
 
         # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
@@ -584,17 +599,20 @@ async def _proxy(
                 db, workspace_id, provider, str(_agent_identity_id) if _agent_identity_id else None,
             )
             if _trial_status == "expired":
+                _record_failure(401, "trial_expired", rule_id="trial-expired")
                 return _fail_closed(
                     401,
                     "trial_expired: 7-day trial ended. Add your own key in Settings → Environments.",
                 )
             if _trial_status == "exceeded":
+                _record_failure(429, "trial_exceeded", rule_id="trial-quota")
                 return _fail_closed(
                     429,
                     "trial_exceeded: daily trial quota hit. Add your own key in Settings → Environments.",
                 )
             real_key = _trial_key
         if not real_key:
+            _record_failure(503, f"No {provider} API key configured", rule_id="credential-missing")
             return _fail_closed(
                 503,
                 f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
@@ -772,10 +790,20 @@ def _extract_stream_text(collected: bytes) -> str:
         text = collected.decode("utf-8", errors="replace")
     except Exception:
         return ""
-    parts = [
+    parts: list[str] = []
+    for line in text.splitlines():
+        if not line.startswith("data: "):
+            continue
+        try:
+            event = json.loads(line[6:])
+        except Exception:
+            continue
+        if event.get("type") == "response.output_text.delta" and isinstance(event.get("delta"), str):
+            parts.append(event["delta"])
+    parts.extend([
         m.encode("utf-8").decode("unicode_escape", errors="replace")
         for m in _STREAM_TEXT_RE.findall(text)
-    ]
+    ])
     return "\n".join(parts)
 
 
@@ -946,6 +974,8 @@ def _redact_body(body: dict) -> tuple[dict, list[str]]:
 
     if isinstance(body.get("system"), str):
         body["system"] = _clean(body["system"])
+    if isinstance(body.get("instructions"), str):
+        body["instructions"] = _clean(body["instructions"])
 
     for msg in body.get("messages") or []:
         content = msg.get("content")
@@ -955,6 +985,21 @@ def _redact_body(body: dict) -> tuple[dict, list[str]]:
             for block in content:
                 if isinstance(block, dict) and isinstance(block.get("text"), str):
                     block["text"] = _clean(block["text"])
+
+    response_input = body.get("input")
+    if isinstance(response_input, str):
+        body["input"] = _clean(response_input)
+    elif isinstance(response_input, list):
+        for item in response_input:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if isinstance(content, str):
+                item["content"] = _clean(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and isinstance(part.get("text"), str):
+                        part["text"] = _clean(part["text"])
 
     return body, found
 
