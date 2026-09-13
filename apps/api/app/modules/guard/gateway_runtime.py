@@ -48,13 +48,14 @@ class TransportResolver:
     def __init__(self, registry: ProviderTransportRegistry | None = None) -> None:
         self._registry = registry or get_provider_transport_registry()
 
-    def resolve(
+    def resolve_profile(
         self,
         db: Session,
         workspace_id: str,
         provider: str,
         environment_id: str | None,
-    ) -> GatewayTransportRuntime | None:
+    ) -> GatewayProfileConfig | None:
+        """Resolve the active secret-free profile for one provider surface."""
         query = db.query(GatewayProfileRow).filter(GatewayProfileRow.workspace_id == workspace_id)
         rows = query.order_by(GatewayProfileRow.name).all()
         selected = next(
@@ -72,6 +73,18 @@ class TransportResolver:
             }
         )
         if config.provider not in {provider, "litellm"}:
+            return None
+        return config
+
+    def resolve(
+        self,
+        db: Session,
+        workspace_id: str,
+        provider: str,
+        environment_id: str | None,
+    ) -> GatewayTransportRuntime | None:
+        config = self.resolve_profile(db, workspace_id, provider, environment_id)
+        if config is None:
             return None
 
         key = resolve_gateway_key(

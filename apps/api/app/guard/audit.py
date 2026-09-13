@@ -134,6 +134,18 @@ def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | 
     return round(token_cost + request_fee, 6)
 
 
+def _compute_audit_cost(
+    provider: str,
+    model: str,
+    in_tok: int | None,
+    out_tok: int | None,
+    routing_meta: dict | None,
+) -> float | None:
+    if (routing_meta or {}).get("billable", True) is False:
+        return None
+    return _compute_cost(provider, model, in_tok, out_tok)
+
+
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 def record(
@@ -168,7 +180,13 @@ def record(
         if in_tokens is None and response_bytes is None and execution_status != "error":
             # ponytail: blocked call — estimate what vendor would have consumed
             in_tokens, out_tokens = _estimate_input_tokens(body), 0
-        cost_usd = _compute_cost(provider, model, in_tokens, out_tokens)
+        cost_usd = _compute_audit_cost(
+            provider,
+            model,
+            in_tokens,
+            out_tokens,
+            routing_meta,
+        )
         # Mint id in Python — pgcrypto/gen_random_uuid isn't guaranteed to be
         # loaded on every deploy, so we don't rely on it. Caller may pre-mint
         # (block path) so the response can reference the row before the
