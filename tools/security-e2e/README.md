@@ -110,18 +110,42 @@ PROD_E2E_B_PASSWORD=
 Run from the repository root:
 
 ```sh
+rtk proxy python3.11 tools/security-e2e/production.py --authorize-gmail
+
 rtk proxy python3.11 tools/security-e2e/production.py \
-  --credentials-file .prod_e2e_secret \
+  --credentials-file ~/.conduct/e2e/production-accounts.env \
   --allow-disposable-workspaces
 ```
+
+The first command is a one-time Gmail read-only authorization. It discovers the
+single OAuth desktop-client JSON in `~/.conduct/e2e/otpbroker/` and writes the
+refresh token to `~/.conduct/e2e/otpbroker/token.json`. Both the directory and
+token are restricted to the current OS user. During a run, the launcher starts
+a random-token broker bound only to `127.0.0.1`; it accepts only the two
+configured test-account addresses and returns only a fresh, previously unused
+six-digit code. Runs are headless by default; use `--headed` for visual
+debugging or `--manual-otp` as an explicit OTP fallback.
+
+The `production-security-canary` GitHub workflow runs this journey daily,
+supports manual dispatch, and accepts a `production_deployed` repository
+dispatch event. Store the account file, OAuth client JSON, and OAuth token JSON
+as environment secrets named `PROD_E2E_ACCOUNTS_FILE`,
+`PROD_E2E_GMAIL_CLIENT_JSON`, and `PROD_E2E_GMAIL_TOKEN_JSON` in the protected
+`production-e2e` GitHub environment. The workflow materializes them with mode
+`600` only for the job and removes them in an `always()` cleanup step. Do not
+upload Playwright output from this workflow as an artifact.
+
+An External OAuth app in Testing status issues refresh tokens that expire after
+seven days for Gmail scopes. Before relying on the daily schedule, make this an
+Internal app in the mailbox's Google Workspace organization, have the Workspace
+administrator mark it trusted, or complete Google's production verification.
 
 The production journey does not create or delete accounts or workspaces. It
 checks owner issuance, MCP access, unrelated-tenant and unknown-workspace
 denial, then temporarily adds account A to account B's workspace to verify
 member issuance and post-removal refresh denial. Cleanup restores the original
-membership set. Production Clerk may require interactive second-factor entry;
-the browser is visible and waits for the operator without persisting browser
-state or verification codes.
+membership set. Gmail authorization removes interactive second-factor entry
+without persisting browser state or verification codes.
 
 The runner loads only the four allowlisted fields, redacts them from output,
 and requires explicit mutation consent. Traces, screenshots, videos, retries,

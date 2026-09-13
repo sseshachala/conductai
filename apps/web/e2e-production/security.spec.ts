@@ -17,6 +17,29 @@ const accountB = (): Account => ({
   password: process.env.PROD_E2E_B_PASSWORD!,
 })
 
+async function verificationCode(email: string, afterMs: number): Promise<string | null> {
+  const url = process.env.PROD_E2E_OTP_BROKER_URL
+  const token = process.env.PROD_E2E_OTP_BROKER_TOKEN
+  if (!url || !token) return null
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, after_ms: afterMs }),
+    signal: AbortSignal.timeout(100_000),
+  })
+  const result = await response.json() as { code?: string; error?: string }
+  if (!response.ok || !/^\d{6}$/.test(result.code ?? "")) {
+    throw new Error(`Local OTP broker failed (${response.status}): ${result.error ?? "invalid response"}`)
+  }
+  return result.code!
+}
+
+async function fillVerificationCode(page: Page, code: string): Promise<void> {
+  const otp = page.locator('input[autocomplete="one-time-code"]')
+  if (await otp.count() === 1) await otp.fill(code)
+  else for (let index = 0; index < code.length; index++) await otp.nth(index).fill(code[index])
+}
+
 async function login(browser: Browser, account: Account, label: "A" | "B"): Promise<Session> {
   const context = await browser.newContext({ baseURL: "https://app.conductai.ai" })
   const page = await context.newPage()
@@ -38,10 +61,21 @@ async function login(browser: Browser, account: Account, label: "A" | "B"): Prom
     await page.getByRole("button", { name: "Continue", exact: true }).click()
     stage = "submit-password"
     await page.locator('input[name="password"]').fill(account.password)
+    const otpRequestedAfter = Date.now()
     await page.getByRole("button", { name: "Continue", exact: true }).click()
     stage = "await-active-session"
-    if (await page.locator('input[autocomplete="one-time-code"]').isVisible({ timeout: 10_000 }).catch(() => false)) {
-      console.log(`Enter the Clerk verification code for production test account ${label} in the browser`)
+    const otp = page.locator('input[autocomplete="one-time-code"]')
+    await expect.poll(async () => {
+      if (await otp.first().isVisible()) return "verification"
+      return page.evaluate(() => (window as any).Clerk?.session?.status === "active" ? "active" : "pending")
+        .catch(() => "pending")
+    }, { timeout: 30_000, message: "Clerk must activate the session or request verification" })
+      .not.toBe("pending")
+    if (await otp.first().isVisible()) {
+      stage = "submit-verification-code"
+      const code = await verificationCode(account.email, otpRequestedAfter)
+      if (code) await fillVerificationCode(page, code)
+      else console.log(`Enter the Clerk verification code for production test account ${label} in the browser`)
     }
     await expect.poll(
       () => page.evaluate(() => ({

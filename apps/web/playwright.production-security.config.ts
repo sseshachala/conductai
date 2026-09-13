@@ -21,7 +21,7 @@ export default defineConfig({
   reporter: "list",
   use: {
     ...devices["Desktop Chrome"],
-    headless: false,
+    headless: process.env.PROD_E2E_HEADLESS !== "0",
     baseURL: "https://app.conductai.ai",
     actionTimeout: 25_000,
     navigationTimeout: 40_000,
