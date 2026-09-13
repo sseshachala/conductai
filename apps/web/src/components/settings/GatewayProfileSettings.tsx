@@ -16,6 +16,12 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
   const [name, setName] = useState("default")
   const [upstream, setUpstream] = useState("")
   const [credentialRef, setCredentialRef] = useState("")
+  const [litellmBase, setLitellmBase] = useState("")
+  const [litellmVersion, setLitellmVersion] = useState("")
+  const [litellmProvider, setLitellmProvider] = useState("")
+  const [dropParams, setDropParams] = useState(false)
+  const [requestTimeout, setRequestTimeout] = useState("")
+  const [numRetries, setNumRetries] = useState("0")
   const [deployments, setDeployments] = useState("{}")
   const [advanced, setAdvanced] = useState("{}")
   const [loading, setLoading] = useState(true)
@@ -36,6 +42,12 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
         setProtocol(next.protocol || "anthropic")
         setUpstream(next.upstream_url || "")
         setCredentialRef(next.credential_ref || "")
+        setLitellmBase(next.litellm?.api_base || "")
+        setLitellmVersion(next.litellm?.api_version || "")
+        setLitellmProvider(next.litellm?.custom_llm_provider || "")
+        setDropParams(!!next.litellm?.drop_params)
+        setRequestTimeout(next.litellm?.request_timeout_seconds?.toString() || "")
+        setNumRetries(next.litellm?.num_retries?.toString() || "0")
         setDeployments(JSON.stringify(Object.fromEntries((next.deployments || []).map((d: any) => [d.alias, d.model])), null, 2))
         setAdvanced(JSON.stringify({ reliability: next.reliability, limits: next.limits, streaming: next.streaming, provider_options: next.provider_options }, null, 2))
       }
@@ -70,6 +82,15 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
       reliability: parsed.extra.reliability || {},
       limits: parsed.extra.limits || {},
       streaming: parsed.extra.streaming || {},
+      litellm: {
+        api_base: litellmBase || null,
+        api_version: litellmVersion || null,
+        custom_llm_provider: litellmProvider || null,
+        drop_params: dropParams,
+        request_timeout_seconds: requestTimeout ? Number(requestTimeout) : null,
+        num_retries: Number(numRetries || 0),
+        stream_options: parsed.extra.stream_options || {},
+      },
       provider_options: parsed.extra.provider_options || {},
     }
   }
@@ -113,6 +134,17 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
       <label style={{ fontSize: 12 }}>Upstream URL<input value={upstream} disabled={!isAdmin} onChange={e => setUpstream(e.target.value)} placeholder="https://api.example.com/v1" style={inputStyle} /></label>
       <label style={{ fontSize: 12 }}>Vault credential reference<input value={credentialRef} disabled={!isAdmin} onChange={e => setCredentialRef(e.target.value)} placeholder="vault://providers/anthropic" style={inputStyle} /></label>
       <label style={{ fontSize: 12 }}>Model aliases<textarea value={deployments} disabled={!isAdmin} onChange={e => setDeployments(e.target.value)} rows={5} spellCheck={false} style={{ ...inputStyle, fontFamily: "monospace", resize: "vertical" }} /></label>
+      <details>
+        <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 600 }}>LiteLLM transport options</summary>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+          <label style={{ fontSize: 12 }}>API base<input value={litellmBase} disabled={!isAdmin} onChange={e => setLitellmBase(e.target.value)} placeholder="https://litellm.example.com/v1" style={inputStyle} /></label>
+          <label style={{ fontSize: 12 }}>API version<input value={litellmVersion} disabled={!isAdmin} onChange={e => setLitellmVersion(e.target.value)} placeholder="2025-01-01" style={inputStyle} /></label>
+          <label style={{ fontSize: 12 }}>Custom provider<input value={litellmProvider} disabled={!isAdmin} onChange={e => setLitellmProvider(e.target.value)} placeholder="openai" style={inputStyle} /></label>
+          <label style={{ fontSize: 12 }}>Request timeout (seconds)<input type="number" min="1" max="600" value={requestTimeout} disabled={!isAdmin} onChange={e => setRequestTimeout(e.target.value)} placeholder="60" style={inputStyle} /></label>
+          <label style={{ fontSize: 12 }}>Retries<input type="number" min="0" max="5" value={numRetries} disabled={!isAdmin} onChange={e => setNumRetries(e.target.value)} style={inputStyle} /></label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, paddingTop: 20 }}><input type="checkbox" checked={dropParams} disabled={!isAdmin} onChange={e => setDropParams(e.target.checked)} /> Drop unsupported parameters</label>
+        </div>
+      </details>
       <details>
         <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Advanced routing and provider options</summary>
         <textarea value={advanced} disabled={!isAdmin} onChange={e => setAdvanced(e.target.value)} rows={8} spellCheck={false} style={{ ...inputStyle, marginTop: 10, fontFamily: "monospace", resize: "vertical" }} />

@@ -12,6 +12,7 @@ from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
 from app.models.gateway_profile import GatewayProfile as GatewayProfileRow
 from app.modules.guard.gateway_config import GatewayProfile as GatewayProfileConfig
+from app.modules.guard.gateway_config import LiteLLMOptions
 from app.modules.guard.gateway_config import profile_from_legacy
 
 router = APIRouter(prefix="/workspaces", tags=["gateway-profiles"])
@@ -31,6 +32,7 @@ class GatewayProfileInput(BaseModel):
     reliability: dict[str, Any] = Field(default_factory=dict)
     limits: dict[str, Any] = Field(default_factory=dict)
     streaming: dict[str, Any] = Field(default_factory=dict)
+    litellm: LiteLLMOptions = Field(default_factory=LiteLLMOptions)
     provider_options: dict[str, Any] = Field(default_factory=dict)
 
 

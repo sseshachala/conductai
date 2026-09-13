@@ -71,3 +71,37 @@ def test_legacy_projection_defaults_to_anthropic():
     assert profile.provider == "anthropic"
     assert profile.protocol == "anthropic"
     assert profile.deployments == []
+
+
+def test_litellm_options_are_validated_and_secret_free():
+    profile = GatewayProfile(
+        name="litellm",
+        provider="openai",
+        protocol="openai_compatible",
+        litellm={
+            "api_base": "https://litellm.internal/v1/",
+            "custom_llm_provider": "openai",
+            "drop_params": True,
+            "request_timeout_seconds": 45,
+            "num_retries": 2,
+        },
+    )
+    assert profile.litellm.api_base == "https://litellm.internal/v1"
+    assert "api_key" not in profile.model_dump_json()
+
+
+def test_litellm_options_reject_invalid_base_and_unknown_fields():
+    with pytest.raises(ValidationError):
+        GatewayProfile(
+            name="bad",
+            provider="openai",
+            protocol="openai_compatible",
+            litellm={"api_base": "file:///tmp/provider"},
+        )
+    with pytest.raises(ValidationError):
+        GatewayProfile(
+            name="bad",
+            provider="openai",
+            protocol="openai_compatible",
+            litellm={"api_key": "sk-secret"},
+        )
