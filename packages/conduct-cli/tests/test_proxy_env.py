@@ -105,6 +105,11 @@ def test_env_file_strips_trailing_slash(tmp_path, monkeypatch):
     assert 'OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai"' in env
 
 
+def test_fetched_legacy_proxy_url_maps_to_gateway_v1():
+    assert guard._gateway_v1_url("https://api.conductai.ai/proxy") == "https://api.conductai.ai/gateway/v1"
+    assert guard._gateway_v1_url("http://localhost:8000/gateway/v1") == "http://localhost:8000/gateway/v1"
+
+
 @pytestmark_posix
 def test_unknown_shell_skips_rc_write(tmp_path, monkeypatch, capsys):
     _redirect_home(tmp_path, monkeypatch)
