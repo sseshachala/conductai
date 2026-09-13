@@ -45,7 +45,8 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!env.CI,
-  retries: env.CI ? 2 : 0,
+  // One retry preserves flake evidence without tripling every shared failure.
+  retries: env.CI ? 1 : 0,
   workers: env.CI ? 2 : undefined,
   reporter: env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   ...(clerkEnabled ? { globalSetup: require.resolve("./e2e/auth-setup.ts") } : {}),
