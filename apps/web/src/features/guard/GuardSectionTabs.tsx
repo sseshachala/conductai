@@ -8,8 +8,11 @@ export interface GuardSectionTab {
   label: string
 }
 
+// Proxy & Gateways promoted out of this sub-tab bar to a first-class item
+// under the CONNECT sidebar group. The route itself is unchanged so
+// bookmarks and links keep working; it just no longer renders as a tab
+// beside Notifications/Sync.
 export const CONNECTIONS_TABS: readonly GuardSectionTab[] = [
-  { href: "/theguard/connections/proxy",         label: "Proxy & gateways" },
   { href: "/theguard/connections/notifications", label: "Notifications" },
   { href: "/theguard/connections/sync",          label: "Sync" },
 ]
