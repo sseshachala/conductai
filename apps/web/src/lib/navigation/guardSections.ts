@@ -37,7 +37,7 @@ export const GUARD_SECTIONS: readonly GuardSection[] = [
   { id: "agents",      label: "Agents Discovered", href: "/theguard/discovery",   activePrefixes: ["/theguard/discovery", "/theguard/agents", "/agent-identity"] },
   { id: "controls",    label: "Controls",    href: "/theguard/policies",          activePrefixes: ["/theguard/policies"] },
   { id: "spend",       label: "Spend",       href: "/theguard/spend",             activePrefixes: ["/theguard/spend"] },
-  { id: "connections", label: "Connections", href: "/theguard/connections/notifications", activePrefixes: ["/theguard/connections"] },
+  { id: "connections", label: "Connections", href: "/theguard/connections/proxy", activePrefixes: ["/theguard/connections"] },
 ]
 
 export function activeGuardSection(pathname: string): GuardSectionId | null {
