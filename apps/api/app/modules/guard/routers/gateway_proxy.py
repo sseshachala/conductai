@@ -41,6 +41,20 @@ async def gateway_openai(request: Request, background: BackgroundTasks):
     )
 
 
+@router.post("/openai/v1/responses")
+async def gateway_openai_responses(request: Request, background: BackgroundTasks):
+    return await _proxy(
+        request,
+        background,
+        provider="openai",
+        upstream_path="/v1/responses",
+        auth_header_in="authorization",
+        auth_header_out="authorization",
+        bearer=True,
+        canonical_profile=True,
+    )
+
+
 @router.post("/perplexity/chat/completions")
 async def gateway_perplexity(request: Request, background: BackgroundTasks):
     return await _proxy(

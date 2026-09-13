@@ -176,6 +176,8 @@ class EventOut(BaseModel):
     conductai_workflow: str | None
     conductai_workflow_id: str | None = None
     duration_ms: int | None
+    execution_status: str | None = None
+    result_summary: str | None = None
     blast_radius: dict | None = None
     ts: str
     entry_hash: str | None = None
@@ -247,6 +249,8 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "conductai_workflow": e.conductai_workflow,
         "conductai_workflow_id": e.conductai_workflow_id,
         "duration_ms": e.duration_ms,
+        "execution_status": e.execution_status,
+        "result_summary": e.result_summary,
         "blast_radius": e.blast_radius,
         "ts": e.ts.isoformat(),
         "entry_hash": e.entry_hash,

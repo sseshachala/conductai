@@ -30,6 +30,7 @@ from conduct_cli.hooks.base import (
     journal_append,
     load_config,
     post_event,
+    record_hook_heartbeat,
     run_drain_daemon,
 )
 
@@ -768,6 +769,7 @@ def main() -> None:
         data = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
+    record_hook_heartbeat("pre_tool_use")
 
     # Stop hook — session ended, capture for team memory
     if data.get("hook_event_name") == "Stop" or data.get("stop_hook_active"):

@@ -695,9 +695,35 @@ def _install_codex_hook(hook_path: Path) -> None:
 
     hook_section = hooks.setdefault("hooks", {})
 
+    hook_path_str = str(hook_path)
+    # Match the retired location only to delete stale registrations. The
+    # desired entry below always points at the current ~/.conduct/hook.py.
+    stale_hook_path = str(Path.home() / ".conductguard" / "hook.py")
+    conduct_hook_paths = {
+        hook_path_str,
+        str(Path.home() / ".conduct" / "hook.py"),
+        stale_hook_path,
+    }
+
+    def _is_conduct_hook(entry: dict) -> bool:
+        command = entry.get("command", "")
+        return any(path in command for path in conduct_hook_paths)
+
+    def _replace_conduct_entries(entries: list, command: str) -> tuple[list, bool]:
+        kept = []
+        removed = False
+        for registration in entries:
+            commands = registration.get("hooks", [])
+            filtered = [entry for entry in commands if not _is_conduct_hook(entry)]
+            if len(filtered) != len(commands):
+                removed = True
+            if filtered:
+                kept.append({**registration, "hooks": filtered})
+        desired = {"matcher": ".*", "hooks": [{"type": "command", "command": command}]}
+        return [*kept, desired], removed or entries != [*kept, desired]
+
     # PreToolUse
     pre_cmd = f"{_best_python()} {hook_path}"
-    hook_path_str = str(hook_path)
     pre = hook_section.setdefault("PreToolUse", [])
     # Match by hook path so old python3/python3.11 entries are treated as already registered
     pre_already = any(
@@ -706,16 +732,9 @@ def _install_codex_hook(hook_path: Path) -> None:
         for e in h.get("hooks", [])
     )
     changed = False
-    if not pre_already:
-        pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": pre_cmd}]})
-        changed = True
-    else:
-        # Update existing entry to use current sys.executable
-        for h in pre:
-            for e in h.get("hooks", []):
-                if hook_path_str in e.get("command", "") and e["command"] != pre_cmd:
-                    e["command"] = pre_cmd
-                    changed = True
+    normalized_pre, pre_changed = _replace_conduct_entries(pre, pre_cmd)
+    hook_section["PreToolUse"] = normalized_pre
+    changed = pre_changed
 
     # PostToolUse
     post_cmd = f"{_best_python()} {hook_path} post"
@@ -734,9 +753,9 @@ def _install_codex_hook(hook_path: Path) -> None:
         for h in post
         for e in h.get("hooks", [])
     )
-    if not post_already:
-        post.append({"matcher": ".*", "hooks": [{"type": "command", "command": post_cmd}]})
-        changed = True
+    normalized_post, post_changed = _replace_conduct_entries(post, post_cmd)
+    hook_section["PostToolUse"] = normalized_post
+    changed = changed or post_changed
     if cleaned:
         changed = True
 
@@ -749,6 +768,36 @@ def _install_codex_hook(hook_path: Path) -> None:
             print(f"  {GREEN}Codex PostToolUse hook registered{RESET}")
     else:
         print(f"  {GRAY}Codex hooks already registered{RESET}")
+
+
+def _configure_codex_proxy(proxy_url: str) -> bool:
+    """Opt in Codex to Conduct's Responses endpoint without storing a secret."""
+    config_path = Path.home() / ".codex" / "config.toml"
+    if not config_path.parent.exists():
+        return False
+    content = config_path.read_text() if config_path.exists() else ""
+    backup = config_path.with_suffix(".toml.pre-conduct-proxy")
+    if config_path.exists() and not backup.exists():
+        backup.write_text(content)
+        backup.chmod(0o600)
+
+    import re as _re
+    sections = _re.split(r"(?m)(?=^\[)", content)
+    root = sections[0]
+    root = _re.sub(r'(?m)^model_provider\s*=.*\n?', '', root)
+    root = root.rstrip() + '\nmodel_provider = "conduct"\n\n'
+    remaining = [s for s in sections[1:] if not s.startswith("[model_providers.conduct]")]
+    base = proxy_url.rstrip("/") + "/openai/v1"
+    snippet = (
+        "[model_providers.conduct]\n"
+        'name = "Conduct Gateway"\n'
+        f"base_url = {json.dumps(base)}\n"
+        'env_key = "OPENAI_API_KEY"\n'
+        'wire_api = "responses"\n'
+        'requires_openai_auth = false\n\n'
+    )
+    config_path.write_text(root + snippet + "".join(remaining).lstrip())
+    return True
 
 
 # ── HTTP helpers (no third-party deps — mirrors api.py style) ─────────────────
@@ -1544,6 +1593,11 @@ def cmd_guard_sync(args):
         print(f"  {GREEN}Proxy env written:{RESET} ~/.conduct/{env_name} → {proxy_url}")
         if newly_sourced:
             print(f"  {CYAN}Run `{activate_cmd}` (or open a new shell) to activate.{RESET}")
+    if not getattr(args, "no_codex_proxy", False):
+        if _configure_codex_proxy(proxy_url):
+            print(f"  {GREEN}Codex proxy enabled:{RESET} Responses API via Conduct (restart Codex)")
+        else:
+            print(f"  {YELLOW}Codex proxy skipped:{RESET} ~/.codex is not installed")
 
     _tools = _detect_ai_tools()
     if _tools:
@@ -1738,10 +1792,10 @@ def _write_proxy_env_windows(agent_token: str, proxy_url: str) -> tuple[Path, bo
         SHELL_RC_MARKER,
         "# Edit ~/.conduct/env-override.ps1 to add your own vars — sourced after this file.",
         "",
-        f'$env:ANTHROPIC_BASE_URL = "{proxy}"',
+        f'$env:ANTHROPIC_BASE_URL = "{proxy}/anthropic"',
         f'$env:ANTHROPIC_API_KEY  = "{token}"',
         "",
-        f'$env:OPENAI_BASE_URL = "{proxy}/openai"',
+        f'$env:OPENAI_BASE_URL = "{proxy}/openai/v1"',
         f'$env:OPENAI_API_KEY  = "{token}"',
         "",
         f'$env:PERPLEXITY_BASE_URL = "{proxy}/perplexity"',
@@ -1807,10 +1861,10 @@ def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
         SHELL_RC_MARKER,
         "# Edit ~/.conduct/env-override to add your own vars — sourced after this file.",
         "",
-        f'export ANTHROPIC_BASE_URL="{proxy}"',
+        f'export ANTHROPIC_BASE_URL="{proxy}/anthropic"',
         f'export ANTHROPIC_API_KEY="{token}"',
         "",
-        f'export OPENAI_BASE_URL="{proxy}/openai"',
+        f'export OPENAI_BASE_URL="{proxy}/openai/v1"',
         f'export OPENAI_API_KEY="{token}"',
         "",
         f'export PERPLEXITY_BASE_URL="{proxy}/perplexity"',
@@ -2163,14 +2217,27 @@ def cmd_guard_status(args):
     elif d_status == "stale":
         daemon_line = f"{YELLOW}stale{RESET} (pid {d_pid}, not flushing — will restart on next tool call)"
     else:
-        daemon_line = f"{RED}not running{RESET} — will start on next tool call, journal events queued"
+        daemon_line = f"{RED}not running{RESET} — will start on next tool call"
+
+    journal_dir = Path.home() / ".conduct" / "journal"
+    queued_events = len(list(journal_dir.glob("*.json"))) if journal_dir.exists() else 0
+    dead_events = len(list((journal_dir / "dead-letter").glob("*.json"))) if (journal_dir / "dead-letter").exists() else 0
+    heartbeat_path = Path.home() / ".conduct" / "hook-heartbeat.json"
+    heartbeat_line = "never observed"
+    try:
+        heartbeat = json.loads(heartbeat_path.read_text())
+        age = max(0, int(time.time() - float(heartbeat["ts"])))
+        heartbeat_line = f"{heartbeat.get('event', 'hook')} · {age}s ago"
+    except Exception:
+        pass
 
     # Proxy coverage — check active env vars in this shell
-    proxy_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/") + "/proxy"
     _env           = os.environ
-    anthropic_ok   = proxy_url in _env.get("ANTHROPIC_BASE_URL", "")
-    openai_ok      = proxy_url in _env.get("OPENAI_BASE_URL",    "")
-    perplexity_ok  = proxy_url in _env.get("PERPLEXITY_BASE_URL","")
+    def _conduct_proxy_url(value: str) -> bool:
+        return "api.conductai.ai" in value and ("/gateway/v1" in value or "/proxy" in value)
+    anthropic_ok   = _conduct_proxy_url(_env.get("ANTHROPIC_BASE_URL", ""))
+    openai_ok      = _conduct_proxy_url(_env.get("OPENAI_BASE_URL", ""))
+    perplexity_ok  = _conduct_proxy_url(_env.get("PERPLEXITY_BASE_URL", ""))
     env_file_exists = (Path.home() / ".conduct" / "env").exists()
 
     def _cov(ok: bool, name: str) -> str:
@@ -2196,6 +2263,8 @@ def cmd_guard_status(args):
     print()
     print(f"Proxy coverage: {proxy_line}")
     print(f"Drain daemon:   {daemon_line}")
+    print(f"Event journal:  {queued_events} queued · {dead_events} dead-letter")
+    print(f"Hook heartbeat: {heartbeat_line}")
     print()
     print(f"Today:")
     print(f"  Sessions: {session_str}")
@@ -2368,7 +2437,9 @@ def register_guard_parser(sub):
     sync_p.add_argument("--reset-instructions", action="store_true", dest="reset_instructions",
                         help="Remove ConductGuard blocks from all instruction files")
     sync_p.add_argument("--proxy-url", default=None,
-                        help="Override the Guard proxy URL (default: https://api.conductai.ai/proxy/anthropic)")
+                        help="Override the Guard gateway URL (default: https://api.conductai.ai/gateway/v1)")
+    sync_p.add_argument("--no-codex-proxy", action="store_true",
+                        help="Leave Codex model traffic on its current provider")
     sync_p.add_argument("--no-local-audit", action="store_true",
                         help="Skip the local pre-existing API key scan")
 

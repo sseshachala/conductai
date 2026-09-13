@@ -8,6 +8,7 @@ Validates:
 from __future__ import annotations
 
 import os
+import json
 import sys
 from pathlib import Path
 from unittest import mock
@@ -38,9 +39,9 @@ def test_env_file_written_with_all_three_pairs(tmp_path, monkeypatch):
     rc, sourced = guard._write_proxy_env("abc123", "https://api.conductai.ai/proxy")
 
     env = (tmp_path / ".conduct" / "env").read_text()
-    assert 'export ANTHROPIC_BASE_URL="https://api.conductai.ai/proxy"' in env
+    assert 'export ANTHROPIC_BASE_URL="https://api.conductai.ai/proxy/anthropic"' in env
     assert 'export ANTHROPIC_API_KEY="abc123"' in env
-    assert 'export OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai"' in env
+    assert 'export OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai/v1"' in env
     assert 'export OPENAI_API_KEY="abc123"' in env
     assert 'export PERPLEXITY_BASE_URL="https://api.conductai.ai/proxy/perplexity"' in env
     assert 'export PERPLEXITY_API_KEY="abc123"' in env
@@ -90,8 +91,8 @@ def test_override_url_picked_up(tmp_path, monkeypatch):
 
     guard._write_proxy_env("abc", "https://my-self-hosted.example.com/proxy")
     env = (tmp_path / ".conduct" / "env").read_text()
-    assert 'ANTHROPIC_BASE_URL="https://my-self-hosted.example.com/proxy"' in env
-    assert 'OPENAI_BASE_URL="https://my-self-hosted.example.com/proxy/openai"' in env
+    assert 'ANTHROPIC_BASE_URL="https://my-self-hosted.example.com/proxy/anthropic"' in env
+    assert 'OPENAI_BASE_URL="https://my-self-hosted.example.com/proxy/openai/v1"' in env
 
 
 @pytestmark_posix
@@ -101,13 +102,63 @@ def test_env_file_strips_trailing_slash(tmp_path, monkeypatch):
 
     guard._write_proxy_env("abc", "https://api.conductai.ai/proxy/")
     env = (tmp_path / ".conduct" / "env").read_text()
-    assert 'ANTHROPIC_BASE_URL="https://api.conductai.ai/proxy"' in env   # no trailing slash
-    assert 'OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai"' in env
+    assert 'ANTHROPIC_BASE_URL="https://api.conductai.ai/proxy/anthropic"' in env
+    assert 'OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai/v1"' in env
 
 
 def test_fetched_legacy_proxy_url_maps_to_gateway_v1():
     assert guard._gateway_v1_url("https://api.conductai.ai/proxy") == "https://api.conductai.ai/gateway/v1"
     assert guard._gateway_v1_url("http://localhost:8000/gateway/v1") == "http://localhost:8000/gateway/v1"
+
+
+def test_configure_codex_proxy_is_secret_free(tmp_path, monkeypatch):
+    monkeypatch.setattr(guard.Path, "home", lambda: tmp_path)
+    codex = tmp_path / ".codex"
+    codex.mkdir()
+    config = codex / "config.toml"
+    config.write_text('model = "gpt-test"\n')
+
+    assert guard._configure_codex_proxy("https://api.conductai.ai/gateway/v1")
+    written = config.read_text()
+    assert 'model_provider = "conduct"' in written
+    assert 'base_url = "https://api.conductai.ai/gateway/v1/openai/v1"' in written
+    assert 'wire_api = "responses"' in written
+    assert "cond_agt_" not in written
+    assert config.with_suffix(".toml.pre-conduct-proxy").exists()
+
+
+def test_codex_hook_install_collapses_duplicate_conduct_entries(tmp_path, monkeypatch):
+    monkeypatch.setattr(guard.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(guard, "_best_python", lambda: "/usr/bin/python3")
+    codex = tmp_path / ".codex"
+    codex.mkdir()
+    hook_path = tmp_path / ".conduct" / "hook.py"
+    stale_hook_path = tmp_path / ".conductguard" / "hook.py"
+    hooks_path = codex / "hooks.json"
+    duplicate = {"matcher": ".*", "hooks": [{"type": "command", "command": f"python3 {hook_path}"}]}
+    stale = {"matcher": ".*", "hooks": [{"type": "command", "command": f"python3 {stale_hook_path}"}]}
+    unrelated = {"matcher": "Read", "hooks": [{"type": "command", "command": "other-hook"}]}
+    hooks_path.write_text(json.dumps({"hooks": {
+        "PreToolUse": [duplicate, duplicate, stale, unrelated],
+        "PostToolUse": [duplicate, duplicate, stale],
+    }}))
+
+    guard._install_codex_hook(hook_path)
+    installed = json.loads(hooks_path.read_text())["hooks"]
+    for event in ("PreToolUse", "PostToolUse"):
+        commands = [
+            item["command"]
+            for registration in installed[event]
+            for item in registration["hooks"]
+        ]
+        conduct_commands = [
+            command
+            for command in commands
+            if str(hook_path) in command
+        ]
+        assert len(conduct_commands) == 1
+        assert all(str(stale_hook_path) not in command for command in commands)
+    assert installed["PreToolUse"][0] == unrelated
 
 
 @pytestmark_posix
@@ -141,9 +192,9 @@ def test_windows_writes_ps1_env_file(tmp_path, monkeypatch):
     ps1 = tmp_path / ".conduct" / "env.ps1"
     assert ps1.exists()
     text = ps1.read_text()
-    assert '$env:ANTHROPIC_BASE_URL = "https://api.conductai.ai/proxy"' in text
+    assert '$env:ANTHROPIC_BASE_URL = "https://api.conductai.ai/proxy/anthropic"' in text
     assert '$env:ANTHROPIC_API_KEY  = "abc123"' in text
-    assert '$env:OPENAI_BASE_URL = "https://api.conductai.ai/proxy/openai"' in text
+    assert '$env:OPENAI_BASE_URL = "https://api.conductai.ai/proxy/openai/v1"' in text
     assert '$env:OPENAI_API_KEY  = "abc123"' in text
     assert '$env:PERPLEXITY_BASE_URL = "https://api.conductai.ai/proxy/perplexity"' in text
     assert '$env:PERPLEXITY_API_KEY  = "abc123"' in text
@@ -191,7 +242,7 @@ def test_is_anthropic_proxied_falls_back_to_env_file(tmp_path, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
     (tmp_path / ".conduct").mkdir(exist_ok=True)
     (tmp_path / ".conduct" / "env").write_text(
-        'export ANTHROPIC_BASE_URL="https://api.conductai.ai/proxy"\n'
+        'export ANTHROPIC_BASE_URL="https://api.conductai.ai/proxy/anthropic"\n'
         'export ANTHROPIC_API_KEY="cond_agt_test"\n'
     )
     assert guard._is_anthropic_proxied() is True
@@ -203,7 +254,7 @@ def test_is_openai_proxied_falls_back_to_env_file(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     (tmp_path / ".conduct").mkdir(exist_ok=True)
     (tmp_path / ".conduct" / "env").write_text(
-        'export OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai"\n'
+        'export OPENAI_BASE_URL="https://api.conductai.ai/proxy/openai/v1"\n'
     )
     assert guard._is_openai_proxied() is True
 

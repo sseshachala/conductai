@@ -59,6 +59,27 @@ def flatten_prompt(body: dict) -> str:
                     text = part.get("text")
                     if text:
                         out.append(text)
+    # OpenAI Responses API: input may be a plain string or a list of
+    # input_message/input_text items. Instructions are part of the prompt too.
+    instructions = body.get("instructions")
+    if isinstance(instructions, str):
+        out.append(instructions)
+    response_input = body.get("input")
+    if isinstance(response_input, str):
+        out.append(response_input)
+    elif isinstance(response_input, list):
+        for item in response_input:
+            if not isinstance(item, dict) or item.get("role", "user") != "user":
+                continue
+            content = item.get("content")
+            if isinstance(content, str):
+                out.append(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") in (None, "text", "input_text"):
+                        text = part.get("text")
+                        if text:
+                            out.append(text)
     return "\n".join(out)
 
 
@@ -93,6 +114,15 @@ def flatten_response(body: dict) -> str:
                     text = part.get("text")
                     if text:
                         out.append(text)
+    # OpenAI Responses API: response.output[].content[].output_text.text.
+    for item in body.get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        for part in item.get("content") or []:
+            if isinstance(part, dict) and part.get("type") in (None, "text", "output_text"):
+                text = part.get("text")
+                if text:
+                    out.append(text)
     return "\n".join(out)
 
 

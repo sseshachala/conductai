@@ -52,6 +52,8 @@ interface GuardEvent {
   tokens_input: number | null
   tokens_output: number | null
   cost_usd_after: number | null
+  execution_status?: "success" | "error" | "timeout" | null
+  result_summary?: string | null
   ts: string
 }
 

@@ -12,6 +12,7 @@ from conduct_cli.hooks.base import (
     detect_ai_tool,
     load_config,
     post_event,
+    record_hook_heartbeat,
     run_drain_daemon,
 )
 from conduct_cli.hooks.pretooluse import (
@@ -259,6 +260,7 @@ def main() -> None:
     except Exception:
         sys.exit(0)
 
+    record_hook_heartbeat("post_tool_use")
     _this_file    = Path(__file__).resolve()
     tool_name     = (data.get("tool_name") or "").lower()
     tool_use_id   = data.get("tool_use_id")
