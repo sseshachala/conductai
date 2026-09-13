@@ -6,7 +6,8 @@ import { guard, environments, credentials as credentialsApi } from "@/lib/api"
 
 type Profile = Record<string, any> & { id?: string }
 
-const PROVIDERS = ["anthropic", "openai", "perplexity", "together"]
+// Direct protocol routes plus LiteLLM for providers exposed behind its gateway.
+const PROVIDERS = ["anthropic", "openai", "perplexity", "litellm"]
 
 export default function GatewayProfileSettings({ workspaceId, isAdmin }: { workspaceId: string; isAdmin: boolean }) {
   const { authFetch } = useAuthFetch()
