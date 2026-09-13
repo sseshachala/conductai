@@ -4,9 +4,10 @@ import asyncio
 import json
 import time
 
+import httpx
 from fastapi import BackgroundTasks
 
-from app.guard.audit import _extract_token_counts
+from app.guard.audit import _compute_audit_cost, _extract_token_counts
 from app.guard.router import _stream_chunks, upstream
 from app.modules.guard.routers.proxy import _redact_body
 
@@ -51,6 +52,21 @@ def test_openai_responses_stream_usage_is_accounted():
     assert _extract_token_counts({}, payload) == (12, 7)
 
 
+def test_gateway_utility_operations_never_compute_inference_cost(monkeypatch):
+    monkeypatch.setattr(
+        "app.guard.audit._compute_cost",
+        lambda *args: (_ for _ in ()).throw(AssertionError("must not bill")),
+    )
+
+    assert _compute_audit_cost(
+        "anthropic",
+        "claude-test",
+        100,
+        0,
+        {"operation": "token_count", "billable": False},
+    ) is None
+
+
 def test_responses_input_is_redacted_before_forwarding():
     body = {
         "instructions": "Email person@example.com",
@@ -80,6 +96,39 @@ def test_upstream_error_schedules_flight_recorder_audit(monkeypatch):
     assert len(background.tasks) == 1
     assert background.tasks[0].kwargs["execution_status"] == "error"
     assert background.tasks[0].kwargs["result_summary"] == "Upstream HTTP 429"
+
+
+def test_token_count_timeout_is_an_audited_gateway_error(monkeypatch):
+    async def _send(self, request, **kwargs):
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    monkeypatch.setattr("app.guard.router._get_breaker", lambda: _Breaker())
+    monkeypatch.setattr("httpx.AsyncClient.send", _send)
+    background = BackgroundTasks()
+    response = asyncio.run(upstream(
+        upstream="https://provider.test",
+        path="/v1/messages/count_tokens",
+        body={"model": "claude-test", "messages": []},
+        real_key="test-key",
+        auth_header_out="x-api-key",
+        bearer=False,
+        is_stream=False,
+        background=background,
+        audit_args=(
+            "workspace", "user", "claude", "anthropic", "claude-test",
+            "allowed", None, time.monotonic(), {"model": "claude-test"},
+            "", None, None, None, None, None,
+            {"operation": "token_count", "billable": False},
+        ),
+        provider="anthropic",
+    ))
+
+    assert response.status_code == 502
+    assert len(background.tasks) == 1
+    assert background.tasks[0].kwargs["execution_status"] == "error"
+    assert background.tasks[0].kwargs["result_summary"] == (
+        "Upstream provider unreachable: ReadTimeout"
+    )
 
 
 def test_stream_failure_records_partial_response_as_error():

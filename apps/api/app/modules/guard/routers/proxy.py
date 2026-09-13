@@ -321,8 +321,10 @@ async def _proxy(
     upstream_path: str,
     auth_header_in: str,
     auth_header_out: str,
+    auth_header_fallback: str | None = None,
     bearer: bool = False,
     canonical_profile: bool = False,
+    operation: str = "inference",
 ) -> StreamingResponse | JSONResponse:
     """One implementation, three providers — only the URL + auth header shape differs."""
     started = time.monotonic()
@@ -330,6 +332,12 @@ async def _proxy(
     # 1. Extract member token from whichever auth header the SDK sent
     raw = request.headers.get(auth_header_in, "")
     token = _extract_member_token(raw, bearer=bearer)
+    if not token and auth_header_fallback:
+        raw = request.headers.get(auth_header_fallback, "")
+        token = _extract_member_token(
+            raw,
+            bearer=auth_header_fallback.lower() == "authorization",
+        )
 
     # Internal server-to-server bypass (brain block / runtime calling its own proxy).
     # The runtime sends a per-run cond_run_* token OR the workspace's
@@ -432,6 +440,12 @@ async def _proxy(
             return _fail_closed(400, "Body must be valid JSON")
 
         model, _routing_meta = _apply_tier_resolution(db, workspace_id, provider, body)
+        if operation != "inference":
+            _routing_meta = {
+                **(_routing_meta or {}),
+                "operation": operation,
+                "billable": False,
+            }
         if _routing_meta:
             log.info(
                 "proxy.tier_resolved",
@@ -627,13 +641,14 @@ async def _proxy(
 
     # 5.5 Redact secrets from body before forwarding — runs after policy eval so
     # credential-leak rules still fire first and can block.
-    body, _redacted = _redact_body(body)
-    if _redacted:
-        log.info("guard.proxy.redacted", types=_redacted, workspace_id=workspace_id)
+    if operation == "inference":
+        body, _redacted = _redact_body(body)
+        if _redacted:
+            log.info("guard.proxy.redacted", types=_redacted, workspace_id=workspace_id)
 
     # 5.6 Inject guidance to model when rule has inject_guidance=true (#1141).
     # Fires for warn/audit/allow paths — block path is handled above via response body.
-    if _guidance_text:
+    if _guidance_text and operation == "inference":
         body = _inject_guidance(body, _guidance_text, provider)
         log.info("guard.proxy.guidance_injected",
                  rule_id=decision.get("rule_id"), workspace_id=workspace_id)
@@ -642,8 +657,17 @@ async def _proxy(
     is_stream = bool(body.get("stream"))
     # Pass through all vendor-specific headers the SDK sends (anthropic-beta,
     # openai-organization, openai-project, etc.) minus the ones we own.
-    _skip = {auth_header_in, "host", "content-length", "transfer-encoding",
-             "connection", "content-type", "accept", "user-agent"}
+    _skip = {
+        auth_header_in,
+        auth_header_fallback,
+        "host",
+        "content-length",
+        "transfer-encoding",
+        "connection",
+        "content-type",
+        "accept",
+        "user-agent",
+    }
     extra_headers = {
         k.lower(): v for k, v in request.headers.items()
         if k.lower() not in _skip and not k.lower().startswith("x-conduct")
@@ -659,20 +683,47 @@ async def _proxy(
         is_stream=is_stream,
         extra_headers=extra_headers,
         background=background,
-        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, _audit_decision, _audit_rule_id, started, body, prompt_summary, _user_email, _run_id, _workflow, _workflow_id, _hook_session_id, _routing_meta),
+        audit_args=(
+            workspace_id,
+            clerk_user_id,
+            ai_tool,
+            provider,
+            model,
+            _audit_decision,
+            _audit_rule_id,
+            started,
+            body,
+            prompt_summary,
+            _user_email,
+            _run_id,
+            _workflow,
+            _workflow_id,
+            _hook_session_id,
+            _routing_meta,
+        ),
         upstream_api_key=_upstream_key,
         vendor_key=_vault_key_val,
         provider=provider,
     )
     # #1733 PR 4: response gate (non-streaming).
-    if not is_stream and isinstance(_response, JSONResponse) and _response.status_code < 400:
+    if (
+        operation == "inference"
+        and not is_stream
+        and isinstance(_response, JSONResponse)
+        and _response.status_code < 400
+    ):
         _response = _apply_response_gate(
             _response, workspace_id=workspace_id, provider=provider, model=model,
             clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
             agent_risk_tier=_agent_risk_tier,
         )
     # #1733 PR 5: response gate (streaming, buffered end-of-stream scan).
-    elif is_stream and isinstance(_response, StreamingResponse) and _response.status_code < 400:
+    elif (
+        operation == "inference"
+        and is_stream
+        and isinstance(_response, StreamingResponse)
+        and _response.status_code < 400
+    ):
         _response = _wrap_streaming_response(
             _response, workspace_id=workspace_id, provider=provider, model=model,
             clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
