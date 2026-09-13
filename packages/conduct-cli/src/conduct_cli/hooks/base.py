@@ -414,6 +414,10 @@ def requeue_dead_letters(limit: int | None = None) -> int:
             if summary is not None and not payload.get("input_summary_encoding"):
                 payload["input_summary"] = _encode_summary_text(str(summary))
                 payload["input_summary_encoding"] = "base64url"
+            # The authenticated API derives actor identity from the Agent Identity
+            # token. Older clients incorrectly stored an email in clerk_user_id.
+            payload.pop("clerk_user_id", None)
+            payload.pop("user_email", None)
             entry["payload"] = json.dumps(payload)
             entry["endpoint"] = entry.get("endpoint", "/guard/events")
             entry["attempts"] = 0
