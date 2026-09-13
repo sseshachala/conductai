@@ -1,7 +1,7 @@
-from app.main import app
 import pytest
 
 from app.modules.guard.routers import gateway_proxy
+from app.modules.guard.routers import proxy as legacy_proxy
 
 
 class _Request:
@@ -13,14 +13,14 @@ class _Background:
 
 
 def test_parallel_gateway_proxy_routes_are_registered():
-    paths = {route.path for route in app.routes if hasattr(route, "path")}
+    paths = {route.path for route in gateway_proxy.router.routes}
     assert "/gateway/v1/anthropic/v1/messages" in paths
     assert "/gateway/v1/openai/v1/chat/completions" in paths
     assert "/gateway/v1/perplexity/chat/completions" in paths
 
 
 def test_legacy_proxy_routes_remain_registered():
-    paths = {route.path for route in app.routes if hasattr(route, "path")}
+    paths = {route.path for route in legacy_proxy.router.routes}
     assert "/proxy/anthropic/v1/messages" in paths
     assert "/proxy/openai/v1/chat/completions" in paths
 
