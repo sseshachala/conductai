@@ -1,6 +1,7 @@
 """Tests for local health details reported by ``conduct guard status``."""
 
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import conduct_cli.guard as guard
@@ -36,3 +37,22 @@ def test_status_reports_recent_hook_heartbeat(tmp_path, capsys, monkeypatch):
     output = capsys.readouterr().out
     assert "Hook heartbeat: post_tool_use" in output
     assert "7s ago" in output
+
+
+def test_replay_events_requeues_and_starts_drain(tmp_path, capsys, monkeypatch):
+    from conduct_cli.hooks import base
+
+    dead = tmp_path / "dead-letter"
+    dead.mkdir()
+    (dead / "event.json").write_text("{}")
+    monkeypatch.setattr(base, "JOURNAL_DEAD_DIR", dead)
+    monkeypatch.setattr(guard, "_require_guard_config", lambda: {"agent_token": "cond_agt_test"})
+
+    with patch.object(base, "requeue_dead_letters", return_value=1) as requeue, patch.object(
+        base, "ensure_drain_daemon"
+    ) as ensure:
+        guard.cmd_guard_replay_events(SimpleNamespace(limit=None, dry_run=False))
+
+    requeue.assert_called_once_with(limit=None)
+    ensure.assert_called_once()
+    assert "Requeued 1 dead-letter event" in capsys.readouterr().out

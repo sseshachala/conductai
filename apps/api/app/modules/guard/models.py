@@ -486,7 +486,7 @@ class WorkspaceSigningKey(Base):
     """One HMAC-SHA256 signing key per workspace, used to sign GET /guard/policies/sync responses.
 
     The raw key_bytes are returned only at POST (generate/rotate) time. All subsequent
-    reads return the fingerprint only. The CLI writes the key to ~/.conductguard/signing.key
+    reads return the fingerprint only. The CLI writes the key to ~/.conduct/signing.key
     and verifies each fetched policy before caching it to disk.
     """
 

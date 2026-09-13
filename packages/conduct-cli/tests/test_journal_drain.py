@@ -21,6 +21,10 @@ def _patch_journal(tmp_path: Path):
     )
 
 
+def _config():
+    return {"api_url": "https://api.test", "agent_token": "cond_agt_test"}
+
+
 # ── journal_append ────────────────────────────────────────────────────────────
 
 def test_journal_append_creates_file(tmp_path):
@@ -62,6 +66,7 @@ def test_drain_posts_and_deletes_on_success(tmp_path):
     with (
         patch.object(base, "JOURNAL_DIR", journal_dir),
         patch.object(base, "JOURNAL_PID_PATH", pid_path),
+        patch.object(base, "load_config", side_effect=_config),
         patch("urllib.request.urlopen", return_value=mock_resp),
         patch("time.sleep"),
     ):
@@ -78,6 +83,7 @@ def test_drain_leaves_file_on_network_failure(tmp_path):
     with (
         patch.object(base, "JOURNAL_DIR", journal_dir),
         patch.object(base, "JOURNAL_PID_PATH", pid_path),
+        patch.object(base, "load_config", side_effect=_config),
         patch("urllib.request.urlopen", side_effect=OSError("network down")),
         patch("time.sleep"),
     ):

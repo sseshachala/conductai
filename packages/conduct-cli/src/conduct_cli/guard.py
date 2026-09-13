@@ -2141,6 +2141,33 @@ def _report_savings(cfg: dict, base_url: str, agent_token: str = "") -> None:
         pass
 
 
+def cmd_guard_replay_events(args):
+    """Requeue retained hook events after the authenticated ingest rollout."""
+    if args.limit is not None and args.limit < 1:
+        print(f"{RED}--limit must be at least 1.{RESET}")
+        sys.exit(2)
+    cfg = _require_guard_config()
+    if not cfg.get("agent_token"):
+        print(f"{RED}No Agent Identity token found. Run `conduct login` first.{RESET}")
+        sys.exit(1)
+
+    from conduct_cli.hooks.base import (
+        JOURNAL_DEAD_DIR,
+        ensure_drain_daemon,
+        requeue_dead_letters,
+    )
+
+    available = len(list(JOURNAL_DEAD_DIR.glob("*.json"))) if JOURNAL_DEAD_DIR.exists() else 0
+    selected = min(available, args.limit) if args.limit is not None else available
+    if args.dry_run:
+        print(f"{selected} of {available} dead-letter event(s) ready to replay")
+        return
+    moved = requeue_dead_letters(limit=args.limit)
+    if moved:
+        ensure_drain_daemon(GUARD_DIR / "hook.py")
+    print(f"Requeued {moved} dead-letter event(s)")
+
+
 def cmd_guard_status(args):
     cfg          = _require_guard_config()
     workspace_id = cfg.get("workspace_id")
@@ -2459,6 +2486,13 @@ def register_guard_parser(sub):
 
     # conduct guard status
     guard_sub.add_parser("status", help="Show today's spend and violations")
+
+    replay_p = guard_sub.add_parser(
+        "replay-events",
+        help="Retry retained hook events after fixing delivery",
+    )
+    replay_p.add_argument("--limit", type=int, default=None, help="Maximum events to requeue")
+    replay_p.add_argument("--dry-run", action="store_true", help="Show how many events would be requeued")
 
     # conduct guard savings --team
     guard_sub.add_parser("savings", help="Show org-level token savings across all developers")
@@ -3408,6 +3442,8 @@ def dispatch_guard(args, guard_p):
         cmd_guard_sync(args)
     elif guard_command == "status":
         cmd_guard_status(args)
+    elif guard_command == "replay-events":
+        cmd_guard_replay_events(args)
     elif guard_command == "savings":
         cmd_guard_savings(args)
     elif guard_command == "audit":

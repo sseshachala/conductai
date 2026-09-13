@@ -108,46 +108,20 @@ def _verify_policy_signature(policy_dict: dict) -> bool:
 
 def _post_signature_invalid_event(expected_sig, computed_sig, policy_version, hostname):
     """Fire-and-forget audit event for a failed signature check."""
-    try:
-        cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
-    except Exception:
-        return
-    workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
-    if not workspace_id:
-        return
     import platform as _platform
     _hostname = hostname or _platform.node()
-    payload = json.dumps({
-        "workspace_id":  workspace_id,
-        "clerk_user_id": cfg.get("user_email"),
-        "user_email":    cfg.get("user_email"),
-        "ai_tool":       "hook",
-        "tool_call":     "policy_signature_invalid",
-        "input_summary": json.dumps({
+    post_event(
+        "policy_signature_invalid",
+        {
             "expected_signature": expected_sig or "",
             "computed_signature": computed_sig or "",
             "policy_version":     policy_version or "",
             "hostname":           _hostname,
-        })[:500],
-        "decision":     "blocked",
-        "rule_id":      "policy_signature_invalid",
-        "rule_message": "Policy signature verification failed",
-        "hostname":     _hostname,
-    })
-    api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-    script = (
-        "import urllib.request\n"
-        "try:\n"
-        f"    req = urllib.request.Request(\"{api_url}/guard/events\","
-        f" data={repr(payload.encode())}, headers={{\"Content-Type\": \"application/json\"}}, method=\"POST\")\n"
-        "    urllib.request.urlopen(req, timeout=5)\n"
-        "except: pass\n"
-    )
-    subprocess.Popen(
-        [sys.executable, "-c", script],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
+        },
+        "blocked",
+        "policy_signature_invalid",
+        "Policy signature verification failed",
+        drain_via=GUARD_DIR / "hook.py",
     )
 
 

@@ -37,8 +37,8 @@ from conduct_daemon import enforcer, policy_store
 LOG = logging.getLogger("conduct-daemon")
 PORT         = int(os.environ.get("CONDUCT_DAEMON_PORT", "7878"))
 FLUSH_SEC    = 30
-CONFIG_PATH  = Path.home() / ".conductguard" / "config.json"
-PID_PATH     = Path.home() / ".conductguard" / "daemon.pid"
+CONFIG_PATH  = Path.home() / ".conduct" / "config.json"
+PID_PATH     = Path.home() / ".conduct" / "daemon.pid"
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ def _api_url() -> str:
 
 
 def _headers() -> dict:
-    key = _cfg().get("api_key", "")
+    key = _cfg().get("agent_token", "")
     return {"Authorization": f"Bearer {key}"} if key else {}
 
 
@@ -140,7 +140,7 @@ async def handle_event(request: web.Request) -> web.Response:
 async def _ws_listener() -> None:
     cfg = _cfg()
     workspace_id = cfg.get("workspace_id")
-    api_key      = cfg.get("api_key", "")
+    api_key      = cfg.get("agent_token", "")
     if not workspace_id:
         LOG.info("no workspace_id in config — WS listener skipped")
         return

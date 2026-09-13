@@ -10,6 +10,8 @@ from conduct_cli.hooks.base import (
     CONFIG_PATH,
     GUARD_DIR,
     detect_ai_tool,
+    ensure_drain_daemon,
+    journal_append,
     load_config,
     post_event,
     record_hook_heartbeat,
@@ -192,7 +194,7 @@ def _compute_blast_radius(tool_name: str, tool_input: dict, tool_response: str) 
 
 
 def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms, blast_radius=None, execution_status=None, result_summary=None) -> None:
-    """Fire-and-forget POST to /guard/events/usage."""
+    """Queue a PostToolUse update for the authenticated drain daemon."""
     cfg = load_config()
     workspace_id = cfg.get("workspace_id")
     if not workspace_id or not session_id:
@@ -210,20 +212,8 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms,
         "result_summary":   result_summary,
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-    script = (
-        "import urllib.request\n"
-        "try:\n"
-        f"    req = urllib.request.Request(\"{api_url}/guard/events/usage\","
-        f" data={repr(payload.encode())}, headers={{\"Content-Type\": \"application/json\"}}, method=\"POST\")\n"
-        "    urllib.request.urlopen(req, timeout=5)\n"
-        "except: pass\n"
-    )
-    subprocess.Popen(
-        [sys.executable, "-c", script],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    journal_append(payload, api_url, endpoint="/guard/events/usage")
+    ensure_drain_daemon(GUARD_DIR / "hook.py")
 
 
 # ── Codex delayed reader (spawned as subprocess) ──────────────────────────────

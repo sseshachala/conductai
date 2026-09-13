@@ -4,6 +4,7 @@ GET  /guard/events          — paginated list, filterable
 GET  /guard/events/stream   — SSE real-time feed
 """
 import asyncio
+import base64
 import hashlib
 import ipaddress
 import json
@@ -18,7 +19,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_permission, _clerk_enabled, _verify_clerk_token
+from app.core.auth import (
+    _clerk_enabled,
+    _resolve_agent_token,
+    _verify_clerk_token,
+    get_workspace_id,
+    require_permission,
+)
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.pii import redact_secrets
@@ -105,6 +112,7 @@ class HookEvent(BaseModel):
     ai_tool: str                      # claude_code | claude_chat | claude_desktop | claude_work | codex | codex_cli | codex_chat | cursor | copilot | windsurf | gemini
     tool_call: str                    # bash | edit | write | read
     input_summary: str | None = None
+    input_summary_encoding: str | None = None
     decision: str                     # allowed | blocked | warned | approval
     rule_id: str | None = None
     rule_message: str | None = None
@@ -538,6 +546,86 @@ def _check_spend_budget(db: Session, workspace_id: str, config: GuardConfig | No
 
 # ── POST /guard/events — ingest ───────────────────────────────────────────────
 
+def _hook_authenticated_workspace(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> tuple[str, str | None] | None:
+    """Resolve an Agent Identity token during the CLI migration window."""
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() == "bearer" and token:
+        if not token.startswith(("cond_agt_", "cond_api_")):
+            raise HTTPException(status_code=401, detail="Agent Identity token required")
+        identity, clerk_user_id = _resolve_agent_token(token, db)
+        return str(identity.workspace_id), clerk_user_id
+    if settings.guard_require_hook_auth is True:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    log.warning("guard.events.legacy_unauthenticated_ingest")
+    return None
+
+
+def _authenticated_workspace_uuid(
+    body_workspace_id: str,
+    auth_context: tuple[str, str | None] | None,
+):
+    """Validate the payload workspace against the authenticated token workspace."""
+    import uuid
+
+    try:
+        body_ws = uuid.UUID(body_workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+    if auth_context is not None:
+        authenticated_workspace_id, _ = auth_context
+        try:
+            auth_ws = uuid.UUID(authenticated_workspace_id)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Authenticated workspace is invalid")
+        if body_ws != auth_ws:
+            raise HTTPException(
+                status_code=403,
+                detail="Authenticated token does not belong to the event workspace",
+            )
+    return body_ws
+
+
+def _authenticated_actor(
+    body: HookEvent,
+    auth_context: tuple[str, str | None] | None,
+    db: Session,
+) -> tuple[str | None, str | None]:
+    if auth_context is None:
+        return body.clerk_user_id, body.user_email
+    _, authenticated_clerk_user_id = auth_context
+    if (
+        authenticated_clerk_user_id
+        and body.clerk_user_id
+        and authenticated_clerk_user_id != body.clerk_user_id
+    ):
+        raise HTTPException(status_code=403, detail="Event actor does not match authenticated token")
+    if not authenticated_clerk_user_id:
+        return None, None
+    try:
+        from app.models.user import User
+
+        email = db.query(User.email).filter(User.clerk_id == authenticated_clerk_user_id).scalar()
+    except Exception:
+        email = None
+    return authenticated_clerk_user_id, email if isinstance(email, str) else None
+
+
+def _decoded_input_summary(body: HookEvent) -> str | None:
+    if body.input_summary is None or body.input_summary_encoding is None:
+        return body.input_summary
+    if body.input_summary_encoding != "base64url":
+        raise HTTPException(status_code=422, detail="Unsupported input_summary_encoding")
+    try:
+        raw = base64.b64decode(body.input_summary, altchars=b"-_", validate=True)
+        return raw.decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(status_code=422, detail="Invalid base64url input_summary")
+
+
 def _bg_slack_notify(
     workspace_id_str: str,
     decision: str,
@@ -633,16 +721,13 @@ def ingest_event(
     request: Request,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
+    auth_context: tuple[str, str | None] | None = Depends(_hook_authenticated_workspace),
 ):
-    """Ingest a hook event from the guardctl binary. No workspace auth —
-    workspace_id in the payload is validated against guard_config (same trust
-    model as before: possession of the workspace_id is the trust anchor)."""
+    """Ingest an authenticated hook event bound to its token workspace."""
     import uuid
 
-    try:
-        ws_uuid = uuid.UUID(body.workspace_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+    ws_uuid = _authenticated_workspace_uuid(body.workspace_id, auth_context)
+    actor_clerk_user_id, actor_email = _authenticated_actor(body, auth_context, db)
 
     config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     if not config:
@@ -664,12 +749,12 @@ def ingest_event(
     event = GuardAuditEvent(
         id=_event_id or uuid.uuid4(),
         workspace_id=ws_uuid,
-        clerk_user_id=body.clerk_user_id,
+        clerk_user_id=actor_clerk_user_id,
         session_id=body.session_id,
-        user_email=body.user_email,
+        user_email=actor_email,
         ai_tool=body.ai_tool,
         tool_call=body.tool_call,
-        input_summary=body.input_summary,
+        input_summary=_decoded_input_summary(body),
         decision=body.decision,
         rule_id=body.rule_id,
         rule_message=body.rule_message,
@@ -727,8 +812,8 @@ def ingest_event(
         else:
             new_sess = GuardSession(
                 workspace_id=ws_uuid,
-                user_email=body.user_email,
-                clerk_user_id=body.clerk_user_id,
+                user_email=actor_email,
+                clerk_user_id=actor_clerk_user_id,
                 ai_tool=body.ai_tool,
                 started_at=now,
             )
@@ -778,8 +863,8 @@ def ingest_event(
         decision=body.decision,
         notify_on_block=bool(config.notify_on_block),
         alert_channel=config.alert_channel,
-        user_email=body.user_email,
-        clerk_user_id=body.clerk_user_id,
+        user_email=actor_email,
+        clerk_user_id=actor_clerk_user_id,
         ai_tool=body.ai_tool,
         rule_id=body.rule_id,
         rule_message=body.rule_message,
@@ -794,7 +879,7 @@ def ingest_event(
         ai_tool=body.ai_tool,
         rule_id=body.rule_id,
         rule_message=body.rule_message,
-        user_email=body.user_email,
+        user_email=actor_email,
         blast_radius=body.blast_radius,
         event_id=str(event.id),
     )
@@ -847,15 +932,10 @@ def _tool_pricing(tool_key: str) -> dict:
 def update_usage(
     body: UsageUpdate,
     db: Session = Depends(get_db),
+    auth_context: tuple[str, str | None] | None = Depends(_hook_authenticated_workspace),
 ):
-    """Backfill real token counts from the PostToolUse hook. No Clerk auth —
-    workspace_id validated against guard_config (same trust model as ingest_event)."""
-    import uuid
-
-    try:
-        ws_uuid = uuid.UUID(body.workspace_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid workspace_id")
+    """Backfill token counts for an event in the authenticated workspace."""
+    ws_uuid = _authenticated_workspace_uuid(body.workspace_id, auth_context)
 
     config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     if not config:
@@ -1163,11 +1243,14 @@ def ingest_batch(
     request: Request,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
+    auth_context: tuple[str, str | None] | None = Depends(_hook_authenticated_workspace),
 ):
     """Batch ingest from conduct-daemon audit flush. Delegates to ingest_event per item."""
     for event in body.events:
+        _authenticated_workspace_uuid(event.workspace_id, auth_context)
+    for event in body.events:
         try:
-            ingest_event(event, request, background, db)
+            ingest_event(event, request, background, db, auth_context)
         except HTTPException:
             pass  # skip individual bad events; don't fail the whole batch
 

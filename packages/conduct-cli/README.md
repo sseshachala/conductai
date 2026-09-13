@@ -95,8 +95,8 @@ Admin configures policies and budgets in the Guard dashboard
     └─ developers are workspace members automatically — no invite step needed
 
 Developer runs: conduct guard sync
-    ├─ pulls latest policy to ~/.conductguard/policy.json
-    ├─ writes PreToolUse hook → ~/.conductguard/hook.py
+    ├─ pulls latest policy to ~/.conduct/policy.json
+    ├─ writes PreToolUse hook → ~/.conduct/hook.py
     ├─ registers hook → ~/.claude/settings.json
     └─ registers conductguard-mcp → ~/.claude/settings.json (mcpServers) + Codex
 
@@ -123,7 +123,7 @@ That's it. Policy enforcement is active from the next tool call.
 
 | Command | Description |
 |---------|-------------|
-| `conduct guard sync` | Pull latest policy, write hook to `~/.conductguard/hook.py`, register hook + MCP |
+| `conduct guard sync` | Pull latest policy, write hook to `~/.conduct/hook.py`, register hook + MCP |
 | `conduct guard status` | Show today's spend, session count, and violations |
 | `conduct guard audit [--since 7d]` | Print recent guard events in a table |
 | `conduct verify [--evidence FILE] [--strict] [--format json]` | Map guard events to OWASP Agentic Top 10; exit 1 in CI if blocked events (--strict) |
@@ -160,7 +160,7 @@ OWASP mapping: `no-rm-rf` → A04 Excessive Agency, `no-sudo` → A09 Privilege 
 
 ### How the PreToolUse hook works
 
-When you run `conduct guard sync`, the CLI writes a Python script to `~/.conductguard/hook.py` and registers it as a `PreToolUse` hook in `~/.claude/settings.json`:
+When you run `conduct guard sync`, the CLI writes a Python script to `~/.conduct/hook.py` and registers it as a `PreToolUse` hook in `~/.claude/settings.json`:
 
 ```json
 {
@@ -168,7 +168,7 @@ When you run `conduct guard sync`, the CLI writes a Python script to `~/.conduct
     "PreToolUse": [
       {
         "matcher": ".*",
-        "hooks": [{ "type": "command", "command": "python3 ~/.conductguard/hook.py" }]
+        "hooks": [{ "type": "command", "command": "python3 ~/.conduct/hook.py" }]
       }
     ]
   }
@@ -178,7 +178,7 @@ When you run `conduct guard sync`, the CLI writes a Python script to `~/.conduct
 Before every tool call, Claude Code runs the hook. The hook:
 
 1. Reads `tool_name` and `tool_input` from stdin (JSON)
-2. Loads `~/.conductguard/policy.json` (the team ruleset)
+2. Loads `~/.conduct/policy.json` (the team ruleset)
 3. Matches the call against each rule (`match_tool`, `match_pattern`, `match_path_pattern`)
 4. Takes the rule's action:
    - `block` — prints the policy message, exits with code `2` (Claude Code aborts the tool call)
@@ -230,7 +230,7 @@ guard_sync()
 
 ### Policy file format
 
-Policy is stored at `~/.conductguard/policy.json` and synced from the server:
+Policy is stored at `~/.conduct/policy.json` and synced from the server:
 
 ```json
 {
