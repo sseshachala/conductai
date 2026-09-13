@@ -61,6 +61,26 @@ def test_shell_rc_source_line_added_once_across_multiple_syncs(tmp_path, monkeyp
     rc_text = (tmp_path / ".zshrc").read_text()
     assert rc_text.count(guard.SHELL_RC_MARKER) == 1
     assert rc_text.count(guard.SHELL_SOURCE_LINE) == 1
+    assert "env -u ANTHROPIC_BASE_URL" not in rc_text
+
+
+@pytestmark_posix
+def test_sync_removes_generated_claude_proxy_bypass(tmp_path, monkeypatch):
+    _redirect_home(tmp_path, monkeypatch)
+    monkeypatch.setenv("SHELL", "/bin/zsh")
+    zshrc = tmp_path / ".zshrc"
+    custom_alias = "alias claude-work='claude --worktree'"
+    zshrc.write_text(
+        f"{custom_alias}\n{guard.SHELL_RC_MARKER}\n{guard.SHELL_SOURCE_LINE}\n"
+        "alias claude='env -u ANTHROPIC_BASE_URL claude'\n"
+    )
+
+    _, changed = guard._write_proxy_env("abc", "https://api.conductai.ai/gateway/v1")
+
+    content = zshrc.read_text()
+    assert changed is True
+    assert "env -u ANTHROPIC_BASE_URL" not in content
+    assert custom_alias in content
 
 
 @pytestmark_posix
@@ -212,6 +232,20 @@ def test_windows_appends_source_line_to_powershell_profile_once(tmp_path, monkey
     text = profile.read_text()
     assert text.count(guard.SHELL_RC_MARKER) == 1
     assert text.count('. "$HOME/.conduct/env.ps1"') == 1
+    assert "$env:ANTHROPIC_BASE_URL=$null" not in text
+
+
+def test_windows_sync_removes_generated_claude_proxy_bypass(tmp_path, monkeypatch):
+    _redirect_home_windows(tmp_path, monkeypatch)
+    profile = tmp_path / "Documents" / "PowerShell" / "Microsoft.PowerShell_profile.ps1"
+    profile.parent.mkdir(parents=True)
+    bypass = next(value for value in guard._LEGACY_CLAUDE_BYPASSES if value.startswith("function claude"))
+    profile.write_text(f"{guard.SHELL_RC_MARKER}\n{bypass}\n")
+
+    _, changed = guard._write_proxy_env("abc", "https://api.conductai.ai/gateway/v1")
+
+    assert changed is True
+    assert "$env:ANTHROPIC_BASE_URL=$null" not in profile.read_text()
 
 
 def test_windows_prefers_ps7_profile_when_no_wps5_exists(tmp_path, monkeypatch):

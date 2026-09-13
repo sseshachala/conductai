@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.14.1] - 2026-09-13
+
+### Fixed
+- `conduct guard sync` no longer installs a shell alias that removes
+  `ANTHROPIC_BASE_URL` when Claude Code starts. That alias bypassed the Guard
+  gateway while the status table incorrectly reported Claude Code as routed.
+- Sync removes only the exact legacy bypass previously generated in POSIX and
+  PowerShell profiles; unrelated user-defined Claude aliases remain untouched.
+
+---
+
 ## [0.14.0] - 2026-09-13
 
 ### Added
