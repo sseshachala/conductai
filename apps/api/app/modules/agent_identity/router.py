@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
+from sqlalchemy import func, case
 
 from app.core.auth import (
     get_user_id,
@@ -28,6 +29,8 @@ from app.modules.agent_identity.schemas import (
     ApiTokenOut,
     CredentialSessionOut,
     CredentialSessionPage,
+    ActivitySessionOut,
+    ActivitySessionPage,
 )
 
 
@@ -198,6 +201,20 @@ def list_agent_identities(
         .order_by(AgentIdentity.created_at.desc())
         .all()
     )
+    from app.modules.guard.models import GuardAuditEvent as Event
+    activity = {
+        row.agent_identity_id: row
+        for row in db.query(
+            Event.agent_identity_id,
+            func.count(func.distinct(Event.hook_session_id)).label("session_count"),
+            func.max(Event.ts).label("last_activity"),
+        ).filter(
+            Event.workspace_id == uuid.UUID(workspace_id),
+            Event.agent_identity_id.isnot(None),
+            Event.hook_session_id.isnot(None),
+            Event.hook_session_id != "",
+        ).group_by(Event.agent_identity_id).all()
+    }
     return [AgentIdentityOut(
         id=r.id, name=r.name, provider=r.provider, token_prefix=r.token_prefix,
         created_at=r.created_at, last_used_at=r.last_used_at, environment_id=r.environment_id,
@@ -208,7 +225,44 @@ def list_agent_identities(
         certification_cadence_days=r.certification_cadence_days,
         risk_tier=r.risk_tier, deactivated_at=r.deactivated_at,
         expires_at=r.expires_at,
+        recorded_session_count=activity[r.id].session_count if r.id in activity else 0,
+        last_activity_at=activity[r.id].last_activity if r.id in activity else None,
     ) for r in rows]
+
+
+@router.get("/agent-identities/{identity_id}/activity-sessions", response_model=ActivitySessionPage)
+def list_activity_sessions(
+    workspace_id: str, identity_id: str,
+    limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0),
+    _: str = Depends(require_permission("platform.credentials.manage")),
+    db: Session = Depends(get_db),
+):
+    identity = db.query(AgentIdentity).filter(
+        AgentIdentity.id == identity_id, AgentIdentity.workspace_id == workspace_id,
+    ).first()
+    if identity is None:
+        raise HTTPException(404, detail="Agent identity not found")
+    from app.modules.guard.models import GuardAuditEvent as Event
+    rows = db.query(
+        Event.hook_session_id.label("session_id"),
+        func.array_agg(func.distinct(Event.ai_tool)).label("tools"),
+        func.min(Event.ts).label("first_seen"),
+        func.max(Event.ts).label("last_seen"),
+        func.count(Event.id).label("event_count"),
+        func.sum(case((Event.decision == "warned", 1), else_=0)).label("warned_count"),
+        func.sum(case((Event.decision == "blocked", 1), else_=0)).label("blocked_count"),
+    ).filter(
+        Event.workspace_id == uuid.UUID(workspace_id),
+        Event.agent_identity_id == identity_id,
+        Event.hook_session_id.isnot(None), Event.hook_session_id != "",
+    ).group_by(Event.hook_session_id).order_by(
+        func.max(Event.ts).desc(), Event.hook_session_id,
+    ).offset(offset).limit(limit + 1).all()
+    return ActivitySessionPage(sessions=[ActivitySessionOut(
+        session_id=r.session_id, tools=sorted(t for t in r.tools if t),
+        first_seen=r.first_seen, last_seen=r.last_seen, event_count=r.event_count,
+        warned_count=r.warned_count, blocked_count=r.blocked_count,
+    ) for r in rows[:limit]], has_more=len(rows) > limit)
 
 
 def _credential_session_member_active(db, identity) -> bool:

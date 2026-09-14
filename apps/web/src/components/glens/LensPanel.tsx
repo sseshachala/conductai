@@ -65,8 +65,9 @@ export function LensPanel({
 
   return (
     <aside
+      className="max-md:!fixed max-md:inset-y-0 max-md:right-0 max-md:z-[400] max-md:!w-full max-md:max-w-full"
       style={{
-        width, flexShrink: 0, height: "100vh",
+        width, flexShrink: 0, height: "100dvh",
         background: "var(--surface)", borderLeft: "1px solid var(--border)",
         display: "flex", flexDirection: "column",
         boxShadow: "-4px 0 20px rgba(0,0,0,.06)",

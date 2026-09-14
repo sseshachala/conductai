@@ -30,6 +30,8 @@ class AgentIdentityOut(BaseModel):
     deactivated_at:      Optional[datetime] = None
     # Expiry — set for trials and CLI-minted tokens; null for perpetual credentials.
     expires_at:          Optional[datetime] = None
+    recorded_session_count: int = 0
+    last_activity_at: Optional[datetime] = None
 
 
 class AgentIdentityCreated(AgentIdentityOut):
@@ -81,4 +83,19 @@ class CredentialSessionOut(BaseModel):
 
 class CredentialSessionPage(BaseModel):
     sessions: list[CredentialSessionOut]
+    has_more: bool
+
+
+class ActivitySessionOut(BaseModel):
+    session_id: str
+    tools: list[str]
+    first_seen: datetime
+    last_seen: datetime
+    event_count: int
+    warned_count: int
+    blocked_count: int
+
+
+class ActivitySessionPage(BaseModel):
+    sessions: list[ActivitySessionOut]
     has_more: bool
