@@ -8,7 +8,7 @@ pydantic>=2.13.5,<3
 pydantic-settings==2.5.2
 anthropic==0.125.0
 openai==1.51.0
-python-dotenv==1.2.2
+python-dotenv==1.2.3
 httpx==0.28.1
 brotli==1.2.0
 cryptography>=50.0.1,<51
