@@ -13,6 +13,7 @@ import {
 } from "@/components/guard/common"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api/client"
+import { AgentAvatar } from "@/components/guard/AgentAvatar"
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -235,8 +236,15 @@ export default function ApprovalsPage() {
                       {row.rule_message || "Guard rule requires approval."}
                     </div>
                     <div style={{ display: "flex", gap: 12, fontSize: 12, color: "var(--text-muted)", flexWrap: "wrap" }}>
-                      <span>
-                        <b style={{ color: "var(--text)" }}>who</b>: {row.requester_email || row.requester_agent_ident || "unknown"}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        {row.requester_agent_ident && <AgentAvatar agentId={row.requester_agent_ident} size={20} />}
+                        <span>
+                          <b style={{ color: "var(--text)" }}>{row.requester_agent_ident ? "Agent ID" : "who"}</b>: {row.requester_agent_ident ? (
+                            <a href={`/agent-identity?tab=identities&id=${row.requester_agent_ident}`} onClick={e => e.stopPropagation()} style={{ color: "var(--accent-text)", fontFamily: "var(--font-mono, monospace)" }}>
+                              {row.requester_agent_ident.slice(0, 10)}…
+                            </a>
+                          ) : (row.requester_email || "unknown")}
+                        </span>
                       </span>
                       <span>
                         <b style={{ color: "var(--text)" }}>from</b>: {row.surface}

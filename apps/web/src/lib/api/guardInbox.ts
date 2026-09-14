@@ -22,6 +22,7 @@ export interface InboxRow {
   resolved_at: string | null
   resolved_by: string | null
   latest_event_id: string | null
+  agent_identity_id: string | null
 }
 
 export interface InboxEvent {
@@ -33,6 +34,7 @@ export interface InboxEvent {
   input_summary: string | null
   provider: string | null
   model: string | null
+  agent_identity_id: string | null
 }
 
 export interface InboxPatch {

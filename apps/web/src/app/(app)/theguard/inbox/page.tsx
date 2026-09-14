@@ -12,6 +12,7 @@ import {
   type FilterPill,
 } from "@/components/guard/common"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { AgentAvatar } from "@/components/guard/AgentAvatar"
 import { guard, guardInbox } from "@/lib/api"
 import type {
   InboxRow,
@@ -353,7 +354,7 @@ export default function GuardInboxPage() {
                     onClick={() => toggleExpand(row)}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "80px 1fr 80px 100px 100px 40px",
+                      gridTemplateColumns: "80px 1fr 80px 32px 100px 100px 40px",
                       gap: 12,
                       padding: "12px 16px",
                       alignItems: "center",
@@ -376,6 +377,7 @@ export default function GuardInboxPage() {
                     <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
                       {row.source}
                     </span>
+                    <AgentAvatar agentId={row.agent_identity_id} size={22} />
                     <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
                       {row.occurrences}× · {timeAgo(row.last_seen_at)}
                     </span>
@@ -397,12 +399,13 @@ export default function GuardInboxPage() {
                           <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
                             {rowEvents.map(e => (
                               <div key={e.id} style={{
-                                display: "grid", gridTemplateColumns: "120px 80px 1fr 1fr",
+                                display: "grid", gridTemplateColumns: "120px 80px 28px 1fr 1fr",
                                 gap: 8, padding: "4px 8px",
                                 background: "var(--surface)", borderRadius: 3, color: "var(--text-muted)",
                               }}>
                                 <span>{timeAgo(e.ts)}</span>
                                 <GuardBadge kind="decision" value={e.decision} />
+                                <AgentAvatar agentId={e.agent_identity_id} size={20} />
                                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                   {e.ai_tool ?? "-"} {e.user_email ? `· ${e.user_email}` : ""}
                                 </span>
