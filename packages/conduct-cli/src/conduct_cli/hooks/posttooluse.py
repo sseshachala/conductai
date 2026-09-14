@@ -301,6 +301,20 @@ def main() -> None:
                 if action == "warn" and session_id and rule_id:
                     _record_session_warn(session_id, rule_id)
                 post_event(tool_name, {}, decision, rule_id, message, session_id, drain_via=_this_file, blast_radius=blast_radius)
+    elif session_id:
+        # Some Codex clients omit transcript_path. Still send the PostToolUse
+        # update so the pre-tool audit row is correlated and execution status
+        # is visible; token backfill can remain unavailable for this call.
+        _post_usage(
+            session_id,
+            tool_name or "unknown",
+            0,
+            0,
+            None,
+            blast_radius,
+            execution_status,
+            result_summary,
+        )
 
     sys.exit(0)
 
