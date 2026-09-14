@@ -110,24 +110,73 @@ PROD_E2E_B_PASSWORD=
 Run from the repository root:
 
 ```sh
+rtk proxy python3.11 tools/security-e2e/production.py --authorize-gmail
+
 rtk proxy python3.11 tools/security-e2e/production.py \
-  --credentials-file .prod_e2e_secret \
+  --credentials-file ~/.conduct/e2e/production-accounts.env \
   --allow-disposable-workspaces
 ```
 
 Use `--grep '<pattern>'` to rerun a named canary or a bounded subset after a
 failure. The same preflight and cleanup guards run for targeted selections.
 
-The production suite does not create or delete accounts or workspaces. Its ten
+The production suite does not create or delete accounts or workspaces. Its 30
 independently reported canaries check account/workspace preflight, anonymous
 and forged-header rejection, owner MCP access, foreign and unknown workspace
 denial, direct tenant path enforcement, environment isolation, both Agent
 Identity reference boundaries, refresh-token replay, and post-removal access,
-refresh, and issuance denial. Temporary environments, identities, and
-memberships are removed by the test that created them, with a final membership
-cleanup guard. Production Clerk may require interactive second-factor entry;
-the browser is visible and waits for the operator without persisting browser
-state or verification codes.
+refresh, and issuance denial. The expanded set also covers retired and malformed
+tokens, access-token workspace binding, identity mutation boundaries,
+environment update/delete isolation, concurrent refresh replay, role downgrade,
+policy body scoping, API-token lifecycle and revocation, tenant-scoped audit
+evidence, membership restoration, and member mutation protections. Temporary
+environments, identities, API tokens, policies, and memberships are removed by
+the test that created them. A following run removes stale `prod-e2e-*` resources
+left by an interrupted process, with a final membership cleanup guard.
+
+Seven `@prod-gateway` canaries cover the canonical AI transport surface: the
+Claude compatibility probe, authentication denial, profile-scoped model
+discovery, Vault-backed token counting, non-streaming and streaming Anthropic
+inference, OpenAI Responses regression coverage, non-billable utility audit
+metadata, billable inference attribution, credential-material exclusion from
+responses/audit output, and PreToolUse/PostToolUse session correlation. Account
+A's disposable workspace must have exactly one persisted default Anthropic
+(or compatible LiteLLM) Gateway Profile. Account B's must have exactly one
+persisted default OpenAI (or compatible LiteLLM) Gateway Profile. Each profile
+must reference a canonical `vault://<environment-uuid>/<provider>` credential
+and expose at least one deployment. The
+runner validates these prerequisites and never creates, changes, or prints
+Gateway Profiles or provider credentials.
+
+The first command is a one-time Gmail read-only authorization. It discovers the
+single OAuth desktop-client JSON in `~/.conduct/e2e/otpbroker/` and writes the
+refresh token to `~/.conduct/e2e/otpbroker/token.json`. Both the directory and
+token are restricted to the current OS user. During a run, the launcher starts
+a random-token broker bound only to `127.0.0.1`; it accepts only the two
+configured test-account addresses and returns only a fresh, previously unused
+six-digit code. Runs are headless by default; use `--headed` for visual
+debugging or `--manual-otp` as an explicit OTP fallback.
+
+The `production-security-canary` GitHub workflow runs this journey daily,
+supports manual dispatch, and accepts a `production_deployed` repository
+dispatch event. Store the account file, OAuth client JSON, and OAuth token JSON
+as environment secrets named `PROD_E2E_ACCOUNTS_FILE`,
+`PROD_E2E_GMAIL_CLIENT_JSON`, and `PROD_E2E_GMAIL_TOKEN_JSON` in the protected
+`production-e2e` GitHub environment. The workflow materializes them with mode
+`600` only for the job and removes them in an `always()` cleanup step. Do not
+upload Playwright output from this workflow as an artifact.
+
+An External OAuth app in Testing status issues refresh tokens that expire after
+seven days for Gmail scopes. Before relying on the daily schedule, make this an
+Internal app in the mailbox's Google Workspace organization, have the Workspace
+administrator mark it trusted, or complete Google's production verification.
+
+The production journey does not create or delete accounts or workspaces. Its
+temporary mutations are confined to the two dedicated disposable workspaces,
+and cleanup restores their original resource and membership sets. Immutable
+audit rows remain as evidence of the canary's security-sensitive actions. Gmail
+authorization removes interactive second-factor entry without persisting
+browser state or verification codes.
 
 The runner loads only the four allowlisted fields, redacts them from output,
 and requires explicit mutation consent. Traces, screenshots, videos, retries,

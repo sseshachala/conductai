@@ -53,6 +53,7 @@ class InboxRowOut(BaseModel):
     resolved_at: datetime | None
     resolved_by: str | None
     latest_event_id: str | None
+    agent_identity_id: str | None
 
 
 class InboxEventOut(BaseModel):
@@ -65,6 +66,7 @@ class InboxEventOut(BaseModel):
     input_summary: str | None
     provider: str | None
     model: str | None
+    agent_identity_id: str | None
 
 
 # Enum enforcement is the whole reason for the rename to `unreachable_fallback`
@@ -114,7 +116,19 @@ def list_inbox(
          .limit(limit)
          .all()
     )
-    return [_row_to_out(r) for r in rows]
+    latest_ids = [r.latest_event_id for r in rows if r.latest_event_id]
+    identity_by_event = {}
+    if latest_ids:
+        identity_by_event = {
+            str(event_id): identity_id
+            for event_id, identity_id in db.query(
+                GuardAuditEvent.id, GuardAuditEvent.agent_identity_id,
+            ).filter(
+                GuardAuditEvent.workspace_id == _uuid.UUID(workspace_id),
+                GuardAuditEvent.id.in_(latest_ids),
+            ).all()
+        }
+    return [_row_to_out(r, identity_by_event.get(str(r.latest_event_id))) for r in rows]
 
 
 @router.get("/{inbox_id}", response_model=InboxRowOut)
@@ -125,7 +139,14 @@ def get_inbox_row(
     db: Session = Depends(get_db),
 ) -> InboxRowOut:
     row = _load_row(db, workspace_id, inbox_id)
-    return _row_to_out(row)
+    agent_identity_id = None
+    if row.latest_event_id:
+        event = db.query(GuardAuditEvent.agent_identity_id).filter(
+            GuardAuditEvent.id == row.latest_event_id,
+            GuardAuditEvent.workspace_id == _uuid.UUID(workspace_id),
+        ).first()
+        agent_identity_id = event[0] if event else None
+    return _row_to_out(row, agent_identity_id)
 
 
 @router.get("/{inbox_id}/events", response_model=list[InboxEventOut])
@@ -149,7 +170,7 @@ def list_events_for_row(
     events = db.execute(
         text("""
             SELECT id, ts, decision, ai_tool, user_email, input_summary,
-                   provider, model
+                   provider, model, agent_identity_id
             FROM guard_audit_events
             WHERE workspace_id = :ws
               AND rule_id = :rule
@@ -178,6 +199,7 @@ def list_events_for_row(
             input_summary=e.input_summary,
             provider=e.provider,
             model=e.model,
+            agent_identity_id=e.agent_identity_id,
         )
         for e in events
     ]
@@ -327,7 +349,7 @@ def _load_row(db: Session, workspace_id: str, inbox_id: str) -> GuardInbox:
     return row
 
 
-def _row_to_out(row: GuardInbox) -> InboxRowOut:
+def _row_to_out(row: GuardInbox, agent_identity_id: str | None = None) -> InboxRowOut:
     return InboxRowOut(
         id=str(row.id),
         rule_id=row.rule_id,
@@ -343,4 +365,5 @@ def _row_to_out(row: GuardInbox) -> InboxRowOut:
         resolved_at=row.resolved_at,
         resolved_by=row.resolved_by,
         latest_event_id=str(row.latest_event_id) if row.latest_event_id else None,
+        agent_identity_id=agent_identity_id,
     )

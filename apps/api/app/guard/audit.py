@@ -46,6 +46,23 @@ def _estimate_input_tokens(body: dict) -> int:
     system = body.get("system")
     if isinstance(system, str):
         all_text.append(system)
+    instructions = body.get("instructions")
+    if isinstance(instructions, str):
+        all_text.append(instructions)
+    response_input = body.get("input")
+    if isinstance(response_input, str):
+        all_text.append(response_input)
+    elif isinstance(response_input, list):
+        for item in response_input:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if isinstance(content, str):
+                all_text.append(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and isinstance(part.get("text"), str):
+                        all_text.append(part["text"])
     return max(1, len(" ".join(all_text)) // 4)
 
 
@@ -82,7 +99,12 @@ def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int
                 evt = json.loads(line[6:])
             except json.JSONDecodeError:
                 continue
-            usage = evt.get("message", {}).get("usage") or evt.get("usage") or {}
+            usage = (
+                evt.get("message", {}).get("usage")
+                or evt.get("response", {}).get("usage")
+                or evt.get("usage")
+                or {}
+            )
             i, o = _pair(usage)
             if i is not None:
                 in_tok = i
@@ -93,7 +115,7 @@ def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int
         return None, None
 
 
-def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | None) -> float | None:
+def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | None, *, strict: bool = False) -> float | None:
     """USD for this call. Reuses the workspace's pricing registry.
 
     Token cost  = (in * input + out * output) / 1M
@@ -102,7 +124,7 @@ def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | 
     Returns None only when we couldn't get token counts AND there's no flat
     request fee — i.e. nothing to charge."""
     try:
-        rates, _version = get_model_rates(provider, model)
+        rates, _version = get_model_rates(provider, model, strict=strict)
     except Exception:
         return None
     request_fee = rates.get("request_fee_usd", 0.0)
@@ -110,6 +132,18 @@ def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | 
         return None
     token_cost = ((in_tok or 0) * rates["input"] + (out_tok or 0) * rates["output"]) / 1_000_000
     return round(token_cost + request_fee, 6)
+
+
+def _compute_audit_cost(
+    provider: str,
+    model: str,
+    in_tok: int | None,
+    out_tok: int | None,
+    routing_meta: dict | None,
+) -> float | None:
+    if (routing_meta or {}).get("billable", True) is False:
+        return None
+    return _compute_cost(provider, model, in_tok, out_tok)
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
@@ -125,6 +159,8 @@ def record(
     routing_meta: dict | None = None,
     receipt_id: str | None = None,
     share_token_hash: str | None = None,
+    execution_status: str | None = None,
+    result_summary: str | None = None,
 ) -> None:
     """Background task — best-effort audit write, never blocks the response.
 
@@ -141,10 +177,16 @@ def record(
     try:
         set_workspace_rls(db, workspace_id)
         in_tokens, out_tokens = _extract_token_counts(body, response_bytes)
-        if in_tokens is None and response_bytes is None:
+        if in_tokens is None and response_bytes is None and execution_status != "error":
             # ponytail: blocked call — estimate what vendor would have consumed
             in_tokens, out_tokens = _estimate_input_tokens(body), 0
-        cost_usd = _compute_cost(provider, model, in_tokens, out_tokens)
+        cost_usd = _compute_audit_cost(
+            provider,
+            model,
+            in_tokens,
+            out_tokens,
+            routing_meta,
+        )
         # Mint id in Python — pgcrypto/gen_random_uuid isn't guaranteed to be
         # loaded on every deploy, so we don't rely on it. Caller may pre-mint
         # (block path) so the response can reference the row before the
@@ -164,7 +206,8 @@ def record(
                   hook_session_id,
                   evaluated_rules, defense_score,
                   routing_meta,
-                  share_token_hash
+                  share_token_hash,
+                  execution_status, result_summary
                 ) VALUES (
                   CAST(:row_id AS uuid),
                   :ws, :uid, :ai, NULL,
@@ -176,7 +219,8 @@ def record(
                   :hook_session_id,
                   CAST(:eval AS jsonb), :score,
                   CAST(:routing AS jsonb),
-                  :share_token_hash
+                  :share_token_hash,
+                  :execution_status, :result_summary
                 )
             """),
             {
@@ -198,6 +242,8 @@ def record(
                 "score": defense_score,
                 "routing": json.dumps(routing_meta) if routing_meta else None,
                 "share_token_hash": share_token_hash,
+                "execution_status": execution_status,
+                "result_summary": result_summary,
             },
         )
         db.commit()

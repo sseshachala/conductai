@@ -3,6 +3,7 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react"
 import { timeAgo } from "@/lib/runUtils"
 import { DecisionBadge } from "./DecisionBadge"
+import { AgentAvatar } from "./AgentAvatar"
 
 /**
  * Shared event row used by /guard/activity (full feed) and /governance
@@ -49,6 +50,8 @@ export interface AuditEvent {
     reason?: string | null
     resolution_source?: string | null
   } | null
+  execution_status?: "success" | "error" | "timeout" | null
+  result_summary?: string | null
 }
 
 const TOOL_COLORS: Record<string, string> = {
@@ -327,7 +330,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         <div style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}
           title={ev.user_email ?? ev.agent_identity_id ?? undefined}>
           <span className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {ev.user_email ? ev.user_email.split("@")[0] : ev.conductai_workflow ?? "—"}
+            {ev.user_email ? ev.user_email.split("@")[0] : ev.conductai_workflow ?? <AgentAvatar agentId={ev.agent_identity_id} size={20} />}
           </span>
           {(() => {
             const isHuman = !!ev.user_email
@@ -438,7 +441,11 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           : ev.input_summary ? `${ev.input_summary}…` : "—"}
       </div>
       <div>
-        {ev.conductai_run_id ? (
+        {ev.execution_status === "error" || ev.execution_status === "timeout" ? (
+          <span title={ev.result_summary || "Gateway execution failed"} style={{ display: "inline-flex", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, color: "var(--err)", background: "var(--err-bg)" }}>
+            {ev.execution_status === "timeout" ? "Timeout" : "Error"}
+          </span>
+        ) : ev.conductai_run_id ? (
           <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
             <DecisionBadge decision={ev.decision} />
             <span style={{ fontSize: 11, color: "var(--accent-text)" }}>→</span>

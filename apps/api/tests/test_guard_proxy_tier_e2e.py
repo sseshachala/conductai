@@ -8,6 +8,7 @@ proving the flow inside _proxy(), not those dependencies.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,6 +23,7 @@ from app.guard.policy_types import PolicyAction, PolicyDecision
 def client_and_capture(monkeypatch):
     """Mount the proxy router with all external deps mocked; return a
     (TestClient, captured_forward_calls) tuple."""
+    from app.modules.guard.routers import gateway_proxy
     from app.modules.guard.routers import proxy as proxy_mod
 
     forward_calls: list[dict] = []
@@ -54,9 +56,14 @@ def client_and_capture(monkeypatch):
     monkeypatch.setattr(proxy_mod, "_flatten_prompt", lambda body: "")
     monkeypatch.setattr(proxy_mod, "_estimate_input_tokens", lambda body: 10)
     monkeypatch.setattr("app.runtime.model_router.resolve_for_workspace", fake_resolve_openai)
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_runtime.TransportResolver.resolve",
+        lambda *args, **kwargs: None,
+    )
 
     app = FastAPI()
     app.include_router(proxy_mod.router)
+    app.include_router(gateway_proxy.router)
     return TestClient(app), forward_calls
 
 
@@ -142,3 +149,105 @@ def test_routing_meta_is_none_for_concrete_model(client_and_capture):
     assert r.status_code == 200, r.text
     audit_args = forward_calls[0]["audit_args"]
     assert audit_args[15] is None, "concrete model calls must leave routing_meta NULL"
+
+
+def test_anthropic_token_count_forwards_headers_and_is_non_billable(client_and_capture):
+    client, forward_calls = client_and_capture
+    response = client.post(
+        "/gateway/v1/anthropic/v1/messages/count_tokens",
+        headers={
+            "Authorization": "Bearer guard-mt-fake",
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "context-management-2025-06-27",
+        },
+        json={
+            "model": "claude-sonnet-4-6",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+
+    assert response.status_code == 200
+    call = forward_calls[0]
+    assert call["path"] == "/v1/messages/count_tokens"
+    assert call["extra_headers"]["anthropic-version"] == "2023-06-01"
+    assert call["extra_headers"]["anthropic-beta"] == "context-management-2025-06-27"
+    assert "authorization" not in call["extra_headers"]
+    assert call["audit_args"][15] == {
+        "operation": "token_count",
+        "billable": False,
+    }
+
+
+def test_anthropic_token_count_requires_authentication(client_and_capture):
+    client, forward_calls = client_and_capture
+
+    response = client.post(
+        "/gateway/v1/anthropic/v1/messages/count_tokens",
+        json={"model": "claude-test", "messages": []},
+    )
+
+    assert response.status_code == 401
+    assert forward_calls == []
+
+
+def test_anthropic_token_count_preserves_upstream_error(
+    client_and_capture,
+    monkeypatch,
+):
+    from app.modules.guard.routers import proxy as proxy_mod
+
+    client, _ = client_and_capture
+
+    async def rejected(**kwargs):
+        return JSONResponse(
+            {"error": {"type": "invalid_request_error", "message": "bad model"}},
+            status_code=400,
+        )
+
+    monkeypatch.setattr(proxy_mod, "_forward", rejected)
+    response = client.post(
+        "/gateway/v1/anthropic/v1/messages/count_tokens",
+        headers={"x-api-key": "guard-mt-fake"},
+        json={"model": "missing-claude", "messages": []},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {"type": "invalid_request_error", "message": "bad model"}
+    }
+
+
+def test_anthropic_token_count_uses_profile_selected_transport(
+    client_and_capture,
+    monkeypatch,
+):
+    client, raw_forward_calls = client_and_capture
+    transport_calls = []
+
+    class _ProfileTransport:
+        async def forward(self, **kwargs):
+            transport_calls.append(kwargs)
+            return JSONResponse({"input_tokens": 4}, status_code=200)
+
+    runtime = SimpleNamespace(
+        upstream_url="https://litellm.test/v1",
+        api_key="litellm-vault-key",
+        transport=_ProfileTransport(),
+        profile=SimpleNamespace(provider="litellm"),
+    )
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_runtime.TransportResolver.resolve",
+        lambda *args, **kwargs: runtime,
+    )
+
+    response = client.post(
+        "/gateway/v1/anthropic/v1/messages/count_tokens",
+        headers={"x-api-key": "guard-mt-fake"},
+        json={"model": "claude-test", "messages": []},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"input_tokens": 4}
+    assert raw_forward_calls == []
+    assert transport_calls[0]["upstream"] == "https://litellm.test/v1"
+    assert transport_calls[0]["real_key"] == "litellm-vault-key"

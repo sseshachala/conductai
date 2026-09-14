@@ -1,0 +1,95 @@
+name: production-security-canary
+
+on:
+  schedule:
+    - cron: "30 8 * * *" # 02:30 CST / 03:30 CDT daily
+  workflow_dispatch:
+  repository_dispatch:
+    types: [production_deployed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-security-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: Production security and Gateway canaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production-e2e
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Configure private runtime directory
+        run: echo "E2E_SECRET_DIR=$RUNNER_TEMP/conduct-e2e" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Validate required secrets
+        env:
+          PROD_E2E_ACCOUNTS_FILE: ${{ secrets.PROD_E2E_ACCOUNTS_FILE }}
+          PROD_E2E_GMAIL_CLIENT_JSON: ${{ secrets.PROD_E2E_GMAIL_CLIENT_JSON }}
+          PROD_E2E_GMAIL_TOKEN_JSON: ${{ secrets.PROD_E2E_GMAIL_TOKEN_JSON }}
+        run: |
+          test -n "$PROD_E2E_ACCOUNTS_FILE"
+          test -n "$PROD_E2E_GMAIL_CLIENT_JSON"
+          test -n "$PROD_E2E_GMAIL_TOKEN_JSON"
+
+      - name: Materialize private runtime credentials
+        env:
+          PROD_E2E_ACCOUNTS_FILE: ${{ secrets.PROD_E2E_ACCOUNTS_FILE }}
+          PROD_E2E_GMAIL_CLIENT_JSON: ${{ secrets.PROD_E2E_GMAIL_CLIENT_JSON }}
+          PROD_E2E_GMAIL_TOKEN_JSON: ${{ secrets.PROD_E2E_GMAIL_TOKEN_JSON }}
+        run: |
+          umask 077
+          mkdir -p "$E2E_SECRET_DIR"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          directory = Path(os.environ["E2E_SECRET_DIR"])
+          values = {
+              "accounts.env": os.environ["PROD_E2E_ACCOUNTS_FILE"],
+              "client.json": os.environ["PROD_E2E_GMAIL_CLIENT_JSON"],
+              "token.json": os.environ["PROD_E2E_GMAIL_TOKEN_JSON"],
+          }
+          for name, value in values.items():
+              path = directory / name
+              path.write_text(value)
+              path.chmod(0o600)
+          PY
+      - name: Install runner dependencies
+        run: |
+          python3 -m pip install python-dotenv==1.2.2
+          npm ci
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run bounded production canary
+        run: |
+          python3 tools/security-e2e/production.py \
+            --credentials-file "$E2E_SECRET_DIR/accounts.env" \
+            --gmail-client-file "$E2E_SECRET_DIR/client.json" \
+            --gmail-token-file "$E2E_SECRET_DIR/token.json" \
+            --allow-disposable-workspaces
+
+      - name: Remove runtime credentials
+        if: always()
+        run: rm -rf "$E2E_SECRET_DIR"

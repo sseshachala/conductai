@@ -34,6 +34,10 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres@postgres/conduct_e2e
       REDIS_URL: redis://redis:6379
+      CLERK_TEST_USER_ADMIN: user_3Hn63BfXeSt9ZCBw9UbVQw8ZR5c
+      CLERK_TEST_USER_SECURITY: user_3Hn67p1ETwiglYtpaHMbxeWORvI
+      CLERK_TEST_USER_DEVELOPER: user_3Hn6OmfvjbKikrH9kZpGKi71FIU
+      CLERK_TEST_USER_VIEWER: user_3Hn6TKhuWBpYG0IOAim5ufTqYpe
     networks: [data]
     depends_on:
       postgres:

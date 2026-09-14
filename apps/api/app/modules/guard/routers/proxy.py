@@ -50,6 +50,7 @@ from app.modules.guard.policy_engine import compute_policy, canonical_workspace_
 from app.modules.guard.detectors.normalizer import normalize as _normalize_text
 from app.modules.guard.circuit_breaker import get_breaker as _get_breaker
 from app.runtime.pricing import get_model_rates
+from app.runtime.provider_transport import get_provider_transport_registry
 
 
 log = structlog.get_logger(__name__)
@@ -320,7 +321,10 @@ async def _proxy(
     upstream_path: str,
     auth_header_in: str,
     auth_header_out: str,
+    auth_header_fallback: str | None = None,
     bearer: bool = False,
+    canonical_profile: bool = False,
+    operation: str = "inference",
 ) -> StreamingResponse | JSONResponse:
     """One implementation, three providers — only the URL + auth header shape differs."""
     started = time.monotonic()
@@ -328,6 +332,12 @@ async def _proxy(
     # 1. Extract member token from whichever auth header the SDK sent
     raw = request.headers.get(auth_header_in, "")
     token = _extract_member_token(raw, bearer=bearer)
+    if not token and auth_header_fallback:
+        raw = request.headers.get(auth_header_fallback, "")
+        token = _extract_member_token(
+            raw,
+            bearer=auth_header_fallback.lower() == "authorization",
+        )
 
     # Internal server-to-server bypass (brain block / runtime calling its own proxy).
     # The runtime sends a per-run cond_run_* token OR the workspace's
@@ -430,6 +440,12 @@ async def _proxy(
             return _fail_closed(400, "Body must be valid JSON")
 
         model, _routing_meta = _apply_tier_resolution(db, workspace_id, provider, body)
+        if operation != "inference":
+            _routing_meta = {
+                **(_routing_meta or {}),
+                "operation": operation,
+                "billable": False,
+            }
         if _routing_meta:
             log.info(
                 "proxy.tier_resolved",
@@ -532,6 +548,20 @@ async def _proxy(
         _audit_decision = "warned" if _action == "WARN" else "allowed"
         _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
 
+        def _record_failure(status: int, message: str, *, rule_id: str | None = None) -> None:
+            background.add_task(
+                _record_audit,
+                workspace_id, clerk_user_id, ai_tool, provider, model,
+                "blocked" if status in (403, 429) else _audit_decision,
+                rule_id or _audit_rule_id,
+                int((time.monotonic() - started) * 1000),
+                body=body, response_bytes=None, prompt_summary=prompt_summary,
+                user_email=_user_email, conductai_run_id=_run_id,
+                conductai_workflow=_workflow, conductai_workflow_id=_workflow_id,
+                hook_session_id=_hook_session_id, routing_meta=_routing_meta,
+                execution_status="error", result_summary=f"HTTP {status}: {message}"[:500],
+            )
+
         # 4d. Per-key RPM/TPM rate limiting (#980, #1587 E1). Fires for
         # vault-key + trial-key + platform-key traffic — enforcement is
         # opt-in per workspace via guard_rate_limits rows. If no row
@@ -543,6 +573,10 @@ async def _proxy(
             workspace_id=workspace_id,
             agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
             input_tokens=_estimate_input_tokens(body),
+            # Production Gateway is fail-closed; local/test environments keep
+            # the historical fail-open behavior when Redis is intentionally
+            # absent.
+            fail_closed=canonical_profile and settings.environment == "production",
         )
         if _rate.limited:
             log.info(
@@ -553,6 +587,7 @@ async def _proxy(
                 limit=_rate.limit,
                 current=_rate.current,
             )
+            _record_failure(429, _rate.reason, rule_id="rate-limit")
             return _fail_closed(429, _rate.reason)
 
         # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
@@ -560,7 +595,24 @@ async def _proxy(
         upstream = _upstream_url(db, workspace_id, provider, _environment_id)
         _upstream_key = _upstream_api_key(db, workspace_id, _environment_id)
         _vault_key_val = _vault_key(db, workspace_id, provider, _environment_id)
-        real_key = _upstream_key or _vault_key_val
+        transport = get_provider_transport_registry().for_provider(provider)
+        if canonical_profile:
+            from app.modules.guard.gateway_runtime import TransportResolver
+
+            profile_runtime = TransportResolver().resolve(
+                db, workspace_id, provider, _environment_id,
+            )
+            if profile_runtime:
+                upstream = profile_runtime.upstream_url or upstream
+                _upstream_key = profile_runtime.api_key or _upstream_key
+                transport = profile_runtime.transport
+                if profile_runtime.profile.provider == "litellm":
+                    _vault_key_val = None
+                real_key = _upstream_key or _vault_key_val
+            else:
+                real_key = _upstream_key or _vault_key_val
+        else:
+            real_key = _upstream_key or _vault_key_val
         if not real_key:
             # #1567 PR 2: trial workspaces with no BYO key fall through to a
             # platform-funded env key, fenced by plan + provider + identity + daily cap.
@@ -569,17 +621,20 @@ async def _proxy(
                 db, workspace_id, provider, str(_agent_identity_id) if _agent_identity_id else None,
             )
             if _trial_status == "expired":
+                _record_failure(401, "trial_expired", rule_id="trial-expired")
                 return _fail_closed(
                     401,
                     "trial_expired: 7-day trial ended. Add your own key in Settings → Environments.",
                 )
             if _trial_status == "exceeded":
+                _record_failure(429, "trial_exceeded", rule_id="trial-quota")
                 return _fail_closed(
                     429,
                     "trial_exceeded: daily trial quota hit. Add your own key in Settings → Environments.",
                 )
             real_key = _trial_key
         if not real_key:
+            _record_failure(503, f"No {provider} API key configured", rule_id="credential-missing")
             return _fail_closed(
                 503,
                 f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
@@ -590,13 +645,14 @@ async def _proxy(
 
     # 5.5 Redact secrets from body before forwarding — runs after policy eval so
     # credential-leak rules still fire first and can block.
-    body, _redacted = _redact_body(body)
-    if _redacted:
-        log.info("guard.proxy.redacted", types=_redacted, workspace_id=workspace_id)
+    if operation == "inference":
+        body, _redacted = _redact_body(body)
+        if _redacted:
+            log.info("guard.proxy.redacted", types=_redacted, workspace_id=workspace_id)
 
     # 5.6 Inject guidance to model when rule has inject_guidance=true (#1141).
     # Fires for warn/audit/allow paths — block path is handled above via response body.
-    if _guidance_text:
+    if _guidance_text and operation == "inference":
         body = _inject_guidance(body, _guidance_text, provider)
         log.info("guard.proxy.guidance_injected",
                  rule_id=decision.get("rule_id"), workspace_id=workspace_id)
@@ -605,13 +661,23 @@ async def _proxy(
     is_stream = bool(body.get("stream"))
     # Pass through all vendor-specific headers the SDK sends (anthropic-beta,
     # openai-organization, openai-project, etc.) minus the ones we own.
-    _skip = {auth_header_in, "host", "content-length", "transfer-encoding",
-             "connection", "content-type", "accept", "user-agent"}
+    _skip = {
+        auth_header_in,
+        auth_header_fallback,
+        "host",
+        "content-length",
+        "transfer-encoding",
+        "connection",
+        "content-type",
+        "accept",
+        "user-agent",
+    }
     extra_headers = {
         k.lower(): v for k, v in request.headers.items()
         if k.lower() not in _skip and not k.lower().startswith("x-conduct")
     }
-    _response = await _forward(
+    _response = await transport.forward(
+        sender=_forward,
         upstream=upstream,
         path=upstream_path,
         body=body,
@@ -621,20 +687,47 @@ async def _proxy(
         is_stream=is_stream,
         extra_headers=extra_headers,
         background=background,
-        audit_args=(workspace_id, clerk_user_id, ai_tool, provider, model, _audit_decision, _audit_rule_id, started, body, prompt_summary, _user_email, _run_id, _workflow, _workflow_id, _hook_session_id, _routing_meta),
+        audit_args=(
+            workspace_id,
+            clerk_user_id,
+            ai_tool,
+            provider,
+            model,
+            _audit_decision,
+            _audit_rule_id,
+            started,
+            body,
+            prompt_summary,
+            _user_email,
+            _run_id,
+            _workflow,
+            _workflow_id,
+            _hook_session_id,
+            _routing_meta,
+        ),
         upstream_api_key=_upstream_key,
         vendor_key=_vault_key_val,
         provider=provider,
     )
     # #1733 PR 4: response gate (non-streaming).
-    if not is_stream and isinstance(_response, JSONResponse) and _response.status_code < 400:
+    if (
+        operation == "inference"
+        and not is_stream
+        and isinstance(_response, JSONResponse)
+        and _response.status_code < 400
+    ):
         _response = _apply_response_gate(
             _response, workspace_id=workspace_id, provider=provider, model=model,
             clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
             agent_risk_tier=_agent_risk_tier,
         )
     # #1733 PR 5: response gate (streaming, buffered end-of-stream scan).
-    elif is_stream and isinstance(_response, StreamingResponse) and _response.status_code < 400:
+    elif (
+        operation == "inference"
+        and is_stream
+        and isinstance(_response, StreamingResponse)
+        and _response.status_code < 400
+    ):
         _response = _wrap_streaming_response(
             _response, workspace_id=workspace_id, provider=provider, model=model,
             clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
@@ -757,10 +850,20 @@ def _extract_stream_text(collected: bytes) -> str:
         text = collected.decode("utf-8", errors="replace")
     except Exception:
         return ""
-    parts = [
+    parts: list[str] = []
+    for line in text.splitlines():
+        if not line.startswith("data: "):
+            continue
+        try:
+            event = json.loads(line[6:])
+        except Exception:
+            continue
+        if event.get("type") == "response.output_text.delta" and isinstance(event.get("delta"), str):
+            parts.append(event["delta"])
+    parts.extend([
         m.encode("utf-8").decode("unicode_escape", errors="replace")
         for m in _STREAM_TEXT_RE.findall(text)
-    ]
+    ])
     return "\n".join(parts)
 
 
@@ -931,6 +1034,8 @@ def _redact_body(body: dict) -> tuple[dict, list[str]]:
 
     if isinstance(body.get("system"), str):
         body["system"] = _clean(body["system"])
+    if isinstance(body.get("instructions"), str):
+        body["instructions"] = _clean(body["instructions"])
 
     for msg in body.get("messages") or []:
         content = msg.get("content")
@@ -940,6 +1045,21 @@ def _redact_body(body: dict) -> tuple[dict, list[str]]:
             for block in content:
                 if isinstance(block, dict) and isinstance(block.get("text"), str):
                     block["text"] = _clean(block["text"])
+
+    response_input = body.get("input")
+    if isinstance(response_input, str):
+        body["input"] = _clean(response_input)
+    elif isinstance(response_input, list):
+        for item in response_input:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if isinstance(content, str):
+                item["content"] = _clean(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and isinstance(part.get("text"), str):
+                        part["text"] = _clean(part["text"])
 
     return body, found
 

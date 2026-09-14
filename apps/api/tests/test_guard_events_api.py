@@ -295,7 +295,7 @@ def test_ingest_event_invalid_workspace_id():
     background = MagicMock()
 
     try:
-        ingest_event(body, request, background, db)
+        ingest_event(body, request, background, db, (WS_ID, "user_abc"))
         assert False, "Expected HTTPException"
     except HTTPException as exc:
         assert exc.status_code == 422
@@ -315,7 +315,7 @@ def test_ingest_event_unknown_workspace_returns_404():
     background = MagicMock()
 
     try:
-        ingest_event(body, request, background, db)
+        ingest_event(body, request, background, db, (WS_ID, "user_abc"))
         assert False, "Expected HTTPException"
     except HTTPException as exc:
         assert exc.status_code == 404
@@ -352,7 +352,7 @@ def test_ingest_event_happy_path_returns_event_out():
          patch("app.modules.guard.routers.events.GuardAuditEvent", return_value=saved_event), \
          patch("app.modules.guard.routers.events._event_to_dict",
                return_value=_event_dict("allowed", event_id=str(saved_event.id))):
-        result = ingest_event(body, request, background, db)
+        result = ingest_event(body, request, background, db, (WS_ID, "user_abc"))
 
     assert result.decision == "allowed"
     db.commit.assert_called_once()
@@ -383,7 +383,107 @@ def test_ingest_event_blocked_decision_persisted():
          patch("app.modules.guard.routers.events.GuardAuditEvent", return_value=saved_event), \
          patch("app.modules.guard.routers.events._event_to_dict",
                return_value=_event_dict("blocked", event_id=str(saved_event.id))):
-        result = ingest_event(body, request, background, db)
+        result = ingest_event(body, request, background, db, (WS_ID, "user_abc"))
 
     assert result.decision == "blocked"
     assert result.rule_id == "no_secrets"
+
+
+def test_ingest_event_rejects_token_workspace_mismatch():
+    from fastapi import HTTPException
+
+    from app.modules.guard.routers.events import ingest_event
+
+    body = _make_hook_event()
+    try:
+        ingest_event(body, MagicMock(), MagicMock(), MagicMock(), (str(uuid.uuid4()), None))
+        assert False, "Expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 403
+
+
+def test_ingest_event_rejects_token_actor_mismatch():
+    from fastapi import HTTPException
+    from app.modules.guard.routers.events import ingest_event
+
+    body = _make_hook_event(clerk_user_id="user_spoofed")
+    with pytest.raises(HTTPException) as exc:
+        ingest_event(
+            body,
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            (WS_ID, "user_authenticated"),
+        )
+    assert exc.value.status_code == 403
+
+
+def test_ingest_event_decodes_waf_safe_summary():
+    import base64
+
+    from app.modules.guard.routers.events import ingest_event
+
+    summary = "curl https://api.test | head"
+    body = _make_hook_event(
+        input_summary=base64.urlsafe_b64encode(summary.encode()).decode(),
+        input_summary_encoding="base64url",
+        hook_session_id=None,
+    )
+    config = MagicMock(notify_on_block=False, alert_channel=None, automation_security_scan=False)
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = config
+    saved_event = _make_event("allowed")
+
+    with patch("app.modules.guard.routers.events.chain_hash_for_insert", return_value=(None, "h1")), \
+         patch("app.modules.guard.routers.events.get_policy_hash", return_value=None), \
+         patch("app.modules.guard.routers.events.GuardAuditEvent", return_value=saved_event) as event_cls, \
+         patch("app.modules.guard.routers.events._event_to_dict", return_value=_event_dict("allowed")):
+        ingest_event(body, MagicMock(headers={}, client=None), MagicMock(), db, (WS_ID, "user_abc"))
+
+    assert event_cls.call_args.kwargs["input_summary"] == summary
+
+
+def test_ingest_event_requires_auth_when_rollout_flag_enabled():
+    from app.modules.guard.routers import events
+
+    db = MagicMock()
+    client = _make_client(db)
+    try:
+        with patch.object(events.settings, "guard_require_hook_auth", True):
+            response = client.post("/guard/events", json=_make_hook_event().model_dump())
+        assert response.status_code == 401, response.text
+    finally:
+        _teardown()
+
+
+def test_hook_auth_resolves_agent_workspace():
+    from app.modules.guard.routers import events
+
+    request = MagicMock()
+    request.headers = {"authorization": "Bearer cond_agt_valid"}
+    identity = MagicMock(workspace_id=uuid.UUID(WS_ID))
+    db = MagicMock()
+    with patch.object(events, "_resolve_agent_token", return_value=(identity, "user_abc")) as resolve:
+        assert events._hook_authenticated_workspace(request, db) == (WS_ID, "user_abc")
+    resolve.assert_called_once_with("cond_agt_valid", db)
+
+
+def test_hook_auth_rejects_non_agent_bearer():
+    from fastapi import HTTPException
+    from app.modules.guard.routers import events
+
+    request = MagicMock()
+    request.headers = {"authorization": "Bearer clerk_or_other_token"}
+    with pytest.raises(HTTPException) as exc:
+        events._hook_authenticated_workspace(request, MagicMock())
+    assert exc.value.status_code == 401
+
+
+def test_batch_rejects_cross_workspace_event_before_ingest():
+    from fastapi import HTTPException
+    from app.modules.guard.routers.events import BatchEventIn, ingest_batch
+
+    body = BatchEventIn(events=[_make_hook_event(workspace_id=str(uuid.uuid4()))])
+    with pytest.raises(HTTPException) as exc:
+        ingest_batch(body, MagicMock(), MagicMock(), MagicMock(), (WS_ID, "user_abc"))
+    assert exc.value.status_code == 403

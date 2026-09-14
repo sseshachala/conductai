@@ -34,6 +34,18 @@ def test_flatten_response_openai_shape():
     assert flatten_response(body) == "hello patient"
 
 
+def test_flatten_openai_responses_shapes():
+    request = {
+        "instructions": "follow policy",
+        "input": [{"role": "user", "content": [{"type": "input_text", "text": "hello"}]}],
+    }
+    response = {
+        "output": [{"type": "message", "content": [{"type": "output_text", "text": "world"}]}],
+    }
+    assert flatten_prompt(request) == "follow policy\nhello"
+    assert flatten_response(response) == "world"
+
+
 def test_flatten_response_unknown_shape_returns_empty():
     assert flatten_response({"weird": True}) == ""
 

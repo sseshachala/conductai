@@ -6,6 +6,66 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [Unreleased]
+
+## [0.14.4] - 2026-09-13
+
+### Added
+- `conduct guard sync` enables Claude Code Gateway model discovery so `/model`
+  lists only the deployments allowed by the active workspace Gateway Profile.
+
+## [0.14.3] - 2026-09-13
+
+### Fixed
+- Dead-letter replay removes legacy client-supplied actor fields so the API can
+  bind retained events to the authenticated Agent Identity token.
+
+## [0.14.2] - 2026-09-13
+
+### Added
+- `conduct guard replay-events` safely requeues retained hook audit events
+  after a delivery fix, with `--dry-run` and `--limit` controls.
+
+### Fixed
+- Hook event and PostToolUse usage delivery now authenticate with the current
+  Agent Identity token without persisting it in journal files.
+- Command-like audit summaries are encoded across ingress to avoid false WAF
+  rejections, then decoded before server-side storage.
+- `conduct guard status` now reports the existing hook heartbeat instead of
+  silently falling back to "never observed."
+
+## [0.14.1] - 2026-09-13
+
+### Fixed
+- `conduct guard sync` no longer installs a shell alias that removes
+  `ANTHROPIC_BASE_URL` when Claude Code starts. That alias bypassed the Guard
+  gateway while the status table incorrectly reported Claude Code as routed.
+- Sync removes only the exact legacy bypass previously generated in POSIX and
+  PowerShell profiles; unrelated user-defined Claude aliases remain untouched.
+
+---
+
+## [0.14.0] - 2026-09-13
+
+### Added
+- `conduct guard sync` now configures Codex to use Conduct's canonical
+  OpenAI Responses gateway. Use `--no-codex-proxy` to retain an existing
+  Codex model provider intentionally.
+- Guard hooks write a data-minimal local heartbeat so `conduct guard status`
+  can report whether interception is active.
+- Permanently rejected or repeatedly failing journal events move to a private
+  dead-letter directory instead of blocking later activity delivery.
+
+### Changed
+- Generated provider URLs now match the canonical gateway routes:
+  `/gateway/v1/anthropic`, `/gateway/v1/openai/v1`, and
+  `/gateway/v1/perplexity`.
+- Codex hook installation removes duplicate current registrations and stale
+  registrations from the retired `~/.conductguard/hook.py` location.
+- `conduct guard status` reports queued and dead-letter journal counts.
+
+---
+
 ## [0.13.0] - 2026-09-12
 
 ### Removed

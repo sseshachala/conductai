@@ -10,11 +10,11 @@ import { test, expect } from "@playwright/test"
 // to DEV before navigating so X-Workspace-ID matches the seed target.
 const DEV_WORKSPACE_ID = "00000000-0000-0000-0000-000000000001"
 
-test("agents list shows seeded workflow", async ({ page, context }) => {
+test("workflow list shows seeded workflow", async ({ page, context }) => {
   await context.addCookies([
     { name: "delegator_project_id", value: DEV_WORKSPACE_ID, url: "http://localhost:3000" },
   ])
   await page.goto("/workflows")
-  await expect(page.getByRole("heading", { name: /agents/i })).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole("heading", { name: "Workflows" })).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText("e2e-sample-workflow").first()).toBeVisible({ timeout: 10_000 })
 })

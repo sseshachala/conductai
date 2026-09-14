@@ -12,7 +12,9 @@ Message format differs by provider:
 
 Both make_* methods return list[dict] so the executor always does messages.extend(...).
 
-Adding a new provider: implement LLMClient, add to adapters/, register in client_for().
+Adding a provider: implement LLMClient, then bind its transport in
+``app.runtime.provider_transport``. ``client_for()`` and the HTTP gateway share
+that registry so transport selection has one extension point.
 """
 from __future__ import annotations
 
@@ -510,19 +512,21 @@ def client_for(provider: str, api_key: str, pricing_snapshot: dict[str, Any] | N
     Raises:
         ValueError: if provider is unrecognised
     """
-    if provider == "anthropic":
-        from app.runtime.adapters.anthropic import AnthropicClient
-        return AnthropicClient(api_key=api_key, pricing_snapshot=pricing_snapshot, base_url=base_url)
-    if provider == "openai":
-        from app.runtime.adapters.openai import OpenAIClient
-        return OpenAIClient(api_key=api_key, pricing_snapshot=pricing_snapshot, base_url=base_url)
-    if provider == "perplexity":
-        from app.runtime.adapters.perplexity import PerplexityClient
-        return PerplexityClient(api_key=api_key, pricing_snapshot=pricing_snapshot, base_url=base_url)
-    if provider == "together":
-        from app.runtime.adapters.together import TogetherClient
-        return TogetherClient(api_key=api_key, pricing_snapshot=pricing_snapshot, base_url=base_url)
-    raise ValueError(f"Unknown LLM provider: {provider!r}. Expected one of: anthropic, openai, perplexity, together")
+    from app.runtime.provider_transport import get_provider_transport_registry
+
+    try:
+        transport = get_provider_transport_registry().for_provider(provider)
+    except (AttributeError, ValueError) as exc:
+        raise ValueError(
+            f"Unknown LLM provider: {provider!r}. Expected one of: "
+            "anthropic, openai, perplexity, together"
+        ) from exc
+    return transport.create_client(
+        provider=provider,
+        api_key=api_key,
+        pricing_snapshot=pricing_snapshot,
+        base_url=base_url,
+    )
 
 
 # ── Re-exports for backward compatibility ─────────────────────────────────────

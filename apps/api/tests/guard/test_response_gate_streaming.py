@@ -45,6 +45,16 @@ def test_extract_stream_text_from_openai_deltas():
     assert "world" in text
 
 
+def test_extract_stream_text_from_openai_responses_deltas():
+    sse = (
+        b'event: response.output_text.delta\n'
+        b'data: {"type":"response.output_text.delta","delta":"Hello "}\n\n'
+        b'event: response.output_text.delta\n'
+        b'data: {"type":"response.output_text.delta","delta":"world"}\n\n'
+    )
+    assert _extract_stream_text(sse) == "Hello \nworld"
+
+
 def test_extract_stream_text_handles_escaped_quotes():
     """Regex must handle escape sequences without truncating text."""
     sse = b'data: {"delta":{"text":"quoted \\"foo\\" bar"}}\n\n'

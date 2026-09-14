@@ -5,6 +5,7 @@ bare `pip install conduct-cli` with no shell rc sourced.
 """
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 import sys
@@ -28,7 +29,9 @@ VERSION_CACHE_TTL  = 60    # seconds
 WARNED_RULES_PATH  = GUARD_DIR / "warned_rules.json"
 SIGNING_KEY_PATH   = GUARD_DIR / "signing.key"
 JOURNAL_DIR        = GUARD_DIR / "journal"
+JOURNAL_DEAD_DIR   = JOURNAL_DIR / "dead-letter"
 JOURNAL_PID_PATH   = JOURNAL_DIR / "drain.pid"
+HOOK_HEARTBEAT_PATH = GUARD_DIR / "hook-heartbeat.json"
 
 SNAPSHOT_PATH    = GUARD_DIR / "session_snapshot.json"
 CONDUCT_ENV_PATH = Path.home() / ".conduct" / "env"
@@ -40,6 +43,18 @@ class HookResult:
     action: Literal["allow", "block", "warn"]
     reason: Optional[str] = None
     metadata: dict = field(default_factory=dict)
+
+
+def record_hook_heartbeat(event_name: str) -> None:
+    """Record local hook liveness without storing request or user data."""
+    try:
+        GUARD_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = HOOK_HEARTBEAT_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"event": event_name, "ts": time.time()}))
+        tmp.chmod(0o600)
+        tmp.replace(HOOK_HEARTBEAT_PATH)
+    except Exception:
+        pass
 
 
 # ── Config loading ────────────────────────────────────────────────────────────
@@ -151,15 +166,31 @@ def detect_ai_tool() -> str:
 
 # ── Journal / drain (fire-and-forget event posting) ───────────────────────────
 
-def journal_append(payload_str: str, api_url: str) -> None:
+_JOURNAL_ENDPOINTS = {"/guard/events", "/guard/events/usage"}
+
+
+def journal_append(
+    payload_str: str,
+    api_url: str,
+    endpoint: str = "/guard/events",
+) -> None:
     """Atomically write one event to the journal for the drain daemon to pick up."""
     try:
+        if endpoint not in _JOURNAL_ENDPOINTS:
+            return
         JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
+        JOURNAL_DIR.chmod(0o700)
         import random
         name = f"{time.time_ns()}_{random.randint(0, 9999):04d}.json"
-        entry = json.dumps({"api_url": api_url, "payload": payload_str})
+        entry = json.dumps({
+            "api_url": api_url,
+            "endpoint": endpoint,
+            "payload": payload_str,
+            "attempts": 0,
+        })
         tmp = JOURNAL_DIR / (name + ".tmp")
         tmp.write_text(entry)
+        tmp.chmod(0o600)
         tmp.rename(JOURNAL_DIR / name)
     except Exception:
         pass
@@ -256,6 +287,7 @@ def run_drain_daemon() -> None:
     try:
         JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
         JOURNAL_PID_PATH.write_text(str(_os.getpid()))
+        JOURNAL_PID_PATH.chmod(0o600)
     except Exception:
         return
     empty_scans = 0
@@ -268,9 +300,19 @@ def run_drain_daemon() -> None:
             continue
         posted_any = False
         for f in files:
+            entry: dict = {}
             try:
                 entry = json.loads(f.read_text())
-                api_url = entry["api_url"]
+                cfg = load_config()
+                api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+                if entry.get("api_url", "").rstrip("/") != api_url:
+                    raise ValueError("journal API URL does not match active configuration")
+                endpoint = entry.get("endpoint", "/guard/events")
+                if endpoint not in _JOURNAL_ENDPOINTS:
+                    raise ValueError("unsupported journal endpoint")
+                agent_token = cfg.get("agent_token", "")
+                if not agent_token:
+                    raise ValueError("agent token missing")
                 payload = (
                     entry["payload"].encode()
                     if isinstance(entry["payload"], str)
@@ -282,9 +324,10 @@ def run_drain_daemon() -> None:
                 except Exception:
                     _ua = "conduct-cli"
                 req = urllib.request.Request(
-                    f"{api_url}/guard/events",
+                    f"{api_url}{endpoint}",
                     data=payload,
                     headers={
+                        "Authorization": f"Bearer {agent_token}",
                         "Content-Type": "application/json",
                         "User-Agent": _ua,
                     },
@@ -293,8 +336,29 @@ def run_drain_daemon() -> None:
                 urllib.request.urlopen(req, timeout=8)
                 f.unlink(missing_ok=True)
                 posted_any = True
-            except Exception:
-                pass
+            except Exception as exc:
+                attempts = int(entry.get("attempts", 0)) + 1
+                status = getattr(exc, "code", None)
+                permanent = isinstance(status, int) and 400 <= status < 500 and status not in (408, 429)
+                try:
+                    if permanent or attempts >= 5:
+                        JOURNAL_DEAD_DIR.mkdir(parents=True, exist_ok=True)
+                        JOURNAL_DEAD_DIR.chmod(0o700)
+                        entry["attempts"] = attempts
+                        entry["last_error"] = f"HTTP {status}" if status else type(exc).__name__
+                        destination = JOURNAL_DEAD_DIR / f.name
+                        destination.write_text(json.dumps(entry))
+                        destination.chmod(0o600)
+                        f.unlink(missing_ok=True)
+                    else:
+                        entry["attempts"] = attempts
+                        entry["last_error"] = f"HTTP {status}" if status else type(exc).__name__
+                        tmp = f.with_suffix(".tmp")
+                        tmp.write_text(json.dumps(entry))
+                        tmp.chmod(0o600)
+                        tmp.replace(f)
+                except Exception:
+                    pass
         if not posted_any:
             empty_scans += 1
             time.sleep(2)
@@ -322,6 +386,52 @@ def _safe_summary(tool_input: dict) -> str:
     """Summarise tool input, stripping shell metacharacters that trigger WAF rules."""
     raw = json.dumps(tool_input)[:300]
     return raw.translate(_WAF_CHARS)[:200]
+
+
+def _encode_summary_text(summary: str) -> str:
+    return base64.urlsafe_b64encode(summary.encode()).decode()
+
+
+def _encoded_summary(tool_input: dict) -> str:
+    """Encode command-like summaries so an ingress WAF cannot parse them as requests."""
+    return _encode_summary_text(_safe_summary(tool_input))
+
+
+def requeue_dead_letters(limit: int | None = None) -> int:
+    """Move retained events back to the journal after upgrading the API and CLI."""
+    if not JOURNAL_DEAD_DIR.exists():
+        return 0
+    JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
+    JOURNAL_DIR.chmod(0o700)
+    moved = 0
+    for source in sorted(JOURNAL_DEAD_DIR.glob("*.json")):
+        if limit is not None and moved >= limit:
+            break
+        try:
+            entry = json.loads(source.read_text())
+            payload = json.loads(entry["payload"])
+            summary = payload.get("input_summary")
+            if summary is not None and not payload.get("input_summary_encoding"):
+                payload["input_summary"] = _encode_summary_text(str(summary))
+                payload["input_summary_encoding"] = "base64url"
+            # The authenticated API derives actor identity from the Agent Identity
+            # token. Older clients incorrectly stored an email in clerk_user_id.
+            payload.pop("clerk_user_id", None)
+            payload.pop("user_email", None)
+            entry["payload"] = json.dumps(payload)
+            entry["endpoint"] = entry.get("endpoint", "/guard/events")
+            entry["attempts"] = 0
+            entry.pop("last_error", None)
+            destination = JOURNAL_DIR / source.name
+            tmp = destination.with_suffix(".tmp")
+            tmp.write_text(json.dumps(entry))
+            tmp.chmod(0o600)
+            tmp.replace(destination)
+            source.unlink()
+            moved += 1
+        except Exception:
+            continue
+    return moved
 
 
 def post_event(
@@ -354,11 +464,12 @@ def post_event(
     _gcfg = _json_gcfg.loads(_gcfg_path.read_text()) if _gcfg_path.exists() else {}
     payload = json.dumps({
         "workspace_id":    workspace_id,
-        "clerk_user_id":   cfg.get("user_email"),
+        "clerk_user_id":   cfg.get("clerk_user_id"),
         "user_email":      cfg.get("user_email"),
         "ai_tool":         detect_ai_tool(),
         "tool_call":       tool_name[:255],
-        "input_summary":   _safe_summary(tool_input),
+        "input_summary":   _encoded_summary(tool_input),
+        "input_summary_encoding": "base64url",
         "decision":        decision,
         "rule_id":         rule_id,
         "rule_message":    message,

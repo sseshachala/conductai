@@ -44,7 +44,7 @@ def test_interceptor_passes_through_systemexit(monkeypatch):
 
 
 def test_post_skipped_when_no_creds(monkeypatch, tmp_path):
-    """No ~/.conductguard/config.json → no POST attempted."""
+    """No ~/.conduct/config.json means no POST is attempted."""
     monkeypatch.setattr(log_util, "_CONFIG", tmp_path / "missing.json")
     log_util._read_creds.cache_clear()
 

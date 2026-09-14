@@ -108,7 +108,7 @@ const softwareAppJsonLd = {
   ],
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const jsonLd = (
     <script
       type="application/ld+json"
@@ -152,34 +152,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // ever compromised. Moved to (marketing)/layout.tsx so only public pages
   // load them. CSP set by src/middleware.ts enforces this at the browser
   // as belt-and-braces against a rogue future import.
-  if (clerkEnabled) {
-    return (
-      <ClerkProvider
-        signInUrl="/sign-in"
-        signUpUrl="/sign-up"
-        signInFallbackRedirectUrl="/theguard"
-        signUpFallbackRedirectUrl="/theguard/try"
-      >
-        <html lang="en">
-          <head>
-            {jsonLd}
-            <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-          </head>
-          <body>
-            {children}
-          </body>
-        </html>
-      </ClerkProvider>
-    )
-  }
+  const content = clerkEnabled
+    ? await ClerkProvider({
+        signInUrl: "/sign-in",
+        signUpUrl: "/sign-up",
+        signInFallbackRedirectUrl: "/theguard",
+        signUpFallbackRedirectUrl: "/theguard/try",
+        children,
+      })
+    : children
+
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         {jsonLd}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        {children}
+        {content}
       </body>
     </html>
   )

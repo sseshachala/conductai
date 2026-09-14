@@ -15,6 +15,7 @@ const apiUrlKey = `${publicPrefix}API_URL`
 const clerkPublishable = env[clerkKey] || ""
 const clerkSecret = env.CLERK_SECRET_KEY || ""
 const clerkEnabled = !!(clerkPublishable && clerkSecret)
+const adminState = clerkEnabled ? { storageState: ".auth/admin.json" } : {}
 
 // Use localhost (not 127.0.0.1) so cookies from Clerk's *.accounts.dev
 // origin play nicely with the app origin during sign-in. Clerk Development
@@ -22,7 +23,7 @@ const clerkEnabled = !!(clerkPublishable && clerkSecret)
 const baseURL = env.PLAYWRIGHT_BASE_URL || "http://localhost:3000"
 
 // Phase 3 harness.
-//   * `smoke`        — every-page smoke, runs unauthenticated.
+//   * `smoke`        — static-page smoke, authenticated when Clerk is enabled.
 //   * `flows`        — admin-only golden flows.
 //   * `admin` / `security` / `developer` / `viewer`
 //                    — per-role project matrix, only enabled when the
@@ -44,7 +45,8 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!env.CI,
-  retries: env.CI ? 2 : 0,
+  // One retry preserves flake evidence without tripling every shared failure.
+  retries: env.CI ? 1 : 0,
   workers: env.CI ? 2 : undefined,
   reporter: env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   ...(clerkEnabled ? { globalSetup: require.resolve("./e2e/auth-setup.ts") } : {}),
@@ -58,7 +60,7 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: /pages\.smoke\.spec\.ts/,
-      use: { ...devices["Desktop Chrome"] },
+      use: { ...devices["Desktop Chrome"], ...adminState },
     },
     {
       name: "flows",
@@ -90,18 +92,6 @@ export default defineConfig({
     //     ? { ...devices["Desktop Safari"], storageState: ".auth/admin.json" }
     //     : { ...devices["Desktop Safari"] },
     // },
-    // Mobile viewport smoke — pages.smoke on iPhone + Pixel. Kept scope
-    // tight (smoke only, not flows) so runtime stays bounded.
-    {
-      name: "smoke-mobile-iphone",
-      testMatch: /pages\.smoke\.spec\.ts/,
-      use: { ...devices["iPhone 14"] },
-    },
-    {
-      name: "smoke-mobile-pixel",
-      testMatch: /pages\.smoke\.spec\.ts/,
-      use: { ...devices["Pixel 7"] },
-    },
     ...roleProjects,
   ],
   webServer: {

@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     # is used. Never trust the *first* XFF value blindly — audit S12.
     trusted_proxy_cidrs: str = ""
 
+    # Hook journal authentication rollout. Deploy API support and the updated
+    # CLI first, then set true after clients have upgraded.
+    guard_require_hook_auth: bool = False
+
     # /metrics scrape token — audit O01. Empty in production means /metrics
     # refuses every caller (fail-closed). Empty in local/development leaves
     # the endpoint open so devs can `curl /metrics` without extra setup.

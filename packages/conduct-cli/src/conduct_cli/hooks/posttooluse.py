@@ -10,8 +10,11 @@ from conduct_cli.hooks.base import (
     CONFIG_PATH,
     GUARD_DIR,
     detect_ai_tool,
+    ensure_drain_daemon,
+    journal_append,
     load_config,
     post_event,
+    record_hook_heartbeat,
     run_drain_daemon,
 )
 from conduct_cli.hooks.pretooluse import (
@@ -191,7 +194,7 @@ def _compute_blast_radius(tool_name: str, tool_input: dict, tool_response: str) 
 
 
 def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms, blast_radius=None, execution_status=None, result_summary=None) -> None:
-    """Fire-and-forget POST to /guard/events/usage."""
+    """Queue a PostToolUse update for the authenticated drain daemon."""
     cfg = load_config()
     workspace_id = cfg.get("workspace_id")
     if not workspace_id or not session_id:
@@ -209,20 +212,8 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms,
         "result_summary":   result_summary,
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
-    script = (
-        "import urllib.request\n"
-        "try:\n"
-        f"    req = urllib.request.Request(\"{api_url}/guard/events/usage\","
-        f" data={repr(payload.encode())}, headers={{\"Content-Type\": \"application/json\"}}, method=\"POST\")\n"
-        "    urllib.request.urlopen(req, timeout=5)\n"
-        "except: pass\n"
-    )
-    subprocess.Popen(
-        [sys.executable, "-c", script],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    journal_append(payload, api_url, endpoint="/guard/events/usage")
+    ensure_drain_daemon(GUARD_DIR / "hook.py")
 
 
 # ── Codex delayed reader (spawned as subprocess) ──────────────────────────────
@@ -245,8 +236,16 @@ def post_codex_main() -> None:
     time.sleep(2)
     transcript_path = args.get("transcript_path", "")
     tokens_in, tokens_out = _scan_codex_tokens(transcript_path)
-    if tokens_in or tokens_out:
-        _post_usage(args.get("session_id"), args.get("tool_name"), tokens_in, tokens_out, None, args.get("blast_radius"))
+    _post_usage(
+        args.get("session_id"),
+        args.get("tool_name") or "unknown",
+        tokens_in,
+        tokens_out,
+        None,
+        args.get("blast_radius"),
+        args.get("execution_status"),
+        args.get("result_summary"),
+    )
     sys.exit(0)
 
 
@@ -259,6 +258,7 @@ def main() -> None:
     except Exception:
         sys.exit(0)
 
+    record_hook_heartbeat("post_tool_use")
     _this_file    = Path(__file__).resolve()
     tool_name     = (data.get("tool_name") or "").lower()
     tool_use_id   = data.get("tool_use_id")
@@ -288,6 +288,8 @@ def main() -> None:
                 "tool_name":       tool_name,
                 "transcript_path": transcript_path,
                 "blast_radius":    blast_radius,
+                "execution_status": execution_status,
+                "result_summary":   result_summary,
             }))
             subprocess.Popen(
                 [sys.executable, str(_this_file), "post-codex", str(pending)],
@@ -309,6 +311,20 @@ def main() -> None:
                 if action == "warn" and session_id and rule_id:
                     _record_session_warn(session_id, rule_id)
                 post_event(tool_name, {}, decision, rule_id, message, session_id, drain_via=_this_file, blast_radius=blast_radius)
+    elif session_id:
+        # Some Codex clients omit transcript_path. Still send the PostToolUse
+        # update so the pre-tool audit row is correlated and execution status
+        # is visible; token backfill can remain unavailable for this call.
+        _post_usage(
+            session_id,
+            tool_name or "unknown",
+            0,
+            0,
+            None,
+            blast_radius,
+            execution_status,
+            result_summary,
+        )
 
     sys.exit(0)
 

@@ -306,6 +306,23 @@ export const guard = {
       post(f, `${base()}/proxy-config/push`, body),
   },
 
+  gatewayProfiles: {
+    list: (f: AuthFetch, workspaceId: string) =>
+      json<any[]>(f, `${API}/workspaces/${workspaceId}/gateways`),
+    create: (f: AuthFetch, workspaceId: string, body: Record<string, unknown>) =>
+      post(f, `${API}/workspaces/${workspaceId}/gateways`, body),
+    update: (f: AuthFetch, workspaceId: string, id: string, body: Record<string, unknown>) =>
+      put(f, `${API}/workspaces/${workspaceId}/gateways/${id}`, body),
+    validate: (f: AuthFetch, workspaceId: string, body: Record<string, unknown>) =>
+      json<{ valid: boolean; warnings: string[] }>(f, `${API}/workspaces/${workspaceId}/gateways/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    push: (f: AuthFetch, workspaceId: string, id: string, environmentId: string) =>
+      post(f, `${API}/workspaces/${workspaceId}/gateways/${id}/push`, { environment_id: environmentId }),
+  },
+
   notifications: {
     list: (f: AuthFetch, workspaceId: string) =>
       json<NotificationList>(f, `${base()}/notifications?workspace_id=${workspaceId}`),

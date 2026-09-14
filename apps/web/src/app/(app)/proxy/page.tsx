@@ -1,12 +1,14 @@
 "use client"
 
 import AppShell from "@/components/AppShell"
-import ProxySettings from "@/components/settings/ProxySettings"
+import GatewayProfileSettings from "@/components/settings/GatewayProfileSettings"
+import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 export default function ProxyGatewaysPage() {
   const { activeWorkspace } = useWorkspace()
   const workspaceId = activeWorkspace?.id ?? ""
+  const { role } = useGuardRole()
 
   return (
     <AppShell>
@@ -17,7 +19,7 @@ export default function ProxyGatewaysPage() {
         <p style={{ fontSize: 13, color: "var(--text-3)", margin: "0 0 20px" }}>
           Route agent LLM traffic through Conduct so Guard can enforce prompt and response rules. Push upstream keys to the selected vault environment.
         </p>
-        <ProxySettings workspaceId={workspaceId} />
+        <GatewayProfileSettings workspaceId={workspaceId} isAdmin={role === "admin"} />
       </div>
     </AppShell>
   )

@@ -33,6 +33,31 @@ from app.modules.guard.circuit_breaker import get_breaker as _get_breaker
 log = structlog.get_logger(__name__)
 
 
+def _schedule_audit(
+    background: BackgroundTasks,
+    audit_args: tuple,
+    *,
+    response_bytes: bytes | None,
+    upstream: str | None,
+    execution_status: str = "success",
+    result_summary: str | None = None,
+) -> None:
+    background.add_task(
+        _record_audit, *audit_args[:6], audit_args[6],
+        int((time.monotonic() - audit_args[7]) * 1000),
+        body=audit_args[8], response_bytes=response_bytes, upstream=upstream,
+        prompt_summary=audit_args[9] if len(audit_args) > 9 else "",
+        user_email=audit_args[10] if len(audit_args) > 10 else None,
+        conductai_run_id=audit_args[11] if len(audit_args) > 11 else None,
+        conductai_workflow=audit_args[12] if len(audit_args) > 12 else None,
+        conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
+        hook_session_id=audit_args[14] if len(audit_args) > 14 else None,
+        routing_meta=audit_args[15] if len(audit_args) > 15 else None,
+        execution_status=execution_status,
+        result_summary=result_summary,
+    )
+
+
 # ─── Public helpers ───────────────────────────────────────────────────────────
 
 def fail_closed(
@@ -75,24 +100,23 @@ async def _stream_chunks(
     """Pass-through every chunk. Schedule the audit event after the stream
     closes — we don't parse mid-stream in V1."""
     collected = bytearray()
+    execution_status = "success"
+    result_summary = None
     try:
         async for chunk in resp.aiter_bytes():
             collected.extend(chunk)
             yield chunk
+    except Exception as exc:
+        execution_status = "error"
+        result_summary = f"Upstream stream failed: {type(exc).__name__}"
+        raise
     finally:
         await resp.aclose()
         await client.aclose()
-        background.add_task(
-            _record_audit, *audit_args[:6], audit_args[6],
-            int((time.monotonic() - audit_args[7]) * 1000),
-            body=audit_args[8], response_bytes=bytes(collected), upstream=upstream_url,
-            prompt_summary=audit_args[9] if len(audit_args) > 9 else "",
-            user_email=audit_args[10] if len(audit_args) > 10 else None,
-            conductai_run_id=audit_args[11] if len(audit_args) > 11 else None,
-            conductai_workflow=audit_args[12] if len(audit_args) > 12 else None,
-            conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
-            hook_session_id=audit_args[14] if len(audit_args) > 14 else None,
-            routing_meta=audit_args[15] if len(audit_args) > 15 else None,
+        _schedule_audit(
+            background, audit_args, response_bytes=bytes(collected),
+            upstream=upstream_url, execution_status=execution_status,
+            result_summary=result_summary,
         )
 
 
@@ -154,27 +178,42 @@ async def upstream(
     if not _breaker.allow(_breaker_key):
         log.warning("guard.proxy.breaker_open", provider=_breaker_key,
                     snapshot=_breaker.snapshot(_breaker_key))
+        message = (
+            f"Guard circuit breaker OPEN for provider={_breaker_key} — "
+            f"upstream failing repeatedly; retry after ~{int(_breaker.recovery_timeout)}s"
+        )
+        _schedule_audit(
+            background, audit_args, response_bytes=None, upstream=upstream,
+            execution_status="error", result_summary=message,
+        )
         return fail_closed(
             503,
-            f"Guard circuit breaker OPEN for provider={_breaker_key} — "
-            f"upstream failing repeatedly; retry after ~{int(_breaker.recovery_timeout)}s",
+            message,
         )
 
     client = httpx.AsyncClient(timeout=httpx.Timeout(600.0))
 
     try:
         req = client.build_request("POST", _full_url, json=body, headers=headers)
-        log.info("guard.proxy.forward", url=_full_url,
-                 headers={k: v for k, v in headers.items() if "key" not in k.lower() and "auth" not in k.lower()})
+        parsed_upstream = _urlparse(_full_url)
+        log.info("guard.proxy.forward",
+                 upstream_host=parsed_upstream.hostname,
+                 upstream_path=parsed_upstream.path,
+                 header_names=sorted(headers))
         resp = await client.send(req, stream=True)
     except Exception as e:
         _breaker.record_failure(_breaker_key)
         await client.aclose()
-        import traceback as _tb
-        log.warning("guard.proxy.upstream_unreachable", url=_full_url,
-                    exc_type=type(e).__name__, err=str(e),
-                    traceback=_tb.format_exc())
-        return fail_closed(502, f"Upstream {_full_url} unreachable: {type(e).__name__}: {e}")
+        log.warning("guard.proxy.upstream_unreachable",
+                    upstream_host=parsed_upstream.hostname,
+                    upstream_path=parsed_upstream.path,
+                    exc_type=type(e).__name__)
+        message = f"Upstream provider unreachable: {type(e).__name__}"
+        _schedule_audit(
+            background, audit_args, response_bytes=None, upstream=upstream,
+            execution_status="error", result_summary=message[:500],
+        )
+        return fail_closed(502, message)
 
     if resp.status_code >= 500:
         _breaker.record_failure(_breaker_key)
@@ -185,6 +224,10 @@ async def upstream(
         err_body = await resp.aread()
         await resp.aclose()
         await client.aclose()
+        _schedule_audit(
+            background, audit_args, response_bytes=err_body, upstream=upstream,
+            execution_status="error", result_summary=f"Upstream HTTP {resp.status_code}",
+        )
         return JSONResponse(
             status_code=resp.status_code,
             content=_safe_json(err_body, fallback={"error": "upstream error"}),
@@ -220,18 +263,7 @@ async def upstream(
             log.warning("guard.proxy.deflate_decompress_failed", err=str(e))
     await resp.aclose()
     await client.aclose()
-    background.add_task(
-        _record_audit, *audit_args[:6], audit_args[6],
-        int((time.monotonic() - audit_args[7]) * 1000),
-        body=audit_args[8], response_bytes=full, upstream=upstream,
-        prompt_summary=audit_args[9] if len(audit_args) > 9 else "",
-        user_email=audit_args[10] if len(audit_args) > 10 else None,
-        conductai_run_id=audit_args[11] if len(audit_args) > 11 else None,
-        conductai_workflow=audit_args[12] if len(audit_args) > 12 else None,
-        conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
-        hook_session_id=audit_args[14] if len(audit_args) > 14 else None,
-        routing_meta=audit_args[15] if len(audit_args) > 15 else None,
-    )
+    _schedule_audit(background, audit_args, response_bytes=full, upstream=upstream)
     _resp_headers = {
         k: v for k, v in resp.headers.items()
         if k.lower() != "content-encoding" and k.lower() != "content-length"
