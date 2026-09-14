@@ -340,7 +340,9 @@ async function canonicalGatewayProfile(
       ? profile.protocol === "anthropic"
       : ["openai", "openai_compatible"].includes(profile.protocol),
   ).toBe(true)
-  expect(profile.credential_ref).toMatch(/^vault:\/\/.+/)
+  expect(profile.credential_ref).toMatch(
+    /^vault:\/\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[a-z0-9_-]+$/i,
+  )
   expect(profile.deployments.length).toBeGreaterThan(0)
   return profile
 }

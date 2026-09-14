@@ -30,7 +30,7 @@ class _Db:
 
 def test_runtime_resolves_litellm_profile_without_profile_secret(monkeypatch):
     monkeypatch.setattr(
-        "app.modules.guard.gateway_credentials.get_credential",
+        "app.modules.guard.gateway_credentials.get_vault_credential",
         lambda *args, **kwargs: {},
     )
     upstream, key, profile = resolve_profile_runtime(_Db(), "workspace", "openai", None)
@@ -41,7 +41,7 @@ def test_runtime_resolves_litellm_profile_without_profile_secret(monkeypatch):
 
 def test_transport_resolver_returns_profile_vault_and_registered_transport(monkeypatch):
     monkeypatch.setattr(
-        "app.modules.guard.gateway_credentials.get_credential",
+        "app.modules.guard.gateway_credentials.get_vault_credential",
         lambda *args, **kwargs: {},
     )
 

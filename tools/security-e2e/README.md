@@ -143,7 +143,8 @@ responses/audit output, and PreToolUse/PostToolUse session correlation. Account
 A's disposable workspace must have exactly one persisted default Anthropic
 (or compatible LiteLLM) Gateway Profile. Account B's must have exactly one
 persisted default OpenAI (or compatible LiteLLM) Gateway Profile. Each profile
-must reference a `vault://` credential and expose at least one deployment. The
+must reference a canonical `vault://<environment-uuid>/<provider>` credential
+and expose at least one deployment. The
 runner validates these prerequisites and never creates, changes, or prints
 Gateway Profiles or provider credentials.
 
