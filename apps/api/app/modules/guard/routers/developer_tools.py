@@ -170,7 +170,9 @@ def get_my_sync_status(
             WHERE workspace_id = :ws AND user_email = :email
             LIMIT 1
         """),
-        {"ws": uuid.UUID(workspace_id), "email": email},
+        # guard_developer_tools.workspace_id is stored as text (unlike the
+        # UUID-typed audit tables), so bind the workspace id as a string.
+        {"ws": workspace_id, "email": email},
     ).fetchone()
 
     return {"synced": bool(row), "email": email}
