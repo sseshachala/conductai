@@ -115,7 +115,7 @@ def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int
         return None, None
 
 
-def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | None) -> float | None:
+def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | None, *, strict: bool = False) -> float | None:
     """USD for this call. Reuses the workspace's pricing registry.
 
     Token cost  = (in * input + out * output) / 1M
@@ -124,7 +124,7 @@ def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | 
     Returns None only when we couldn't get token counts AND there's no flat
     request fee — i.e. nothing to charge."""
     try:
-        rates, _version = get_model_rates(provider, model)
+        rates, _version = get_model_rates(provider, model, strict=strict)
     except Exception:
         return None
     request_fee = rates.get("request_fee_usd", 0.0)

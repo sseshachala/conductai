@@ -83,6 +83,7 @@ def check_rate_limit(
     workspace_id: str,
     agent_identity_id: str | None,
     input_tokens: int,
+    fail_closed: bool = False,
 ) -> RateLimitDecision:
     """Increment RPM+TPM counters and return whether the request is over cap."""
     rpm, tpm, scope = _resolve_limits(db, workspace_id, agent_identity_id)
@@ -96,6 +97,10 @@ def check_rate_limit(
 
     try:
         r = _redis_client()
+        # Redis executes transactional pipelines as one MULTI/EXEC unit, so
+        # increments and TTL assignment cannot interleave across callers.
+        # redis-py uses MULTI/EXEC for its default pipeline, making the
+        # increments and TTL assignment one atomic unit.
         pipe = r.pipeline()
         pipe.incr(rpm_key, 1)
         pipe.expire(rpm_key, 70)
@@ -104,8 +109,14 @@ def check_rate_limit(
         rpm_val, _, tpm_val, _ = pipe.execute()
         rpm_val = int(rpm_val or 0)
         tpm_val = int(tpm_val or 0)
-    except Exception as e:  # noqa: BLE001 — fail-open by design (see module docstring)
+    except Exception as e:  # noqa: BLE001 — limits are fail-closed once configured
         log.warning("guard.rate_limit.redis_unavailable", err=str(e), workspace_id=workspace_id)
+        if fail_closed:
+            return RateLimitDecision(
+                True,
+                "Rate-limit service unavailable; retry later.",
+                "availability", None, None, scope,
+            )
         return RateLimitDecision(False, None, None, None, None, scope)
 
     if rpm is not None and rpm_val > rpm:
