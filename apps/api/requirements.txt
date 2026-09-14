@@ -12,7 +12,7 @@ python-dotenv==1.2.2
 httpx==0.28.1
 brotli==1.2.0
 cryptography>=50.0.1,<51
-PyJWT[crypto]>=2.13.0
+PyJWT[crypto]>=2.14.0
 modal~=1.5
 paramiko>=4.0.0,<5
 click>=8.5.0
