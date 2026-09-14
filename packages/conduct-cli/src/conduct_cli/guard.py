@@ -1232,17 +1232,21 @@ def _detect_ai_tools() -> list[dict]:
     if codex_dir.exists():
         config = codex_dir / "config.toml"
         is_desktop = _check_toml_str(config, "[desktop]")
+        # Codex Desktop uses the same provider configuration as Codex CLI.
+        # Do not report it as partial when the Conduct provider is selected.
+        codex_proxy = _check_toml_str(config, 'model_provider = "conduct"')
+        codex_mcp = _check_toml_str(config, "mcp_servers.conduct") or _check_toml_str(config, "conduct-mcp")
         if is_desktop:
             tools.append({
                 "name": "codex-desktop",
-                "mcp_registered": _check_toml_str(config, "conduct-mcp"),
+                "mcp_registered": codex_mcp,
                 "hook_registered": _check_toml_str(config, "conductguard") or _check_toml_str(config, "conduct"),
-                "proxy_routed": False,
+                "proxy_routed": codex_proxy,
             })
         else:
             tools.append({
                 "name": "codex",
-                "mcp_registered": _check_toml_str(config, "conduct-mcp"),
+                "mcp_registered": codex_mcp,
                 "hook_registered": _check_toml_str(config, "conductguard") or _check_toml_str(config, "conduct"),
                 "proxy_routed": _is_openai_proxied(),
             })

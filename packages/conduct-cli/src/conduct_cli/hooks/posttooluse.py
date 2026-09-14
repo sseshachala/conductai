@@ -236,8 +236,16 @@ def post_codex_main() -> None:
     time.sleep(2)
     transcript_path = args.get("transcript_path", "")
     tokens_in, tokens_out = _scan_codex_tokens(transcript_path)
-    if tokens_in or tokens_out:
-        _post_usage(args.get("session_id"), args.get("tool_name"), tokens_in, tokens_out, None, args.get("blast_radius"))
+    _post_usage(
+        args.get("session_id"),
+        args.get("tool_name") or "unknown",
+        tokens_in,
+        tokens_out,
+        None,
+        args.get("blast_radius"),
+        args.get("execution_status"),
+        args.get("result_summary"),
+    )
     sys.exit(0)
 
 
@@ -280,6 +288,8 @@ def main() -> None:
                 "tool_name":       tool_name,
                 "transcript_path": transcript_path,
                 "blast_radius":    blast_radius,
+                "execution_status": execution_status,
+                "result_summary":   result_summary,
             }))
             subprocess.Popen(
                 [sys.executable, str(_this_file), "post-codex", str(pending)],
