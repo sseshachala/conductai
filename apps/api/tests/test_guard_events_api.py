@@ -456,16 +456,59 @@ def test_ingest_event_requires_auth_when_rollout_flag_enabled():
         _teardown()
 
 
-def test_hook_auth_resolves_agent_workspace():
+@pytest.mark.parametrize("token", ["cond_agt_valid", "cond_agt_s1_valid", "cond_api_valid"])
+def test_hook_auth_resolves_agent_workspace(token):
     from app.modules.guard.routers import events
 
     request = MagicMock()
-    request.headers = {"authorization": "Bearer cond_agt_valid"}
-    identity = MagicMock(workspace_id=uuid.UUID(WS_ID))
+    request.headers = {"authorization": f"Bearer {token}"}
+    identity = MagicMock(id=str(uuid.uuid4()), workspace_id=uuid.UUID(WS_ID))
     db = MagicMock()
     with patch.object(events, "_resolve_agent_token", return_value=(identity, "user_abc")) as resolve:
         assert events._hook_authenticated_workspace(request, db) == (WS_ID, "user_abc")
-    resolve.assert_called_once_with("cond_agt_valid", db)
+    resolve.assert_called_once_with(token, db)
+    assert request.state.guard_hook_identity == (WS_ID, identity.id)
+
+
+@pytest.mark.parametrize("authenticated", [True, False])
+def test_ingest_attributes_only_verified_agent(authenticated):
+    from starlette.requests import Request
+    from app.modules.guard.routers import events
+
+    identity_id = str(uuid.uuid4())
+    request = Request({"type": "http", "headers": []})
+    body = events.HookEvent(**{
+        **_make_hook_event().model_dump(),
+        "hook_session_id": None,
+        "agent_identity_id": "client-forged-identity",
+    })
+    db = MagicMock()
+    config = MagicMock(notify_on_block=False, alert_channel=None, automation_security_scan=False)
+    db.query.return_value.filter.return_value.first.return_value = config
+    context = None
+    if authenticated:
+        request.state.guard_hook_identity = (WS_ID, identity_id)
+        context = (WS_ID, "user_abc")
+    with patch.object(events, "chain_hash_for_insert", return_value=(None, "h1")), \
+         patch.object(events, "get_policy_hash", return_value=None), \
+         patch.object(events, "GuardAuditEvent", return_value=_make_event()) as event_cls, \
+         patch.object(events, "_event_to_dict", return_value=_event_dict()):
+        events.ingest_event(body, request, MagicMock(), db, context)
+    assert event_cls.call_args.kwargs["agent_identity_id"] == (identity_id if authenticated else None)
+
+
+def test_ingest_rejects_verified_identity_from_other_workspace():
+    from fastapi import HTTPException
+    from starlette.requests import Request
+    from app.modules.guard.routers import events
+
+    request = Request({"type": "http", "headers": []})
+    request.state.guard_hook_identity = (str(uuid.uuid4()), str(uuid.uuid4()))
+    db = MagicMock()
+    with pytest.raises(HTTPException) as exc:
+        events.ingest_event(_make_hook_event(), request, MagicMock(), db, (WS_ID, "user_abc"))
+    assert exc.value.status_code == 403
+    db.add.assert_not_called()
 
 
 def test_hook_auth_rejects_non_agent_bearer():
@@ -477,6 +520,45 @@ def test_hook_auth_rejects_non_agent_bearer():
     with pytest.raises(HTTPException) as exc:
         events._hook_authenticated_workspace(request, MagicMock())
     assert exc.value.status_code == 401
+
+
+def test_activity_sessions_are_scoped_and_paginated():
+    from types import SimpleNamespace
+    from sqlalchemy.dialects import postgresql
+    from app.modules.agent_identity.router import list_activity_sessions
+
+    identity_id = str(uuid.uuid4())
+    db = MagicMock()
+    identity_query = MagicMock()
+    identity_query.filter.return_value.first.return_value = SimpleNamespace(id=identity_id)
+    activity_query = MagicMock()
+    for method in ("filter", "group_by", "order_by", "offset", "limit"):
+        getattr(activity_query, method).return_value = activity_query
+    row = SimpleNamespace(session_id="thread-one", tools=["codex-desktop"], first_seen=_now(), last_seen=_now(), event_count=3, warned_count=2, blocked_count=0)
+    activity_query.all.return_value = [row, row]
+    db.query.side_effect = [identity_query, activity_query]
+    result = list_activity_sessions(WS_ID, identity_id, limit=1, offset=0, _="user", db=db)
+    assert result.has_more is True
+    assert len(result.sessions) == 1
+    assert result.sessions[0].event_count == 3
+    assert result.sessions[0].warned_count == 2
+    predicates = [str(p.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})) for p in activity_query.filter.call_args.args]
+    assert any(WS_ID in p and "workspace_id" in p for p in predicates)
+    assert any(identity_id in p and "agent_identity_id" in p for p in predicates)
+    assert any("hook_session_id IS NOT NULL" in p for p in predicates)
+    activity_query.limit.assert_called_once_with(2)
+    assert "token" not in result.model_dump_json()
+
+
+def test_activity_sessions_reject_unknown_or_cross_workspace_identity():
+    from fastapi import HTTPException
+    from app.modules.agent_identity.router import list_activity_sessions
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    with pytest.raises(HTTPException) as exc:
+        list_activity_sessions(WS_ID, str(uuid.uuid4()), limit=50, offset=0, _="user", db=db)
+    assert exc.value.status_code == 404
+    assert db.query.call_count == 1
 
 
 def test_batch_rejects_cross_workspace_event_before_ingest():

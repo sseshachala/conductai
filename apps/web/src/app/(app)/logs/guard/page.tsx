@@ -164,6 +164,8 @@ function ActivityContent() {
   // the governance dashboard deep-link with ?rule_id=foo or ?decision=blocked,
   // and lets the Session Reports redirect land on ?view=session_reports.
   const searchParams = useSearchParams()
+  const filterHookSession = searchParams?.get("hook_session_id") || ""
+  const filterAgentIdentity = searchParams?.get("agent_identity_id") || ""
   const _router = useRouter()
   const _pathname = usePathname()
 
@@ -214,6 +216,8 @@ function ActivityContent() {
     if (filterTool) p.set("ai_tool", filterTool)
     if (filterDecision) p.set("decision", filterDecision)
     if (filterRuleId) p.set("rule_id", filterRuleId)
+    if (filterHookSession) p.set("hook_session_id", filterHookSession)
+    if (filterAgentIdentity) p.set("agent_identity_id", filterAgentIdentity)
     if (filterSince) p.set("since", filterSince)
     if (filterUntil) p.set("until", filterUntil)
     return p.toString()
@@ -244,7 +248,7 @@ function ActivityContent() {
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authFetch, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId])
+  }, [authFetch, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId, filterHookSession, filterAgentIdentity])
 
   const loadSessions = useCallback(async () => {
     if (!teamId) return
@@ -294,7 +298,9 @@ function ActivityContent() {
           if (Array.isArray(msg.events) && msg.events.length > 0) {
             setEvents(prev => {
               const ids = new Set(prev.map(ev => ev.id))
-              const fresh = (msg.events as AuditEvent[]).filter(ev => !ids.has(ev.id))
+              const fresh = (msg.events as AuditEvent[]).filter(ev => !ids.has(ev.id)
+                && (!filterHookSession || ev.hook_session_id === filterHookSession)
+                && (!filterAgentIdentity || ev.agent_identity_id === filterAgentIdentity))
               if (!fresh.length) return prev
               return [...fresh.reverse(), ...prev].slice(0, LIVE_EVENT_CAP)
             })
@@ -315,7 +321,7 @@ function ActivityContent() {
       esRef.current = null
       if (reconnectTimer) clearTimeout(reconnectTimer)
     }
-  }, [streaming, teamId, getToken])
+  }, [streaming, teamId, getToken, filterHookSession, filterAgentIdentity])
 
   const loadReports = useCallback(async () => {
     if (!teamId) return
@@ -516,6 +522,10 @@ function ActivityContent() {
           aria-label="To date"
         />
 
+        {(filterHookSession || filterAgentIdentity) && <span className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+          <span title={filterHookSession || filterAgentIdentity}>Recorded session {filterHookSession.slice(0, 8) || filterAgentIdentity.slice(0, 8)}</span>
+          <a className="underline" href="/logs/guard?view=events">Clear session filter</a>
+        </span>}
         {filterRuleId && (
           <span style={{
             fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 12,

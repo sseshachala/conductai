@@ -9,6 +9,8 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import { TabBar } from "@/components/TabBar"
 import { AgentSessions } from "@/components/AgentSessions"
+import { AgentActivitySessions } from "@/components/AgentActivitySessions"
+import { Activity, KeyRound } from "lucide-react"
 
 type Tab = "tokens" | "run_tokens" | "identities" | "agent_sessions" | "lens_sessions" | "integrations"
 const TAB_LABELS: Record<Tab, string> = {
@@ -43,6 +45,8 @@ interface ApiToken {
 }
 
 interface Identity {
+  recorded_session_count?: number
+  last_activity_at?: string | null
   id: string
   name: string
   provider: string
@@ -183,7 +187,14 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   // #1252 — deep-link support: click a Lens session's cond_agt_lens_* → land
   // on the Identities tab with ?id=<uuid> and highlight+scroll to the row.
   const highlightId = searchParams?.get("id") || null
-  const sessionIdentity = identities.find(identity => identity.id === highlightId) ?? (highlightId ? null : identities[0])
+  const [multipleSessions, setMultipleSessions] = useState(false)
+  const sessionType = searchParams?.get("session_type")
+  const [authenticationView, setAuthenticationView] = useState(sessionType === "authentication")
+  useEffect(() => { setAuthenticationView(sessionType === "authentication") }, [sessionType])
+  const sessionAgents = authenticationView ? identities : identities.filter(identity => (identity.recorded_session_count ?? 0) >= (multipleSessions ? 2 : 1))
+  const selectedAgent = identities.find(identity => identity.id === highlightId)
+  const sessionIdentity = selectedAgent ?? (highlightId ? null : sessionAgents[0])
+  const sessionOptions = selectedAgent && !sessionAgents.some(identity => identity.id === selectedAgent.id) ? [selectedAgent, ...sessionAgents] : sessionAgents
   useEffect(() => {
     if (activeTab !== "identities" || !highlightId) return
     const row = document.getElementById(`identity-row-${highlightId}`)
@@ -191,6 +202,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   }, [activeTab, highlightId])
   const selectTab = (t: Tab, extraQuery: Record<string, string> = {}) => {
     setActiveTab(t)
+    if (t === "agent_sessions") setAuthenticationView(extraQuery.session_type === "authentication")
     const params = new URLSearchParams({ tab: t, ...extraQuery })
     router.replace(`/agent-identity?${params.toString()}`, { scroll: false })
   }
@@ -472,7 +484,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         </div>
 
         {/* Vertical tab rail (left) + content column (right) — mirrors SettingsShell / GuardShell pattern. */}
-        <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 24, alignItems: "start" }}>
+        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[180px_minmax(0,1fr)]">
           <TabBar tabs={TABS} labels={TAB_LABELS} activeTab={activeTab} onSelect={selectTab} orientation="vertical" />
           <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 20 }}>
 
@@ -974,13 +986,23 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
 
         {activeTab === "agent_sessions" && <div role="tabpanel" id="tabpanel-agent_sessions" aria-labelledby="tab-agent_sessions">
           <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Agent sessions</h2>
+          <div className="mb-5 flex flex-wrap items-center gap-4">
+            <div role="radiogroup" aria-label="Session type" className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2"><input type="radio" name="session-type" checked={!authenticationView} onChange={() => selectTab("agent_sessions")} />Recorded activity</label>
+              <label className="flex items-center gap-2"><input type="radio" name="session-type" checked={authenticationView} onChange={() => selectTab("agent_sessions", { session_type: "authentication" })} />Authentication</label>
+            </div>
+            {!authenticationView && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={multipleSessions} onChange={e => { setMultipleSessions(e.target.checked); selectTab("agent_sessions") }} />2+ recorded sessions</label>}
+          </div>
           {identitiesLoading || identitiesWorkspace !== workspaceId ? <p role="status">Loading agents...</p> : <>
             <label htmlFor="session-agent" style={{ display: "block", fontSize: 12, marginBottom: 6 }}>Agent identity</label>
-            <select id="session-agent" value={sessionIdentity?.id ?? ""} onChange={e => selectTab("agent_sessions", { id: e.target.value })} style={{ width: "100%", maxWidth: 480, padding: "8px 12px", marginBottom: 20, border: "1px solid var(--border)", borderRadius: 6, background: "var(--surface)", color: "var(--text)", fontSize: 13 }}>
+            <select id="session-agent" value={sessionIdentity?.id ?? ""} onChange={e => selectTab("agent_sessions", { id: e.target.value, session_type: authenticationView ? "authentication" : "activity" })} style={{ width: "100%", maxWidth: 480, padding: "8px 12px", marginBottom: 20, border: "1px solid var(--border)", borderRadius: 6, background: "var(--surface)", color: "var(--text)", fontSize: 13 }}>
               {!sessionIdentity && <option value="">Select an agent</option>}
-              {identities.map(identity => <option key={identity.id} value={identity.id}>{identity.name} ({identity.id.slice(0, 8)})</option>)}
+              {sessionOptions.map(identity => <option key={identity.id} value={identity.id}>{identity.name} ({identity.id.slice(0, 8)}){!authenticationView ? ` - ${identity.recorded_session_count ?? 0} recorded` : ""}</option>)}
             </select>
-            {sessionIdentity ? <AgentSessions key={`${workspaceId}:${sessionIdentity.id}`} workspaceId={workspaceId} identityId={sessionIdentity.id} /> : <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{identities.length ? "Select an agent identity." : "No agent identities available."}</p>}
+            {sessionIdentity ? authenticationView
+              ? <AgentSessions key={`${workspaceId}:${sessionIdentity.id}`} workspaceId={workspaceId} identityId={sessionIdentity.id} />
+              : <AgentActivitySessions key={`${workspaceId}:${sessionIdentity.id}`} workspaceId={workspaceId} identityId={sessionIdentity.id} />
+              : <p className="py-4 text-sm text-[var(--text-muted)]">{highlightId ? "Agent identity not found." : authenticationView ? "No agent identities available." : "No agents with matching attributed activity sessions."}</p>}
           </>}
         </div>}
 
@@ -1094,7 +1116,8 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                         : <span style={{ fontStyle: "italic", opacity: 0.7 }}>not yet used</span>}
                     </td>
                     <td style={{ padding: "8px 12px", textAlign: "right" }}>
-                      <button className="btn btn-sm" onClick={() => selectTab("agent_sessions", { id: id.id })}>Sessions</button>
+                      <button className="btn btn-sm inline-flex min-w-12 items-center justify-center gap-1.5" title={`${id.recorded_session_count ?? 0} attributed activity sessions`} aria-label={`Recorded sessions for ${id.name}`} onClick={() => selectTab("agent_sessions", { id: id.id })}><Activity size={14} />{id.recorded_session_count || "-"}</button>
+                      <button className="btn btn-sm" title="Authentication sessions" aria-label={`Authentication sessions for ${id.name}`} onClick={() => selectTab("agent_sessions", { id: id.id, session_type: "authentication" })}><KeyRound size={14} /></button>
                       {isAdmin && (
                         <button
                           onClick={() => certifyIdentity(id.id)}

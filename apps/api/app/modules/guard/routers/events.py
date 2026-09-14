@@ -557,6 +557,8 @@ def _hook_authenticated_workspace(
         if not token.startswith(("cond_agt_", "cond_api_")):
             raise HTTPException(status_code=401, detail="Agent Identity token required")
         identity, clerk_user_id = _resolve_agent_token(token, db)
+        # Preserve the verified identity; never derive attribution from hook input.
+        request.state.guard_hook_identity = (str(identity.workspace_id), str(identity.id))
         return str(identity.workspace_id), clerk_user_id
     if settings.guard_require_hook_auth is True:
         raise HTTPException(status_code=401, detail="Authorization header required")
@@ -728,6 +730,12 @@ def ingest_event(
 
     ws_uuid = _authenticated_workspace_uuid(body.workspace_id, auth_context)
     actor_clerk_user_id, actor_email = _authenticated_actor(body, auth_context, db)
+    verified_identity = getattr(request.state, "guard_hook_identity", None)
+    agent_identity_id = None
+    if auth_context is not None and isinstance(verified_identity, tuple):
+        identity_workspace, agent_identity_id = verified_identity
+        if identity_workspace != str(ws_uuid):
+            raise HTTPException(status_code=403, detail="Event identity workspace mismatch")
 
     config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     if not config:
@@ -750,6 +758,7 @@ def ingest_event(
         id=_event_id or uuid.uuid4(),
         workspace_id=ws_uuid,
         clerk_user_id=actor_clerk_user_id,
+        agent_identity_id=agent_identity_id,
         session_id=body.session_id,
         user_email=actor_email,
         ai_tool=body.ai_tool,
@@ -1004,11 +1013,17 @@ def list_events(
     until: datetime | None = Query(default=None, description="ISO datetime upper bound"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    hook_session_id: str | None = Query(default=None),
+    agent_identity_id: str | None = Query(default=None),
 ):
     """Paginated, filterable audit event list for a workspace."""
     org_ws = _org_ws_subquery(db, workspace_id)
 
     q = db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id.in_(org_ws))
+    if hook_session_id:
+        q = q.filter(GuardAuditEvent.hook_session_id == hook_session_id)
+    if agent_identity_id:
+        q = q.filter(GuardAuditEvent.agent_identity_id == agent_identity_id)
     if decision:
         q = q.filter(GuardAuditEvent.decision == decision)
     if ai_tool:

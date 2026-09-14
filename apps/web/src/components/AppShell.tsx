@@ -14,6 +14,7 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { reportLayoutsApi, type ReportLayout } from "@/lib/reportBuilder/api"
 import { workspaces as workspacesApi, projects as projectsApi, organizations, runs, guard, workflows } from "@/lib/api"
 import { GUARD_SECTIONS } from "@/lib/navigation/guardSections"
+import { Search, Sparkles, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 
 interface Project { id: string; name: string; agent_count: number; project_type?: string }
 
@@ -189,7 +190,49 @@ function AppShellInnerContent({
 }) {
   const pathname = usePathname()
     const router = useRouter()
-  const [collapsed, setCollapsed] = useState(false)
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
+  const mainAreaRef = useRef<HTMLDivElement>(null)
+  const collapsed = isMobile ? !mobileNavOpen : desktopCollapsed
+  function setCollapsed(value: boolean) {
+    if (isMobile) setMobileNavOpen(!value)
+    else setDesktopCollapsed(value)
+  }
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)")
+    const update = () => { setIsMobile(media.matches); setMobileNavOpen(false) }
+    update()
+    media.addEventListener("change", update)
+    return () => media.removeEventListener("change", update)
+  }, [])
+  useEffect(() => { setMobileNavOpen(false) }, [pathname])
+  useEffect(() => {
+    if (!isMobile || !mobileNavOpen) return
+    const previous = document.activeElement as HTMLElement | null
+    const mainArea = mainAreaRef.current
+    mainArea?.setAttribute("inert", "")
+    const focusable = () => Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input, select, [tabindex='0']") ?? []).filter(el => el.getClientRects().length > 0)
+    focusable()[0]?.focus()
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setMobileNavOpen(false) }
+      if (event.key !== "Tab") return
+      const elements = focusable()
+      const first = elements[0], last = elements[elements.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }
+    document.addEventListener("keydown", keydown)
+    return () => {
+      document.removeEventListener("keydown", keydown)
+      mainArea?.removeAttribute("inert")
+      requestAnimationFrame(() => {
+        if (previous?.isConnected && previous !== document.body) previous.focus()
+        else sidebarRef.current?.querySelector<HTMLElement>('[aria-label="Expand sidebar"]')?.focus()
+      })
+    }
+  }, [isMobile, mobileNavOpen])
   const [toast, setToast] = useState<ToastData | null>(null)
   function showError(message: string) { setToast({ message, type: "error" }) }
   function showSuccess(message: string) { setToast({ message, type: "success" }) }
@@ -548,10 +591,14 @@ function AppShellInnerContent({
 
   return (
     <PreferencesProvider workspaceId={activeWorkspace?.id ?? ""} getToken={getToken}>
-    <div style={{ display: "flex", height: "100vh", background: "var(--bg)" }}>
+    <div style={{ display: "flex", height: "100dvh", width: "100%", minWidth: 0, background: "var(--bg)" }}>
+      {isMobile && mobileNavOpen && <div aria-hidden="true" onClick={() => setMobileNavOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 299, background: "rgba(0,0,0,0.35)" }} />}
 
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      <aside style={{
+      <aside ref={sidebarRef} onClickCapture={e => { if (isMobile && (e.target as Element).closest("a[href]")) setMobileNavOpen(false) }} role={isMobile && mobileNavOpen ? "dialog" : undefined} aria-modal={isMobile && mobileNavOpen ? true : undefined} aria-label="Main navigation" style={{
+        position: isMobile && mobileNavOpen ? "fixed" : undefined,
+        inset: isMobile && mobileNavOpen ? "0 auto 0 0" : undefined,
+        zIndex: isMobile && mobileNavOpen ? 300 : undefined,
         width: collapsed ? 64 : 244,
         flexShrink: 0,
         background: "var(--surface)",
@@ -596,13 +643,14 @@ function AppShellInnerContent({
             <button
               onClick={() => setCollapsed(true)}
               aria-label="Collapse sidebar"
+              title="Collapse sidebar"
               style={{
                 padding: "4px 6px", borderRadius: 6, border: "none",
                 background: "transparent", cursor: "pointer",
                 color: "var(--text-muted)", fontSize: 14, lineHeight: 1,
               }}
             >
-              ‹
+              <PanelLeftClose size={16} />
             </button>
           )}
         </div>
@@ -1079,6 +1127,7 @@ function AppShellInnerContent({
             <button
               onClick={() => setCollapsed(false)}
               aria-label="Expand sidebar"
+              title="Expand sidebar"
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
                 width: "100%", padding: "6px 0",
@@ -1086,7 +1135,7 @@ function AppShellInnerContent({
                 color: "var(--text-muted)", fontSize: 16, marginBottom: 4,
               }}
             >
-              ›
+              <PanelLeftOpen size={16} />
             </button>
           )}
           {/* Workspace group — collapsible header. In the icon-only rail
@@ -1125,7 +1174,7 @@ function AppShellInnerContent({
       </aside>
 
       {/* ── Main area ───────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <div ref={mainAreaRef} style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
 
         {/* Topbar */}
         <header style={{
@@ -1136,13 +1185,13 @@ function AppShellInnerContent({
           borderBottom: "1px solid var(--border)",
           display: "flex",
           alignItems: "center",
-          padding: "0 20px",
-          gap: 12,
+          padding: isMobile ? "0 8px" : "0 20px",
+          gap: isMobile ? 6 : 12,
         }}>
           {/* Breadcrumbs */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
-            {breadcrumbs.map((crumb, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {(isMobile ? breadcrumbs.slice(-1) : breadcrumbs).map((crumb, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                 {i > 0 && (
                   <span style={{ color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
                     <Icons.ChevRight />
@@ -1153,6 +1202,7 @@ function AppShellInnerContent({
                   fontWeight: i === breadcrumbs.length - 1 ? 600 : 400,
                   color: i === breadcrumbs.length - 1 ? "var(--text)" : "var(--text-3)",
                   whiteSpace: "nowrap",
+                  overflow: "hidden", textOverflow: "ellipsis",
                 }}>
                   {crumb}
                 </span>
@@ -1163,7 +1213,11 @@ function AppShellInnerContent({
           {/* Right cluster */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             {/* Global "Ask Lens" bar (#1333 #5) — hidden while on /lens (Lens has its own composer). */}
-            {!pathname?.startsWith("/lens") && (
+            {isMobile && !pathname?.startsWith("/lens") && <>
+              <button type="button" className="btn btn-sm" style={{ width: 34, height: 34, padding: 0, display: "grid", placeItems: "center" }} title="Ask Lens" aria-label="Ask Lens" onClick={() => setLensPanelOpen(true)}><Sparkles size={16} /></button>
+              <button type="button" className="btn btn-sm" style={{ width: 34, height: 34, padding: 0, display: "grid", placeItems: "center" }} title="Command palette" aria-label="Command palette" onClick={() => { setPaletteOpen(true); setPaletteQuery(""); setPaletteActive(0) }}><Search size={16} /></button>
+            </>}
+            {!isMobile && !pathname?.startsWith("/lens") && (
               <form
                 onSubmit={(e) => {
                   e.preventDefault()
@@ -1234,7 +1288,8 @@ function AppShellInnerContent({
               {notifOpen && (
                 <div style={{
                   position: "absolute", zIndex: 200, top: "calc(100% + 8px)", right: 0,
-                  width: 360, background: "var(--surface)",
+                  width: isMobile ? "min(360px, calc(100vw - 88px))" : 360, background: "var(--surface)",
+                  ...(isMobile ? { position: "fixed" as const, top: 64, left: 72, right: 8 } : {}),
                   border: "1px solid var(--border)", borderRadius: 12,
                   boxShadow: "var(--shadow-lg)",
                   overflow: "hidden",
@@ -1316,7 +1371,7 @@ function AppShellInnerContent({
         </header>
 
         {/* Page content */}
-        <main style={{ flex: 1, minHeight: 0, overflow: noPadding ? "hidden" : "auto", display: noPadding ? "flex" : "block", flexDirection: noPadding ? "column" : undefined }}>
+        <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: noPadding ? "hidden" : "auto", display: noPadding ? "flex" : "block", flexDirection: noPadding ? "column" : undefined }}>
           <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
@@ -1344,7 +1399,7 @@ function AppShellInnerContent({
         onClick={(e: ReactMouseEvent<HTMLElement>) => { if (e.target === e.currentTarget) setPaletteOpen(false) }}
       >
         <div style={{
-          width: 560, maxHeight: "60vh",
+          width: 560, maxWidth: "calc(100vw - 24px)", maxHeight: "60vh",
           background: "var(--surface)",
           borderRadius: 14,
           border: "1px solid var(--border)",
