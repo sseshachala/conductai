@@ -238,6 +238,13 @@ async function expectUsableToken(page: Page, workspaceId: string) {
   expect(Array.isArray((await mcp.json()).result?.tools)).toBe(true)
 }
 
+async function guardEvent(page: Page, accessToken: string, body: Record<string, unknown>) {
+  return page.request.post(`${base}/api/guard/events`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    data: body,
+  })
+}
+
 async function signOut(page: Page) {
   await page.evaluate(() => (window as any).Clerk.signOut())
   await page.goto('/workflows')
@@ -815,4 +822,40 @@ test('@prod-canary member removal revokes existing access, refresh, and issuance
     expect((await exchange(m.page, ws.id)).status()).toBe(403)
     expect((await members(a.page, ws.id)).some(row => row.clerk_user_id === member.id)).toBe(false)
   } finally { await Promise.all(contexts.map(context => context.close())) }
+})
+
+test('@prod-canary Codex Flight Recorder persists correlated pre/post events', async ({ browser }) => {
+  const owner = await account('frc')
+  const session = await login(browser, owner)
+  try {
+    const ws = await workspace(session.page, 'canary-flight-recorder')
+    const issued = await exchange(session.page, ws.id)
+    expect(issued.status()).toBe(200)
+    const { access_token: accessToken } = await issued.json() as { access_token: string }
+    const hookSessionId = `canary-${randomBytes(12).toString('hex')}`
+    const common = {
+      workspace_id: ws.id,
+      ai_tool: 'codex-desktop',
+      tool_call: 'read',
+      decision: 'allowed',
+      session_id: hookSessionId,
+      hook_session_id: hookSessionId,
+    }
+    expect((await guardEvent(session.page, accessToken, common)).status()).toBe(201)
+    expect((await guardEvent(session.page, accessToken, {
+      ...common,
+      execution_status: 'success',
+      result_summary: 'canary complete',
+    })).status()).toBe(201)
+
+    const listed = await session.page.request.get(`${base}/api/guard/events?workspace_id=${ws.id}&limit=50`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    expect(listed.status()).toBe(200)
+    const rows = await listed.json() as Array<Record<string, unknown>>
+    const pair = rows.filter(row => row.hook_session_id === hookSessionId)
+    expect(pair).toHaveLength(2)
+    expect(pair.every(row => row.ai_tool === 'codex-desktop')).toBe(true)
+    expect(pair.some(row => row.execution_status === 'success')).toBe(true)
+  } finally { await session.context.close() }
 })
