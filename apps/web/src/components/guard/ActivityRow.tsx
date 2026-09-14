@@ -3,6 +3,7 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react"
 import { timeAgo } from "@/lib/runUtils"
 import { DecisionBadge } from "./DecisionBadge"
+import { AgentAvatar } from "./AgentAvatar"
 
 /**
  * Shared event row used by /guard/activity (full feed) and /governance
@@ -329,7 +330,7 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         <div style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}
           title={ev.user_email ?? ev.agent_identity_id ?? undefined}>
           <span className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {ev.user_email ? ev.user_email.split("@")[0] : ev.conductai_workflow ?? "—"}
+            {ev.user_email ? ev.user_email.split("@")[0] : ev.conductai_workflow ?? <AgentAvatar agentId={ev.agent_identity_id} size={20} />}
           </span>
           {(() => {
             const isHuman = !!ev.user_email
