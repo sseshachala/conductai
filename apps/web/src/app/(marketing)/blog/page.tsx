@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "vendor-is-watching-are-you",
+      title: "The vendor is watching. Are you?",
+      excerpt: "A quick take on Anthropic's September 2026 threat report. Multi-agent kill chains are already being run through stolen enterprise API keys. The vendor caught it because they sit in the middle of every request — and the report is silent on whose keys were stolen. Enterprises need the same vantage point on their side.",
+      date: "September 14, 2026",
+      tag: "Positioning",
+      tagColor: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    },
+    {
       slug: "guard-lands-in-litellm-mainline",
       title: "LiteLLM sends AI requests. Conduct decides which ones shouldn't be sent.",
       excerpt: "Conduct is now a native LiteLLM guardrail. Add six lines of YAML and every AI request LiteLLM sends gets checked by your policy first. Six things you can't do with LiteLLM alone but can do with Conduct plugged in.",
