@@ -140,10 +140,16 @@ def freeze_pricing_snapshot() -> dict[str, Any]:
     }
 
 
+class UnknownModelPricing(ValueError):
+    """Raised when strict cost accounting has no rate for a model."""
+
+
 def get_model_rates(
     provider: str,
     model: str,
     pricing_snapshot: dict[str, Any] | None = None,
+    *,
+    strict: bool = False,
 ) -> tuple[dict[str, float], str]:
     snap = pricing_snapshot or freeze_pricing_snapshot()
     version = str(snap.get("version") or "unknown")
@@ -158,6 +164,8 @@ def get_model_rates(
         provider_map = {}
 
     rates = provider_map.get(model)
+    if strict and not isinstance(rates, dict):
+        raise UnknownModelPricing(f"No pricing registered for {p}/{model}")
     if not isinstance(rates, dict):
         default_model = _DEFAULTS_BY_PROVIDER.get(p)
         if default_model:

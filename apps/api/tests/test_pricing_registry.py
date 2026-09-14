@@ -5,7 +5,7 @@ from app.runtime import pricing
 # pricing captured at import (other tests reload app.core.config mid-suite,
 # leaving a fresh settings singleton that our patches wouldn't reach).
 settings = pricing.settings
-from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
+from app.runtime.pricing import UnknownModelPricing, freeze_pricing_snapshot, get_model_rates
 
 
 def test_default_rates_lookup():
@@ -17,6 +17,17 @@ def test_default_rates_lookup():
     assert rates["output"] == 15.0
     assert rates["cache_read"] == 0.3
     assert rates["cache_write"] == 3.75
+
+
+def test_strict_lookup_rejects_unknown_model():
+    snapshot = freeze_pricing_snapshot()
+    with patch.object(settings, "pricing_overrides_json", ""):
+        try:
+            get_model_rates("openai", "unknown-model", snapshot, strict=True)
+        except UnknownModelPricing:
+            pass
+        else:
+            raise AssertionError("strict pricing must reject unknown models")
 
 
 def test_override_rates_and_version_applied():
