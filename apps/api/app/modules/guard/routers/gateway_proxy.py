@@ -25,7 +25,11 @@ from app.core.database import get_db
 from app.core.workspace_context import set_workspace_rls
 from app.guard.audit import record as _record_audit
 from app.modules.guard.gateway_runtime import TransportResolver
-from app.modules.guard.routers.proxy import _proxy
+from app.modules.guard.gateway_handler import handle_gateway_request
+
+# Test and extension seam retained under the old private name; this now points
+# at the neutral canonical handler rather than importing the legacy router.
+_proxy = handle_gateway_request
 
 router = APIRouter(prefix="/gateway/v1", tags=["gateway-proxy"])
 

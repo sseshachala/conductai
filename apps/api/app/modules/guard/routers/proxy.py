@@ -573,6 +573,10 @@ async def _proxy(
             workspace_id=workspace_id,
             agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
             input_tokens=_estimate_input_tokens(body),
+            # Production Gateway is fail-closed; local/test environments keep
+            # the historical fail-open behavior when Redis is intentionally
+            # absent.
+            fail_closed=canonical_profile and settings.environment == "production",
         )
         if _rate.limited:
             log.info(

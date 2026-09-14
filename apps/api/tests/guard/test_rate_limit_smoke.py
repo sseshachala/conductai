@@ -2,7 +2,7 @@
 
 Verifies:
 - rate_limit module imports cleanly (proxy step 4d.2 depends on it)
-- fail-open when Redis is unreachable (documented posture)
+- fail-closed when Redis is unreachable and limits are configured
 - limit-resolution order: per-agent row > workspace default > none
 - RPM breach returns limited=True with metric="rpm"
 - TPM breach returns limited=True with metric="tpm"
@@ -50,12 +50,13 @@ def test_db_error_fails_open():
     db.rollback.assert_called()  # session must be rolled back so subsequent queries work
 
 
-def test_redis_down_fails_open():
+def test_redis_down_fails_closed():
     from app.modules.guard.rate_limit import check_rate_limit
     db = _mock_db(rpm=10, tpm=1000, has_default=True)
     with patch("app.modules.guard.rate_limit._redis_client", side_effect=RuntimeError("nope")):
-        d = check_rate_limit(db, workspace_id="ws1", agent_identity_id=None, input_tokens=50)
-    assert d.limited is False  # fail-open by design
+        d = check_rate_limit(db, workspace_id="ws1", agent_identity_id=None, input_tokens=50, fail_closed=True)
+    assert d.limited is True
+    assert d.metric == "availability"
 
 
 def test_rpm_breach():
