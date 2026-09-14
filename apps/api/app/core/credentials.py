@@ -62,6 +62,30 @@ def get_credential(db, workspace_id: str, handle: str, environment_id=None) -> d
     return decrypt(row.encrypted_credentials) or {}
 
 
+def get_vault_credential(
+    db,
+    workspace_id: str,
+    environment_id: str,
+    selector: str,
+) -> dict:
+    """Resolve one credential strictly inside a Vault environment.
+
+    Handles are authoritative. A unique service match is accepted so callers
+    can use stable provider names without exposing internal credential handles.
+    """
+    rows = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.environment_id == environment_id,
+    ).all()
+    selected = next((row for row in rows if row.handle == selector), None)
+    if selected is None:
+        service_matches = [row for row in rows if row.service == selector]
+        selected = service_matches[0] if len(service_matches) == 1 else None
+    if not selected or not selected.encrypted_credentials:
+        return {}
+    return decrypt(selected.encrypted_credentials) or {}
+
+
 def mint_cred_token(
     db,
     run_id: str,

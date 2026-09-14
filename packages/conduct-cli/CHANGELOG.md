@@ -8,6 +8,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.14.4] - 2026-09-13
+
 ### Added
 - `conduct guard sync` enables Claude Code Gateway model discovery so `/model`
   lists only the deployments allowed by the active workspace Gateway Profile.

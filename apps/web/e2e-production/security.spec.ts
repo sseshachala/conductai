@@ -10,6 +10,32 @@ type Environment = { id: string; name: string }
 type ApiToken = { id: string; token_name: string; token_prefix: string; token?: string }
 type Policy = { workspace_id: string; rule_id: string; action: string; enabled: boolean }
 type AuditEntry = { id: string; actor_id: string | null; action: string; resource_id: string | null }
+type GatewayProfile = {
+  id: string | null
+  name: string
+  provider: string
+  protocol: string
+  credential_ref: string | null
+  environment_id: string | null
+  deployments: { alias: string; model: string }[]
+}
+type GuardEvent = {
+  id: string
+  workspace_id: string
+  hook_session_id: string | null
+  ai_tool: string
+  tool_call: string | null
+  source: string
+  provider: string | null
+  model: string | null
+  decision: string
+  tokens_before: number | null
+  tokens_after: number | null
+  cost_usd_after: number | null
+  execution_status: string | null
+  routing_meta: Record<string, unknown> | null
+  ts: string
+}
 
 const apiBase = "https://api.conductai.ai"
 const accountA = (): Account => ({
@@ -297,6 +323,75 @@ async function auditLog(page: Page, workspaceId: string): Promise<AuditEntry[]> 
   return await response.json() as AuditEntry[]
 }
 
+async function canonicalGatewayProfile(
+  page: Page,
+  workspaceId: string,
+  provider: "anthropic" | "openai",
+): Promise<GatewayProfile> {
+  const response = await api(page, `/workspaces/${workspaceId}/gateways`, "GET", undefined, workspaceId)
+  expect(response.status()).toBe(200)
+  const profiles = await response.json() as GatewayProfile[]
+  const defaults = profiles.filter(profile => profile.id && profile.environment_id === null)
+  expect(defaults, `${provider} canary workspace must have exactly one persisted default Gateway Profile`).toHaveLength(1)
+  const profile = defaults[0]
+  expect([provider, "litellm"]).toContain(profile.provider)
+  expect(
+    provider === "anthropic"
+      ? profile.protocol === "anthropic"
+      : ["openai", "openai_compatible"].includes(profile.protocol),
+  ).toBe(true)
+  expect(profile.credential_ref).toMatch(
+    /^vault:\/\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[a-z0-9_-]+$/i,
+  )
+  expect(profile.deployments.length).toBeGreaterThan(0)
+  return profile
+}
+
+async function gatewayToken(page: Page, workspaceId: string): Promise<string> {
+  const response = await exchange(page, workspaceId)
+  expect(response.status()).toBe(200)
+  const pair = await response.json() as { access_token?: string }
+  expect(typeof pair.access_token === "string" && pair.access_token.startsWith("cond_agt_")).toBe(true)
+  return pair.access_token!
+}
+
+async function guardEvents(page: Page, workspaceId: string, since: string): Promise<GuardEvent[]> {
+  const response = await api(
+    page,
+    `/guard/events?since=${encodeURIComponent(since)}&limit=200`,
+    "GET",
+    undefined,
+    workspaceId,
+  )
+  expect(response.status()).toBe(200)
+  return await response.json() as GuardEvent[]
+}
+
+async function waitForGuardEvent(
+  page: Page,
+  workspaceId: string,
+  since: string,
+  predicate: (event: GuardEvent) => boolean,
+): Promise<GuardEvent> {
+  let found: GuardEvent | undefined
+  await expect.poll(async () => {
+    found = (await guardEvents(page, workspaceId, since)).find(predicate)
+    return Boolean(found)
+  }, { timeout: 20_000, message: "Expected Flight Recorder event was not written" }).toBe(true)
+  return found!
+}
+
+function expectNoCredentialMaterial(value: unknown): void {
+  const encoded = JSON.stringify(value)
+  expect(encoded).not.toMatch(/sk-ant-[A-Za-z0-9_-]{8,}/)
+  expect(encoded).not.toMatch(/sk-(?:proj-)?[A-Za-z0-9_-]{20,}/)
+  expect(encoded).not.toMatch(/cond_(?:agt|api|ref)_[A-Za-z0-9_-]{8,}/)
+}
+
+function uniqueDeploymentModels(profile: GatewayProfile): string[] {
+  return [...new Set(profile.deployments.map(deployment => deployment.model.trim()).filter(Boolean))]
+}
+
 type Harness = {
   a: Session
   b: Session
@@ -363,6 +458,252 @@ test.describe("bounded production security canaries", () => {
     expect(workspaceA.owner_id).toBe(a.userId)
     expect(workspaceB.owner_id).toBe(b.userId)
     expect(originalMembersB.some(member => member.clerk_user_id === a.userId)).toBe(false)
+  })
+
+  test("@prod-gateway Claude compatibility probe and authentication boundary", async () => {
+    const { a } = harness
+    const hello = await a.page.request.head(`${apiBase}/gateway/v1/anthropic/api/hello`)
+    expect(hello.status()).toBe(204)
+
+    const missing = await a.page.request.get(`${apiBase}/gateway/v1/anthropic/v1/models?limit=1000`)
+    expect(missing.status()).toBe(401)
+    const invalid = await a.page.request.get(`${apiBase}/gateway/v1/anthropic/v1/models?limit=1000`, {
+      headers: { "x-api-key": "invalid-production-canary-token" },
+    })
+    expect(invalid.status()).toBe(401)
+  })
+
+  test("@prod-gateway Claude model discovery exposes only canonical profile deployments", async () => {
+    const { a, workspaceA } = harness
+    const profile = await canonicalGatewayProfile(a.page, workspaceA.id, "anthropic")
+    const token = await gatewayToken(a.page, workspaceA.id)
+    const since = new Date(Date.now() - 1_000).toISOString()
+    const response = await a.page.request.get(`${apiBase}/gateway/v1/anthropic/v1/models?limit=1000`, {
+      headers: {
+        "x-api-key": token,
+        "x-conductai-workspace-id": workspaceA.id,
+        "user-agent": "claude-code/production-canary",
+      },
+    })
+    expect(response.status()).toBe(200)
+    const body = await response.json() as { data: { id: string; display_name?: string }[] }
+    expect(body.data.map(model => model.id)).toEqual(uniqueDeploymentModels(profile))
+    expectNoCredentialMaterial(body)
+
+    const event = await waitForGuardEvent(
+      a.page,
+      workspaceA.id,
+      since,
+      candidate => candidate.ai_tool === "claude-code" && candidate.model === "model-catalog",
+    )
+    expect(event.routing_meta).toMatchObject({ operation: "model_catalog", billable: false })
+    expect(event.cost_usd_after).toBeNull()
+    expectNoCredentialMaterial(event)
+  })
+
+  test("@prod-gateway Claude token counting resolves the Vault profile and stays non-billable", async () => {
+    const { a, workspaceA } = harness
+    const profile = await canonicalGatewayProfile(a.page, workspaceA.id, "anthropic")
+    const model = uniqueDeploymentModels(profile)[0]
+    const token = await gatewayToken(a.page, workspaceA.id)
+    const hookSession = `${runPrefix}-count-tokens`
+    const since = new Date(Date.now() - 1_000).toISOString()
+    const response = await a.page.request.post(`${apiBase}/gateway/v1/anthropic/v1/messages/count_tokens`, {
+      headers: {
+        "x-api-key": token,
+        "anthropic-version": "2023-06-01",
+        "x-conduct-ai-tool": "production-canary",
+        "x-conduct-session-id": hookSession,
+        "x-conductai-workspace-id": workspaceA.id,
+      },
+      data: { model, messages: [{ role: "user", content: "Count this bounded production canary." }] },
+    })
+    expect(response.status()).toBe(200)
+    const body = await response.json() as { input_tokens?: number }
+    expect(body.input_tokens).toBeGreaterThan(0)
+    expectNoCredentialMaterial(body)
+
+    const event = await waitForGuardEvent(
+      a.page,
+      workspaceA.id,
+      since,
+      candidate => candidate.hook_session_id === hookSession,
+    )
+    expect(event.routing_meta).toMatchObject({ operation: "token_count", billable: false })
+    expect(event.cost_usd_after).toBeNull()
+    expectNoCredentialMaterial(event)
+  })
+
+  test("@prod-gateway Claude non-streaming inference records attributed billable activity", async () => {
+    const { a, workspaceA } = harness
+    const profile = await canonicalGatewayProfile(a.page, workspaceA.id, "anthropic")
+    const model = uniqueDeploymentModels(profile)[0]
+    const token = await gatewayToken(a.page, workspaceA.id)
+    const hookSession = `${runPrefix}-claude-message`
+    const since = new Date(Date.now() - 1_000).toISOString()
+    const response = await a.page.request.post(`${apiBase}/gateway/v1/anthropic/v1/messages`, {
+      headers: {
+        "x-api-key": token,
+        "anthropic-version": "2023-06-01",
+        "x-conduct-ai-tool": "production-canary",
+        "x-conduct-session-id": hookSession,
+        "x-conductai-workspace-id": workspaceA.id,
+      },
+      data: {
+        model,
+        max_tokens: 16,
+        messages: [{ role: "user", content: "Reply with the single word OK." }],
+      },
+    })
+    expect(response.status()).toBe(200)
+    const body = await response.json() as { content?: unknown[] }
+    expect(Array.isArray(body.content) && body.content.length > 0).toBe(true)
+    expectNoCredentialMaterial(body)
+
+    const event = await waitForGuardEvent(
+      a.page,
+      workspaceA.id,
+      since,
+      candidate => candidate.hook_session_id === hookSession,
+    )
+    expect(event).toMatchObject({
+      workspace_id: workspaceA.id,
+      ai_tool: "production-canary",
+      source: "proxy",
+      provider: "anthropic",
+      model,
+      decision: "allowed",
+    })
+    expect(event.routing_meta?.billable).not.toBe(false)
+    expect(event.tokens_before).toBeGreaterThan(0)
+    expect(event.tokens_after).toBeGreaterThan(0)
+    expect(typeof event.cost_usd_after).toBe("number")
+    expectNoCredentialMaterial(event)
+  })
+
+  test("@prod-gateway Claude streaming inference emits content and closes cleanly", async () => {
+    const { a, workspaceA } = harness
+    const profile = await canonicalGatewayProfile(a.page, workspaceA.id, "anthropic")
+    const model = uniqueDeploymentModels(profile)[0]
+    const token = await gatewayToken(a.page, workspaceA.id)
+    const hookSession = `${runPrefix}-claude-stream`
+    const since = new Date(Date.now() - 1_000).toISOString()
+    const response = await a.page.request.post(`${apiBase}/gateway/v1/anthropic/v1/messages`, {
+      headers: {
+        "x-api-key": token,
+        "anthropic-version": "2023-06-01",
+        accept: "text/event-stream",
+        "x-conduct-ai-tool": "production-canary",
+        "x-conduct-session-id": hookSession,
+        "x-conductai-workspace-id": workspaceA.id,
+      },
+      data: {
+        model,
+        max_tokens: 16,
+        stream: true,
+        messages: [{ role: "user", content: "Reply with the single word OK." }],
+      },
+    })
+    expect(response.status()).toBe(200)
+    expect(response.headers()["content-type"]).toContain("text/event-stream")
+    const body = await response.text()
+    expect(body).toContain("data:")
+    expect(body).toMatch(/message_stop|content_block_delta/)
+    expectNoCredentialMaterial(body)
+    const event = await waitForGuardEvent(
+      a.page,
+      workspaceA.id,
+      since,
+      candidate => candidate.hook_session_id === hookSession,
+    )
+    expect(event.execution_status).not.toBe("error")
+    expectNoCredentialMaterial(event)
+  })
+
+  test("@prod-gateway OpenAI Responses inference remains functional after transport refactor", async () => {
+    const { b, workspaceB } = harness
+    const profile = await canonicalGatewayProfile(b.page, workspaceB.id, "openai")
+    const model = uniqueDeploymentModels(profile)[0]
+    const token = await gatewayToken(b.page, workspaceB.id)
+    const hookSession = `${runPrefix}-openai-response`
+    const since = new Date(Date.now() - 1_000).toISOString()
+    const response = await b.page.request.post(`${apiBase}/gateway/v1/openai/v1/responses`, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-conduct-ai-tool": "production-canary",
+        "x-conduct-session-id": hookSession,
+        "x-conductai-workspace-id": workspaceB.id,
+      },
+      data: { model, input: "Reply with the single word OK.", max_output_tokens: 16 },
+    })
+    expect(response.status()).toBe(200)
+    const body = await response.json() as { id?: string; output?: unknown[] }
+    expect(typeof body.id).toBe("string")
+    expect(Array.isArray(body.output)).toBe(true)
+    expectNoCredentialMaterial(body)
+    const event = await waitForGuardEvent(
+      b.page,
+      workspaceB.id,
+      since,
+      candidate => candidate.hook_session_id === hookSession,
+    )
+    expect(event).toMatchObject({
+      workspace_id: workspaceB.id,
+      ai_tool: "production-canary",
+      source: "proxy",
+      provider: "openai",
+      model,
+      decision: "allowed",
+    })
+    expectNoCredentialMaterial(event)
+  })
+
+  test("@prod-gateway PreToolUse and PostToolUse updates correlate to one session event", async () => {
+    const { a, workspaceA } = harness
+    const token = await gatewayToken(a.page, workspaceA.id)
+    const hookSession = `${runPrefix}-hook-correlation`
+    const created = await a.page.request.post(`${apiBase}/guard/events`, {
+      headers: { authorization: `Bearer ${token}` },
+      data: {
+        workspace_id: workspaceA.id,
+        ai_tool: "codex",
+        tool_call: "Read",
+        input_summary: "Bounded production hook-correlation canary",
+        decision: "allowed",
+        hook_session_id: hookSession,
+      },
+    })
+    expect(created.status()).toBe(201)
+    const preEvent = await created.json() as GuardEvent
+    expectNoCredentialMaterial(preEvent)
+
+    const updated = await a.page.request.post(`${apiBase}/guard/events/usage`, {
+      headers: { authorization: `Bearer ${token}` },
+      data: {
+        workspace_id: workspaceA.id,
+        hook_session_id: hookSession,
+        tool_name: "Read",
+        tokens_input: 7,
+        tokens_output: 3,
+        duration_ms: 5,
+        ai_tool: "codex",
+        execution_status: "success",
+        result_summary: "Canary completed",
+      },
+    })
+    expect(updated.status()).toBe(200)
+    expect(await updated.json()).toEqual({ updated: true })
+
+    const events = await guardEvents(a.page, workspaceA.id, new Date(Date.now() - 60_000).toISOString())
+    const correlated = events.filter(event => event.hook_session_id === hookSession)
+    expect(correlated).toHaveLength(1)
+    expect(correlated[0]).toMatchObject({
+      id: preEvent.id,
+      tokens_before: 7,
+      tokens_after: 3,
+      execution_status: "success",
+    })
+    expectNoCredentialMaterial(correlated[0])
   })
 
   test("@prod anonymous and forged forwarding headers do not authenticate", async () => {

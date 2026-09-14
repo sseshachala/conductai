@@ -16,9 +16,9 @@ concurrency:
 
 jobs:
   canary:
-    name: Production credential boundary
+    name: Production security and Gateway canaries
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     environment: production-e2e
 
     steps:

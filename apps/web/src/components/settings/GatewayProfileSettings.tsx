@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { guard, environments, credentials as credentialsApi } from "@/lib/api"
+import { guard, environments } from "@/lib/api"
 
 type Profile = Record<string, any> & { id?: string }
 
@@ -16,7 +16,7 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
   const [protocol, setProtocol] = useState("anthropic")
   const [name, setName] = useState("default")
   const [upstream, setUpstream] = useState("")
-  const [credentialRef, setCredentialRef] = useState("")
+  const [vaultId, setVaultId] = useState("")
   const [litellmBase, setLitellmBase] = useState("")
   const [litellmVersion, setLitellmVersion] = useState("")
   const [litellmProvider, setLitellmProvider] = useState("")
@@ -30,9 +30,6 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const [vaults, setVaults] = useState<Array<{ id: string; name: string }>>([])
-  const [credentialOptions, setCredentialOptions] = useState<Array<{ ref: string; label: string }>>([])
-  const [pushVaultId, setPushVaultId] = useState("")
-  const [pushing, setPushing] = useState(false)
 
   const load = useCallback(async () => {
     if (!workspaceId) return
@@ -41,15 +38,6 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
       const rows = await guard.gatewayProfiles.list(authFetch, workspaceId)
       const envRows = await environments.list(authFetch)
       setVaults(envRows)
-      setPushVaultId(current => current || envRows[0]?.id || "")
-      const credentialRows = await Promise.all(envRows.map(async env => ({
-        env,
-        rows: await credentialsApi.byEnvironment(authFetch, env.id),
-      })))
-      const options = credentialRows.flatMap(({ env, rows }) => rows
-        .filter((row: any) => row.handle !== "env_vars")
-        .map((row: any) => ({ ref: `vault://${row.handle}`, label: `${env.name} · ${row.service || row.handle} / ${row.handle}` })))
-      setCredentialOptions(options.filter((option, index, all) => all.findIndex(item => item.ref === option.ref) === index))
       const next = rows[0] as Profile | undefined
       if (next) {
         setProfile(next)
@@ -57,7 +45,11 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
         setProvider(next.provider || "anthropic")
         setProtocol(next.protocol || "anthropic")
         setUpstream(next.upstream_url || "")
-        setCredentialRef(next.credential_ref || "")
+        const refParts = String(next.credential_ref || "").match(/^vault:\/\/([0-9a-f-]{36})\//i)
+        const legacyVaultId = String(next.credential_ref || "").startsWith("vault://")
+          ? next.environment_id || envRows.find(env => env.name === "Default")?.id
+          : ""
+        setVaultId(refParts?.[1] || legacyVaultId || "")
         setLitellmBase(next.litellm?.api_base || "")
         setLitellmVersion(next.litellm?.api_version || "")
         setLitellmProvider(next.litellm?.custom_llm_provider || "")
@@ -92,7 +84,7 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
   function body() {
     return {
       name, provider, protocol, upstream_url: upstream || null,
-      credential_ref: credentialRef || null,
+      credential_ref: vaultId ? `vault://${vaultId}/${provider}` : null,
       deployments: Object.entries(parsed.tiers).map(([alias, model]) => ({ alias, model })),
       routing: { strategy: "ordered", fallback_aliases: [] },
       reliability: parsed.extra.reliability || {},
@@ -134,18 +126,6 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
     } catch (e) { setError(e instanceof Error ? e.message : "Validation failed") }
   }
 
-  async function pushToVault() {
-    if (!profile?.id || !pushVaultId) return
-    setPushing(true); setError(""); setMessage("")
-    try {
-      const result = await guard.gatewayProfiles.push(authFetch, workspaceId, profile.id, pushVaultId)
-      if (!result.ok) throw new Error(`Vault push failed (${result.status})`)
-      const data = await result.json()
-      setMessage(data.credential_resolved ? "Gateway pushed to vault" : "Gateway URL pushed; no credential resolved")
-    } catch (e) { setError(e instanceof Error ? e.message : "Vault push failed") }
-    finally { setPushing(false) }
-  }
-
   if (loading) return <div style={{ height: 180, background: "var(--surface-2)", borderRadius: 8 }} />
 
   const inputStyle = { width: "100%", padding: "9px 11px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontSize: 13 }
@@ -160,11 +140,10 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
         <label style={{ fontSize: 12 }}>Provider<select value={provider} disabled={!isAdmin} onChange={e => { setProvider(e.target.value); setProtocol(e.target.value === "anthropic" ? "anthropic" : "openai_compatible") }} style={inputStyle}>{PROVIDERS.map(p => <option key={p}>{p}</option>)}</select></label>
       </div>
       <label style={{ fontSize: 12 }}>Upstream URL<input value={upstream} disabled={!isAdmin} onChange={e => setUpstream(e.target.value)} placeholder="https://api.example.com/v1" style={inputStyle} /></label>
-      <label style={{ fontSize: 12 }}>Vault credential
-        <select value={credentialRef} disabled={!isAdmin} onChange={e => setCredentialRef(e.target.value)} style={inputStyle}>
-          <option value="">No credential selected</option>
-          {credentialRef && !credentialOptions.some(option => option.ref === credentialRef) && <option value={credentialRef}>{credentialRef}</option>}
-          {credentialOptions.map(option => <option key={option.ref} value={option.ref}>{option.label}</option>)}
+      <label style={{ fontSize: 12 }}>Vault
+        <select value={vaultId} disabled={!isAdmin} onChange={e => setVaultId(e.target.value)} style={inputStyle}>
+          <option value="">No Vault selected</option>
+          {vaults.map(vault => <option key={vault.id} value={vault.id}>{vault.name}</option>)}
         </select>
       </label>
       <label style={{ fontSize: 12 }}>Model aliases<textarea value={deployments} disabled={!isAdmin} onChange={e => setDeployments(e.target.value)} rows={5} spellCheck={false} style={{ ...inputStyle, fontFamily: "monospace", resize: "vertical" }} /></label>
@@ -187,16 +166,6 @@ export default function GatewayProfileSettings({ workspaceId, isAdmin }: { works
       {error && <p style={{ margin: 0, color: "var(--err)", fontSize: 12 }}>{error}</p>}
       {message && <p style={{ margin: 0, color: "var(--green)", fontSize: 12 }}>{message}</p>}
       {isAdmin && <div style={{ display: "flex", gap: 8 }}><button className="btn btn-primary btn-sm" disabled={saving || !!parsed.error} onClick={save}>{saving ? "Saving…" : "Save gateway"}</button><button className="btn btn-ghost btn-sm" disabled={!!parsed.error} onClick={validate}>Validate</button></div>}
-      {isAdmin && profile?.id && <section style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-        <h3 style={{ margin: 0, fontSize: 14 }}>Push to vault</h3>
-        <p style={{ margin: "5px 0 10px", color: "var(--text-3)", fontSize: 12 }}>Copy this profile&apos;s upstream URL and Vault-managed credential into an environment.</p>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <select value={pushVaultId} onChange={e => setPushVaultId(e.target.value)} style={{ ...inputStyle, maxWidth: 300 }}>
-            {vaults.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-          </select>
-          <button className="btn btn-ghost btn-sm" disabled={pushing || !pushVaultId} onClick={pushToVault}>{pushing ? "Pushing…" : "Push"}</button>
-        </div>
-      </section>}
     </div>
   )
 }

@@ -132,6 +132,19 @@ def test_fetched_legacy_proxy_url_maps_to_gateway_v1():
     assert guard._gateway_v1_url("http://localhost:8000/gateway/v1") == "http://localhost:8000/gateway/v1"
 
 
+@pytestmark_posix
+def test_canonical_gateway_env_contains_exact_openai_and_anthropic_surfaces(tmp_path, monkeypatch):
+    _redirect_home(tmp_path, monkeypatch)
+    monkeypatch.setenv("SHELL", "/bin/zsh")
+
+    guard._write_proxy_env("agent-token", "https://api.conductai.ai/gateway/v1")
+
+    env = (tmp_path / ".conduct" / "env").read_text()
+    assert 'export ANTHROPIC_BASE_URL="https://api.conductai.ai/gateway/v1/anthropic"' in env
+    assert 'export OPENAI_BASE_URL="https://api.conductai.ai/gateway/v1/openai/v1"' in env
+    assert 'export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="1"' in env
+
+
 def test_configure_codex_proxy_is_secret_free(tmp_path, monkeypatch):
     monkeypatch.setattr(guard.Path, "home", lambda: tmp_path)
     codex = tmp_path / ".codex"
