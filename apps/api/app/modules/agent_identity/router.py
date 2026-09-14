@@ -2,7 +2,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ from app.core.database import get_db
 from app.models.environment import Environment
 from app.models.integration import Integration
 from app.modules.agent_identity.adapters import TOKEN_PREFIX
-from app.modules.agent_identity.models import AgentIdentity
+from app.modules.agent_identity.models import AgentCredentialSession, AgentIdentity
 from app.modules.agent_identity.schemas import (
     AgentIdentityCreate,
     AgentIdentityCreated,
@@ -26,6 +26,8 @@ from app.modules.agent_identity.schemas import (
     ApiTokenCreate,
     ApiTokenCreated,
     ApiTokenOut,
+    CredentialSessionOut,
+    CredentialSessionPage,
 )
 
 
@@ -209,6 +211,83 @@ def list_agent_identities(
     ) for r in rows]
 
 
+def _credential_session_member_active(db, identity) -> bool:
+    from sqlalchemy import text
+    return db.execute(text(
+        "SELECT 1 FROM guard_member_config gmc JOIN workspace_users wu "
+        "ON wu.workspace_id = gmc.workspace_id AND wu.clerk_user_id = gmc.clerk_user_id "
+        "WHERE gmc.agent_identity_id = :aid AND gmc.workspace_id = :ws AND gmc.active = true LIMIT 1"
+    ), {"aid": identity.id, "ws": str(identity.workspace_id)}).fetchone() is not None
+
+
+def _credential_session_out(row, identity, request: Request, member_active: bool) -> CredentialSessionOut:
+    from app.modules.agent_identity.credentials import token_hash
+
+    now = datetime.now(timezone.utc)
+    if row.revoked_at:
+        status = "revoked"
+    elif not member_active or identity.lifecycle_state in ("deactivated", "expired"):
+        status = "blocked"
+    elif row.refresh_token_expires_at <= now:
+        status = "expired"
+    elif row.expires_at <= now:
+        status = "refreshable"
+    else:
+        status = "active"
+    authorization = request.headers.get("authorization", "")
+    bearer = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    return CredentialSessionOut(
+        id=row.id, created_at=row.created_at, expires_at=row.expires_at,
+        refresh_token_expires_at=row.refresh_token_expires_at, revoked_at=row.revoked_at,
+        status=status, is_current=bool(bearer and token_hash(bearer) == row.access_token_hash),
+    )
+
+
+@router.get("/agent-identities/{identity_id}/sessions", response_model=CredentialSessionPage)
+def list_credential_sessions(
+    workspace_id: str, identity_id: str, request: Request,
+    limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0),
+    _: str = Depends(require_permission("platform.credentials.manage")),
+    db: Session = Depends(get_db),
+):
+    identity = db.query(AgentIdentity).filter(
+        AgentIdentity.id == identity_id, AgentIdentity.workspace_id == workspace_id,
+    ).first()
+    if identity is None:
+        raise HTTPException(404, detail="Agent identity not found")
+    rows = db.query(AgentCredentialSession).filter(
+        AgentCredentialSession.agent_identity_id == identity.id,
+    ).order_by(AgentCredentialSession.created_at.desc(), AgentCredentialSession.id.desc()).offset(offset).limit(limit + 1).all()
+    member_active = _credential_session_member_active(db, identity)
+    return CredentialSessionPage(
+        sessions=[_credential_session_out(row, identity, request, member_active) for row in rows[:limit]],
+        has_more=len(rows) > limit,
+    )
+
+
+@router.post("/agent-identities/{identity_id}/sessions/{session_id}/revoke", response_model=CredentialSessionOut)
+def revoke_credential_session(
+    workspace_id: str, identity_id: str, session_id: str, request: Request,
+    _: str = Depends(require_permission("platform.credentials.manage")),
+    db: Session = Depends(get_db),
+):
+    identity = db.query(AgentIdentity).filter(
+        AgentIdentity.id == identity_id, AgentIdentity.workspace_id == workspace_id,
+    ).first()
+    if identity is None:
+        raise HTTPException(404, detail="Agent identity not found")
+    row = db.query(AgentCredentialSession).filter(
+        AgentCredentialSession.id == session_id,
+        AgentCredentialSession.agent_identity_id == identity.id,
+    ).with_for_update().first()
+    if row is None:
+        raise HTTPException(404, detail="Credential session not found")
+    if row.revoked_at is None:
+        row.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+    return _credential_session_out(row, identity, request, _credential_session_member_active(db, identity))
+
+
 @router.delete("/agent-identities/{identity_id}", status_code=204)
 def delete_agent_identity(
     workspace_id: str,
@@ -371,6 +450,14 @@ def regenerate_agent_identity(
     plaintext, prefix = _generate_token()
     row.token_prefix = prefix
     row.token_encrypted = encrypt({"token": plaintext})
+    # An explicit administrator rotation revokes every login for this identity.
+    from app.modules.agent_identity.models import AgentCredentialSession
+    db.query(AgentCredentialSession).filter(
+        AgentCredentialSession.agent_identity_id == row.id,
+        AgentCredentialSession.revoked_at.is_(None),
+    ).update({AgentCredentialSession.revoked_at: datetime.now(timezone.utc)})
+    row.refresh_token_hash = None
+    row.refresh_token_expires_at = None
     db.commit()
     db.refresh(row)
 

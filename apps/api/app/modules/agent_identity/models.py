@@ -1,10 +1,28 @@
 from app.core.database import Base
-from sqlalchemy import CheckConstraint, Column, DateTime, Index, Integer, String, Text, text
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 
 LIFECYCLE_STATES = ("active", "pending_review", "deactivated", "expired")
 RISK_TIERS = ("tier_1", "tier_2", "tier_3")
+
+
+class AgentCredentialSession(Base):
+    """Independent login credentials; attribution remains on AgentIdentity."""
+
+    __tablename__ = "agent_credential_sessions"
+
+    id = Column(String(36), primary_key=True)
+    agent_identity_id = Column(
+        String(36), ForeignKey("agent_identities.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    access_token_hash = Column(String(64), nullable=False, unique=True)
+    refresh_token_hash = Column(String(64), nullable=False, unique=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    refresh_token_expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class AgentIdentity(Base):

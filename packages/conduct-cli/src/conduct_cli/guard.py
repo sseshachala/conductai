@@ -1550,26 +1550,23 @@ def cmd_guard_sync(args):
     _save_policy(policy)
     print(f"  {GREEN}Policy refreshed:{RESET} {rule_count} hook rule(s). Proxy and non-hook rules run server-side.")
 
-    # Refresh agent token from server via refresh_token grant.
-    # Never rely on the locally-cached value — it may be stale or missing.
+    # Installation metadata is not a refresh grant. Keep the access/refresh pair
+    # together; another OAuth client's token must never replace this session.
     try:
         installed = _req(
             "GET",
             f"{base_url}/guard/config/installed?workspace_id={workspace_id}",
             token=_token,
         )
-        fresh_agent_token = installed.get("agent_token") or ""
-        if fresh_agent_token:
-            cfg["agent_token"] = fresh_agent_token
         if installed.get("user_email"):
             cfg["user_email"] = installed["user_email"]
         if installed.get("clerk_user_id"):
             cfg["clerk_user_id"] = installed["clerk_user_id"]
         _save_guard_config(cfg)
-        if not fresh_agent_token and not cfg.get("agent_token"):
+        if not cfg.get("agent_token"):
             print(f"  {YELLOW}Warning: server returned no token — proxy env may be stale{RESET}")
     except Exception as e:
-        print(f"  {YELLOW}Warning: could not refresh token ({e}) — using cached value{RESET}")
+        print(f"  {YELLOW}Warning: could not fetch installation metadata ({e}){RESET}")
 
     # Write LLM proxy env vars so any AI tool (Claude Code, Cursor, Codex, …)
     # routes through Conduct Guard. Customer-overridable via --proxy-url or

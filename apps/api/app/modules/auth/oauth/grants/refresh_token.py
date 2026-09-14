@@ -1,8 +1,8 @@
 """OAuth 2.1 refresh_token grant — rotate on every use.
 
 Spec: refresh tokens SHOULD be rotated (invalidate old, issue new pair). Our
-AgentIdentity row holds one refresh_token_hash at a time; overwriting it is
-the rotation.
+Each login session holds its own refresh-token hash. Rotation replaces only
+that session's pair, without invalidating other clients of the same identity.
 
 All lookup / mint / commit / workspace-user-defense lives in
 `cli_token.rotate_identity_by_refresh` — this grant is a shape-adapter that

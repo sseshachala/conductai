@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -67,3 +67,18 @@ class ApiTokenOut(BaseModel):
 
 class ApiTokenCreated(ApiTokenOut):
     token: str  # full token, shown once only
+
+
+class CredentialSessionOut(BaseModel):
+    id: str
+    created_at: datetime
+    expires_at: datetime
+    refresh_token_expires_at: datetime
+    revoked_at: Optional[datetime]
+    status: Literal["active", "refreshable", "expired", "revoked", "blocked"]
+    is_current: bool
+
+
+class CredentialSessionPage(BaseModel):
+    sessions: list[CredentialSessionOut]
+    has_more: bool
