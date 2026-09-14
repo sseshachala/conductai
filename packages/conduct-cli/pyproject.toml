@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "conduct-cli"
-version = "0.14.4"
+version = "0.14.5"
 description = "Runtime governance for AI agents. CLI for Conduct AI — secure, govern, install agents, manage projects, run tests"
 readme = "README.md"
 license = { text = "Apache-2.0" }
