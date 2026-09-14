@@ -828,9 +828,12 @@ def main() -> None:
         sys.exit(2)
 
     decision = {"block": "blocked", "warn": "warned"}.get(action, "allowed")
-    if action == "warn" and session_id and rule_id and _already_warned_this_session(session_id, rule_id):
-        sys.exit(0)
-    if action == "warn" and session_id and rule_id:
+    # Deduplicate the warning message, never the audit event.
+    suppress_warning = bool(
+        action == "warn" and session_id and rule_id
+        and _already_warned_this_session(session_id, rule_id)
+    )
+    if action == "warn" and session_id and rule_id and not suppress_warning:
         _record_session_warn(session_id, rule_id)
 
     # Pre-mint the audit-row id ONLY on block. That way the receipt URL
@@ -855,7 +858,7 @@ def main() -> None:
         print(msg)
         print(_boxed(msg, receipt_url), file=sys.stderr)
         sys.exit(2)
-    if action == "warn":
+    if action == "warn" and not suppress_warning:
         print(f"[ConductGuard] {message}")
 
     sys.exit(0)

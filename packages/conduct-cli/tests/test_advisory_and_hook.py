@@ -308,7 +308,8 @@ class TestWarnDedup:
         posted = self._run_warn(monkeypatch, "sess-abc")
         assert "warned" in posted
 
-    def test_second_warn_same_session_skips(self, monkeypatch, tmp_path):
+    @pytest.mark.parametrize("tool", ["Bash", "exec_command", "apply_patch"])
+    def test_repeated_warn_records_every_call_but_prints_once(self, monkeypatch, capsys, tool):
         import conduct_cli.hooks.pretooluse as pt
         warns: dict[str, set] = {}
 
@@ -321,9 +322,6 @@ class TestWarnDedup:
         monkeypatch.setattr(pt, "_already_warned_this_session", _fake_already)
         monkeypatch.setattr(pt, "_record_session_warn", _fake_record)
 
-        # First call records the warn
-        _fake_record("sess-xyz", "no-echo")
-
         monkeypatch.setattr(pt, "check_policy", lambda tn, ti, **kw: ({}, "warn", "no-echo", "watch out"))
         monkeypatch.setattr(pt, "_get_fail_mode", lambda: "fail_open")
         monkeypatch.setattr(pt, "_get_advisory_mode", lambda: False)
@@ -332,16 +330,21 @@ class TestWarnDedup:
         monkeypatch.setattr(pt, "_maybe_sync_policy", lambda: None)
         monkeypatch.setattr(pt, "_should_periodic_flush", lambda: False)
 
-        posted: list[str] = []
-        monkeypatch.setattr(pt, "post_event", lambda tn, ti, d, r, m, s, **kw: posted.append(d))
-        monkeypatch.setattr(sys, "stdin", StringIO(_hook_input(session="sess-xyz")))
+        posted = []
+        monkeypatch.setattr(pt, "post_event", lambda tn, ti, d, r, m, s, **kw: posted.append((tn, ti, d, r, s)))
+        monkeypatch.setattr(pt, "record_hook_heartbeat", lambda *args: None)
 
-        try:
-            pt.main()
-        except SystemExit:
-            pass
-
-        assert posted == [], "second warn same session should be skipped"
+        for index, session in enumerate(["sess-xyz", "sess-xyz", "sess-new"]):
+            command = f"echo call-{index}"
+            monkeypatch.setattr(sys, "stdin", StringIO(_hook_input(tool=tool, cmd=command, session=session)))
+            with pytest.raises(SystemExit) as exc:
+                pt.main()
+            assert exc.value.code == 0
+            assert posted[-1] == (tool.lower(), {"command": command}, "warned", "no-echo", session)
+            assert len(posted) == index + 1
+            output = capsys.readouterr()
+            assert output.out == ("" if index == 1 else "[ConductGuard] watch out\n")
+            assert output.err == ""
 
 
 # ── advisory_mode mirrored on sync ────────────────────────────────────────────
