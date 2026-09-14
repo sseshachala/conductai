@@ -227,6 +227,24 @@ def _resolve_agent_token(token: str, db: Session):
     from app.core.crypto import decrypt
     from sqlalchemy import text as _t
     from datetime import datetime, timezone as _tz
+    from app.modules.agent_identity.credentials import SESSION_ACCESS_PREFIX, find_session_credential
+    if token.startswith(SESSION_ACCESS_PREFIX):
+        matched = find_session_credential(token, db)
+        if matched is None:
+            raise HTTPException(status_code=401, detail="Invalid agent token")
+        ai, expires_at = matched
+        if expires_at <= datetime.now(_tz.utc):
+            raise HTTPException(status_code=401, detail="Agent token expired")
+        if ai.token_type != "cli" or ai.lifecycle_state in ("deactivated", "expired"):
+            raise HTTPException(status_code=401, detail="Agent identity is inactive")
+        row = db.execute(
+            _t("SELECT clerk_user_id FROM guard_member_config "
+               "WHERE agent_identity_id = :aid AND workspace_id = :ws AND active = true LIMIT 1"),
+            {"aid": ai.id, "ws": str(ai.workspace_id)},
+        ).fetchone()
+        if not row or not _has_workspace_membership(db, ai.workspace_id, row.clerk_user_id):
+            raise HTTPException(status_code=401, detail="Agent token membership revoked")
+        return ai, row.clerk_user_id
     for ai in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == token[:13]).all():
         try:
             if decrypt(ai.token_encrypted).get("token") == token:
@@ -940,6 +958,14 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
     """
     from sqlalchemy import text as _text
     from datetime import datetime, timezone as _tz
+    from app.modules.agent_identity.credentials import SESSION_ACCESS_PREFIX
+
+    if token.startswith(SESSION_ACCESS_PREFIX):
+        try:
+            identity, user_id = _resolve_agent_token(token, db)
+            return str(identity.workspace_id), user_id
+        except HTTPException:
+            return None
 
     if token.startswith((_AGENT_PREFIX, _API_PREFIX)):
         from app.core.crypto import decrypt as _decrypt
@@ -1024,6 +1050,13 @@ def resolve_agent_identity_row(token: str, db: Session):
     to populate PolicyContext for tier-gated policies.
     """
     from datetime import datetime, timezone as _tz
+    from app.modules.agent_identity.credentials import SESSION_ACCESS_PREFIX
+
+    if token.startswith(SESSION_ACCESS_PREFIX):
+        try:
+            return _resolve_agent_token(token, db)[0]
+        except HTTPException:
+            return None
 
     if not token.startswith((_AGENT_PREFIX, _API_PREFIX)):
         return None
@@ -1079,6 +1112,11 @@ def token_is_expired(token: str, db: Session) -> bool:
     from datetime import datetime, timezone as _tz
     from app.core.crypto import decrypt as _decrypt
     from app.modules.agent_identity.models import AgentIdentity
+    from app.modules.agent_identity.credentials import SESSION_ACCESS_PREFIX, find_session_credential
+
+    if token.startswith(SESSION_ACCESS_PREFIX):
+        matched = find_session_credential(token, db)
+        return bool(matched and matched[1] <= datetime.now(_tz.utc))
 
     prefix = token[:_PREFIX_LOOKUP_LEN]
     for ai_row in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == prefix).all():

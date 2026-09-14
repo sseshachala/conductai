@@ -27,6 +27,8 @@ def _identity():
         token_encrypted="old-encrypted",
         refresh_token_hash="old-hash",
         refresh_token_expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        token_type="cli",
+        lifecycle_state="active",
     )
 
 
@@ -57,10 +59,10 @@ def test_issuance_denies_nonmember_before_mint_or_mutation(monkeypatch, workspac
     _assert_no_membership_writes(db)
 
 
-def test_existing_member_can_rotate_without_membership_writes(monkeypatch):
+def test_existing_member_gets_session_without_rotating_existing_credentials(monkeypatch):
     db = MagicMock()
     row = _identity()
-    db.execute.side_effect = [_result((1,)), _result(SimpleNamespace(id=row.id))]
+    db.execute.side_effect = [_result((1,)), _result(None), _result(SimpleNamespace(id=row.id))]
     db.query.return_value.filter.return_value.first.return_value = row
     monkeypatch.setattr(cli_token, "encrypt", lambda value: "encrypted-test-token")
 
@@ -69,6 +71,9 @@ def test_existing_member_can_rotate_without_membership_writes(monkeypatch):
     assert actual is row
     assert access.startswith("cond_agt_")
     assert refresh.startswith("cond_ref_")
+    assert row.token_encrypted == "old-encrypted"
+    assert row.refresh_token_hash == "old-hash"
+    db.add.assert_called_once()
     db.commit.assert_called_once()
     _assert_no_membership_writes(db)
 
@@ -78,7 +83,7 @@ def test_refresh_cannot_restore_removed_membership(monkeypatch, linked, member, 
     db = MagicMock()
     row = _identity()
     before = vars(row).copy()
-    db.query.return_value.filter.return_value.first.return_value = row
+    db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = row
     db.execute.side_effect = [
         _result(SimpleNamespace(clerk_user_id="removed") if linked else None),
         _result((1,) if member else None),
@@ -99,7 +104,7 @@ def test_refresh_cannot_restore_removed_membership(monkeypatch, linked, member, 
 def test_refresh_for_current_member_rotates_without_enrollment(monkeypatch):
     db = MagicMock()
     row = _identity()
-    db.query.return_value.filter.return_value.first.return_value = row
+    db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = row
     db.execute.side_effect = [_result(SimpleNamespace(clerk_user_id="member")), _result((1,))]
     monkeypatch.setattr(cli_token, "encrypt", lambda value: "encrypted-test-token")
 

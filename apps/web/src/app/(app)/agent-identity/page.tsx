@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import AppShell from "@/components/AppShell"
@@ -8,16 +8,18 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import { TabBar } from "@/components/TabBar"
+import { AgentSessions } from "@/components/AgentSessions"
 
-type Tab = "tokens" | "run_tokens" | "identities" | "lens_sessions" | "integrations"
+type Tab = "tokens" | "run_tokens" | "identities" | "agent_sessions" | "lens_sessions" | "integrations"
 const TAB_LABELS: Record<Tab, string> = {
   tokens: "Tokens",
   run_tokens: "Run tokens",
   identities: "Identities",
+  agent_sessions: "Agent sessions",
   lens_sessions: "Lens sessions",
   integrations: "Integrations",
 }
-const TABS: Tab[] = ["tokens", "run_tokens", "identities", "lens_sessions", "integrations"]
+const TABS: Tab[] = ["tokens", "run_tokens", "identities", "agent_sessions", "lens_sessions", "integrations"]
 
 interface RunToken {
   id: string
@@ -162,6 +164,9 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
 
   const [identities, setIdentities] = useState<Identity[]>([])
   const [identitiesLoading, setIdentitiesLoading] = useState(true)
+  const [identitiesWorkspace, setIdentitiesWorkspace] = useState("")
+  const currentWorkspace = useRef(workspaceId)
+  currentWorkspace.current = workspaceId
 
   // Lens Sessions (#1218 Step 3b.6)
   const [lensSessions, setLensSessions] = useState<LensSession[]>([])
@@ -178,6 +183,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   // #1252 — deep-link support: click a Lens session's cond_agt_lens_* → land
   // on the Identities tab with ?id=<uuid> and highlight+scroll to the row.
   const highlightId = searchParams?.get("id") || null
+  const sessionIdentity = identities.find(identity => identity.id === highlightId) ?? (highlightId ? null : identities[0])
   useEffect(() => {
     if (activeTab !== "identities" || !highlightId) return
     const row = document.getElementById(`identity-row-${highlightId}`)
@@ -229,8 +235,12 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
       .then(r => r.ok ? r.json() : []).then(setTokens)
       .catch(() => {})
     authFetch(`${API}/workspaces/${w}/agent-identities?workspace_id=${w}`)
-      .then(r => r.ok ? r.json() : []).then(setIdentities)
-      .catch(() => {}).finally(() => setIdentitiesLoading(false))
+      .then(r => r.ok ? r.json() : []).then(rows => {
+        if (currentWorkspace.current !== w) return
+        setIdentities(rows)
+        setIdentitiesWorkspace(w)
+      })
+      .catch(() => {}).finally(() => { if (currentWorkspace.current === w) setIdentitiesLoading(false) })
   }, [workspaceId, authFetch])
 
   useEffect(() => { load() }, [load])
@@ -962,6 +972,18 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
           </div>
         </div>
 
+        {activeTab === "agent_sessions" && <div role="tabpanel" id="tabpanel-agent_sessions" aria-labelledby="tab-agent_sessions">
+          <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Agent sessions</h2>
+          {identitiesLoading || identitiesWorkspace !== workspaceId ? <p role="status">Loading agents...</p> : <>
+            <label htmlFor="session-agent" style={{ display: "block", fontSize: 12, marginBottom: 6 }}>Agent identity</label>
+            <select id="session-agent" value={sessionIdentity?.id ?? ""} onChange={e => selectTab("agent_sessions", { id: e.target.value })} style={{ width: "100%", maxWidth: 480, padding: "8px 12px", marginBottom: 20, border: "1px solid var(--border)", borderRadius: 6, background: "var(--surface)", color: "var(--text)", fontSize: 13 }}>
+              {!sessionIdentity && <option value="">Select an agent</option>}
+              {identities.map(identity => <option key={identity.id} value={identity.id}>{identity.name} ({identity.id.slice(0, 8)})</option>)}
+            </select>
+            {sessionIdentity ? <AgentSessions key={`${workspaceId}:${sessionIdentity.id}`} workspaceId={workspaceId} identityId={sessionIdentity.id} /> : <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{identities.length ? "Select an agent identity." : "No agent identities available."}</p>}
+          </>}
+        </div>}
+
         {/* Agent identities — Phase 3 of #1037 */}
         <div role="tabpanel" id="tabpanel-identities" aria-labelledby="tab-identities" hidden={activeTab !== "identities"} style={{ display: activeTab === "identities" ? "block" : "none" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Agent identities</div>
@@ -1072,6 +1094,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                         : <span style={{ fontStyle: "italic", opacity: 0.7 }}>not yet used</span>}
                     </td>
                     <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                      <button className="btn btn-sm" onClick={() => selectTab("agent_sessions", { id: id.id })}>Sessions</button>
                       {isAdmin && (
                         <button
                           onClick={() => certifyIdentity(id.id)}

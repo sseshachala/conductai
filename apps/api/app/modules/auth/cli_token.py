@@ -13,24 +13,24 @@ from sqlalchemy.orm import Session
 from app.core.auth import _assert_workspace_member, get_user_id, get_workspace_id
 from app.core.crypto import encrypt
 from app.core.database import get_db
-from app.modules.agent_identity.adapters import TOKEN_PREFIX
-from app.modules.agent_identity.models import AgentIdentity
+from app.modules.agent_identity.models import AgentCredentialSession, AgentIdentity
+from app.modules.agent_identity.credentials import SESSION_ACCESS_PREFIX, SESSION_REFRESH_PREFIX, token_hash
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _REFRESH_PREFIX = "cond_ref_"
-_DISPLAY_PREFIX_LEN = len(TOKEN_PREFIX) + 4
+_DISPLAY_PREFIX_LEN = len(SESSION_ACCESS_PREFIX) + 4
 _AGENT_TOKEN_TTL = timedelta(hours=8)
 _REFRESH_TOKEN_TTL = timedelta(days=30)
 
 
 def _mint_agent_token() -> tuple[str, str]:
-    raw = TOKEN_PREFIX + os.urandom(32).hex()
+    raw = SESSION_ACCESS_PREFIX + os.urandom(32).hex()
     return raw, raw[: _DISPLAY_PREFIX_LEN]
 
 
 def _mint_refresh_token() -> tuple[str, str]:
-    raw = _REFRESH_PREFIX + os.urandom(32).hex()
+    raw = SESSION_REFRESH_PREFIX + os.urandom(32).hex()
     hashed = hashlib.sha256(raw.encode()).hexdigest()
     return raw, hashed
 
@@ -38,9 +38,15 @@ def _mint_refresh_token() -> tuple[str, str]:
 def _upsert_identity(
     db: Session, workspace_id: str, clerk_user_id: str
 ) -> tuple[AgentIdentity, str, str]:
-    """Find or create AgentIdentity for this user, rotate agent_token + refresh_token."""
+    """Keep the user's identity stable; each authorization gets its own session."""
     _assert_workspace_member(db, workspace_id, clerk_user_id)
+    workspace_id = str(uuid.UUID(workspace_id))
     now = datetime.now(timezone.utc)
+
+    # Serialize first-time provisioning as well as issuance for an existing user.
+    # The lock lives for this transaction and does not grant membership.
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+               {"key": f"credential:{workspace_id}:{clerk_user_id}"})
 
     # Find existing identity linked via guard_member_config
     row = db.execute(
@@ -61,13 +67,9 @@ def _upsert_identity(
         identity = db.query(AgentIdentity).filter(AgentIdentity.id == row.id).first()
         if not identity:
             raise HTTPException(status_code=500, detail="Agent identity row missing")
-        identity.token_prefix = agent_prefix
-        identity.token_encrypted = encrypt({"token": agent_raw})
-        identity.expires_at = now + _AGENT_TOKEN_TTL
-        identity.refresh_token_hash = refresh_hash
-        identity.refresh_token_expires_at = now + _REFRESH_TOKEN_TTL
+        if identity.lifecycle_state in ("deactivated", "expired") or identity.token_type != "cli":
+            raise HTTPException(status_code=401, detail="Agent identity is inactive")
         identity.last_used_at = now
-        identity.token_type = "cli"  # enforce — identity may have been created as 'api'
     else:
         identity = AgentIdentity(
             id=str(uuid.uuid4()),
@@ -76,13 +78,12 @@ def _upsert_identity(
             provider="conduct",
             source="conduct_cli",
             token_prefix=agent_prefix,
-            token_encrypted=encrypt({"token": agent_raw}),
+            token_encrypted=encrypt({}),
             environment_id=None,
             created_at=now,
             last_used_at=now,
             expires_at=now + _AGENT_TOKEN_TTL,
-            refresh_token_hash=refresh_hash,
-            refresh_token_expires_at=now + _REFRESH_TOKEN_TTL,
+            token_type="cli",
         )
         db.add(identity)
         db.flush()
@@ -97,6 +98,12 @@ def _upsert_identity(
             {"ws": workspace_id, "uid": clerk_user_id, "mt": _sec.token_hex(32), "aid": identity.id},
         )
 
+    db.add(AgentCredentialSession(
+        id=str(uuid.uuid4()), agent_identity_id=identity.id,
+        access_token_hash=token_hash(agent_raw), refresh_token_hash=refresh_hash,
+        expires_at=now + _AGENT_TOKEN_TTL,
+        refresh_token_expires_at=now + _REFRESH_TOKEN_TTL, created_at=now,
+    ))
     db.commit()
     return identity, agent_raw, refresh_raw
 
@@ -134,13 +141,13 @@ def rotate_identity_by_refresh(
     refresh_token: str,
     db: Session,
 ) -> tuple[AgentIdentity, str, str]:
-    """Look up AgentIdentity by refresh-token hash, rotate the token pair,
+    """Look up a login by refresh-token hash, rotate only its token pair,
     verify existing workspace membership, and commit.
 
     Shared by /auth/refresh (CLI, this file) and the OAuth 2.1 refresh_token
     grant (app/modules/auth/oauth/grants/refresh_token.py). Both callers
     accept an opaque cond_ref_* token from the client and issue a fresh
-    (access, refresh) pair — one implementation, two URLs.
+    (access, refresh) pair. Legacy pairs upgrade to a session on first refresh.
 
     Raises HTTPException(401) on unknown / expired / malformed refresh token.
     """
@@ -148,12 +155,16 @@ def rotate_identity_by_refresh(
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
     hashed = hashlib.sha256(refresh_token.encode()).hexdigest()
+    if refresh_token.startswith(SESSION_REFRESH_PREFIX):
+        return _rotate_session(hashed, db)
     identity = db.query(AgentIdentity).filter(
         AgentIdentity.refresh_token_hash == hashed
-    ).first()
+    ).with_for_update().first()
 
     if not identity:
         raise HTTPException(status_code=401, detail="Refresh token not found")
+    if identity.lifecycle_state in ("deactivated", "expired") or identity.token_type != "cli":
+        raise HTTPException(status_code=401, detail="Agent identity is inactive")
 
     now = datetime.now(timezone.utc)
     if identity.refresh_token_expires_at and identity.refresh_token_expires_at < now:
@@ -163,7 +174,7 @@ def rotate_identity_by_refresh(
     gmc = db.execute(
         text("""
             SELECT clerk_user_id FROM guard_member_config
-            WHERE agent_identity_id = :aid AND workspace_id = :ws
+            WHERE agent_identity_id = :aid AND workspace_id = :ws AND active = true
             LIMIT 1
         """),
         {"aid": str(identity.id), "ws": str(identity.workspace_id)},
@@ -172,18 +183,54 @@ def rotate_identity_by_refresh(
         raise HTTPException(status_code=401, detail="Refresh token has no linked user")
     _assert_workspace_member(db, str(identity.workspace_id), gmc.clerk_user_id)
 
-    agent_raw, agent_prefix = _mint_agent_token()
+    agent_raw, _ = _mint_agent_token()
     refresh_raw, refresh_hash = _mint_refresh_token()
 
-    identity.token_prefix = agent_prefix
-    identity.token_encrypted = encrypt({"token": agent_raw})
-    identity.expires_at = now + _AGENT_TOKEN_TTL
-    identity.refresh_token_hash = refresh_hash
-    identity.refresh_token_expires_at = now + _REFRESH_TOKEN_TTL
+    # Upgrade a still-valid legacy refresh pair without another browser login.
+    identity.token_encrypted = encrypt({})
+    identity.refresh_token_hash = None
+    identity.refresh_token_expires_at = None
     identity.last_used_at = now
+    db.add(AgentCredentialSession(
+        id=str(uuid.uuid4()), agent_identity_id=identity.id,
+        access_token_hash=token_hash(agent_raw), refresh_token_hash=refresh_hash,
+        expires_at=now + _AGENT_TOKEN_TTL,
+        refresh_token_expires_at=now + _REFRESH_TOKEN_TTL, created_at=now,
+    ))
 
     db.commit()
     return identity, agent_raw, refresh_raw
+
+
+def _rotate_session(hashed: str, db: Session) -> tuple[AgentIdentity, str, str]:
+    session = db.query(AgentCredentialSession).filter(
+        AgentCredentialSession.refresh_token_hash == hashed,
+        AgentCredentialSession.revoked_at.is_(None),
+    ).with_for_update().first()
+    if session is None:
+        raise HTTPException(status_code=401, detail="Refresh token not found")
+    now = datetime.now(timezone.utc)
+    if session.refresh_token_expires_at <= now:
+        raise HTTPException(status_code=401, detail="Refresh token expired")
+    identity = db.query(AgentIdentity).filter(AgentIdentity.id == session.agent_identity_id).first()
+    if identity is None or identity.token_type != "cli" or identity.lifecycle_state in ("deactivated", "expired"):
+        raise HTTPException(status_code=401, detail="Agent identity is inactive")
+    member = db.execute(text(
+        "SELECT clerk_user_id FROM guard_member_config "
+        "WHERE agent_identity_id = :aid AND workspace_id = :ws AND active = true LIMIT 1"
+    ), {"aid": identity.id, "ws": str(identity.workspace_id)}).fetchone()
+    if not member:
+        raise HTTPException(status_code=401, detail="Refresh token has no linked user")
+    _assert_workspace_member(db, str(identity.workspace_id), member.clerk_user_id)
+    access, _ = _mint_agent_token()
+    refresh, refresh_hash = _mint_refresh_token()
+    session.access_token_hash = token_hash(access)
+    session.refresh_token_hash = refresh_hash
+    session.expires_at = now + _AGENT_TOKEN_TTL
+    session.refresh_token_expires_at = now + _REFRESH_TOKEN_TTL
+    identity.last_used_at = now
+    db.commit()
+    return identity, access, refresh
 
 
 @router.post("/refresh", response_model=CliTokenResponse)

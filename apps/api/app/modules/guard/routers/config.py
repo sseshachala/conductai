@@ -13,7 +13,7 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -145,6 +145,7 @@ def _config_to_out(cfg: GuardConfig) -> ConfigOut:
 
 @router.get("/installed", response_model=InstallStatusOut)
 def get_install_status(
+    request: Request,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     user_id: str = Depends(get_user_id),
@@ -210,9 +211,14 @@ def get_install_status(
         {"ws": workspace_id, "uid": user_id},
     ).fetchone()
 
-    # Resolve agent_token — decrypt existing FK, re-mint if missing/expired/decrypt fails
-    agent_token: str | None = None
-    if token_row and token_row.agent_identity_id:
+    # Installation status must not replace a live identity or its login sessions.
+    # Auth dependencies above have already validated the bearer. Older CLIs
+    # copy this field into config, so echo their own token, not a shared one.
+    authorization = request.headers.get("authorization", "")
+    presented_token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    agent_token = presented_token if presented_token.startswith(("cond_agt_", "cond_api_")) else None
+    ai_row = None
+    if not agent_token and token_row and token_row.agent_identity_id:
         from app.modules.agent_identity.models import AgentIdentity
         from app.core.crypto import decrypt as _decrypt
         from datetime import datetime, timezone as _tz
@@ -225,7 +231,7 @@ def get_install_status(
                 except Exception:
                     pass
 
-    if not agent_token:
+    if not agent_token and ai_row is None:
         from app.modules.agent_identity.router import mint_agent_identity
         try:
             identity_row, agent_token = mint_agent_identity(db, workspace_id, f"{user_id} (auto)")

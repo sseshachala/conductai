@@ -658,6 +658,64 @@ test.describe("bounded production security canaries", () => {
     expectNoCredentialMaterial(event)
   })
 
+  test("@prod-flight-recorder independent logins preserve access and refresh", async () => {
+    const { a, workspaceA } = harness
+    const firstResponse = await exchange(a.page, workspaceA.id)
+    expect(firstResponse.status()).toBe(200)
+    const first = await firstResponse.json()
+    const probe = (token: string) => a.page.request.get(`${apiBase}/guard/events?workspace_id=${workspaceA.id}&limit=1`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect((await probe(first.access_token)).status()).toBe(200)
+    const second = await gatewayToken(a.page, workspaceA.id)
+    expect((await probe(second)).status()).toBe(200)
+    expect((await probe(first.access_token)).status()).toBe(200)
+    const refresh = await a.page.request.post(`${apiBase}/auth/refresh`, {
+      data: { refresh_token: first.refresh_token },
+    })
+    expect(refresh.status()).toBe(200)
+    const rotated = await refresh.json()
+    expect((await probe(rotated.agent_token)).status()).toBe(200)
+    expect((await probe(first.access_token)).status()).toBe(401)
+    expect((await probe(second)).status()).toBe(200)
+    const replay = await a.page.request.post(`${apiBase}/auth/refresh`, {
+      data: { refresh_token: first.refresh_token },
+    })
+    expect(replay.status()).toBe(401)
+  })
+
+  test("@prod-flight-recorder new Codex event renders on live logs page", async () => {
+    const { a, workspaceA } = harness
+    const token = await gatewayToken(a.page, workspaceA.id)
+    const streamStatuses: number[] = []
+    a.page.on('response', response => {
+      if (new URL(response.url()).pathname.endsWith('/guard/events/stream')) streamStatuses.push(response.status())
+    })
+    await a.page.goto('/logs/guard')
+    const goLive = a.page.getByRole('button', { name: 'Go Live', exact: true })
+    await expect(goLive).toBeVisible()
+    await goLive.click()
+    await expect(a.page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+    const marker = `${runPrefix}-live-${randomUUID().slice(0, 8)}`
+    const since = new Date(Date.now() - 1000).toISOString()
+    const created = await a.page.request.post(`${apiBase}/guard/events`, {
+      headers: { authorization: `Bearer ${token}` },
+      data: {
+        workspace_id: workspaceA.id, ai_tool: 'codex-desktop', tool_call: marker,
+        input_summary: 'Synthetic Flight Recorder display check', decision: 'allowed',
+        hook_session_id: marker,
+      },
+    })
+    expect(created.status()).toBe(201)
+    const event = await waitForGuardEvent(a.page, workspaceA.id, since, row => row.hook_session_id === marker)
+    expect(event.ai_tool).toBe('codex-desktop')
+    try {
+      await expect(a.page.getByText(marker, { exact: true }).first()).toBeVisible({ timeout: 15_000 })
+    } finally {
+      console.log('Flight Recorder SSE HTTP statuses:', JSON.stringify(streamStatuses))
+    }
+  })
+
   test("@prod-gateway PreToolUse and PostToolUse updates correlate to one session event", async () => {
     const { a, workspaceA } = harness
     const token = await gatewayToken(a.page, workspaceA.id)

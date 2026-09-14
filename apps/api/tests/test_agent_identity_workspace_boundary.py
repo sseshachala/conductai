@@ -24,6 +24,7 @@ def test_every_identity_route_denies_conflicting_path_before_database_access(rou
         workspace_id=OTHER_WORKSPACE_ID,
         identity_id=WORKSPACE_ID,
         token_id=WORKSPACE_ID,
+        session_id=WORKSPACE_ID,
     )
 
     with TestClient(app) as client:

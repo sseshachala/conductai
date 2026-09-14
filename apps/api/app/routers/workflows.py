@@ -1275,9 +1275,8 @@ def validate_workflow(
     if raw_auth.lower().startswith("bearer "):
         raw_tok = raw_auth[7:].strip()
         if raw_tok.startswith("cond_agt_"):
-            from app.modules.agent_identity.models import AgentIdentity as _AI
-            _prefix = raw_tok[:len("cond_agt_") + 4]
-            _ai = db.query(_AI).filter(_AI.token_prefix == _prefix).first()
+            from app.core.auth import resolve_agent_identity_row
+            _ai = resolve_agent_identity_row(raw_tok, db)
             if _ai and getattr(_ai, "token_type", "cli") != "cli":
                 errors.append({"block_id": "__runtime__", "label": "Auth",
                                "message": "Agent token type is not 'cli' — run `conduct login` to re-mint"})
