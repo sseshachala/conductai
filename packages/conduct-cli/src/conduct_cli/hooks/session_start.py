@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,11 @@ from conduct_cli.hooks.base import (
 
 MAX_AGE_HOURS = 2
 
+_PROXY_TOKEN_RE = re.compile(
+    r"^\s*(?:export\s+)?ANTHROPIC_API_KEY\s*=\s*['\"]?(?:cond_agt_|guard-mt-)[A-Za-z0-9_-]+['\"]?\s*$",
+    re.MULTILINE,
+)
+
 
 def _check_proxy_token() -> None:
     """Warn + alert server if the proxy token is missing, malformed, or expired.
@@ -31,10 +37,7 @@ def _check_proxy_token() -> None:
         return
     env_text = CONDUCT_ENV_PATH.read_text()
     has_base_url    = "ANTHROPIC_BASE_URL=" in env_text
-    has_valid_token = (
-        'ANTHROPIC_API_KEY="guard-mt-' in env_text
-        or "ANTHROPIC_API_KEY='guard-mt-" in env_text
-    )
+    has_valid_token = bool(_PROXY_TOKEN_RE.search(env_text))
     if not has_base_url:
         return
 
