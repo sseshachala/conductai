@@ -419,7 +419,7 @@ curl -sS "$OPENAI_BASE_URL/v1/chat/completions" \\
 
         <SubHeading>Perplexity, Bedrock, others</SubHeading>
         <p className="text-stone-500 text-sm mb-3">
-          Proxy routes exist under <Code>/proxy/perplexity</Code> and future providers. Guard policy + hash-chained audit apply uniformly. Trial upstream key isn't funded for these yet — bring your own vendor key in <strong>Settings → Environments</strong>. The proxy forwards to your vault key transparently.
+          Gateway routes exist under <Code>/gateway/v1/perplexity</Code> and future providers. Guard policy + hash-chained audit apply uniformly. Trial upstream key isn't funded for these yet — bring your own vendor key in <strong>Settings → Environments</strong>. The proxy forwards to your vault key transparently.
         </p>
 
         <p className="text-stone-500 text-sm mt-4">

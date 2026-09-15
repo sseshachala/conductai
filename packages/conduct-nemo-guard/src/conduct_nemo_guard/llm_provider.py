@@ -42,7 +42,7 @@ class ConductLLM:
             engine: openai
             model: claude-sonnet-4-6
             parameters:
-              api_base: https://api.conductai.ai/proxy/openai
+              api_base: https://api.conductai.ai/gateway/v1/openai/v1
               api_key: $CONDUCT_AGENT_TOKEN
 
     That covers the common case until the native ``engine: conduct``

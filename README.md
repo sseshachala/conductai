@@ -102,7 +102,7 @@ Discovery mode is read-only visibility into every AI action your team takes for 
 ## Router — one endpoint for any SDK
 
 ```bash
-curl https://api.conductai.ai/proxy/anthropic/v1/messages \
+curl https://api.conductai.ai/gateway/v1/anthropic/v1/messages \
   -H "Authorization: Bearer cond_agt_..." \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-sonnet-4-6","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
@@ -142,7 +142,7 @@ Every request runs through Guard (policy, budget, audit) before it reaches the u
                      ┌──── MCP  ────►    └── Hash chain (SHA-256)
    Any SDK       ────┤
    (Anthropic,       └── Router ────►    Upstream provider (Anthropic,
-    OpenAI,             /proxy/*         OpenAI, Perplexity, ...)
+    OpenAI,             /gateway/v1/*    OpenAI, Perplexity, ...)
     Perplexity)
 ```
 

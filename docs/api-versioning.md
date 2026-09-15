@@ -4,19 +4,20 @@
 
 This document defines versioning strategy for Conduct enforcement APIs:
 
-- Proxy surface (`/proxy/{provider}/...`).
+- Gateway surface (`/gateway/v1/{provider}/...`; legacy `/proxy/{provider}/...` still accepted).
 - MCP guard surface (`/guard/mcp`, including `guard_check`).
 
 ## Versioning strategy
 
 ## 1) Proxy endpoints
 
-- Proxy uses path-based versioning aligned with provider-compatible endpoint families.
+- Gateway uses path-based versioning aligned with provider-compatible endpoint families.
 - Current examples include:
-  - `/proxy/anthropic/v1/messages`
-  - `/proxy/openai/v1/chat/completions`
-  - `/proxy/perplexity/chat/completions`
-- New breaking proxy contracts must introduce a new explicit versioned path segment (for example `/v2/...`) rather than in-place breaking changes.
+  - `/gateway/v1/anthropic/v1/messages`
+  - `/gateway/v1/openai/v1/chat/completions`
+  - `/gateway/v1/perplexity/chat/completions`
+- New breaking contracts must introduce a new explicit versioned path segment (for example `/gateway/v2/...`) rather than in-place breaking changes.
+- Legacy `/proxy/{provider}/...` routes still work for backward compatibility but new integrations should target `/gateway/v1/`.
 
 ## 2) MCP guard endpoint
 
