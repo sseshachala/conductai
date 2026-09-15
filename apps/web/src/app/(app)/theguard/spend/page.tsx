@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { GuardSectionTabs, SPEND_TABS } from "@/features/guard/GuardSectionTabs"
-import { ModelSpendPanel, MonthPicker, PerToolCapsPanel, SpendControlsPanel } from "@/features/guard/spend/components"
+import { MonthPicker, PerToolCapsPanel, SpendControlsPanel } from "@/features/guard/spend/components"
 import type { Currency } from "@/features/guard/spend/shared"
 import { useSpendState } from "@/features/guard/spend/useSpendState"
 
@@ -129,12 +129,6 @@ function SpendConfigureContent() {
         onSave={s.saveToolCap}
         onRemove={s.removeToolCap}
         readOnly={!s.isAdmin}
-      />
-
-      <ModelSpendPanel
-        byModel={s.data?.by_model ?? []}
-        byProvider={s.data?.by_provider ?? []}
-        currency={s.currency}
       />
     </GuardShell>
   )
