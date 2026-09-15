@@ -40,3 +40,31 @@ def reconcile_now(
     """
     count = reconcile_orphaned(db, workspace_id=workspace_id, max_batch=max_batch)
     return {"reconciled": count}
+
+
+@router.get("/in-flight-count")
+def in_flight_count(
+    _: str = Depends(require_permission("platform.runs.view")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    """How many durable-audit rows are still 'accepted' AND within
+    their lease? Powers the ⏳ N in flight badge on the Flight Recorder
+    tab — the frontend's client-side derivation is capped at the
+    LIVE_EVENT_CAP row window, this endpoint isn't.
+
+    Cheap: partial index ix_guard_audit_events_accepted_lease covers
+    the WHERE clause exactly, so the count is one index scan.
+    """
+    from sqlalchemy import text as _text
+    row = db.execute(
+        _text("""
+            SELECT count(*)::int AS n
+            FROM guard_audit_events
+            WHERE workspace_id = CAST(:ws AS uuid)
+              AND lifecycle_state = 'accepted'
+              AND lease_expires_at > now()
+        """),
+        {"ws": workspace_id},
+    ).fetchone()
+    return {"in_flight": int(row.n if row else 0)}

@@ -59,6 +59,19 @@ describe("LifecyclePill — #1959 Phase 3", () => {
 })
 
 
+// Reconciler stamps decision='error' on orphaned rows (post-Phase-4
+// cleanup). The pill must stay driven by lifecycle_state alone so it
+// keeps saying "Orphaned" even though the row's decision changed.
+// Not passing the decision at all in the test IS the assertion — if
+// the component ever tries to read it, this test would break.
+describe("LifecyclePill — post-Phase-4 decision independence", () => {
+  it("renders Orphaned regardless of what decision the row carries", () => {
+    // No decision prop threaded — the pill only takes state + lease.
+    render(<LifecyclePill state="orphaned" />)
+    expect(screen.getByText("Orphaned")).toBeTruthy()
+  })
+})
+
 // #1990 item D — clock-skew correction. When the browser clock is 5 minutes
 // ahead of the server, LifecyclePill needs the offset so a valid lease
 // isn't shown as expired prematurely.
