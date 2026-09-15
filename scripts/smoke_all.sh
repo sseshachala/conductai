@@ -26,11 +26,19 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export API="${API:-https://api.conductai.ai}"
 
-# Auto-hydrate CONDUCT_TOKEN from ~/.conduct/config.json (same fallback
-# the Python smoke scripts use). smoke_1755.sh requires it explicitly.
-if [[ -z "${CONDUCT_TOKEN:-}" ]] && command -v jq >/dev/null 2>&1; then
-    CONDUCT_TOKEN="$(jq -r '.agent_token // empty' "$HOME/.conduct/config.json" 2>/dev/null || true)"
-    export CONDUCT_TOKEN
+# Auto-hydrate CONDUCT_TOKEN + WORKSPACE_ID from ~/.conduct/config.json.
+# smoke_1755.sh expects WORKSPACE_ID in the env; falling back to /whoami
+# doesn't work against every deployment. Hydrate both up front so every
+# section downstream gets a consistent env.
+if command -v jq >/dev/null 2>&1 && [[ -f "$HOME/.conduct/config.json" ]]; then
+    if [[ -z "${CONDUCT_TOKEN:-}" ]]; then
+        CONDUCT_TOKEN="$(jq -r '.agent_token // empty' "$HOME/.conduct/config.json" 2>/dev/null || true)"
+        export CONDUCT_TOKEN
+    fi
+    if [[ -z "${WORKSPACE_ID:-}" ]]; then
+        WORKSPACE_ID="$(jq -r '.workspace_id // empty' "$HOME/.conduct/config.json" 2>/dev/null || true)"
+        export WORKSPACE_ID
+    fi
 fi
 if [[ -z "${CONDUCT_TOKEN:-}" ]]; then
     echo "error: CONDUCT_TOKEN not set and ~/.conduct/config.json missing/empty. Run: conduct login" >&2
@@ -64,11 +72,20 @@ _result "$rc" "guard-core"
 total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
 
 # ── 2. LiteLLM plugin surface ────────────────────────────────────────
+# Needs a running LiteLLM proxy at $LITELLM_URL (default http://localhost:4000).
+# When it's not reachable the smoke can't verify the plugin's request path, so
+# skip cleanly — a red X for missing local infra isn't a useful signal.
 _section "2. LiteLLM plugin" "prompt-gate rules via guard_check_prompt"
-CONDUCT_API_URL="$API" python3.11 "$REPO_ROOT/packages/conduct-litellm-guard/examples/test_conduct_guardrail.py" 3 4 9
-rc=$?
-_result "$rc" "litellm-plugin"
-total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
+LITELLM_URL="${LITELLM_URL:-http://localhost:4000}"
+if curl -sSf -o /dev/null --connect-timeout 2 "$LITELLM_URL/health" 2>/dev/null \
+    || curl -sSf -o /dev/null --connect-timeout 2 "$LITELLM_URL/" 2>/dev/null; then
+    CONDUCT_API_URL="$API" python3.11 "$REPO_ROOT/packages/conduct-litellm-guard/examples/test_conduct_guardrail.py" 3 4 9
+    rc=$?
+    _result "$rc" "litellm-plugin"
+    total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
+else
+    printf "  ${c_dim}skipped — LiteLLM proxy unreachable at %s (start it locally to include)${c_off}\n" "$LITELLM_URL"
+fi
 
 # ── 3. NeMo plugin surface ───────────────────────────────────────────
 _section "3. NeMo plugin" "prompt-gate rules via guard_check_prompt (nemo surface)"
