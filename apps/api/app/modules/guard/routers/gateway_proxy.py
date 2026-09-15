@@ -85,17 +85,37 @@ def _gateway_principal(
 
 
 def _anthropic_catalog(profile, limit: int) -> list[dict[str, str]]:
-    """Return only models explicitly exposed by the selected Gateway Profile."""
+    """Return only models explicitly exposed by the selected Gateway Profile.
+
+    Anthropic's public ``GET /v1/models`` contract requires every entry
+    to carry ``type: "model"`` alongside ``id`` and ``display_name`` — a
+    subset that Claude Code's client relies on when parsing the response
+    (missing ``type`` makes the client fall back to bundled defaults or
+    reject the response, depending on version). We were returning only
+    ``{id, display_name?}`` which passes JSON parsing but fails the
+    downstream shape check.
+
+    Reference: https://docs.anthropic.com/en/api/models-list
+    """
     catalog: list[dict[str, str]] = []
     seen: set[str] = set()
     for deployment in profile.deployments if profile else ():
-        model_id = deployment.model.strip()
+        raw_id = deployment.model.strip()
+        # Strip the LiteLLM-style ``anthropic/`` prefix that appears in
+        # some workspace profiles. Anthropic's own API rejects it —
+        # a client that reads it here and sends it back on
+        # ``POST /v1/messages`` gets a 404 "model: anthropic/…" from
+        # upstream. The prefix is an internal routing detail; the public
+        # gateway catalog should look like the public Anthropic catalog.
+        model_id = raw_id[len("anthropic/"):] if raw_id.startswith("anthropic/") else raw_id
         if not model_id or model_id in seen:
             continue
         seen.add(model_id)
-        entry = {"id": model_id}
-        if deployment.alias != model_id:
-            entry["display_name"] = deployment.alias
+        entry: dict[str, str] = {
+            "type": "model",
+            "id": model_id,
+            "display_name": deployment.alias or model_id,
+        }
         catalog.append(entry)
         if len(catalog) >= limit:
             break

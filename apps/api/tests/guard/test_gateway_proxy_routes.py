@@ -164,10 +164,14 @@ async def test_gateway_anthropic_models_are_limited_to_profile_deployments(monke
         object(),
     )
 
+    # #1926 fix: entries must carry ``type: "model"`` (Claude Code parser
+    # requirement) AND must NOT leak the ``anthropic/`` LiteLLM-style
+    # prefix — the client will echo the id back on POST /v1/messages and
+    # Anthropic upstream returns 404 for ``anthropic/claude-…``.
     assert json.loads(response.body) == {
         "data": [
-            {"id": "anthropic/claude-sonnet-4-6", "display_name": "sonnet"},
-            {"id": "claude-opus-4-6", "display_name": "opus"},
+            {"type": "model", "id": "claude-sonnet-4-6", "display_name": "sonnet"},
+            {"type": "model", "id": "claude-opus-4-6", "display_name": "opus"},
         ]
     }
     assert response.headers["cache-control"] == "private, max-age=300"
