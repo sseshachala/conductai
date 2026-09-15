@@ -270,6 +270,36 @@ def _guard_inbox_auto_close_loop() -> None:
             log.exception("guard_inbox_auto_close.loop_error")
 
 
+
+def _durable_audit_reconciler_loop() -> None:
+    """Phase 4 of #1959 — flips expired 'accepted' rows to 'orphaned'.
+
+    Runs on guard_durable_audit_reconciler_seconds (default 120s = 2x
+    default lease). Interval of 0 disables the daemon so local dev and
+    ephemeral workers can opt out without editing code.
+    """
+    from app.core.config import settings
+    from app.core.database import SessionLocal
+    from app.modules.guard.durable_audit_reconciler import reconcile_orphaned
+
+    interval = settings.guard_durable_audit_reconciler_seconds
+    if interval <= 0:
+        log.info("guard.durable_audit.reconciler_disabled")
+        return
+
+    log.info("guard.durable_audit.reconciler_started", interval_seconds=interval)
+    while True:
+        time.sleep(interval)
+        try:
+            with SessionLocal() as db:
+                reconcile_orphaned(db)
+        except Exception:
+            # reconcile_orphaned already logs the exception; swallow at
+            # the loop level so a bad pass doesn't kill the daemon.
+            log.exception("guard.durable_audit.reconciler_cycle_error")
+
+
+
 def _online_eval_loop() -> None:
     """Daemon thread: consume the online eval queue and score each completed run."""
     import random
@@ -400,7 +430,11 @@ def main() -> None:
     guard_inbox_auto_close = threading.Thread(
         target=_guard_inbox_auto_close_loop, daemon=True, name="guard-inbox-auto-close"
     )
+    durable_audit_reconciler = threading.Thread(
+        target=_durable_audit_reconciler_loop, daemon=True, name="durable-audit-reconciler"
+    )
     guard_inbox_auto_close.start()
+    durable_audit_reconciler.start()
 
     if CONCURRENCY == 1:
         _loop(0)
