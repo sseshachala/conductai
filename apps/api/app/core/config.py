@@ -134,6 +134,24 @@ class Settings(BaseSettings):
     # must always be fail-closed. Post-P1-review finding 1.
     guard_durable_audit_fail_closed: bool = True
 
+    # ── Phase 5 canary rollout (#1995) ────────────────────────────────
+    # Two knobs on top of guard_use_durable_audit that let us ramp
+    # traffic on prod without a code deploy. Deterministic per-workspace
+    # bucketing means the SAME workspace always lands in the same slot
+    # of a given percentage — no flapping mid-session between the two
+    # writer paths.
+    #
+    # Rollout: allowlist first (internal test WS), then bump pct 0 → 1
+    # → 10 → 25 → 50 → 100, watching guard_audit_failed_total between
+    # each step. Rollback = drop pct to 0; workspaces fall back to the
+    # legacy single-phase writer immediately, no deploy needed.
+    guard_durable_audit_rollout_pct: int = 0
+    # Comma-separated workspace UUIDs. Kept as a plain string so env-var
+    # parsing stays simple (pydantic-settings list[str] wants JSON on the
+    # env side, which is annoying to set in Render). Split at read time
+    # via ``durable_audit_allowlist_ids`` below.
+    guard_durable_audit_allowlist: str = ""
+
 
 
     # Phase 4 of #1959 — reconciler poll interval. Runs every 120s by
@@ -147,6 +165,45 @@ class Settings(BaseSettings):
     # the endpoint open so devs can `curl /metrics` without extra setup.
     # Scrapers pass the value in header `X-Metrics-Token`.
     metrics_token: str = ""
+
+    def durable_audit_allowlist_ids(self) -> frozenset[str]:
+        """Split the comma-separated allowlist env into a set of ids."""
+        if not self.guard_durable_audit_allowlist:
+            return frozenset()
+        return frozenset(
+            part.strip()
+            for part in self.guard_durable_audit_allowlist.split(",")
+            if part.strip()
+        )
+
+    def durable_audit_enabled_for(self, workspace_id: str) -> bool:
+        """Deterministic per-workspace enable check for #1995 canary.
+
+        Precedence:
+        1. Global kill switch — ``guard_use_durable_audit=False`` disables
+           the whole feature regardless of allowlist / pct.
+        2. Allowlist — explicit workspace UUIDs always on. Wins over pct
+           so a workspace can be dark-launched even at pct=0.
+        3. Percentage bucket — SHA-256 the workspace id and compare its
+           first 4 bytes mod 100 to the rollout pct. Same workspace
+           always lands in the same bucket for a given pct, so a
+           workspace never oscillates between the durable and legacy
+           writer mid-session; only bumps to pct move it across the
+           line.
+        """
+        if not self.guard_use_durable_audit:
+            return False
+        if workspace_id in self.durable_audit_allowlist_ids():
+            return True
+        pct = self.guard_durable_audit_rollout_pct
+        if pct <= 0:
+            return False
+        if pct >= 100:
+            return True
+        import hashlib
+        digest = hashlib.sha256(workspace_id.encode("utf-8")).digest()
+        bucket = int.from_bytes(digest[:4], "big") % 100
+        return bucket < pct
 
     class Config:
         env_file = ".env"

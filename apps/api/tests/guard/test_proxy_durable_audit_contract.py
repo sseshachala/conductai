@@ -217,6 +217,7 @@ async def test_client_x_request_id_is_stored_as_correlation_only_not_uniqueness_
     with patch("app.modules.guard.gateway_lifecycle.insert_accepted", _fake_insert), \
          patch("app.modules.guard.gateway_lifecycle.renew_lease", return_value=True), \
          patch.object(gateway_lifecycle.settings, "guard_use_durable_audit", True), \
+         patch.object(gateway_lifecycle.settings, "guard_durable_audit_rollout_pct", 100), \
          patch.object(gateway_lifecycle.settings, "guard_durable_audit_stream_renew_seconds", 0):
         result = await gateway_lifecycle.open_durable_row(
             workspace_id="ef0a7e36-42a7-4968-9e6f-ee30d8e45383",
@@ -289,8 +290,12 @@ def test_db_outage_returns_503_and_never_forwards_upstream():
 
     _prev_flag = settings.guard_use_durable_audit
     _prev_fail = settings.guard_durable_audit_fail_closed
+    _prev_pct  = settings.guard_durable_audit_rollout_pct
     settings.guard_use_durable_audit = True
     settings.guard_durable_audit_fail_closed = True
+    # #1995 canary gate — force 100% so this test's synthetic
+    # workspace is always in the durable path.
+    settings.guard_durable_audit_rollout_pct = 100
 
     forward_mock = AsyncMock(side_effect=AssertionError(
         "transport.forward MUST NOT be called when the durable write fails"
@@ -384,6 +389,7 @@ def test_db_outage_returns_503_and_never_forwards_upstream():
         app.dependency_overrides.clear()
         settings.guard_use_durable_audit = _prev_flag
         settings.guard_durable_audit_fail_closed = _prev_fail
+        settings.guard_durable_audit_rollout_pct = _prev_pct
 
 
 @pytest.mark.anyio("asyncio")
@@ -442,7 +448,9 @@ def test_forward_exception_stops_heartbeat_and_finalizes_error():
     from app.core.config import settings
 
     _prev_flag = settings.guard_use_durable_audit
+    _prev_pct  = settings.guard_durable_audit_rollout_pct
     settings.guard_use_durable_audit = True
+    settings.guard_durable_audit_rollout_pct = 100  # #1995 canary — full rollout in tests
 
     db_mock = MagicMock()
     workspace_id = "00000000-0000-0000-0000-000000000abc"
@@ -526,6 +534,7 @@ def test_forward_exception_stops_heartbeat_and_finalizes_error():
     finally:
         app.dependency_overrides.clear()
         settings.guard_use_durable_audit = _prev_flag
+        settings.guard_durable_audit_rollout_pct = _prev_pct
 
     # P1 (a) — close_durable_row MUST run even though forward raised.
     # Prior code path leaked the whole-request renewal task forever.
