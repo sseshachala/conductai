@@ -606,7 +606,11 @@ def list_budgets(
         if r.clerk_user_id
     }
     return [
-        _budget_out(b, _current_month_cost(db, ws_uuid, b.clerk_user_id), uid_email.get(b.clerk_user_id) if b.clerk_user_id else None)
+        _budget_out(
+            b,
+            _current_month_cost(db, ws_uuid, b.clerk_user_id, b.ai_tool),
+            uid_email.get(b.clerk_user_id) if b.clerk_user_id else None,
+        )
         for b in budgets
     ]
 
@@ -651,9 +655,14 @@ def delete_budget(
 
 # ── Private helpers ───────────────────────────────────────────────────────────
 
-def _current_month_cost(db: Session, ws_uuid: uuid.UUID, clerk_user_id: str | None) -> float:
+def _current_month_cost(
+    db: Session,
+    ws_uuid: uuid.UUID,
+    clerk_user_id: str | None,
+    ai_tool: str | None = None,
+) -> float:
     """Sum cost_usd_after for the current calendar month, scoped to workspace
-    (and optionally to a specific clerk_user_id)."""
+    (and optionally to a specific clerk_user_id and/or ai_tool)."""
     period_start = _current_period_start()
     q = db.query(
         func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0)
@@ -663,6 +672,8 @@ def _current_month_cost(db: Session, ws_uuid: uuid.UUID, clerk_user_id: str | No
     )
     if clerk_user_id is not None:
         q = q.filter(GuardAuditEvent.clerk_user_id == clerk_user_id)
+    if ai_tool is not None:
+        q = q.filter(GuardAuditEvent.ai_tool == ai_tool)
     return float(q.scalar() or 0.0)
 
 
