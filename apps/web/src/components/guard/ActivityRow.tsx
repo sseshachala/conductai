@@ -455,65 +455,49 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
         </div>
       )}
       {showCol.has("call") && (
-      <>
-      <div className="mono" style={{ fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {(ev.source === "proxy") && ev.provider
-            ? `${ev.provider}/${ev.model ?? "?"}`
-            : ev.source === "local_audit"
-              ? (ev.provider ? `${ev.provider} key found` : "local key found")
-              : formatToolCall(ev.tool_call)}
-        </span>
-        {ev.source === "proxy" && <ProxyPill />}
-        {ev.source === "brain_block" && (() => {
-          const pill = (
-            <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: ".06em", padding: "1px 5px", borderRadius: 3, background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
-              AGENT
+        <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+          <div className="mono" style={{ fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {(ev.source === "proxy") && ev.provider
+                ? `${ev.provider}/${ev.model ?? "?"}`
+                : ev.source === "local_audit"
+                  ? (ev.provider ? `${ev.provider} key found` : "local key found")
+                  : formatToolCall(ev.tool_call)}
             </span>
-          )
-          // #1471 — link the brain_block AGENT badge to the specific identity
-          // when known; fall back to the agent identity list otherwise.
-          const href = ev.agent_identity_id
-            ? `/agent-identity?tab=identities&id=${ev.agent_identity_id}`
-            : "/agent-identity?tab=identities"
-          return (
-            <a href={href}
-               title={ev.agent_identity_id ? `View agent identity ${ev.agent_identity_id}` : "View agent identities"}
-               onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()}
-               style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
-              {pill}
-              {ev.agent_identity_id && (
-                <span className="mono" style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                  {ev.agent_identity_id.slice(0, 10)}
+            {ev.source === "proxy" && <ProxyPill />}
+            {ev.source === "brain_block" && (() => {
+              const pill = (
+                <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: ".06em", padding: "1px 5px", borderRadius: 3, background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
+                  AGENT
                 </span>
-              )}
-            </a>
-          )
-        })()}
-        {ev.source === "local_audit" && <LocalRiskPill />}
-      </div>
-      <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-        {ev.source === "brain_block" && ev.provider && ev.model
-          ? `${ev.input_summary || "vendor"} → ${ev.provider} · ${ev.model}`
-          : ev.input_summary ? `${ev.input_summary}…` : "—"}
-      </div>
-      </>
-      )}
-      {showCol.has("decision") && (
-      <div>
-        {ev.execution_status === "error" || ev.execution_status === "timeout" ? (
-          <span title={ev.result_summary || "Gateway execution failed"} style={{ display: "inline-flex", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, color: "var(--err)", background: "var(--err-bg)" }}>
-            {ev.execution_status === "timeout" ? "Timeout" : "Error"}
-          </span>
-        ) : ev.conductai_run_id ? (
-          <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
-            <DecisionBadge decision={ev.decision} />
-            <span style={{ fontSize: 11, color: "var(--accent-text)" }}>→</span>
-          </Link>
-        ) : (
-          <DecisionBadge decision={ev.decision} />
-        )}
-      </div>
+              )
+              // #1471 — link the brain_block AGENT badge to the specific identity
+              // when known; fall back to the agent identity list otherwise.
+              const href = ev.agent_identity_id
+                ? `/agent-identity?tab=identities&id=${ev.agent_identity_id}`
+                : "/agent-identity?tab=identities"
+              return (
+                <a href={href}
+                   title={ev.agent_identity_id ? `View agent identity ${ev.agent_identity_id}` : "View agent identities"}
+                   onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()}
+                   style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {pill}
+                  {ev.agent_identity_id && (
+                    <span className="mono" style={{ fontSize: 9, color: "var(--text-muted)" }}>
+                      {ev.agent_identity_id.slice(0, 10)}
+                    </span>
+                  )}
+                </a>
+              )
+            })()}
+            {ev.source === "local_audit" && <LocalRiskPill />}
+          </div>
+          <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+            {ev.source === "brain_block" && ev.provider && ev.model
+              ? `${ev.input_summary || "vendor"} → ${ev.provider} · ${ev.model}`
+              : ev.input_summary ? `${ev.input_summary}…` : "—"}
+          </div>
+        </div>
       )}
       {showCol.has("rule") && (
       <div className="mono" style={{ fontSize: 11, color: ev.rule_id ? "var(--err)" : "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
@@ -537,6 +521,22 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
           >
             +{ev.evaluated_rules.length - 1}
           </span>
+        )}
+      </div>
+      )}
+      {showCol.has("decision") && (
+      <div>
+        {ev.execution_status === "error" || ev.execution_status === "timeout" ? (
+          <span title={ev.result_summary || "Gateway execution failed"} style={{ display: "inline-flex", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, color: "var(--err)", background: "var(--err-bg)" }}>
+            {ev.execution_status === "timeout" ? "Timeout" : "Error"}
+          </span>
+        ) : ev.conductai_run_id ? (
+          <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
+            <DecisionBadge decision={ev.decision} />
+            <span style={{ fontSize: 11, color: "var(--accent-text)" }}>→</span>
+          </Link>
+        ) : (
+          <DecisionBadge decision={ev.decision} />
         )}
       </div>
       )}
@@ -657,8 +657,8 @@ export function ActivityHeader({ compact = false, visibleColumns }: {
       {showCol.has("actor") && <div>Actor</div>}
       {showCol.has("tool") && <div>Tool</div>}
       {showCol.has("call") && <div>Action</div>}
-      {showCol.has("decision") && <div>Decision</div>}
       {showCol.has("rule") && <div>Rule</div>}
+      {showCol.has("decision") && <div>Decision</div>}
       {showCol.has("blast") && <div>Blast</div>}
       {showCol.has("lifecycle") && <div>Lifecycle</div>}
     </div>
