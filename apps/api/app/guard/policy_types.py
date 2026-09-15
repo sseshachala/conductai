@@ -48,6 +48,13 @@ class PolicyContext:
     # (legacy row or non-agent caller) — matcher treats null tier as
     # "no match" for any rule requiring a specific tier.
     risk_tier: str | None = None
+    # Client-declared or UA-inferred AI tool key ("claude-code",
+    # "codex-desktop", ...). Populated at each PEP entry. Feeds
+    # SpendCapPolicySource so per-tool budgets scope enforcement to the
+    # calling tool. None (or the sentinel string "unknown") means "no
+    # trustworthy tool label" — the SpendCap source treats both as absence
+    # and falls back to workspace-wide + per-user caps.
+    ai_tool: str | None = None
 
 
 @dataclass

@@ -71,10 +71,16 @@ class SpendCapPolicySource:
 
         checker = self._checker or self._default_checker()
 
+        # ai_tool="unknown" means "we couldn't identify the client" — do not
+        # match per-tool budget rows on that value. Fall through to
+        # workspace-wide + per-user enforcement by passing None instead.
+        _tool = ctx.ai_tool if ctx.ai_tool and ctx.ai_tool != "unknown" else None
+
         try:
             result = checker(
                 workspace_id=ctx.workspace_id,
                 clerk_user_id=ctx.clerk_user_id,
+                ai_tool=_tool,
                 db=ctx.db,
             )
         except Exception as e:
