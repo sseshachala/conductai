@@ -19,7 +19,7 @@ import urllib.request
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-PROXY_URL = "https://api.conductai.ai/proxy/anthropic/v1/messages"
+PROXY_URL = "https://api.conductai.ai/gateway/v1/anthropic/v1/messages"
 CONDUCT_ENV = os.path.expanduser("~/.conduct/env")
 
 

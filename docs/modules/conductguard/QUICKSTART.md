@@ -63,7 +63,7 @@ curl -sN -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Conductai-Workspace-Id: $WS" \
   -H "Content-Type: application/json" \
-  "$API/guard/proxy/anthropic/v1/messages" \
+  "$API/gateway/v1/anthropic/v1/messages" \
   -d '{"model":"claude-3-5-sonnet-latest","max_tokens":32,"messages":[{"role":"user","content":"Reply with just the word: ok"}]}'
 ```
 
