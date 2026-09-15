@@ -104,6 +104,20 @@ class Settings(BaseSettings):
     # CLI first, then set true after clients have upgraded.
     guard_require_hook_auth: bool = False
 
+    # Phase 1 of #1959 — durable inference audit. Off by default; when set
+    # true, the accepted-then-finalized writer becomes the canonical write
+    # path. Phase 1 lands the writer functions and schema so callers can
+    # opt in incrementally; Phase 2 routes _proxy() through them. Keep off
+    # in prod until Phase 5's contract-test gate signs off.
+    guard_use_durable_audit: bool = False
+
+    # Seconds after which a still-'accepted' guard_audit_events row is
+    # considered orphaned by the Phase 4 reconciler. 60s covers a typical
+    # inference call comfortably; long-running deep-research paths that
+    # exceed this get flagged for investigation rather than silently
+    # dropped. Tune per traffic pattern once real telemetry lands.
+    guard_durable_audit_lease_seconds: int = 60
+
     # /metrics scrape token — audit O01. Empty in production means /metrics
     # refuses every caller (fail-closed). Empty in local/development leaves
     # the endpoint open so devs can `curl /metrics` without extra setup.

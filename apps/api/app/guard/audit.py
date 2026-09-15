@@ -16,7 +16,7 @@ that in.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from sqlalchemy import text
@@ -286,5 +286,212 @@ def record(
         except Exception:
             pass
         log.warning("guard.proxy.audit_failed", err=str(e))
+    finally:
+        db.close()
+
+
+# ─── Phase 1 of #1959 — durable inference audit primitives ────────────────────
+#
+# Two-phase writer: `insert_accepted()` before inference, `finalize()` after.
+# Guarded by settings.guard_use_durable_audit; Phase 1 lands the primitives so
+# tests and later phases can iterate without touching hot paths.
+#
+# Lifecycle:
+#     insert_accepted() → lifecycle_state='accepted'  (accepted_at, lease_expires_at set)
+#     finalize()        → lifecycle_state='finalized' (finalized_at, decision, tokens, cost set)
+#
+# Phase 4's reconciler scans the ix_guard_audit_events_accepted_lease partial
+# index for rows still in 'accepted' past lease_expires_at, flips them to
+# 'orphaned' or 'expired' depending on cause.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def insert_accepted(
+    workspace_id: str,
+    clerk_user_id: str | None,
+    ai_tool: str,
+    provider: str,
+    model: str,
+    *,
+    request_id: str,
+    body: dict,
+    prompt_summary: str = "",
+    user_email: str | None = None,
+    agent_identity_id: str | None = None,
+    route: str | None = None,
+    hook_session_id: str | None = None,
+    routing_meta: dict | None = None,
+    lease_seconds: int | None = None,
+    receipt_id: str | None = None,
+) -> str:
+    """Write an 'accepted' row before inference. Returns the row id.
+
+    Emits a row with lifecycle_state='accepted', accepted_at=now, and
+    lease_expires_at=now+lease_seconds. Response-shaped fields (tokens,
+    cost, response_bytes) stay NULL until finalize() runs.
+
+    Decision starts as 'accepted' — the caller flips it to
+    'allowed' | 'blocked' | 'warned' via finalize().
+
+    Idempotent on request_id via ux_guard_audit_events_request_id (partial
+    unique). A duplicate insert raises IntegrityError; callers should treat
+    that as "another worker already accepted this request" and continue.
+
+    Raises IntegrityError on request_id collision. Any other failure is
+    logged and re-raised — unlike record(), this writer is on the critical
+    path and cannot silently swallow.
+    """
+    from app.core.config import settings
+    import uuid as _uuid
+
+    lease = lease_seconds if lease_seconds is not None else settings.guard_durable_audit_lease_seconds
+    now = datetime.now(timezone.utc)
+    row_id = receipt_id or str(_uuid.uuid4())
+    input_tokens = _estimate_input_tokens(body) if body else None
+
+    db = SessionLocal()
+    try:
+        set_workspace_rls(db, workspace_id)
+        db.execute(
+            text("""
+                INSERT INTO guard_audit_events (
+                  id,
+                  workspace_id, clerk_user_id, agent_identity_id, ai_tool, tool_call,
+                  source, provider, model,
+                  decision, rule_id, ts,
+                  tokens_before,
+                  input_summary, user_email,
+                  hook_session_id,
+                  routing_meta,
+                  route,
+                  request_id,
+                  lifecycle_state,
+                  accepted_at,
+                  lease_expires_at
+                ) VALUES (
+                  CAST(:row_id AS uuid),
+                  :ws, :uid, CAST(:agent_id AS uuid), :ai, NULL,
+                  'proxy', :prov, :model,
+                  'accepted', NULL, :ts,
+                  :tin,
+                  :summary, :email,
+                  :hook_session_id,
+                  CAST(:routing AS jsonb),
+                  :route,
+                  CAST(:request_id AS uuid),
+                  'accepted',
+                  :accepted_at,
+                  :lease_expires_at
+                )
+            """),
+            {
+                "row_id": row_id,
+                "ws": workspace_id, "uid": clerk_user_id,
+                "agent_id": agent_identity_id,
+                "ai": ai_tool,
+                "prov": provider, "model": model,
+                "ts": now,
+                "tin": input_tokens,
+                "summary": prompt_summary or "vendor",
+                "email": user_email,
+                "hook_session_id": hook_session_id,
+                "routing": json.dumps(routing_meta) if routing_meta else None,
+                "route": route,
+                "request_id": request_id,
+                "accepted_at": now,
+                "lease_expires_at": now + timedelta(seconds=lease),
+            },
+        )
+        db.commit()
+        return row_id
+    except Exception:
+        db.rollback()
+        try:
+            from app.modules.guard.observability.metrics import GUARD_AUDIT_FAILED
+            GUARD_AUDIT_FAILED.labels(reason="insert_accepted").inc()
+        except Exception:
+            pass
+        raise
+    finally:
+        db.close()
+
+
+def finalize(
+    row_id: str,
+    workspace_id: str,
+    *,
+    decision: str,
+    provider: str,
+    model: str,
+    body: dict,
+    response_bytes: bytes | None,
+    duration_ms: int,
+    rule_id: str | None = None,
+    routing_meta: dict | None = None,
+    execution_status: str | None = None,
+    result_summary: str | None = None,
+) -> bool:
+    """Flip an 'accepted' row to 'finalized' with the real outcome.
+
+    Returns True when the row was updated, False when no row matched (either
+    the id doesn't exist, or the row was already finalized/expired). The
+    WHERE clause pinning lifecycle_state='accepted' guarantees we never
+    regress a finalized row back to a pending state — the reconciler in
+    Phase 4 depends on this invariant.
+
+    Response-derived fields (tokens, cost) are best-effort. On parse failure
+    the row still gets lifecycle_state='finalized' and finalized_at=now so
+    the reconciler doesn't treat the row as orphaned; downstream analytics
+    read tokens as NULL for those rows.
+    """
+    in_tokens, out_tokens = _extract_token_counts(body, response_bytes)
+    if in_tokens is None and response_bytes is None and execution_status != "error":
+        in_tokens, out_tokens = _estimate_input_tokens(body) if body else None, 0
+    cost_usd = _compute_audit_cost(provider, model, in_tokens, out_tokens, routing_meta)
+
+    now = datetime.now(timezone.utc)
+    db = SessionLocal()
+    try:
+        set_workspace_rls(db, workspace_id)
+        result = db.execute(
+            text("""
+                UPDATE guard_audit_events
+                SET lifecycle_state = 'finalized',
+                    finalized_at    = :finalized_at,
+                    decision        = :decision,
+                    rule_id         = :rule_id,
+                    duration_ms     = :duration_ms,
+                    tokens_before   = COALESCE(:tin, tokens_before),
+                    tokens_after    = :tout,
+                    cost_usd_after  = :cost,
+                    routing_meta    = CAST(:routing AS jsonb),
+                    execution_status = :execution_status,
+                    result_summary   = :result_summary
+                WHERE id = CAST(:row_id AS uuid)
+                  AND lifecycle_state = 'accepted'
+            """),
+            {
+                "row_id": row_id,
+                "finalized_at": now,
+                "decision": decision,
+                "rule_id": rule_id,
+                "duration_ms": duration_ms,
+                "tin": in_tokens,
+                "tout": out_tokens,
+                "cost": cost_usd,
+                "routing": json.dumps(routing_meta) if routing_meta else None,
+                "execution_status": execution_status,
+                "result_summary": result_summary,
+            },
+        )
+        db.commit()
+        return result.rowcount == 1
+    except Exception:
+        db.rollback()
+        try:
+            from app.modules.guard.observability.metrics import GUARD_AUDIT_FAILED
+            GUARD_AUDIT_FAILED.labels(reason="finalize").inc()
+        except Exception:
+            pass
+        raise
     finally:
         db.close()
