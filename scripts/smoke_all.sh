@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Umbrella smoke — every Guard surface in one run.
+#
+# Runs against a live API (defaults to prod) with the caller's Conduct
+# token from ~/.conduct/config.json:
+#
+#   Guard core (coverage / matrix / rule fires / divergence / Cedar)
+#   LiteLLM plugin  (guard_check_prompt via /mcp — same path the LiteLLM
+#                    proxy takes at request time)
+#   NeMo plugin     (guard_check_prompt via /mcp — same path the NeMo
+#                    Colang input rail takes at request time)
+#
+# This is the "pre-release" smoke — run it before tagging a new plugin
+# release or after any change to app/guard/gateway.py, mcp_impls.py, or
+# apps/api/app/modules/guard/enforcement.py to make sure every downstream
+# surface still fires.
+#
+# Run:
+#   bash scripts/smoke_all.sh                       # against prod
+#   API=http://localhost:8000 bash scripts/smoke_all.sh
+#
+# Individual smokes can still be invoked standalone (see each script).
+
+set -uo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export API="${API:-https://api.conductai.ai}"
+
+# Auto-hydrate CONDUCT_TOKEN from ~/.conduct/config.json (same fallback
+# the Python smoke scripts use). smoke_1755.sh requires it explicitly.
+if [[ -z "${CONDUCT_TOKEN:-}" ]] && command -v jq >/dev/null 2>&1; then
+    CONDUCT_TOKEN="$(jq -r '.agent_token // empty' "$HOME/.conduct/config.json" 2>/dev/null || true)"
+    export CONDUCT_TOKEN
+fi
+if [[ -z "${CONDUCT_TOKEN:-}" ]]; then
+    echo "error: CONDUCT_TOKEN not set and ~/.conduct/config.json missing/empty. Run: conduct login" >&2
+    exit 2
+fi
+
+# ── colors ────────────────────────────────────────────────────────────
+c_bold="\033[1m"; c_cyan="\033[36m"; c_green="\033[32m"; c_red="\033[31m"; c_dim="\033[90m"; c_off="\033[0m"
+
+_section() {
+    printf "\n${c_cyan}${c_bold}▸ %s${c_off}\n" "$1"
+    printf "${c_dim}  %s${c_off}\n" "$2"
+}
+
+_result() {
+    local rc="$1"; local label="$2"
+    if [[ "$rc" -eq 0 ]]; then
+        printf "  ${c_green}✓ %s pass${c_off}\n" "$label"
+    else
+        printf "  ${c_red}✗ %s FAIL (exit $rc)${c_off}\n" "$label"
+    fi
+}
+
+total_fail=0
+
+# ── 1. Guard core smoke (existing) ───────────────────────────────────
+_section "1. Guard core" "coverage matrix + rule fires + divergence + Cedar"
+API="$API" bash "$REPO_ROOT/scripts/smoke_1755.sh"
+rc=$?
+_result "$rc" "guard-core"
+total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
+
+# ── 2. LiteLLM plugin surface ────────────────────────────────────────
+_section "2. LiteLLM plugin" "prompt-gate rules via guard_check_prompt"
+CONDUCT_API_URL="$API" python3.11 "$REPO_ROOT/packages/conduct-litellm-guard/examples/test_conduct_guardrail.py" 3 4 9
+rc=$?
+_result "$rc" "litellm-plugin"
+total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
+
+# ── 3. NeMo plugin surface ───────────────────────────────────────────
+_section "3. NeMo plugin" "prompt-gate rules via guard_check_prompt (nemo surface)"
+CONDUCT_API_URL="$API" python3.11 "$REPO_ROOT/packages/conduct-nemo-guard/examples/test_conduct_nemo.py" 3 4 6
+rc=$?
+_result "$rc" "nemo-plugin"
+total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
+
+# ── 4. Gateway HTTP + audit (local-dev only) ────────────────────────
+# proxy_smoke.sh needs a local DB + local KMS material to decrypt vault keys,
+# so it can only run against a local API. Skips cleanly when DATABASE_URL is
+# unset (i.e. the umbrella is targeting prod).
+_section "4. Gateway HTTP + audit" "3-provider curl → asserts agent_identity_id + route"
+if [[ -n "${DATABASE_URL:-}" ]]; then
+    CONDUCT_PROXY="$API/gateway/v1" bash "$REPO_ROOT/apps/api/scripts/proxy_smoke.sh"
+    rc=$?
+    _result "$rc" "gateway-audit"
+    total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
+else
+    printf "  ${c_dim}skipped — DATABASE_URL unset (local-dev only)${c_off}\n"
+fi
+
+# ── 5. Frontend Playwright smoke (opt-in) ────────────────────────────
+# Runs pages.smoke.spec.ts in apps/web/e2e/. Opt-in via SMOKE_WEB=1 because
+# the Playwright auth-setup needs Clerk cookies to be present locally.
+_section "5. Frontend Playwright" "apps/web/e2e/pages.smoke.spec.ts"
+if [[ "${SMOKE_WEB:-0}" == "1" ]]; then
+    (cd "$REPO_ROOT/apps/web" && pnpm test:e2e pages.smoke.spec.ts)
+    rc=$?
+    _result "$rc" "web-playwright"
+    total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
+else
+    printf "  ${c_dim}skipped — set SMOKE_WEB=1 to include (needs Clerk auth-setup)${c_off}\n"
+fi
+
+echo
+if [[ "$total_fail" -eq 0 ]]; then
+    printf "${c_green}${c_bold}SMOKE ALL PASS${c_off} — every Guard surface fires\n"
+    exit 0
+else
+    printf "${c_red}${c_bold}SMOKE ALL FAIL${c_off} — %d surface(s) broken (see above)\n" "$total_fail"
+    exit 1
+fi

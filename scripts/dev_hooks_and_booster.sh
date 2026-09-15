@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-hooks-and-booster.sh — smoke-tests PreCompact/SessionStart hooks + Agent Booster RRF
+# dev_hooks_and_booster.sh — smoke-tests PreCompact/SessionStart hooks + Agent Booster RRF
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PASS=0; FAIL=0
 

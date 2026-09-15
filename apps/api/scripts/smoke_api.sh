@@ -7,8 +7,8 @@
 #   3. Test user seeded: `python seed_test_user.py`
 #
 # Usage:
-#   bash tests/smoke_api.sh                # default http://localhost:8000
-#   API_URL=https://stage.delegator.io bash tests/smoke_api.sh
+#   bash apps/api/scripts/smoke_api.sh                # default http://localhost:8000
+#   API_URL=https://stage.delegator.io bash apps/api/scripts/smoke_api.sh
 #
 # Exit code is the number of failed checks. Prints PASS/FAIL per step with a
 # one-line reason; no JSON dump unless --verbose is passed.

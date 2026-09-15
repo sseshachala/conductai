@@ -135,6 +135,32 @@ run_one() {
   ")
   if (( after > before )); then
     echo "Audit row landed (was $before → $after)"
+
+    # #1971 Phase 0 + #1973 route column — the newest row for this provider
+    # must have BOTH agent_identity_id (attribution) AND route (URL surface)
+    # populated. Legacy behavior would leave both NULL.
+    local latest
+    latest=$(psql "$DB_URL" -tA -F'|' -c "
+      SELECT
+        coalesce(agent_identity_id::text, ''),
+        coalesce(route, '')
+      FROM guard_audit_events
+      WHERE workspace_id = '$WORKSPACE_ID'::uuid
+        AND source = 'proxy' AND provider = '$provider'
+      ORDER BY ts DESC LIMIT 1
+    ")
+    local ai_id="${latest%%|*}"
+    local rt="${latest##*|}"
+    if [[ -z "$ai_id" ]]; then
+      echo "FAIL — audit row missing agent_identity_id (#1971 Phase 0 regression)"
+      FAIL=$((FAIL + 1)); rm "$resp"; echo; return
+    fi
+    if [[ -z "$rt" ]]; then
+      echo "FAIL — audit row missing route (#1973 regression)"
+      FAIL=$((FAIL + 1)); rm "$resp"; echo; return
+    fi
+    echo "  agent_identity_id: $ai_id"
+    echo "  route:             $rt"
     echo "PASS"
     PASS=$((PASS + 1))
   else
