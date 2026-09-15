@@ -12,7 +12,7 @@ class Project(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
-    slug = Column(String(100), nullable=True)
+    slug = Column(String(100), nullable=False)
     project_type = Column(String(32), nullable=False, default="user")
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
