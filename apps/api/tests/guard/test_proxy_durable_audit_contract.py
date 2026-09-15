@@ -194,18 +194,65 @@ async def test_upstream_exception_classifies_as_error():
 # ─── Contract: server-generated request_id ─────────────────────────────
 
 
-def test_client_x_request_id_is_stored_as_correlation_only_not_uniqueness_key():
+@pytest.mark.anyio("asyncio")
+async def test_client_x_request_id_is_stored_as_correlation_only_not_uniqueness_key():
     """Client-supplied X-Request-Id must NEVER drive the durable row's
-    unique index. Logic lives in gateway_lifecycle; proxy.py only
-    delegates."""
-    from app.modules.guard import gateway_lifecycle as lifecycle_mod
-    src = open(lifecycle_mod.__file__).read()
-    assert "str(uuid.uuid4())" in src
-    assert "client_request_id" in src
-    from app.modules.guard.routers import proxy as proxy_mod
-    proxy_src = open(proxy_mod.__file__).read()
-    assert "gateway_lifecycle" in proxy_src
-    assert "_insert_accepted_audit" not in proxy_src
+    unique index. Behavior test — replaces the earlier source-text grep.
+
+    Locks the invariant at the seam it matters at: the ``request_id``
+    handed to ``insert_accepted`` MUST be a server-generated UUID4 and
+    the client's header value MUST land in ``routing_meta.client_request_id``
+    (correlation metadata only, never the uniqueness key)."""
+    import uuid as _uuid_mod
+    from app.modules.guard import gateway_lifecycle
+
+    captured: dict = {}
+
+    def _fake_insert(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return "00000000-0000-0000-0000-000000000001"
+
+    client_supplied = "client-picked-id-should-not-be-used-as-key"
+    with patch("app.modules.guard.gateway_lifecycle.insert_accepted", _fake_insert), \
+         patch("app.modules.guard.gateway_lifecycle.renew_lease", return_value=True), \
+         patch.object(gateway_lifecycle.settings, "guard_use_durable_audit", True), \
+         patch.object(gateway_lifecycle.settings, "guard_durable_audit_stream_renew_seconds", 0):
+        result = await gateway_lifecycle.open_durable_row(
+            workspace_id="ef0a7e36-42a7-4968-9e6f-ee30d8e45383",
+            clerk_user_id="user_abc",
+            ai_tool="claude-code",
+            provider="anthropic",
+            model="claude-sonnet",
+            body={"messages": []},
+            prompt_summary="prompt",
+            user_email=None,
+            agent_identity_id=None,
+            route="/gateway/v1/anthropic/v1/messages",
+            hook_session_id=None,
+            routing_meta={"tier_form": "cheap"},
+            conductai_run_id=None,
+            conductai_workflow=None,
+            conductai_workflow_id=None,
+            request_correlation_id=client_supplied,
+        )
+
+    assert result.fail_response is None, "durable row must open cleanly on happy path"
+    assert result.row_id == "00000000-0000-0000-0000-000000000001"
+
+    request_id = captured["kwargs"]["request_id"]
+    assert request_id != client_supplied, (
+        "server MUST NOT reuse the client X-Request-Id as the unique key"
+    )
+    # Server-generated request_id must be a valid UUID4.
+    _uuid_mod.UUID(request_id, version=4)
+
+    routing_meta = captured["kwargs"]["routing_meta"]
+    assert routing_meta.get("client_request_id") == client_supplied, (
+        "client X-Request-Id must be preserved in routing_meta as correlation only"
+    )
+    # Original routing_meta keys must survive (not clobbered by the merge).
+    assert routing_meta.get("tier_form") == "cheap"
 
 
 def test_response_cache_module_no_longer_present():
@@ -260,7 +307,7 @@ def test_db_outage_returns_503_and_never_forwards_upstream():
 
     try:
         with patch(
-            "app.modules.guard.routers.proxy._insert_accepted_audit",
+            "app.modules.guard.gateway_lifecycle.insert_accepted",
             _insert_boom,
         ), patch(
             "app.modules.guard.routers.proxy.get_provider_transport_registry",
