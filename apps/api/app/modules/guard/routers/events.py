@@ -199,6 +199,14 @@ class EventOut(BaseModel):
     # Added by #1973 — FastAPI request path (e.g. /gateway/v1/anthropic/v1/messages).
     # NULL for in-process callers that never had an HTTP route.
     route: str | None = None
+    # Added by #1959 Phase 3 — durable audit lifecycle. NULL for legacy
+    # single-phase rows; populated for two-phase writes from
+    # audit.insert_accepted() / audit.finalize().
+    lifecycle_state: str | None = None
+    accepted_at: str | None = None
+    finalized_at: str | None = None
+    lease_expires_at: str | None = None
+    request_id: str | None = None
 
 
 class RuleFireOut(BaseModel):
@@ -269,6 +277,11 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "defense_score": e.defense_score,
         "routing_meta": getattr(e, "routing_meta", None),
         "route": getattr(e, "route", None),
+        "lifecycle_state": getattr(e, "lifecycle_state", None),
+        "accepted_at": getattr(e, "accepted_at", None) and getattr(e, "accepted_at").isoformat(),
+        "finalized_at": getattr(e, "finalized_at", None) and getattr(e, "finalized_at").isoformat(),
+        "lease_expires_at": getattr(e, "lease_expires_at", None) and getattr(e, "lease_expires_at").isoformat(),
+        "request_id": getattr(e, "request_id", None) and str(getattr(e, "request_id")),
         "policy_hash": e.policy_hash,
         "goal_id": e.goal_id,
         "goal_name": e.goal_name,
@@ -1184,7 +1197,15 @@ def cost_trend(
 # ── GET /guard/events/stream — SSE real-time feed ─────────────────────────────
 
 def _fetch_new_events(workspace_id: str, since: datetime) -> tuple[list[dict], datetime]:
-    """Query DB for events newer than `since`. Returns (events, new_cursor)."""
+    """Query DB for events newer than `since`. Returns (events, new_cursor).
+
+    Includes durable-audit rows that were UPDATEd to lifecycle_state='finalized'
+    past the cursor (#1959 Phase 3) so the Flight Recorder UI can flip the
+    lifecycle pill from ⏳ to ✓ in place without a manual reload. Cursor
+    advances on max(ts, finalized_at) so subsequent polls don't lose the
+    original INSERT and don't re-emit the same finalize.
+    """
+    from sqlalchemy import or_
     db = SessionLocal()
     try:
         org_ws = _org_ws_subquery(db, workspace_id)
@@ -1192,14 +1213,25 @@ def _fetch_new_events(workspace_id: str, since: datetime) -> tuple[list[dict], d
             db.query(GuardAuditEvent)
             .filter(
                 GuardAuditEvent.workspace_id.in_(org_ws),
-                GuardAuditEvent.ts > since,
+                or_(
+                    GuardAuditEvent.ts > since,
+                    GuardAuditEvent.finalized_at > since,
+                ),
             )
             .order_by(GuardAuditEvent.ts.asc())
             .limit(50)
             .all()
         )
-        new_cursor = rows[-1].ts if rows else since
-        return [_event_to_dict(e) for e in rows], new_cursor
+        if not rows:
+            return [], since
+        # Advance cursor to the newest wallclock we observed on any row —
+        # either its accepted-time ts or its finalize-time. Missing one
+        # falls back to the other, so single-phase rows still advance.
+        newest = max(
+            (r.finalized_at or r.ts for r in rows),
+            default=since,
+        )
+        return [_event_to_dict(e) for e in rows], newest
     finally:
         db.close()
 

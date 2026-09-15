@@ -32,6 +32,10 @@ export const ALL_COLUMNS = [
   { key: "decision", label: "Decision" },
   { key: "rule", label: "Rule" },
   { key: "blast", label: "Blast Radius" },
+  // #1959 Phase 3 — opt-in durable-audit lifecycle column. Legacy rows
+  // read NULL and render as em dash so the column adds no noise for
+  // workspaces still on the single-phase writer.
+  { key: "lifecycle", label: "Lifecycle" },
 ] as const
 
 export type ColumnKey = (typeof ALL_COLUMNS)[number]["key"]
