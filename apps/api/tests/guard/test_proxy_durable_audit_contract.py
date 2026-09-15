@@ -120,8 +120,9 @@ async def test_cancellation_classifies_as_interrupted_not_success():
         })
         return True
 
-    with patch("app.guard.audit.finalize", _fake_finalize), \
-         patch("app.guard.audit.renew_lease", return_value=True):
+    with patch("app.modules.guard.gateway_lifecycle.finalize", _fake_finalize), \
+         patch("app.guard.audit.renew_lease", return_value=True), \
+         patch("app.modules.guard.gateway_lifecycle.renew_lease", return_value=True):
         gen = _stream_chunks(client, resp, bg, audit_args, upstream_url=None)
         # Advance to the first yielded chunk so the generator is
         # suspended at its `yield chunk` line.
@@ -154,8 +155,9 @@ async def test_cleanup_failure_does_not_block_finalize():
     audit_args = _audit_args_with_durable_row()
 
     finalize_called = []
-    with patch("app.guard.audit.finalize", lambda *a, **kw: finalize_called.append(kw) or True), \
-         patch("app.guard.audit.renew_lease", return_value=True):
+    with patch("app.modules.guard.gateway_lifecycle.finalize", lambda *a, **kw: finalize_called.append(kw) or True), \
+         patch("app.guard.audit.renew_lease", return_value=True), \
+         patch("app.modules.guard.gateway_lifecycle.renew_lease", return_value=True):
         gen = _stream_chunks(client, resp, bg, audit_args, upstream_url=None)
         async for _ in gen:
             pass
@@ -177,8 +179,9 @@ async def test_upstream_exception_classifies_as_error():
     audit_args = _audit_args_with_durable_row()
 
     finalize_called = []
-    with patch("app.guard.audit.finalize", lambda *a, **kw: finalize_called.append(kw) or True), \
-         patch("app.guard.audit.renew_lease", return_value=True):
+    with patch("app.modules.guard.gateway_lifecycle.finalize", lambda *a, **kw: finalize_called.append(kw) or True), \
+         patch("app.guard.audit.renew_lease", return_value=True), \
+         patch("app.modules.guard.gateway_lifecycle.renew_lease", return_value=True):
         gen = _stream_chunks(client, resp, bg, audit_args, upstream_url=None)
         with pytest.raises(RuntimeError):
             async for _ in gen:
@@ -197,7 +200,7 @@ def test_client_x_request_id_is_stored_as_correlation_only_not_uniqueness_key():
     delegates."""
     from app.modules.guard import gateway_lifecycle as lifecycle_mod
     src = open(lifecycle_mod.__file__).read()
-    assert "str(_uuid.uuid4())" in src
+    assert "str(uuid.uuid4())" in src
     assert "client_request_id" in src
     from app.modules.guard.routers import proxy as proxy_mod
     proxy_src = open(proxy_mod.__file__).read()
@@ -302,7 +305,8 @@ async def test_finalize_runs_even_when_both_close_calls_raise_and_stream_yields_
     def _raise_renew(*a, **kw):
         raise RuntimeError("renewal boom")
 
-    with patch("app.guard.audit.finalize", lambda *a, **kw: finalize_called.append(kw) or True), \
+    with patch("app.modules.guard.gateway_lifecycle.finalize", lambda *a, **kw: finalize_called.append(kw) or True), \
+         patch("app.modules.guard.gateway_lifecycle.renew_lease", _raise_renew), \
          patch("app.guard.audit.renew_lease", _raise_renew):
         gen = _stream_chunks(client, resp, bg, audit_args, upstream_url=None)
         async for _ in gen:

@@ -718,7 +718,6 @@ async def _proxy(
         conductai_workflow=_workflow,
         conductai_workflow_id=_workflow_id,
         request_correlation_id=request.headers.get("x-request-id") or None,
-        db=db,
     )
     if _durable.fail_response is not None:
         return _durable.fail_response

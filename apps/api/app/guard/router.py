@@ -32,27 +32,6 @@ from app.modules.guard.circuit_breaker import get_breaker as _get_breaker
 
 log = structlog.get_logger(__name__)
 
-# Post-P1 v3 review Finding 1: asyncio.shield() does NOT guarantee the
-# inner task completes before the outer await returns. We keep a strong
-# reference to every in-flight finalize task so the loop can't GC it,
-# and we observe the result via done_callback so ops sees the tail.
-# The set is per-worker; on graceful shutdown the worker awaits its
-# own event loop tasks. Hard-kill loss is caught by Phase 4's reconciler.
-import asyncio as _asyncio_module_scope
-_PENDING_FINALIZES: set = set()
-
-def _register_finalize_task(task, *, label: str) -> None:
-    _PENDING_FINALIZES.add(task)
-    def _observe(t):
-        _PENDING_FINALIZES.discard(t)
-        if t.cancelled():
-            log.warning("guard.finalize.cancelled", label=label)
-            return
-        exc = t.exception()
-        if exc is not None:
-            log.error("guard.finalize.failed", label=label, err=str(exc))
-    task.add_done_callback(_observe)
-
 
 def _schedule_audit(
     background: BackgroundTasks,
@@ -169,7 +148,6 @@ async def _stream_chunks(
     import asyncio as _asyncio
     import contextlib as _contextlib
     from app.core.config import settings
-    from app.guard.audit import finalize as _finalize_inline
     from app.guard.audit import renew_lease as _renew_lease
 
     collected = bytearray()
@@ -227,17 +205,13 @@ async def _stream_chunks(
             await client.aclose()
 
         if _durable_row_id:
-            # Post-P1 v3 review Finding 1: shield() alone does not
-            # guarantee completion. Create a real task, keep a strong
-            # ref so the loop can't GC it, observe the result via
-            # done_callback. Bounded wait via wait_for + shield so
-            # cancellation propagates while the task keeps running
-            # under supervision.
-            _finalize_task = _asyncio.create_task(
-                _asyncio.to_thread(
-                    _finalize_inline,
-                    _durable_row_id,
-                    _workspace_id,
+            # Delegate to the Gateway lifecycle module — supervised
+            # task + bounded shield + observability all owned there.
+            from app.modules.guard.gateway_lifecycle import finalize_durable_row
+            try:
+                await finalize_durable_row(
+                    row_id=_durable_row_id,
+                    workspace_id=_workspace_id,
                     decision=audit_args[5],
                     provider=audit_args[3],
                     model=audit_args[4],
@@ -252,28 +226,7 @@ async def _stream_chunks(
                     ai_tool=audit_args[2],
                     user_email=audit_args[10] if len(audit_args) > 10 else None,
                 )
-            )
-            _register_finalize_task(
-                _finalize_task,
-                label=f"stream:{_durable_row_id}",
-            )
-            try:
-                # Bounded shield: wait up to 5s for the finalize task
-                # to complete synchronously. If cancellation reaches us
-                # we still propagate but the task keeps running under
-                # supervision; Phase 4's reconciler catches the tail on
-                # a hard-kill.
-                await _asyncio.wait_for(_asyncio.shield(_finalize_task), timeout=5.0)
-            except _asyncio.TimeoutError:
-                log.info(
-                    "guard.stream.finalize_bounded_wait_timeout",
-                    row_id=_durable_row_id,
-                )
             except _asyncio.CancelledError:
-                log.info(
-                    "guard.stream.finalize_bounded_wait_cancelled",
-                    row_id=_durable_row_id,
-                )
                 raise
             except Exception:
                 log.exception("guard.stream.inline_finalize_failed")
