@@ -125,6 +125,12 @@ function ActivityContent() {
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsError, setReportsError] = useState<string | null>(null)
   const [events, setEvents] = useState<AuditEvent[]>([])
+  // #1990 item D — drift between server clock and browser clock. When a
+  // SSE payload carries server_time, we recompute (client_now - server_now).
+  // LifecyclePill uses this to correct client-side 'expired' detection so
+  // a badly-skewed browser doesn't render rows as ∅ that aren't expired
+  // server-side. 0 = no drift / not yet initialized.
+  const [serverTimeDrift, setServerTimeDrift] = useState<number>(0)
   // #1959 Phase 3 — count of currently-in-flight durable rows. Derived
   // client-side so the badge stays in sync with the same event stream
   // that drives the table, no extra endpoint needed.
@@ -314,6 +320,14 @@ function ActivityContent() {
             // planned reconnect — refresh token in case it aged during the 5min stream
             reconnectTimer = setTimeout(() => connect(true), 1000)
             return
+          }
+          // #1990 item D — reset drift on every payload. Server_time
+          // is an ISO string emitted by /guard/events/stream.
+          if (typeof msg.server_time === "string") {
+            const serverMs = Date.parse(msg.server_time)
+            if (!Number.isNaN(serverMs)) {
+              setServerTimeDrift(Date.now() - serverMs)
+            }
           }
           if (Array.isArray(msg.events) && msg.events.length > 0) {
             setEvents(prev => {
@@ -819,7 +833,7 @@ function ActivityContent() {
                             <div>
                               {tableHeader}
                               {runGroup.events.map((ev, i) => (
-                                <ActivityRow key={ev.id} ev={ev} isLast={i === runGroup.events.length - 1} visibleColumns={visibleColumns} />
+                                <ActivityRow key={ev.id} ev={ev} isLast={i === runGroup.events.length - 1} visibleColumns={visibleColumns} nowOffsetMs={serverTimeDrift} />
                               ))}
                             </div>
                           )}
@@ -880,7 +894,7 @@ function ActivityContent() {
                       <div>
                         {tableHeader}
                         {adhoc.map((ev, i) => (
-                          <ActivityRow key={ev.id} ev={ev} isLast={i === adhoc.length - 1} visibleColumns={visibleColumns} />
+                          <ActivityRow key={ev.id} ev={ev} isLast={i === adhoc.length - 1} visibleColumns={visibleColumns} nowOffsetMs={serverTimeDrift} />
                         ))}
                       </div>
                     )}
@@ -917,7 +931,7 @@ function ActivityContent() {
 
           {/* Table rows */}
           {events.map((ev, i) => (
-            <ActivityRow key={ev.id} ev={ev} isLast={i === events.length - 1} visibleColumns={visibleColumns} />
+            <ActivityRow key={ev.id} ev={ev} isLast={i === events.length - 1} visibleColumns={visibleColumns} nowOffsetMs={serverTimeDrift} />
           ))}
 
           {/* Load more / count */}

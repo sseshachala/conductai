@@ -30,6 +30,11 @@ interface LifecyclePillProps {
   // passed we render it as `expired` visually so the user sees the drift
   // even before the Phase 4 reconciler updates the column.
   leaseExpiresAt?: string | null
+  // #1990 item D — millisecond offset to apply to Date.now() to
+  // correct a skewed browser clock. Positive value = browser is
+  // ahead of the server. Optional; defaults to 0 so callers that
+  // don't wire it in behave exactly as before.
+  nowOffsetMs?: number
 }
 
 interface Style {
@@ -76,7 +81,7 @@ const STYLES: Record<Exclude<LifecycleState, null | undefined>, Style> = {
   },
 }
 
-export function LifecyclePill({ state, leaseExpiresAt }: LifecyclePillProps) {
+export function LifecyclePill({ state, leaseExpiresAt, nowOffsetMs = 0 }: LifecyclePillProps) {
   // Legacy single-phase row — render an em dash so the column has content
   // that lines up with siblings without pretending it's a real state.
   if (!state) {
@@ -90,7 +95,9 @@ export function LifecyclePill({ state, leaseExpiresAt }: LifecyclePillProps) {
   // Client-side stale detection: if the row still reads 'accepted' but its
   // lease timestamp is in the past, present it as expired. Server catches
   // up on the next reconciler pass; this keeps the UI honest in between.
-  const now = Date.now()
+  // #1990 item D — subtract the drift from Date.now() so a browser whose
+  // clock is 60s ahead doesn't flip rows to Expired prematurely.
+  const now = Date.now() - nowOffsetMs
   const leaseTs = leaseExpiresAt ? Date.parse(leaseExpiresAt) : NaN
   const effective: keyof typeof STYLES =
     state === "accepted" && !Number.isNaN(leaseTs) && leaseTs < now ? "expired" : state

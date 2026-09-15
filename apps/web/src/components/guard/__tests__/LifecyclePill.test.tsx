@@ -58,6 +58,7 @@ describe("LifecyclePill — #1959 Phase 3", () => {
   })
 })
 
+
 // Reconciler stamps decision='error' on orphaned rows (post-Phase-4
 // cleanup). The pill must stay driven by lifecycle_state alone so it
 // keeps saying "Orphaned" even though the row's decision changed.
@@ -68,5 +69,29 @@ describe("LifecyclePill — post-Phase-4 decision independence", () => {
     // No decision prop threaded — the pill only takes state + lease.
     render(<LifecyclePill state="orphaned" />)
     expect(screen.getByText("Orphaned")).toBeTruthy()
+  })
+})
+
+// #1990 item D — clock-skew correction. When the browser clock is 5 minutes
+// ahead of the server, LifecyclePill needs the offset so a valid lease
+// isn't shown as expired prematurely.
+describe("LifecyclePill — #1990 item D nowOffsetMs", () => {
+  it("treats a lease as valid when offset accounts for a fast browser clock", () => {
+    const leaseServerMs = Date.now() - 5 * 60 * 1000 + 30_000
+    const leaseIso = new Date(leaseServerMs).toISOString()
+    render(
+      <LifecyclePill
+        state="accepted"
+        leaseExpiresAt={leaseIso}
+        nowOffsetMs={5 * 60 * 1000}
+      />,
+    )
+    expect(screen.getByText("In flight")).toBeTruthy()
+  })
+
+  it("defaults to no offset so existing callers behave unchanged", () => {
+    const futureLease = new Date(Date.now() + 60_000).toISOString()
+    render(<LifecyclePill state="accepted" leaseExpiresAt={futureLease} />)
+    expect(screen.getByText("In flight")).toBeTruthy()
   })
 })
