@@ -1049,7 +1049,15 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                 const lc   = LIFECYCLE_STYLE[id.lifecycle_state ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)", label: id.lifecycle_state ?? "—" }
                 const busy = savingIdentity === id.id
                 const isHighlighted = highlightId === id.id
-                const countdown = id.expires_at ? trialCountdown(id.expires_at) : null
+                // Countdown is a *trial* concept: "N days until the trial ends".
+                // Auto-provisioned CLI identities also have expires_at (the
+                // rolling session token TTL that refreshes on `conduct login`)
+                // but that's not a lifecycle event — the identity itself stays
+                // Active. Firing "Expired" for those was misleading, so gate
+                // the countdown on the trial classification.
+                const countdown = (id.expires_at && classifyIdentity(id) === "trial")
+                  ? trialCountdown(id.expires_at)
+                  : null
                 return (
                   <tr
                     key={id.id}
