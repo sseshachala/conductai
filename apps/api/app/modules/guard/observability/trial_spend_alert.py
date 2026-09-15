@@ -1,13 +1,14 @@
 """Internal Slack alert on aggregate trial-key spend crossing threshold (#1587 A3).
 
 Fires from the trial-key resolver (`trial_upstream.resolve_trial_key`) when
-a trial call is served. Reuses the same webhook + rate-limit shape as the
-fail-open alerter (`fail_open_alert.py`) — one internal ops channel, one
-env var, no reinvention.
+a trial call is served. Routes through ``post_platform_alert`` so it
+shares the platform-operator credential path with fail_open_alert.py and
+durable_audit_alerter.py.
 
 Env config:
-  CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL  — reused; unset = no-op (silent).
   GUARD_TRIAL_DAILY_ALERT_USD           — threshold; unset = no-op.
+  SLACK_BOT_TOKEN + CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL — see
+    ``platform_slack.post_platform_alert``. Missing either = log-only.
 
 Rate limit: one post per hour. Threshold is a "soft" alert — once it
 fires, don't re-fire until spend keeps rising past the last-alerted level.
@@ -18,20 +19,18 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 
-import httpx
 import structlog
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.modules.guard.observability.platform_slack import post_platform_alert
 from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME
 from app.modules.guard.trial_upstream import TRIAL_DAILY_CAP
 
 log = structlog.get_logger(__name__)
 
-_ALERT_CHANNEL_ENV = "CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL"
 _THRESHOLD_ENV = "GUARD_TRIAL_DAILY_ALERT_USD"
 _RATE_LIMIT_SEC = 3600  # one alert per hour
-_HTTP_TIMEOUT_SEC = 3.0
 
 # In-process dedup: (posix-day,) -> (last_post_monotonic, last_spend_alerted)
 # Keyed by day so the counter resets naturally at UTC midnight.
@@ -166,9 +165,8 @@ def check_and_alert_trial_spend(db: Session) -> None:
     defeat that decision.
     """
     try:
-        webhook = os.environ.get(_ALERT_CHANNEL_ENV, "").strip()
         threshold_raw = os.environ.get(_THRESHOLD_ENV, "").strip()
-        if not webhook or not threshold_raw:
+        if not threshold_raw:
             return
         try:
             threshold = float(threshold_raw)
@@ -197,12 +195,10 @@ def check_and_alert_trial_spend(db: Session) -> None:
             active_workspaces=active,
             top_spender=top,
         )
-        try:
-            httpx.post(webhook, json=payload, timeout=_HTTP_TIMEOUT_SEC)
+        # post_platform_alert swallows Slack errors and never raises.
+        if post_platform_alert(surface="trial_spend", text=payload["text"]):
             _record_posted(spend)
             log.info("guard.trial.spend_alert.posted", spend_usd=spend, threshold_usd=threshold)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("guard.trial.spend_alert.slack_post_failed", err=str(exc))
     except Exception as exc:  # noqa: BLE001
         log.warning("guard.trial.spend_alert.unhandled", err=str(exc))
 

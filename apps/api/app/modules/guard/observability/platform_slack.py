@@ -52,8 +52,7 @@ def post_platform_alert(
       set → attempt post via Bot API. Returns True on success.
     - Either missing → log-only. Returns False.
     - Slack post raises → swallow + log warning + return False. Never
-      let a Slack outage crash the alerter thread (which would take the
-      reconciler down too).
+      let the alerter thread die and take the reconciler down with it.
     """
     token = settings.slack_bot_token
     channel = settings.conduct_internal_alert_slack_channel
@@ -70,6 +69,6 @@ def post_platform_alert(
         post_message(token=token, channel=channel, text=text, blocks=blocks)
         log.info("platform.alert_sent", surface=surface)
         return True
-    except Exception as exc:  # noqa: BLE001 — never let the alerter thread die
+    except Exception as exc:  # noqa: BLE001
         log.warning("platform.alert_slack_failed", surface=surface, err=str(exc))
         return False

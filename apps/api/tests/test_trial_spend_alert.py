@@ -90,45 +90,40 @@ def spend_ws():
         db.close()
 
 
-def test_noops_when_webhook_env_missing(spend_ws, monkeypatch):
-    _ws, db = spend_ws
-    monkeypatch.delenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", raising=False)
-    monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "2.0")
-
-    with patch("httpx.post") as mock_post:
-        check_and_alert_trial_spend(db)
-    mock_post.assert_not_called()
+# #1996 migration: this alerter now routes through post_platform_alert.
+# Tests patch that symbol (imported into trial_spend_alert at module load)
+# instead of the removed httpx.post webhook path.
+_ALERT_TARGET = "app.modules.guard.observability.trial_spend_alert.post_platform_alert"
 
 
 def test_noops_when_threshold_env_missing(spend_ws, monkeypatch):
     _ws, db = spend_ws
-    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", "conduct-alerts")
     monkeypatch.delenv("GUARD_TRIAL_DAILY_ALERT_USD", raising=False)
 
-    with patch("httpx.post") as mock_post:
+    with patch(_ALERT_TARGET) as mock_post:
         check_and_alert_trial_spend(db)
     mock_post.assert_not_called()
 
 
 def test_noops_when_below_threshold(spend_ws, monkeypatch):
     _ws, db = spend_ws
-    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", "conduct-alerts")
     monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "100.0")  # $5 in DB, threshold $100
 
-    with patch("httpx.post") as mock_post:
+    with patch(_ALERT_TARGET) as mock_post:
         check_and_alert_trial_spend(db)
     mock_post.assert_not_called()
 
 
 def test_posts_when_over_threshold(spend_ws, monkeypatch):
     ws_id, db = spend_ws
-    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", "conduct-alerts")
     monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "2.0")  # $5 in DB, threshold $2
 
-    with patch("httpx.post") as mock_post:
+    with patch(_ALERT_TARGET, return_value=True) as mock_post:
         check_and_alert_trial_spend(db)
     assert mock_post.call_count == 1
-    text_body = mock_post.call_args.kwargs["json"]["text"]
+    kwargs = mock_post.call_args.kwargs
+    assert kwargs["surface"] == "trial_spend"
+    text_body = kwargs["text"]
     assert "Trial spend crossed threshold" in text_body
     assert "$5.00" in text_body
     # PR 4 A3 v2: alert now includes the workspace name of the top spender
@@ -141,10 +136,9 @@ def test_posts_when_over_threshold(spend_ws, monkeypatch):
 
 def test_second_call_within_rate_limit_is_deduped(spend_ws, monkeypatch):
     _ws, db = spend_ws
-    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", "conduct-alerts")
     monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "2.0")
 
-    with patch("httpx.post") as mock_post:
+    with patch(_ALERT_TARGET, return_value=True) as mock_post:
         check_and_alert_trial_spend(db)
         check_and_alert_trial_spend(db)
     assert mock_post.call_count == 1
@@ -152,9 +146,8 @@ def test_second_call_within_rate_limit_is_deduped(spend_ws, monkeypatch):
 
 def test_bad_threshold_env_noops(spend_ws, monkeypatch):
     _ws, db = spend_ws
-    monkeypatch.setenv("CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL", "conduct-alerts")
     monkeypatch.setenv("GUARD_TRIAL_DAILY_ALERT_USD", "not-a-number")
 
-    with patch("httpx.post") as mock_post:
+    with patch(_ALERT_TARGET) as mock_post:
         check_and_alert_trial_spend(db)
     mock_post.assert_not_called()
