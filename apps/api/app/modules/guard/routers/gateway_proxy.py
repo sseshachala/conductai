@@ -37,8 +37,13 @@ router = APIRouter(prefix="/gateway/v1", tags=["gateway-proxy"])
 def _gateway_principal(
     request: Request,
     db: Session = Depends(get_db),
-) -> tuple[str, str]:
-    """Authenticate either credential header emitted by Claude Code."""
+) -> tuple[str, str, str | None]:
+    """Authenticate either credential header emitted by Claude Code.
+
+    Returns (workspace_id, clerk_user_id, agent_identity_id). The identity
+    id is None for legacy guard-mt-* member tokens; audit rows for those
+    calls will land with agent_identity_id NULL (see #1959 Phase 0).
+    """
     raw = request.headers.get("x-api-key") or request.headers.get("authorization", "")
     if raw.lower().startswith("bearer "):
         raw = raw[7:].strip()
@@ -65,7 +70,18 @@ def _gateway_principal(
             detail="Gateway credential does not belong to the requested workspace",
         )
     set_workspace_rls(db, workspace_id)
-    return workspace_id, clerk_user_id
+    # #1959 Phase 0 — resolve the identity row so audit rows for gateway
+    # model-catalog / count-tokens paths carry agent_identity_id. Falls
+    # back to None for legacy tokens without an identity row.
+    _identity_id = None
+    try:
+        from app.core.auth import resolve_agent_identity_row as _rair
+        _ai_row = _rair(raw, db)
+        if _ai_row:
+            _identity_id = str(getattr(_ai_row, "id", None) or "") or None
+    except Exception:
+        pass
+    return workspace_id, clerk_user_id, _identity_id
 
 
 def _anthropic_catalog(profile, limit: int) -> list[dict[str, str]]:
@@ -140,11 +156,11 @@ async def gateway_anthropic_models(
     request: Request,
     background: BackgroundTasks,
     limit: int = Query(default=1000, ge=1, le=1000),
-    principal: tuple[str, str] = Depends(_gateway_principal),
+    principal: tuple[str, str, str | None] = Depends(_gateway_principal),
     db: Session = Depends(get_db),
 ) -> JSONResponse:
     started = time.monotonic()
-    workspace_id, clerk_user_id = principal
+    workspace_id, clerk_user_id, agent_identity_id = principal
     environment_id = request.headers.get("x-conductai-environment-id") or None
     profile = TransportResolver().resolve_profile(
         db,
@@ -167,6 +183,7 @@ async def gateway_anthropic_models(
         response_bytes=b"{}",
         prompt_summary="Gateway model catalog",
         routing_meta={"operation": "model_catalog", "billable": False},
+        agent_identity_id=agent_identity_id,
     )
     return JSONResponse(
         content={"data": data},
