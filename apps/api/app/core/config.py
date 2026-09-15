@@ -160,6 +160,16 @@ class Settings(BaseSettings):
     # local dev or when the trial worker is the only workload.
     guard_durable_audit_reconciler_seconds: int = 120
 
+    # #1996 — Slack alerter for durable-audit failures. Watches the
+    # GUARD_AUDIT_FAILED counter and posts to a single operator Slack
+    # channel when the delta since the last cycle crosses per-reason
+    # thresholds. Setting seconds = 0 disables the loop. Missing token
+    # or channel → alerter runs but only logs (useful for staging).
+    guard_durable_audit_alerter_seconds: int = 60
+    guard_durable_audit_alerter_cooldown_seconds: int = 900  # 15 min per reason
+    guard_ops_alert_slack_token: str = ""
+    guard_ops_alert_slack_channel: str = ""
+
     # /metrics scrape token — audit O01. Empty in production means /metrics
     # refuses every caller (fail-closed). Empty in local/development leaves
     # the endpoint open so devs can `curl /metrics` without extra setup.
