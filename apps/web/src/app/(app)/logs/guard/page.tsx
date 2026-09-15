@@ -687,29 +687,8 @@ function ActivityContent() {
         /* ── Grouped view ─────────────────────────────────────────────────── */
         (() => {
           const { named, adhoc } = buildGoalGroups(events)
-          const tableHeader = (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr 0.9fr",
-                gap: 12,
-                padding: "10px 18px",
-                borderBottom: "1px solid var(--border)",
-                background: "var(--surface-2)",
-              }}
-            >
-              {["Time", "Actor", "Tool", "Call", "Input", "Decision", "Rule", "Blast Radius"].map((h, i) => (
-                <div
-                  key={i}
-                  className="eyebrow"
-                  style={{ fontSize: 9.5 }}
-                  title={h === "Blast Radius" ? "Risk tier (CRITICAL/HIGH/MEDIUM/LOW) + affected files count (f)" : undefined}
-                >
-                  {h}
-                </div>
-              ))}
-            </div>
-          )
+          // Header driven by <ColumnsMenu> selection — #1982.
+          const tableHeader = <ActivityHeader visibleColumns={visibleColumns} />
 
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -904,28 +883,8 @@ function ActivityContent() {
       ) : (
         /* ── Flat view ────────────────────────────────────────────────────── */
         <div className="card" style={{ overflow: "hidden" }}>
-          {/* Table header */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "0.8fr 1.4fr 1fr 0.7fr 1.8fr 0.9fr 0.8fr 0.9fr",
-              gap: 12,
-              padding: "10px 18px",
-              borderBottom: "1px solid var(--border)",
-              background: "var(--surface-2)",
-            }}
-          >
-            {["Time", "Actor", "Tool", "Call", "Input", "Decision", "Rule", "Blast Radius"].map((h, i) => (
-              <div
-                key={i}
-                className="eyebrow"
-                style={{ fontSize: 9.5 }}
-                title={h === "Blast Radius" ? "Risk tier (CRITICAL/HIGH/MEDIUM/LOW) + affected files count (f)" : undefined}
-              >
-                {h}
-              </div>
-            ))}
-          </div>
+          {/* Header driven by <ColumnsMenu> selection — #1982. */}
+          <ActivityHeader visibleColumns={visibleColumns} />
 
           {/* Table rows */}
           {events.map((ev, i) => (
