@@ -1206,59 +1206,56 @@ def _fetch_new_events(
     workspace_id: str,
     since: tuple[datetime, str],
 ) -> tuple[list[dict], tuple[datetime, str]]:
-    """Query DB for events past the (ts, id) cursor. Returns (events, new_cursor).
+    """Query DB for events past the cursor. Returns (events, new_cursor).
 
-    Uses keyset pagination on (ts, id) — deterministic, strict, no dedupe
-    needed. Rows landing at the exact same microsecond as the previous
-    batch's tail are still delivered because the id tiebreaker guarantees
-    the (ts, id) tuple strictly moves forward.
+    Uses a single monotonic key: GREATEST(ts, finalized_at). Rows are
+    ordered by (key, id) with the cursor advancing on the same key. This
+    ensures the query and the cursor agree on ordering — no newer rows
+    can be skipped because a late finalize on an old row shifted the
+    boundary (P1 review finding 5).
 
-    Also catches durable-audit rows that were UPDATEd to
-    lifecycle_state='finalized' past the cursor (#1959 Phase 3) so the
-    Flight Recorder UI can flip the lifecycle pill from ⏳ to ✓ in place
-    without a manual reload. Cursor advances on the largest (ts, id) tuple
-    observed in the batch.
+    Rows are re-emitted with the new key when their finalized_at moves
+    past the previous key — the frontend's merge-by-id SSE handler
+    (#1986 Phase 3) dedupes them into the same row, updating the
+    lifecycle pill in place.
     """
-    from sqlalchemy import or_, and_, tuple_
-    since_ts, since_id = since
+    from sqlalchemy import and_, or_, func
+    since_key, since_id = since
     db = SessionLocal()
     try:
         org_ws = _org_ws_subquery(db, workspace_id)
+        # GREATEST(ts, COALESCE(finalized_at, ts)) — one expression for both
+        # ordering and filtering so the query cannot disagree with the
+        # cursor about what "next" means.
+        activity_key = func.greatest(
+            GuardAuditEvent.ts,
+            func.coalesce(GuardAuditEvent.finalized_at, GuardAuditEvent.ts),
+        )
         rows = (
             db.query(GuardAuditEvent)
             .filter(
                 GuardAuditEvent.workspace_id.in_(org_ws),
                 or_(
-                    # Strict keyset predicate on the (ts, id) tuple —
-                    # equivalent to `(ts, id) > (since_ts, since_id)`.
-                    GuardAuditEvent.ts > since_ts,
+                    activity_key > since_key,
                     and_(
-                        GuardAuditEvent.ts == since_ts,
+                        activity_key == since_key,
                         GuardAuditEvent.id > since_id,
                     ),
-                    # Rows finalized past the cursor's ts flip the pill
-                    # in place. They may or may not satisfy the ts key
-                    # predicate; the OR guarantees they still surface.
-                    GuardAuditEvent.finalized_at > since_ts,
                 ),
             )
-            .order_by(GuardAuditEvent.ts.asc(), GuardAuditEvent.id.asc())
+            .order_by(activity_key.asc(), GuardAuditEvent.id.asc())
             .limit(50)
             .all()
         )
         if not rows:
             return [], since
-        # Advance the tuple to (max_ts, id_of_row_with_max_ts). For finalize
-        # UPDATEs we still key on ts so subsequent polls don't loop back to
-        # the accepted row.
-        newest_row = max(
-            rows,
-            key=lambda r: (r.finalized_at or r.ts, str(r.id)),
-        )
-        newest_ts = newest_row.finalized_at or newest_row.ts
+        # Cursor advances on the same monotonic key the query used.
+        def _key(r):
+            return max(r.ts, r.finalized_at or r.ts)
+        newest_row = max(rows, key=lambda r: (_key(r), str(r.id)))
         return (
             [_event_to_dict(e) for e in rows],
-            (newest_ts, str(newest_row.id)),
+            (_key(newest_row), str(newest_row.id)),
         )
     finally:
         db.close()

@@ -550,6 +550,26 @@ def finalize(
             except Exception:
                 pass
 
+        # Post-P1-review Finding 2 (recovery semantics): when the row
+        # was already flipped to orphaned/expired by the reconciler, the
+        # UPDATE returns rowcount=0 and we lose the real outcome. Log
+        # this explicitly and bump the anomaly counter so ops sees the
+        # tail — the fix is NOT to allow orphaned→finalized (mutable
+        # terminal states hurt auditability), but to keep the lease
+        # correct so this rarely happens. See guard_durable_audit_lease
+        # _seconds default of 630s + the streaming heartbeat.
+        if not _updated:
+            try:
+                from app.modules.guard.observability.metrics import GUARD_AUDIT_FAILED
+                GUARD_AUDIT_FAILED.labels(reason="late_finalize").inc()
+            except Exception:
+                pass
+            log.warning(
+                "guard.audit.late_finalize",
+                row_id=row_id,
+                workspace_id=workspace_id,
+                decision=decision,
+            )
         return _updated
     except Exception:
         db.rollback()
@@ -559,5 +579,53 @@ def finalize(
         except Exception:
             pass
         raise
+    finally:
+        db.close()
+
+
+def renew_lease(
+    row_id: str,
+    workspace_id: str,
+    *,
+    additional_seconds: int,
+) -> bool:
+    """Extend an in-flight row's lease_expires_at.
+
+    Called by the streaming path every guard_durable_audit_stream_renew
+    _seconds while chunks flow so a legitimate long request never trips
+    the Phase 4 reconciler mid-stream (P1 review Finding 2 + Finding 4).
+
+    Returns True if the row still exists and was in 'accepted' state;
+    False if it was already orphaned/finalized (nothing to renew). Silent
+    on any exception — this is a best-effort heartbeat, the actual write
+    always wins via the finalize() UPDATE.
+    """
+    now = datetime.now(timezone.utc)
+    db = SessionLocal()
+    try:
+        set_workspace_rls(db, workspace_id)
+        result = db.execute(
+            text("""
+                UPDATE guard_audit_events
+                SET lease_expires_at = :new_lease
+                WHERE id = CAST(:row_id AS uuid)
+                  AND lifecycle_state = 'accepted'
+            """),
+            {
+                "row_id": row_id,
+                "new_lease": now + timedelta(seconds=additional_seconds),
+            },
+        )
+        db.commit()
+        return (result.rowcount or 0) == 1
+    except Exception:
+        db.rollback()
+        try:
+            from app.modules.guard.observability.metrics import GUARD_AUDIT_FAILED
+            GUARD_AUDIT_FAILED.labels(reason="renew_lease").inc()
+        except Exception:
+            pass
+        log.warning("guard.audit.renew_lease_failed", row_id=row_id)
+        return False
     finally:
         db.close()

@@ -412,3 +412,39 @@ def test_schedule_audit_calls_record_when_no_durable_id():
         task.func(*task.args, **task.kwargs)
     assert fake_record.called
     assert not fake_finalize.called
+
+
+# ─── Post-P1 Finding 2: late_finalize observability ─────────────────────
+
+
+def test_late_finalize_bumps_anomaly_counter_and_logs():
+    from app.modules.guard.observability.metrics import GUARD_AUDIT_FAILED
+    before = GUARD_AUDIT_FAILED.labels(reason="late_finalize")._value.get()
+    sess = _CapturingSession(rowcount_for_update=0)
+    ok = _finalize(sess, decision="allowed")
+    assert ok is False
+    after = GUARD_AUDIT_FAILED.labels(reason="late_finalize")._value.get()
+    assert after == before + 1
+
+
+# ─── Post-P1 Finding 2: renew_lease heartbeat ───────────────────────────
+
+
+def test_renew_lease_extends_the_expiration_when_row_is_accepted():
+    from app.guard.audit import renew_lease
+    sess = _CapturingSession(rowcount_for_update=1)
+    p1, p2 = _patch_session(sess)
+    with p1, p2:
+        ok = renew_lease("22222222-2222-2222-2222-222222222222", WS_ID, additional_seconds=180)
+    assert ok is True
+    assert "UPDATE guard_audit_events" in sess.last_sql
+    assert "lease_expires_at" in sess.last_sql
+    assert "lifecycle_state = 'accepted'" in sess.last_sql
+
+
+def test_renew_lease_returns_false_when_row_no_longer_accepted():
+    from app.guard.audit import renew_lease
+    sess = _CapturingSession(rowcount_for_update=0)
+    p1, p2 = _patch_session(sess)
+    with p1, p2:
+        assert renew_lease("id", WS_ID, additional_seconds=60) is False

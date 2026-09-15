@@ -112,11 +112,29 @@ class Settings(BaseSettings):
     guard_use_durable_audit: bool = False
 
     # Seconds after which a still-'accepted' guard_audit_events row is
-    # considered orphaned by the Phase 4 reconciler. 60s covers a typical
-    # inference call comfortably; long-running deep-research paths that
-    # exceed this get flagged for investigation rather than silently
-    # dropped. Tune per traffic pattern once real telemetry lands.
-    guard_durable_audit_lease_seconds: int = 60
+    # considered orphaned by the Phase 4 reconciler. 630s = 10 min upstream
+    # request timeout + 30s buffer, so a legitimate long request (deep-
+    # research, high-token completion) is never orphaned mid-flight. The
+    # streaming path also renews this lease every 30s while chunks flow.
+    # Post-P1-review: original 60s default caused premature orphaning of
+    # slow legitimate calls; the streaming heartbeat + this larger buffer
+    # closes the observed data-loss window.
+    guard_durable_audit_lease_seconds: int = 630
+
+    # How often the streaming _wrap in guard/router.py renews an in-flight
+    # row's lease. Must be strictly less than the lease so a stream stall
+    # gets picked up by the reconciler within one poll interval. Actor-
+    # heartbeat pattern (Kubernetes leases, Consul sessions, etcd).
+    guard_durable_audit_stream_renew_seconds: int = 30
+
+    # When true, an insert_accepted() failure returns HTTP 503 rather than
+    # silently falling back to single-phase record() and forwarding
+    # upstream. Contract: 'persist before forwarding'. Set false ONLY in
+    # local dev where a broken DB shouldn't block iteration; production
+    # must always be fail-closed. Post-P1-review finding 1.
+    guard_durable_audit_fail_closed: bool = True
+
+
 
     # Phase 4 of #1959 — reconciler poll interval. Runs every 120s by
     # default (2× the lease), so an orphan surfaces within one interval

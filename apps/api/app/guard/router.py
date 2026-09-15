@@ -130,27 +130,118 @@ async def _stream_chunks(
     background: BackgroundTasks, audit_args: tuple,
     upstream_url: str | None = None,
 ) -> AsyncIterator[bytes]:
-    """Pass-through every chunk. Schedule the audit event after the stream
-    closes — we don't parse mid-stream in V1."""
+    """Pass-through every chunk. Ownership contract for durable rows
+    (post-P1 review v2):
+
+    - CancelledError is NEVER treated as success. When cancellation
+      reaches this coroutine, execution_status becomes 'interrupted'.
+    - Cleanup uses contextlib.suppress so an aclose() failure cannot
+      block the finalize. Cleanup failures are logged but never
+      swallow the true outcome.
+    - Finalize runs under asyncio.shield + asyncio.to_thread so
+      cancellation propagates to the caller while the DB write
+      completes atomically off the event loop.
+    - Lease renewal runs on a heartbeat cadence throughout the stream
+      (actor-heartbeat pattern) so a legitimate long stream is never
+      orphaned mid-flight.
+    """
+    import asyncio as _asyncio
+    import contextlib as _contextlib
+    from app.core.config import settings
+    from app.guard.audit import renew_lease as _renew_lease
+
     collected = bytearray()
     execution_status = "success"
-    result_summary = None
+    result_summary: str | None = None
+    _durable_row_id = audit_args[18] if len(audit_args) > 18 else None
+    _workspace_id = audit_args[0] if audit_args else None
+    _renew_interval = settings.guard_durable_audit_stream_renew_seconds
+    _renew_task: _asyncio.Task | None = None
+
+    async def _renewal_loop() -> None:
+        while True:
+            try:
+                await _asyncio.sleep(_renew_interval)
+            except _asyncio.CancelledError:
+                # Renewal is a heartbeat: cancellation of the outer
+                # request is normal; exit cleanly so the finally can
+                # finalize the row.
+                return
+            if _durable_row_id and _workspace_id:
+                try:
+                    await _asyncio.to_thread(
+                        _renew_lease,
+                        _durable_row_id,
+                        _workspace_id,
+                        additional_seconds=settings.guard_durable_audit_lease_seconds,
+                    )
+                except Exception:
+                    log.warning("guard.stream.lease_renew_swallowed")
+
     try:
+        if _durable_row_id and _renew_interval > 0:
+            _renew_task = _asyncio.create_task(_renewal_loop())
         async for chunk in resp.aiter_bytes():
             collected.extend(chunk)
             yield chunk
+    except _asyncio.CancelledError:
+        execution_status = "interrupted"
+        result_summary = "Stream interrupted by cancellation (client disconnect or task cancel)"
+        raise
     except Exception as exc:
         execution_status = "error"
         result_summary = f"Upstream stream failed: {type(exc).__name__}"
         raise
     finally:
-        await resp.aclose()
-        await client.aclose()
-        _schedule_audit(
-            background, audit_args, response_bytes=bytes(collected),
-            upstream=upstream_url, execution_status=execution_status,
-            result_summary=result_summary,
-        )
+        if _renew_task is not None and not _renew_task.done():
+            _renew_task.cancel()
+            with _contextlib.suppress(Exception, _asyncio.CancelledError):
+                await _renew_task
+        # Cleanup is best-effort. A cleanup failure MUST NOT prevent
+        # the durable finalize below.
+        with _contextlib.suppress(Exception, _asyncio.CancelledError):
+            await resp.aclose()
+        with _contextlib.suppress(Exception, _asyncio.CancelledError):
+            await client.aclose()
+
+        if _durable_row_id:
+            # Delegate to the Gateway lifecycle module — supervised
+            # task + bounded shield + observability all owned there.
+            from app.modules.guard.gateway_lifecycle import finalize_durable_row
+            try:
+                await finalize_durable_row(
+                    row_id=_durable_row_id,
+                    workspace_id=_workspace_id,
+                    decision=audit_args[5],
+                    provider=audit_args[3],
+                    model=audit_args[4],
+                    body=audit_args[8],
+                    response_bytes=bytes(collected),
+                    duration_ms=int((time.monotonic() - audit_args[7]) * 1000),
+                    rule_id=audit_args[6],
+                    routing_meta=audit_args[15] if len(audit_args) > 15 else None,
+                    execution_status=execution_status,
+                    result_summary=result_summary,
+                    clerk_user_id=audit_args[1],
+                    ai_tool=audit_args[2],
+                    user_email=audit_args[10] if len(audit_args) > 10 else None,
+                )
+            except _asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("guard.stream.inline_finalize_failed")
+                with _contextlib.suppress(Exception):
+                    _schedule_audit(
+                        background, audit_args, response_bytes=bytes(collected),
+                        upstream=upstream_url, execution_status=execution_status,
+                        result_summary=result_summary,
+                    )
+        else:
+            _schedule_audit(
+                background, audit_args, response_bytes=bytes(collected),
+                upstream=upstream_url, execution_status=execution_status,
+                result_summary=result_summary,
+            )
 
 
 # ─── Public API — upstream fanout ─────────────────────────────────────────────

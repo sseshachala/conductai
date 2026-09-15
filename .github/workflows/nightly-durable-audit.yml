@@ -73,3 +73,13 @@ jobs:
       - name: Run durable-audit lifecycle integration tests
         run: pytest tests/integration/test_durable_audit_lifecycle_realdb.py -v
         working-directory: apps/api
+      # Contract tests: mocked SessionLocal / policy engine / transport,
+      # verify the review-flagged failure modes.
+      #  - DB outage (insert_accepted raises) → 503 + no upstream forward
+      #  - transport.forward exception → heartbeat cancelled + error finalize
+      # Runs in the same nightly job because it's the natural home for
+      # durable-audit regression guards, even though these two don't need
+      # real Postgres — one workflow, one signal.
+      - name: Run durable-audit contract tests
+        run: pytest tests/guard/test_proxy_durable_audit_contract.py -v
+        working-directory: apps/api
