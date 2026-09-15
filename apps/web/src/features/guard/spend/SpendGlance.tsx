@@ -13,6 +13,7 @@ import { GuardSectionHeader } from "@/components/guard/common"
 import {
   BudgetBar,
   BudgetInput,
+  ModelSpendPanel,
   MonthPicker,
 } from "./components"
 import {
@@ -270,6 +271,14 @@ export function SpendGlance() {
           />
         )
       })()}
+
+      {/* Spend by model — provider pills + top-N model table. Hidden when
+          the workspace has no proxy-flowing traffic yet. */}
+      <ModelSpendPanel
+        byModel={s.data?.by_model ?? []}
+        byProvider={s.data?.by_provider ?? []}
+        currency={s.currency}
+      />
     </>
   )
 }
