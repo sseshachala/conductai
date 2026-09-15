@@ -161,6 +161,11 @@ def record(
     share_token_hash: str | None = None,
     execution_status: str | None = None,
     result_summary: str | None = None,
+    # Phase 0 of #1959 fix: previously omitted, so successful Gateway rows
+    # could not satisfy an exact agent-identity filter. Nullable to preserve
+    # backward-compat for legacy callers that don't resolve an identity
+    # (guard-mt-* member tokens, cedar-import, in-process calls without one).
+    agent_identity_id: str | None = None,
 ) -> None:
     """Background task — best-effort audit write, never blocks the response.
 
@@ -197,7 +202,7 @@ def record(
             text("""
                 INSERT INTO guard_audit_events (
                   id,
-                  workspace_id, clerk_user_id, ai_tool, tool_call,
+                  workspace_id, clerk_user_id, agent_identity_id, ai_tool, tool_call,
                   source, provider, model,
                   decision, rule_id, ts,
                   tokens_before, tokens_after, duration_ms,
@@ -210,7 +215,7 @@ def record(
                   execution_status, result_summary
                 ) VALUES (
                   CAST(:row_id AS uuid),
-                  :ws, :uid, :ai, NULL,
+                  :ws, :uid, CAST(:agent_id AS uuid), :ai, NULL,
                   'proxy', :prov, :model,
                   :dec, :rid, :ts,
                   :tin, :tout, :dur,
@@ -226,6 +231,7 @@ def record(
             {
                 "row_id": row_id,
                 "ws": workspace_id, "uid": clerk_user_id,
+                "agent_id": agent_identity_id,
                 "ai": ai_tool,
                 "prov": provider, "model": model,
                 "dec": decision, "rid": rule_id,
@@ -264,6 +270,14 @@ def record(
             except Exception:
                 pass
     except Exception as e:
+        # Phase 0 of #1959 — the swallow-and-log pattern was hiding real drops.
+        # Bumping a labeled counter lets ops watch the aggregate rate without
+        # exposing the exception message (avoids high-cardinality labels).
+        try:
+            from app.modules.guard.observability.metrics import GUARD_AUDIT_FAILED
+            GUARD_AUDIT_FAILED.labels(reason="insert").inc()
+        except Exception:
+            pass
         log.warning("guard.proxy.audit_failed", err=str(e))
     finally:
         db.close()

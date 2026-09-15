@@ -53,6 +53,10 @@ def _schedule_audit(
         conductai_workflow_id=audit_args[13] if len(audit_args) > 13 else None,
         hook_session_id=audit_args[14] if len(audit_args) > 14 else None,
         routing_meta=audit_args[15] if len(audit_args) > 15 else None,
+        # Phase 0 of #1959 — index 16 (Gateway/proxy path only). Older callers
+        # that still build a 16-tuple pass None here, matching pre-Phase 0
+        # behavior; the writer already tolerates None.
+        agent_identity_id=audit_args[16] if len(audit_args) > 16 else None,
         execution_status=execution_status,
         result_summary=result_summary,
     )
