@@ -418,7 +418,13 @@ export function ModelSpendPanel({
     return null
   }
 
-  const modelRows = byModel.slice(0, limit)
+  // Client-side sort — belt and braces against server NULL-ordering quirks
+  // and to keep the "biggest bill first" invariant even if the endpoint's
+  // ORDER BY drifts. Primary key: cost desc; tie-break by tokens desc so
+  // two zero-cost models still order by usage.
+  const modelRows = [...byModel]
+    .sort((a, b) => (b.cost_usd - a.cost_usd) || (b.tokens_after - a.tokens_after))
+    .slice(0, limit)
   const providerRows = [...byProvider].sort((a, b) => b.cost_usd - a.cost_usd)
 
   return (
