@@ -722,11 +722,37 @@ async def _proxy(
                 conductai_workflow_id=_workflow_id,
             )
         except Exception as _e:
-            # Never let the durable-write path break inference. Fall back to
-            # single-phase record() by leaving _durable_row_id=None. The
-            # GUARD_AUDIT_FAILED counter already bumped inside insert_accepted.
-            log.warning("guard.proxy.durable_audit_insert_failed", err=str(_e))
-            _durable_row_id = None
+            # Post-Phase 4 self-review: distinguish request_id collisions
+            # (client retried with the same X-Request-Id) from any other
+            # failure. On a collision the durable row already exists and
+            # we just need to reuse its id so finalize() targets it.
+            # On any other exception we fall back to single-phase record()
+            # so inference never breaks for a Guard audit-write issue.
+            from sqlalchemy.exc import IntegrityError as _IntegrityError
+            if isinstance(_e, _IntegrityError):
+                try:
+                    _durable_row_id = db.execute(
+                        text(
+                            "SELECT id::text FROM guard_audit_events "
+                            "WHERE request_id = CAST(:rid AS uuid) LIMIT 1"
+                        ),
+                        {"rid": _request_id},
+                    ).scalar()
+                    log.info(
+                        "guard.proxy.durable_audit_retry_reused",
+                        request_id=_request_id,
+                        row_id=_durable_row_id,
+                    )
+                except Exception as _lookup_err:
+                    log.warning(
+                        "guard.proxy.durable_audit_retry_lookup_failed",
+                        request_id=_request_id,
+                        err=str(_lookup_err),
+                    )
+                    _durable_row_id = None
+            else:
+                log.warning("guard.proxy.durable_audit_insert_failed", err=str(_e))
+                _durable_row_id = None
 
     _response = await transport.forward(
         sender=_forward,
