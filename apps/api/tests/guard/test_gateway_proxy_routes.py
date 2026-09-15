@@ -106,7 +106,7 @@ def test_gateway_principal_accepts_claude_api_key(monkeypatch):
         object(),
     )
 
-    assert principal == ("workspace-test", "user-test")
+    assert principal == ("workspace-test", "user-test", None)
 
 
 def test_gateway_principal_requires_a_credential():
@@ -160,7 +160,7 @@ async def test_gateway_anthropic_models_are_limited_to_profile_deployments(monke
         _request({"x-conductai-environment-id": "environment-test"}),
         background,
         1000,
-        ("workspace-test", "user-test"),
+        ("workspace-test", "user-test", None),
         object(),
     )
 
