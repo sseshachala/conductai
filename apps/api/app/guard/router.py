@@ -27,7 +27,7 @@ import structlog
 from fastapi import BackgroundTasks
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from app.guard.audit import record as _record_audit
+from app.guard.audit import finalize as _finalize_audit, record as _record_audit
 from app.modules.guard.circuit_breaker import get_breaker as _get_breaker
 
 log = structlog.get_logger(__name__)
@@ -42,6 +42,33 @@ def _schedule_audit(
     execution_status: str = "success",
     result_summary: str | None = None,
 ) -> None:
+    # Phase 2 of #1959 — index 18 = durable row id from a prior
+    # insert_accepted(). When set, dispatch to finalize() which
+    # updates the row from 'accepted' -> 'finalized' rather than
+    # writing a new one. audit_args[16]/[17] (agent identity, route)
+    # already landed on the accepted row so we don't re-thread them.
+    _durable_row_id = audit_args[18] if len(audit_args) > 18 else None
+    if _durable_row_id:
+        background.add_task(
+            _finalize_audit,
+            _durable_row_id,
+            audit_args[0],           # workspace_id
+            decision=audit_args[5],
+            provider=audit_args[3],
+            model=audit_args[4],
+            body=audit_args[8],
+            response_bytes=response_bytes,
+            duration_ms=int((time.monotonic() - audit_args[7]) * 1000),
+            rule_id=audit_args[6],
+            routing_meta=audit_args[15] if len(audit_args) > 15 else None,
+            execution_status=execution_status,
+            result_summary=result_summary,
+            clerk_user_id=audit_args[1],
+            ai_tool=audit_args[2],
+            user_email=audit_args[10] if len(audit_args) > 10 else None,
+        )
+        return
+
     background.add_task(
         _record_audit, *audit_args[:6], audit_args[6],
         int((time.monotonic() - audit_args[7]) * 1000),

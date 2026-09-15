@@ -79,6 +79,7 @@ from app.guard.audit import (
     _compute_cost,
     _estimate_input_tokens,
     _extract_token_counts,
+    insert_accepted as _insert_accepted_audit,
     record as _record_audit,
 )
 
@@ -695,6 +696,38 @@ async def _proxy(
         k.lower(): v for k, v in request.headers.items()
         if k.lower() not in _skip and not k.lower().startswith("x-conduct")
     }
+    # Phase 2 of #1959 — durable inference audit.
+    # Behind settings.guard_use_durable_audit. When on, we write an
+    # 'accepted' row before the upstream call so a crashed or timed-out
+    # request leaves a trace the Phase 4 reconciler can pick up. The row
+    # id flows through audit_args index 18; _schedule_audit dispatches
+    # to finalize() instead of record() when it sees a durable id.
+    _durable_row_id: str | None = None
+    if settings.guard_use_durable_audit:
+        import uuid as _uuid
+        _request_id = request.headers.get("x-request-id") or str(_uuid.uuid4())
+        try:
+            _durable_row_id = _insert_accepted_audit(
+                workspace_id, clerk_user_id, ai_tool, provider, model,
+                request_id=_request_id,
+                body=body,
+                prompt_summary=prompt_summary,
+                user_email=_user_email,
+                agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+                route=request.url.path,
+                hook_session_id=_hook_session_id,
+                routing_meta=_routing_meta,
+                conductai_run_id=_run_id,
+                conductai_workflow=_workflow,
+                conductai_workflow_id=_workflow_id,
+            )
+        except Exception as _e:
+            # Never let the durable-write path break inference. Fall back to
+            # single-phase record() by leaving _durable_row_id=None. The
+            # GUARD_AUDIT_FAILED counter already bumped inside insert_accepted.
+            log.warning("guard.proxy.durable_audit_insert_failed", err=str(_e))
+            _durable_row_id = None
+
     _response = await transport.forward(
         sender=_forward,
         upstream=upstream,
@@ -730,6 +763,9 @@ async def _proxy(
             # Follow-up to #1971 — index 17 = FastAPI request path so
             # /proxy/* vs /gateway/v1/* is queryable from audit rows.
             request.url.path,
+            # Phase 2 of #1959 — index 18 = durable row id. When set,
+            # _schedule_audit dispatches to finalize() instead of record().
+            _durable_row_id,
         ),
         upstream_api_key=_upstream_key,
         vendor_key=_vault_key_val,

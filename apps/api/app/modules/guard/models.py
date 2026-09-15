@@ -240,10 +240,30 @@ class GuardAuditEvent(Base):
     # new /gateway/v1/* traffic is queryable directly from audit rows.
     # NULL for in-process callers that never had an HTTP route.
     route = Column(String(128), nullable=True)
+    # Added by revision 0132 — Phase 1 of #1959 (durable inference audit).
+    # The two-phase writer emits an 'accepted' row before inference and
+    # 'finalize()'s it after. All five columns are nullable so Phase-0
+    # single-phase writers and every historical row stay valid.
+    request_id = Column(UUID(as_uuid=True), nullable=True)
+    lifecycle_state = Column(String(20), nullable=True)  # accepted|finalized|orphaned|expired
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+    finalized_at = Column(DateTime(timezone=True), nullable=True)
+    lease_expires_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("ix_guard_audit_events_source", "workspace_id", "source", "ts"),
         Index("ix_guard_audit_events_route", "route"),
+        Index(
+            "ux_guard_audit_events_request_id",
+            "request_id",
+            unique=True,
+            postgresql_where=sa.text("request_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_guard_audit_events_accepted_lease",
+            "workspace_id", "lease_expires_at",
+            postgresql_where=sa.text("lifecycle_state = 'accepted'"),
+        ),
         Index(
             "ix_guard_audit_events_provider",
             "workspace_id", "provider", "ts",
