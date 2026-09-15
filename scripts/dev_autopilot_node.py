@@ -17,21 +17,21 @@ Silent (--silent)
 Usage
 -----
   # E2E (real issue + Slack)
-  python scripts/test_autopilot_node.py \\
+  python scripts/dev_autopilot_node.py \\
     --gh-token ghp_xxx \\
     --api-key  <conduct-api-key> \\
     --workspace <workspace-id> \\
     --workflow-id <autopilot-workflow-id>
 
   # Silent (synthetic trigger, no Slack)
-  python scripts/test_autopilot_node.py --silent \\
+  python scripts/dev_autopilot_node.py --silent \\
     --gh-token ghp_xxx \\
     --api-key  <conduct-api-key> \\
     --workspace <workspace-id> \\
     --workflow-id <autopilot-workflow-id>
 
   # Skip cleanup (leave issue/PR open for inspection)
-  python scripts/test_autopilot_node.py --no-cleanup ...
+  python scripts/dev_autopilot_node.py --no-cleanup ...
 
 Config fallback: if --api-key / --workspace are omitted, reads ~/.conduct/config.json.
 """

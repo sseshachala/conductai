@@ -1,0 +1,46 @@
+name: smoke-gateway
+
+# Hourly regression guard for the Gateway audit path. Fires one
+# GET /gateway/v1/anthropic/v1/models call against prod and verifies the
+# resulting guard_audit_events row carries both agent_identity_id (#1971
+# Phase 0) and route (#1973). Fails the workflow (email to maintainers)
+# on any regression so we catch a broken writer within an hour.
+
+on:
+  schedule:
+    - cron: "17 * * * *" # hourly at :17 to spread runner load
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-gateway
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Gateway HTTP + audit smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Run Gateway audit smoke
+        env:
+          CONDUCT_API_URL: https://api.conductai.ai
+          CONDUCT_TOKEN: ${{ secrets.SMOKE_GATEWAY_TOKEN }}
+        run: |
+          if [ -z "$CONDUCT_TOKEN" ]; then
+            echo "SKIP: SMOKE_GATEWAY_TOKEN secret is not set. Add a cond_agt_* token"
+            echo "  to repo Settings → Secrets → Actions → SMOKE_GATEWAY_TOKEN"
+            exit 0
+          fi
+          python3 apps/api/scripts/smoke_gateway_live.py

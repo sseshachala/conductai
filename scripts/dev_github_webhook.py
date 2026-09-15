@@ -3,7 +3,7 @@
 CLI test: verify GitHub PAT can list and create webhooks on a repo.
 
 Usage:
-  python scripts/test_github_webhook.py --token ghp_xxx --repo owner/repo
+  python scripts/dev_github_webhook.py --token ghp_xxx --repo owner/repo
 
 Steps:
   1. Verify token identity (GET /user)
