@@ -130,12 +130,43 @@ async def _stream_chunks(
     background: BackgroundTasks, audit_args: tuple,
     upstream_url: str | None = None,
 ) -> AsyncIterator[bytes]:
-    """Pass-through every chunk. Schedule the audit event after the stream
-    closes — we don't parse mid-stream in V1."""
+    """Pass-through every chunk. Finalize the audit event inline in the
+    finally so a client disconnect or aclose() exception cannot prevent
+    the write (P1 review Finding 4).
+
+    During the stream, periodically renew the durable row's lease so a
+    legitimate long completion is never orphaned mid-flight (P1 review
+    Finding 2 — actor-heartbeat pattern). Renewal cadence is a fraction
+    of the lease, tuned by guard_durable_audit_stream_renew_seconds.
+    """
+    import asyncio as _asyncio
+    from app.core.config import settings
+    from app.guard.audit import renew_lease as _renew_lease
+
     collected = bytearray()
     execution_status = "success"
     result_summary = None
+    _durable_row_id = audit_args[18] if len(audit_args) > 18 else None
+    _workspace_id = audit_args[0] if audit_args else None
+    _renew_interval = settings.guard_durable_audit_stream_renew_seconds
+    _renew_task: _asyncio.Task | None = None
+
+    async def _renewal_loop() -> None:
+        while True:
+            await _asyncio.sleep(_renew_interval)
+            if _durable_row_id and _workspace_id:
+                try:
+                    _renew_lease(
+                        _durable_row_id,
+                        _workspace_id,
+                        additional_seconds=settings.guard_durable_audit_lease_seconds,
+                    )
+                except Exception:
+                    log.warning("guard.stream.lease_renew_swallowed")
+
     try:
+        if _durable_row_id and _renew_interval > 0:
+            _renew_task = _asyncio.create_task(_renewal_loop())
         async for chunk in resp.aiter_bytes():
             collected.extend(chunk)
             yield chunk
@@ -144,13 +175,62 @@ async def _stream_chunks(
         result_summary = f"Upstream stream failed: {type(exc).__name__}"
         raise
     finally:
-        await resp.aclose()
-        await client.aclose()
-        _schedule_audit(
-            background, audit_args, response_bytes=bytes(collected),
-            upstream=upstream_url, execution_status=execution_status,
-            result_summary=result_summary,
-        )
+        if _renew_task is not None:
+            _renew_task.cancel()
+            try:
+                await _renew_task
+            except (Exception, _asyncio.CancelledError):
+                pass
+        try:
+            await resp.aclose()
+        except Exception:
+            pass
+        try:
+            await client.aclose()
+        except Exception:
+            pass
+        # Post-P1 Finding 4: finalize INLINE for durable rows so a
+        # client-side disconnect can't lose the outcome via a
+        # never-scheduled background task. Single-phase writes still
+        # go through the scheduler (record() is idempotent enough).
+        if _durable_row_id:
+            try:
+                from app.guard.audit import finalize as _finalize_inline
+                _finalize_inline(
+                    _durable_row_id,
+                    _workspace_id,
+                    decision=audit_args[5],
+                    provider=audit_args[3],
+                    model=audit_args[4],
+                    body=audit_args[8],
+                    response_bytes=bytes(collected),
+                    duration_ms=int((time.monotonic() - audit_args[7]) * 1000),
+                    rule_id=audit_args[6],
+                    routing_meta=audit_args[15] if len(audit_args) > 15 else None,
+                    execution_status=execution_status,
+                    result_summary=result_summary,
+                    clerk_user_id=audit_args[1],
+                    ai_tool=audit_args[2],
+                    user_email=audit_args[10] if len(audit_args) > 10 else None,
+                )
+            except Exception:
+                # Last-resort escalation to background so we at least
+                # try again out of the request lifecycle.
+                log.exception("guard.stream.inline_finalize_failed")
+                try:
+                    _schedule_audit(
+                        background, audit_args, response_bytes=bytes(collected),
+                        upstream=upstream_url, execution_status=execution_status,
+                        result_summary=result_summary,
+                    )
+                except Exception:
+                    log.exception("guard.stream.background_finalize_also_failed")
+        else:
+            _schedule_audit(
+                background, audit_args, response_bytes=bytes(collected),
+                upstream=upstream_url, execution_status=execution_status,
+                result_summary=result_summary,
+            )
 
 
 # ─── Public API — upstream fanout ─────────────────────────────────────────────

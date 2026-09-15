@@ -31,7 +31,7 @@ from urllib.parse import urlparse as _urlparse
 import httpx
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -722,37 +722,82 @@ async def _proxy(
                 conductai_workflow_id=_workflow_id,
             )
         except Exception as _e:
-            # Post-Phase 4 self-review: distinguish request_id collisions
-            # (client retried with the same X-Request-Id) from any other
-            # failure. On a collision the durable row already exists and
-            # we just need to reuse its id so finalize() targets it.
-            # On any other exception we fall back to single-phase record()
-            # so inference never breaks for a Guard audit-write issue.
+            # Post-P1 review Findings 1 + 3. Distinguish two failure
+            # classes and handle each correctly:
+            #
+            #   (a) IntegrityError on request_id → client retried the
+            #       same X-Request-Id. Never forward inference twice —
+            #       either replay the original response body from the
+            #       Redis cache (true idempotency) or return 409 with a
+            #       receipt id so the client can poll status.
+            #
+            #   (b) Any other exception → real durable-write failure
+            #       (DB down, disk full, transient blip). Fail closed
+            #       per the 'persist before forwarding' contract; do
+            #       NOT let inference proceed without a durable record.
+            #       Operators can flip settings.guard_durable_audit_fail
+            #       _closed=false for local dev only.
             from sqlalchemy.exc import IntegrityError as _IntegrityError
             if isinstance(_e, _IntegrityError):
+                from app.guard import response_cache as _rc
+                # Streaming responses cannot be safely replayed from
+                # bytes; always return 409 for that case so the client
+                # doesn't get a half-stream.
+                _cached = _rc.fetch(_request_id) if not is_stream else None
+                if _cached is not None:
+                    log.info(
+                        "guard.proxy.idempotent_replay_hit",
+                        request_id=_request_id,
+                    )
+                    return Response(
+                        content=_cached.body,
+                        status_code=_cached.status_code,
+                        media_type=_cached.content_type,
+                    )
+                _existing = None
                 try:
-                    _durable_row_id = db.execute(
+                    _existing = db.execute(
                         text(
-                            "SELECT id::text FROM guard_audit_events "
+                            "SELECT id::text AS id, lifecycle_state "
+                            "FROM guard_audit_events "
                             "WHERE request_id = CAST(:rid AS uuid) LIMIT 1"
                         ),
                         {"rid": _request_id},
-                    ).scalar()
-                    log.info(
-                        "guard.proxy.durable_audit_retry_reused",
-                        request_id=_request_id,
-                        row_id=_durable_row_id,
-                    )
-                except Exception as _lookup_err:
-                    log.warning(
-                        "guard.proxy.durable_audit_retry_lookup_failed",
-                        request_id=_request_id,
-                        err=str(_lookup_err),
-                    )
-                    _durable_row_id = None
-            else:
-                log.warning("guard.proxy.durable_audit_insert_failed", err=str(_e))
-                _durable_row_id = None
+                    ).fetchone()
+                except Exception:
+                    pass
+                _row_id = _existing[0] if _existing else None
+                _state = _existing[1] if _existing else "unknown"
+                log.info(
+                    "guard.proxy.request_id_conflict",
+                    request_id=_request_id,
+                    receipt_id=_row_id,
+                    state=_state,
+                )
+                return _fail_closed(
+                    409,
+                    "Duplicate X-Request-Id. The original attempt is still "
+                    "in flight or its cached response has expired. Poll the "
+                    "receipt or retry with a fresh X-Request-Id.",
+                    extra={"receipt_id": _row_id, "state": _state},
+                )
+            if settings.guard_durable_audit_fail_closed:
+                log.error(
+                    "guard.proxy.durable_audit_fail_closed",
+                    err=str(_e),
+                    request_id=_request_id,
+                )
+                return _fail_closed(
+                    503,
+                    "Guard durable audit write failed — refusing to forward "
+                    "inference without a durable record. Retry the request.",
+                )
+            log.warning(
+                "guard.proxy.durable_audit_fail_open",
+                err=str(_e),
+                request_id=_request_id,
+            )
+            _durable_row_id = None
 
     _response = await transport.forward(
         sender=_forward,
@@ -823,6 +868,29 @@ async def _proxy(
             agent_risk_tier=_agent_risk_tier,
             ai_tool=ai_tool,
         )
+
+    # Post-P1 Finding 3 — populate the response cache so a retried
+    # X-Request-Id can be replayed verbatim without forwarding again.
+    # Streams cannot cache; only non-streaming success paths qualify.
+    if (
+        _durable_row_id
+        and not is_stream
+        and isinstance(_response, JSONResponse)
+        and _response.status_code < 400
+    ):
+        try:
+            from app.guard import response_cache as _rc
+            _rc.store(
+                _request_id,
+                _response.status_code,
+                _response.media_type or "application/json",
+                _response.body,
+                ttl_seconds=settings.guard_durable_audit_response_cache_seconds,
+            )
+        except Exception:
+            log.warning("guard.proxy.response_cache_store_swallowed",
+                        request_id=_request_id)
+
     return _response
 
 
