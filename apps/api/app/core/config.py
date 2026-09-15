@@ -118,6 +118,12 @@ class Settings(BaseSettings):
     # dropped. Tune per traffic pattern once real telemetry lands.
     guard_durable_audit_lease_seconds: int = 60
 
+    # Phase 4 of #1959 — reconciler poll interval. Runs every 120s by
+    # default (2× the lease), so an orphan surfaces within one interval
+    # of its lease expiring. Set to 0 to disable the daemon; useful in
+    # local dev or when the trial worker is the only workload.
+    guard_durable_audit_reconciler_seconds: int = 120
+
     # /metrics scrape token — audit O01. Empty in production means /metrics
     # refuses every caller (fail-closed). Empty in local/development leaves
     # the endpoint open so devs can `curl /metrics` without extra setup.
