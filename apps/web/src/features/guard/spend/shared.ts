@@ -81,6 +81,19 @@ export interface AiToolBreakdown {
   cost_saved: number
 }
 
+export interface ModelBreakdown {
+  provider: string
+  model: string
+  tokens_after: number
+  cost_usd: number
+}
+
+export interface ProviderBreakdown {
+  provider: string
+  tokens_after: number
+  cost_usd: number
+}
+
 export interface SpendData {
   team_id: string
   period: string
@@ -93,6 +106,8 @@ export interface SpendData {
   hook_sessions: number
   by_developer: DeveloperSpend[]
   by_ai_tool: AiToolBreakdown[]
+  by_model?: ModelBreakdown[]
+  by_provider?: ProviderBreakdown[]
 }
 
 export interface TeamBudgetSettings {
