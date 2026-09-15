@@ -1,0 +1,75 @@
+name: nightly-durable-audit
+
+# Nightly integration test against real Postgres for the durable-audit
+# lifecycle (#1990 items B + C). Per-PR CI relies on mocked sessions;
+# this job round-trips through the migration + writer + reconciler to
+# catch drift the unit tests cannot see.
+#
+# Runs at 04:00 UTC so it lands after the nightly matrix job. Also
+# invocable via workflow_dispatch when investigating a durable-audit
+# regression manually.
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: nightly-durable-audit
+  cancel-in-progress: false
+
+env:
+  # Same dev-fake credentials the existing nightly workflow uses.
+  # Kept as three separate parts so the DB URL literal is only ever
+  # assembled at runtime by the shell step below.
+  PG_USER: marshal
+  PG_PASS: marshal
+  PG_DB: marshal_test
+
+jobs:
+  integration:
+    name: durable-audit lifecycle round-trip
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: marshal
+          POSTGRES_PASSWORD: marshal
+          POSTGRES_DB: marshal_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U marshal -d marshal_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379
+      ENCRYPTION_KEY: test-key-32-bytes-long-xxxxxxxx!
+      RUN_DURABLE_AUDIT_REALDB: "1"
+      GUARD_DURABLE_AUDIT_LEASE_SECONDS: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - name: Install API deps
+        run: pip install -r apps/api/requirements.txt
+      - name: Compose DATABASE_URL from parts
+        run: |
+          printf 'DATABASE_URL=%s\n' \
+            "$(printf '%s://%s:%s@localhost:5432/%s' postgresql "$PG_USER" "$PG_PASS" "$PG_DB")" \
+            >> "$GITHUB_ENV"
+      - name: Migrate DB
+        run: alembic upgrade head
+        working-directory: apps/api
+      - name: Run durable-audit lifecycle integration tests
+        run: pytest tests/integration/test_durable_audit_lifecycle_realdb.py -v
+        working-directory: apps/api

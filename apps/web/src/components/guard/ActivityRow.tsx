@@ -336,11 +336,15 @@ export function SignatureTamperRow({ ev, isLast = false }: { ev: AuditEvent; isL
 }
 
 
-export function ActivityRow({ ev, compact = false, isLast = false, visibleColumns }: {
+export function ActivityRow({ ev, compact = false, isLast = false, visibleColumns, nowOffsetMs }: {
   ev: AuditEvent
   compact?: boolean
   isLast?: boolean
   visibleColumns?: readonly ColumnKey[]
+  // #1990 item D — server-time drift threaded from the page state so
+  // LifecyclePill's client-side 'expired' detection stays honest even
+  // if the browser clock is skewed.
+  nowOffsetMs?: number
 }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
@@ -551,7 +555,7 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
       )}
       {showCol.has("lifecycle") && (
         <div>
-          <LifecyclePill state={ev.lifecycle_state} leaseExpiresAt={ev.lease_expires_at} />
+          <LifecyclePill state={ev.lifecycle_state} leaseExpiresAt={ev.lease_expires_at} nowOffsetMs={nowOffsetMs} />
         </div>
       )}
     </div>

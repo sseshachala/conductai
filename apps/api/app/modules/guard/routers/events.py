@@ -1196,16 +1196,31 @@ def cost_trend(
 
 # ── GET /guard/events/stream — SSE real-time feed ─────────────────────────────
 
-def _fetch_new_events(workspace_id: str, since: datetime) -> tuple[list[dict], datetime]:
-    """Query DB for events newer than `since`. Returns (events, new_cursor).
+# SSE cursor type: (ts, id). Keyset pagination — deterministic strict
+# ordering so rows at the same wallclock never span a poll boundary
+# (#1990 item A). Nil id used as the lower bound on the initial cursor.
+_SSE_NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
-    Includes durable-audit rows that were UPDATEd to lifecycle_state='finalized'
-    past the cursor (#1959 Phase 3) so the Flight Recorder UI can flip the
-    lifecycle pill from ⏳ to ✓ in place without a manual reload. Cursor
-    advances on max(ts, finalized_at) so subsequent polls don't lose the
-    original INSERT and don't re-emit the same finalize.
+
+def _fetch_new_events(
+    workspace_id: str,
+    since: tuple[datetime, str],
+) -> tuple[list[dict], tuple[datetime, str]]:
+    """Query DB for events past the (ts, id) cursor. Returns (events, new_cursor).
+
+    Uses keyset pagination on (ts, id) — deterministic, strict, no dedupe
+    needed. Rows landing at the exact same microsecond as the previous
+    batch's tail are still delivered because the id tiebreaker guarantees
+    the (ts, id) tuple strictly moves forward.
+
+    Also catches durable-audit rows that were UPDATEd to
+    lifecycle_state='finalized' past the cursor (#1959 Phase 3) so the
+    Flight Recorder UI can flip the lifecycle pill from ⏳ to ✓ in place
+    without a manual reload. Cursor advances on the largest (ts, id) tuple
+    observed in the batch.
     """
-    from sqlalchemy import or_
+    from sqlalchemy import or_, and_, tuple_
+    since_ts, since_id = since
     db = SessionLocal()
     try:
         org_ws = _org_ws_subquery(db, workspace_id)
@@ -1214,24 +1229,37 @@ def _fetch_new_events(workspace_id: str, since: datetime) -> tuple[list[dict], d
             .filter(
                 GuardAuditEvent.workspace_id.in_(org_ws),
                 or_(
-                    GuardAuditEvent.ts > since,
-                    GuardAuditEvent.finalized_at > since,
+                    # Strict keyset predicate on the (ts, id) tuple —
+                    # equivalent to `(ts, id) > (since_ts, since_id)`.
+                    GuardAuditEvent.ts > since_ts,
+                    and_(
+                        GuardAuditEvent.ts == since_ts,
+                        GuardAuditEvent.id > since_id,
+                    ),
+                    # Rows finalized past the cursor's ts flip the pill
+                    # in place. They may or may not satisfy the ts key
+                    # predicate; the OR guarantees they still surface.
+                    GuardAuditEvent.finalized_at > since_ts,
                 ),
             )
-            .order_by(GuardAuditEvent.ts.asc())
+            .order_by(GuardAuditEvent.ts.asc(), GuardAuditEvent.id.asc())
             .limit(50)
             .all()
         )
         if not rows:
             return [], since
-        # Advance cursor to the newest wallclock we observed on any row —
-        # either its accepted-time ts or its finalize-time. Missing one
-        # falls back to the other, so single-phase rows still advance.
-        newest = max(
-            (r.finalized_at or r.ts for r in rows),
-            default=since,
+        # Advance the tuple to (max_ts, id_of_row_with_max_ts). For finalize
+        # UPDATEs we still key on ts so subsequent polls don't loop back to
+        # the accepted row.
+        newest_row = max(
+            rows,
+            key=lambda r: (r.finalized_at or r.ts, str(r.id)),
         )
-        return [_event_to_dict(e) for e in rows], newest
+        newest_ts = newest_row.finalized_at or newest_row.ts
+        return (
+            [_event_to_dict(e) for e in rows],
+            (newest_ts, str(newest_row.id)),
+        )
     finally:
         db.close()
 
@@ -1265,7 +1293,7 @@ async def stream_events(
                 return _Resp(status_code=403, content="Not a member of this workspace")
 
     async def event_generator():
-        cursor = _now()
+        cursor: tuple[datetime, str] = (_now(), _SSE_NIL_UUID)
         deadline = asyncio.get_event_loop().time() + SSE_MAX_DURATION
 
         while asyncio.get_event_loop().time() < deadline:
@@ -1276,7 +1304,15 @@ async def stream_events(
                     None, _fetch_new_events, workspace_id, cursor
                 )
                 if events:
-                    yield f"data: {json.dumps({'events': events})}\n\n"
+                    # Include server_time on every payload — the client
+                    # uses the drift between this and its Date.now() to
+                    # correct LifecyclePill's client-side 'expired'
+                    # detection (#1990 item D). Cheap, one ISO string.
+                    payload = {
+                        "events": events,
+                        "server_time": _now().isoformat(),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
             except Exception:
                 yield "data: {\"error\": true}\n\n"
             await asyncio.sleep(SSE_POLL_INTERVAL)
