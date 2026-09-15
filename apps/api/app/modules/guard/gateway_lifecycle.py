@@ -80,7 +80,12 @@ async def open_durable_row(
     """
     from sqlalchemy.exc import IntegrityError
 
-    if not settings.guard_use_durable_audit:
+    # #1995 canary — deterministic per-workspace gate. Global flag is
+    # still the kill switch; allowlist + pct control incremental rollout
+    # without a code deploy. Same workspace always lands in the same
+    # bucket, so a workspace never oscillates between the two writer
+    # paths mid-session.
+    if not settings.durable_audit_enabled_for(workspace_id):
         return DurableRow()
 
     # Server-owned request_id. Client X-Request-Id lives in routing_meta.

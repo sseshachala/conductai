@@ -433,8 +433,18 @@ def main() -> None:
     durable_audit_reconciler = threading.Thread(
         target=_durable_audit_reconciler_loop, daemon=True, name="durable-audit-reconciler"
     )
+    # #1996 — Slack alerter for durable-audit failures. Reads the
+    # GUARD_AUDIT_FAILED counter, computes deltas, posts to
+    # GUARD_OPS_ALERT_SLACK_CHANNEL when a per-reason threshold is
+    # crossed. Missing token/channel = log-only (safe default in
+    # staging / local).
+    from app.modules.guard.durable_audit_alerter import durable_audit_alerter_loop
+    durable_audit_alerter = threading.Thread(
+        target=durable_audit_alerter_loop, daemon=True, name="durable-audit-alerter"
+    )
     guard_inbox_auto_close.start()
     durable_audit_reconciler.start()
+    durable_audit_alerter.start()
 
     if CONCURRENCY == 1:
         _loop(0)

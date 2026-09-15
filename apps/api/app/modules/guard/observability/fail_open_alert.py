@@ -2,30 +2,28 @@
 
 Posts a single Slack message per (workspace_id, surface) burst so a broken
 policy engine (e.g. Redis outage) can't spam the ops channel thousands of
-times per minute. Reads ``CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL`` from env;
-if unset the alerter no-ops and only the Prometheus counter fires.
+times per minute. Routes through the shared ``post_platform_alert``
+helper — same platform-operator credential path as the durable-audit
+alerter and (post-migration) the trial-spend alerter.
 
-Customer-facing WARNING alerts (using the workspace's own Slack config) are
-tracked separately in PR 2 of #1520.
+Customer-facing WARNING alerts (using the workspace's own Slack config)
+are tracked separately in ``customer_alert.py``.
 """
 from __future__ import annotations
 
-import os
 import time
 import uuid
 
-import httpx
 import structlog
 from sqlalchemy.orm import Session
 
 from app.modules.guard.observability.metrics import GUARD_ENGINE_ERRORS
 from app.modules.guard.observability.name_cache import resolve_workspace_context
+from app.modules.guard.observability.platform_slack import post_platform_alert
 
 log = structlog.get_logger(__name__)
 
-_ALERT_CHANNEL_ENV = "CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL"
 _RATE_LIMIT_SEC = 300  # 5 minutes per (workspace_id, surface)
-_HTTP_TIMEOUT_SEC = 3.0
 
 # In-process dedup: (workspace_id, surface) -> (first_hit_monotonic, burst_count)
 _dedup: dict[tuple[str, str], tuple[float, int]] = {}
@@ -114,10 +112,6 @@ def record_fail_open(
     # in customer_alert._should_post.
     _also_notify_customer(db, ws_id)
 
-    webhook = os.environ.get(_ALERT_CHANNEL_ENV, "").strip()
-    if not webhook:
-        return
-
     post_now, burst = _should_post((ws_id, surface))
     if not post_now:
         return
@@ -141,13 +135,10 @@ def record_fail_open(
         error=error,
         burst=burst,
     )
-
-    try:
-        httpx.post(webhook, json=payload, timeout=_HTTP_TIMEOUT_SEC)
-    except Exception as exc:  # noqa: BLE001
-        # Slack itself failed. Log at WARN; do not retry — the outage that
-        # triggered fail-open may also be affecting outbound network.
-        log.warning("guard.fail_open.slack_post_failed", err=str(exc), surface=surface)
+    # post_platform_alert never raises — Slack outages are logged and
+    # swallowed. Matches the prior fail_open behavior where a Slack
+    # post failure could not defeat the caller's fail-open decision.
+    post_platform_alert(surface=f"fail_open:{surface}", text=payload["text"])
 
 
 def _also_notify_customer(db: Session | None, workspace_id: str) -> None:
