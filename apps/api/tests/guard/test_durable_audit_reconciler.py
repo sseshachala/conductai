@@ -153,3 +153,16 @@ def test_reconcile_rolls_back_on_failure():
 def test_reconcile_returns_zero_when_nothing_matched():
     sess = _CapturingSession(rowcount=0)
     assert reconcile_orphaned(sess) == 0
+
+
+
+def test_reconcile_stamps_decision_error_on_orphaned_rows():
+    """Orphaned rows keep the 'accepted' placeholder decision from
+    insert_accepted() unless the reconciler overwrites it. Dashboards
+    that group by decision would misclassify them as normal allowed
+    traffic. The reconciler stamps decision='error' so the row surfaces
+    as an error (an existing decision value; no new enum, no query
+    layer needs to learn a new state)."""
+    sess = _CapturingSession()
+    reconcile_orphaned(sess)
+    assert "decision        = 'error'" in sess.last_sql

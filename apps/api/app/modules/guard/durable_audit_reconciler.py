@@ -61,6 +61,12 @@ def reconcile_orphaned(
 
     Never regresses a finalized row — the same invariant finalize()
     established. Phase 5's contract tests assert this explicitly.
+
+    Also stamps decision='error' so a row surfaces as an error in any
+    query that groups by decision (dashboards, spend rollups, trigger
+    conditions). Without this stamp, orphaned rows kept the placeholder
+    'accepted' decision from insert_accepted() and misled the analytics
+    into treating them as normal allowed traffic.
     """
     sql = """
         WITH candidates AS (
@@ -76,6 +82,7 @@ def reconcile_orphaned(
         )
         UPDATE guard_audit_events e
         SET lifecycle_state = 'orphaned',
+            decision        = 'error',
             finalized_at    = COALESCE(e.finalized_at, now())
         FROM candidates c
         WHERE e.id = c.id
