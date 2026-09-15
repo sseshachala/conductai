@@ -29,8 +29,8 @@ export const ALL_COLUMNS = [
   { key: "actor", label: "Actor" },
   { key: "tool", label: "Tool" },
   { key: "call", label: "Action" },
-  { key: "decision", label: "Decision" },
   { key: "rule", label: "Rule" },
+  { key: "decision", label: "Decision" },
   { key: "blast", label: "Blast Radius" },
   // #1959 Phase 3 — opt-in durable-audit lifecycle column. Legacy rows
   // read NULL and render as em dash so the column adds no noise for

@@ -499,22 +499,6 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
       </div>
       </>
       )}
-      {showCol.has("decision") && (
-      <div>
-        {ev.execution_status === "error" || ev.execution_status === "timeout" ? (
-          <span title={ev.result_summary || "Gateway execution failed"} style={{ display: "inline-flex", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, color: "var(--err)", background: "var(--err-bg)" }}>
-            {ev.execution_status === "timeout" ? "Timeout" : "Error"}
-          </span>
-        ) : ev.conductai_run_id ? (
-          <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
-            <DecisionBadge decision={ev.decision} />
-            <span style={{ fontSize: 11, color: "var(--accent-text)" }}>→</span>
-          </Link>
-        ) : (
-          <DecisionBadge decision={ev.decision} />
-        )}
-      </div>
-      )}
       {showCol.has("rule") && (
       <div className="mono" style={{ fontSize: 11, color: ev.rule_id ? "var(--err)" : "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{ev.rule_id ?? "—"}</span>
@@ -537,6 +521,22 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
           >
             +{ev.evaluated_rules.length - 1}
           </span>
+        )}
+      </div>
+      )}
+      {showCol.has("decision") && (
+      <div>
+        {ev.execution_status === "error" || ev.execution_status === "timeout" ? (
+          <span title={ev.result_summary || "Gateway execution failed"} style={{ display: "inline-flex", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, color: "var(--err)", background: "var(--err-bg)" }}>
+            {ev.execution_status === "timeout" ? "Timeout" : "Error"}
+          </span>
+        ) : ev.conductai_run_id ? (
+          <Link href={`/workflows/${ev.conductai_workflow_id}/runs/${ev.conductai_run_id}`} onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" }}>
+            <DecisionBadge decision={ev.decision} />
+            <span style={{ fontSize: 11, color: "var(--accent-text)" }}>→</span>
+          </Link>
+        ) : (
+          <DecisionBadge decision={ev.decision} />
         )}
       </div>
       )}
@@ -657,8 +657,8 @@ export function ActivityHeader({ compact = false, visibleColumns }: {
       {showCol.has("actor") && <div>Actor</div>}
       {showCol.has("tool") && <div>Tool</div>}
       {showCol.has("call") && <div>Action</div>}
-      {showCol.has("decision") && <div>Decision</div>}
       {showCol.has("rule") && <div>Rule</div>}
+      {showCol.has("decision") && <div>Decision</div>}
       {showCol.has("blast") && <div>Blast</div>}
       {showCol.has("lifecycle") && <div>Lifecycle</div>}
     </div>
