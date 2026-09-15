@@ -258,3 +258,157 @@ def test_finalize_binds_row_id_as_target():
     row_id = "77777777-7777-7777-7777-777777777777"
     _finalize(sess, row_id=row_id)
     assert sess.last_params.get("row_id") == row_id
+
+
+
+# ─── Phase 2: expanded field coverage ─────────────────────────────────────────
+
+
+def test_insert_accepted_threads_share_token_hash():
+    """Trial workspace blocks mint a share token whose sha256 goes on the
+    accepted row so the anonymous receipt endpoint can authenticate."""
+    sess = _CapturingSession()
+    _insert(sess, share_token_hash="deadbeef" * 8)
+    assert sess.last_params.get("share_token_hash") == "deadbeef" * 8
+
+
+def test_insert_accepted_threads_conductai_workflow_metadata():
+    """Workflow-driven proxy calls carry run_id + workflow + workflow_id so
+    the Flight Recorder in Phase 3 can link an audit row back to a run."""
+    sess = _CapturingSession()
+    _insert(
+        sess,
+        conductai_run_id="run_abc",
+        conductai_workflow="triage-pipeline",
+        conductai_workflow_id="wf_def",
+    )
+    assert sess.last_params.get("run_id") == "run_abc"
+    assert sess.last_params.get("workflow") == "triage-pipeline"
+    assert sess.last_params.get("workflow_id") == "wf_def"
+
+
+def test_insert_accepted_threads_blast_radius():
+    """Hook events pass blast_radius (JSON dict); insert_accepted must
+    persist it as jsonb, not str."""
+    sess = _CapturingSession()
+    _insert(sess, blast_radius={"tool": "bash", "cwd": "/tmp"})
+    import json as _json
+    assert _json.loads(sess.last_params["blast_radius"]) == {"tool": "bash", "cwd": "/tmp"}
+
+
+def test_finalize_persists_evaluated_rules_and_defense_score():
+    """Layered verdict envelope (#1150) must survive the accepted->finalized
+    UPDATE. The COALESCE guards let a caller update evaluated_rules
+    without wiping a value the accepted row already carried."""
+    sess = _CapturingSession()
+    _finalize(
+        sess,
+        evaluated_rules=[{"rule_id": "no-creds", "severity": "critical", "action": "block"}],
+        defense_score=80,
+    )
+    import json as _json
+    assert sess.last_params.get("score") == 80
+    parsed = _json.loads(sess.last_params["eval"])
+    assert parsed[0]["rule_id"] == "no-creds"
+
+
+def test_finalize_persists_rule_message():
+    sess = _CapturingSession()
+    _finalize(sess, rule_message="Credential detected in prompt.")
+    assert sess.last_params.get("rule_message") == "Credential detected in prompt."
+
+
+def test_finalize_calls_notify_guard_block_on_blocked_decision():
+    """Phase 1 self-review gap #2 — record() fires the Slack notifier when
+    it writes a block; finalize() must mirror that or block-worthy
+    durable-path calls go silent in Slack."""
+    from unittest.mock import MagicMock
+    sess = _CapturingSession(rowcount_for_update=1)
+    _notifier = MagicMock()
+
+    import app.modules.guard.routers.events as _events_mod
+    with patch.object(_events_mod, "notify_guard_block", _notifier):
+        _finalize(sess, decision="blocked", rule_id="proxy-no-credential-leak")
+
+    assert _notifier.called
+    kw = _notifier.call_args.kwargs
+    assert kw["decision"] == "blocked"
+    assert kw["rule_id"] == "proxy-no-credential-leak"
+    assert kw["source"] == "proxy"
+
+
+def test_finalize_does_not_notify_when_no_row_matched():
+    """If the UPDATE returned rowcount=0 the row was already finalized or
+    is gone — firing Slack in that case would double-alert. Skip."""
+    from unittest.mock import MagicMock
+    sess = _CapturingSession(rowcount_for_update=0)
+    _notifier = MagicMock()
+    import app.modules.guard.routers.events as _events_mod
+    with patch.object(_events_mod, "notify_guard_block", _notifier):
+        _finalize(sess, decision="blocked", rule_id="proxy-no-credential-leak")
+    assert not _notifier.called
+
+
+def test_finalize_does_not_notify_for_allowed_decisions():
+    from unittest.mock import MagicMock
+    sess = _CapturingSession()
+    _notifier = MagicMock()
+    import app.modules.guard.routers.events as _events_mod
+    with patch.object(_events_mod, "notify_guard_block", _notifier):
+        _finalize(sess, decision="allowed")
+    assert not _notifier.called
+
+
+# ─── Phase 2: _schedule_audit dispatcher ──────────────────────────────────────
+
+
+def test_schedule_audit_calls_finalize_when_durable_id_present():
+    """audit_args[18] is the durable row id. When set, _schedule_audit
+    routes to finalize() and never calls record()."""
+    from fastapi import BackgroundTasks
+    from unittest.mock import MagicMock, patch as _patch
+    from app.guard.router import _schedule_audit
+
+    bg = BackgroundTasks()
+    audit_args = (
+        WS_ID, "user_abc", "claude-code", "anthropic", "claude-sonnet",
+        "allowed", None, 12345.0, {"messages": []},
+        "prompt", "user@example.com", None, None, None, None, None,
+        AGENT_ID, "/proxy/anthropic/v1/messages",
+        "22222222-2222-2222-2222-222222222222",  # durable row id
+    )
+    fake_finalize = MagicMock()
+    fake_record = MagicMock()
+    with _patch("app.guard.router._finalize_audit", fake_finalize), \
+         _patch("app.guard.router._record_audit", fake_record):
+        _schedule_audit(bg, audit_args, response_bytes=b"{}", upstream=None)
+    for task in bg.tasks:
+        task.func(*task.args, **task.kwargs)
+    assert fake_finalize.called
+    assert not fake_record.called
+    assert fake_finalize.call_args.args[0] == "22222222-2222-2222-2222-222222222222"
+
+
+def test_schedule_audit_calls_record_when_no_durable_id():
+    """Single-phase remains the default: without audit_args[18] we still go
+    through record() so the flag-off code path is unchanged."""
+    from fastapi import BackgroundTasks
+    from unittest.mock import MagicMock, patch as _patch
+    from app.guard.router import _schedule_audit
+
+    bg = BackgroundTasks()
+    audit_args = (
+        WS_ID, "user_abc", "claude-code", "anthropic", "claude-sonnet",
+        "allowed", None, 12345.0, {"messages": []},
+        "prompt", "user@example.com", None, None, None, None, None,
+        AGENT_ID, "/proxy/anthropic/v1/messages",
+    )
+    fake_finalize = MagicMock()
+    fake_record = MagicMock()
+    with _patch("app.guard.router._finalize_audit", fake_finalize), \
+         _patch("app.guard.router._record_audit", fake_record):
+        _schedule_audit(bg, audit_args, response_bytes=b"{}", upstream=None)
+    for task in bg.tasks:
+        task.func(*task.args, **task.kwargs)
+    assert fake_record.called
+    assert not fake_finalize.called

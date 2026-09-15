@@ -322,6 +322,14 @@ def insert_accepted(
     routing_meta: dict | None = None,
     lease_seconds: int | None = None,
     receipt_id: str | None = None,
+    # Phase 2: field coverage parity with record() for pre-inference-knowable
+    # fields. evaluated_rules + defense_score belong on finalize() because
+    # they're policy-eval outputs known post-inference.
+    share_token_hash: str | None = None,
+    conductai_run_id: str | None = None,
+    conductai_workflow: str | None = None,
+    conductai_workflow_id: str | None = None,
+    blast_radius: dict | None = None,
 ) -> str:
     """Write an 'accepted' row before inference. Returns the row id.
 
@@ -366,7 +374,12 @@ def insert_accepted(
                   request_id,
                   lifecycle_state,
                   accepted_at,
-                  lease_expires_at
+                  lease_expires_at,
+                  share_token_hash,
+                  conductai_run_id,
+                  conductai_workflow,
+                  conductai_workflow_id,
+                  blast_radius
                 ) VALUES (
                   CAST(:row_id AS uuid),
                   :ws, :uid, CAST(:agent_id AS uuid), :ai, NULL,
@@ -380,7 +393,12 @@ def insert_accepted(
                   CAST(:request_id AS uuid),
                   'accepted',
                   :accepted_at,
-                  :lease_expires_at
+                  :lease_expires_at,
+                  :share_token_hash,
+                  :run_id,
+                  :workflow,
+                  :workflow_id,
+                  CAST(:blast_radius AS jsonb)
                 )
             """),
             {
@@ -399,6 +417,11 @@ def insert_accepted(
                 "request_id": request_id,
                 "accepted_at": now,
                 "lease_expires_at": now + timedelta(seconds=lease),
+                "share_token_hash": share_token_hash,
+                "run_id": conductai_run_id,
+                "workflow": conductai_workflow,
+                "workflow_id": conductai_workflow_id,
+                "blast_radius": json.dumps(blast_radius) if blast_radius else None,
             },
         )
         db.commit()
@@ -429,6 +452,14 @@ def finalize(
     routing_meta: dict | None = None,
     execution_status: str | None = None,
     result_summary: str | None = None,
+    # Phase 2: policy-eval outputs known only post-inference. These
+    # complete record()'s field coverage for the durable path.
+    evaluated_rules: list[dict] | None = None,
+    defense_score: int | None = None,
+    user_email: str | None = None,
+    rule_message: str | None = None,
+    clerk_user_id: str | None = None,
+    ai_tool: str | None = None,
 ) -> bool:
     """Flip an 'accepted' row to 'finalized' with the real outcome.
 
@@ -455,17 +486,21 @@ def finalize(
         result = db.execute(
             text("""
                 UPDATE guard_audit_events
-                SET lifecycle_state = 'finalized',
-                    finalized_at    = :finalized_at,
-                    decision        = :decision,
-                    rule_id         = :rule_id,
-                    duration_ms     = :duration_ms,
-                    tokens_before   = COALESCE(:tin, tokens_before),
-                    tokens_after    = :tout,
-                    cost_usd_after  = :cost,
-                    routing_meta    = CAST(:routing AS jsonb),
+                SET lifecycle_state  = 'finalized',
+                    finalized_at     = :finalized_at,
+                    decision         = :decision,
+                    rule_id          = :rule_id,
+                    rule_message     = COALESCE(:rule_message, rule_message),
+                    duration_ms      = :duration_ms,
+                    tokens_before    = COALESCE(:tin, tokens_before),
+                    tokens_after     = :tout,
+                    cost_usd_after   = :cost,
+                    routing_meta     = CAST(:routing AS jsonb),
                     execution_status = :execution_status,
-                    result_summary   = :result_summary
+                    result_summary   = :result_summary,
+                    evaluated_rules  = COALESCE(CAST(:eval AS jsonb), evaluated_rules),
+                    defense_score    = COALESCE(:score, defense_score),
+                    user_email       = COALESCE(:user_email, user_email)
                 WHERE id = CAST(:row_id AS uuid)
                   AND lifecycle_state = 'accepted'
             """),
@@ -481,10 +516,41 @@ def finalize(
                 "routing": json.dumps(routing_meta) if routing_meta else None,
                 "execution_status": execution_status,
                 "result_summary": result_summary,
+                "eval": json.dumps(evaluated_rules) if evaluated_rules else None,
+                "score": defense_score,
+                "user_email": user_email,
+                "rule_message": rule_message,
             },
         )
         db.commit()
-        return result.rowcount == 1
+        _updated = result.rowcount == 1
+
+        # Gap #2 from Phase 1 self-review — mirror record()'s behavior: fire
+        # the Slack block notifier post-commit when the finalized decision is
+        # a block. Best-effort, swallowed on failure so the return value
+        # still reflects whether the row was updated.
+        if _updated and decision == "blocked":
+            try:
+                from app.modules.guard.routers.events import notify_guard_block
+                _display_email = user_email
+                if not _display_email and clerk_user_id:
+                    try:
+                        from app.core.auth import get_clerk_user_email as _get_email
+                        _display_email = _get_email(clerk_user_id)
+                    except Exception:
+                        pass
+                notify_guard_block(
+                    db, workspace_id,
+                    decision=decision,
+                    rule_id=rule_id,
+                    user_email=_display_email or "unknown user",
+                    provider=provider,
+                    source="proxy",
+                )
+            except Exception:
+                pass
+
+        return _updated
     except Exception:
         db.rollback()
         try:
