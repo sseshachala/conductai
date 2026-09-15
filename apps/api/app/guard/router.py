@@ -130,22 +130,30 @@ async def _stream_chunks(
     background: BackgroundTasks, audit_args: tuple,
     upstream_url: str | None = None,
 ) -> AsyncIterator[bytes]:
-    """Pass-through every chunk. Finalize the audit event inline in the
-    finally so a client disconnect or aclose() exception cannot prevent
-    the write (P1 review Finding 4).
+    """Pass-through every chunk. Ownership contract for durable rows
+    (post-P1 review v2):
 
-    During the stream, periodically renew the durable row's lease so a
-    legitimate long completion is never orphaned mid-flight (P1 review
-    Finding 2 — actor-heartbeat pattern). Renewal cadence is a fraction
-    of the lease, tuned by guard_durable_audit_stream_renew_seconds.
+    - CancelledError is NEVER treated as success. When cancellation
+      reaches this coroutine, execution_status becomes 'interrupted'.
+    - Cleanup uses contextlib.suppress so an aclose() failure cannot
+      block the finalize. Cleanup failures are logged but never
+      swallow the true outcome.
+    - Finalize runs under asyncio.shield + asyncio.to_thread so
+      cancellation propagates to the caller while the DB write
+      completes atomically off the event loop.
+    - Lease renewal runs on a heartbeat cadence throughout the stream
+      (actor-heartbeat pattern) so a legitimate long stream is never
+      orphaned mid-flight.
     """
     import asyncio as _asyncio
+    import contextlib as _contextlib
     from app.core.config import settings
+    from app.guard.audit import finalize as _finalize_inline
     from app.guard.audit import renew_lease as _renew_lease
 
     collected = bytearray()
     execution_status = "success"
-    result_summary = None
+    result_summary: str | None = None
     _durable_row_id = audit_args[18] if len(audit_args) > 18 else None
     _workspace_id = audit_args[0] if audit_args else None
     _renew_interval = settings.guard_durable_audit_stream_renew_seconds
@@ -153,10 +161,17 @@ async def _stream_chunks(
 
     async def _renewal_loop() -> None:
         while True:
-            await _asyncio.sleep(_renew_interval)
+            try:
+                await _asyncio.sleep(_renew_interval)
+            except _asyncio.CancelledError:
+                # Renewal is a heartbeat: cancellation of the outer
+                # request is normal; exit cleanly so the finally can
+                # finalize the row.
+                return
             if _durable_row_id and _workspace_id:
                 try:
-                    _renew_lease(
+                    await _asyncio.to_thread(
+                        _renew_lease,
                         _durable_row_id,
                         _workspace_id,
                         additional_seconds=settings.guard_durable_audit_lease_seconds,
@@ -170,61 +185,67 @@ async def _stream_chunks(
         async for chunk in resp.aiter_bytes():
             collected.extend(chunk)
             yield chunk
+    except _asyncio.CancelledError:
+        execution_status = "interrupted"
+        result_summary = "Stream interrupted by cancellation (client disconnect or task cancel)"
+        raise
     except Exception as exc:
         execution_status = "error"
         result_summary = f"Upstream stream failed: {type(exc).__name__}"
         raise
     finally:
-        if _renew_task is not None:
+        if _renew_task is not None and not _renew_task.done():
             _renew_task.cancel()
-            try:
+            with _contextlib.suppress(Exception, _asyncio.CancelledError):
                 await _renew_task
-            except (Exception, _asyncio.CancelledError):
-                pass
-        try:
+        # Cleanup is best-effort. A cleanup failure MUST NOT prevent
+        # the durable finalize below.
+        with _contextlib.suppress(Exception, _asyncio.CancelledError):
             await resp.aclose()
-        except Exception:
-            pass
-        try:
+        with _contextlib.suppress(Exception, _asyncio.CancelledError):
             await client.aclose()
-        except Exception:
-            pass
-        # Post-P1 Finding 4: finalize INLINE for durable rows so a
-        # client-side disconnect can't lose the outcome via a
-        # never-scheduled background task. Single-phase writes still
-        # go through the scheduler (record() is idempotent enough).
+
         if _durable_row_id:
+            # Shield the DB write so cancellation completes it. Run in a
+            # thread so the sync SQLAlchemy call never blocks the loop.
+            _finalize_coro = _asyncio.to_thread(
+                _finalize_inline,
+                _durable_row_id,
+                _workspace_id,
+                decision=audit_args[5],
+                provider=audit_args[3],
+                model=audit_args[4],
+                body=audit_args[8],
+                response_bytes=bytes(collected),
+                duration_ms=int((time.monotonic() - audit_args[7]) * 1000),
+                rule_id=audit_args[6],
+                routing_meta=audit_args[15] if len(audit_args) > 15 else None,
+                execution_status=execution_status,
+                result_summary=result_summary,
+                clerk_user_id=audit_args[1],
+                ai_tool=audit_args[2],
+                user_email=audit_args[10] if len(audit_args) > 10 else None,
+            )
             try:
-                from app.guard.audit import finalize as _finalize_inline
-                _finalize_inline(
-                    _durable_row_id,
-                    _workspace_id,
-                    decision=audit_args[5],
-                    provider=audit_args[3],
-                    model=audit_args[4],
-                    body=audit_args[8],
-                    response_bytes=bytes(collected),
-                    duration_ms=int((time.monotonic() - audit_args[7]) * 1000),
-                    rule_id=audit_args[6],
-                    routing_meta=audit_args[15] if len(audit_args) > 15 else None,
-                    execution_status=execution_status,
-                    result_summary=result_summary,
-                    clerk_user_id=audit_args[1],
-                    ai_tool=audit_args[2],
-                    user_email=audit_args[10] if len(audit_args) > 10 else None,
+                await _asyncio.shield(_finalize_coro)
+            except _asyncio.CancelledError:
+                # Shield ran the finalize to completion; caller still
+                # sees CancelledError. Log for observability.
+                log.info(
+                    "guard.stream.finalize_shielded_under_cancellation",
+                    row_id=_durable_row_id,
                 )
+                raise
             except Exception:
-                # Last-resort escalation to background so we at least
-                # try again out of the request lifecycle.
                 log.exception("guard.stream.inline_finalize_failed")
-                try:
+                # Last-resort escalation. Leave the accepted record for
+                # the reconciler if this also fails.
+                with _contextlib.suppress(Exception):
                     _schedule_audit(
                         background, audit_args, response_bytes=bytes(collected),
                         upstream=upstream_url, execution_status=execution_status,
                         result_summary=result_summary,
                     )
-                except Exception:
-                    log.exception("guard.stream.background_finalize_also_failed")
         else:
             _schedule_audit(
                 background, audit_args, response_bytes=bytes(collected),

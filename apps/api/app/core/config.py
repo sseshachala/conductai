@@ -134,11 +134,7 @@ class Settings(BaseSettings):
     # must always be fail-closed. Post-P1-review finding 1.
     guard_durable_audit_fail_closed: bool = True
 
-    # Response cache TTL (seconds) for idempotent replay of the same
-    # X-Request-Id via the Redis-backed cache. 24h matches typical
-    # business retry windows without holding responses indefinitely.
-    # Post-P1-review finding 3.
-    guard_durable_audit_response_cache_seconds: int = 86400
+
 
     # Phase 4 of #1959 — reconciler poll interval. Runs every 120s by
     # default (2× the lease), so an orphan surfaces within one interval
