@@ -10,7 +10,8 @@ If you want a prod smoke, use `scripts/smoke_all.sh` at the repo root
 
 | File | What it verifies |
 |---|---|
-| `proxy_smoke.sh` | 3-provider Gateway HTTP round-trip; asserts `guard_audit_events.agent_identity_id` (#1971 Phase 0) and `guard_audit_events.route` (#1973) both populate. |
+| `smoke_gateway_live.py` | **Prod-capable.** One `GET /gateway/v1/anthropic/v1/models` call → polls `GET /guard/events` → asserts the audit row carries `agent_identity_id` (#1971) and `route` (#1973). No DB access needed. Used by the hourly CI smoke workflow. |
+| `proxy_smoke.sh` | Local-dev only. 3-provider Gateway HTTP round-trip; asserts `guard_audit_events.agent_identity_id` (#1971 Phase 0) and `guard_audit_events.route` (#1973) both populate via direct `psql` on the local DB. |
 | `smoke_api.sh` | Tier-2 curl smoke covering non-Guard API endpoints. |
 | `smoke_anthropic_migration.py` | One-off Anthropic model-catalog migration verify. |
 

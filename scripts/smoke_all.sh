@@ -77,19 +77,17 @@ rc=$?
 _result "$rc" "nemo-plugin"
 total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
 
-# ── 4. Gateway HTTP + audit (local-dev only) ────────────────────────
-# proxy_smoke.sh needs a local DB + local KMS material to decrypt vault keys,
-# so it can only run against a local API. Skips cleanly when DATABASE_URL is
-# unset (i.e. the umbrella is targeting prod).
-_section "4. Gateway HTTP + audit" "3-provider curl → asserts agent_identity_id + route"
-if [[ -n "${DATABASE_URL:-}" ]]; then
-    CONDUCT_PROXY="$API/gateway/v1" bash "$REPO_ROOT/apps/api/scripts/proxy_smoke.sh"
-    rc=$?
-    _result "$rc" "gateway-audit"
-    total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
-else
-    printf "  ${c_dim}skipped — DATABASE_URL unset (local-dev only)${c_off}\n"
-fi
+# ── 4. Gateway HTTP + audit (prod-capable) ──────────────────────────
+# Fires one Gateway model-catalog call and verifies via GET /guard/events
+# that the audit row landed with both agent_identity_id (#1971 Phase 0)
+# and route (#1973) populated. No upstream cost, no DB access required.
+# For local-dev with seeded provider keys use apps/api/scripts/proxy_smoke.sh
+# standalone — it exercises the full 3-provider inference path.
+_section "4. Gateway HTTP + audit" "GET /gateway/v1/anthropic/v1/models → asserts agent_identity_id + route"
+CONDUCT_API_URL="$API" CONDUCT_TOKEN="$CONDUCT_TOKEN" python3.11 "$REPO_ROOT/apps/api/scripts/smoke_gateway_live.py"
+rc=$?
+_result "$rc" "gateway-audit"
+total_fail=$((total_fail + (rc != 0 ? 1 : 0)))
 
 # ── 5. Frontend Playwright smoke (opt-in) ────────────────────────────
 # Runs pages.smoke.spec.ts in apps/web/e2e/. Opt-in via SMOKE_WEB=1 because

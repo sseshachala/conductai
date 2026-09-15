@@ -27,3 +27,10 @@ Prefixed `dev_*` so they don't get mistaken for smokes:
 - `dev_autopilot_node.py` — Autopilot agent trigger against a testbed repo.
 - `dev_github_webhook.py` — GitHub PAT webhook capability probe.
 - `dev_hooks_and_booster.sh` — Claude Code hook + Agent Booster RRF check.
+
+## CI hook
+
+`.github/workflows/smoke-gateway.yml` runs `apps/api/scripts/smoke_gateway_live.py`
+hourly against prod. Failure = maintainer email. Needs the
+`SMOKE_GATEWAY_TOKEN` GitHub secret (a `cond_agt_*` token minted for a
+smoke-only agent identity). Skips cleanly if the secret is unset.
