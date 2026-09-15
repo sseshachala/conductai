@@ -129,6 +129,8 @@ class BudgetCreate(BaseModel):
     workspace_id: str
     clerk_user_id: str | None = None    # null = workspace-wide
     email: str | None = None            # per-developer: frontend sends email, backend resolves to clerk_user_id
+    ai_tool: str | None = None          # null = across all tools; non-null = per-tool budget
+    hard_cap_enabled: bool | None = None  # only read from the workspace-default row (clerk=null, ai_tool=null)
     monthly_limit_usd: float
     alert_threshold_pct: int = 80
     hard_limit_usd: float | None = None
@@ -140,6 +142,8 @@ class BudgetOut(BaseModel):
     workspace_id: str
     clerk_user_id: str | None
     email: str | None = None
+    ai_tool: str | None = None
+    hard_cap_enabled: bool = False
     monthly_limit_usd: float
     alert_threshold_pct: int
     hard_limit_usd: float | None
@@ -486,11 +490,16 @@ def upsert_budget(
         if session:
             clerk_user_id = session.clerk_user_id
 
+    ai_tool = body.ai_tool or None  # normalize empty string
+    is_workspace_default = clerk_user_id is None and ai_tool is None
+
+    # SQLAlchemy converts `column == None` to `IS NULL` — safe for both branches.
     existing = (
         db.query(GuardSpendBudget)
         .filter(
             GuardSpendBudget.workspace_id == ws_uuid,
             GuardSpendBudget.clerk_user_id == clerk_user_id,
+            GuardSpendBudget.ai_tool == ai_tool,
         )
         .first()
     )
@@ -501,8 +510,11 @@ def upsert_budget(
         existing.monthly_limit_usd = body.monthly_limit_usd
         existing.alert_threshold_pct = body.alert_threshold_pct
         existing.hard_limit_usd = body.hard_limit_usd
-        if body.default_per_developer_usd is not None or clerk_user_id is None:
+        if body.default_per_developer_usd is not None or is_workspace_default:
             existing.default_per_developer_usd = body.default_per_developer_usd
+        # Only the workspace-default row carries the global enforcement flag.
+        if is_workspace_default and body.hard_cap_enabled is not None:
+            existing.hard_cap_enabled = bool(body.hard_cap_enabled)
         existing.updated_at = now
         db.commit()
         db.refresh(existing)
@@ -513,10 +525,12 @@ def upsert_budget(
         budget = GuardSpendBudget(
             workspace_id=ws_uuid,
             clerk_user_id=clerk_user_id,
+            ai_tool=ai_tool,
             monthly_limit_usd=body.monthly_limit_usd,
             alert_threshold_pct=body.alert_threshold_pct,
             hard_limit_usd=body.hard_limit_usd,
             default_per_developer_usd=body.default_per_developer_usd,
+            hard_cap_enabled=bool(body.hard_cap_enabled) if (is_workspace_default and body.hard_cap_enabled is not None) else False,
         )
         db.add(budget)
         db.commit()
@@ -597,6 +611,44 @@ def list_budgets(
     ]
 
 
+# ── DELETE /guard/spend/budgets/{budget_id} ──────────────────────────────────
+
+@router.delete("/budgets/{budget_id}", status_code=204)
+def delete_budget(
+    budget_id: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Delete a spend budget row. Used to remove per-tool caps.
+
+    The workspace-default row (clerk_user_id NULL, ai_tool NULL) cannot be
+    deleted through this endpoint — it carries the hard_cap_enabled flag
+    and clearing it via DELETE would silently drop enforcement config.
+    """
+    try:
+        row_uuid = uuid.UUID(budget_id)
+        ws_uuid = uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid id")
+    budget = (
+        db.query(GuardSpendBudget)
+        .filter(GuardSpendBudget.id == row_uuid, GuardSpendBudget.workspace_id == ws_uuid)
+        .first()
+    )
+    if not budget:
+        raise HTTPException(status_code=404, detail="Budget not found")
+    if budget.clerk_user_id is None and budget.ai_tool is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Workspace-default budget cannot be deleted — edit its values instead.",
+        )
+    label = budget.ai_tool or budget.clerk_user_id or "workspace"
+    db.delete(budget)
+    db.commit()
+    _audit_budget_change(db, ws_uuid, budget.clerk_user_id, "budget_deleted", f"deleted {label}")
+    return None
+
+
 # ── Private helpers ───────────────────────────────────────────────────────────
 
 def _current_month_cost(db: Session, ws_uuid: uuid.UUID, clerk_user_id: str | None) -> float:
@@ -627,10 +679,19 @@ class BudgetCheckOut(BaseModel):
 def budget_check(
     workspace_id: str = Query(...),
     clerk_user_id: str | None = Query(default=None),
+    ai_tool: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    """Hard-cap check called by the guard hook before each tool use. No Clerk auth —
-    workspace_id must exist in guard_config (same trust model as POST /guard/events)."""
+    """Hard-cap check called by the guard hook before each tool use.
+
+    Enforcement is gated by a single workspace-global flag on the default row
+    (clerk_user_id NULL, ai_tool NULL). When the flag is off, this endpoint
+    always returns hard_blocked=False regardless of any configured limits.
+
+    When ai_tool is provided AND a per-tool row exists for that tool, that
+    row's caps are checked with cost sums scoped to the same tool — so a
+    Codex Desktop overspend can't block a Claude Code caller.
+    """
     try:
         ws_uuid = uuid.UUID(workspace_id)
     except ValueError:
@@ -640,22 +701,66 @@ def budget_check(
     if not db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first():
         return BudgetCheckOut(hard_blocked=False, monthly_cost_usd=0.0, hard_limit_usd=None)
 
-    period_start = _current_period_start()
-
     workspace_budget = (
         db.query(GuardSpendBudget)
-        .filter(GuardSpendBudget.workspace_id == ws_uuid, GuardSpendBudget.clerk_user_id.is_(None))
+        .filter(
+            GuardSpendBudget.workspace_id == ws_uuid,
+            GuardSpendBudget.clerk_user_id.is_(None),
+            GuardSpendBudget.ai_tool.is_(None),
+        )
         .first()
     )
 
-    workspace_cost = float(
-        db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0))
-        .filter(GuardAuditEvent.workspace_id == ws_uuid, GuardAuditEvent.ts >= period_start)
-        .scalar() or 0.0
-    )
+    # F2 gate — no workspace-default row, or its flag is off → no enforcement.
+    if not workspace_budget or not workspace_budget.hard_cap_enabled:
+        return BudgetCheckOut(
+            hard_blocked=False,
+            monthly_cost_usd=0.0,
+            hard_limit_usd=workspace_budget.hard_limit_usd if workspace_budget else None,
+        )
 
-    # Check workspace-wide hard cap
-    if workspace_budget and workspace_budget.hard_limit_usd is not None:
+    period_start = _current_period_start()
+
+    def _sum_cost(*, scoped_clerk: str | None = None, scoped_tool: str | None = None) -> float:
+        q = db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0)).filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.ts >= period_start,
+        )
+        if scoped_clerk is not None:
+            q = q.filter(GuardAuditEvent.clerk_user_id == scoped_clerk)
+        if scoped_tool is not None:
+            q = q.filter(GuardAuditEvent.ai_tool == scoped_tool)
+        return float(q.scalar() or 0.0)
+
+    tool_budget = None
+    if ai_tool:
+        tool_budget = (
+            db.query(GuardSpendBudget)
+            .filter(
+                GuardSpendBudget.workspace_id == ws_uuid,
+                GuardSpendBudget.clerk_user_id.is_(None),
+                GuardSpendBudget.ai_tool == ai_tool,
+            )
+            .first()
+        )
+
+    # 1a. Team-scoped per-tool cap (F3 — cross-tool bleed fix).
+    if tool_budget and tool_budget.hard_limit_usd is not None:
+        tool_cost = _sum_cost(scoped_tool=ai_tool)
+        if tool_cost >= tool_budget.hard_limit_usd:
+            return BudgetCheckOut(
+                hard_blocked=True,
+                reason=(
+                    f"Your team's monthly {ai_tool} budget of ${tool_budget.hard_limit_usd:.2f} "
+                    f"has been reached. New {ai_tool} calls are paused. Contact your security team."
+                ),
+                monthly_cost_usd=tool_cost,
+                hard_limit_usd=tool_budget.hard_limit_usd,
+            )
+
+    # 1b. Team-scoped across-all-tools cap (unchanged behavior).
+    workspace_cost = _sum_cost()
+    if workspace_budget.hard_limit_usd is not None:
         if workspace_cost >= workspace_budget.hard_limit_usd:
             return BudgetCheckOut(
                 hard_blocked=True,
@@ -667,37 +772,51 @@ def budget_check(
                 hard_limit_usd=workspace_budget.hard_limit_usd,
             )
 
-    # Check per-user hard cap if clerk_user_id provided
+    # 2. Per-user cap (fires only when clerk_user_id is supplied).
     if clerk_user_id:
+        user_tool_budget = None
+        if ai_tool:
+            user_tool_budget = (
+                db.query(GuardSpendBudget)
+                .filter(
+                    GuardSpendBudget.workspace_id == ws_uuid,
+                    GuardSpendBudget.clerk_user_id == clerk_user_id,
+                    GuardSpendBudget.ai_tool == ai_tool,
+                )
+                .first()
+            )
         user_budget = (
             db.query(GuardSpendBudget)
             .filter(
                 GuardSpendBudget.workspace_id == ws_uuid,
                 GuardSpendBudget.clerk_user_id == clerk_user_id,
+                GuardSpendBudget.ai_tool.is_(None),
             )
             .first()
         )
-        hard_limit = None
-        if user_budget and user_budget.hard_limit_usd is not None:
+
+        # Priority: most specific per-user limit wins; workspace defaults are fallbacks.
+        hard_limit: float | None = None
+        scoped_tool: str | None = None
+        if user_tool_budget and user_tool_budget.hard_limit_usd is not None:
+            hard_limit = user_tool_budget.hard_limit_usd
+            scoped_tool = ai_tool
+        elif user_budget and user_budget.hard_limit_usd is not None:
             hard_limit = user_budget.hard_limit_usd
-        elif workspace_budget and workspace_budget.default_per_developer_usd is not None:
+        elif tool_budget and tool_budget.default_per_developer_usd is not None:
+            hard_limit = tool_budget.default_per_developer_usd
+            scoped_tool = ai_tool
+        elif workspace_budget.default_per_developer_usd is not None:
             hard_limit = workspace_budget.default_per_developer_usd
 
         if hard_limit is not None:
-            user_cost = float(
-                db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0))
-                .filter(
-                    GuardAuditEvent.workspace_id == ws_uuid,
-                    GuardAuditEvent.clerk_user_id == clerk_user_id,
-                    GuardAuditEvent.ts >= period_start,
-                )
-                .scalar() or 0.0
-            )
+            user_cost = _sum_cost(scoped_clerk=clerk_user_id, scoped_tool=scoped_tool)
             if user_cost >= hard_limit:
+                tool_hint = f" for {ai_tool}" if scoped_tool else ""
                 return BudgetCheckOut(
                     hard_blocked=True,
                     reason=(
-                        f"You've reached your monthly AI spend limit of ${hard_limit:.2f}. "
+                        f"You've reached your monthly AI spend limit of ${hard_limit:.2f}{tool_hint}. "
                         f"New tool calls are paused. Contact your manager to have your limit raised."
                     ),
                     monthly_cost_usd=user_cost,
@@ -707,7 +826,7 @@ def budget_check(
     return BudgetCheckOut(
         hard_blocked=False,
         monthly_cost_usd=workspace_cost,
-        hard_limit_usd=workspace_budget.hard_limit_usd if workspace_budget else None,
+        hard_limit_usd=workspace_budget.hard_limit_usd,
     )
 
 
@@ -717,6 +836,8 @@ def _budget_out(budget: GuardSpendBudget, current_cost: float, email: str | None
         workspace_id=str(budget.workspace_id),
         clerk_user_id=budget.clerk_user_id,
         email=email,
+        ai_tool=budget.ai_tool,
+        hard_cap_enabled=bool(budget.hard_cap_enabled),
         monthly_limit_usd=budget.monthly_limit_usd,
         alert_threshold_pct=budget.alert_threshold_pct,
         hard_limit_usd=budget.hard_limit_usd,

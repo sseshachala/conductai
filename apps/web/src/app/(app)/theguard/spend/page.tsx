@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { GuardSectionTabs, SPEND_TABS } from "@/features/guard/GuardSectionTabs"
-import { MonthPicker, SpendControlsPanel } from "@/features/guard/spend/components"
+import { MonthPicker, PerToolCapsPanel, SpendControlsPanel } from "@/features/guard/spend/components"
 import type { Currency } from "@/features/guard/spend/shared"
 import { useSpendState } from "@/features/guard/spend/useSpendState"
 
@@ -73,6 +73,20 @@ function SpendConfigureContent() {
         <MonthPicker value={s.month} onChange={s.setMonth} />
       </div>
 
+      {s.currency !== "USD" && (
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--text-muted)",
+            textAlign: "right",
+            marginTop: -12,
+            marginBottom: 16,
+          }}
+        >
+          Values shown in {s.currency} at an approximate rate (±2%). Billing and audit records remain in USD.
+        </div>
+      )}
+
       {s.error && (
         <div style={{
           borderRadius: 8,
@@ -107,6 +121,15 @@ function SpendConfigureContent() {
           totalCostUsd={s.data?.total_cost_usd ?? 0}
         />
       )}
+
+      <PerToolCapsPanel
+        caps={s.toolCaps}
+        currency={s.currency}
+        hardCapEnabled={s.teamSettings.hard_cap_enabled}
+        onSave={s.saveToolCap}
+        onRemove={s.removeToolCap}
+        readOnly={!s.isAdmin}
+      />
     </GuardShell>
   )
 }

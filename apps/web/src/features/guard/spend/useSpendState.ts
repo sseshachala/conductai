@@ -22,6 +22,7 @@ import {
   type Currency,
   type SpendData,
   type TeamBudgetSettings,
+  type ToolCap,
 } from "./shared"
 
 export interface UseSpendState {
@@ -50,6 +51,7 @@ export interface UseSpendState {
   teamSettings: TeamBudgetSettings
   budgets: Record<string, number | null>
   hardLimits: Record<string, number | null>
+  toolCaps: ToolCap[]
 
   // Savings
   savings: ReturnType<typeof useGuardSavings>["savings"]
@@ -59,6 +61,8 @@ export interface UseSpendState {
   load: () => Promise<void>
   saveTeamSettings: (s: TeamBudgetSettings) => Promise<void>
   saveBudget: (email: string, limit: number, hard: number | null) => Promise<void>
+  saveToolCap: (ai_tool: string, monthly_limit_usd: number) => Promise<void>
+  removeToolCap: (id: string) => Promise<void>
 }
 
 export function useSpendState(): UseSpendState {
@@ -78,6 +82,7 @@ export function useSpendState(): UseSpendState {
   const [data, setData] = useState<SpendData | null>(null)
   const [budgets, setBudgets] = useState<Record<string, number | null>>({})
   const [hardLimits, setHardLimits] = useState<Record<string, number | null>>({})
+  const [toolCaps, setToolCaps] = useState<ToolCap[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [currency, setCurrency] = useState<Currency>("USD")
@@ -106,12 +111,19 @@ export function useSpendState(): UseSpendState {
       setData(spendJson)
 
       if (Array.isArray(budgetList)) {
-        const teamBudget = budgetList.find((b: any) => b.clerk_user_id === null)
+        // Workspace-default row: clerk_user_id null AND ai_tool null (or absent
+        // on servers pre-#F3). Per-tool rows also carry clerk_user_id=null but
+        // have ai_tool set — those are handled by the PerToolCaps panel.
+        const teamBudget = budgetList.find(
+          (b: any) => b.clerk_user_id === null && (b.ai_tool == null),
+        )
         if (teamBudget) {
           setTeamSettings({
             team_monthly_limit_usd: teamBudget.monthly_limit_usd,
             alert_threshold_pct: teamBudget.alert_threshold_pct,
-            hard_cap_enabled: teamBudget.hard_limit_usd != null,
+            hard_cap_enabled: typeof teamBudget.hard_cap_enabled === "boolean"
+              ? teamBudget.hard_cap_enabled
+              : teamBudget.hard_limit_usd != null,
             default_per_developer_usd: teamBudget.default_per_developer_usd,
           })
         }
@@ -126,6 +138,18 @@ export function useSpendState(): UseSpendState {
         }
         setBudgets(map)
         setHardLimits(hardMap)
+        // Workspace-wide per-tool rows (clerk_user_id null AND ai_tool set).
+        setToolCaps(
+          (budgetList as any[])
+            .filter(b => b.clerk_user_id === null && !!b.ai_tool)
+            .map(b => ({
+              id: String(b.id),
+              ai_tool: String(b.ai_tool),
+              monthly_limit_usd: Number(b.monthly_limit_usd ?? 0),
+              hard_limit_usd: b.hard_limit_usd == null ? null : Number(b.hard_limit_usd),
+              current_month_cost_usd: Number(b.current_month_cost_usd ?? 0),
+            })),
+        )
       }
       setLastUpdated(new Date())
     } catch (err: any) {
@@ -154,8 +178,13 @@ export function useSpendState(): UseSpendState {
     const res = await guard.spend.budgets.set(authFetch, {
       workspace_id: teamId,
       clerk_user_id: null,
+      ai_tool: null,
       monthly_limit_usd: s.team_monthly_limit_usd ?? 0,
       alert_threshold_pct: s.alert_threshold_pct,
+      // Send both the flag (new server, F2) AND null out hard_limit_usd when
+      // off (old server pre-F2 that treats hard_limit_usd != null as enforce).
+      // Belt + braces — either wire path yields the intended behavior.
+      hard_cap_enabled: s.hard_cap_enabled,
       hard_limit_usd: s.hard_cap_enabled ? (s.team_monthly_limit_usd ?? 0) : null,
       default_per_developer_usd: s.default_per_developer_usd,
     })
@@ -174,6 +203,30 @@ export function useSpendState(): UseSpendState {
     if (!res.ok) throw new Error("Failed to save budget")
     setBudgets(prev => ({ ...prev, [email]: limit }))
     setHardLimits(prev => ({ ...prev, [email]: hard }))
+  }, [authFetch, teamId])
+
+  const saveToolCap = useCallback(async (ai_tool: string, monthly_limit_usd: number) => {
+    if (!teamId) return
+    const res = await guard.spend.budgets.set(authFetch, {
+      workspace_id: teamId,
+      clerk_user_id: null,
+      ai_tool,
+      monthly_limit_usd,
+      // Tool-scoped rows always enforce their monthly limit as a hard cap.
+      // The workspace-default hard_cap_enabled flag still gates whether any
+      // enforcement happens at all.
+      hard_limit_usd: monthly_limit_usd,
+      alert_threshold_pct: 80,
+    })
+    if (!res.ok) throw new Error("Failed to save per-tool cap")
+    await load()
+  }, [authFetch, teamId, load])
+
+  const removeToolCap = useCallback(async (id: string) => {
+    if (!teamId) return
+    const res = await guard.spend.budgets.remove(authFetch, id)
+    if (!res.ok) throw new Error("Failed to remove per-tool cap")
+    setToolCaps(prev => prev.filter(t => t.id !== id))
   }, [authFetch, teamId])
 
   return {
@@ -195,10 +248,13 @@ export function useSpendState(): UseSpendState {
     teamSettings,
     budgets,
     hardLimits,
+    toolCaps,
     savings,
     savingsLoading,
     load,
     saveTeamSettings,
     saveBudget,
+    saveToolCap,
+    removeToolCap,
   }
 }

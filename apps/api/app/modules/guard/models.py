@@ -297,9 +297,11 @@ class GuardSpendBudget(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
     clerk_user_id = Column(Text, nullable=True)
+    ai_tool = Column(Text, nullable=True)
     monthly_limit_usd = Column(Float, nullable=False)
     alert_threshold_pct = Column(Integer, nullable=False, default=80)
     hard_limit_usd = Column(Float, nullable=True)
+    hard_cap_enabled = Column(Boolean, nullable=False, server_default=sa.text("false"), default=False)
     default_per_developer_usd = Column(Float, nullable=True)
     last_alert_pct_bucket = Column(Integer, nullable=True)
     created_at = Column(
@@ -316,12 +318,17 @@ class GuardSpendBudget(Base):
 
     __table_args__ = (
         Index(
-            "uq_guard_spend_workspace_default", "workspace_id",
+            "uq_guard_spend_workspace_default",
+            "workspace_id",
+            sa.text("COALESCE(ai_tool, '')"),
             unique=True,
             postgresql_where=sa.text("clerk_user_id IS NULL"),
         ),
         Index(
-            "uq_guard_spend_workspace_member", "workspace_id", "clerk_user_id",
+            "uq_guard_spend_workspace_member",
+            "workspace_id",
+            "clerk_user_id",
+            sa.text("COALESCE(ai_tool, '')"),
             unique=True,
             postgresql_where=sa.text("clerk_user_id IS NOT NULL"),
         ),
