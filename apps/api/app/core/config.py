@@ -161,14 +161,24 @@ class Settings(BaseSettings):
     guard_durable_audit_reconciler_seconds: int = 120
 
     # #1996 — Slack alerter for durable-audit failures. Watches the
-    # GUARD_AUDIT_FAILED counter and posts to a single operator Slack
-    # channel when the delta since the last cycle crosses per-reason
-    # thresholds. Setting seconds = 0 disables the loop. Missing token
-    # or channel → alerter runs but only logs (useful for staging).
+    # GUARD_AUDIT_FAILED counter and posts to Conduct's internal ops
+    # Slack channel when a per-reason delta crosses threshold. Setting
+    # seconds = 0 disables the loop.
     guard_durable_audit_alerter_seconds: int = 60
     guard_durable_audit_alerter_cooldown_seconds: int = 900  # 15 min per reason
-    guard_ops_alert_slack_token: str = ""
-    guard_ops_alert_slack_channel: str = ""
+
+    # ── Platform-operator Slack (Conduct's own ops channel) ───────────
+    # Distinct from any customer workspace's Slack integration. Used by
+    # every internal alerter (durable audit, and eventually fail-open +
+    # trial-spend once they're migrated off the legacy webhook path).
+    # Missing either value = platform alerters run in log-only mode
+    # (safe default in staging / local).
+    #
+    # ``slack_bot_token`` is Conduct's own workspace bot token (xoxb-*)
+    # with ``chat:write`` scope. ``conduct_internal_alert_slack_channel``
+    # is the channel name (``#prod-alerts``) or id (``C0…``).
+    slack_bot_token: str = ""
+    conduct_internal_alert_slack_channel: str = ""
 
     # /metrics scrape token — audit O01. Empty in production means /metrics
     # refuses every caller (fail-closed). Empty in local/development leaves

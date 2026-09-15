@@ -152,25 +152,25 @@ def test_cooldown_suppresses_repeated_alerts():
 
 
 def test_missing_slack_config_falls_back_to_log_only():
-    """No token or channel set = alerter is safe to run everywhere
-    (staging, local). It should still record ``would_alert`` in the
-    summary so tests + observability see the classification."""
-    from app.modules.guard.durable_audit_alerter import check_and_alert, _post_slack
+    """Empty ``slack_bot_token`` or channel = alerter is safe to run
+    everywhere (staging, local). It should still record ``would_alert``
+    in the summary so tests + observability see the classification."""
+    from app.modules.guard.durable_audit_alerter import check_and_alert
     from app.modules.guard.observability.metrics import GUARD_AUDIT_FAILED
     from app.core.config import settings
 
-    _prev_token = settings.guard_ops_alert_slack_token
-    _prev_channel = settings.guard_ops_alert_slack_channel
-    settings.guard_ops_alert_slack_token = ""
-    settings.guard_ops_alert_slack_channel = ""
+    _prev_token = settings.slack_bot_token
+    _prev_channel = settings.conduct_internal_alert_slack_channel
+    settings.slack_bot_token = ""
+    settings.conduct_internal_alert_slack_channel = ""
     try:
         check_and_alert(now=100.0)  # baseline
         GUARD_AUDIT_FAILED.labels(reason="insert_accepted").inc()
         summary = check_and_alert(now=160.0)
         assert summary["insert_accepted"]["action"] == "would_alert"
     finally:
-        settings.guard_ops_alert_slack_token = _prev_token
-        settings.guard_ops_alert_slack_channel = _prev_channel
+        settings.slack_bot_token = _prev_token
+        settings.conduct_internal_alert_slack_channel = _prev_channel
 
 
 def test_slack_post_failure_does_not_crash_alerter():
@@ -180,10 +180,10 @@ def test_slack_post_failure_does_not_crash_alerter():
     from app.modules.guard.observability.metrics import GUARD_AUDIT_FAILED
     from app.core.config import settings
 
-    _prev_token = settings.guard_ops_alert_slack_token
-    _prev_channel = settings.guard_ops_alert_slack_channel
-    settings.guard_ops_alert_slack_token = "xoxb-fake"
-    settings.guard_ops_alert_slack_channel = "#prod-alerts"
+    _prev_token = settings.slack_bot_token
+    _prev_channel = settings.conduct_internal_alert_slack_channel
+    settings.slack_bot_token = "xoxb-fake"
+    settings.conduct_internal_alert_slack_channel = "#prod-alerts"
 
     try:
         check_and_alert(now=100.0)  # baseline
@@ -198,5 +198,27 @@ def test_slack_post_failure_does_not_crash_alerter():
         # Not "alerted" because post failed, but the check completed.
         assert summary["insert_accepted"]["action"] == "would_alert"
     finally:
-        settings.guard_ops_alert_slack_token = _prev_token
-        settings.guard_ops_alert_slack_channel = _prev_channel
+        settings.slack_bot_token = _prev_token
+        settings.conduct_internal_alert_slack_channel = _prev_channel
+
+
+def test_platform_slack_helper_called_with_surface_label():
+    """When Slack config IS set, verify the durable-audit alerter routes
+    through post_platform_alert with the ``durable_audit`` surface label
+    so ops can grep which alerter fired."""
+    from app.modules.guard.durable_audit_alerter import check_and_alert
+    from app.modules.guard.observability.metrics import GUARD_AUDIT_FAILED
+
+    check_and_alert(now=100.0)  # baseline
+    GUARD_AUDIT_FAILED.labels(reason="insert_accepted").inc()
+
+    with patch(
+        "app.modules.guard.durable_audit_alerter.post_platform_alert",
+        return_value=True,
+    ) as helper:
+        check_and_alert(now=160.0)
+
+    assert helper.call_count == 1
+    kwargs = helper.call_args.kwargs
+    assert kwargs["surface"] == "durable_audit"
+    assert "Guard durable audit" in kwargs["text"]

@@ -6,8 +6,9 @@ if fail-closed 503s start firing in prod, the operator only finds out
 from customer reports or by grepping logs.
 
 This module snapshots the counter every N seconds, computes deltas,
-and posts to a single operator Slack channel when a threshold is
-crossed. Two severities:
+and posts to Conduct's platform-operator Slack via the shared
+``platform_slack.post_platform_alert`` helper when a per-reason threshold
+is crossed. Two severities:
 
 - ``reason="insert_accepted"`` delta > 0 in the last cycle → PAGE.
   The Gateway is serving 503s because the durable write failed. This
@@ -17,10 +18,6 @@ crossed. Two severities:
   sustained rate is not.
 
 Per-alert cool-downs prevent Slack spam if the failure persists.
-
-Why not scrape the /metrics endpoint? The counter lives in the same
-process as the alerter — a direct read is simpler and doesn't require
-setting up an internal HTTP call plus scrape auth.
 """
 from __future__ import annotations
 
@@ -30,6 +27,7 @@ from dataclasses import dataclass
 import structlog
 
 from app.core.config import settings
+from app.modules.guard.observability.platform_slack import post_platform_alert
 
 
 log = structlog.get_logger(__name__)
@@ -96,22 +94,12 @@ def _counter_value(reason: str) -> float:
 
 
 def _post_slack(severity: str, reason: str, headline: str, delta: float, total: float) -> bool:
-    """Post to the operator's Slack channel. Returns True if sent.
+    """Delegate to the shared platform-alert helper.
 
-    Missing token/channel = feature disabled. Log-only.
-    Any post failure is swallowed with a structlog line so the alerter
-    keeps running.
+    Kept as a thin function so the check-and-alert loop and the test
+    suite have one patch point that decouples counter/state logic from
+    the Slack transport.
     """
-    token = settings.guard_ops_alert_slack_token
-    channel = settings.guard_ops_alert_slack_channel
-    if not token or not channel:
-        log.info(
-            "guard.durable_audit.alert_would_fire",
-            severity=severity, reason=reason, delta=delta, total=total,
-            note="GUARD_OPS_ALERT_SLACK_* not configured — log only",
-        )
-        return False
-
     text = f":rotating_light: [{severity}] Guard durable audit — {headline}"
     blocks = [
         {
@@ -131,14 +119,7 @@ def _post_slack(severity: str, reason: str, headline: str, delta: float, total: 
             },
         }
     ]
-    try:
-        from app.runtime.integrations.slack import post_message
-        post_message(token=token, channel=channel, text=text, blocks=blocks)
-        log.info("guard.durable_audit.alert_sent", severity=severity, reason=reason, delta=delta)
-        return True
-    except Exception:
-        log.exception("guard.durable_audit.alert_slack_failed", reason=reason)
-        return False
+    return post_platform_alert(surface="durable_audit", text=text, blocks=blocks)
 
 
 def check_and_alert(now: float | None = None) -> dict[str, dict]:

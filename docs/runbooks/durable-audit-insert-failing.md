@@ -2,7 +2,9 @@
 
 ## What the alert means
 
-The Slack alert `[PAGE] Guard durable audit — Durable audit insert is failing — Gateway is serving 503s` fires when the `GUARD_AUDIT_FAILED{reason="insert_accepted"}` counter delta exceeds 0 in a single scan cycle.
+The Slack alert `[PAGE] Guard durable audit — Durable audit insert is failing — Gateway is serving 503s` fires in Conduct's platform-operator Slack (the workspace configured via Render env vars `SLACK_BOT_TOKEN` + `CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL`) when the `GUARD_AUDIT_FAILED{reason="insert_accepted"}` counter delta exceeds 0 in a single scan cycle.
+
+That channel is Conduct-operator-only. Individual customer workspaces get their own Slack notifications for Block/Warn/Audit/Approval events through the workspace's own Slack integration + Notifications settings — not this channel.
 
 That reason label is emitted from one place: `apps/api/app/guard/audit.py::insert_accepted`, in the fail-closed branch that returns HTTP 503 when the durable write to `guard_audit_events` fails.
 
