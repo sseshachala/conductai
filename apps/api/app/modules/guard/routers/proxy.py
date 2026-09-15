@@ -738,6 +738,7 @@ async def _proxy(
             _response, workspace_id=workspace_id, provider=provider, model=model,
             clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
             agent_risk_tier=_agent_risk_tier,
+            ai_tool=ai_tool,
         )
     return _response
 
@@ -887,6 +888,7 @@ def _wrap_streaming_response(
     clerk_user_id: str | None,
     agent_identity_id: str | None,
     agent_risk_tier: str | None = None,
+    ai_tool: str | None = None,
 ) -> StreamingResponse:
     """#1733 PR 5 — buffered end-of-stream response gate.
 
