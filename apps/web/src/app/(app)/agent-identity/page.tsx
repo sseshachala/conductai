@@ -1049,7 +1049,15 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                 const lc   = LIFECYCLE_STYLE[id.lifecycle_state ?? ""] ?? { bg: "var(--surface-2)", fg: "var(--text-muted)", label: id.lifecycle_state ?? "—" }
                 const busy = savingIdentity === id.id
                 const isHighlighted = highlightId === id.id
-                const countdown = id.expires_at ? trialCountdown(id.expires_at) : null
+                // Countdown is a *trial* concept: "N days until the trial ends".
+                // Auto-provisioned CLI identities also have expires_at (the
+                // rolling session token TTL that refreshes on `conduct login`)
+                // but that's not a lifecycle event — the identity itself stays
+                // Active. Firing "Expired" for those was misleading, so gate
+                // the countdown on the trial classification.
+                const countdown = (id.expires_at && classifyIdentity(id) === "trial")
+                  ? trialCountdown(id.expires_at)
+                  : null
                 return (
                   <tr
                     key={id.id}
@@ -1060,11 +1068,17 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
                       transition: "background 400ms ease-out",
                     }}
                   >
-                    <td style={{ padding: "8px 12px" }} title={id.name}>
+                    <td style={{ padding: "8px 12px" }} title={id.id}>
                       <div style={{ fontWeight: 500, color: "var(--text)" }}>
                         {(id.name.startsWith("user_") && id.name.includes("(auto)")) ? "Auto-provisioned agent" : id.name}
                       </div>
                       <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>{id.token_prefix?.startsWith("okta_import") ? "external identity" : id.token_prefix}</div>
+                      {/* Match the id chip shown in the activity row so a deep-link
+                          from ?id=<uuid> can be confirmed visually. Full UUID
+                          available in the row title attr for hover-to-copy. */}
+                      <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }} title={id.id}>
+                        <span style={{ opacity: 0.7 }}>id: </span>{id.id.slice(0, 8)}<span style={{ opacity: 0.5 }}>…</span>
+                      </div>
                       {countdown && (
                         <div style={{ fontSize: 10.5, color: countdown.expired ? "var(--err)" : "var(--warn)", marginTop: 2, fontWeight: 600 }}>
                           {countdown.expired ? "Expired" : `⏱ ${countdown.label}`}

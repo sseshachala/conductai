@@ -417,8 +417,8 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
                    style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
                   {pill}
                   {ev.agent_identity_id && (
-                    <span className="mono" style={{ fontSize: 9.5, color: "var(--text-muted)" }}>
-                      {ev.agent_identity_id.slice(0, 10)}
+                    <span className="mono" style={{ fontSize: 9.5, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                      {ev.agent_identity_id.slice(0, 6)}
                     </span>
                   )}
                 </a>
@@ -487,8 +487,8 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
                    style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
                   {pill}
                   {ev.agent_identity_id && (
-                    <span className="mono" style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                      {ev.agent_identity_id.slice(0, 10)}
+                    <span className="mono" style={{ fontSize: 9, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                      {ev.agent_identity_id.slice(0, 6)}
                     </span>
                   )}
                 </a>
