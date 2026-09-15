@@ -184,6 +184,7 @@ async def gateway_anthropic_models(
         prompt_summary="Gateway model catalog",
         routing_meta={"operation": "model_catalog", "billable": False},
         agent_identity_id=agent_identity_id,
+        route=request.url.path,
     )
     return JSONResponse(
         content={"data": data},

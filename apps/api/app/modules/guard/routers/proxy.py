@@ -578,6 +578,7 @@ async def _proxy(
                 hook_session_id=_hook_session_id, routing_meta=_routing_meta,
                 execution_status="error", result_summary=f"HTTP {status}: {message}"[:500],
                 agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+                route=request.url.path,
             )
 
         # 4d. Per-key RPM/TPM rate limiting (#980, #1587 E1). Fires for
@@ -726,6 +727,9 @@ async def _proxy(
             # router._schedule_audit and forwarded to audit.record so Gateway
             # rows carry agent attribution end-to-end.
             str(_agent_identity_id) if _agent_identity_id else None,
+            # Follow-up to #1971 — index 17 = FastAPI request path so
+            # /proxy/* vs /gateway/v1/* is queryable from audit rows.
+            request.url.path,
         ),
         upstream_api_key=_upstream_key,
         vendor_key=_vault_key_val,

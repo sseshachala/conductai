@@ -90,6 +90,30 @@ def test_missing_agent_identity_id_still_writes_row_with_none():
     assert "agent_identity_id" in sess.last_sql
 
 
+def test_route_appears_in_insert_column_list():
+    """Follow-up to #1971 — audit rows must carry the FastAPI request path
+    so /proxy/* vs /gateway/v1/* is queryable directly."""
+    sess = _CapturingSession()
+    _call(sess, route="/gateway/v1/anthropic/v1/messages")
+    assert sess.last_sql is not None
+    assert "route" in sess.last_sql
+
+
+def test_route_parameter_binds_the_path_string():
+    sess = _CapturingSession()
+    _call(sess, route="/gateway/v1/anthropic/v1/messages")
+    assert sess.last_params.get("route") == "/gateway/v1/anthropic/v1/messages"
+
+
+def test_missing_route_still_writes_row_with_none():
+    """In-process callers (guard/gateway.py::guarded_*) have no HTTP route.
+    They must not crash; route binding is None so Postgres stores NULL."""
+    sess = _CapturingSession()
+    _call(sess)  # no route
+    assert sess.last_params.get("route") is None
+    assert "route" in sess.last_sql
+
+
 def test_metrics_counter_bumps_on_swallowed_exception():
     """When the INSERT raises, we must (a) not let the exception escape
     (per the docstring's 'never blocks the response' contract) and
