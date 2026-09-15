@@ -439,7 +439,22 @@ async def handle_gateway_request(
     # gateway_lifecycle so new Gateway behavior never grows in the
     # legacy proxy.py file. This handler just threads the resulting
     # row_id through the existing audit_args tuple at index 18.
-    from app.modules.guard.gateway_lifecycle import open_durable_row as _open_durable
+    #
+    # P2: merge the client's X-Request-Id into routing_meta *at the
+    # caller* so the enriched dict is what flows through open + audit
+    # + downstream finalize. Prior split (writer enriched, caller kept
+    # original) meant audit.finalize's ``routing_meta = CAST(:routing
+    # AS jsonb)`` UPDATE clobbered client_request_id back out on the
+    # finalized row.
+    _client_request_id = request.headers.get("x-request-id") or None
+    if _client_request_id:
+        _routing_meta = {**(_routing_meta or {}), "client_request_id": _client_request_id}
+
+    from app.modules.guard.gateway_lifecycle import (
+        open_durable_row as _open_durable,
+        close_durable_row as _close_durable,
+        finalize_durable_row as _finalize_durable_row,
+    )
     _durable = await _open_durable(
         workspace_id=workspace_id,
         clerk_user_id=clerk_user_id,
@@ -456,86 +471,131 @@ async def handle_gateway_request(
         conductai_run_id=_run_id,
         conductai_workflow=_workflow,
         conductai_workflow_id=_workflow_id,
-        request_correlation_id=request.headers.get("x-request-id") or None,
+        request_correlation_id=None,  # already merged into _routing_meta above
     )
     if _durable.fail_response is not None:
         return _durable.fail_response
     _durable_row_id = _durable.row_id
 
-    _response = await transport.forward(
-        sender=_forward,
-        upstream=upstream,
-        path=upstream_path,
-        body=body,
-        real_key=real_key,
-        auth_header_out=auth_header_out,
-        bearer=bearer,
-        is_stream=is_stream,
-        extra_headers=extra_headers,
-        background=background,
-        audit_args=(
-            workspace_id,
-            clerk_user_id,
-            ai_tool,
-            provider,
-            model,
-            _audit_decision,
-            _audit_rule_id,
-            started,
-            body,
-            prompt_summary,
-            _user_email,
-            _run_id,
-            _workflow,
-            _workflow_id,
-            _hook_session_id,
-            _routing_meta,
-            # Phase 0 of #1959 — index 16 = resolved agent identity id. Read by
-            # router._schedule_audit and forwarded to audit.record so Gateway
-            # rows carry agent attribution end-to-end.
-            str(_agent_identity_id) if _agent_identity_id else None,
-            # Follow-up to #1971 — index 17 = FastAPI request path so
-            # /proxy/* vs /gateway/v1/* is queryable from audit rows.
-            request.url.path,
-            # Phase 2 of #1959 — index 18 = durable row id. When set,
-            # _schedule_audit dispatches to finalize() instead of record().
-            _durable_row_id,
-        ),
-        upstream_api_key=_upstream_key,
-        vendor_key=_vault_key_val,
-        provider=provider,
-    )
-    # #1733 PR 4: response gate (non-streaming).
-    if (
-        operation == "inference"
-        and not is_stream
-        and isinstance(_response, JSONResponse)
-        and _response.status_code < 400
-    ):
-        _response = _apply_response_gate(
-            _response, workspace_id=workspace_id, provider=provider, model=model,
-            clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
-            agent_risk_tier=_agent_risk_tier,
-            ai_tool=ai_tool,
+    # P1: forward + response-gate must run under an exception-safe
+    # lifecycle. Prior structure had close_durable_row *after* the
+    # gate block, so any exception (or cancellation) between here and
+    # the close call leaked the whole-request heartbeat: the renewal
+    # task kept renew_lease-ing an abandoned row forever, preventing
+    # the reconciler from ever flipping it. Guarantees now:
+    #   - close_durable_row runs on every exit path (finally).
+    #   - On exception, best-effort finalize with 'error' / 'interrupted'
+    #     so the row lands terminated immediately instead of waiting on
+    #     the reconciler's lease-expiry sweep.
+    import asyncio as _asyncio
+    try:
+        _response = await transport.forward(
+            sender=_forward,
+            upstream=upstream,
+            path=upstream_path,
+            body=body,
+            real_key=real_key,
+            auth_header_out=auth_header_out,
+            bearer=bearer,
+            is_stream=is_stream,
+            extra_headers=extra_headers,
+            background=background,
+            audit_args=(
+                workspace_id,
+                clerk_user_id,
+                ai_tool,
+                provider,
+                model,
+                _audit_decision,
+                _audit_rule_id,
+                started,
+                body,
+                prompt_summary,
+                _user_email,
+                _run_id,
+                _workflow,
+                _workflow_id,
+                _hook_session_id,
+                _routing_meta,
+                # Phase 0 of #1959 — index 16 = resolved agent identity id. Read by
+                # router._schedule_audit and forwarded to audit.record so Gateway
+                # rows carry agent attribution end-to-end.
+                str(_agent_identity_id) if _agent_identity_id else None,
+                # Follow-up to #1971 — index 17 = FastAPI request path so
+                # /proxy/* vs /gateway/v1/* is queryable from audit rows.
+                request.url.path,
+                # Phase 2 of #1959 — index 18 = durable row id. When set,
+                # _schedule_audit dispatches to finalize() instead of record().
+                _durable_row_id,
+            ),
+            upstream_api_key=_upstream_key,
+            vendor_key=_vault_key_val,
+            provider=provider,
         )
-    # #1733 PR 5: response gate (streaming, buffered end-of-stream scan).
-    elif (
-        operation == "inference"
-        and is_stream
-        and isinstance(_response, StreamingResponse)
-        and _response.status_code < 400
-    ):
-        _response = _wrap_streaming_response(
-            _response, workspace_id=workspace_id, provider=provider, model=model,
-            clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
-            agent_risk_tier=_agent_risk_tier,
-            ai_tool=ai_tool,
-        )
-
-    # Cancel the whole-request renewal task owned by gateway_lifecycle.
-    # For streaming, _stream_chunks starts its own renewal for the
-    # stream lifetime. For non-streaming this marks the deadline.
-    from app.modules.guard.gateway_lifecycle import close_durable_row as _close_durable
-    await _close_durable(_durable)
+        # #1733 PR 4: response gate (non-streaming).
+        if (
+            operation == "inference"
+            and not is_stream
+            and isinstance(_response, JSONResponse)
+            and _response.status_code < 400
+        ):
+            _response = _apply_response_gate(
+                _response, workspace_id=workspace_id, provider=provider, model=model,
+                clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
+                agent_risk_tier=_agent_risk_tier,
+                ai_tool=ai_tool,
+            )
+        # #1733 PR 5: response gate (streaming, buffered end-of-stream scan).
+        elif (
+            operation == "inference"
+            and is_stream
+            and isinstance(_response, StreamingResponse)
+            and _response.status_code < 400
+        ):
+            _response = _wrap_streaming_response(
+                _response, workspace_id=workspace_id, provider=provider, model=model,
+                clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
+                agent_risk_tier=_agent_risk_tier,
+                ai_tool=ai_tool,
+            )
+    except BaseException as _forward_exc:  # noqa: BLE001 — need CancelledError too
+        # Best-effort finalize so the row lands terminated immediately
+        # instead of waiting on the reconciler's lease sweep. WHERE
+        # lifecycle_state = 'accepted' in audit.finalize means this is
+        # a no-op if the transport / _stream_chunks already finalized
+        # (e.g. an error partway through streaming).
+        if _durable_row_id:
+            _is_cancel = isinstance(_forward_exc, _asyncio.CancelledError)
+            try:
+                await _finalize_durable_row(
+                    row_id=_durable_row_id,
+                    workspace_id=workspace_id,
+                    decision="error",
+                    provider=provider,
+                    model=model,
+                    body=body,
+                    response_bytes=None,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    rule_id=None,
+                    routing_meta=_routing_meta,
+                    execution_status="interrupted" if _is_cancel else "error",
+                    result_summary=(
+                        "Request cancelled during upstream forward"
+                        if _is_cancel
+                        else f"forward/gate exception: {type(_forward_exc).__name__}: {str(_forward_exc)[:400]}"
+                    ),
+                    clerk_user_id=clerk_user_id,
+                    ai_tool=ai_tool,
+                    user_email=_user_email,
+                )
+            except Exception:
+                log.exception("guard.gateway.error_finalize_failed", row_id=_durable_row_id)
+        raise
+    finally:
+        # Cancel the whole-request renewal task owned by gateway_lifecycle.
+        # For streaming, _stream_chunks starts its own renewal for the
+        # stream lifetime. For non-streaming this marks the deadline.
+        # Idempotent — safe on every exit path including exceptions.
+        await _close_durable(_durable)
 
     return _response
