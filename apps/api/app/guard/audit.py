@@ -166,6 +166,10 @@ def record(
     # backward-compat for legacy callers that don't resolve an identity
     # (guard-mt-* member tokens, cedar-import, in-process calls without one).
     agent_identity_id: str | None = None,
+    # Follow-up to #1971 — FastAPI request path (e.g. /proxy/anthropic/v1/messages
+    # vs /gateway/v1/anthropic/v1/messages). Distinguishes legacy from new
+    # Gateway traffic at query time. NULL for in-process callers.
+    route: str | None = None,
 ) -> None:
     """Background task — best-effort audit write, never blocks the response.
 
@@ -212,7 +216,8 @@ def record(
                   evaluated_rules, defense_score,
                   routing_meta,
                   share_token_hash,
-                  execution_status, result_summary
+                  execution_status, result_summary,
+                  route
                 ) VALUES (
                   CAST(:row_id AS uuid),
                   :ws, :uid, CAST(:agent_id AS uuid), :ai, NULL,
@@ -225,7 +230,8 @@ def record(
                   CAST(:eval AS jsonb), :score,
                   CAST(:routing AS jsonb),
                   :share_token_hash,
-                  :execution_status, :result_summary
+                  :execution_status, :result_summary,
+                  :route
                 )
             """),
             {
@@ -250,6 +256,7 @@ def record(
                 "share_token_hash": share_token_hash,
                 "execution_status": execution_status,
                 "result_summary": result_summary,
+                "route": route,
             },
         )
         db.commit()

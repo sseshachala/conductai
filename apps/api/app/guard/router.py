@@ -57,6 +57,8 @@ def _schedule_audit(
         # that still build a 16-tuple pass None here, matching pre-Phase 0
         # behavior; the writer already tolerates None.
         agent_identity_id=audit_args[16] if len(audit_args) > 16 else None,
+        # Follow-up to #1971 — index 17 = FastAPI request path.
+        route=audit_args[17] if len(audit_args) > 17 else None,
         execution_status=execution_status,
         result_summary=result_summary,
     )

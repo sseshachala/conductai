@@ -236,9 +236,14 @@ class GuardAuditEvent(Base):
     # only for trial-workspace blocks. Enables anonymous receipt lookup for
     # signup users who don't yet have a login; workspace rows leave it NULL.
     share_token_hash = Column(Text, nullable=True)
+    # Added by revision 0131 — FastAPI request path so legacy /proxy/* vs
+    # new /gateway/v1/* traffic is queryable directly from audit rows.
+    # NULL for in-process callers that never had an HTTP route.
+    route = Column(String(128), nullable=True)
 
     __table_args__ = (
         Index("ix_guard_audit_events_source", "workspace_id", "source", "ts"),
+        Index("ix_guard_audit_events_route", "route"),
         Index(
             "ix_guard_audit_events_provider",
             "workspace_id", "provider", "ts",
