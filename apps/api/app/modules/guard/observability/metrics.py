@@ -19,3 +19,19 @@ GUARD_ENGINE_ERRORS = Counter(
     "Guard policy engine failures that fell open at enforcement time.",
     ["surface", "env"],
 )
+
+# Phase 0 of #1959 — Gateway audit write failures. The write path in
+# app/guard/audit.py::record catches every exception and returns silently
+# to avoid crashing the background task. Without this counter, silent
+# audit drops were only visible as scattered log lines. Aggregate rate is
+# now scrapable so dashboards + alerts can watch it.
+#
+# Label: reason is a coarse bucket, not the exception message (avoids
+# unbounded cardinality). Emit "insert" for the INSERT failure branch,
+# "notify" for the Slack-notify branch, "unknown" if we can't tell.
+GUARD_AUDIT_FAILED = Counter(
+    "guard_audit_failed_total",
+    "Gateway audit writes that were dropped after the exception handler in "
+    "guard.audit.record swallowed them.",
+    ["reason"],
+)

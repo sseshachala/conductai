@@ -430,6 +430,11 @@ async def _proxy(
                 _proxy_ai_row = _rair(token, db)
                 if _proxy_ai_row:
                     _agent_risk_tier = getattr(_proxy_ai_row, "risk_tier", None)
+                    # Phase 0 of #1959 — this branch previously read risk_tier
+                    # off the identity row but never propagated the id. Every
+                    # external-token audit row therefore had agent_identity_id
+                    # NULL even though a matching identity was resolved.
+                    _agent_identity_id = getattr(_proxy_ai_row, "id", None) or _agent_identity_id
             except Exception:
                 pass
 
@@ -473,6 +478,13 @@ async def _proxy(
         _workflow = request.headers.get("x-conductai-workflow") or None
         _workflow_id = request.headers.get("x-conductai-workflow-id") or None
         _environment_id = request.headers.get("x-conductai-environment-id") or None
+        # #1959 Phase 0 note: Flight Recorder session correlation currently
+        # requires clients to send X-Conduct-Session-Id. Codex Desktop's
+        # config.toml does not populate it today. Without this header the
+        # audit row lands with hook_session_id=NULL; do NOT synthesize one
+        # from timestamps or client IP — attribution has to be honest.
+        # Follow-up: signed session claims via Agent Identity (tracked
+        # alongside #1968) will make this observable per-request.
         _hook_session_id = request.headers.get("x-conduct-session-id") or None
 
         # #1712 Track 1 — trial-plan lookup before policy eval so a BLOCK
@@ -565,6 +577,7 @@ async def _proxy(
                 conductai_workflow=_workflow, conductai_workflow_id=_workflow_id,
                 hook_session_id=_hook_session_id, routing_meta=_routing_meta,
                 execution_status="error", result_summary=f"HTTP {status}: {message}"[:500],
+                agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
             )
 
         # 4d. Per-key RPM/TPM rate limiting (#980, #1587 E1). Fires for
@@ -709,6 +722,10 @@ async def _proxy(
             _workflow_id,
             _hook_session_id,
             _routing_meta,
+            # Phase 0 of #1959 — index 16 = resolved agent identity id. Read by
+            # router._schedule_audit and forwarded to audit.record so Gateway
+            # rows carry agent attribution end-to-end.
+            str(_agent_identity_id) if _agent_identity_id else None,
         ),
         upstream_api_key=_upstream_key,
         vendor_key=_vault_key_val,

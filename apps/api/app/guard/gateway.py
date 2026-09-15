@@ -225,6 +225,7 @@ async def guarded_completion(
             defense_score=decision.defense_score,
             receipt_id=_receipt_id,
             share_token_hash=_share_token_hash,
+            agent_identity_id=agent_identity_id,
         )
         return _router.fail_closed(
             403,
@@ -459,6 +460,8 @@ def guarded_client_call(
                 body=body, response_bytes=None,
                 prompt_summary=prompt_summary, user_email=user_email,
                 hook_session_id=hook_session_id,
+            
+            agent_identity_id=agent_identity_id,
             )
         except Exception as e:
             log.warning("guarded_client_call.audit_block_failed", err=str(e))
@@ -487,6 +490,8 @@ def guarded_client_call(
             body=body, response_bytes=synth,
             prompt_summary=prompt_summary, user_email=user_email,
             hook_session_id=hook_session_id,
+        
+        agent_identity_id=agent_identity_id,
         )
     except Exception as e:
         log.warning("guarded_client_call.audit_allow_failed", err=str(e))
@@ -551,6 +556,8 @@ def guarded_client_stream(
                 body=body, response_bytes=None,
                 prompt_summary=prompt_summary, user_email=user_email,
                 hook_session_id=hook_session_id,
+            
+            agent_identity_id=agent_identity_id,
             )
         except Exception as e:
             log.warning("guarded_client_stream.audit_block_failed", err=str(e))
@@ -582,6 +589,8 @@ def guarded_client_stream(
             body=body, response_bytes=None,
             prompt_summary=prompt_summary, user_email=user_email,
             hook_session_id=hook_session_id,
+        
+        agent_identity_id=agent_identity_id,
         )
     except Exception as e:
         log.warning("guarded_client_stream.audit_allow_failed", err=str(e))
@@ -661,6 +670,8 @@ def guarded_llm_stream(
                 evaluated_rules=decision.matched_rules,
                 defense_score=decision.defense_score,
                 hook_session_id=hook_session_id,
+            
+            agent_identity_id=agent_identity_id,
             )
         except Exception:
             pass
@@ -712,6 +723,8 @@ def guarded_llm_stream(
             evaluated_rules=decision.matched_rules,
             defense_score=decision.defense_score,
             hook_session_id=hook_session_id,
+        
+        agent_identity_id=agent_identity_id,
         )
     except Exception as e:
         log.warning("guarded_llm_stream.audit_failed", err=str(e))
