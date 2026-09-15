@@ -79,7 +79,6 @@ from app.guard.audit import (
     _compute_cost,
     _estimate_input_tokens,
     _extract_token_counts,
-    insert_accepted as _insert_accepted_audit,
     record as _record_audit,
 )
 
@@ -696,90 +695,34 @@ async def _proxy(
         k.lower(): v for k, v in request.headers.items()
         if k.lower() not in _skip and not k.lower().startswith("x-conduct")
     }
-    # Phase 2 of #1959 — durable inference audit.
-    # Behind settings.guard_use_durable_audit. When on, we write an
-    # 'accepted' row before the upstream call so a crashed or timed-out
-    # request leaves a trace the Phase 4 reconciler can pick up. The row
-    # id flows through audit_args index 18; _schedule_audit dispatches
-    # to finalize() instead of record() when it sees a durable id.
-    _durable_row_id: str | None = None
-    _renew_task_whole_request = None
-    if settings.guard_use_durable_audit:
-        import uuid as _uuid
-        # Post-P1 review v2: server generates the internal request_id.
-        # X-Request-Id is stored as correlation metadata only — never
-        # used as a uniqueness / idempotency key because a client-
-        # supplied value cannot be trusted for cross-tenant safety.
-        # Explicit idempotency (X-Idempotency-Key) is a separate feature
-        # deferred to a follow-up PR with proper ownership scoping.
-        _request_id = str(_uuid.uuid4())
-        _client_correlation = request.headers.get("x-request-id") or None
-        if _client_correlation and isinstance(_routing_meta, dict):
-            _routing_meta = {**_routing_meta, "client_request_id": _client_correlation}
-        elif _client_correlation:
-            _routing_meta = {"client_request_id": _client_correlation}
-        try:
-            _durable_row_id = _insert_accepted_audit(
-                workspace_id, clerk_user_id, ai_tool, provider, model,
-                request_id=_request_id,
-                body=body,
-                prompt_summary=prompt_summary,
-                user_email=_user_email,
-                agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                route=request.url.path,
-                hook_session_id=_hook_session_id,
-                routing_meta=_routing_meta,
-                conductai_run_id=_run_id,
-                conductai_workflow=_workflow,
-                conductai_workflow_id=_workflow_id,
-            )
-        except Exception as _e:
-            # Post-P1 review Findings 1 + 3. Distinguish two failure
-            # classes and handle each correctly:
-            #
-            #   (a) IntegrityError on request_id → client retried the
-            #       same X-Request-Id. Never forward inference twice —
-            #       either replay the original response body from the
-            #       Redis cache (true idempotency) or return 409 with a
-            #       receipt id so the client can poll status.
-            #
-            #   (b) Any other exception → real durable-write failure
-            #       (DB down, disk full, transient blip). Fail closed
-            #       per the 'persist before forwarding' contract; do
-            #       NOT let inference proceed without a durable record.
-            #       Operators can flip settings.guard_durable_audit_fail
-            #       _closed=false for local dev only.
-            from sqlalchemy.exc import IntegrityError as _IntegrityError
-            if isinstance(_e, _IntegrityError):
-                # Server-generated UUID4 collision is astronomically
-                # unlikely; if it happens, treat as a duplicate and
-                # refuse to forward inference. No response replay in
-                # this PR — the client must retry.
-                log.warning(
-                    "guard.proxy.internal_request_id_collision",
-                    request_id=_request_id,
-                )
-                return _fail_closed(
-                    409,
-                    "Duplicate durable-audit request id. Retry the request.",
-                )
-            if settings.guard_durable_audit_fail_closed:
-                log.error(
-                    "guard.proxy.durable_audit_fail_closed",
-                    err=str(_e),
-                    request_id=_request_id,
-                )
-                return _fail_closed(
-                    503,
-                    "Guard durable audit write failed — refusing to forward "
-                    "inference without a durable record. Retry the request.",
-                )
-            log.warning(
-                "guard.proxy.durable_audit_fail_open",
-                err=str(_e),
-                request_id=_request_id,
-            )
-            _durable_row_id = None
+    # #1959 durable audit lifecycle. All logic (insert_accepted +
+    # fail-closed decision + whole-request renewal) lives in
+    # gateway_lifecycle so new Gateway behavior never grows in this
+    # legacy file. _proxy() just threads the resulting row_id through
+    # the existing audit_args tuple at index 18.
+    from app.modules.guard.gateway_lifecycle import open_durable_row as _open_durable
+    _durable = await _open_durable(
+        workspace_id=workspace_id,
+        clerk_user_id=clerk_user_id,
+        ai_tool=ai_tool,
+        provider=provider,
+        model=model,
+        body=body,
+        prompt_summary=prompt_summary,
+        user_email=_user_email,
+        agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+        route=request.url.path,
+        hook_session_id=_hook_session_id,
+        routing_meta=_routing_meta,
+        conductai_run_id=_run_id,
+        conductai_workflow=_workflow,
+        conductai_workflow_id=_workflow_id,
+        request_correlation_id=request.headers.get("x-request-id") or None,
+        db=db,
+    )
+    if _durable.fail_response is not None:
+        return _durable.fail_response
+    _durable_row_id = _durable.row_id
 
     _response = await transport.forward(
         sender=_forward,
@@ -851,17 +794,11 @@ async def _proxy(
             ai_tool=ai_tool,
         )
 
-    # Post-P1 v3 review Finding 4: cancel whole-request renewal here.
-    # For streaming, _wrap_streaming_response's _stream_chunks spawns
-    # its own renewal for the stream lifetime. For non-streaming this
-    # marks the deadline — finalize is scheduled via _schedule_audit
-    # from the audit_args in transport.forward's response path.
-    if _renew_task_whole_request is not None and not _renew_task_whole_request.done():
-        _renew_task_whole_request.cancel()
-        try:
-            await _renew_task_whole_request
-        except BaseException:
-            pass
+    # Cancel the whole-request renewal task owned by gateway_lifecycle.
+    # For streaming, _stream_chunks starts its own renewal for the
+    # stream lifetime. For non-streaming this marks the deadline.
+    from app.modules.guard.gateway_lifecycle import close_durable_row as _close_durable
+    await _close_durable(_durable)
 
     return _response
 

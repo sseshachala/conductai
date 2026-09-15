@@ -193,17 +193,16 @@ async def test_upstream_exception_classifies_as_error():
 
 def test_client_x_request_id_is_stored_as_correlation_only_not_uniqueness_key():
     """Client-supplied X-Request-Id must NEVER drive the durable row's
-    unique index. Server generates the internal id; client's value goes
-    into routing_meta so it stays queryable for correlation. Reviewer's
-    P1 finding 1 root cause."""
-    from app.modules.guard.routers import proxy as proxy_mod
-    src = open(proxy_mod.__file__).read()
-    # The proxy must generate its own UUID for request_id; the header
-    # goes into routing_meta.client_request_id.
+    unique index. Logic lives in gateway_lifecycle; proxy.py only
+    delegates."""
+    from app.modules.guard import gateway_lifecycle as lifecycle_mod
+    src = open(lifecycle_mod.__file__).read()
     assert "str(_uuid.uuid4())" in src
     assert "client_request_id" in src
-    # The old pattern (using header as request_id) must be gone.
-    assert 'request.headers.get("x-request-id") or str(_uuid.uuid4())' not in src
+    from app.modules.guard.routers import proxy as proxy_mod
+    proxy_src = open(proxy_mod.__file__).read()
+    assert "gateway_lifecycle" in proxy_src
+    assert "_insert_accepted_audit" not in proxy_src
 
 
 def test_response_cache_module_no_longer_present():
