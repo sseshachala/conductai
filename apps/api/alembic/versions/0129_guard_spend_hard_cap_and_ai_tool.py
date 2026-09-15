@@ -49,42 +49,46 @@ def upgrade():
         """
     )
 
-    op.drop_index("uq_guard_spend_workspace_default", table_name="guard_spend_budgets")
-    op.drop_index("uq_guard_spend_workspace_member", table_name="guard_spend_budgets")
+    # IF EXISTS — prod schema had drifted from baseline (index dropped by
+    # an earlier cleanup that never made it into an alembic revision), so
+    # op.drop_index raised UndefinedObject on first deploy of this PR.
+    # We only care that the old shape is gone before we install the new one.
+    op.execute("DROP INDEX IF EXISTS uq_guard_spend_workspace_default")
+    op.execute("DROP INDEX IF EXISTS uq_guard_spend_workspace_member")
 
-    op.create_index(
-        "uq_guard_spend_workspace_default",
-        "guard_spend_budgets",
-        ["workspace_id", sa.text("COALESCE(ai_tool, '')")],
-        unique=True,
-        postgresql_where=sa.text("clerk_user_id IS NULL"),
+    op.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_guard_spend_workspace_default
+        ON guard_spend_budgets (workspace_id, COALESCE(ai_tool, ''))
+        WHERE clerk_user_id IS NULL
+        """
     )
-    op.create_index(
-        "uq_guard_spend_workspace_member",
-        "guard_spend_budgets",
-        ["workspace_id", "clerk_user_id", sa.text("COALESCE(ai_tool, '')")],
-        unique=True,
-        postgresql_where=sa.text("clerk_user_id IS NOT NULL"),
+    op.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_guard_spend_workspace_member
+        ON guard_spend_budgets (workspace_id, clerk_user_id, COALESCE(ai_tool, ''))
+        WHERE clerk_user_id IS NOT NULL
+        """
     )
 
 
 def downgrade():
-    op.drop_index("uq_guard_spend_workspace_default", table_name="guard_spend_budgets")
-    op.drop_index("uq_guard_spend_workspace_member", table_name="guard_spend_budgets")
+    op.execute("DROP INDEX IF EXISTS uq_guard_spend_workspace_default")
+    op.execute("DROP INDEX IF EXISTS uq_guard_spend_workspace_member")
 
-    op.create_index(
-        "uq_guard_spend_workspace_default",
-        "guard_spend_budgets",
-        ["workspace_id"],
-        unique=True,
-        postgresql_where=sa.text("clerk_user_id IS NULL"),
+    op.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_guard_spend_workspace_default
+        ON guard_spend_budgets (workspace_id)
+        WHERE clerk_user_id IS NULL
+        """
     )
-    op.create_index(
-        "uq_guard_spend_workspace_member",
-        "guard_spend_budgets",
-        ["workspace_id", "clerk_user_id"],
-        unique=True,
-        postgresql_where=sa.text("clerk_user_id IS NOT NULL"),
+    op.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_guard_spend_workspace_member
+        ON guard_spend_budgets (workspace_id, clerk_user_id)
+        WHERE clerk_user_id IS NOT NULL
+        """
     )
 
     op.drop_column("guard_spend_budgets", "hard_cap_enabled")
