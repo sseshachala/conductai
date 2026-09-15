@@ -512,6 +512,11 @@ async def _proxy(
             db=db,
             gate="prompt",  # #1733: outbound LLM proxy egress
             risk_tier=_agent_risk_tier,
+            # ai_tool was resolved earlier via header or UA sniff (line 458);
+            # threading it into policy eval scopes SpendCapPolicySource
+            # lookups per-tool. "unknown" flows through and SpendCap treats
+            # it as absence (workspace + user caps still apply).
+            ai_tool=ai_tool or None,
         )
         _pd = _eval_composed(_ctx)
         decision = _pd.extras.get("raw") or {
@@ -720,6 +725,7 @@ async def _proxy(
             _response, workspace_id=workspace_id, provider=provider, model=model,
             clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
             agent_risk_tier=_agent_risk_tier,
+            ai_tool=ai_tool,
         )
     # #1733 PR 5: response gate (streaming, buffered end-of-stream scan).
     elif (
@@ -747,6 +753,7 @@ def _evaluate_response_body(
     clerk_user_id: str | None,
     agent_identity_id: str | None,
     agent_risk_tier: str | None = None,
+    ai_tool: str | None = None,
 ):
     """#1733 PRs 4+5 — shared response-gate evaluator. Called by both the
     non-streaming path (post-upstream, pre-return) and the streaming path
@@ -767,6 +774,8 @@ def _evaluate_response_body(
             db=None,
             gate="response",  # #1733: inbound model reply
             risk_tier=agent_risk_tier,
+            # Same ai_tool the outbound prompt gate was evaluated against.
+            ai_tool=ai_tool,
         )
         return _eval_composed(_ctx)
     except Exception as _e:
@@ -783,6 +792,7 @@ def _apply_response_gate(
     clerk_user_id: str | None,
     agent_identity_id: str | None,
     agent_risk_tier: str | None = None,
+    ai_tool: str | None = None,
 ) -> JSONResponse:
     """#1733 PR 4 — evaluate the response body against gate='response' rules.
 
@@ -802,6 +812,7 @@ def _apply_response_gate(
             workspace_id=workspace_id, provider=provider, model=model,
             clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
             agent_risk_tier=agent_risk_tier,
+            ai_tool=ai_tool,
         )
         if decision is None or decision.action != _PA.BLOCK:
             return response
@@ -911,6 +922,7 @@ def _wrap_streaming_response(
                 workspace_id=workspace_id, provider=provider, model=model,
                 clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
                 agent_risk_tier=agent_risk_tier,
+                ai_tool=ai_tool,
             )
             if decision is None:
                 return

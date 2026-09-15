@@ -64,6 +64,9 @@ def dispatch(name: str, arguments_json: str, ctx: MCPContext) -> str:
         model="tool",
         body={"tool_name": name, "arguments": args},
         extras={"kind": "lens_tool", "tool_name": name, "surface": ctx.surface},
+        # In-process Lens executor is always ai_tool="lens" — per-tool budgets
+        # apply to a Lens-scoped row if one exists.
+        ai_tool="lens",
     )
     try:
         decision = evaluate_composed(policy_ctx)

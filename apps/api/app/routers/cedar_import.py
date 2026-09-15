@@ -107,6 +107,11 @@ def _enforce_cedar_gate(
         body={"tool_name": tool_name, "arguments": payload},
         db=db,
         extras={"kind": tool_name, "surface": "http", "tool_name": tool_name},
+        # Cedar-import is a server-side compliance surface, not a user tool
+        # call. Leave ai_tool None so SpendCapPolicySource treats it as
+        # workspace-wide (no per-tool row match) — Cedar shouldn't inherit
+        # a client-scoped cap.
+        ai_tool=None,
     )
     try:
         decision = evaluate_composed(ctx)

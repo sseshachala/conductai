@@ -183,6 +183,12 @@ def _handle_tools_call(
         model="tool",
         body={"tool_name": tool_name, "arguments": arguments},
         extras={"kind": "mcp_tool", "tool_name": tool_name, "surface": ctx.surface},
+        # ctx.surface is already the ai_tool key ("claude-code", "cursor", ...);
+        # feeding it here scopes SpendCapPolicySource lookups per-tool. When
+        # the client identified itself as "unknown" the sentinel is propagated
+        # and SpendCap treats it as "no per-tool row match" (workspace + user
+        # caps still apply).
+        ai_tool=ctx.surface or "unknown",
     )
     try:
         decision = evaluate_composed(policy_ctx)

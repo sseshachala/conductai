@@ -34,6 +34,78 @@ from app.guard.policy_types import PolicyAction as _PolicyAction, PolicyContext 
 log = structlog.get_logger(__name__)
 
 
+# ─── ai_tool detection (per-tool budget enforcement, #1965 follow-up) ────────
+#
+# Populated at proxy entry so PolicyContext.ai_tool feeds SpendCapPolicySource,
+# which scopes budget lookups per-tool when a matching row exists.
+#
+# Trust model: this is administrative visibility, NOT adversarial enforcement.
+# A malicious client that lies about its identity in the header or UA can be
+# labeled as whatever they want. The workspace-wide hard_limit_usd remains the
+# absolute ceiling — see PR body for the honest scope note.
+#
+# Adding a new tool: append its key to config/ai_tools.json (already the
+# canonical list for the Per-tool caps UI). This function reads that same
+# file so there is one source of truth.
+
+import json as _json_ai_tool
+from pathlib import Path as _Path_ai_tool
+from functools import lru_cache as _lru_cache_ai_tool
+
+
+@_lru_cache_ai_tool(maxsize=1)
+def _known_ai_tools() -> tuple[str, ...]:
+    """Load the canonical AI tool key list from config/ai_tools.json.
+
+    Cached — the file is read once per process. Returns an empty tuple if
+    the file is missing (dev containers built before it existed).
+    """
+    root = _Path_ai_tool(__file__).resolve()
+    # Walk up to repo root (apps/api/app/guard/gateway.py → 5 levels).
+    for _ in range(5):
+        root = root.parent
+    cfg = root / "config" / "ai_tools.json"
+    try:
+        raw = _json_ai_tool.loads(cfg.read_text())
+        tools = raw.get("tools") or []
+        return tuple(t for t in tools if isinstance(t, str))
+    except Exception:
+        return ()
+
+
+def detect_ai_tool(headers) -> str:
+    """Return an ai_tool key inferred from request headers.
+
+    Precedence:
+      1. Explicit X-Conduct-Ai-Tool header wins (self-labeling client).
+      2. First substring match against known keys in the User-Agent.
+      3. Fall back to "unknown" — SpendCapPolicySource treats that as
+         "no per-tool row match", so workspace + user caps still apply.
+
+    Accepts either a starlette Headers instance or any mapping with a
+    case-insensitive .get. Passing a plain dict works too.
+    """
+    def _get(name: str) -> str:
+        try:
+            v = headers.get(name)
+        except Exception:
+            v = None
+        return (v or "").strip()
+
+    explicit = _get("x-conduct-ai-tool").lower()
+    if explicit:
+        return explicit
+
+    ua = _get("user-agent").lower()
+    if ua:
+        for key in _known_ai_tools():
+            if key in ua:
+                return key
+
+    log.info("guard.gateway.ai_tool_unknown", user_agent=ua[:80])
+    return "unknown"
+
+
 @dataclass
 class Decision:
     """Structured output of policy.evaluate — narrower typed view over the
@@ -117,6 +189,7 @@ async def guarded_completion(
         input_tokens=0,
         db=None,
         gate="prompt",  # #1733: outbound LLM proxy egress
+        ai_tool=ai_tool,
     )
     _composed = _evaluate_composed(_ctx)
     decision = Decision(
@@ -373,6 +446,7 @@ def guarded_client_call(
         input_tokens=0,
         db=None,
         gate="prompt",  # #1733: outbound LLM proxy egress
+        ai_tool=ai_tool,
     )
     composed = _eval_composed(ctx)
 
@@ -464,6 +538,7 @@ def guarded_client_stream(
         input_tokens=0,
         db=None,
         gate="prompt",  # #1733: outbound LLM proxy egress
+        ai_tool=ai_tool,
     )
     composed = _eval_composed(ctx)
 
@@ -572,6 +647,7 @@ def guarded_llm_stream(
         input_tokens=0,
         db=db,
         gate="prompt",  # #1733: outbound LLM proxy egress
+        ai_tool=ai_tool,
     )
     decision = _eval_composed(ctx)
 
