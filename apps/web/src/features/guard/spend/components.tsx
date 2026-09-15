@@ -298,45 +298,6 @@ export function PerToolCapsPanel({
         </div>
       </div>
 
-      {caps.length === 0 ? (
-        <div style={{ padding: "18px 22px", color: "var(--text-muted)", fontSize: 13 }}>
-          No per-tool caps set. Add one below to scope enforcement to a single tool.
-        </div>
-      ) : (
-        <div>
-          {caps.map(c => (
-            <div
-              key={c.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "160px 1fr auto",
-                gap: 16,
-                alignItems: "center",
-                padding: "12px 22px",
-                borderTop: "1px solid var(--border)",
-              }}
-            >
-              <div style={{ fontSize: 14, fontWeight: 600 }}>{c.ai_tool}</div>
-              <div style={{ fontSize: 13, color: "var(--text-2)" }}>
-                {sym}{Math.round(fromUsd(c.current_month_cost_usd, currency)).toLocaleString()}
-                {" / "}
-                {sym}{Math.round(fromUsd(c.monthly_limit_usd, currency)).toLocaleString()} this month
-              </div>
-              {!readOnly && (
-                <button
-                  onClick={() => onRemove(c.id).catch(e => setErr(e?.message ?? "Remove failed"))}
-                  className="btn btn-ghost btn-sm"
-                  aria-label={`Remove ${c.ai_tool} cap`}
-                  title="Remove cap"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
       {!readOnly && availableTools.length > 0 && (
         <div
           style={{
@@ -378,6 +339,45 @@ export function PerToolCapsPanel({
           >
             {saving ? "Adding…" : "Add"}
           </button>
+        </div>
+      )}
+
+      {caps.length === 0 ? (
+        <div style={{ padding: "18px 22px", color: "var(--text-muted)", fontSize: 13 }}>
+          No per-tool caps set. Add one above to scope enforcement to a single tool.
+        </div>
+      ) : (
+        <div>
+          {caps.map(c => (
+            <div
+              key={c.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "160px 1fr auto",
+                gap: 16,
+                alignItems: "center",
+                padding: "12px 22px",
+                borderTop: "1px solid var(--border)",
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{c.ai_tool}</div>
+              <div style={{ fontSize: 13, color: "var(--text-2)" }}>
+                {sym}{Math.round(fromUsd(c.current_month_cost_usd, currency)).toLocaleString()}
+                {" / "}
+                {sym}{Math.round(fromUsd(c.monthly_limit_usd, currency)).toLocaleString()} this month
+              </div>
+              {!readOnly && (
+                <button
+                  onClick={() => onRemove(c.id).catch(e => setErr(e?.message ?? "Remove failed"))}
+                  className="btn btn-ghost btn-sm"
+                  aria-label={`Remove ${c.ai_tool} cap`}
+                  title="Remove cap"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

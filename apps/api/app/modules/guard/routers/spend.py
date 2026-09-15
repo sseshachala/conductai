@@ -86,6 +86,23 @@ class ToolSpend(BaseModel):
     cost_saved: float = 0.0
 
 
+class ModelSpend(BaseModel):
+    # provider is the vendor namespace (anthropic, openai, perplexity, ...);
+    # model is the concrete vendor id (gpt-4o, claude-sonnet-4-5, ...). Both
+    # are populated only for proxy-routed audit events — hook-only rows are
+    # excluded from these aggregates by a `WHERE model IS NOT NULL` filter.
+    provider: str
+    model: str
+    tokens_after: int
+    cost_usd: float
+
+
+class ProviderSpend(BaseModel):
+    provider: str
+    tokens_after: int
+    cost_usd: float
+
+
 class SpendSummary(BaseModel):
     workspace_id: str
     period: str
@@ -102,6 +119,8 @@ class SpendSummary(BaseModel):
     hook_sessions: int = 0
     by_developer: list[DeveloperSpend]
     by_ai_tool: list[ToolSpend]
+    by_model: list[ModelSpend] = []
+    by_provider: list[ProviderSpend] = []
 
 
 class SessionOut(BaseModel):
@@ -186,6 +205,8 @@ def get_spend_summary(
             hook_sessions=0,
             by_developer=[],
             by_ai_tool=[],
+            by_model=[],
+            by_provider=[],
         )
 
 
@@ -317,6 +338,62 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         for row in tool_rows
     ]
 
+    # by_model / by_provider — only rows that actually carry a model/provider
+    # (i.e. proxy-flowing audit events). Hook rows are excluded so the "cost
+    # by model" view stays honest and comparable across workspaces.
+    model_rows = (
+        db.query(
+            GuardAuditEvent.provider.label("provider"),
+            GuardAuditEvent.model.label("model"),
+            func.coalesce(func.sum(func.coalesce(GuardAuditEvent.tokens_after, 0)), 0).label("tokens_after"),
+            func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("cost_usd"),
+        )
+        .filter(
+            GuardAuditEvent.workspace_id.in_(org_ws),
+            GuardAuditEvent.ts >= period_start,
+            GuardAuditEvent.ts < period_end,
+            GuardAuditEvent.model.isnot(None),
+            GuardAuditEvent.provider.isnot(None),
+        )
+        .group_by(GuardAuditEvent.provider, GuardAuditEvent.model)
+        .order_by(func.sum(GuardAuditEvent.cost_usd_after).desc())
+        .all()
+    )
+    by_model = [
+        ModelSpend(
+            provider=row.provider,
+            model=row.model,
+            tokens_after=int(row.tokens_after),
+            cost_usd=round(float(row.cost_usd), 6),
+        )
+        for row in model_rows
+    ]
+
+    provider_rows = (
+        db.query(
+            GuardAuditEvent.provider.label("provider"),
+            func.coalesce(func.sum(func.coalesce(GuardAuditEvent.tokens_after, 0)), 0).label("tokens_after"),
+            func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("cost_usd"),
+        )
+        .filter(
+            GuardAuditEvent.workspace_id.in_(org_ws),
+            GuardAuditEvent.ts >= period_start,
+            GuardAuditEvent.ts < period_end,
+            GuardAuditEvent.provider.isnot(None),
+        )
+        .group_by(GuardAuditEvent.provider)
+        .order_by(func.sum(GuardAuditEvent.cost_usd_after).desc())
+        .all()
+    )
+    by_provider = [
+        ProviderSpend(
+            provider=row.provider,
+            tokens_after=int(row.tokens_after),
+            cost_usd=round(float(row.cost_usd), 6),
+        )
+        for row in provider_rows
+    ]
+
     # "Today" fields = rolling 24h for the current month; whole selected
     # month otherwise. Keeps the dashboard "today" meaning intact while making
     # past-month views internally consistent with the other totals.
@@ -414,6 +491,8 @@ def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) 
         hook_sessions=hook_sessions_count,
         by_developer=by_developer,
         by_ai_tool=by_ai_tool,
+        by_model=by_model,
+        by_provider=by_provider,
     )
 
 
