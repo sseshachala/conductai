@@ -25,6 +25,12 @@ import { ActivityRow, ActivityHeader, ToolBadge, DecisionBadge, BlastRadiusBadge
 import {
   GuardFilterBar,
   GuardPageHeader,
+  GuardToolbar,
+  ALL_COLUMNS,
+  DEFAULT_VISIBLE_COLUMNS,
+  loadVisibleColumns,
+  saveVisibleColumns,
+  type ColumnKey,
   type FilterPill,
 } from "@/components/guard/common"
 
@@ -146,6 +152,16 @@ function ActivityContent() {
   const [filterSince, setFilterSince] = useState("")
   const [filterUntil, setFilterUntil] = useState("")
   const [filterRuleId, setFilterRuleId] = useState("")
+
+  // #1982 — visible columns for the Flight Recorder table. Default matches
+  // the acceptance criteria; localStorage restore happens after mount so
+  // SSR/CSR match.
+  const [visibleColumns, setVisibleColumns] = useState<ColumnKey[]>(DEFAULT_VISIBLE_COLUMNS)
+  useEffect(() => { setVisibleColumns(loadVisibleColumns()) }, [])
+  const applyVisibleColumns = useCallback((cols: ColumnKey[]) => {
+    setVisibleColumns(cols)
+    saveVisibleColumns(cols)
+  }, [])
 
   // Fetch audit chain status + advisory mode on load
   useEffect(() => {
@@ -466,140 +482,45 @@ function ActivityContent() {
         ))}
       </div>
 
-      {/* Filter bar + realtime indicator */}
-      {activeView === "events" && (<GuardFilterBar<string>
-        pills={([
-          { value: "",        label: "All" },
-          { value: "blocked", label: "Blocked" },
-          { value: "warned",  label: "Warned" },
-          { value: "allowed", label: "Allowed" },
-        ]) as readonly FilterPill<string>[]}
-        active={filterDecision}
-        onChange={setFilterDecision}
-      >
-        {!permissionsLoading && permissions.canViewAllActivity && (
-          <select
-            value={filterDeveloper}
-            onChange={e => setFilterDeveloper(e.target.value)}
-            style={selectStyle}
-          >
-            <option value="">All developers</option>
-            {developers.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
-        )}
-
-        <select
-          value={filterTool}
-          onChange={e => setFilterTool(e.target.value)}
-          style={selectStyle}
-        >
-          <option value="">All tools</option>
-          {tools.map(t => {
-            const TOOL_NAMES: Record<string, string> = {
-              "claude-code": "Claude Code", "claude_code": "Claude Code",
-              "claude_chat": "Claude.ai", "claude-chat": "Claude.ai",
-              "claude_desktop": "Claude Desktop", "claude-desktop": "Claude Desktop",
-              "claude_work": "Claude Work", "claude-work": "Claude Work",
-              "codex": "Codex", "codex_cli": "Codex CLI", "codex_chat": "Codex Chat",
-              "cursor": "Cursor", "windsurf": "Windsurf", "copilot": "Copilot", "gemini": "Gemini",
-            }
-            return <option key={t} value={t}>{TOOL_NAMES[t] ?? t}</option>
-          })}
-        </select>
-
-        <input
-          type="date"
-          value={filterSince}
-          onChange={e => setFilterSince(e.target.value)}
-          style={selectStyle}
-          aria-label="From date"
+      {/* Consolidated toolbar — #1982 */}
+      {activeView === "events" && (
+        <GuardToolbar<ColumnKey>
+          streaming={streaming}
+          onStreamingToggle={() => setStreaming(s => !s)}
+          status={filterDecision as "" | "blocked" | "warned" | "allowed"}
+          onStatusChange={(v: string) => setFilterDecision(v)}
+          filters={{
+            developer: filterDeveloper,
+            onDeveloperChange: setFilterDeveloper,
+            developers,
+            canViewAllActivity: !permissionsLoading && permissions.canViewAllActivity,
+            tool: filterTool,
+            onToolChange: setFilterTool,
+            tools,
+            since: filterSince,
+            onSinceChange: setFilterSince,
+            until: filterUntil,
+            onUntilChange: setFilterUntil,
+            ruleId: filterRuleId,
+            onClearRule: () => setFilterRuleId(""),
+            groupByGoal,
+            onGroupByGoalChange: setGroupByGoal,
+          }}
+          onClearAll={() => {
+            if (permissions.canViewAllActivity) setFilterDeveloper("")
+            setFilterTool("")
+            setFilterSince("")
+            setFilterUntil("")
+            setFilterRuleId("")
+          }}
+          canExport={permissions.canExportActivity}
+          onExportCsv={() => exportCsv(events)}
+          onSocReport={() => window.open("/theguard/reports/soc2", "_blank", "noopener")}
+          allColumns={ALL_COLUMNS}
+          columns={visibleColumns}
+          onColumnsChange={applyVisibleColumns}
         />
-        <input
-          type="date"
-          value={filterUntil}
-          onChange={e => setFilterUntil(e.target.value)}
-          style={selectStyle}
-          aria-label="To date"
-        />
-
-        {(filterHookSession || filterAgentIdentity) && <span className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
-          <span title={filterHookSession || filterAgentIdentity}>Recorded session {filterHookSession.slice(0, 8) || filterAgentIdentity.slice(0, 8)}</span>
-          <a className="underline" href="/logs/guard?view=events">Clear session filter</a>
-        </span>}
-        {filterRuleId && (
-          <span style={{
-            fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 12,
-            background: "var(--accent-weak)", color: "var(--accent-text)",
-            display: "inline-flex", alignItems: "center", gap: 6,
-          }}>
-            rule: <span style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)" }}>{filterRuleId}</span>
-            <button onClick={() => setFilterRuleId("")} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, lineHeight: 1 }} aria-label="Clear rule filter">×</button>
-          </span>
-        )}
-
-        {(filterDeveloper || filterTool || filterSince || filterUntil || filterRuleId) && (
-          <button
-            onClick={() => {
-              if (permissions.canViewAllActivity) setFilterDeveloper("")
-              setFilterTool(""); setFilterSince(""); setFilterUntil(""); setFilterRuleId("")
-            }}
-            style={{ fontSize: 12, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
-          >
-            Clear filters
-          </button>
-        )}
-
-        {/* Realtime indicator */}
-        <span style={{ marginLeft: "auto", fontSize: 12.5, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="conduct-pulse-dot" style={{ background: "var(--ok)" }} />
-          Realtime · every tool call logged
-        </span>
-
-        {/* Group by goal toggle */}
-        <button
-          onClick={() => setGroupByGoal(g => !g)}
-          className="btn btn-ghost btn-sm"
-          style={{ fontSize: 11, fontWeight: groupByGoal ? 700 : 400 }}
-          title={groupByGoal ? "Switch to flat event list" : "Group events by workflow goal"}
-        >
-          {groupByGoal ? "All events" : "Group by goal"}
-        </button>
-
-        {/* Go Live toggle */}
-        <button
-          onClick={() => setStreaming(s => !s)}
-          className={`btn btn-sm ${streaming ? "btn-ghost" : ""}`}
-          style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}
-        >
-          {streaming && <span className="conduct-pulse-dot" style={{ background: "var(--ok)" }} />}
-          {streaming ? "Stop" : "Go Live"}
-        </button>
-
-        {/* Export CSV */}
-        {permissions.canExportActivity && (
-          <button
-            onClick={() => exportCsv(events)}
-            disabled={events.length === 0}
-            className="btn btn-ghost btn-sm"
-            style={{ fontSize: 11 }}
-          >
-            Export CSV
-          </button>
-        )}
-
-        {/* SOC 2 PDF Report */}
-        {permissions.canExportActivity && (
-          <a
-            href="/theguard/reports/soc2"
-            target="_blank"
-            rel="noopener"
-            className="btn btn-ghost btn-sm"
-            style={{ fontSize: 11, textDecoration: "none" }}
-          >
-            SOC 2 Report →
-          </a>
-        )}
-      </GuardFilterBar>)}
+      )}
 
       {/* Sessions & Machines view */}
       {activeView === "sessions" && sessionsError && (
@@ -890,7 +811,7 @@ function ActivityContent() {
                             <div>
                               {tableHeader}
                               {runGroup.events.map((ev, i) => (
-                                <ActivityRow key={ev.id} ev={ev} isLast={i === runGroup.events.length - 1} />
+                                <ActivityRow key={ev.id} ev={ev} isLast={i === runGroup.events.length - 1} visibleColumns={visibleColumns} />
                               ))}
                             </div>
                           )}
@@ -951,7 +872,7 @@ function ActivityContent() {
                       <div>
                         {tableHeader}
                         {adhoc.map((ev, i) => (
-                          <ActivityRow key={ev.id} ev={ev} isLast={i === adhoc.length - 1} />
+                          <ActivityRow key={ev.id} ev={ev} isLast={i === adhoc.length - 1} visibleColumns={visibleColumns} />
                         ))}
                       </div>
                     )}
@@ -1008,7 +929,7 @@ function ActivityContent() {
 
           {/* Table rows */}
           {events.map((ev, i) => (
-            <ActivityRow key={ev.id} ev={ev} isLast={i === events.length - 1} />
+            <ActivityRow key={ev.id} ev={ev} isLast={i === events.length - 1} visibleColumns={visibleColumns} />
           ))}
 
           {/* Load more / count */}

@@ -3,6 +3,45 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react"
 import { timeAgo } from "@/lib/runUtils"
 import { DecisionBadge } from "./DecisionBadge"
+import { ALL_COLUMNS, type ColumnKey } from "./common/GuardToolbar"
+
+// Per-column grid weights — kept in one place so ActivityHeader and
+// ActivityRow can't drift. Mirrors the historical 8-column template.
+// Action cell inherits Input's former budget (1.2fr + 1.8fr = 3fr) so the
+// merged cell shows both tool-call name and input_summary comfortably.
+const COL_WEIGHTS: Record<ColumnKey, string> = {
+  time: "0.8fr",
+  actor: "1.4fr",
+  tool: "1fr",
+  call: "3fr",
+  decision: "0.9fr",
+  rule: "0.8fr",
+  blast: "0.9fr",
+}
+
+function buildGridTemplate(visible: readonly ColumnKey[]): string {
+  return visible.map(k => COL_WEIGHTS[k]).join(" ")
+}
+
+function resolveVisible(
+  visible: readonly ColumnKey[] | undefined,
+  compact: boolean,
+): { list: ColumnKey[]; set: Set<ColumnKey> } {
+  let list: ColumnKey[]
+  if (visible && visible.length > 0) {
+    // Preserve canonical column order regardless of the incoming array.
+    const inSet = new Set(visible)
+    list = ALL_COLUMNS.map(c => c.key).filter(k => inSet.has(k))
+    if (list.length === 0) list = ALL_COLUMNS.map(c => c.key)
+  } else if (compact) {
+    // Legacy compact mode: hide the Tool and Blast columns.
+    list = ALL_COLUMNS.map(c => c.key).filter(k => k !== "tool" && k !== "blast")
+  } else {
+    list = ALL_COLUMNS.map(c => c.key)
+  }
+  return { list, set: new Set(list) }
+}
+
 import { AgentAvatar } from "./AgentAvatar"
 
 /**
@@ -287,10 +326,11 @@ export function SignatureTamperRow({ ev, isLast = false }: { ev: AuditEvent; isL
 }
 
 
-export function ActivityRow({ ev, compact = false, isLast = false }: {
+export function ActivityRow({ ev, compact = false, isLast = false, visibleColumns }: {
   ev: AuditEvent
   compact?: boolean
   isLast?: boolean
+  visibleColumns?: readonly ColumnKey[]
 }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
@@ -299,9 +339,10 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
     return <SignatureTamperRow ev={ev} isLast={isLast} />
   }
 
-  const cols = compact
-    ? "0.8fr 1.4fr 1.2fr 1.8fr 0.9fr 0.8fr"
-    : "0.8fr 1.4fr 1fr 1.2fr 1.8fr 0.9fr 0.8fr 0.9fr"
+  const { set: showCol } = resolveVisible(visibleColumns, compact)
+  const cols = buildGridTemplate(
+    ALL_COLUMNS.map(c => c.key).filter(k => showCol.has(k))
+  )
 
   const bg = ev.decision === "blocked"
     ? "var(--err-bg)"
@@ -325,7 +366,10 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
         cursor: "pointer",
       }}
     >
-      <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }} title={formatTs(ev.ts)}>{timeAgo(ev.ts)}</div>
+      {showCol.has("time") && (
+        <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }} title={formatTs(ev.ts)}>{timeAgo(ev.ts)}</div>
+      )}
+      {showCol.has("actor") && (
       <div style={{ minWidth: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}
           title={ev.user_email ?? ev.agent_identity_id ?? undefined}>
@@ -376,7 +420,8 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           </div>
         )}
       </div>
-      {!compact && (
+      )}
+      {showCol.has("tool") && (
         <div>
           {ev.source === "brain_block" && ev.conductai_workflow ? (
             ev.conductai_run_id ? (
@@ -399,6 +444,8 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           )}
         </div>
       )}
+      {showCol.has("call") && (
+      <>
       <div className="mono" style={{ fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {(ev.source === "proxy") && ev.provider
@@ -440,6 +487,9 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           ? `${ev.input_summary || "vendor"} → ${ev.provider} · ${ev.model}`
           : ev.input_summary ? `${ev.input_summary}…` : "—"}
       </div>
+      </>
+      )}
+      {showCol.has("decision") && (
       <div>
         {ev.execution_status === "error" || ev.execution_status === "timeout" ? (
           <span title={ev.result_summary || "Gateway execution failed"} style={{ display: "inline-flex", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, color: "var(--err)", background: "var(--err-bg)" }}>
@@ -454,6 +504,8 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           <DecisionBadge decision={ev.decision} />
         )}
       </div>
+      )}
+      {showCol.has("rule") && (
       <div className="mono" style={{ fontSize: 11, color: ev.rule_id ? "var(--err)" : "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{ev.rule_id ?? "—"}</span>
         {ev.evaluated_rules && ev.evaluated_rules.length > 1 && (
@@ -477,7 +529,8 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
           </span>
         )}
       </div>
-      {!compact && (
+      )}
+      {showCol.has("blast") && (
         <div>
           {ev.blast_radius ? (
             <BlastRadiusBadge br={ev.blast_radius} />
@@ -565,10 +618,12 @@ export function ActivityRow({ ev, compact = false, isLast = false }: {
 }
 
 /** Column header strip — same widths/labels as the rows, with optional compact mode. */
-export function ActivityHeader({ compact = false }: { compact?: boolean }) {
-  const cols = compact
-    ? "0.8fr 1.4fr 1.2fr 1.8fr 0.9fr 0.8fr"
-    : "0.8fr 1.4fr 1fr 1.2fr 1.8fr 0.9fr 0.8fr 0.9fr"
+export function ActivityHeader({ compact = false, visibleColumns }: {
+  compact?: boolean
+  visibleColumns?: readonly ColumnKey[]
+}) {
+  const { list, set: showCol } = resolveVisible(visibleColumns, compact)
+  const cols = buildGridTemplate(list)
   return (
     <div style={{
       display: "grid",
@@ -583,14 +638,13 @@ export function ActivityHeader({ compact = false }: { compact?: boolean }) {
       textTransform: "uppercase",
       color: "var(--text-muted)",
     }}>
-      <div>Time</div>
-      <div>Actor</div>
-      {!compact && <div>Tool</div>}
-      <div>Action</div>
-      <div>Input</div>
-      <div>Decision</div>
-      <div>Rule</div>
-      {!compact && <div>Blast</div>}
+      {showCol.has("time") && <div>Time</div>}
+      {showCol.has("actor") && <div>Actor</div>}
+      {showCol.has("tool") && <div>Tool</div>}
+      {showCol.has("call") && <div>Action</div>}
+      {showCol.has("decision") && <div>Decision</div>}
+      {showCol.has("rule") && <div>Rule</div>}
+      {showCol.has("blast") && <div>Blast</div>}
     </div>
   )
 }
