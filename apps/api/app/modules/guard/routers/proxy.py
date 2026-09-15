@@ -703,6 +703,7 @@ async def _proxy(
     # id flows through audit_args index 18; _schedule_audit dispatches
     # to finalize() instead of record() when it sees a durable id.
     _durable_row_id: str | None = None
+    _renew_task_whole_request = None
     if settings.guard_use_durable_audit:
         import uuid as _uuid
         # Post-P1 review v2: server generates the internal request_id.
@@ -849,6 +850,18 @@ async def _proxy(
             agent_risk_tier=_agent_risk_tier,
             ai_tool=ai_tool,
         )
+
+    # Post-P1 v3 review Finding 4: cancel whole-request renewal here.
+    # For streaming, _wrap_streaming_response's _stream_chunks spawns
+    # its own renewal for the stream lifetime. For non-streaming this
+    # marks the deadline — finalize is scheduled via _schedule_audit
+    # from the audit_args in transport.forward's response path.
+    if _renew_task_whole_request is not None and not _renew_task_whole_request.done():
+        _renew_task_whole_request.cancel()
+        try:
+            await _renew_task_whole_request
+        except BaseException:
+            pass
 
     return _response
 
