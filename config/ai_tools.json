@@ -1,0 +1,16 @@
+{
+  "$comment": "Canonical list of AI tools recognized by Conduct. Adding a new tool: append here, then add matching pricing in apps/api/app/modules/guard/routers/events.py TOOL_PRICING. The API asserts at import time that every key here has pricing.",
+  "tools": [
+    "claude-code",
+    "claude-chat",
+    "claude-desktop",
+    "claude-work",
+    "codex-cli",
+    "codex-chat",
+    "codex-desktop",
+    "cursor",
+    "windsurf",
+    "copilot",
+    "gemini"
+  ]
+}

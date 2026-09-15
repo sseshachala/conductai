@@ -212,6 +212,8 @@ export const guard = {
       },
       set: (f: AuthFetch, body: Record<string, unknown>) =>
         post(f, `${base()}/spend/budgets`, body),
+      remove: (f: AuthFetch, id: string) =>
+        f(`${base()}/spend/budgets/${encodeURIComponent(id)}`, { method: "DELETE" }),
     },
     sessions: (f: AuthFetch, params?: Record<string, string>) => {
       const q = params ? `?${new URLSearchParams(params)}` : ""

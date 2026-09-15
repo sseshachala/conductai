@@ -892,6 +892,10 @@ def ingest_event(
 
 # ── POST /guard/events/usage — PostToolUse token backfill ────────────────────
 
+# Adding a new AI tool: (1) append its key to config/ai_tools.json so it
+# appears in the Spend UI's per-tool cap dropdown, (2) add a matching entry
+# below with input/output pricing (USD per 1M tokens). Prefix fallback
+# (_tool_pricing) is a safety net, not the source of truth.
 TOOL_PRICING = {
     # Claude surfaces (all billed at Sonnet-class rates)
     "claude-code":    {"input": 3.0,  "output": 15.0},
@@ -908,6 +912,8 @@ TOOL_PRICING = {
     "codex_cli":      {"input": 2.5,  "output": 10.0},
     "codex-chat":     {"input": 2.5,  "output": 10.0},
     "codex_chat":     {"input": 2.5,  "output": 10.0},
+    "codex-desktop":  {"input": 2.5,  "output": 10.0},
+    "codex_desktop":  {"input": 2.5,  "output": 10.0},
     # Other tools
     "cursor":         {"input": 3.0,  "output": 15.0},
     "windsurf":       {"input": 3.0,  "output": 15.0},

@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -230,9 +231,18 @@ def _fetch_budget_status():
     api_url       = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     if not workspace_id:
         return False, "unconfigured"
+    # ai_tool lets the server scope enforcement per-tool so an overspend in
+    # one client (e.g. codex-desktop) doesn't block others (e.g. claude-code).
+    try:
+        from conduct_cli.hooks.base import detect_ai_tool
+        ai_tool = detect_ai_tool() or ""
+    except Exception:
+        ai_tool = ""
     url = f"{api_url}/guard/spend/budget-check?workspace_id={workspace_id}"
     if clerk_user_id:
-        url += f"&clerk_user_id={clerk_user_id}"
+        url += f"&clerk_user_id={urllib.parse.quote(clerk_user_id, safe='')}"
+    if ai_tool:
+        url += f"&ai_tool={urllib.parse.quote(ai_tool, safe='')}"
     try:
         with urllib.request.urlopen(urllib.request.Request(url), timeout=5) as resp:
             data = json.loads(resp.read())

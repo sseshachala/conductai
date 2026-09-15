@@ -101,3 +101,18 @@ export interface TeamBudgetSettings {
   hard_cap_enabled: boolean
   default_per_developer_usd: number | null
 }
+
+// AI tools you can scope a per-tool budget to. Single source of truth lives
+// in config/ai_tools.json — the API asserts at import time that every key
+// there has matching pricing in TOOL_PRICING (events.py).
+// Add a new tool: append it to config/ai_tools.json, add pricing in events.py.
+import aiToolsConfig from "@config/ai_tools.json"
+export const AI_TOOL_OPTIONS: readonly string[] = aiToolsConfig.tools
+
+export interface ToolCap {
+  id: string
+  ai_tool: string
+  monthly_limit_usd: number
+  hard_limit_usd: number | null
+  current_month_cost_usd: number
+}
