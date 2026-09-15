@@ -3,6 +3,7 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react"
 import { timeAgo } from "@/lib/runUtils"
 import { DecisionBadge } from "./DecisionBadge"
+import { LifecyclePill } from "./LifecyclePill"
 import { ALL_COLUMNS, type ColumnKey } from "./common/GuardToolbar"
 
 // Per-column grid weights — kept in one place so ActivityHeader and
@@ -17,6 +18,7 @@ const COL_WEIGHTS: Record<ColumnKey, string> = {
   decision: "0.9fr",
   rule: "0.8fr",
   blast: "0.9fr",
+  lifecycle: "0.9fr",
 }
 
 function buildGridTemplate(visible: readonly ColumnKey[]): string {
@@ -91,6 +93,14 @@ export interface AuditEvent {
   } | null
   execution_status?: "success" | "error" | "timeout" | null
   result_summary?: string | null
+  // Added by #1959 Phase 3 — durable-audit lifecycle fields projected by
+  // GET /guard/events. All optional so legacy single-phase rows stay
+  // valid; nullish values render as em dash in the Lifecycle column.
+  lifecycle_state?: "accepted" | "finalized" | "orphaned" | "expired" | null
+  accepted_at?: string | null
+  finalized_at?: string | null
+  lease_expires_at?: string | null
+  request_id?: string | null
 }
 
 const TOOL_COLORS: Record<string, string> = {
@@ -539,6 +549,11 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
           )}
         </div>
       )}
+      {showCol.has("lifecycle") && (
+        <div>
+          <LifecyclePill state={ev.lifecycle_state} leaseExpiresAt={ev.lease_expires_at} />
+        </div>
+      )}
     </div>
     {open && (
       <div style={{
@@ -645,6 +660,7 @@ export function ActivityHeader({ compact = false, visibleColumns }: {
       {showCol.has("decision") && <div>Decision</div>}
       {showCol.has("rule") && <div>Rule</div>}
       {showCol.has("blast") && <div>Blast</div>}
+      {showCol.has("lifecycle") && <div>Lifecycle</div>}
     </div>
   )
 }

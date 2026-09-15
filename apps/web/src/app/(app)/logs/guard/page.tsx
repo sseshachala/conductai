@@ -125,6 +125,10 @@ function ActivityContent() {
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsError, setReportsError] = useState<string | null>(null)
   const [events, setEvents] = useState<AuditEvent[]>([])
+  // #1959 Phase 3 — count of currently-in-flight durable rows. Derived
+  // client-side so the badge stays in sync with the same event stream
+  // that drives the table, no extra endpoint needed.
+  const inFlightCount = events.filter(ev => ev.lifecycle_state === "accepted").length
   const [sessions, setSessions] = useState<GuardSession[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [sessionsError, setSessionsError] = useState<string | null>(null)
@@ -313,12 +317,27 @@ function ActivityContent() {
           }
           if (Array.isArray(msg.events) && msg.events.length > 0) {
             setEvents(prev => {
-              const ids = new Set(prev.map(ev => ev.id))
-              const fresh = (msg.events as AuditEvent[]).filter(ev => !ids.has(ev.id)
-                && (!filterHookSession || ev.hook_session_id === filterHookSession)
-                && (!filterAgentIdentity || ev.agent_identity_id === filterAgentIdentity))
-              if (!fresh.length) return prev
-              return [...fresh.reverse(), ...prev].slice(0, LIVE_EVENT_CAP)
+              // Split incoming into updates (id already in list — durable
+              // finalize UPDATE) and fresh rows so the lifecycle pill flips
+              // in place (#1959 Phase 3). Fresh rows still prepend as before.
+              const byId = new Map(prev.map(ev => [ev.id, ev] as const))
+              const incoming = (msg.events as AuditEvent[]).filter(ev =>
+                (!filterHookSession || ev.hook_session_id === filterHookSession)
+                && (!filterAgentIdentity || ev.agent_identity_id === filterAgentIdentity)
+              )
+              const fresh: AuditEvent[] = []
+              let anyUpdate = false
+              for (const ev of incoming) {
+                if (byId.has(ev.id)) {
+                  byId.set(ev.id, ev)
+                  anyUpdate = true
+                } else {
+                  fresh.push(ev)
+                }
+              }
+              if (!fresh.length && !anyUpdate) return prev
+              const merged = prev.map(ev => byId.get(ev.id) ?? ev)
+              return [...fresh.reverse(), ...merged].slice(0, LIVE_EVENT_CAP)
             })
             setLastUpdated(new Date())
           }
@@ -458,6 +477,16 @@ function ActivityContent() {
           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
             {chainStatus.total} chained {chainStatus.total === 1 ? "event" : "events"}
             {chainStatus.verified_from && ` from ${new Date(chainStatus.verified_from).toLocaleDateString()}`}
+            {inFlightCount > 0 && (
+              <span
+                title="Durable-audit rows still in the accepted state — waiting for finalize()"
+                style={{ marginLeft: 10, padding: "1px 6px", fontSize: 10.5, fontWeight: 700,
+                         color: "#7c3aed", background: "#ede9fe", border: "1px solid #c4b5fd",
+                         borderRadius: 3 }}
+              >
+                ⏳ {inFlightCount} in flight
+              </span>
+            )}
           </span>
         </div>
       )}
