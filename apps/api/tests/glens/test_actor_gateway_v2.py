@@ -187,51 +187,43 @@ def test_update_working_copy_summary_counts_targets():
 
 def test_publish_rejects_empty_working_copy():
     spec = default_action_registry.get("gateway_v2_publish")
-    profile = SimpleNamespace(id=uuid.UUID(_PROFILE), name="prod", working_copy=None)
+    profile = SimpleNamespace(
+        id=uuid.UUID(_PROFILE), name="prod",
+        working_copy=None, active_revision_id=None,
+    )
     ctx = _ctx(db=_query_returning(profile))
-    out = spec.propose(ctx, {"profile_id": _PROFILE, "environment_id": _ENV})
+    out = spec.propose(ctx, {"profile_id": _PROFILE})
     assert out.rejected and "empty" in (out.reason or "")
 
 
-def test_publish_rejects_wrong_workspace_environment():
+def test_publish_rejects_already_published():
+    """v3: publishing a profile that already has an active revision is
+    refused. Caller has to duplicate to change a published profile."""
     spec = default_action_registry.get("gateway_v2_publish")
     profile = SimpleNamespace(
         id=uuid.UUID(_PROFILE), name="prod",
         working_copy={"model_alias": "coding"},
+        active_revision_id=uuid.UUID(_REV),
     )
-    # profile lookup returns profile, environment lookup returns None.
-    ctx = _ctx(db=_query_returning(profile, None))
-    out = spec.propose(ctx, {"profile_id": _PROFILE, "environment_id": _ENV})
-    assert out.rejected and "does not belong" in (out.reason or "")
+    ctx = _ctx(db=_query_returning(profile))
+    out = spec.propose(ctx, {"profile_id": _PROFILE})
+    assert out.rejected and "already published" in (out.reason or "").lower()
 
 
-def test_publish_summary_mentions_first_publish_when_no_existing_binding():
+def test_publish_summary_names_alias_and_cond_code():
     spec = default_action_registry.get("gateway_v2_publish")
     profile = SimpleNamespace(
         id=uuid.UUID(_PROFILE), name="prod",
         working_copy={"model_alias": "coding"},
+        active_revision_id=None,
+        cond_code="abc12345",
     )
-    env = SimpleNamespace(id=uuid.UUID(_ENV), name="Production")
-    # profile → env → binding(None)
-    ctx = _ctx(db=_query_returning(profile, env, None))
-    out = spec.propose(ctx, {"profile_id": _PROFILE, "environment_id": _ENV})
+    ctx = _ctx(db=_query_returning(profile))
+    out = spec.propose(ctx, {"profile_id": _PROFILE})
     assert not out.rejected
-    assert "Production" in out.summary
-    assert "first publish" in out.summary.lower()
-
-
-def test_publish_summary_mentions_replace_when_existing_binding():
-    spec = default_action_registry.get("gateway_v2_publish")
-    profile = SimpleNamespace(
-        id=uuid.UUID(_PROFILE), name="prod",
-        working_copy={"model_alias": "coding"},
-    )
-    env = SimpleNamespace(id=uuid.UUID(_ENV), name="Production")
-    binding = SimpleNamespace(revision_id=uuid.UUID(_REV))
-    ctx = _ctx(db=_query_returning(profile, env, binding))
-    out = spec.propose(ctx, {"profile_id": _PROFILE, "environment_id": _ENV})
-    assert not out.rejected
-    assert "replaces" in out.summary.lower()
+    assert "prod" in out.summary
+    assert "coding" in out.summary
+    assert "abc12345" in out.summary
 
 
 # ── rollback ─────────────────────────────────────────────────────────
@@ -244,12 +236,12 @@ def test_rollback_rejects_cross_profile_revision():
     profile = SimpleNamespace(id=uuid.UUID(_PROFILE), name="prod")
     ctx = _ctx(db=_query_returning(profile, None))  # revision lookup fails
     out = spec.propose(ctx, {
-        "profile_id": _PROFILE, "environment_id": _ENV, "revision_id": _REV,
+        "profile_id": _PROFILE, "revision_id": _REV,
     })
     assert out.rejected and "does not belong" in (out.reason or "")
 
 
-def test_rollback_summary_names_version_and_environment():
+def test_rollback_summary_names_version_and_publisher():
     spec = default_action_registry.get("gateway_v2_rollback")
     profile = SimpleNamespace(id=uuid.UUID(_PROFILE), name="prod")
     revision = SimpleNamespace(
@@ -257,12 +249,10 @@ def test_rollback_summary_names_version_and_environment():
         published_by="alice@example.com",
         published_at=datetime.now(timezone.utc),
     )
-    env = SimpleNamespace(id=uuid.UUID(_ENV), name="Production")
-    ctx = _ctx(db=_query_returning(profile, revision, env))
+    ctx = _ctx(db=_query_returning(profile, revision))
     out = spec.propose(ctx, {
-        "profile_id": _PROFILE, "environment_id": _ENV, "revision_id": _REV,
+        "profile_id": _PROFILE, "revision_id": _REV,
     })
     assert not out.rejected
     assert "v7" in out.summary
-    assert "Production" in out.summary
     assert "alice@example.com" in out.summary

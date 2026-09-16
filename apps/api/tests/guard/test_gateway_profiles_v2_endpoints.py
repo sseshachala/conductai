@@ -144,12 +144,12 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None,
     storage = {
         "profiles": list(profiles or []),
         "revisions": list(revisions or []),
-        "bindings": list(bindings or []),
         "environments": list(environments or []),
         "integrations": list(integrations or []),
-        "events": list(events or []),
         "pending": [],  # objects added via db.add() before commit
     }
+    # v3 dropped bindings/events entirely; args kept for older callers.
+    _ = bindings, events
 
     class _Query:
         def __init__(self, model, session):
@@ -180,6 +180,11 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None,
                 raise AssertionError(f"expected 1, got {len(matches)}")
             return matches[0] if matches else None
 
+        def first(self):
+            # cond_code uniqueness check uses .first(); same shape.
+            matches = self._session._match_all(self._model, self._filters)
+            return matches[0] if matches else None
+
         def scalar(self):
             matches = self._session._match_all(self._model, self._filters)
             return max((m.version for m in matches), default=None) if matches else None
@@ -202,18 +207,12 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None,
             from app.models.integration import Integration
             from app.models.gateway_profile import (
                 GatewayProfile,
-                GatewayProfileBinding,
-                GatewayProfileBindingEvent,
                 GatewayProfileRevision,
             )
             if model is GatewayProfile or getattr(model, "__name__", None) == "GatewayProfile":
                 pool = self._storage["profiles"]
             elif model is GatewayProfileRevision:
                 pool = self._storage["revisions"]
-            elif model is GatewayProfileBinding:
-                pool = self._storage["bindings"]
-            elif model is GatewayProfileBindingEvent:
-                pool = self._storage["events"]
             elif model is Environment:
                 pool = self._storage["environments"]
             elif model is Integration:
@@ -241,8 +240,6 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None,
         def add(self, obj):
             from app.models.gateway_profile import (
                 GatewayProfile,
-                GatewayProfileBinding,
-                GatewayProfileBindingEvent,
                 GatewayProfileRevision,
             )
             if not getattr(obj, "id", None):
@@ -252,19 +249,16 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None,
             if not getattr(obj, "updated_at", None):
                 obj.updated_at = datetime.now(timezone.utc)
             if isinstance(obj, GatewayProfile):
+                # v3: cond_code is now required on the row.
+                if not getattr(obj, "cond_code", None):
+                    obj.cond_code = "seedcode"
+                if not hasattr(obj, "active_revision_id"):
+                    obj.active_revision_id = None
                 self._storage["profiles"].append(obj)
             elif isinstance(obj, GatewayProfileRevision):
                 if not obj.published_at:
                     obj.published_at = datetime.now(timezone.utc)
                 self._storage["revisions"].append(obj)
-            elif isinstance(obj, GatewayProfileBinding):
-                if not getattr(obj, "updated_at", None):
-                    obj.updated_at = datetime.now(timezone.utc)
-                self._storage["bindings"].append(obj)
-            elif isinstance(obj, GatewayProfileBindingEvent):
-                if not getattr(obj, "occurred_at", None):
-                    obj.occurred_at = datetime.now(timezone.utc)
-                self._storage["events"].append(obj)
 
         def delete(self, obj):
             from app.models.gateway_profile import GatewayProfile
@@ -304,8 +298,9 @@ def test_create_draft_with_empty_working_copy_succeeds(client_and_db):
     body = resp.json()
     assert body["name"] == "new-draft"
     assert body["revisions"] == []
-    assert body["bindings"] == []
     assert body["model_alias"] is None
+    assert body["active_revision_id"] is None
+    assert body["cond_code"]   # server-generated, present in the response
 
 
 def test_update_working_copy_rejects_invalid_schema(client_and_db):
@@ -318,6 +313,7 @@ def test_update_working_copy_rejects_invalid_schema(client_and_db):
     session_holder["db"] = _make_session_stub(profiles=[
         SimpleNamespace(
             id=profile_id, workspace_id=ws, environment_id=None,
+            cond_code="seedcode", active_revision_id=None,
             name="p", schema_version="2", config={}, working_copy=None,
             model_alias=None,
             created_at=datetime.now(timezone.utc),
@@ -339,6 +335,7 @@ def test_publish_rejects_empty_working_copy(client_and_db):
     session_holder["db"] = _make_session_stub(profiles=[
         SimpleNamespace(
             id=profile_id, workspace_id=ws, environment_id=None,
+            cond_code="seedcode", active_revision_id=None,
             name="p", schema_version="2", config={}, working_copy=None,
             model_alias=None,
             created_at=datetime.now(timezone.utc),
@@ -348,7 +345,7 @@ def test_publish_rejects_empty_working_copy(client_and_db):
 
     resp = client.post(
         f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}/publish",
-        json={"environment_id": str(ENV)},
+        json={},
     )
     assert resp.status_code == 400
     assert "working_copy is empty" in resp.text
@@ -363,6 +360,7 @@ def test_publish_rejects_uncertified_capability(client_and_db):
     session_holder["db"] = _make_session_stub(profiles=[
         SimpleNamespace(
             id=profile_id, workspace_id=ws, environment_id=None,
+            cond_code="seedcode", active_revision_id=None,
             name="p", schema_version="2", config={},
             working_copy=_uncertified_working_copy(ENV),
             model_alias="coding",
@@ -373,7 +371,7 @@ def test_publish_rejects_uncertified_capability(client_and_db):
 
     resp = client.post(
         f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}/publish",
-        json={"environment_id": str(ENV)},
+        json={},
     )
     assert resp.status_code == 400
     msg = resp.text.lower()
@@ -382,13 +380,14 @@ def test_publish_rejects_uncertified_capability(client_and_db):
     assert "anthropic_messages" in msg
 
 
-def test_publish_happy_path_creates_revision_and_binding(client_and_db):
+def test_publish_happy_path_creates_revision_and_activates_it(client_and_db):
     client, session_holder, ws = client_and_db
     profile_id = uuid4()
     stub = _make_session_stub(
         profiles=[
             SimpleNamespace(
                 id=profile_id, workspace_id=ws, environment_id=None,
+                cond_code="seedcode", active_revision_id=None,
                 name="p", schema_version="2", config={},
                 working_copy=_sample_working_copy(ENV),
                 model_alias="coding",
@@ -409,20 +408,16 @@ def test_publish_happy_path_creates_revision_and_binding(client_and_db):
 
     resp = client.post(
         f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}/publish",
-        json={"environment_id": str(ENV)},
+        json={},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert len(body["revisions"]) == 1
     assert body["revisions"][0]["version"] == 1
-    # published_by comes from the require_permission dep — any non-empty
-    # caller identity is fine for this test's purpose.
     assert body["revisions"][0]["published_by"]
-    assert len(body["bindings"]) == 1
-    binding = body["bindings"][0]
-    assert binding["environment_id"] == str(ENV)
-    assert binding["model_alias"] == "coding"
-    assert binding["revision_id"] == body["revisions"][0]["id"]
+    # v3: no bindings; active_revision_id names the live revision.
+    assert body["active_revision_id"] == body["revisions"][0]["id"]
+    assert body["model_alias"] == "coding"
 
 
 def test_rollback_rejects_cross_profile_revision_id(client_and_db):
@@ -438,6 +433,7 @@ def test_rollback_rejects_cross_profile_revision_id(client_and_db):
         profiles=[
             SimpleNamespace(
                 id=profile_id, workspace_id=ws, environment_id=None,
+                cond_code="seedcode", active_revision_id=None,
                 name="p", schema_version="2", config={}, working_copy=None,
                 model_alias="coding",
                 created_at=datetime.now(timezone.utc),
@@ -458,7 +454,7 @@ def test_rollback_rejects_cross_profile_revision_id(client_and_db):
 
     resp = client.post(
         f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}/rollback",
-        json={"environment_id": str(ENV), "revision_id": str(other_revision_id)},
+        json={"revision_id": str(other_revision_id)},
     )
     assert resp.status_code == 404
     assert "revision not found" in resp.text
@@ -478,6 +474,7 @@ def test_delete_refuses_when_any_historical_revision_exists(client_and_db):
         profiles=[
             SimpleNamespace(
                 id=profile_id, workspace_id=ws, environment_id=None,
+                cond_code="seedcode", active_revision_id=None,
                 name="p", schema_version="2", config={}, working_copy=None,
                 model_alias="coding",
                 created_at=datetime.now(timezone.utc),
@@ -499,7 +496,9 @@ def test_delete_refuses_when_any_historical_revision_exists(client_and_db):
         f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}",
     )
     assert resp.status_code == 409
-    assert "published revisions" in resp.text.lower()
+    # v3: either "revision history" or "published" wording is acceptable —
+    # both call sites signal the same intent.
+    assert "revision history" in resp.text.lower() or "published" in resp.text.lower()
 
 
 def test_delete_allowed_on_pure_draft(client_and_db):
@@ -512,6 +511,7 @@ def test_delete_allowed_on_pure_draft(client_and_db):
         profiles=[
             SimpleNamespace(
                 id=profile_id, workspace_id=ws, environment_id=None,
+                cond_code="seedcode", active_revision_id=None,
                 name="unused", schema_version="2", config={},
                 working_copy=None, model_alias=None,
                 created_at=datetime.now(timezone.utc),
@@ -542,34 +542,6 @@ def test_cross_workspace_url_is_rejected(client_and_db):
     assert other_ws not in resp.text
 
 
-def test_publish_rejects_environment_from_other_workspace(client_and_db):
-    """P1 review fix: even for a legitimate profile owner, the caller
-    can't publish to an environment UUID that doesn't belong to their
-    workspace. Composite PK on the bindings table would otherwise happily
-    accept the bind."""
-    client, session_holder, ws = client_and_db
-    profile_id = uuid4()
-    session_holder["db"] = _make_session_stub(
-        profiles=[
-            SimpleNamespace(
-                id=profile_id, workspace_id=ws, environment_id=None,
-                name="p", schema_version="2", config={},
-                working_copy=_sample_working_copy(ENV),
-                model_alias="coding",
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-            ),
-        ],
-        # NO environments seeded → the env lookup returns None.
-    )
-    resp = client.post(
-        f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}/publish",
-        json={"environment_id": str(ENV)},
-    )
-    assert resp.status_code == 404
-    assert "environment not found" in resp.text.lower()
-
-
 def test_publish_rejects_missing_credential(client_and_db):
     """P1 review fix: publish must verify every target's credential_ref
     resolves to a real Vault entry. Otherwise the runtime discovers the
@@ -581,6 +553,7 @@ def test_publish_rejects_missing_credential(client_and_db):
         profiles=[
             SimpleNamespace(
                 id=profile_id, workspace_id=ws, environment_id=None,
+                cond_code="seedcode", active_revision_id=None,
                 name="p", schema_version="2", config={},
                 working_copy=_sample_working_copy(ENV),
                 model_alias="coding",
@@ -595,7 +568,7 @@ def test_publish_rejects_missing_credential(client_and_db):
     )
     resp = client.post(
         f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}/publish",
-        json={"environment_id": str(ENV)},
+        json={},
     )
     assert resp.status_code == 400
     body = resp.text.lower()
@@ -619,7 +592,9 @@ def test_snapshot_endpoint_verifies_profile_workspace_ownership(client_and_db):
             # Profile belongs to another workspace, not the caller's.
             SimpleNamespace(
                 id=other_profile_id, workspace_id=other_workspace,
-                environment_id=None, name="p", schema_version="2",
+                environment_id=None,
+                cond_code="othercod", active_revision_id=None,
+                name="p", schema_version="2",
                 config={}, working_copy=None, model_alias="coding",
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),

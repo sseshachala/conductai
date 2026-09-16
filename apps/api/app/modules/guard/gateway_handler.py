@@ -212,24 +212,30 @@ async def handle_gateway_request(
         # the coordinator a pre-resolved credential map so the forward
         # step doesn't need to reach back into the DB. A None plan means
         # v1 handles this request as before.
+        # v3 schema (#2007 follow-up): resolve by cond_code parsed out
+        # of the client-sent ``model:`` field. Environment binding is
+        # gone; the vault ref inside the target's credential_ref
+        # carries the env. Format expected: ``cond-<8chars>-<alias>``.
         _v2_plan = None
-        _environment_id_hdr = request.headers.get("x-conductai-environment-id")
-        if settings.guard_gateway_profile_v2 and _environment_id_hdr:
-            _v2_plan = _build_v2_plan(
-                db=db,
-                workspace_id=workspace_id,
-                environment_id=_environment_id_hdr,
-                provider=provider,
-                upstream_path=upstream_path,
-                body=body,
-            )
-            if _v2_plan is not None:
-                _routing_meta = {
-                    **(_routing_meta or {}),
-                    "gateway_version": "v2",
-                    "revision_id": str(_v2_plan.resolved.revision_id),
-                    "v2_operation": _v2_plan.operation,
-                }
+        if settings.guard_gateway_profile_v2:
+            _cond_code = _extract_cond_code(body.get("model"))
+            if _cond_code is not None:
+                _v2_plan = _build_v2_plan(
+                    db=db,
+                    workspace_id=workspace_id,
+                    cond_code=_cond_code,
+                    provider=provider,
+                    upstream_path=upstream_path,
+                    body=body,
+                )
+                if _v2_plan is not None:
+                    _routing_meta = {
+                        **(_routing_meta or {}),
+                        "gateway_version": "v2",
+                        "cond_code": _cond_code,
+                        "revision_id": str(_v2_plan.resolved.revision_id),
+                        "v2_operation": _v2_plan.operation,
+                    }
         if _routing_meta:
             log.info(
                 "proxy.tier_resolved",
@@ -703,11 +709,33 @@ class _V2Plan:
         self.last_meta: dict = {}
 
 
+_COND_CODE_RE = None
+
+
+def _extract_cond_code(model: object) -> str | None:
+    """Parse ``cond-<8chars>-<alias>`` out of the client's ``model:``
+    field. Returns None on any mismatch — caller falls through to v1.
+
+    Kept deliberately strict: exact 8-char alphanumeric code, hyphen
+    separators, ``cond-`` prefix. A near-miss silently routing to v1
+    is better than a permissive parse that misfires on a v1 model name
+    that happens to look similar.
+    """
+    global _COND_CODE_RE
+    if _COND_CODE_RE is None:
+        import re
+        _COND_CODE_RE = re.compile(r"^cond-([a-z0-9]{8})-([a-z0-9._\-]+)$")
+    if not isinstance(model, str):
+        return None
+    match = _COND_CODE_RE.match(model)
+    return match.group(1) if match else None
+
+
 def _build_v2_plan(
     *,
     db,
     workspace_id: str,
-    environment_id: str,
+    cond_code: str,
     provider: str,
     upstream_path: str,
     body: dict,
@@ -715,8 +743,7 @@ def _build_v2_plan(
     """Return a v2 execution plan or None (fall through to v1).
 
     Returns None on any of:
-      - model alias absent (client didn't set body['model']).
-      - no v2 binding for (workspace, env, alias).
+      - unknown cond_code in this workspace (no active revision).
       - the URL surface isn't in the v2 operation map yet.
       - stream=true (Phase 1 non-streaming only — streaming lands in a
         follow-up commit tracked on #2004).
@@ -738,10 +765,6 @@ def _build_v2_plan(
         # because the v2 flag stays off in prod until streaming ships.
         return None
 
-    model_alias = body.get("model")
-    if not model_alias:
-        return None
-
     operation = map_operation(provider, upstream_path)
     if operation is None:
         return None
@@ -749,24 +772,20 @@ def _build_v2_plan(
     resolved = resolve_v2(
         db,
         workspace_id=workspace_id,
-        environment_id=environment_id,
-        model_alias=model_alias,
+        cond_code=cond_code,
     )
     if resolved is None:
         return None
 
     if operation not in resolved.profile.accepts:
-        # Published profile advertises the alias but not this operation.
-        # A publish-time check should have caught this — surface loudly
-        # instead of falling to v1 and hiding the misconfiguration.
         raise _HTTPException(
             status_code=400,
             detail=(
-                f"Gateway Profile v2 for alias {model_alias!r} does not "
-                f"accept operation {operation!r}. Advertised operations: "
+                f"Gateway Profile v2 {cond_code!r} does not accept "
+                f"operation {operation!r}. Advertised: "
                 f"{list(resolved.profile.accepts)!r}. Republish with "
                 f"{operation!r} in ``accepts`` or route this URL to a "
-                f"different alias."
+                f"different profile."
             ),
         )
 
@@ -774,7 +793,7 @@ def _build_v2_plan(
         resolver = build_credential_resolver(
             db,
             workspace_id=workspace_id,
-            environment_id=environment_id,
+            environment_id=None,   # v3: env lives inside each credential_ref
             provider=provider,
             profile=resolved.profile,
         )

@@ -172,6 +172,7 @@ def test_v1_corrupt_row_is_skipped_not_fatal():
 ENV = UUID("11111111-1111-1111-1111-111111111111")
 WS = "22222222-2222-2222-2222-222222222222"
 REV = UUID("33333333-3333-3333-3333-333333333333")
+COND_CODE = "abc12345"
 
 _V2_SNAPSHOT = {
     "schema_version": 2,
@@ -192,20 +193,21 @@ _V2_SNAPSHOT = {
 }
 
 
-def _make_v2_db(*, binding=None, revision=None):
+def _make_v2_db(*, profile=None, revision=None):
     """Build a mock Session for the v2 resolver.
 
-    The v2 code calls ``db.query(Model).filter(...).one_or_none()``
-    twice — once for the binding, once for the revision. We return a
-    fresh query object per ``.query()`` call keyed on the model class.
+    v3 resolver calls ``db.query(Model).filter(...).one_or_none()``
+    twice — once for the profile row (by cond_code), once for the
+    revision (by active_revision_id). Route the fake calls per model
+    class.
     """
-    from app.models.gateway_profile import GatewayProfileBinding, GatewayProfileRevision
+    from app.models.gateway_profile import GatewayProfile as _Row, GatewayProfileRevision
 
     def _q(model):
         query = MagicMock()
         query.filter.return_value = query
-        if model is GatewayProfileBinding:
-            query.one_or_none.return_value = binding
+        if model is _Row:
+            query.one_or_none.return_value = profile
         elif model is GatewayProfileRevision:
             query.one_or_none.return_value = revision
         else:
@@ -218,37 +220,39 @@ def _make_v2_db(*, binding=None, revision=None):
 
 
 def test_v2_returns_revision_and_profile_on_exact_match():
-    binding = MagicMock(revision_id=REV)
+    profile = MagicMock(active_revision_id=REV)
     revision = MagicMock(id=REV, snapshot=_V2_SNAPSHOT)
-    db = _make_v2_db(binding=binding, revision=revision)
+    db = _make_v2_db(profile=profile, revision=revision)
 
-    result = resolve_v2(
-        db, workspace_id=WS, environment_id=str(ENV), model_alias="coding",
-    )
+    result = resolve_v2(db, workspace_id=WS, cond_code=COND_CODE)
     assert isinstance(result, ResolvedV2)
     assert result.revision_id == REV
     assert result.profile.model_alias == "coding"
     assert result.profile.targets[0].provider == "anthropic"
 
 
-def test_v2_returns_none_when_no_binding_exists():
-    """Unknown model alias → None. Caller sees clear 'unknown model' 4xx.
-    No alphabetical fallback, no cross-environment lookup."""
-    db = _make_v2_db(binding=None, revision=None)
-    result = resolve_v2(
-        db, workspace_id=WS, environment_id=str(ENV), model_alias="does-not-exist",
-    )
+def test_v2_returns_none_when_no_profile_exists():
+    """Unknown cond_code → None. Caller sees clear 'unknown model' 4xx."""
+    db = _make_v2_db(profile=None, revision=None)
+    result = resolve_v2(db, workspace_id=WS, cond_code="nope0000")
     assert result is None
 
 
-def test_v2_returns_none_when_binding_points_at_missing_revision():
+def test_v2_returns_none_when_profile_has_no_active_revision():
+    """A draft profile (never published) has active_revision_id=None.
+    Runtime treats it as a 'no config live yet' case, same as unknown."""
+    profile = MagicMock(active_revision_id=None)
+    db = _make_v2_db(profile=profile, revision=None)
+    result = resolve_v2(db, workspace_id=WS, cond_code=COND_CODE)
+    assert result is None
+
+
+def test_v2_returns_none_when_active_revision_points_at_missing_row():
     """RESTRICT should prevent this, but if it happens (data corruption),
     we fail closed. The log line is the audit trail."""
-    binding = MagicMock(revision_id=REV)
-    db = _make_v2_db(binding=binding, revision=None)
-    result = resolve_v2(
-        db, workspace_id=WS, environment_id=str(ENV), model_alias="coding",
-    )
+    profile = MagicMock(active_revision_id=REV)
+    db = _make_v2_db(profile=profile, revision=None)
+    result = resolve_v2(db, workspace_id=WS, cond_code=COND_CODE)
     assert result is None
 
 
@@ -256,15 +260,13 @@ def test_v2_returns_none_when_published_snapshot_is_invalid():
     """A published snapshot that can't parse against v2 schema is a bug
     in publish-time validation — fail closed rather than crash the
     request path."""
-    binding = MagicMock(revision_id=REV)
+    profile = MagicMock(active_revision_id=REV)
     revision = MagicMock(
         id=REV,
         snapshot={"schema_version": 2, "name": "prod"},  # missing required fields
     )
-    db = _make_v2_db(binding=binding, revision=revision)
-    result = resolve_v2(
-        db, workspace_id=WS, environment_id=str(ENV), model_alias="coding",
-    )
+    db = _make_v2_db(profile=profile, revision=revision)
+    result = resolve_v2(db, workspace_id=WS, cond_code=COND_CODE)
     assert result is None
 
 
@@ -273,14 +275,11 @@ def test_v2_pins_revision_id_so_caller_can_lock_it_through_all_attempts():
     resolved request MUST reference exactly one revision, and callers
     are expected to pin it in routing_meta so a concurrent publish
     can't flip the profile mid-request."""
-    binding = MagicMock(revision_id=REV)
+    profile = MagicMock(active_revision_id=REV)
     revision = MagicMock(id=REV, snapshot=_V2_SNAPSHOT)
-    db = _make_v2_db(binding=binding, revision=revision)
+    db = _make_v2_db(profile=profile, revision=revision)
 
-    result = resolve_v2(
-        db, workspace_id=WS, environment_id=str(ENV), model_alias="coding",
-    )
+    result = resolve_v2(db, workspace_id=WS, cond_code=COND_CODE)
     assert result is not None
-    # revision_id is the load-bearing field for pinning; must be exposed.
     assert result.revision_id == REV
     assert isinstance(result.revision_id, UUID)

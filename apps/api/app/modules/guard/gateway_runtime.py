@@ -33,7 +33,6 @@ from sqlalchemy.orm import Session
 
 from app.models.gateway_profile import (
     GatewayProfile as GatewayProfileRow,
-    GatewayProfileBinding,
     GatewayProfileRevision,
 )
 from app.modules.guard.gateway_config import (
@@ -221,53 +220,54 @@ def resolve_v2(
     db: Session,
     *,
     workspace_id: str,
-    environment_id: str,
-    model_alias: str,
+    cond_code: str,
 ) -> ResolvedV2 | None:
-    """Look up the published v2 revision for a (workspace, env, alias) triple.
+    """Look up the currently-active revision by (workspace_id, cond_code).
 
-    Exact match only — no alphabetical fallback, no cross-environment
-    lookup, no "closest alias." If the binding doesn't exist, the caller
-    gets None and (with the fail-closed 503 posture) the client gets a
-    clear "unknown model" error.
+    Single-index read: profile row carries ``active_revision_id`` — no
+    bindings table, no env in the lookup, no join hop at the hot path.
+
+    Returns None on any of:
+    - unknown cond_code in this workspace
+    - profile exists but has no active revision (draft state)
+    - active revision points at a row that's missing (data corruption)
+    - snapshot fails schema re-validation
 
     The returned ``revision_id`` MUST be pinned in ``routing_meta`` so
-    every attempt of the same request uses the same immutable snapshot —
-    if a concurrent publish flips the binding mid-request, we do not
+    every attempt of the same request uses the same immutable snapshot
+    — if a concurrent publish flips the profile mid-request, we do not
     switch under the client.
     """
-    binding = (
-        db.query(GatewayProfileBinding)
+    profile = (
+        db.query(GatewayProfileRow)
         .filter(
-            GatewayProfileBinding.workspace_id == workspace_id,
-            GatewayProfileBinding.environment_id == environment_id,
-            GatewayProfileBinding.model_alias == model_alias,
+            GatewayProfileRow.workspace_id == workspace_id,
+            GatewayProfileRow.cond_code == cond_code,
         )
         .one_or_none()
     )
-    if binding is None:
+    if profile is None or profile.active_revision_id is None:
         return None
 
     revision = (
         db.query(GatewayProfileRevision)
-        .filter(GatewayProfileRevision.id == binding.revision_id)
+        .filter(GatewayProfileRevision.id == profile.active_revision_id)
         .one_or_none()
     )
     if revision is None:
-        # A binding pointing at a missing revision means data corruption
-        # (ondelete=RESTRICT should have prevented this). Log loud and
-        # fail closed rather than fall back to v1.
+        # active_revision_id points at a missing revision — data
+        # corruption (ondelete=RESTRICT should have prevented this).
+        # Log loud and fail closed.
         log.error(
-            "gateway.resolve_v2.orphan_binding",
+            "gateway.resolve_v2.orphan_active_revision",
             workspace_id=workspace_id,
-            environment_id=environment_id,
-            model_alias=model_alias,
-            revision_id=str(binding.revision_id),
+            cond_code=cond_code,
+            active_revision_id=str(profile.active_revision_id),
         )
         return None
 
     try:
-        profile = GatewayProfileV2.model_validate(revision.snapshot)
+        parsed = GatewayProfileV2.model_validate(revision.snapshot)
     except Exception as exc:  # noqa: BLE001
         # A published snapshot that can't parse is a bug in publish-time
         # validation — no client should suffer from it. Log + fail closed.
@@ -278,4 +278,4 @@ def resolve_v2(
         )
         return None
 
-    return ResolvedV2(revision_id=binding.revision_id, profile=profile)
+    return ResolvedV2(revision_id=revision.id, profile=parsed)

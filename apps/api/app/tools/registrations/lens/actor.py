@@ -419,23 +419,19 @@ TOOLS: list[ToolDef] = [
     ToolDef(
         name="gateway_v2_publish",
         description=(
-            "Publish a Gateway Profile v2 draft as a new revision and pin "
-            "it to an environment × alias binding. Two-step: returns a "
+            "Publish a Gateway Profile v2 draft as a new revision and mark "
+            "it as the profile's active revision. Two-step: returns a "
             "pending action for the user to confirm; the confirm click "
             "runs the full publish lifecycle — schema validation, "
-            "capability catalog check, credential + environment ownership. "
+            "capability catalog check, credential ownership check. "
             "Guard policy platform.credentials.manage still applies."
         ),
         input_schema={
             "type": "object",
             "properties": {
                 "profile_id": {"type": "string", "description": "Profile UUID."},
-                "environment_id": {
-                    "type": "string",
-                    "description": "Environment (vault) UUID to bind the new revision to.",
-                },
             },
-            "required": ["profile_id", "environment_id"],
+            "required": ["profile_id"],
         },
         impl=_actor_impl("gateway_v2_publish"),
         annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=False),
@@ -444,23 +440,20 @@ TOOLS: list[ToolDef] = [
     ToolDef(
         name="gateway_v2_rollback",
         description=(
-            "Repoint an environment × alias binding at a historical revision "
-            "of the Gateway Profile. Two-step: returns a pending action for "
-            "the user to confirm; the confirm click writes the new binding "
-            "and appends to the profile binding events audit log. Guard "
-            "policy platform.credentials.manage still applies."
+            "Revert a Gateway Profile v2 to a historical revision — sets "
+            "active_revision_id and refreshes the working_copy to match. "
+            "Two-step: returns a pending action for the user to confirm."
         ),
         input_schema={
             "type": "object",
             "properties": {
                 "profile_id": {"type": "string", "description": "Profile UUID."},
-                "environment_id": {"type": "string", "description": "Environment UUID."},
                 "revision_id": {
                     "type": "string",
-                    "description": "Historical revision UUID to bind (must belong to this profile).",
+                    "description": "Historical revision UUID (must belong to this profile).",
                 },
             },
-            "required": ["profile_id", "environment_id", "revision_id"],
+            "required": ["profile_id", "revision_id"],
         },
         impl=_actor_impl("gateway_v2_rollback"),
         annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=False),
