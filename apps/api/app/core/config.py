@@ -121,6 +121,22 @@ class Settings(BaseSettings):
     # and the existing fail-closed path fires — safe by design.
     guard_gateway_profile_v2: bool = False
 
+    # ── PR 3 canary rollout for Gateway Profile v2 ────────────────────
+    # Same shape as ``guard_durable_audit_*`` (#1995) — deterministic
+    # per-workspace bucketing on top of the global flag so we can ramp
+    # traffic without a code deploy. Precedence at read time:
+    #   1. Global ``guard_gateway_profile_v2`` off = feature off everywhere.
+    #   2. Global on + workspace in allowlist = on regardless of pct.
+    #   3. Global on + pct bucket hit = on.
+    # Same workspace always lands in the same bucket for a given pct, so
+    # a customer's traffic never oscillates between v1 and v2 mid-session.
+    guard_gateway_profile_v2_rollout_pct: int = 0
+    # Comma-separated workspace UUIDs. Kept as a plain string so env-var
+    # parsing stays simple (pydantic-settings list[str] wants JSON on the
+    # env side, which is annoying to set in Render). Wins over pct so a
+    # workspace can be dark-launched even at pct=0.
+    guard_gateway_profile_v2_allowlist: str = ""
+
     # #2001 commit 4 — LiteLLM in-process transport switch. When true,
     # v2 profiles whose targets carry transport=litellm_sdk execute
     # through the embedded LiteLLM SDK (anthropic_messages,
@@ -217,6 +233,48 @@ class Settings(BaseSettings):
             for part in self.guard_durable_audit_allowlist.split(",")
             if part.strip()
         )
+
+    def gateway_profile_v2_allowlist_ids(self) -> frozenset[str]:
+        """Split the comma-separated v2 allowlist env into a set of ids."""
+        if not self.guard_gateway_profile_v2_allowlist:
+            return frozenset()
+        return frozenset(
+            part.strip()
+            for part in self.guard_gateway_profile_v2_allowlist.split(",")
+            if part.strip()
+        )
+
+    def gateway_profile_v2_enabled_for(self, workspace_id: str) -> bool:
+        """Deterministic per-workspace enable check for Gateway Profile v2.
+
+        Precedence:
+        1. Global kill switch — ``guard_gateway_profile_v2=False`` disables
+           the whole feature regardless of allowlist / pct.
+        2. Allowlist — explicit workspace UUIDs always on. Wins over pct
+           so a workspace can be dark-launched even at pct=0.
+        3. Percentage bucket — SHA-256 the workspace id and compare its
+           first 4 bytes mod 100 to the rollout pct. Same workspace
+           always lands in the same bucket for a given pct, so a
+           workspace never oscillates between v1 and v2 mid-session;
+           only bumps to pct move it across the line.
+
+        Mirrors ``durable_audit_enabled_for`` on purpose — the two
+        canaries have the same shape so operators can reason about
+        them the same way.
+        """
+        if not self.guard_gateway_profile_v2:
+            return False
+        if workspace_id in self.gateway_profile_v2_allowlist_ids():
+            return True
+        pct = self.guard_gateway_profile_v2_rollout_pct
+        if pct <= 0:
+            return False
+        if pct >= 100:
+            return True
+        import hashlib
+        digest = hashlib.sha256(workspace_id.encode("utf-8")).digest()
+        bucket = int.from_bytes(digest[:4], "big") % 100
+        return bucket < pct
 
     def durable_audit_enabled_for(self, workspace_id: str) -> bool:
         """Deterministic per-workspace enable check for #1995 canary.

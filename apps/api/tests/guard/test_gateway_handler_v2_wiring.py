@@ -312,6 +312,43 @@ async def test_execute_v2_streaming_501_for_non_native_transport(monkeypatch):
     assert "litellm-primary" in str(excinfo.value.detail)
 
 
+# ─── PR 3 canary flip — gateway_handler consults per-workspace resolver ─
+
+
+def test_gateway_handler_uses_per_workspace_v2_resolver_not_global_flag():
+    """PR 3 wiring regression. Before this PR the handler read
+    ``settings.guard_gateway_profile_v2`` — the global flag — meaning
+    it was on for every workspace or none. Now it must consult
+    ``settings.gateway_profile_v2_enabled_for(workspace_id)`` so an
+    allowlist entry (or non-zero rollout pct) can dark-launch v2 for
+    specific customers first.
+
+    Guarded by source-scan rather than a full request test because the
+    handler's request path pulls in Redis, RLS, Vault, and the composed
+    policy engine — none of which this wiring change touches.
+    """
+    from pathlib import Path
+    handler_src = (
+        Path(__file__).resolve().parents[2]
+        / "app" / "modules" / "guard" / "gateway_handler.py"
+    ).read_text(encoding="utf-8")
+
+    # Every read of the global-boolean flag inside the handler is a bug —
+    # the handler must go through the per-workspace resolver so canary
+    # bucketing kicks in. The only ok reference to the global attribute
+    # lives on ``Settings`` itself, not in this handler.
+    assert "settings.guard_gateway_profile_v2" not in handler_src, (
+        "gateway_handler.py still reads the global v2 flag directly. "
+        "Use settings.gateway_profile_v2_enabled_for(workspace_id) so "
+        "the allowlist + rollout_pct canary knobs actually take effect."
+    )
+    assert "settings.gateway_profile_v2_enabled_for(workspace_id)" in handler_src, (
+        "gateway_handler.py must call the per-workspace resolver for "
+        "canary bucketing. Import path: from app.core.config import "
+        "settings; settings.gateway_profile_v2_enabled_for(...)."
+    )
+
+
 def test_derive_finalize_block_with_malformed_envelope_falls_back_to_ingress():
     """If the block body isn't the expected 451-envelope shape (edge
     case: gate handler fails, upstream returns 4xx directly, etc.),
