@@ -121,6 +121,18 @@ class Settings(BaseSettings):
     # and the existing fail-closed path fires — safe by design.
     guard_gateway_profile_v2: bool = False
 
+    # #2001 commit 4 — LiteLLM in-process transport switch. When true,
+    # v2 profiles whose targets carry transport=litellm_sdk execute
+    # through the embedded LiteLLM SDK (anthropic_messages,
+    # responses, chat_completions, token_counter). When
+    # false, transport=litellm_sdk targets fall through to the
+    # legacy RawHTTPTransport passthrough — safe rollback for the flag.
+    # Independent from guard_gateway_profile_v2: a workspace can
+    # publish a v2 profile before the in-process transport is enabled,
+    # and the transport can be enabled globally before any v2 profile
+    # exists.
+    guard_litellm_in_process: bool = False
+
     # Seconds after which a still-'accepted' guard_audit_events row is
     # considered orphaned by the Phase 4 reconciler. 630s = 10 min upstream
     # request timeout + 30s buffer, so a legitimate long request (deep-
