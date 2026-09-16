@@ -6,7 +6,6 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { credentials, guard } from "@/lib/api"
 import type { GatewayProfileV2Out, GatewayProfileV2Target } from "@/lib/api/guard"
 import {
-  ALL_OPERATIONS,
   type Operation,
   type Transport,
   validateTargetsAgainstAccepts,
@@ -18,11 +17,49 @@ import {
 // PUT /working_copy. Matches the styling of the sibling GatewayProfileSettings
 // (v1) component so both settings pages feel like one product.
 
-const KNOWN_LITELLM_PROVIDERS = ["anthropic", "openai"]
-const KNOWN_INTEGRATIONS = [
-  "portkey", "openrouter", "helicone_anthropic",
-  "helicone_openai", "azure_openai", "custom",
-] as const
+const KNOWN_LITELLM_PROVIDERS = ["anthropic", "openai"] as const
+
+// Pinned model catalog per provider. Real IDs the runtime accepts today
+// so the editor is a dropdown, not free text. Extend here when the
+// upstream catalog moves — the capability catalog on the server is the
+// authoritative filter, but this list makes the picker useful.
+const MODELS_BY_PROVIDER: Record<string, Array<{ id: string; label: string }>> = {
+  anthropic: [
+    { id: "claude-opus-4-7",              label: "Claude Opus 4.7 (most capable)" },
+    { id: "claude-sonnet-4-6",            label: "Claude Sonnet 4.6 (balanced)" },
+    { id: "claude-haiku-4-5-20251001",    label: "Claude Haiku 4.5 (fast + cheap)" },
+    { id: "claude-sonnet-4-5-20250529",   label: "Claude Sonnet 4.5 (previous)" },
+  ],
+  openai: [
+    { id: "gpt-4o",       label: "GPT-4o (flagship)" },
+    { id: "gpt-4o-mini",  label: "GPT-4o mini (cheap)" },
+    { id: "o1",           label: "o1 (reasoning)" },
+    { id: "o1-mini",      label: "o1 mini (reasoning, cheaper)" },
+  ],
+}
+
+// Auto-derive `accepts` from the target providers. Every Anthropic
+// target contributes anthropic_messages; every OpenAI target
+// contributes openai_chat_completions and openai_responses. This
+// replaces the previous checkbox UI — those labels
+// (anthropic_messages, openai_chat_completions, ...) were technical
+// noise for admins who just want to pick "route via Claude".
+function deriveAccepts(targets: DraftTarget[]): Operation[] {
+  const seen = new Set<Operation>()
+  for (const t of targets) {
+    if (t.transport !== "litellm_sdk") continue
+    if (t.provider === "anthropic") {
+      seen.add("anthropic_messages")
+      // count_tokens is safe to always include when Anthropic is a target
+      seen.add("anthropic_count_tokens")
+    }
+    if (t.provider === "openai") {
+      seen.add("openai_chat_completions")
+      seen.add("openai_responses")
+    }
+  }
+  return [...seen]
+}
 
 type EnvironmentRow = { id: string; name: string }
 type CredentialRow = { handle: string }
@@ -114,8 +151,11 @@ function stateToWorkingCopy(s: EditorState): Record<string, unknown> {
       model: t.model, credential_ref: ref, endpoint: t.endpoint || null,
     }
   })
+  // accepts is derived from target providers at save time — no UI to
+  // maintain. See `deriveAccepts` above.
   return {
-    name: s.name, model_alias: s.model_alias, accepts: s.accepts,
+    name: s.name, model_alias: s.model_alias,
+    accepts: deriveAccepts(s.targets),
     timeout_seconds: s.timeout_seconds, max_attempts: s.max_attempts, targets,
   }
 }
@@ -203,45 +243,26 @@ export default function GatewayProfileV2Editor({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
-        <label style={{ fontSize: 12 }}>Name
+        <FieldLabel label="Name" hint="Display name for this profile.">
           <input value={state.name} disabled={!isAdmin}
+            placeholder="e.g. coding-prod"
             onChange={e => patch({ name: e.target.value })} style={inputStyle} />
-        </label>
-        <label style={{ fontSize: 12 }}>Model alias
+        </FieldLabel>
+        <FieldLabel label="Alias" hint="What clients send as `model:` in their request.">
           <input value={state.model_alias} disabled={!isAdmin}
             onChange={e => patch({ model_alias: e.target.value })}
             placeholder="e.g. coding" style={inputStyle} />
-        </label>
-        <label style={{ fontSize: 12 }}>Timeout (seconds)
+        </FieldLabel>
+        <FieldLabel label="Timeout (s)" hint="End-to-end deadline across every fallback attempt.">
           <input type="number" min={1} value={state.timeout_seconds} disabled={!isAdmin}
             onChange={e => patch({ timeout_seconds: Math.max(1, Number(e.target.value) || 1) })}
             style={inputStyle} />
-        </label>
-        <label style={{ fontSize: 12 }}>Max attempts
+        </FieldLabel>
+        <FieldLabel label="Max attempts" hint="Cap on target retries (primary + fallbacks).">
           <input type="number" min={1} max={10} value={state.max_attempts} disabled={!isAdmin}
             onChange={e => patch({ max_attempts: Math.max(1, Number(e.target.value) || 1) })}
             style={inputStyle} />
-        </label>
-      </div>
-
-      <div>
-        <label style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-          Accepts (operations this alias serves)
-        </label>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {ALL_OPERATIONS.map(op => (
-            <label key={op} style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 12.5 }}>
-              <input type="checkbox" disabled={!isAdmin}
-                checked={state.accepts.includes(op)}
-                onChange={() => patch({
-                  accepts: state.accepts.includes(op)
-                    ? state.accepts.filter(o => o !== op)
-                    : [...state.accepts, op],
-                })} />
-              <span className="mono" style={{ fontSize: 12 }}>{op}</span>
-            </label>
-          ))}
-        </div>
+        </FieldLabel>
       </div>
 
       <div>
@@ -313,7 +334,7 @@ function TargetRow({
 }) {
   const creds = target.credential_env_id ? credentialsByEnv[target.credential_env_id] ?? [] : []
   return (
-    <div className="card" style={{ padding: 12, display: "grid", gridTemplateColumns: "auto 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+    <div className="card" style={{ padding: 12, display: "grid", gridTemplateColumns: "auto 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
         <button className="btn btn-ghost btn-sm btn-icon" onClick={onMoveUp} disabled={!isAdmin || isFirst}
           style={{ height: 24, width: 24, opacity: isFirst ? 0.35 : 1 }} title="Move up">↑</button>
@@ -322,47 +343,46 @@ function TargetRow({
           style={{ height: 24, width: 24, opacity: isLast ? 0.35 : 1 }} title="Move down">↓</button>
       </div>
 
-      <label style={{ fontSize: 12 }}>ID
+      <FieldLabel label="Role" hint="First target = primary; the rest are fallbacks in order.">
         <input value={target.id} disabled={!isAdmin}
+          placeholder={index === 0 ? "primary" : "fallback"}
           onChange={e => onChange({ id: e.target.value })} style={inputStyle} />
-      </label>
+      </FieldLabel>
 
-      <label style={{ fontSize: 12 }}>Transport
-        <select value={target.transport} disabled={!isAdmin}
-          onChange={e => onChange({ transport: e.target.value as Transport })} style={inputStyle}>
-          <option value="litellm_sdk">litellm_sdk</option>
-          <option value="http_passthrough">http_passthrough</option>
+      <FieldLabel label="Provider" hint="Upstream provider — routes through the LiteLLM SDK.">
+        <select value={target.provider} disabled={!isAdmin}
+          onChange={e => {
+            const provider = e.target.value
+            // If the current model doesn't belong to the new provider,
+            // reset to the provider's first model — no in-between state
+            // where "openai/claude-sonnet-4-6" briefly exists.
+            const models = MODELS_BY_PROVIDER[provider] ?? []
+            const modelStillValid = models.some(m => m.id === target.model)
+            onChange({
+              provider,
+              model: modelStillValid ? target.model : (models[0]?.id ?? ""),
+            })
+          }} style={inputStyle}>
+          {KNOWN_LITELLM_PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
-      </label>
+      </FieldLabel>
 
-      {target.transport === "litellm_sdk" ? (
-        <label style={{ fontSize: 12 }}>Provider
-          <select value={target.provider} disabled={!isAdmin}
-            onChange={e => onChange({ provider: e.target.value })} style={inputStyle}>
-            {KNOWN_LITELLM_PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </label>
-      ) : (
-        <label style={{ fontSize: 12 }}>Integration
-          <select value={target.integration} disabled={!isAdmin}
-            onChange={e => onChange({ integration: e.target.value })} style={inputStyle}>
-            {KNOWN_INTEGRATIONS.map(i => <option key={i} value={i}>{i}</option>)}
-          </select>
-        </label>
-      )}
-
-      <label style={{ fontSize: 12 }}>Model
-        <input value={target.model} disabled={!isAdmin} placeholder="claude-sonnet-4-6"
-          onChange={e => onChange({ model: e.target.value })} style={inputStyle} />
-      </label>
+      <FieldLabel label="Model" hint="Real upstream model ID the request goes to.">
+        <select value={target.model} disabled={!isAdmin}
+          onChange={e => onChange({ model: e.target.value })} style={inputStyle}>
+          {(MODELS_BY_PROVIDER[target.provider] ?? []).map(m => (
+            <option key={m.id} value={m.id}>{m.label}</option>
+          ))}
+        </select>
+      </FieldLabel>
 
       {isAdmin ? (
         <button onClick={onRemove} className="btn btn-ghost btn-sm btn-icon"
           style={{ color: "var(--err)", borderColor: "var(--err-bd)" }} title="Remove target">×</button>
       ) : <div />}
 
-      <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-        <label style={{ fontSize: 12 }}>Credential vault
+      <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <FieldLabel label="Credential vault" hint="Which environment holds the upstream API key.">
           <select value={target.credential_env_id} disabled={!isAdmin}
             onChange={e => {
               const envId = e.target.value
@@ -372,26 +392,42 @@ function TargetRow({
             <option value="">— pick vault —</option>
             {envs.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
-        </label>
-        <label style={{ fontSize: 12 }}>Credential handle
+        </FieldLabel>
+        <FieldLabel label="Credential handle" hint="The named credential inside that vault (e.g. `anthropic`).">
           {creds.length > 0 ? (
             <select value={target.credential_handle} disabled={!isAdmin}
               onChange={e => onChange({ credential_handle: e.target.value })} style={inputStyle}>
-              <option value="">— pick —</option>
+              <option value="">— pick handle —</option>
               {creds.map(c => <option key={c.handle} value={c.handle}>{c.handle}</option>)}
             </select>
           ) : (
-            <input value={target.credential_handle} disabled={!isAdmin} placeholder="anthropic"
+            <input value={target.credential_handle} disabled={!isAdmin}
+              placeholder={target.credential_env_id ? "no credentials in this vault yet" : "pick a vault first"}
               onChange={e => onChange({ credential_handle: e.target.value })} style={inputStyle} />
           )}
-        </label>
-        {target.transport === "http_passthrough" ? (
-          <label style={{ fontSize: 12 }}>Endpoint (optional)
-            <input value={target.endpoint} disabled={!isAdmin} placeholder="https://…"
-              onChange={e => onChange({ endpoint: e.target.value })} style={inputStyle} />
-          </label>
-        ) : <div />}
+        </FieldLabel>
       </div>
     </div>
+  )
+}
+
+
+function FieldLabel({
+  label, hint, children,
+}: {
+  label: string
+  hint?: string
+  children: React.ReactNode
+}) {
+  return (
+    <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+      <span>{label}</span>
+      {children}
+      {hint ? (
+        <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 400, lineHeight: 1.35 }}>
+          {hint}
+        </span>
+      ) : null}
+    </label>
   )
 }

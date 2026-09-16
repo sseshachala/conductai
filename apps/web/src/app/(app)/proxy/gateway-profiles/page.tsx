@@ -35,15 +35,20 @@ interface PresetChip {
 // Model IDs pulled from the runtime pins we know work today:
 // Anthropic 4.x family, OpenAI GA models. Adjust in one place when
 // the pinned catalog moves.
+// Presets pair same-vendor fallbacks only. The capability catalog
+// requires every target to serve every accepted operation — so
+// "Anthropic primary + OpenAI fallback" fails publish because OpenAI
+// can't serve anthropic_messages. If a customer wants cross-vendor
+// failover, that's a follow-up on top of the passthrough executor
+// (#2005) which translates between surfaces.
 const PRESET_CHIPS: PresetChip[] = [
   {
-    label: "Coding · Claude Sonnet + GPT-4o fallback",
-    hint: "Primary → anthropic/claude-sonnet-4-6; fallback → openai/gpt-4o.",
-    name: "coding",
+    label: "Claude Sonnet + Haiku fallback",
+    hint: "Primary → Claude Sonnet; fallback → Claude Haiku.",
+    name: "claude-sonnet",
     workingCopy: {
-      name: "coding",
-      model_alias: "coding",
-      accepts: ["anthropic_messages"],
+      name: "claude-sonnet",
+      model_alias: "claude-sonnet",
       timeout_seconds: 60,
       max_attempts: 2,
       targets: [
@@ -54,45 +59,43 @@ const PRESET_CHIPS: PresetChip[] = [
         },
         {
           id: "fallback", transport: "litellm_sdk",
-          provider: "openai", model: "gpt-4o",
+          provider: "anthropic", model: "claude-haiku-4-5-20251001",
           credential_ref: "",
         },
       ],
     },
   },
   {
-    label: "Anthropic only · Claude Sonnet",
-    hint: "Single Anthropic target, no fallback.",
-    name: "anthropic-only",
+    label: "Claude Opus (single)",
+    hint: "Most capable Anthropic model, no fallback.",
+    name: "claude-opus",
     workingCopy: {
-      name: "anthropic-only",
-      model_alias: "anthropic-only",
-      accepts: ["anthropic_messages"],
+      name: "claude-opus",
+      model_alias: "claude-opus",
       timeout_seconds: 60,
       max_attempts: 1,
       targets: [
         {
           id: "primary", transport: "litellm_sdk",
-          provider: "anthropic", model: "claude-sonnet-4-6",
+          provider: "anthropic", model: "claude-opus-4-7",
           credential_ref: "",
         },
       ],
     },
   },
   {
-    label: "Cheap · Haiku + gpt-4o-mini fallback",
-    hint: "Primary → anthropic/claude-haiku; fallback → openai/gpt-4o-mini.",
-    name: "cheap",
+    label: "GPT-4o + mini fallback",
+    hint: "Primary → GPT-4o; fallback → GPT-4o mini.",
+    name: "gpt-4o",
     workingCopy: {
-      name: "cheap",
-      model_alias: "cheap",
-      accepts: ["anthropic_messages"],
-      timeout_seconds: 45,
+      name: "gpt-4o",
+      model_alias: "gpt-4o",
+      timeout_seconds: 60,
       max_attempts: 2,
       targets: [
         {
           id: "primary", transport: "litellm_sdk",
-          provider: "anthropic", model: "claude-haiku-4-5-20251001",
+          provider: "openai", model: "gpt-4o",
           credential_ref: "",
         },
         {
@@ -104,19 +107,18 @@ const PRESET_CHIPS: PresetChip[] = [
     },
   },
   {
-    label: "OpenAI · gpt-4o Chat + Responses",
-    hint: "Single OpenAI target for both chat completions and responses.",
-    name: "openai-4o",
+    label: "o1 reasoning (single)",
+    hint: "OpenAI o1, no fallback.",
+    name: "o1",
     workingCopy: {
-      name: "openai-4o",
-      model_alias: "openai-4o",
-      accepts: ["openai_chat_completions", "openai_responses"],
-      timeout_seconds: 60,
+      name: "o1",
+      model_alias: "o1",
+      timeout_seconds: 120,
       max_attempts: 1,
       targets: [
         {
           id: "primary", transport: "litellm_sdk",
-          provider: "openai", model: "gpt-4o",
+          provider: "openai", model: "o1",
           credential_ref: "",
         },
       ],
@@ -227,6 +229,26 @@ export default function GatewayProfilesV2Page() {
     } finally { setBusy("") }
   }
 
+  async function deleteProfile(profile: GatewayProfileV2Out) {
+    if (!workspaceId || !isAdmin) return
+    // API refuses to delete a profile that has ever been published, so
+    // there's no risk of nuking published bindings here. Confirm anyway —
+    // draft mistakes still cost time to rebuild.
+    if (profile.revisions.length > 0 || profile.bindings.length > 0) {
+      setError(`"${profile.name}" has been published — it can't be deleted. Ask ops to archive it if it should be retired.`)
+      return
+    }
+    if (!window.confirm(`Delete draft "${profile.name}"? This can't be undone.`)) return
+    setBusy(`delete:${profile.id}`); setError("")
+    try {
+      await guard.gatewayProfilesV2.remove(authFetch, workspaceId, profile.id)
+      if (selectedId === profile.id) setSelectedId(null)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed")
+    } finally { setBusy("") }
+  }
+
   return (
     <AppShell>
       <div className="page">
@@ -284,7 +306,9 @@ export default function GatewayProfilesV2Page() {
                 {profiles.map(p => (
                   <ProfileListItem key={p.id} profile={p}
                     active={selectedId === p.id}
-                    onSelect={() => setSelectedId(p.id)} />
+                    canDelete={isAdmin}
+                    onSelect={() => setSelectedId(p.id)}
+                    onDelete={() => void deleteProfile(p)} />
                 ))}
               </div>
             )}
@@ -331,19 +355,25 @@ export default function GatewayProfilesV2Page() {
 
 
 function ProfileListItem({
-  profile, active, onSelect,
+  profile, active, canDelete, onSelect, onDelete,
 }: {
   profile: GatewayProfileV2Out
   active: boolean
+  canDelete: boolean
   onSelect: () => void
+  onDelete: () => void
 }) {
   const published = isPublished(profile)
   const dirty = hasUnpublishedChanges(profile)
+  // Delete affordance shows only for drafts (never-published profiles);
+  // published rows are locked because deleting them would cascade-drop
+  // revision history the server refuses to remove anyway.
+  const canShowDelete = canDelete && !published
   return (
-    <button onClick={onSelect} className="card"
+    <div onClick={onSelect} className="card"
       style={{
         display: "flex", flexDirection: "column", alignItems: "stretch",
-        gap: 4, padding: "10px 12px", textAlign: "left", cursor: "pointer",
+        gap: 4, padding: "10px 12px", cursor: "pointer",
         background: active ? "var(--accent-weak)" : "var(--surface)",
         borderColor: active ? "var(--accent-ring)" : "var(--border)",
       }}>
@@ -351,17 +381,28 @@ function ProfileListItem({
         <span style={{ fontSize: 13.5, fontWeight: 600, color: active ? "var(--accent-text)" : "var(--text)" }}>
           {profile.name}
         </span>
-        {published ? (
-          <span className="sbadge ok">{profile.bindings.length} live</span>
-        ) : (
-          <span className="sbadge warn">draft</span>
-        )}
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {published ? (
+            <span className="sbadge ok">{profile.bindings.length} live</span>
+          ) : (
+            <span className="sbadge warn">draft</span>
+          )}
+          {canShowDelete && (
+            <button
+              onClick={e => { e.stopPropagation(); onDelete() }}
+              className="btn btn-ghost btn-sm btn-icon"
+              style={{ height: 24, width: 24, color: "var(--err)", borderColor: "var(--err-bd)" }}
+              title={`Delete draft "${profile.name}"`}
+              aria-label={`Delete ${profile.name}`}
+            >×</button>
+          )}
+        </div>
       </div>
       <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
         alias: <span className="mono">{profile.model_alias ?? "—"}</span>
         {dirty && <> · <span style={{ color: "var(--warn)" }}>unpublished</span></>}
       </div>
-    </button>
+    </div>
   )
 }
 
