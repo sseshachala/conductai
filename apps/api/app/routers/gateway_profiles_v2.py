@@ -532,7 +532,14 @@ def publish_profile(
             detail="working_copy is empty — nothing to publish",
         )
 
-    parsed = _validate_working_copy(profile.working_copy)
+    # Pin the working-copy snapshot the instant we've validated it.
+    # If a concurrent PUT lands mid-publish, we still write the version
+    # the operator saw when they clicked Publish — never a mix of the
+    # validated shape with an already-drifted body. Copy at the top
+    # level so subsequent mutations to profile.working_copy don't
+    # bleed into the pinned snapshot.
+    working_snapshot: dict[str, Any] = dict(profile.working_copy)
+    parsed = _validate_working_copy(working_snapshot)
 
     # Publish-time ownership checks — must happen BEFORE we mutate any
     # rows. Either failing here leaves the working copy intact.
@@ -542,12 +549,10 @@ def publish_profile(
     _verify_credentials_exist(db, workspace_id, parsed)
 
     # Version allocation with unique-constraint retry. Concurrent
-    # publish calls can otherwise race the ``max(version)+1`` read and
+    # publish calls can otherwise race the max(version)+1 read and
     # both end up computing the same next version; the DB-level
-    # ``uq_gateway_profile_revisions_profile_version`` constraint
+    # uq_gateway_profile_revisions_profile_version constraint
     # catches the collision, we roll back, and retry with a fresh max.
-    # Bounded to a small retry count so we don't loop forever on real
-    # sustained contention.
     from sqlalchemy.exc import IntegrityError as _IntegrityError
 
     revision = None
@@ -561,7 +566,10 @@ def publish_profile(
         candidate = GatewayProfileRevision(
             profile_id=profile_id,
             version=current_max + 1,
-            snapshot=profile.working_copy,
+            # Pinned snapshot — never re-read profile.working_copy
+            # mid-loop, which could pick up a concurrent PUT and race
+            # the validated shape.
+            snapshot=working_snapshot,
             published_by=caller,
         )
         db.add(candidate)
@@ -753,7 +761,19 @@ def get_revision_snapshot(
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """Return the immutable snapshot for one revision — used by the UI to
-    diff historical revisions against the working copy."""
+    diff historical revisions against the working copy.
+
+    Verifies the parent profile belongs to the caller's workspace BEFORE
+    resolving the revision. Without this, an authorized caller in
+    workspace A could supply another workspace's profile_id +
+    revision_id in the URL and read the snapshot — the URL-workspace
+    check happened but the FK-scope check did not.
+    """
+    # Load the profile scoped to the caller's workspace first — 404 if
+    # it belongs to anyone else. Same shape as _load_profile so the
+    # error path is consistent across endpoints.
+    _load_profile(db, workspace_id, profile_id)
+
     revision = (
         db.query(GatewayProfileRevision)
         .filter(

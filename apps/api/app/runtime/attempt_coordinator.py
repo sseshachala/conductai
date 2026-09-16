@@ -212,6 +212,21 @@ class AttemptCoordinator:
                     error_class=type(exc).__name__,
                     error_summary=str(exc)[:200],
                 ))
+                # #2001 review fix — retry classification. Fall through
+                # to the next target ONLY on transient failure classes
+                # (network drop, upstream 5xx, DNS, socket, LiteLLM's
+                # own APIError family). Auth failures, validation
+                # errors, credential-resolution errors are permanent
+                # for this request — trying the next target won't help
+                # and burns budget the request can't spare.
+                if not _is_retryable(exc):
+                    log.info(
+                        "gateway.v2.attempt_permanent",
+                        target_id=target.id,
+                        error_class=type(exc).__name__,
+                        revision_id=str(resolved.revision_id),
+                    )
+                    raise AllAttemptsFailed(attempts) from exc
                 log.info(
                     "gateway.v2.attempt_failed",
                     target_id=target.id, error_class=type(exc).__name__,
@@ -284,6 +299,49 @@ def _name_of(target) -> str:
     if isinstance(target, HTTPPassthroughTarget):
         return target.integration
     return "unknown"
+
+
+# Exception class names that count as transient upstream failures worth
+# a fallback attempt. Anything not in this set (auth failure, config
+# error, credential resolution error, our own ValueError, etc.) is a
+# permanent failure for the request — trying the next target is a waste
+# of the profile's timeout budget and could mislead the client into
+# thinking the request was retried against a healthy target.
+#
+# Class NAMES are compared instead of importing LiteLLM's exception
+# tree so the transport module and its dependencies stay decoupled from
+# the LiteLLM install for unit tests.
+_TRANSIENT_ERROR_CLASSES: frozenset[str] = frozenset({
+    # LiteLLM's own transient family
+    "APIConnectionError",
+    "APIError",
+    "InternalServerError",
+    "ServiceUnavailableError",
+    "Timeout",
+    "RateLimitError",
+    # stdlib / httpx / anyio commons
+    "TimeoutError",
+    "ConnectionError",
+    "ConnectionRefusedError",
+    "ConnectionResetError",
+    "ConnectionAbortedError",
+    "ReadTimeout",
+    "ConnectTimeout",
+    "PoolTimeout",
+    "RemoteProtocolError",
+    "NetworkError",
+})
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Return True if the exception looks like a transient upstream
+    failure worth trying the next target for."""
+    # Walk the class MRO so subclasses of the transient set (LiteLLM's
+    # e.g. ``AnthropicError`` subclassing ``APIError``) match.
+    for cls in type(exc).__mro__:
+        if cls.__name__ in _TRANSIENT_ERROR_CLASSES:
+            return True
+    return False
 
 
 __all__ = [

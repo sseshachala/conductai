@@ -595,3 +595,47 @@ def test_publish_rejects_missing_credential(client_and_db):
     assert resp.status_code == 400
     body = resp.text.lower()
     assert "credential_ref" in body or "vault" in body
+
+
+def test_snapshot_endpoint_verifies_profile_workspace_ownership(client_and_db):
+    """Review fix: the snapshot endpoint's URL check verifies workspace,
+    but the historical filter was ``id + profile_id`` only. A caller
+    supplying another workspace's profile_id + revision_id could
+    otherwise read that snapshot. Post-fix: _load_profile runs first
+    and 404s on ownership mismatch, so an unknown profile_id → 404
+    regardless of whether the revision id would match."""
+    client, session_holder, ws = client_and_db
+    other_workspace = "44444444-4444-4444-4444-444444444444"
+    other_profile_id = uuid4()
+    revision_id = uuid4()
+
+    session_holder["db"] = _make_session_stub(
+        profiles=[
+            # Profile belongs to another workspace, not the caller's.
+            SimpleNamespace(
+                id=other_profile_id, workspace_id=other_workspace,
+                environment_id=None, name="p", schema_version="2",
+                config={}, working_copy=None, model_alias="coding",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            ),
+        ],
+        revisions=[
+            SimpleNamespace(
+                id=revision_id, profile_id=other_profile_id, version=1,
+                snapshot=_sample_working_copy(ENV),
+                published_by="admin", published_at=datetime.now(timezone.utc),
+            ),
+        ],
+    )
+
+    resp = client.get(
+        f"/workspaces/{ws}/gateway-profiles-v2/{other_profile_id}"
+        f"/revisions/{revision_id}",
+    )
+    # Caller's URL workspace matches the authenticated one; profile
+    # belongs to a different workspace → 404 at profile lookup, not
+    # at revision lookup (which would have returned the snapshot).
+    assert resp.status_code == 404
+    # No mention of the historical revision id or the other workspace.
+    assert other_workspace not in resp.text

@@ -262,3 +262,76 @@ async def test_transport_registers_iff_flag_is_on(monkeypatch):
         register_litellm_transport_if_enabled()  # idempotent
     finally:
         settings.guard_litellm_in_process = _prev
+
+
+# ─── Payload whitelisting (review fix #4) ─────────────────────────────
+
+
+@pytest.mark.anyio("asyncio")
+async def test_client_supplied_api_base_is_dropped(fake_litellm):
+    """Review fix: client cannot inject ``api_base`` or ``base_url`` to
+    redirect traffic to a different endpoint while still using the
+    Vault-resolved key. The whitelist drops SDK controls before they
+    reach LiteLLM."""
+    await LiteLLMTransport().execute(
+        target=_target(provider="openai", model="gpt-4o"),
+        operation="openai_chat_completions",
+        payload={
+            "messages": [{"role": "user", "content": "hi"}],
+            "api_base": "https://attacker.example.com/v1",  # MUST be dropped
+            "base_url": "https://also-attacker.example.com/v1",
+            "organization": "attacker-org",
+            "proxy": "socks5://malicious",
+        },
+        credential_resolver=lambda ref: "sk-fake",
+    )
+    kwargs = fake_litellm.acompletion.await_args.kwargs
+    assert "api_base" not in kwargs
+    assert "base_url" not in kwargs
+    assert "organization" not in kwargs
+    assert "proxy" not in kwargs
+
+
+@pytest.mark.anyio("asyncio")
+async def test_client_supplied_callbacks_is_dropped(fake_litellm):
+    """LiteLLM's ``callbacks``/``success_callback``/``failure_callback``
+    would let a client register plugins server-side. Reject at the
+    whitelist."""
+    await LiteLLMTransport().execute(
+        target=_target(provider="openai", model="gpt-4o"),
+        operation="openai_chat_completions",
+        payload={
+            "messages": [{"role": "user", "content": "hi"}],
+            "callbacks": ["custom_plugin"],
+            "success_callback": ["another_plugin"],
+        },
+        credential_resolver=lambda ref: "sk-fake",
+    )
+    kwargs = fake_litellm.acompletion.await_args.kwargs
+    assert "callbacks" not in kwargs
+    assert "success_callback" not in kwargs
+
+
+@pytest.mark.anyio("asyncio")
+async def test_operation_body_fields_still_forwarded(fake_litellm):
+    """Whitelist keeps operation-body fields (tools, tool_choice,
+    system, response_format, etc.) so the whitelist tightening didn't
+    regress the fields customers legitimately send."""
+    tools_payload = [{"type": "function", "function": {"name": "x"}}]
+    await LiteLLMTransport().execute(
+        target=_target(provider="openai", model="gpt-4o"),
+        operation="openai_chat_completions",
+        payload={
+            "messages": [{"role": "user", "content": "hi"}],
+            "tools": tools_payload,
+            "tool_choice": "auto",
+            "temperature": 0.5,
+            "response_format": {"type": "json_object"},
+        },
+        credential_resolver=lambda ref: "sk-fake",
+    )
+    kwargs = fake_litellm.acompletion.await_args.kwargs
+    assert kwargs["tools"] == tools_payload
+    assert kwargs["tool_choice"] == "auto"
+    assert kwargs["temperature"] == 0.5
+    assert kwargs["response_format"] == {"type": "json_object"}

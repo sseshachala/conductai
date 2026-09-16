@@ -183,35 +183,26 @@ async def handle_gateway_request(
         except Exception:
             return _fail_closed(400, "Body must be valid JSON")
 
-        # #2001 — v2 request-path wire-in. Only kicks in when the flag
-        # is on AND a published binding exists for
-        # (workspace, environment, body["model"]). Any other case
-        # (flag off, no binding, streaming, operation not yet wired)
-        # returns None so the v1 pipeline below runs unchanged.
-        # ``_routing_meta_v2`` is threaded through so the audit row
-        # captures revision id + attempt list on the v2 path.
-        _routing_meta_v2: dict[str, Any] = {}
-        _environment_id_hdr = request.headers.get("x-conductai-environment-id") or None
-        from app.runtime.v2_request_handler import maybe_handle_v2
-        _v2_response = await maybe_handle_v2(
-            request=request,
-            db=db,
-            workspace_id=workspace_id,
-            environment_id=_environment_id_hdr,
-            body=body,
-            provider=provider,
-            upstream_path=upstream_path,
-            routing_meta_sink=_routing_meta_v2,
-        )
-        if _v2_response is not None:
-            # v2 served the request. Skip the entire v1 pipeline below.
-            # Audit / policy for the v2 path is a follow-up wire — this
-            # commit gets published traffic flowing through the
-            # coordinator so the reviewer's "no production caller"
-            # finding is resolved; the audit-lifecycle threading + Guard
-            # policy application on the v2 path lands in the request-
-            # audit follow-up PR.
-            return _v2_response
+        # #2001 — v2 request-path wire-in is intentionally NOT hooked here
+        # yet. The prior draft did an early-return before policy eval +
+        # durable audit ran, which is a parallel-path anti-pattern:
+        # v2-served traffic would be ungoverned and unrecorded until a
+        # follow-up commit threaded Guard + audit through. The reviewer
+        # correctly flagged this.
+        #
+        # The safe rule: v2 target execution has to live INSIDE the
+        # existing governed lifecycle (Guard policy, durable-audit
+        # open/close/finalize, response gate, spend accounting). The
+        # config plane (schema, publish, bindings, revisions, coordinator,
+        # LiteLLMTransport) is fine to ship because it doesn't move a
+        # single client byte. Turning the flag on today is safe because
+        # nothing here consumes it — every request still flows through
+        # the v1 path below.
+        #
+        # Wiring plan lives in the follow-up PR: v2 lookup + target
+        # execution happens where v1 currently calls transport.forward,
+        # so ONE lifecycle governs both writer paths. See #2001
+        # follow-up.
 
         model, _routing_meta = _apply_tier_resolution(db, workspace_id, provider, body)
         if operation != "inference":

@@ -94,7 +94,7 @@ async def test_falls_through_to_next_target_on_failure():
     fallback's response is returned."""
     sdk = MagicMock()
     sdk.execute = AsyncMock(side_effect=[
-        RuntimeError("upstream 503"),
+        TimeoutError("upstream timeout"),  # transient → fallback fires
         {"content": "ok"},
     ])
 
@@ -108,7 +108,7 @@ async def test_falls_through_to_next_target_on_failure():
     assert result.winning_target_id == "fallback"
     assert [a.target_id for a in result.attempts] == ["primary", "fallback"]
     assert result.attempts[0].succeeded is False
-    assert result.attempts[0].error_class == "RuntimeError"
+    assert result.attempts[0].error_class == "TimeoutError"
     assert result.attempts[1].succeeded is True
 
 
@@ -117,7 +117,7 @@ async def test_max_attempts_caps_the_loop():
     """Three targets in the list, max_attempts=2. Only the first two
     are ever tried, even if both fail."""
     sdk = MagicMock()
-    sdk.execute = AsyncMock(side_effect=RuntimeError("everything is down"))
+    sdk.execute = AsyncMock(side_effect=TimeoutError("everything timing out"))
 
     coord = AttemptCoordinator(sdk_transport=sdk)
     with pytest.raises(AllAttemptsFailed) as excinfo:
@@ -219,7 +219,7 @@ async def test_credential_resolver_and_target_forwarded_to_sdk_per_attempt():
     the coordinator delegates cleanly per attempt."""
     sdk = MagicMock()
     sdk.execute = AsyncMock(side_effect=[
-        RuntimeError("primary key expired"),
+        TimeoutError("primary transient timeout"),
         {"content": "served"},
     ])
 
@@ -243,3 +243,52 @@ async def test_credential_resolver_and_target_forwarded_to_sdk_per_attempt():
     assert first.kwargs["credential_resolver"] is _resolver
     assert second.kwargs["target"].id == "fallback"
     assert second.kwargs["credential_resolver"] is _resolver
+
+
+@pytest.mark.anyio("asyncio")
+async def test_permanent_error_stops_after_first_target():
+    """Non-transient exceptions (auth failure, config error, our own
+    ValueError) must not fall through. Trying the next target would
+    burn the profile's budget on a request that cannot succeed."""
+    sdk = MagicMock()
+    sdk.execute = AsyncMock(side_effect=ValueError("credential missing scope"))
+
+    coord = AttemptCoordinator(sdk_transport=sdk)
+    with pytest.raises(AllAttemptsFailed) as excinfo:
+        await coord.execute(
+            resolved=_resolved(_profile(targets=[
+                _sdk_target("primary"), _sdk_target("fallback"),
+            ])),
+            operation="anthropic_messages",
+            payload={"messages": [{"role": "user", "content": "hi"}]},
+            credential_resolver=lambda ref: "sk-fake",
+        )
+    # Only one attempt recorded; fallback never fired.
+    assert [a.target_id for a in excinfo.value.attempts] == ["primary"]
+    assert excinfo.value.attempts[0].error_class == "ValueError"
+    assert sdk.execute.await_count == 1
+
+
+@pytest.mark.anyio("asyncio")
+async def test_transient_error_by_class_name_does_retry():
+    """LiteLLM's ``RateLimitError`` (or any exception subclassing a
+    known transient class name) counts as retryable even though we
+    don't import litellm here — the classifier compares class names
+    across the MRO. Simulates via a synthetic ``RateLimitError`` class."""
+    class RateLimitError(Exception):
+        """LiteLLM's ``RateLimitError`` for test purposes."""
+    sdk = MagicMock()
+    sdk.execute = AsyncMock(side_effect=[
+        RateLimitError("rate limited"),
+        {"content": "ok"},
+    ])
+    coord = AttemptCoordinator(sdk_transport=sdk)
+    result = await coord.execute(
+        resolved=_resolved(_profile(targets=[
+            _sdk_target("primary"), _sdk_target("fallback"),
+        ])),
+        operation="anthropic_messages",
+        payload={"messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "sk-fake",
+    )
+    assert result.winning_target_id == "fallback"

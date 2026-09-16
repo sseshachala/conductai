@@ -150,51 +150,29 @@ class LiteLLMTransport:
 
         func = getattr(litellm, self._dispatch[operation])
 
-        # #2001 review fix — forward the full payload from the client so
-        # tools, tool_choice, system, response_format, structured output,
-        # continuation ids, etc. all reach LiteLLM verbatim. Previously
-        # only messages/input/max_tokens made the jump, silently dropping
-        # everything else. Payload keys ALWAYS win over target/profile
-        # kwargs — a request-level override cannot be redefined by the
-        # transport layer without the client knowing.
-        merged = dict(kwargs)
-        merged.update(payload)
-        # Routing kwargs are our contract; the payload can't override
-        # them even by accident. Explicit reassignment after ``update``
-        # so a client trying to inject api_key / num_retries fails
-        # closed rather than triggering a downgrade.
-        merged["model"] = target.model
-        merged["api_key"] = api_key
-        merged["custom_llm_provider"] = target.provider
-        merged["num_retries"] = 0
-        merged["stream"] = stream
+        # #2001 review fix — explicit per-operation payload whitelisting
+        # rather than a blanket dict.update(payload). The prior draft
+        # accepted arbitrary SDK kwargs and only reserved five fields,
+        # which meant a client could inject api_base, base_url,
+        # organization, proxy, callbacks, etc. to redirect traffic
+        # while still using the Vault-resolved key. Transport / auth /
+        # routing controls are Conduct-owned; the client can only
+        # supply operation-body fields on the whitelist below.
+        payload_fields = _payload_fields_for(operation, payload)
 
         try:
             if operation == "openai_chat_completions":
-                merged.setdefault("messages", payload.get("messages"))
-                return await func(**merged)
+                return await func(**kwargs, **payload_fields)
             if operation == "openai_responses":
-                merged.setdefault("input", payload.get("input"))
-                return await func(**merged)
+                return await func(**kwargs, **payload_fields)
             if operation == "anthropic_messages":
-                # anthropic_messages requires ``max_tokens`` positionally
-                # in the current LiteLLM signature — pull from payload
-                # with a sane default; capability catalog will refuse
-                # any deployment that fails this contract.
-                merged.setdefault("messages", payload.get("messages"))
-                merged.setdefault("max_tokens", payload.get("max_tokens", 1024))
-                return await func(**merged)
+                # max_tokens is required by LiteLLM signature; default
+                # if the client omitted it.
+                payload_fields.setdefault("max_tokens", 1024)
+                return await func(**kwargs, **payload_fields)
             if operation == "anthropic_count_tokens":
-                # token_counter is sync + doesn't want api_key or stream;
-                # strip the streaming/retry kwargs before calling. Pass
-                # the full payload minus routing kwargs so ``system``
-                # and ``tools`` are counted, not just ``messages``.
-                counter_kwargs = {
-                    k: v for k, v in payload.items()
-                    if k not in ("api_key", "num_retries", "stream", "custom_llm_provider")
-                }
-                counter_kwargs["model"] = target.model
-                counter_kwargs.setdefault("messages", payload.get("messages"))
+                # token_counter is sync + doesn't want api_key/stream.
+                counter_kwargs = {"model": target.model, **payload_fields}
                 return func(**counter_kwargs)
             # Unreachable — guarded by the dispatch check above.
             raise ValueError(f"unhandled operation {operation!r}")  # pragma: no cover
@@ -231,3 +209,50 @@ def register_litellm_transport_if_enabled() -> None:
         "gateway.v2.litellm_transport.enabled",
         transport=LiteLLMTransport.name,
     )
+
+
+# ─── Payload whitelisting per operation (#2001 review) ────────────────
+
+
+# Per-operation allowed body fields. Anything else the client sends is
+# dropped BEFORE it reaches LiteLLM, so a request payload cannot
+# override transport/auth (api_key, api_base, base_url, organization,
+# proxy, num_retries, callbacks, ...) or routing (custom_llm_provider,
+# model) — those are Conduct-owned.
+#
+# If a legitimately-missing field lands here (LiteLLM adds a new
+# operation-body parameter we haven't reviewed), we'll notice because
+# the client-visible behavior degrades and we can extend this table
+# with an intentional decision. Silently forwarding everything was the
+# review-flagged failure mode.
+_ALLOWED_PAYLOAD_FIELDS: dict[Operation, frozenset[str]] = {
+    "openai_chat_completions": frozenset({
+        "messages", "tools", "tool_choice", "response_format",
+        "temperature", "top_p", "n", "stop", "max_tokens",
+        "presence_penalty", "frequency_penalty", "logit_bias", "user",
+        "seed", "logprobs", "top_logprobs", "parallel_tool_calls",
+        "service_tier", "reasoning_effort",
+    }),
+    "openai_responses": frozenset({
+        "input", "instructions", "previous_response_id", "tools",
+        "tool_choice", "text", "reasoning", "max_output_tokens",
+        "temperature", "top_p", "parallel_tool_calls", "user", "metadata",
+        "truncation",
+    }),
+    "anthropic_messages": frozenset({
+        "messages", "system", "max_tokens", "metadata",
+        "stop_sequences", "temperature", "top_k", "top_p", "tools",
+        "tool_choice", "thinking",
+    }),
+    "anthropic_count_tokens": frozenset({
+        "messages", "system", "tools", "tool_choice",
+    }),
+}
+
+
+def _payload_fields_for(operation: Operation, payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the subset of ``payload`` the operation's LiteLLM API
+    accepts. Anything else — including SDK controls like ``api_base``
+    or ``callbacks`` — is dropped."""
+    allowed = _ALLOWED_PAYLOAD_FIELDS.get(operation, frozenset())
+    return {k: v for k, v in payload.items() if k in allowed}
