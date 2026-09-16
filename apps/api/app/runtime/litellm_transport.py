@@ -150,28 +150,52 @@ class LiteLLMTransport:
 
         func = getattr(litellm, self._dispatch[operation])
 
+        # #2001 review fix — forward the full payload from the client so
+        # tools, tool_choice, system, response_format, structured output,
+        # continuation ids, etc. all reach LiteLLM verbatim. Previously
+        # only messages/input/max_tokens made the jump, silently dropping
+        # everything else. Payload keys ALWAYS win over target/profile
+        # kwargs — a request-level override cannot be redefined by the
+        # transport layer without the client knowing.
+        merged = dict(kwargs)
+        merged.update(payload)
+        # Routing kwargs are our contract; the payload can't override
+        # them even by accident. Explicit reassignment after ``update``
+        # so a client trying to inject api_key / num_retries fails
+        # closed rather than triggering a downgrade.
+        merged["model"] = target.model
+        merged["api_key"] = api_key
+        merged["custom_llm_provider"] = target.provider
+        merged["num_retries"] = 0
+        merged["stream"] = stream
+
         try:
             if operation == "openai_chat_completions":
-                return await func(messages=payload["messages"], **kwargs)
+                merged.setdefault("messages", payload.get("messages"))
+                return await func(**merged)
             if operation == "openai_responses":
-                return await func(input=payload["input"], **kwargs)
+                merged.setdefault("input", payload.get("input"))
+                return await func(**merged)
             if operation == "anthropic_messages":
                 # anthropic_messages requires ``max_tokens`` positionally
                 # in the current LiteLLM signature — pull from payload
                 # with a sane default; capability catalog will refuse
                 # any deployment that fails this contract.
-                return await func(
-                    max_tokens=payload.get("max_tokens", 1024),
-                    messages=payload["messages"],
-                    **kwargs,
-                )
+                merged.setdefault("messages", payload.get("messages"))
+                merged.setdefault("max_tokens", payload.get("max_tokens", 1024))
+                return await func(**merged)
             if operation == "anthropic_count_tokens":
                 # token_counter is sync + doesn't want api_key or stream;
-                # strip the streaming/retry kwargs before calling.
-                return func(
-                    model=target.model,
-                    messages=payload["messages"],
-                )
+                # strip the streaming/retry kwargs before calling. Pass
+                # the full payload minus routing kwargs so ``system``
+                # and ``tools`` are counted, not just ``messages``.
+                counter_kwargs = {
+                    k: v for k, v in payload.items()
+                    if k not in ("api_key", "num_retries", "stream", "custom_llm_provider")
+                }
+                counter_kwargs["model"] = target.model
+                counter_kwargs.setdefault("messages", payload.get("messages"))
+                return func(**counter_kwargs)
             # Unreachable — guarded by the dispatch check above.
             raise ValueError(f"unhandled operation {operation!r}")  # pragma: no cover
         except Exception:

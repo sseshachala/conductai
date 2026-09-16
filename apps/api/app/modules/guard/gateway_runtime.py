@@ -157,14 +157,19 @@ class TransportResolver:
                 if row.environment_id and str(row.environment_id) == str(environment_id):
                     return config
 
-        # 3. Env=NULL fallback among compatible rows.
+        # 3. Workspace-default fallback (env=NULL). This is intentionally
+        #    the ONLY fallback path — falling to a profile bound to a
+        #    different environment would cross the isolation boundary
+        #    (staging config serving prod traffic, or vice versa).
         for row, config in compatible:
             if row.environment_id is None:
                 return config
 
-        # 4. Nothing matched env preference — pick the first compatible
-        #    row deterministically (already ordered by name).
-        return compatible[0][1]
+        # 4. No env match and no workspace default → no match. Falling
+        #    back to some other environment's profile was the bug that
+        #    review flagged; the caller sees the fail-closed 503 path,
+        #    which is safer than silently routing across environments.
+        return None
 
     def resolve(
         self,
