@@ -733,14 +733,84 @@ async def handle_gateway_request(
                     ai_tool=ai_tool,
                     user_email=_user_email,
                 )
+        elif _v2_plan is not None:
+            # X2 — v2 executed but durable-audit was off (v2 flag +
+            # durable-audit flag are independent). Without this branch
+            # every v2 request skipped audit entirely: durable-audit's
+            # ``_open_durable`` short-circuited to an empty row, the
+            # v2 finalize block above required ``_durable_row_id`` and
+            # was skipped, and v1's ``_record_audit`` never ran because
+            # the v2 branch took the request. Fall back to the legacy
+            # single-phase ``_record_audit`` so v2 traffic always lands
+            # a row while durable-audit stays optional per workspace.
+            if isinstance(_response, StreamingResponse):
+                _response = _wrap_v2_stream_record_legacy(
+                    _response,
+                    background=background,
+                    workspace_id=workspace_id,
+                    clerk_user_id=clerk_user_id,
+                    ai_tool=ai_tool,
+                    provider=provider,
+                    model=model,
+                    body=body,
+                    prompt_summary=prompt_summary,
+                    user_email=_user_email,
+                    conductai_run_id=_run_id,
+                    conductai_workflow=_workflow,
+                    conductai_workflow_id=_workflow_id,
+                    hook_session_id=_hook_session_id,
+                    routing_meta=_routing_meta,
+                    agent_identity_id=(
+                        str(_agent_identity_id) if _agent_identity_id else None
+                    ),
+                    route=request.url.path,
+                    ingress_decision=_audit_decision,
+                    ingress_rule_id=_audit_rule_id,
+                    started_monotonic=started,
+                    record_audit_fn=_record_audit,
+                )
+            else:
+                _v2_finalize = _derive_v2_finalize_args(
+                    post_gate_response=_response,
+                    pre_gate_upstream_body=_v2_upstream_body_bytes,
+                    ingress_decision=_audit_decision,
+                    ingress_rule_id=_audit_rule_id,
+                )
+                background.add_task(
+                    _record_audit,
+                    workspace_id, clerk_user_id, ai_tool, provider, model,
+                    _v2_finalize["decision"],
+                    _v2_finalize["rule_id"],
+                    int((time.monotonic() - started) * 1000),
+                    body=body,
+                    response_bytes=_v2_finalize["response_bytes"],
+                    prompt_summary=prompt_summary,
+                    user_email=_user_email,
+                    conductai_run_id=_run_id,
+                    conductai_workflow=_workflow,
+                    conductai_workflow_id=_workflow_id,
+                    hook_session_id=_hook_session_id,
+                    routing_meta=_routing_meta,
+                    execution_status=_v2_finalize["execution_status"],
+                    agent_identity_id=(
+                        str(_agent_identity_id) if _agent_identity_id else None
+                    ),
+                    route=request.url.path,
+                )
     except BaseException as _forward_exc:  # noqa: BLE001 — need CancelledError too
         # Best-effort finalize so the row lands terminated immediately
         # instead of waiting on the reconciler's lease sweep. WHERE
         # lifecycle_state = 'accepted' in audit.finalize means this is
         # a no-op if the transport / _stream_chunks already finalized
         # (e.g. an error partway through streaming).
+        _is_cancel = isinstance(_forward_exc, _asyncio.CancelledError)
+        _exec_status = "interrupted" if _is_cancel else "error"
+        _result_summary = (
+            "Request cancelled during upstream forward"
+            if _is_cancel
+            else f"forward/gate exception: {type(_forward_exc).__name__}: {str(_forward_exc)[:400]}"
+        )
         if _durable_row_id:
-            _is_cancel = isinstance(_forward_exc, _asyncio.CancelledError)
             try:
                 await _finalize_durable_row(
                     row_id=_durable_row_id,
@@ -753,18 +823,51 @@ async def handle_gateway_request(
                     duration_ms=int((time.monotonic() - started) * 1000),
                     rule_id=None,
                     routing_meta=_routing_meta,
-                    execution_status="interrupted" if _is_cancel else "error",
-                    result_summary=(
-                        "Request cancelled during upstream forward"
-                        if _is_cancel
-                        else f"forward/gate exception: {type(_forward_exc).__name__}: {str(_forward_exc)[:400]}"
-                    ),
+                    execution_status=_exec_status,
+                    result_summary=_result_summary,
                     clerk_user_id=clerk_user_id,
                     ai_tool=ai_tool,
                     user_email=_user_email,
                 )
             except Exception:
                 log.exception("guard.gateway.error_finalize_failed", row_id=_durable_row_id)
+        elif _v2_plan is not None:
+            # Y2 — v2 executed with durable-audit OFF and the request
+            # raised before the happy-path fallback (from X2) could
+            # schedule ``_record_audit``. Without this branch,
+            # exception-path v2 requests leave zero rows: the durable
+            # finalize above skipped (no row_id), the happy-path
+            # fallback never ran, and v1's ``_record_audit`` never
+            # fires because we're on the v2 branch.
+            #
+            # Schedule ``_record_audit`` via BackgroundTasks with an
+            # 'error' decision so dashboards see the failure exactly
+            # like they do for the durable-on case.
+            try:
+                background.add_task(
+                    _record_audit,
+                    workspace_id, clerk_user_id, ai_tool, provider, model,
+                    "error",
+                    None,   # rule_id
+                    int((time.monotonic() - started) * 1000),
+                    body=body,
+                    response_bytes=None,
+                    prompt_summary=prompt_summary,
+                    user_email=_user_email,
+                    conductai_run_id=_run_id,
+                    conductai_workflow=_workflow,
+                    conductai_workflow_id=_workflow_id,
+                    hook_session_id=_hook_session_id,
+                    routing_meta=_routing_meta,
+                    execution_status=_exec_status,
+                    result_summary=_result_summary,
+                    agent_identity_id=(
+                        str(_agent_identity_id) if _agent_identity_id else None
+                    ),
+                    route=request.url.path,
+                )
+            except Exception:
+                log.exception("guard.gateway.v2.error_record_audit_failed")
         raise
     finally:
         # Cancel the whole-request renewal task owned by gateway_lifecycle.
@@ -1255,6 +1358,97 @@ def _wrap_v2_stream_finalize(
                 log.exception(
                     "guard.gateway.v2.stream_finalize_failed",
                     row_id=row_id,
+                )
+
+    return StreamingResponse(
+        _wrapped(),
+        media_type=response.media_type,
+        headers=dict(response.headers),
+        status_code=response.status_code,
+    )
+
+
+def _wrap_v2_stream_record_legacy(
+    response: StreamingResponse,
+    *,
+    background,
+    workspace_id: str,
+    clerk_user_id: str | None,
+    ai_tool: str | None,
+    provider: str,
+    model: str,
+    body: dict,
+    prompt_summary: str,
+    user_email: str | None,
+    conductai_run_id,
+    conductai_workflow,
+    conductai_workflow_id,
+    hook_session_id,
+    routing_meta: dict | None,
+    agent_identity_id: str | None,
+    route: str,
+    ingress_decision: str,
+    ingress_rule_id: str | None,
+    started_monotonic: float,
+    record_audit_fn,
+) -> StreamingResponse:
+    """X2 fallback wrapper — mirrors ``_wrap_v2_stream_finalize`` but
+    schedules ``_record_audit`` (v1's single-phase writer) instead of
+    ``_finalize_durable_row``. Used when v2 executes but the
+    durable-audit canary is off for this workspace.
+
+    Same shape guarantees: collects bytes as they pass, fires the
+    audit call on stream close (or cancellation), never swallows the
+    stream on writer failure.
+    """
+    original = response.body_iterator
+
+    async def _wrapped():
+        collected = bytearray()
+        stream_exc: BaseException | None = None
+        try:
+            async for chunk in original:
+                if isinstance(chunk, str):
+                    chunk_bytes = chunk.encode("utf-8")
+                else:
+                    chunk_bytes = chunk
+                collected.extend(chunk_bytes)
+                yield chunk_bytes
+        except BaseException as exc:  # noqa: BLE001
+            stream_exc = exc
+            raise
+        finally:
+            import asyncio as _a
+            _is_cancel = isinstance(stream_exc, _a.CancelledError)
+            _decision = ingress_decision if stream_exc is None else "error"
+            _execution_status = (
+                "success" if stream_exc is None
+                else ("interrupted" if _is_cancel else "error")
+            )
+            try:
+                background.add_task(
+                    record_audit_fn,
+                    workspace_id, clerk_user_id, ai_tool, provider, model,
+                    _decision,
+                    ingress_rule_id,
+                    int((time.monotonic() - started_monotonic) * 1000),
+                    body=body,
+                    response_bytes=bytes(collected) or None,
+                    prompt_summary=prompt_summary,
+                    user_email=user_email,
+                    conductai_run_id=conductai_run_id,
+                    conductai_workflow=conductai_workflow,
+                    conductai_workflow_id=conductai_workflow_id,
+                    hook_session_id=hook_session_id,
+                    routing_meta=routing_meta,
+                    execution_status=_execution_status,
+                    agent_identity_id=agent_identity_id,
+                    route=route,
+                )
+            except Exception:
+                log.exception(
+                    "guard.gateway.v2.stream_record_legacy_failed",
+                    workspace_id=workspace_id,
                 )
 
     return StreamingResponse(
