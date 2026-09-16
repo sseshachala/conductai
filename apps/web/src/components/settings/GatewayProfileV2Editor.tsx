@@ -419,31 +419,70 @@ function FieldLabel({
   hint?: string
   children: React.ReactNode
 }) {
-  // Inline hint text used to sit under every field, doubling the
-  // vertical footprint. Replaced with a (ⓘ) affordance next to the
-  // label — native browser tooltip on hover keeps the surface small.
-  // Standardising this against the policy-form pattern is tracked in
-  // its own issue.
   return (
     <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4 }}>
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
         {label}
-        {hint ? (
-          <span
-            role="img"
-            aria-label={hint}
-            title={hint}
-            style={{
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              width: 14, height: 14, borderRadius: "50%",
-              border: "1px solid var(--border)",
-              fontSize: 10, fontWeight: 600, color: "var(--text-3)",
-              cursor: "help", userSelect: "none",
-            }}
-          >i</span>
-        ) : null}
+        {hint ? <HintIcon text={hint} /> : null}
       </span>
       {children}
     </label>
+  )
+}
+
+
+function HintIcon({ text }: { text: string }) {
+  // Native `title` attribute has a ~700ms browser delay and doesn't
+  // work on touch; custom hover popover renders instantly and is
+  // reliable across desktops.
+  const [show, setShow] = useState(false)
+  return (
+    <span
+      style={{ position: "relative", display: "inline-flex" }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      onFocus={() => setShow(true)}
+      onBlur={() => setShow(false)}
+    >
+      <span
+        role="img"
+        aria-label={text}
+        tabIndex={0}
+        style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 14, height: 14, borderRadius: "50%",
+          border: "1px solid var(--border)",
+          fontSize: 10, fontWeight: 600, color: "var(--text-3)",
+          cursor: "help", userSelect: "none",
+        }}
+      >i</span>
+      {show ? (
+        <span
+          role="tooltip"
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 6px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            padding: "6px 8px",
+            background: "var(--text)",
+            color: "var(--surface)",
+            borderRadius: 6,
+            fontSize: 11,
+            fontWeight: 400,
+            lineHeight: 1.4,
+            maxWidth: 240,
+            width: "max-content",
+            whiteSpace: "normal",
+            textAlign: "left",
+            zIndex: 1000,
+            pointerEvents: "none",
+            boxShadow: "0 4px 12px rgba(0,0,0,.15)",
+          }}
+        >
+          {text}
+        </span>
+      ) : null}
+    </span>
   )
 }
