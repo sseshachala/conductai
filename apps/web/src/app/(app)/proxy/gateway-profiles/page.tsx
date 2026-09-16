@@ -127,15 +127,17 @@ const PRESET_CHIPS: PresetChip[] = [
 ]
 
 function isPublished(profile: GatewayProfileV2Out): boolean {
-  return profile.revisions.length > 0 || profile.bindings.length > 0
+  // v3: served state lives on active_revision_id. Working_copy is
+  // locked whenever this is non-null.
+  return profile.active_revision_id !== null
 }
 
-function hasUnpublishedChanges(profile: GatewayProfileV2Out): boolean {
-  if (!profile.working_copy) return false
-  if (!profile.bindings.length) return true
-  const latestBinding = Math.max(...profile.bindings.map(b => new Date(b.updated_at).getTime()))
-  return new Date(profile.updated_at).getTime() > latestBinding
+function conditIdentifier(profile: GatewayProfileV2Out): string {
+  const alias = profile.model_alias ?? ""
+  return alias ? `cond-${profile.cond_code}-${alias}` : `cond-${profile.cond_code}`
 }
+
+type Filter = "all" | "draft" | "published"
 
 export default function GatewayProfilesV2Page() {
   const { authFetch } = useAuthFetch()
@@ -150,6 +152,7 @@ export default function GatewayProfilesV2Page() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>("")
   const [busy, setBusy] = useState<string>("")
+  const [filter, setFilter] = useState<Filter>("all")
   const [showPublish, setShowPublish] = useState(false)
   const [showRollback, setShowRollback] = useState(false)
 
@@ -231,11 +234,8 @@ export default function GatewayProfilesV2Page() {
 
   async function deleteProfile(profile: GatewayProfileV2Out) {
     if (!workspaceId || !isAdmin) return
-    // API refuses to delete a profile that has ever been published, so
-    // there's no risk of nuking published bindings here. Confirm anyway —
-    // draft mistakes still cost time to rebuild.
-    if (profile.revisions.length > 0 || profile.bindings.length > 0) {
-      setError(`"${profile.name}" has been published — it can't be deleted. Ask ops to archive it if it should be retired.`)
+    if (isPublished(profile) || profile.revisions.length > 0) {
+      setError(`"${profile.name}" has been published — it can't be deleted. Duplicate to iterate.`)
       return
     }
     if (!window.confirm(`Delete draft "${profile.name}"? This can't be undone.`)) return
@@ -249,16 +249,51 @@ export default function GatewayProfilesV2Page() {
     } finally { setBusy("") }
   }
 
+  async function duplicateProfile(source: GatewayProfileV2Out) {
+    if (!workspaceId || !isAdmin) return
+    setBusy(`duplicate:${source.id}`); setError("")
+    try {
+      const taken = new Set(profiles.map(p => p.name.toLowerCase()))
+      let candidate = `${source.name}-copy`
+      let n = 2
+      while (taken.has(candidate.toLowerCase())) {
+        candidate = `${source.name}-copy-${n}`
+        n += 1
+      }
+      const sourceWc = source.working_copy ?? {}
+      const wc = {
+        ...(sourceWc as Record<string, unknown>),
+        name: candidate,
+        model_alias: candidate,
+      }
+      const res = await guard.gatewayProfilesV2.create(
+        authFetch, workspaceId, { name: candidate, working_copy: wc },
+      )
+      const created = await res.json()
+      await load()
+      if (created?.id) setSelectedId(created.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Duplicate failed")
+    } finally { setBusy("") }
+  }
+
+  const visibleProfiles = useMemo(() => {
+    if (filter === "all") return profiles
+    return profiles.filter(p =>
+      filter === "published" ? isPublished(p) : !isPublished(p),
+    )
+  }, [profiles, filter])
+
   return (
     <AppShell>
       <div className="page">
         <div className="page-head">
           <h1 className="page-title">Gateway Profiles v2</h1>
           <p className="page-sub">
-            Route a friendly alias (e.g. <code>coding</code>) through one or more upstream
-            targets. Click a preset below to pre-fill a draft, then pick a Vault for
-            each target's credential and Save. Publish binds the revision to an
-            environment × alias so requests using that alias route through the pinned targets.
+            A profile pins an ordered list of upstream targets and a set of vault credentials
+            behind a stable identifier. Once published, the working copy is locked —
+            duplicate to iterate. Clients hit the gateway using the profile's
+            <code className="mono" style={{ fontSize: 12 }}> cond-…</code> identifier.
           </p>
         </div>
 
@@ -292,18 +327,36 @@ export default function GatewayProfilesV2Page() {
 
         <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}>
           <div>
-            <div className="eyebrow" style={{ marginBottom: 8 }}>Profiles ({profiles.length})</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span className="eyebrow">Profiles ({visibleProfiles.length}/{profiles.length})</span>
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              {(["all", "draft", "published"] as Filter[]).map(f => (
+                <button key={f} onClick={() => setFilter(f)} className="chip"
+                  style={{
+                    height: 26, fontSize: 12,
+                    background: filter === f ? "var(--accent-weak)" : "var(--surface)",
+                    borderColor: filter === f ? "var(--accent-ring)" : "var(--border)",
+                    color: filter === f ? "var(--accent-text)" : "var(--text-2)",
+                  }}>
+                  {f === "all" ? "All" : f === "draft" ? "Drafts" : "Published"}
+                </button>
+              ))}
+            </div>
+
             {loading ? (
               <div style={{ height: 96, background: "var(--surface-2)", borderRadius: 8 }} />
-            ) : profiles.length === 0 ? (
+            ) : visibleProfiles.length === 0 ? (
               <div className="card card-pad" style={{ textAlign: "center", background: "var(--surface-2)" }}>
                 <p style={{ fontSize: 13, color: "var(--text-3)", margin: 0 }}>
-                  No profiles yet. Click a preset above.
+                  {profiles.length === 0
+                    ? "No profiles yet. Click a preset above."
+                    : `No ${filter} profiles.`}
                 </p>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {profiles.map(p => (
+                {visibleProfiles.map(p => (
                   <ProfileListItem key={p.id} profile={p}
                     active={selectedId === p.id}
                     canDelete={isAdmin}
@@ -325,6 +378,7 @@ export default function GatewayProfilesV2Page() {
                 onReload={load}
                 onOpenPublish={() => setShowPublish(true)}
                 onOpenRollback={() => setShowRollback(true)}
+                onDuplicate={() => void duplicateProfile(selected)}
               />
             ) : (
               <div className="card card-pad" style={{ background: "var(--surface-2)", textAlign: "center" }}>
@@ -338,13 +392,13 @@ export default function GatewayProfilesV2Page() {
 
         {selected && showPublish && (
           <GatewayProfileV2PublishDialog
-            workspaceId={workspaceId} profile={selected} envs={envs}
+            workspaceId={workspaceId} profile={selected}
             onClose={() => setShowPublish(false)}
             onPublished={() => void load()} />
         )}
         {selected && showRollback && (
           <GatewayProfileV2RollbackDialog
-            workspaceId={workspaceId} profile={selected} envs={envs}
+            workspaceId={workspaceId} profile={selected}
             onClose={() => setShowRollback(false)}
             onRolledBack={() => void load()} />
         )}
@@ -364,10 +418,6 @@ function ProfileListItem({
   onDelete: () => void
 }) {
   const published = isPublished(profile)
-  const dirty = hasUnpublishedChanges(profile)
-  // Delete affordance shows only for drafts (never-published profiles);
-  // published rows are locked because deleting them would cascade-drop
-  // revision history the server refuses to remove anyway.
   const canShowDelete = canDelete && !published
   return (
     <div onClick={onSelect} className="card"
@@ -383,7 +433,7 @@ function ProfileListItem({
         </span>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           {published ? (
-            <span className="sbadge ok">{profile.bindings.length} live</span>
+            <span className="sbadge ok">published</span>
           ) : (
             <span className="sbadge warn">draft</span>
           )}
@@ -400,7 +450,6 @@ function ProfileListItem({
       </div>
       <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
         alias: <span className="mono">{profile.model_alias ?? "—"}</span>
-        {dirty && <> · <span style={{ color: "var(--warn)" }}>unpublished</span></>}
       </div>
     </div>
   )
@@ -409,7 +458,7 @@ function ProfileListItem({
 
 function ProfileDetail({
   profile, envs, envName, workspaceId, isAdmin,
-  onReload, onOpenPublish, onOpenRollback,
+  onReload, onOpenPublish, onOpenRollback, onDuplicate,
 }: {
   profile: GatewayProfileV2Out
   envs: EnvironmentRow[]
@@ -419,12 +468,21 @@ function ProfileDetail({
   onReload: () => void
   onOpenPublish: () => void
   onOpenRollback: () => void
+  onDuplicate: () => void
 }) {
+  const published = isPublished(profile)
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650 }}>{profile.name}</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 650 }}>{profile.name}</h2>
+            {published ? (
+              <span className="sbadge ok">published · locked</span>
+            ) : (
+              <span className="sbadge warn">draft</span>
+            )}
+          </div>
           <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>
             alias <code className="mono">{profile.model_alias ?? "—"}</code>
             {" · "}created {new Date(profile.created_at).toLocaleDateString()}
@@ -432,36 +490,40 @@ function ProfileDetail({
         </div>
         {isAdmin && (
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={onOpenPublish} className="btn btn-primary btn-sm"
-              disabled={!profile.working_copy}>Publish…</button>
-            <button onClick={onOpenRollback} className="btn btn-ghost btn-sm"
-              disabled={profile.revisions.length === 0}>Rollback…</button>
+            {published ? (
+              <>
+                <button onClick={onDuplicate} className="btn btn-primary btn-sm">
+                  Duplicate to new draft
+                </button>
+                <button onClick={onOpenRollback} className="btn btn-ghost btn-sm"
+                  disabled={profile.revisions.length < 2}>Rollback…</button>
+              </>
+            ) : (
+              <button onClick={onOpenPublish} className="btn btn-primary btn-sm"
+                disabled={!profile.working_copy}>Publish…</button>
+            )}
           </div>
         )}
       </div>
 
-      {profile.bindings.length > 0 && (
-        <div>
-          <div className="eyebrow" style={{ marginBottom: 6 }}>Live in</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {profile.bindings.map(b => (
-              <span key={`${b.environment_id}:${b.model_alias}`}
-                className="sbadge ok"
-                title={`revision ${b.revision_id.slice(0, 8)}… since ${new Date(b.updated_at).toLocaleString()}`}>
-                {envName(b.environment_id)}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      {published && <HowToUse profile={profile} />}
 
       <div>
-        <div className="eyebrow" style={{ marginBottom: 8 }}>Working copy</div>
+        <div className="eyebrow" style={{ marginBottom: 8 }}>
+          Working copy {published && (
+            <span style={{ color: "var(--warn)", textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>
+              — read-only (duplicate to edit)
+            </span>
+          )}
+        </div>
         <GatewayProfileV2Editor
           workspaceId={workspaceId}
           profile={profile}
           envs={envs}
-          isAdmin={isAdmin}
+          // Editor already treats isAdmin=false as read-only for every
+          // input. Passing false when the profile is published locks
+          // every field in one line.
+          isAdmin={isAdmin && !published}
           onSaved={onReload}
         />
       </div>
@@ -496,5 +558,59 @@ function ProfileDetail({
         </details>
       )}
     </div>
+  )
+}
+
+
+function HowToUse({ profile }: { profile: GatewayProfileV2Out }) {
+  const identifier = conditIdentifier(profile)
+  // Gateway URL is the client-facing endpoint that will eventually
+  // dispatch by cond_code. Until PR C ships the runtime consumer, this
+  // is what admins point their SDK's `baseURL` at — it lives on the
+  // same origin as the app itself, no host guessing.
+  const gatewayUrl = typeof window !== "undefined"
+    ? `${window.location.origin.replace(/\/$/, "")}/v1/gateway`
+    : "/v1/gateway"
+  return (
+    <div className="card card-pad" style={{ background: "var(--surface-2)" }}>
+      <div className="eyebrow" style={{ marginBottom: 8 }}>How to use this profile</div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", rowGap: 8, columnGap: 12, alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "var(--text-2)" }}>Profile identifier</span>
+        <code className="mono" style={{ fontSize: 12.5, wordBreak: "break-all" }}>{identifier}</code>
+        <CopyButton value={identifier} />
+
+        <span style={{ fontSize: 12, color: "var(--text-2)" }}>Gateway URL</span>
+        <code className="mono" style={{ fontSize: 12.5, wordBreak: "break-all" }}>{gatewayUrl}</code>
+        <CopyButton value={gatewayUrl} />
+
+        <span style={{ fontSize: 12, color: "var(--text-2)" }}>Auth token</span>
+        <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+          Your workspace member token (or an Agent Identity token).
+        </span>
+        <a className="btn btn-ghost btn-sm" href="/settings" style={{ height: 26, fontSize: 11.5 }}>Manage</a>
+      </div>
+      <p style={{ fontSize: 11.5, color: "var(--text-3)", margin: "10px 0 0" }}>
+        Set your SDK's <code className="mono">model:</code> to the profile identifier and
+        the base URL to the gateway URL.
+      </p>
+    </div>
+  )
+}
+
+
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button className="btn btn-ghost btn-sm"
+      style={{ height: 26, fontSize: 11.5 }}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1500)
+        } catch { /* clipboard unavailable */ }
+      }}>
+      {copied ? "Copied" : "Copy"}
+    </button>
   )
 }
