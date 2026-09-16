@@ -135,7 +135,22 @@ export default function GatewayProfileV2ImportDialog({
             <textarea
               value={jsonText}
               onChange={e => setJsonText(e.target.value)}
-              placeholder='{\n  "name": "claude-sonnet",\n  "model_alias": "claude-sonnet",\n  "accepts": ["anthropic_messages"],\n  "targets": [...]\n}'
+              placeholder={`{
+  "name": "claude-sonnet",
+  "model_alias": "claude-sonnet",
+  "accepts": ["anthropic_messages"],
+  "timeout_seconds": 60,
+  "max_attempts": 2,
+  "targets": [
+    {
+      "id": "primary",
+      "transport": "native_http",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "credential_ref": ""
+    }
+  ]
+}`}
               rows={12}
               spellCheck={false}
               style={{
