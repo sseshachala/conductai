@@ -112,7 +112,7 @@ function getBreadcrumbs(pathname: string, projects: Project[]): string[] {
   if (pathname.startsWith('/theguard/discovery')) return ['Guard', 'Agents Discovered']
   if (pathname.startsWith('/theguard/session-reports')) return ['Guard', 'Activity', 'Session Reports']
   if (pathname.startsWith('/theguard/activity')) return ['Guard', 'Activity']
-  if (pathname.startsWith('/proxy')) return ['Connect', 'Proxy & Gateways']
+  if (pathname.startsWith('/proxy')) return ['Connect', 'Gateways']
   if (pathname.startsWith('/theguard/connections')) return ['Guard', 'Connections']
   if (pathname.startsWith('/theguard/settings')) return ['Guard', 'Settings']
   if (pathname.startsWith('/theguard/compliance')) return ['Guard', 'Compliance']
@@ -158,7 +158,7 @@ const PALETTE_COMMANDS = [
   { group: "GOVERN", label: "Guard · Enforcement", href: "/theguard/policies/enforcement", icon: "Shield" as const },
   { group: "CONNECT", label: "Agent ID", href: "/agent-identity", icon: "Lock" as const },
   { group: "CONNECT", label: "MCP Registry", href: "/integrations", icon: "Plug" as const },
-  { group: "CONNECT", label: "Proxy & Gateways", href: "/proxy", icon: "Plug" as const },
+  { group: "CONNECT", label: "Gateways", href: "/proxy", icon: "Plug" as const },
   { group: "WORKSPACE", label: "Settings · Vault", href: "/settings", icon: "Gear" as const },
 ]
 
@@ -1064,7 +1064,7 @@ function AppShellInnerContent({
             />
             <SideNavItem
               href="/proxy"
-              label="Proxy & Gateways"
+              label="Gateways"
               icon={<Icons.Plug />}
               active={pathname.startsWith("/proxy")}
               collapsed={collapsed}
