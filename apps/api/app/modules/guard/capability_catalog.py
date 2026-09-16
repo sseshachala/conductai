@@ -62,20 +62,23 @@ _LITELLM_SDK_CERTIFIED: dict[tuple[str, Operation], list[str] | None] = {
 
 # HTTP passthrough certified matrix — one entry per (integration, operation).
 #
-# Empty for the v2 launch. Publish MUST reject every http_passthrough
-# target until the coordinator's HTTPPassthroughExecutor lands, matching
-# the review-flagged invariant "capability catalog and coordinator must
-# agree on what's executable." Publishing a passthrough target today
-# and then having the request time surface UnsupportedTransport is a
-# UX bug we surface at publish instead.
+# PR 5 lands the executor (see ``runtime/http_passthrough_transport.py``)
+# with OpenRouter as the first supported integration. Extending this
+# matrix requires (a) a matching entry in
+# ``_INTEGRATION_ENDPOINTS`` in the transport module, and (b) a test
+# proving the (integration, operation) tuple works end-to-end. The
+# publish check + the coordinator's ``_dispatch`` both key off this
+# table, so they can't drift out of alignment.
 #
-# When the executor lands, add the (integration, operation) tuples we
-# verify end-to-end back here. The presets in gateway_config.py list
-# the integrations that will EVENTUALLY be supported.
-_HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {}
+# Portkey / Helicone / Azure OpenAI / Custom are staged for follow-up
+# PRs — they need per-integration auth-header semantics that the
+# OpenRouter reference implementation deliberately punts on.
+_HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {
+    ("openrouter", "openai_chat_completions"): True,
+}
 
 
-CATALOG_VERSION = "2026.09.15.v2-launch-litellm-only"
+CATALOG_VERSION = "2026.09.16.v2-openrouter-passthrough"
 
 
 class CapabilityMismatch(Exception):
