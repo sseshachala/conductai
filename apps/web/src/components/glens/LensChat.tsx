@@ -47,6 +47,7 @@ export function LensChat({
   placeholder = "Ask Lens…",
   emptyText = "Ask about anything on this page. Lens is Guard-enforced.",
   persistKey,
+  onActionCompleted,
 }: {
   pathname?: string | null
   initialQuery?: string | null
@@ -61,6 +62,11 @@ export function LensChat({
    *  so a page reload resumes the same server-side session (no forgotten
    *  pending_action_ids, no lost conversation). Omit to opt out. */
   persistKey?: string
+  /** Called once an ActionConfirmBubble resolves (Confirm click → server
+   *  executes → outcome text lands in the chat). Host pages use this to
+   *  refresh whatever surface the action mutated — e.g. reload the
+   *  Gateway Profiles list after gateway_v2_create_draft succeeds. */
+  onActionCompleted?: () => void
 }) {
   const { authFetch } = useAuthFetch()
   const [messages, setMessages] = useState<Message[]>([])
@@ -222,7 +228,10 @@ export function LensChat({
             key={i} m={m}
             authFetch={authFetch}
             onExpand={onExpandMessage}
-            onActionResolved={(text) => setMessages(prev => [...prev, { role: "assistant", kind: "action_done", text }])}
+            onActionResolved={(text) => {
+              setMessages(prev => [...prev, { role: "assistant", kind: "action_done", text }])
+              onActionCompleted?.()
+            }}
           />
         ))}
       </div>

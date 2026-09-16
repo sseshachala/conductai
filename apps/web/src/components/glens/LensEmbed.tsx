@@ -23,6 +23,7 @@ export function LensEmbed({
   emptyText,
   placeholder,
   persistKey,
+  onActionCompleted,
 }: {
   sessionId?: string | null
   initialQuery?: string | null
@@ -36,6 +37,10 @@ export function LensEmbed({
    *  `lens.session.<persistKey>`. Reload = same session, no lost
    *  pending_action_ids. Omit for one-shot surfaces. */
   persistKey?: string
+  /** Fires when an ActionConfirmBubble resolves (server-side execute
+   *  succeeded). Host pages use this to reload whatever they render
+   *  from the API — e.g. the Gateway Profiles list. */
+  onActionCompleted?: () => void
 }) {
   return (
     <div
@@ -66,6 +71,7 @@ export function LensEmbed({
         emptyText={emptyText}
         placeholder={placeholder}
         persistKey={persistKey}
+        onActionCompleted={onActionCompleted}
       />
     </div>
   )
