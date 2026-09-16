@@ -664,17 +664,30 @@ def import_profile(
         db.refresh(profile)
     except IntegrityError as exc:  # unique(workspace, name) collision
         db.rollback()
+        # Two paths land here:
+        #   1. Caller didn't pass name_override → JSON's own name
+        #      collided. Suggest name_override.
+        #   2. Caller DID pass name_override → their chosen name
+        #      collided too. Don't re-suggest name_override (they
+        #      already used it); tell them to pick something else.
+        if body.name_override:
+            message = (
+                f"The name {name!r} is already taken in this workspace. "
+                f"Pick a different value for ``name_override``."
+            )
+        else:
+            message = (
+                f"A profile named {name!r} already exists in this "
+                f"workspace. Pass ``name_override`` to import under a "
+                f"different name."
+            )
         raise HTTPException(
             status_code=409,
             detail={
                 "summary": "profile name already exists",
                 "errors": [{
                     "path": "name",
-                    "message": (
-                        f"A profile named {name!r} already exists in this "
-                        f"workspace. Pass ``name_override`` to import "
-                        f"under a different name."
-                    ),
+                    "message": message,
                     "target_index": None,
                     "type": "conflict",
                 }],
@@ -683,15 +696,20 @@ def import_profile(
 
     out = _to_output(db, workspace_id, profile)
 
-    # Absolute URL built from the request's own base so it works in
-    # dev, staging, and prod without a config knob. Falls back to a
-    # relative link if the request has no scheme (test env).
-    try:
-        base = str(request.base_url).rstrip("/")
-    except Exception:
-        base = ""
-    next_url = f"{base}/proxy/gateway-profiles?select={profile.id}" if base else \
-        f"/proxy/gateway-profiles?select={profile.id}"
+    # Absolute URL to the editor page. Uses ``settings.app_url``
+    # (the web-app URL, e.g. ``https://app.conductai.ai``) —
+    # ``request.base_url`` is the API's own host, which serves
+    # ``/gateway/v1/*`` but NOT the ``/proxy/*`` editor routes.
+    # Following ``https://api.conductai.ai/proxy/gateway-profiles``
+    # 404s; following ``https://app.conductai.ai/proxy/gateway-profiles``
+    # opens the editor.
+    from app.core.config import settings as _settings
+    web_base = (_settings.app_url or "").rstrip("/")
+    next_url = (
+        f"{web_base}/proxy/gateway-profiles?select={profile.id}"
+        if web_base
+        else f"/proxy/gateway-profiles?select={profile.id}"
+    )
 
     return ImportProfileOut(
         profile=out,
