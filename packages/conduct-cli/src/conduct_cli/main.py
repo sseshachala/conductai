@@ -2885,6 +2885,196 @@ def cmd_import_cedar(args):
         print(f"\nThis was a preview. Re-run with --install to create the pack in your workspace.")
 
 
+def cmd_import_gateway_config(args):
+    """conduct import --gateway-config <file.json> [--name NEW_NAME]
+
+    Import a Gateway Profile v2 from a portable JSON file. Server strips
+    every ``credential_ref`` on import — the admin then picks vault +
+    credential handle per target in the UI (Save gate blocks until
+    filled).
+
+    The JSON shape is the ``working_copy`` dict — same shape
+    ``conduct export --gateway-config`` emits and the same shape the
+    editor's Save call posts. Round-trip is safe: export → import
+    produces a draft the admin can complete in one editor session.
+    """
+    server, workspace, token = _require_auth(args)
+    if not token:
+        print(f"{RED}Not authenticated. Run `conduct login` first.{RESET}")
+        return
+
+    path = Path(args.file)
+    if not path.exists():
+        print(f"{RED}File not found: {path}{RESET}")
+        return
+
+    try:
+        working_copy = json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        print(f"{RED}Invalid JSON in {path}: {e}{RESET}")
+        return
+
+    if not isinstance(working_copy, dict):
+        print(
+            f"{RED}Expected a JSON object at the top level (the "
+            f"working_copy dict); got {type(working_copy).__name__}.{RESET}"
+        )
+        return
+
+    body_dict = {"working_copy": working_copy}
+    if getattr(args, "name", None):
+        body_dict["name_override"] = args.name
+
+    req = urllib.request.Request(
+        f"{server}/workspaces/{workspace}/gateway-profiles-v2/import",
+        data=json.dumps(body_dict).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+            "X-Workspace-Id": workspace or "",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            result = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode(errors="replace")
+        # Backend returns structured errors (PR #2033) — parse them
+        # into a readable per-line summary when possible.
+        try:
+            payload = json.loads(body_text)
+            detail = payload.get("detail")
+            if isinstance(detail, dict) and isinstance(detail.get("errors"), list):
+                lines = [detail.get("summary", "import failed")]
+                for err in detail["errors"][:5]:
+                    where = err.get("path") or "(profile)"
+                    lines.append(f"  {where}: {err.get('message', 'invalid')}")
+                if len(detail["errors"]) > 5:
+                    lines.append(f"  +{len(detail['errors']) - 5} more")
+                detail_text = "\n".join(lines)
+            else:
+                detail_text = str(detail or body_text)[:600]
+        except Exception:
+            detail_text = body_text[:600]
+        print(f"{RED}Import failed ({e.code}):{RESET}\n{detail_text}")
+        return
+    except Exception as e:
+        print(f"{RED}Request failed: {e}{RESET}")
+        return
+
+    profile = result.get("profile") or {}
+    gaps = result.get("credential_gaps") or []
+    next_url = result.get("next_url") or ""
+
+    print(f"{BOLD}Gateway profile imported{RESET}")
+    print(f"  {GREEN}Name:{RESET}       {profile.get('name', '?')}")
+    print(f"  {GREEN}Profile ID:{RESET} {profile.get('id', '?')}")
+    print(f"  {GREEN}Cond code:{RESET}  {profile.get('cond_code', '?')}")
+
+    if gaps:
+        print(f"\n{YELLOW}{len(gaps)} target(s) need credentials before publish:{RESET}")
+        for g in gaps:
+            print(
+                f"  #{g.get('target_index', '?') + 1 if isinstance(g.get('target_index'), int) else '?'} "
+                f"{g.get('target_id', '?')} ({g.get('transport', '?')}): "
+                f"{g.get('reason', 'pick a vault')}"
+            )
+
+    if next_url:
+        print(f"\n{BLUE}Finish setup:{RESET} {next_url}")
+
+
+def cmd_export_gateway_config(args):
+    """conduct export --gateway-config <profile-id-or-cond-code> [--out FILE]
+
+    Pull a Gateway Profile v2 as portable JSON. Server strips every
+    ``credential_ref`` on export (safe to commit / share). Writes to
+    stdout by default; ``--out FILE`` writes to a file instead.
+
+    ``target`` can be either the profile's UUID or its cond_code
+    (looked up via the list endpoint). The cond_code form matches
+    what admins see in the "How to use" panel, so it's usually the
+    handier of the two.
+    """
+    server, workspace, token = _require_auth(args)
+    if not token:
+        print(f"{RED}Not authenticated. Run `conduct login` first.{RESET}")
+        return
+
+    profile_id = _resolve_gateway_profile_id(server, workspace, token, args.target)
+    if not profile_id:
+        return   # error already printed
+
+    req = urllib.request.Request(
+        f"{server}/workspaces/{workspace}/gateway-profiles-v2/{profile_id}/export",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Workspace-Id": workspace or "",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            snapshot = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode(errors="replace")
+        print(f"{RED}Export failed ({e.code}): {body_text[:400]}{RESET}")
+        return
+    except Exception as e:
+        print(f"{RED}Request failed: {e}{RESET}")
+        return
+
+    out_json = json.dumps(snapshot, indent=2)
+    out_path = getattr(args, "out", None)
+    if out_path:
+        Path(out_path).write_text(out_json + "\n")
+        print(f"{GREEN}Wrote:{RESET} {out_path}")
+    else:
+        print(out_json)
+
+
+def _resolve_gateway_profile_id(server: str, workspace: str, token: str, target: str) -> str | None:
+    """Accept either a UUID or a cond_code. Returns the UUID or prints
+    an error + returns None."""
+    # UUID shape: 8-4-4-4-12 hex.
+    import re as _re
+    if _re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", target, _re.IGNORECASE):
+        return target
+
+    # cond_code lookup — fetch the list, match by cond_code.
+    req = urllib.request.Request(
+        f"{server}/workspaces/{workspace}/gateway-profiles-v2",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Workspace-Id": workspace or "",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            profiles = json.loads(r.read())
+    except Exception as e:
+        print(f"{RED}Could not list profiles to resolve {target!r}: {e}{RESET}")
+        return None
+
+    for p in profiles or []:
+        if p.get("cond_code") == target:
+            return p.get("id")
+        # Also accept "cond-<code>-<alias>" for convenience.
+        alias = p.get("model_alias") or ""
+        full = f"cond-{p.get('cond_code', '')}-{alias}"
+        if target == full:
+            return p.get("id")
+
+    print(
+        f"{RED}No profile matched {target!r}. Pass a profile UUID, "
+        f"a cond_code, or the full cond-<code>-<alias> identifier.{RESET}"
+    )
+    return None
+
+
 def cmd_skill(args):
     """conduct skill list | install <slug> | uninstall <slug>"""
     skill_command = getattr(args, "skill_command", None)
@@ -3102,6 +3292,46 @@ def main():
     ic_p.add_argument("--install", action="store_true", help="Install immediately (default is preview only)")
     ic_p.add_argument("--yes", action="store_true", help="Skip confirmation prompt when installing")
 
+    # conduct import --gateway-config <file>
+    # conduct export --gateway-config <profile-id-or-cond-code> [--out FILE]
+    #
+    # Both commands share ``--gateway-config`` as the surface. Adding
+    # future importable resource types (e.g. --guard-pack, --persona)
+    # is a matter of extending these two parsers, keeping the noun
+    # namespace ``conduct import`` / ``conduct export`` uncluttered.
+    imp_p = sub.add_parser(
+        "import",
+        help="Import a resource from JSON (currently: Gateway Profile v2)",
+    )
+    imp_p.add_argument(
+        "--gateway-config",
+        metavar="FILE",
+        help="Path to a Gateway Profile v2 JSON file (working_copy shape).",
+    )
+    imp_p.add_argument(
+        "--name",
+        metavar="NAME",
+        default=None,
+        help="Override the profile name in the JSON. Useful when the "
+             "source name is already taken in the target workspace.",
+    )
+
+    exp_p = sub.add_parser(
+        "export",
+        help="Export a resource as portable JSON (currently: Gateway Profile v2)",
+    )
+    exp_p.add_argument(
+        "--gateway-config",
+        metavar="PROFILE",
+        help="Profile UUID, cond_code (8 chars), or full cond-<code>-<alias> identifier.",
+    )
+    exp_p.add_argument(
+        "--out",
+        metavar="FILE",
+        default=None,
+        help="Write JSON to FILE (default: stdout).",
+    )
+
     # conduct sync
     sub.add_parser("sync", help="Sync Guard policies (and Security Loop policies if installed)")
 
@@ -3205,6 +3435,20 @@ def main():
         cmd_skill(args)
     elif args.command == "import-cedar":
         cmd_import_cedar(args)
+    elif args.command == "import":
+        # Only Gateway Profile v2 import today. Other imports (Guard
+        # skill packs, personas, etc.) already have their own commands.
+        if getattr(args, "gateway_config", None):
+            args.file = args.gateway_config
+            cmd_import_gateway_config(args)
+        else:
+            print(f"{RED}Usage: conduct import --gateway-config <file.json>{RESET}")
+    elif args.command == "export":
+        if getattr(args, "gateway_config", None):
+            args.target = args.gateway_config
+            cmd_export_gateway_config(args)
+        else:
+            print(f"{RED}Usage: conduct export --gateway-config <profile-id-or-cond-code>{RESET}")
     elif args.command == "sync":
         cmd_sync(args)
     elif args.command == "verify":
