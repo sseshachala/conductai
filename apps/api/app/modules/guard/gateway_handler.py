@@ -1176,13 +1176,17 @@ async def _execute_v2(
     """
     from app.runtime.attempt_coordinator import (
         AllAttemptsFailed as _AllAttemptsFailed,
-        AttemptCoordinator as _AttemptCoordinator,
     )
+    from app.runtime.gateway_transports import get_coordinator
     from app.runtime.gateway_v2_bridge import coerce_response_body
     from app.runtime.native_http_transport import StreamingUpstream as _StreamingUpstream
     from fastapi import HTTPException as _HTTPException
 
-    coordinator = _AttemptCoordinator()
+    # X5 — worker-lifetime singleton, NOT a per-request instance. The
+    # transports inside share one httpx.AsyncClient pool across every
+    # request handled by this worker, so ``max_connections=100`` is a
+    # real worker-wide bound (was previously per-request → unbounded).
+    coordinator = await get_coordinator()
     try:
         result = await coordinator.execute(
             resolved=plan.resolved,

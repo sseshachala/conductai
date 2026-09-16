@@ -229,9 +229,15 @@ async def test_execute_v2_streaming_returns_streaming_response(monkeypatch):
                 winning_target_id="primary",
             )
 
+    # X5 — _execute_v2 now goes through gateway_transports.get_coordinator
+    # (worker-lifetime singleton). Patch that async function so the test
+    # gets our fake coordinator without triggering the real transport
+    # init path (which would try to build httpx clients etc.).
+    async def _fake_get_coordinator():
+        return _FakeCoordinator()
     monkeypatch.setattr(
-        "app.runtime.attempt_coordinator.AttemptCoordinator",
-        lambda: _FakeCoordinator(),
+        "app.runtime.gateway_transports.get_coordinator",
+        _fake_get_coordinator,
     )
 
     # A tiny stub plan — resolved.revision_id + resolved.profile.accepts
@@ -290,9 +296,15 @@ async def test_execute_v2_streaming_501_for_non_native_transport(monkeypatch):
                 winning_target_id="litellm-primary",
             )
 
+    # X5 — _execute_v2 now goes through gateway_transports.get_coordinator
+    # (worker-lifetime singleton). Patch that async function so the test
+    # gets our fake coordinator without triggering the real transport
+    # init path (which would try to build httpx clients etc.).
+    async def _fake_get_coordinator():
+        return _FakeCoordinator()
     monkeypatch.setattr(
-        "app.runtime.attempt_coordinator.AttemptCoordinator",
-        lambda: _FakeCoordinator(),
+        "app.runtime.gateway_transports.get_coordinator",
+        _fake_get_coordinator,
     )
 
     from types import SimpleNamespace
