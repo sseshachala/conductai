@@ -555,6 +555,9 @@ async def handle_gateway_request(
     #     so the row lands terminated immediately instead of waiting on
     #     the reconciler's lease-expiry sweep.
     import asyncio as _asyncio
+    # X4 — set before the try/finally so ``finally: _close_durable``
+    # can read it even if an early raise skips the wrap.
+    _v2_stream_wrapped = False
     try:
         if _v2_plan is not None:
             # #2004 Phase 1 — v2 executes the coordinator + LiteLLM SDK
@@ -672,10 +675,21 @@ async def handle_gateway_request(
         # the vendor bytes yet. Wrap the stream generator so finalize
         # fires when the stream drains (or client disconnects). Non-
         # streaming still finalizes inline.
+        # X4 — streaming lifetime. When v2 wraps a stream, the response
+        # generator (owned by ASGI) is what actually reads the vendor's
+        # bytes AFTER this handler returns. Cancelling the renewal task
+        # in the finally below would kill lease renewal before the body
+        # is consumed — the reconciler would flip the row to orphaned
+        # while it's still live. Transfer renewal ownership to the
+        # stream wrapper: it inherits ``_durable``, keeps renewal
+        # running while chunks flow, and cancels it after finalize
+        # completes. ``_v2_stream_wrapped`` was initialised above the
+        # try block; we only flip it True when a wrap actually happens.
         if _v2_plan is not None and _durable_row_id:
             if isinstance(_response, StreamingResponse):
                 _response = _wrap_v2_stream_finalize(
                     _response,
+                    durable=_durable,
                     row_id=_durable_row_id,
                     workspace_id=workspace_id,
                     provider=provider,
@@ -688,7 +702,17 @@ async def handle_gateway_request(
                     ai_tool=ai_tool,
                     user_email=_user_email,
                     started_monotonic=started,
+                    # Wall-clock deadline for the stream body. The
+                    # coordinator's ``wait_for`` only guarded header
+                    # arrival; the stream body has no timeout of its
+                    # own. Pull the profile's ``timeout_seconds`` as
+                    # the total-request budget.
+                    stream_deadline_seconds=(
+                        _v2_plan.resolved.profile.timeout_seconds
+                        if _v2_plan and _v2_plan.resolved else None
+                    ),
                 )
+                _v2_stream_wrapped = True
             else:
                 _v2_finalize = _derive_v2_finalize_args(
                     post_gate_response=_response,
@@ -747,11 +771,16 @@ async def handle_gateway_request(
                 log.exception("guard.gateway.error_finalize_failed", row_id=_durable_row_id)
         raise
     finally:
-        # Cancel the whole-request renewal task owned by gateway_lifecycle.
-        # For streaming, _stream_chunks starts its own renewal for the
-        # stream lifetime. For non-streaming this marks the deadline.
-        # Idempotent — safe on every exit path including exceptions.
-        await _close_durable(_durable)
+        # X4 — v2 streaming transfers renewal ownership to
+        # ``_wrap_v2_stream_finalize``. Cancelling here would kill the
+        # lease before ASGI consumes the body; the reconciler would
+        # flip a live stream to orphaned. The wrapper's ``finally``
+        # calls ``_close_durable`` after the stream drains.
+        #
+        # For every other exit path (non-streaming, error, cancel
+        # before we ever wrapped), cancel here — idempotent.
+        if not _v2_stream_wrapped:
+            await _close_durable(_durable)
 
     return _response
 
@@ -1038,6 +1067,7 @@ def _build_v2_stream_response(upstream) -> StreamingResponse:
 def _wrap_v2_stream_finalize(
     response: StreamingResponse,
     *,
+    durable=None,
     row_id,
     workspace_id: str,
     provider: str,
@@ -1050,6 +1080,7 @@ def _wrap_v2_stream_finalize(
     ai_tool: str | None,
     user_email: str | None,
     started_monotonic: float,
+    stream_deadline_seconds: float | None = None,
 ) -> StreamingResponse:
     """Fire durable-audit finalize when the streaming response closes.
 
@@ -1059,12 +1090,28 @@ def _wrap_v2_stream_finalize(
     the finalize *has to* wait until the stream drains, which is why
     this wrapper exists.
 
+    X4 — stream lifetime:
+
+    - ``durable``: the ``DurableRow`` from ``open_durable_row()``, whose
+      renewal task keeps the audit row's lease alive. The handler stops
+      cancelling it in its own ``finally``; this wrapper cancels it
+      here AFTER finalize completes so the row stays leased for the
+      full stream body, not just the header-arrival window.
+    - ``stream_deadline_seconds``: wall-clock cap from the profile's
+      ``timeout_seconds``. The coordinator's ``wait_for`` only guarded
+      header arrival; without a body-side deadline a stalled vendor
+      stream could hold the connection open indefinitely. If exceeded,
+      raise ``asyncio.TimeoutError`` — the outer ``finally`` records
+      it as ``execution_status='error'`` and cancels renewal.
+
     ponytail: response gate for streaming is a post-hoc buffered scan
     (see ``_wrap_streaming_response``) and never modifies bytes, so we
     can safely treat what we see == what the vendor emitted. If a
     future gate rewrites stream chunks, revisit the ``response_bytes``
     argument passed to finalize below.
     """
+    import asyncio as _a
+
     original = response.body_iterator
 
     async def _wrapped():
@@ -1072,6 +1119,18 @@ def _wrap_v2_stream_finalize(
         stream_exc: BaseException | None = None
         try:
             async for chunk in original:
+                # X4 wall-clock deadline enforcement — the coordinator's
+                # wait_for only covered header arrival; enforce the
+                # profile's total-request budget across the body too.
+                if (
+                    stream_deadline_seconds is not None
+                    and (time.monotonic() - started_monotonic)
+                    > stream_deadline_seconds
+                ):
+                    raise _a.TimeoutError(
+                        f"stream body exceeded profile "
+                        f"timeout_seconds={stream_deadline_seconds}"
+                    )
                 if isinstance(chunk, str):
                     chunk_bytes = chunk.encode("utf-8")
                 else:
@@ -1083,20 +1142,30 @@ def _wrap_v2_stream_finalize(
             raise
         finally:
             from app.modules.guard.gateway_lifecycle import (
+                close_durable_row as _close_durable,
                 finalize_durable_row as _finalize_durable_row,
             )
-            _is_cancel = isinstance(stream_exc, __import__("asyncio").CancelledError)
+            _is_cancel = isinstance(stream_exc, _a.CancelledError)
+            _is_timeout = isinstance(stream_exc, _a.TimeoutError)
             _decision = ingress_decision if stream_exc is None else "error"
-            _execution_status = (
-                "ok" if stream_exc is None
-                else ("interrupted" if _is_cancel else "error")
-            )
+            if stream_exc is None:
+                _execution_status = "ok"
+            elif _is_cancel:
+                _execution_status = "interrupted"
+            elif _is_timeout:
+                _execution_status = "timeout"
+            else:
+                _execution_status = "error"
             _result_summary = (
                 None
                 if stream_exc is None
                 else (
                     "Stream cancelled by client" if _is_cancel
-                    else f"stream aborted: {type(stream_exc).__name__}: {str(stream_exc)[:400]}"
+                    else (
+                        f"Stream body exceeded {stream_deadline_seconds}s "
+                        f"wall-clock deadline" if _is_timeout
+                        else f"stream aborted: {type(stream_exc).__name__}: {str(stream_exc)[:400]}"
+                    )
                 )
             )
             try:
@@ -1122,6 +1191,18 @@ def _wrap_v2_stream_finalize(
                     "guard.gateway.v2.stream_finalize_failed",
                     row_id=row_id,
                 )
+            # X4 — cancel the renewal task last, AFTER finalize. If we
+            # cancelled first, the row would show up as expired to the
+            # reconciler in the seconds between cancellation and
+            # finalize completion.
+            if durable is not None:
+                try:
+                    await _close_durable(durable)
+                except Exception:
+                    log.exception(
+                        "guard.gateway.v2.stream_close_durable_failed",
+                        row_id=row_id,
+                    )
 
     return StreamingResponse(
         _wrapped(),
