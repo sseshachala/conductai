@@ -131,15 +131,23 @@ def _uncertified_working_copy(env_id: UUID) -> dict:
 # ─── Session mock plumbing ────────────────────────────────────────────
 
 
-def _make_session_stub(*, profiles=None, revisions=None, bindings=None):
+def _make_session_stub(*, profiles=None, revisions=None, bindings=None,
+                       environments=None, integrations=None, events=None):
     """A hand-rolled fake Session covering the exact call patterns the
     router uses. Every method mutates ``storage`` in-place so subsequent
     queries reflect prior commits (mirroring real DB behavior for tests
-    that chain create → update → publish)."""
+    that chain create → update → publish).
+
+    Post-review adds environments + integrations pools so the new
+    ownership checks (env belongs to workspace, credential exists) can
+    resolve legitimately in the happy-path tests."""
     storage = {
         "profiles": list(profiles or []),
         "revisions": list(revisions or []),
         "bindings": list(bindings or []),
+        "environments": list(environments or []),
+        "integrations": list(integrations or []),
+        "events": list(events or []),
         "pending": [],  # objects added via db.add() before commit
     }
 
@@ -158,6 +166,11 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None):
             self._order_by.extend(args)
             return self
 
+        def with_for_update(self):
+            # SQLite/fake: no-op. Postgres serializes concurrent
+            # publishes here; unit tests only need the surface.
+            return self
+
         def all(self):
             return self._session._match_all(self._model, self._filters)
 
@@ -171,6 +184,9 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None):
             matches = self._session._match_all(self._model, self._filters)
             return max((m.version for m in matches), default=None) if matches else None
 
+        def count(self):
+            return len(self._session._match_all(self._model, self._filters))
+
     class _FakeSession:
         def __init__(self):
             self._storage = storage
@@ -182,9 +198,12 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None):
             return _Query(model, self)
 
         def _match_all(self, model, filters):
+            from app.models.environment import Environment
+            from app.models.integration import Integration
             from app.models.gateway_profile import (
                 GatewayProfile,
                 GatewayProfileBinding,
+                GatewayProfileBindingEvent,
                 GatewayProfileRevision,
             )
             if model is GatewayProfile or getattr(model, "__name__", None) == "GatewayProfile":
@@ -193,6 +212,12 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None):
                 pool = self._storage["revisions"]
             elif model is GatewayProfileBinding:
                 pool = self._storage["bindings"]
+            elif model is GatewayProfileBindingEvent:
+                pool = self._storage["events"]
+            elif model is Environment:
+                pool = self._storage["environments"]
+            elif model is Integration:
+                pool = self._storage["integrations"]
             else:
                 pool = []
             # Filter clauses are compiled SQLAlchemy comparators — treat
@@ -217,6 +242,7 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None):
             from app.models.gateway_profile import (
                 GatewayProfile,
                 GatewayProfileBinding,
+                GatewayProfileBindingEvent,
                 GatewayProfileRevision,
             )
             if not getattr(obj, "id", None):
@@ -235,6 +261,10 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None):
                 if not getattr(obj, "updated_at", None):
                     obj.updated_at = datetime.now(timezone.utc)
                 self._storage["bindings"].append(obj)
+            elif isinstance(obj, GatewayProfileBindingEvent):
+                if not getattr(obj, "occurred_at", None):
+                    obj.occurred_at = datetime.now(timezone.utc)
+                self._storage["events"].append(obj)
 
         def delete(self, obj):
             from app.models.gateway_profile import GatewayProfile
@@ -355,16 +385,26 @@ def test_publish_rejects_uncertified_capability(client_and_db):
 def test_publish_happy_path_creates_revision_and_binding(client_and_db):
     client, session_holder, ws = client_and_db
     profile_id = uuid4()
-    stub = _make_session_stub(profiles=[
-        SimpleNamespace(
-            id=profile_id, workspace_id=ws, environment_id=None,
-            name="p", schema_version="2", config={},
-            working_copy=_sample_working_copy(ENV),
-            model_alias="coding",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-        ),
-    ])
+    stub = _make_session_stub(
+        profiles=[
+            SimpleNamespace(
+                id=profile_id, workspace_id=ws, environment_id=None,
+                name="p", schema_version="2", config={},
+                working_copy=_sample_working_copy(ENV),
+                model_alias="coding",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            ),
+        ],
+        # Publish now verifies the environment belongs to the workspace
+        # and that every credential_ref points at a real Vault entry.
+        environments=[
+            SimpleNamespace(id=ENV, workspace_id=ws),
+        ],
+        integrations=[
+            SimpleNamespace(workspace_id=ws, environment_id=ENV, handle="anthropic"),
+        ],
+    )
     session_holder["db"] = stub
 
     resp = client.post(
@@ -411,6 +451,9 @@ def test_rollback_rejects_cross_profile_revision_id(client_and_db):
                 published_by="someone-else", published_at=datetime.now(timezone.utc),
             ),
         ],
+        environments=[
+            SimpleNamespace(id=ENV, workspace_id=ws),
+        ],
     )
 
     resp = client.post(
@@ -421,10 +464,13 @@ def test_rollback_rejects_cross_profile_revision_id(client_and_db):
     assert "revision not found" in resp.text
 
 
-def test_delete_refuses_when_binding_still_active(client_and_db):
-    """Rollback is the correct way to change what serves live traffic.
-    Deleting a profile whose revision is still bound would leave clients
-    without a served model — 409 forces the admin to unbind first."""
+def test_delete_refuses_when_any_historical_revision_exists(client_and_db):
+    """Review-fix: previously delete refused only when a binding was
+    still active. But an unbound-yet-previously-published profile still
+    has publish history — cascade-drop via ``ON DELETE CASCADE`` on the
+    revisions FK would erase it. Contract is now stricter: refuse when
+    any revision exists at all, so rollback remains possible against
+    the history."""
     client, session_holder, ws = client_and_db
     profile_id = uuid4()
     revision_id = uuid4()
@@ -445,17 +491,156 @@ def test_delete_refuses_when_binding_still_active(client_and_db):
                 published_by="admin", published_at=datetime.now(timezone.utc),
             ),
         ],
-        bindings=[
-            SimpleNamespace(
-                workspace_id=ws, environment_id=ENV,
-                model_alias="coding", revision_id=revision_id,
-                updated_at=datetime.now(timezone.utc),
-            ),
-        ],
+        # Deliberately NO bindings — the revision alone is enough to
+        # trigger the 409. Old code would have allowed delete here.
     )
 
     resp = client.delete(
         f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}",
     )
     assert resp.status_code == 409
-    assert "active bindings" in resp.text.lower()
+    assert "published revisions" in resp.text.lower()
+
+
+def test_delete_allowed_on_pure_draft(client_and_db):
+    """Complement: a profile with no revisions can still be deleted.
+    Locks the "never published, never bound" happy path so the contract
+    doesn't accidentally strand truly-empty drafts."""
+    client, session_holder, ws = client_and_db
+    profile_id = uuid4()
+    session_holder["db"] = _make_session_stub(
+        profiles=[
+            SimpleNamespace(
+                id=profile_id, workspace_id=ws, environment_id=None,
+                name="unused", schema_version="2", config={},
+                working_copy=None, model_alias=None,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            ),
+        ],
+    )
+    resp = client.delete(
+        f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}",
+    )
+    assert resp.status_code == 204, resp.text
+
+
+def test_cross_workspace_url_is_rejected(client_and_db):
+    """P1 review fix: without the URL-workspace check, an authorized
+    caller could substitute a different workspace UUID into the path
+    and address that workspace's profiles. Locked with 404 (not 403)
+    so the endpoint doesn't confirm the other workspace's resources
+    exist."""
+    client, session_holder, ws = client_and_db
+    session_holder["db"] = _make_session_stub()
+
+    other_ws = "99999999-9999-9999-9999-999999999999"
+    resp = client.get(f"/workspaces/{other_ws}/gateway-profiles-v2")
+    assert resp.status_code == 404
+    # No mention of the other workspace's UUID in the response body —
+    # an information-disclosure guard on top of the authorization guard.
+    assert other_ws not in resp.text
+
+
+def test_publish_rejects_environment_from_other_workspace(client_and_db):
+    """P1 review fix: even for a legitimate profile owner, the caller
+    can't publish to an environment UUID that doesn't belong to their
+    workspace. Composite PK on the bindings table would otherwise happily
+    accept the bind."""
+    client, session_holder, ws = client_and_db
+    profile_id = uuid4()
+    session_holder["db"] = _make_session_stub(
+        profiles=[
+            SimpleNamespace(
+                id=profile_id, workspace_id=ws, environment_id=None,
+                name="p", schema_version="2", config={},
+                working_copy=_sample_working_copy(ENV),
+                model_alias="coding",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            ),
+        ],
+        # NO environments seeded → the env lookup returns None.
+    )
+    resp = client.post(
+        f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}/publish",
+        json={"environment_id": str(ENV)},
+    )
+    assert resp.status_code == 404
+    assert "environment not found" in resp.text.lower()
+
+
+def test_publish_rejects_missing_credential(client_and_db):
+    """P1 review fix: publish must verify every target's credential_ref
+    resolves to a real Vault entry. Otherwise the runtime discovers the
+    gap on the first request and 5xxes the client, instead of the admin
+    fixing it while the profile is still a draft."""
+    client, session_holder, ws = client_and_db
+    profile_id = uuid4()
+    session_holder["db"] = _make_session_stub(
+        profiles=[
+            SimpleNamespace(
+                id=profile_id, workspace_id=ws, environment_id=None,
+                name="p", schema_version="2", config={},
+                working_copy=_sample_working_copy(ENV),
+                model_alias="coding",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            ),
+        ],
+        environments=[
+            SimpleNamespace(id=ENV, workspace_id=ws),
+        ],
+        # No integrations seeded — credential lookup returns None.
+    )
+    resp = client.post(
+        f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}/publish",
+        json={"environment_id": str(ENV)},
+    )
+    assert resp.status_code == 400
+    body = resp.text.lower()
+    assert "credential_ref" in body or "vault" in body
+
+
+def test_snapshot_endpoint_verifies_profile_workspace_ownership(client_and_db):
+    """Review fix: the snapshot endpoint's URL check verifies workspace,
+    but the historical filter was ``id + profile_id`` only. A caller
+    supplying another workspace's profile_id + revision_id could
+    otherwise read that snapshot. Post-fix: _load_profile runs first
+    and 404s on ownership mismatch, so an unknown profile_id → 404
+    regardless of whether the revision id would match."""
+    client, session_holder, ws = client_and_db
+    other_workspace = "44444444-4444-4444-4444-444444444444"
+    other_profile_id = uuid4()
+    revision_id = uuid4()
+
+    session_holder["db"] = _make_session_stub(
+        profiles=[
+            # Profile belongs to another workspace, not the caller's.
+            SimpleNamespace(
+                id=other_profile_id, workspace_id=other_workspace,
+                environment_id=None, name="p", schema_version="2",
+                config={}, working_copy=None, model_alias="coding",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            ),
+        ],
+        revisions=[
+            SimpleNamespace(
+                id=revision_id, profile_id=other_profile_id, version=1,
+                snapshot=_sample_working_copy(ENV),
+                published_by="admin", published_at=datetime.now(timezone.utc),
+            ),
+        ],
+    )
+
+    resp = client.get(
+        f"/workspaces/{ws}/gateway-profiles-v2/{other_profile_id}"
+        f"/revisions/{revision_id}",
+    )
+    # Caller's URL workspace matches the authenticated one; profile
+    # belongs to a different workspace → 404 at profile lookup, not
+    # at revision lookup (which would have returned the snapshot).
+    assert resp.status_code == 404
+    # No mention of the historical revision id or the other workspace.
+    assert other_workspace not in resp.text

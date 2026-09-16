@@ -221,24 +221,28 @@ def test_catalog_rejects_when_any_target_in_fallback_chain_is_incompatible():
     assert "fallback" in str(excinfo.value)
 
 
-def test_catalog_certifies_portkey_passthrough_for_both_wire_formats():
-    """Portkey preset supports Anthropic Messages AND OpenAI shapes;
-    lock the certified set so a downgrade doesn't silently slip in."""
-    portkey_anthropic = HTTPPassthroughTarget(
-        id="p1", transport="http_passthrough", integration="portkey",
-        model="claude-sonnet-4-6", credential_ref=CRED_PORTKEY,
-    )
-    validate_targets_against_accepts(
-        accepts=["anthropic_messages"], targets=[portkey_anthropic],
-    )
-    portkey_openai = HTTPPassthroughTarget(
-        id="p2", transport="http_passthrough", integration="portkey",
-        model="gpt-4o", credential_ref=CRED_PORTKEY,
-    )
-    validate_targets_against_accepts(
-        accepts=["openai_chat_completions", "openai_responses"],
-        targets=[portkey_openai],
-    )
+def test_catalog_rejects_every_http_passthrough_target_until_executor_lands():
+    """Review fix: capability catalog and runtime must agree on what's
+    executable. The launch coordinator raises ``UnsupportedTransport``
+    for every ``http_passthrough`` target, so publishing one and
+    surfacing that at request time was a UX bug. Until the passthrough
+    executor lands, catalog rejects them all — Portkey, OpenRouter,
+    Helicone, Azure, Custom.
+
+    When the executor ships, the certified matrix will be extended and
+    this test will be replaced with per-integration certified-operation
+    tests."""
+    for integration in ("portkey", "openrouter", "helicone_anthropic",
+                        "helicone_openai", "azure_openai"):
+        target = HTTPPassthroughTarget(
+            id=f"t-{integration}", transport="http_passthrough",
+            integration=integration, model="some-model",
+            credential_ref=CRED_PORTKEY,
+        )
+        with pytest.raises(CapabilityMismatch):
+            validate_targets_against_accepts(
+                accepts=["anthropic_messages"], targets=[target],
+            )
 
 
 def test_catalog_rejects_custom_integration_without_explicit_certification():

@@ -79,6 +79,55 @@ class GatewayProfileRevision(Base):
     )
 
 
+class GatewayProfileBindingEvent(Base):
+    """Append-only audit trail for every binding change (#2001 review fix).
+
+    Publish and rollback both mutate ``gateway_profile_bindings`` in place;
+    that row alone doesn't preserve which admin performed the change or
+    which revision it moved away from. One row is written here per
+    publish/rollback so the history survives the binding row being
+    updated again later.
+    """
+    __tablename__ = "gateway_profile_binding_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    environment_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("environments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    model_alias = Column(String(128), nullable=False)
+    prior_revision_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("gateway_profile_revisions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    new_revision_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("gateway_profile_revisions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    actor = Column(String(256), nullable=False)
+    action = Column(String(16), nullable=False)  # 'publish' | 'rollback'
+    occurred_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_gateway_profile_binding_events_lookup",
+            "workspace_id", "environment_id", "model_alias", "occurred_at",
+        ),
+    )
+
+
 class GatewayProfileBinding(Base):
     """Explicit selection table for #2001 — no alphabetical fallback.
 

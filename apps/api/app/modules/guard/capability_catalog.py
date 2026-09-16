@@ -48,24 +48,21 @@ _LITELLM_SDK_CERTIFIED: dict[tuple[str, Operation], list[str] | None] = {
 
 
 # HTTP passthrough certified matrix — one entry per (integration, operation).
-# The integration preset validates its own endpoint + auth family; here
-# we lock which operations we've verified end-to-end.
-_HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {
-    ("openrouter",         "openai_chat_completions"): True,
-    ("portkey",            "anthropic_messages"):      True,
-    ("portkey",            "openai_chat_completions"): True,
-    ("portkey",            "openai_responses"):        True,
-    ("helicone_anthropic", "anthropic_messages"):      True,
-    ("helicone_anthropic", "anthropic_count_tokens"):  True,
-    ("helicone_openai",    "openai_chat_completions"): True,
-    ("azure_openai",       "openai_chat_completions"): True,
-    ("azure_openai",       "openai_responses"):        True,
-    # ``custom`` is intentionally absent — a custom passthrough must be
-    # explicitly certified per operation before it can be published.
-}
+#
+# Empty for the v2 launch. Publish MUST reject every http_passthrough
+# target until the coordinator's HTTPPassthroughExecutor lands, matching
+# the review-flagged invariant "capability catalog and coordinator must
+# agree on what's executable." Publishing a passthrough target today
+# and then having the request time surface UnsupportedTransport is a
+# UX bug we surface at publish instead.
+#
+# When the executor lands, add the (integration, operation) tuples we
+# verify end-to-end back here. The presets in gateway_config.py list
+# the integrations that will EVENTUALLY be supported.
+_HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {}
 
 
-CATALOG_VERSION = "2026.09.15.v2-launch"
+CATALOG_VERSION = "2026.09.15.v2-launch-litellm-only"
 
 
 class CapabilityMismatch(Exception):

@@ -113,6 +113,11 @@ class LiteLLMTransport:
                 f"capability catalog *and* this dispatch table together."
             )
 
+        # Validate the payload BEFORE resolving the credential — a bad
+        # payload shouldn't cause a Vault decrypt, and rejecting early
+        # keeps the credential's exposure window as tight as possible.
+        payload_fields = _payload_fields_for(operation, payload)
+
         # Resolve the credential immediately before the call and never
         # store it beyond this function's stack frame. LiteLLM's
         # callbacks/logs receive the api_key as a kwarg but must not
@@ -152,26 +157,18 @@ class LiteLLMTransport:
 
         try:
             if operation == "openai_chat_completions":
-                return await func(messages=payload["messages"], **kwargs)
+                return await func(**kwargs, **payload_fields)
             if operation == "openai_responses":
-                return await func(input=payload["input"], **kwargs)
+                return await func(**kwargs, **payload_fields)
             if operation == "anthropic_messages":
-                # anthropic_messages requires ``max_tokens`` positionally
-                # in the current LiteLLM signature — pull from payload
-                # with a sane default; capability catalog will refuse
-                # any deployment that fails this contract.
-                return await func(
-                    max_tokens=payload.get("max_tokens", 1024),
-                    messages=payload["messages"],
-                    **kwargs,
-                )
+                # max_tokens is required by LiteLLM signature; default
+                # if the client omitted it.
+                payload_fields.setdefault("max_tokens", 1024)
+                return await func(**kwargs, **payload_fields)
             if operation == "anthropic_count_tokens":
-                # token_counter is sync + doesn't want api_key or stream;
-                # strip the streaming/retry kwargs before calling.
-                return func(
-                    model=target.model,
-                    messages=payload["messages"],
-                )
+                # token_counter is sync + doesn't want api_key/stream.
+                counter_kwargs = {"model": target.model, **payload_fields}
+                return func(**counter_kwargs)
             # Unreachable — guarded by the dispatch check above.
             raise ValueError(f"unhandled operation {operation!r}")  # pragma: no cover
         except Exception:
@@ -207,3 +204,103 @@ def register_litellm_transport_if_enabled() -> None:
         "gateway.v2.litellm_transport.enabled",
         transport=LiteLLMTransport.name,
     )
+
+
+# ─── Payload whitelisting per operation (#2001 review) ────────────────
+
+
+# Per-operation allowed body fields. Anything else the client sends is
+# dropped BEFORE it reaches LiteLLM, so a request payload cannot
+# override transport/auth (api_key, api_base, base_url, organization,
+# proxy, num_retries, callbacks, ...) or routing (custom_llm_provider,
+# model) — those are Conduct-owned.
+#
+# If a legitimately-missing field lands here (LiteLLM adds a new
+# operation-body parameter we haven't reviewed), we'll notice because
+# the client-visible behavior degrades and we can extend this table
+# with an intentional decision. Silently forwarding everything was the
+# review-flagged failure mode.
+_ALLOWED_PAYLOAD_FIELDS: dict[Operation, frozenset[str]] = {
+    "openai_chat_completions": frozenset({
+        "messages", "tools", "tool_choice", "response_format",
+        "temperature", "top_p", "n", "stop", "max_tokens",
+        "max_completion_tokens",  # o1 / o3 series
+        "presence_penalty", "frequency_penalty", "logit_bias", "user",
+        "seed", "logprobs", "top_logprobs", "parallel_tool_calls",
+        "service_tier", "reasoning_effort",
+        "store", "metadata", "prediction", "stream_options",
+        "modalities", "audio",
+    }),
+    "openai_responses": frozenset({
+        "input", "instructions", "previous_response_id", "tools",
+        "tool_choice", "text", "reasoning", "max_output_tokens",
+        "temperature", "top_p", "parallel_tool_calls", "user", "metadata",
+        "truncation", "store", "include", "stream_options",
+    }),
+    "anthropic_messages": frozenset({
+        "messages", "system", "max_tokens", "metadata",
+        "stop_sequences", "temperature", "top_k", "top_p", "tools",
+        "tool_choice", "thinking",
+    }),
+    "anthropic_count_tokens": frozenset({
+        "messages", "system", "tools", "tool_choice",
+    }),
+}
+
+
+# Fields the client MUST NOT supply. These are transport / auth /
+# routing controls Conduct owns — if any appear in a request payload,
+# fail loudly rather than silently drop (silent drop was the review-
+# flagged failure mode: the drop hid what would otherwise be a clear
+# "you can't override endpoints from a client payload" contract).
+_TRANSPORT_DENYLIST: frozenset[str] = frozenset({
+    "api_base", "base_url", "api_key", "organization", "proxy",
+    "callbacks", "success_callback", "failure_callback",
+    "custom_llm_provider", "num_retries", "model",
+})
+
+
+class UnsupportedPayloadFields(ValueError):
+    """Payload contains fields the transport refuses to forward.
+
+    Extends ``ValueError`` so the coordinator classifies this as a
+    permanent (non-retryable) failure — the next target would see the
+    same payload and fail identically.
+    """
+
+
+def _payload_fields_for(operation: Operation, payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate a request payload and return the operation-body subset.
+
+    Raises ``UnsupportedPayloadFields`` when:
+      - The client supplied a transport-denylisted key (api_base,
+        callbacks, api_key, etc.) — those are Conduct-owned.
+      - The client supplied a key not on the operation's allowlist —
+        surfaces "field silently ignored" bugs to the caller so they
+        don't see (for example) a request with ``max_completion_tokens``
+        answered as if it wasn't set.
+
+    Extending support: add the field to ``_ALLOWED_PAYLOAD_FIELDS`` for
+    the operation once we've confirmed the pinned LiteLLM version
+    forwards it correctly.
+    """
+    allowed = _ALLOWED_PAYLOAD_FIELDS.get(operation, frozenset())
+    denied = sorted(k for k in payload if k in _TRANSPORT_DENYLIST)
+    unknown = sorted(
+        k for k in payload
+        if k not in allowed and k not in _TRANSPORT_DENYLIST
+    )
+    if denied:
+        raise UnsupportedPayloadFields(
+            f"payload contains transport-controlled fields {denied!r} "
+            f"which are Conduct-owned and cannot be supplied by the "
+            f"client. Remove them and retry."
+        )
+    if unknown:
+        raise UnsupportedPayloadFields(
+            f"payload for operation {operation!r} contains unsupported "
+            f"fields {unknown!r}. If these are legitimate upstream "
+            f"parameters, add them to _ALLOWED_PAYLOAD_FIELDS after "
+            f"confirming the pinned LiteLLM version forwards them."
+        )
+    return {k: v for k, v in payload.items() if k in allowed}

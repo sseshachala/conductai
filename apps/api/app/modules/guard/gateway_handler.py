@@ -183,6 +183,27 @@ async def handle_gateway_request(
         except Exception:
             return _fail_closed(400, "Body must be valid JSON")
 
+        # #2001 — v2 request-path wire-in is intentionally NOT hooked here
+        # yet. The prior draft did an early-return before policy eval +
+        # durable audit ran, which is a parallel-path anti-pattern:
+        # v2-served traffic would be ungoverned and unrecorded until a
+        # follow-up commit threaded Guard + audit through. The reviewer
+        # correctly flagged this.
+        #
+        # The safe rule: v2 target execution has to live INSIDE the
+        # existing governed lifecycle (Guard policy, durable-audit
+        # open/close/finalize, response gate, spend accounting). The
+        # config plane (schema, publish, bindings, revisions, coordinator,
+        # LiteLLMTransport) is fine to ship because it doesn't move a
+        # single client byte. Turning the flag on today is safe because
+        # nothing here consumes it — every request still flows through
+        # the v1 path below.
+        #
+        # Wiring plan lives in the follow-up PR: v2 lookup + target
+        # execution happens where v1 currently calls transport.forward,
+        # so ONE lifecycle governs both writer paths. See #2001
+        # follow-up.
+
         model, _routing_meta = _apply_tier_resolution(db, workspace_id, provider, body)
         if operation != "inference":
             _routing_meta = {
