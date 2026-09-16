@@ -48,9 +48,12 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+import json
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
@@ -199,6 +202,52 @@ class RollbackBody(BaseModel):
     )
 
 
+class ImportProfileBody(BaseModel):
+    """Import a profile from a portable JSON payload.
+
+    ``working_copy`` is the same shape the editor's Save posts, i.e. a
+    ``GatewayProfileV2`` dict. The server ALWAYS strips
+    ``credential_ref`` from every target on import (defense against
+    accidentally-committed vault refs in checked-in JSON, and to keep
+    exports portable across workspaces + environments).
+
+    ``name_override`` lets the caller land the imported profile under
+    a different name than what's in the JSON's ``name`` field — useful
+    when the source profile's name is already taken in the target
+    workspace. When absent, the JSON's ``name`` wins (or falls back
+    to ``imported-profile`` if the JSON has no name).
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    working_copy: dict[str, Any] = Field(
+        description="Portable GatewayProfileV2 shape. credential_ref values are stripped on import."
+    )
+    name_override: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="Optional profile name for the imported draft (else use working_copy.name).",
+    )
+
+
+class ImportGap(BaseModel):
+    """One target that needs credentials filled before publish."""
+    target_index: int
+    target_id: str
+    transport: str
+    reason: str
+
+
+class ImportProfileOut(BaseModel):
+    """Result of an import — created profile + gaps + a link the
+    caller can open to finish setup."""
+    profile: "ProfileOut"
+    credential_gaps: list[ImportGap]
+    next_url: str = Field(
+        description="Absolute URL to the editor page for the created profile."
+    )
+
+
 class RevisionOut(BaseModel):
     id: UUID
     version: int
@@ -220,6 +269,12 @@ class ProfileOut(BaseModel):
     revisions: list[RevisionOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+
+# Resolve the forward reference on ``ImportProfileOut.profile`` (which
+# is typed as ``"ProfileOut"`` because ``ProfileOut`` is defined below
+# ``ImportProfileOut``).
+ImportProfileOut.model_rebuild()
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────
@@ -493,6 +548,225 @@ def create_profile(
     db.commit()
     db.refresh(profile)
     return _to_output(db, workspace_id, profile)
+
+
+# ─── Import / export ──────────────────────────────────────────────────
+#
+# Portable JSON round-trip so admins can version-control profile shape
+# in their repo and stamp it into any workspace via CLI or UI.
+#
+# Design decisions locked in the design discussion:
+#   Q1: JSON = same shape as ``working_copy`` (also what export emits)
+#   Q2: server ALWAYS strips credential_ref on import — one file
+#       works across environments without leaking secrets
+#   Q3: separate ``/import`` and ``/export`` endpoints (not flags on
+#       existing create/get) — cleaner review, distinct behavior
+#   Q4: UI uses textarea paste against the same endpoint the CLI hits
+#   Q5: symmetric — export strips creds too, so what you export you
+#       can re-import cleanly
+
+
+def _strip_credentials(working_copy: dict[str, Any]) -> tuple[dict[str, Any], list[ImportGap]]:
+    """Return a copy of ``working_copy`` with every target's
+    ``credential_ref`` set to empty, and the list of gaps the caller
+    will need to fill.
+
+    Never mutates the input. Empty ``credential_ref`` is what the
+    editor's Save gate already blocks on (PR #2033), so the admin
+    sees the exact same "pick a credential vault" banner they would
+    for a duplicated profile or fresh preset.
+    """
+    stripped = json.loads(json.dumps(working_copy))  # deep copy via JSON round-trip
+    gaps: list[ImportGap] = []
+    targets = stripped.get("targets") if isinstance(stripped, dict) else None
+    if isinstance(targets, list):
+        for i, target in enumerate(targets):
+            if not isinstance(target, dict):
+                continue
+            # Record only when the source HAD a credential — signals
+            # to the caller that this target needs a pick, distinct
+            # from "target had no credential to strip" (which the
+            # editor's Save gate flags anyway).
+            had_credential = bool(target.get("credential_ref"))
+            target["credential_ref"] = ""
+            gaps.append(ImportGap(
+                target_index=i,
+                target_id=str(target.get("id") or f"target-{i + 1}"),
+                transport=str(target.get("transport") or "unknown"),
+                reason=(
+                    "credential_ref stripped on import — pick a vault"
+                    if had_credential
+                    else "credential_ref missing — pick a vault"
+                ),
+            ))
+    return stripped, gaps
+
+
+@router.post(
+    "/{workspace_id}/gateway-profiles-v2/import",
+    response_model=ImportProfileOut,
+    status_code=201,
+)
+def import_profile(
+    workspace_id: str,
+    body: ImportProfileBody,
+    request: Request,
+    db: Session = Depends(get_db),
+    _ws: str = Depends(_authorized_workspace_id),
+    _: str = Depends(require_permission("platform.credentials.manage")),
+):
+    """Create a draft from a portable JSON payload.
+
+    Credentials are ALWAYS stripped — the response's
+    ``credential_gaps`` lists every target that needs a vault + handle
+    pick, and ``next_url`` links to the editor page for the created
+    profile so the admin can finish setup in one click.
+
+    Shape validation is deferred to publish (same as create). This
+    lets an admin import a partial JSON, edit it, then publish.
+    """
+    stripped_wc, gaps = _strip_credentials(body.working_copy)
+
+    # Name resolution: explicit override wins → JSON's own name →
+    # fallback to a generic label. Uniqueness within the workspace is
+    # enforced by the ``UNIQUE (workspace_id, name)`` DB constraint,
+    # which raises IntegrityError we catch to translate to 409.
+    name = (
+        body.name_override
+        or (stripped_wc.get("name") if isinstance(stripped_wc, dict) else None)
+        or "imported-profile"
+    )
+    # Reflect the resolved name back into working_copy so the editor
+    # sees a consistent draft (name field + model_alias if present
+    # stay in sync).
+    if isinstance(stripped_wc, dict):
+        stripped_wc["name"] = name
+
+    model_alias = None
+    if isinstance(stripped_wc, dict):
+        raw_alias = stripped_wc.get("model_alias")
+        if isinstance(raw_alias, str):
+            model_alias = raw_alias
+
+    profile = GatewayProfileRow(
+        workspace_id=workspace_id,
+        environment_id=None,
+        name=name,
+        schema_version="2",
+        config={},
+        working_copy=stripped_wc,
+        model_alias=model_alias,
+        cond_code=_generate_unique_cond_code(db, workspace_id),
+    )
+    try:
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    except IntegrityError as exc:  # unique(workspace, name) collision
+        db.rollback()
+        # Two paths land here:
+        #   1. Caller didn't pass name_override → JSON's own name
+        #      collided. Suggest name_override.
+        #   2. Caller DID pass name_override → their chosen name
+        #      collided too. Don't re-suggest name_override (they
+        #      already used it); tell them to pick something else.
+        if body.name_override:
+            message = (
+                f"The name {name!r} is already taken in this workspace. "
+                f"Pick a different value for ``name_override``."
+            )
+        else:
+            message = (
+                f"A profile named {name!r} already exists in this "
+                f"workspace. Pass ``name_override`` to import under a "
+                f"different name."
+            )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "summary": "profile name already exists",
+                "errors": [{
+                    "path": "name",
+                    "message": message,
+                    "target_index": None,
+                    "type": "conflict",
+                }],
+            },
+        ) from exc
+
+    out = _to_output(db, workspace_id, profile)
+
+    # Absolute URL to the editor page. Uses ``settings.app_url``
+    # (the web-app URL, e.g. ``https://app.conductai.ai``) —
+    # ``request.base_url`` is the API's own host, which serves
+    # ``/gateway/v1/*`` but NOT the ``/proxy/*`` editor routes.
+    # Following ``https://api.conductai.ai/proxy/gateway-profiles``
+    # 404s; following ``https://app.conductai.ai/proxy/gateway-profiles``
+    # opens the editor.
+    from app.core.config import settings as _settings
+    web_base = (_settings.app_url or "").rstrip("/")
+    next_url = (
+        f"{web_base}/proxy/gateway-profiles?select={profile.id}"
+        if web_base
+        else f"/proxy/gateway-profiles?select={profile.id}"
+    )
+
+    return ImportProfileOut(
+        profile=out,
+        credential_gaps=gaps,
+        next_url=next_url,
+    )
+
+
+@router.get(
+    "/{workspace_id}/gateway-profiles-v2/{profile_id}/export",
+    response_model=dict[str, Any],
+)
+def export_profile(
+    workspace_id: str,
+    profile_id: UUID,
+    db: Session = Depends(get_db),
+    _ws: str = Depends(_authorized_workspace_id),
+    _: str = Depends(require_permission("platform.credentials.manage")),
+):
+    """Return a portable JSON snapshot of the profile.
+
+    Prefers the active revision's snapshot (immutable, always has full
+    credential_refs pre-strip) over ``working_copy``. Falls back to
+    ``working_copy`` for pure-draft profiles.
+
+    Credentials are stripped so the exported JSON is safe to commit to
+    a repo and re-import into a different workspace. Round-trip
+    behavior: ``export → import`` produces a draft the admin can
+    complete via the Save gate's credential pickers.
+    """
+    profile = _load_profile(db, workspace_id, profile_id)
+
+    seed: dict[str, Any] | None = None
+    if profile.active_revision_id is not None:
+        revision = (
+            db.query(GatewayProfileRevision)
+            .filter(
+                GatewayProfileRevision.id == profile.active_revision_id,
+                GatewayProfileRevision.profile_id == profile_id,
+            )
+            .one_or_none()
+        )
+        if revision is not None and isinstance(revision.snapshot, dict):
+            seed = revision.snapshot
+    if seed is None and isinstance(profile.working_copy, dict):
+        seed = profile.working_copy
+    if seed is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Profile {profile_id} has no working_copy and no "
+                f"published revision — nothing to export."
+            ),
+        )
+
+    stripped, _gaps = _strip_credentials(seed)
+    return stripped
 
 
 @router.get(
