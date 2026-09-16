@@ -111,6 +111,28 @@ class Settings(BaseSettings):
     # in prod until Phase 5's contract-test gate signs off.
     guard_use_durable_audit: bool = False
 
+    # #2001 — Gateway Profile v2 rollout switch. When true, the resolver
+    # reads the immutable ``gateway_profile_bindings`` table by
+    # (workspace, environment, model_alias) and pins the revision through
+    # every attempt. When false, the legacy resolver walks the mutable
+    # ``gateway_profiles.config`` column. Off by default; flipping it on
+    # for a workspace requires an admin to publish at least one v2 profile
+    # before any v2 routing kicks in, otherwise the resolver returns None
+    # and the existing fail-closed path fires — safe by design.
+    guard_gateway_profile_v2: bool = False
+
+    # #2001 commit 4 — LiteLLM in-process transport switch. When true,
+    # v2 profiles whose targets carry transport=litellm_sdk execute
+    # through the embedded LiteLLM SDK (anthropic_messages,
+    # responses, chat_completions, token_counter). When
+    # false, transport=litellm_sdk targets fall through to the
+    # legacy RawHTTPTransport passthrough — safe rollback for the flag.
+    # Independent from guard_gateway_profile_v2: a workspace can
+    # publish a v2 profile before the in-process transport is enabled,
+    # and the transport can be enabled globally before any v2 profile
+    # exists.
+    guard_litellm_in_process: bool = False
+
     # Seconds after which a still-'accepted' guard_audit_events row is
     # considered orphaned by the Phase 4 reconciler. 630s = 10 min upstream
     # request timeout + 30s buffer, so a legitimate long request (deep-
