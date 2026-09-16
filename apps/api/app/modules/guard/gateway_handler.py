@@ -979,10 +979,26 @@ def _build_policy_check(
         finally:
             _db.close()
 
-        if pd.blocks:
+        # Y1 — refuse dispatch on BOTH block-action AND approval-action.
+        # The ingress eval handled approval via ``render_approval`` (queues
+        # the request for a human), but that ran against the cond-alias.
+        # A rule keyed on the target model (``approval when model=gpt-4o``)
+        # would still be bypassed by the alias if we only checked
+        # ``pd.blocks`` here — approval-gated models would silently
+        # dispatch. Treat needs_approval as a refuse-and-fall-through so
+        # the coordinator skips this target and tries the next; if every
+        # target is refused, the 451 renders with the last refuse-reason
+        # in its detail.
+        if pd.blocks or pd.needs_approval:
+            reason_kind = "policy-block" if pd.blocks else "policy-approval-required"
             return PolicyBlock(
-                rule_id=pd.rule_id or "policy-block",
-                message=pd.reason or "target model blocked by policy",
+                rule_id=pd.rule_id or reason_kind,
+                message=pd.reason or (
+                    "target model blocked by policy"
+                    if pd.blocks
+                    else "target model requires human approval; alias "
+                         "cannot bypass approval by resolving to it"
+                ),
                 matched_rules=list(pd.matched_rules or []),
             )
         return None
