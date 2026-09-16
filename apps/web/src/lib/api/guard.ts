@@ -2,6 +2,36 @@ import { API, AuthFetch, del, json, patch, post, put } from "./client"
 
 const base = () => `${API}/guard`
 
+// Mutation helpers that THROW on non-2xx and return the parsed JSON body.
+// The base `post`/`put`/`del` in ./client swallow errors — the caller gets
+// a raw Response object even for 4xx/5xx, which silently masks server
+// rejections. Every Gateway v2 mutation goes through these so the UI
+// dialogs see errors and surface them.
+async function _mutateJson<T>(
+  f: AuthFetch, method: "POST" | "PUT" | "PATCH", url: string, body: unknown,
+): Promise<T> {
+  const res = await f(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(text || `HTTP ${res.status}`)
+  }
+  return res.json() as Promise<T>
+}
+
+async function _mutateVoid(
+  f: AuthFetch, method: "DELETE", url: string,
+): Promise<void> {
+  const res = await f(url, { method })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(text || `HTTP ${res.status}`)
+  }
+}
+
 // ─── Gateway Profile v2 (#2001/#2003) ───────────────────────────────
 
 export type GatewayProfileV2Operation =
@@ -391,19 +421,19 @@ export const guard = {
     get: (f: AuthFetch, workspaceId: string, id: string) =>
       json<GatewayProfileV2Out>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}`),
     create: (f: AuthFetch, workspaceId: string, body: { name: string; working_copy?: Record<string, unknown> }) =>
-      post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2`, body),
+      _mutateJson<GatewayProfileV2Out>(f, "POST", `${API}/workspaces/${workspaceId}/gateway-profiles-v2`, body),
     updateWorkingCopy: (f: AuthFetch, workspaceId: string, id: string, workingCopy: Record<string, unknown>) =>
-      put(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/working_copy`, { working_copy: workingCopy }),
+      _mutateJson<GatewayProfileV2Out>(f, "PUT", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/working_copy`, { working_copy: workingCopy }),
     publish: (f: AuthFetch, workspaceId: string, id: string) =>
-      post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/publish`, {}),
+      _mutateJson<GatewayProfileV2Out>(f, "POST", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/publish`, {}),
     rollback: (f: AuthFetch, workspaceId: string, id: string, revisionId: string) =>
-      post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rollback`, { revision_id: revisionId }),
+      _mutateJson<GatewayProfileV2Out>(f, "POST", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rollback`, { revision_id: revisionId }),
     revisions: (f: AuthFetch, workspaceId: string, id: string) =>
       json<GatewayProfileV2Revision[]>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/revisions`),
     revisionSnapshot: (f: AuthFetch, workspaceId: string, id: string, revisionId: string) =>
       json<Record<string, unknown>>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/revisions/${revisionId}`),
     remove: (f: AuthFetch, workspaceId: string, id: string) =>
-      del(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}`),
+      _mutateVoid(f, "DELETE", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}`),
   },
 
   notifications: {

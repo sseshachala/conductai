@@ -200,10 +200,9 @@ export default function GatewayProfilesV2Page() {
         n += 1
       }
       const wc = { ...preset.workingCopy, name: candidate, model_alias: candidate }
-      const res = await guard.gatewayProfilesV2.create(
+      const created = await guard.gatewayProfilesV2.create(
         authFetch, workspaceId, { name: candidate, working_copy: wc },
       )
-      const created = await res.json()
       await load()
       if (created?.id) setSelectedId(created.id)
     } catch (err) {
@@ -221,10 +220,9 @@ export default function GatewayProfilesV2Page() {
       while (taken.has(candidate.toLowerCase())) {
         candidate = `draft-${n}`; n += 1
       }
-      const res = await guard.gatewayProfilesV2.create(
+      const created = await guard.gatewayProfilesV2.create(
         authFetch, workspaceId, { name: candidate },
       )
-      const created = await res.json()
       await load()
       if (created?.id) setSelectedId(created.id)
     } catch (err) {
@@ -266,10 +264,9 @@ export default function GatewayProfilesV2Page() {
         name: candidate,
         model_alias: candidate,
       }
-      const res = await guard.gatewayProfilesV2.create(
+      const created = await guard.gatewayProfilesV2.create(
         authFetch, workspaceId, { name: candidate, working_copy: wc },
       )
-      const created = await res.json()
       await load()
       if (created?.id) setSelectedId(created.id)
     } catch (err) {
