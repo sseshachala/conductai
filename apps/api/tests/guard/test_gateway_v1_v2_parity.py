@@ -1,6 +1,6 @@
-"""PR 4 — v1↔v2 audit parity contract.
+"""PR 4 — v1↔v2 audit-writer signature drift guard + outcome invariants.
 
-Locks the parity invariants the canary ramp depends on. Both v1
+Locks the invariants the canary ramp depends on. Both v1
 (``guard/router.py::_schedule_audit`` durable branch) and v2
 (``guard/gateway_lifecycle.py::finalize_durable_row``) end up calling
 the same ``guard/audit.py::finalize`` under the hood — so parity is a
@@ -8,23 +8,33 @@ question of **which kwargs each path builds**. If v2 forgets a field
 v1 always populates, dashboards and Flight Recorder queries lose
 signal the moment traffic ramps.
 
-These are contract tests, not full request-lifecycle integration.
-Firing a real request through ``handle_gateway_request`` requires
-Redis + Vault + composed policy engine + RLS session — none of which
-add signal to the specific parity question here. The signature checks
-below catch the class of regression that matters: field drift between
-the two paths.
+Approach: **AST-walk the call sites**, don't regex the source. Regex
+either over-matches (grabs local assignments) or under-matches
+(misses kwargs whose RHS pattern the whitelist didn't anticipate).
+The AST walk finds the actual ``Call`` node targeting ``finalize`` /
+``_finalize_audit`` and reads its ``keyword`` children — the same
+data structure the interpreter uses at call time. Rename-refactors
+that don't break at runtime don't break these tests either.
 
-Full end-to-end value parity across all scenarios (200 OK, response
-gate block, streaming success, streaming cancellation, all-attempts-
-failed) is deferred to the canary ramp's dashboard diff — those
-scenarios each have their own dedicated tests in the v2 suite; the
-parity guarantee is that v1 wrote the same column values for the
-same inputs *before* Phase 2 durable audit landed, and continues to
-via the shared ``finalize`` sink.
+Scope of this file:
+- Signature-drift guard (invariants A + B): source-level checks that
+  both paths call the same sink with kwargs the sink accepts.
+- Outcome-value invariants (invariant C): pure-function checks on
+  ``_derive_v2_finalize_args`` + ``_wrap_v2_stream_finalize`` — the
+  helpers that shape v2's finalize args for each of the four request
+  outcomes (ok, response-gate block, streaming ok, streaming
+  cancelled).
+
+Full end-to-end value parity between v1 and v2 (same request → same
+column values across all outcomes) is out of scope here — that lives
+in the canary ramp's dashboard diff. Firing a real request through
+``handle_gateway_request`` needs Redis + Vault + composed policy
+engine + RLS session; the fixture cost buys signal these tests
+already provide via the shared-sink guarantee.
 """
 from __future__ import annotations
 
+import ast
 import inspect
 
 import pytest
@@ -37,7 +47,14 @@ def test_v1_and_v2_call_the_same_finalize_sink():
     """The parity story rests on both paths writing through
     ``guard/audit.py::finalize``. If v1's ``_schedule_audit`` durable
     branch or v2's ``finalize_durable_row`` ever start calling a
-    different sink, the parity claim needs re-proving from scratch."""
+    different sink, the parity claim needs re-proving from scratch.
+
+    Uses object-identity (``is``) for v1 (``_finalize_audit`` is a
+    module-level import alias for ``audit.finalize``) and an AST walk
+    for v2 (the ``finalize`` reference is captured inside a
+    ``to_thread`` call), so nothing here relies on substring matches
+    against source code.
+    """
     from app.guard import router as v1_router
     from app.modules.guard import gateway_lifecycle as v2_lifecycle
     from app.guard.audit import finalize as canonical_finalize
@@ -46,13 +63,30 @@ def test_v1_and_v2_call_the_same_finalize_sink():
         "v1 (_schedule_audit's durable branch) no longer routes through "
         "audit.finalize — parity vs v2 must be re-proven end-to-end."
     )
-    # v2's supervised wrapper calls audit.finalize inside a to_thread. The
-    # import lives inside the function body so we grab it via the
-    # module's own namespace at import time.
-    src = inspect.getsource(v2_lifecycle.finalize_durable_row)
-    assert "finalize," in src or "finalize(" in src, (
-        "finalize_durable_row no longer delegates to audit.finalize. "
-        "The shared-sink parity claim needs re-proving."
+    # v2: walk the AST of finalize_durable_row and require that at
+    # least one asyncio.to_thread(...) call has `finalize` as its first
+    # positional argument. Anything less is a substring match that
+    # could pass even if the delegation is gone.
+    tree = ast.parse(inspect.getsource(v2_lifecycle.finalize_durable_row))
+    passes_finalize_to_to_thread = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        is_to_thread = (
+            (isinstance(func, ast.Attribute) and func.attr == "to_thread")
+            or (isinstance(func, ast.Name) and func.id == "to_thread")
+        )
+        if not is_to_thread:
+            continue
+        if node.args and isinstance(node.args[0], ast.Name) \
+                and node.args[0].id == "finalize":
+            passes_finalize_to_to_thread = True
+            break
+    assert passes_finalize_to_to_thread, (
+        "finalize_durable_row no longer runs audit.finalize inside "
+        "asyncio.to_thread. If the delegation moved, the shared-sink "
+        "parity claim needs re-proving here."
     )
 
 
@@ -75,37 +109,135 @@ def _finalize_kwargs() -> set[str]:
     }
 
 
+def _kwargs_of_call_in(func, *, target_predicate) -> set[str]:
+    """Walk ``func``'s AST; return the kwarg names of the *first* Call
+    node whose callee satisfies ``target_predicate(callee_ast_node)``.
+
+    Callee shapes we might encounter:
+      - Name(id="finalize")
+      - Attribute(attr="_finalize_audit", value=...)
+      - Attribute(attr="finalize", value=...)
+      - a nested Call whose returned function is called (rare)
+
+    Returns an empty set if no matching call is found — callers assert
+    on the resulting set (e.g. subset checks against the accepted
+    kwargs of the sink), so an empty return propagates as a failing
+    critical-kwargs assertion rather than a silent pass.
+    """
+    src = inspect.getsource(func)
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if target_predicate(node.func):
+            return {kw.arg for kw in node.keywords if kw.arg}
+    return set()
+
+
+def _v1_durable_branch_call_target() -> callable:
+    """Predicate — the v1 durable branch calls
+    ``background.add_task(_finalize_audit, ...)`` — the callable we
+    want is the *second-inner* Call (i.e. add_task's positional args
+    inside the branch). Match the enclosing add_task Call whose first
+    positional arg is ``Name('_finalize_audit')``."""
+    def _predicate(callee):
+        # We're matching the add_task call itself; the finalize kwargs
+        # live on it. The caller of _kwargs_of_call_in narrows further.
+        return (
+            isinstance(callee, ast.Attribute)
+            and callee.attr == "add_task"
+        )
+    return _predicate
+
+
 def _kwargs_passed_by_v1_durable_branch() -> set[str]:
-    """Extract the kwarg names v1's ``_schedule_audit`` durable branch
-    passes. Read from source (rather than executing) because the
-    function body invokes ``background.add_task`` with a payload we
-    would otherwise have to schedule to inspect."""
+    """v1's durable branch schedules
+    ``background.add_task(_finalize_audit, row_id, workspace_id,
+    decision=..., ...)``. AST-walk the ``_schedule_audit`` source,
+    find the add_task Call whose first positional arg is
+    ``_finalize_audit`` (that's the durable branch — v1 has a second
+    add_task for the legacy ``_record_audit`` path), and return its
+    kwargs.
+
+    Robust against renames of the RHS expressions: whether the value
+    is ``audit_args[15]``, a helper function call, or a local
+    variable, the kwarg *name* is what we read.
+    """
     from app.guard import router
-    src = inspect.getsource(router._schedule_audit)
-    # The durable branch is bounded by the ``if _durable_row_id:``
-    # block and its ``return``. Grab that slice, then pull kwargs.
-    start = src.index("if _durable_row_id:")
-    end = src.index("return", start)
-    slice_ = src[start:end]
-    # kwarg names are the identifiers preceding '=' inside the call.
-    import re
-    return set(re.findall(r"(\w+)\s*=\s*audit_args", slice_)) | \
-           set(re.findall(r"(\w+)\s*=\s*int\(", slice_)) | \
-           set(re.findall(r"(\w+)\s*=\s*response_bytes", slice_)) | \
-           set(re.findall(r"(\w+)\s*=\s*execution_status", slice_)) | \
-           set(re.findall(r"(\w+)\s*=\s*result_summary", slice_))
+
+    tree = ast.parse(inspect.getsource(router._schedule_audit))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        if not (isinstance(callee, ast.Attribute) and callee.attr == "add_task"):
+            continue
+        # Match the durable branch add_task: first positional arg is
+        # the _finalize_audit callable.
+        first_arg = node.args[0] if node.args else None
+        if not isinstance(first_arg, ast.Name) or first_arg.id != "_finalize_audit":
+            continue
+        return {kw.arg for kw in node.keywords if kw.arg}
+    return set()
 
 
 def _kwargs_passed_by_v2_finalize_wrapper() -> set[str]:
-    """Extract the kwarg names v2's ``finalize_durable_row`` passes to
-    ``audit.finalize``. Same source-scan approach as v1."""
+    """v2's ``finalize_durable_row`` schedules
+    ``asyncio.create_task(asyncio.to_thread(finalize, row_id,
+    workspace_id, decision=..., ...))``. AST-walk the source, find the
+    to_thread Call whose first positional arg is ``finalize``, and
+    return its kwargs.
+
+    Robust against local-variable name collisions that regex would
+    have matched — this reads the actual keyword argument names from
+    the Call node.
+    """
     from app.modules.guard import gateway_lifecycle
-    src = inspect.getsource(gateway_lifecycle.finalize_durable_row)
-    start = src.index("finalize,")   # start of the to_thread call
-    end = src.index(")\n", start)
-    slice_ = src[start:end]
-    import re
-    return set(re.findall(r"(\w+)\s*=\s*\w+", slice_))
+
+    tree = ast.parse(inspect.getsource(gateway_lifecycle.finalize_durable_row))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        is_to_thread = (
+            (isinstance(callee, ast.Attribute) and callee.attr == "to_thread")
+            or (isinstance(callee, ast.Name) and callee.id == "to_thread")
+        )
+        if not is_to_thread:
+            continue
+        first_arg = node.args[0] if node.args else None
+        if not (isinstance(first_arg, ast.Name) and first_arg.id == "finalize"):
+            continue
+        return {kw.arg for kw in node.keywords if kw.arg}
+    return set()
+
+
+def test_kwarg_extractors_reject_local_var_noise():
+    """Meta-test: if the extraction ever slips back to a regex that
+    matches ``local = something``, this test catches it. Confirms both
+    extractors find non-empty kwarg sets — an empty return would fail
+    the downstream critical-kwargs assertions with a misleading
+    "missing everything" error, so surface the extraction failure
+    directly here."""
+    v1_kwargs = _kwargs_passed_by_v1_durable_branch()
+    v2_kwargs = _kwargs_passed_by_v2_finalize_wrapper()
+    assert v1_kwargs, (
+        "AST walk found no add_task(_finalize_audit, ...) call in "
+        "v1's _schedule_audit — extraction broken or v1 stopped using "
+        "the durable branch."
+    )
+    assert v2_kwargs, (
+        "AST walk found no asyncio.to_thread(finalize, ...) call in "
+        "v2's finalize_durable_row — extraction broken or v2 stopped "
+        "delegating to audit.finalize."
+    )
+    # Both sets must be minimal — no keys that look like local vars
+    # (single-letter, purely numeric, etc.). Guards against a false
+    # match on some future add_task with different first positional.
+    for name in v1_kwargs | v2_kwargs:
+        assert name.isidentifier(), (
+            f"AST extractor picked up non-identifier {name!r}"
+        )
 
 
 def test_v1_durable_branch_only_passes_kwargs_finalize_accepts():
