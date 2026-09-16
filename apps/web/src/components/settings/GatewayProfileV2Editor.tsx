@@ -419,15 +419,31 @@ function FieldLabel({
   hint?: string
   children: React.ReactNode
 }) {
+  // Inline hint text used to sit under every field, doubling the
+  // vertical footprint. Replaced with a (ⓘ) affordance next to the
+  // label — native browser tooltip on hover keeps the surface small.
+  // Standardising this against the policy-form pattern is tracked in
+  // its own issue.
   return (
-    <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
-      <span>{label}</span>
+    <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        {label}
+        {hint ? (
+          <span
+            role="img"
+            aria-label={hint}
+            title={hint}
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 14, height: 14, borderRadius: "50%",
+              border: "1px solid var(--border)",
+              fontSize: 10, fontWeight: 600, color: "var(--text-3)",
+              cursor: "help", userSelect: "none",
+            }}
+          >i</span>
+        ) : null}
+      </span>
       {children}
-      {hint ? (
-        <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 400, lineHeight: 1.35 }}>
-          {hint}
-        </span>
-      ) : null}
     </label>
   )
 }
