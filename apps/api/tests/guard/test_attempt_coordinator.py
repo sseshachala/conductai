@@ -452,4 +452,104 @@ async def test_mixed_targets_dispatch_per_row():
     )
     assert result.winning_target_id == "fallback"
     assert native.execute.await_count == 1
+
+
+# ─── X1 — per-target policy re-eval ───────────────────────────────────
+
+
+@pytest.mark.anyio("asyncio")
+async def test_policy_check_blocks_target_and_falls_through_to_next():
+    """A rule that fires against the primary target's model but NOT
+    the fallback's must cause the coordinator to skip the primary and
+    dispatch the fallback. Locks the alias-bypass fix — the ingress
+    policy eval saw ``cond-abc12345-coding`` (an alias), and only the
+    coordinator's per-target re-eval knows the real model."""
+    from app.runtime.attempt_coordinator import PolicyBlock
+
+    sdk = MagicMock()
+    sdk.execute = AsyncMock(return_value={"content": "ok"})
+
+    def _check(target):
+        if getattr(target, "model", "") == "claude-sonnet-4-6":
+            return PolicyBlock(
+                rule_id="deny-sonnet",
+                message="claude-sonnet-4-6 is not certified for this workspace",
+            )
+        return None
+
+    coord = AttemptCoordinator(sdk_transport=sdk)
+    result = await coord.execute(
+        resolved=_resolved(_profile(targets=[
+            _sdk_target("primary", model="claude-sonnet-4-6"),
+            _sdk_target("fallback", model="claude-haiku-4-5-20251001"),
+        ])),
+        operation="anthropic_messages",
+        payload={"messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "sk-fake",
+        policy_check=_check,
+    )
+    assert result.winning_target_id == "fallback"
+    # Primary was NEVER dispatched — a blocked target must not reach
+    # the transport. The SDK executed exactly once (for the fallback).
+    assert sdk.execute.await_count == 1
+    # Attempt records show the primary was skipped as PolicyBlock, not
+    # as a network error, so the audit row can distinguish the two.
+    assert result.attempts[0].target_id == "primary"
+    assert result.attempts[0].error_class == "PolicyBlock"
+    assert result.attempts[0].succeeded is False
+    assert result.attempts[1].target_id == "fallback"
+    assert result.attempts[1].succeeded is True
+
+
+@pytest.mark.anyio("asyncio")
+async def test_all_targets_blocked_by_policy_raises_all_attempts_failed():
+    """Every target refused by policy → AllAttemptsFailed with
+    PolicyBlock error_class on every attempt. Handler renders this
+    as 451 (not 502) since retrying won't help — the request is
+    refused by policy."""
+    from app.runtime.attempt_coordinator import PolicyBlock
+
+    sdk = MagicMock()
+    sdk.execute = AsyncMock()
+
+    def _check_all(target):
+        return PolicyBlock(
+            rule_id="deny-anthropic",
+            message="anthropic models blocked in this workspace",
+        )
+
+    coord = AttemptCoordinator(sdk_transport=sdk)
+    with pytest.raises(AllAttemptsFailed) as excinfo:
+        await coord.execute(
+            resolved=_resolved(_profile(targets=[
+                _sdk_target("primary"), _sdk_target("fallback"),
+            ])),
+            operation="anthropic_messages",
+            payload={"messages": [{"role": "user", "content": "hi"}]},
+            credential_resolver=lambda ref: "sk-fake",
+            policy_check=_check_all,
+        )
+    assert all(a.error_class == "PolicyBlock" for a in excinfo.value.attempts)
+    # The transport was never touched because every target was skipped.
+    sdk.execute.assert_not_awaited()
+
+
+@pytest.mark.anyio("asyncio")
+async def test_policy_check_none_returned_allows_dispatch():
+    """policy_check returning None must NOT interfere — the coordinator
+    dispatches as if no check was provided. Locks the "policy hook is
+    strictly additive" contract."""
+    sdk = MagicMock()
+    sdk.execute = AsyncMock(return_value={"content": "ok"})
+
+    coord = AttemptCoordinator(sdk_transport=sdk)
+    result = await coord.execute(
+        resolved=_resolved(_profile(targets=[_sdk_target("only")])),
+        operation="anthropic_messages",
+        payload={"messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "sk-fake",
+        policy_check=lambda target: None,
+    )
+    assert result.winning_target_id == "only"
+    assert sdk.execute.await_count == 1
     assert sdk.execute.await_count == 1
