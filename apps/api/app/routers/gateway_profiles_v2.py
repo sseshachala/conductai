@@ -53,8 +53,6 @@ from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
 from app.models.gateway_profile import (
     GatewayProfile as GatewayProfileRow,
-    GatewayProfileBinding,
-    GatewayProfileBindingEvent,
     GatewayProfileRevision,
 )
 from app.modules.guard.capability_catalog import (
@@ -90,32 +88,6 @@ def _authorized_workspace_id(
     if str(workspace_id) != str(_ws):
         raise HTTPException(status_code=404, detail="Profile not found")
     return workspace_id
-
-
-def _verify_environment_belongs_to_workspace(
-    db: Session, workspace_id: str, environment_id: UUID,
-) -> None:
-    """Publish/rollback bind to an environment UUID supplied in the body.
-    Without this check, an admin in workspace A could bind a v2 profile
-    to workspace B's environment id (the composite PK on
-    ``gateway_profile_bindings`` would happily accept it — no FK from
-    (environment_id) to (workspace_id, environment_id) exists at the DB
-    level).
-    """
-    from app.models.environment import Environment
-    env = (
-        db.query(Environment)
-        .filter(
-            Environment.id == environment_id,
-            Environment.workspace_id == workspace_id,
-        )
-        .one_or_none()
-    )
-    if env is None:
-        raise HTTPException(
-            status_code=404,
-            detail="environment not found in this workspace",
-        )
 
 
 def _verify_credentials_exist(
@@ -205,23 +177,19 @@ class UpdateWorkingCopyBody(BaseModel):
 
 
 class PublishBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    """Publish takes no arguments — it snapshots the working_copy and
+    points ``active_revision_id`` at the new revision. Env selection is
+    gone from the profile abstraction; vault refs live inside targets."""
 
-    environment_id: UUID = Field(
-        description=(
-            "Which environment to bind the new revision to. Publish is scoped "
-            "per-environment; staging and prod are separate bindings."
-        )
-    )
+    model_config = ConfigDict(extra="forbid")
 
 
 class RollbackBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    environment_id: UUID
     revision_id: UUID = Field(
         description=(
-            "The historical revision to bind to. Must belong to the same "
+            "The historical revision to revert to. Must belong to the same "
             "profile — cross-profile rollback is a security bug, not a feature."
         )
     )
@@ -237,22 +205,15 @@ class RevisionOut(BaseModel):
     # dedicated snapshot endpoint if the UI needs a diff.
 
 
-class BindingOut(BaseModel):
-    workspace_id: UUID
-    environment_id: UUID
-    model_alias: str
-    revision_id: UUID
-    updated_at: datetime
-
-
 class ProfileOut(BaseModel):
     id: UUID
     workspace_id: UUID
     name: str
     model_alias: str | None
+    cond_code: str
+    active_revision_id: UUID | None
     working_copy: dict[str, Any] | None
     revisions: list[RevisionOut] = Field(default_factory=list)
-    bindings: list[BindingOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -286,32 +247,6 @@ def _load_profile(
     return profile
 
 
-def _current_bindings(
-    db: Session, workspace_id: str, profile_id: UUID,
-) -> list[GatewayProfileBinding]:
-    """Return bindings that currently point at any revision of this profile.
-
-    Runs two straightforward queries and joins in Python rather than a
-    subquery / IN clause. Revisions-per-profile is small (single digits
-    to low double digits over the profile's lifetime), and both indices
-    already exist on the joining columns.
-    """
-    revisions = (
-        db.query(GatewayProfileRevision)
-        .filter(GatewayProfileRevision.profile_id == profile_id)
-        .all()
-    )
-    if not revisions:
-        return []
-    revision_id_set = {r.id for r in revisions}
-    bindings = (
-        db.query(GatewayProfileBinding)
-        .filter(GatewayProfileBinding.workspace_id == workspace_id)
-        .all()
-    )
-    return [b for b in bindings if b.revision_id in revision_id_set]
-
-
 def _to_output(
     db: Session, workspace_id: str, profile: GatewayProfileRow,
 ) -> ProfileOut:
@@ -321,12 +256,13 @@ def _to_output(
         .order_by(GatewayProfileRevision.version.desc())
         .all()
     )
-    bindings = _current_bindings(db, workspace_id, profile.id)
     return ProfileOut(
         id=profile.id,
         workspace_id=profile.workspace_id,
         name=profile.name,
         model_alias=profile.model_alias,
+        cond_code=profile.cond_code,
+        active_revision_id=profile.active_revision_id,
         working_copy=profile.working_copy,
         revisions=[
             RevisionOut(
@@ -335,18 +271,49 @@ def _to_output(
             )
             for r in revisions
         ],
-        bindings=[
-            BindingOut(
-                workspace_id=b.workspace_id,
-                environment_id=b.environment_id,
-                model_alias=b.model_alias,
-                revision_id=b.revision_id,
-                updated_at=b.updated_at,
-            )
-            for b in bindings
-        ],
         created_at=profile.created_at,
         updated_at=profile.updated_at,
+    )
+
+
+# ─── cond_code generation ──────────────────────────────────────────────
+
+# Alphabet excludes visually ambiguous characters (0, O, 1, l, I) so
+# codes printed in docs/URLs are unambiguous. Base 32 → ~5 bits/char, 8
+# chars → 40 bits of entropy, effectively zero collision at scale.
+_COND_CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
+_COND_CODE_LENGTH = 8
+
+
+def _generate_cond_code() -> str:
+    import secrets
+    return "".join(secrets.choice(_COND_CODE_ALPHABET) for _ in range(_COND_CODE_LENGTH))
+
+
+def _generate_unique_cond_code(db: Session, workspace_id: str) -> str:
+    """Generate a cond_code that doesn't collide within this workspace.
+
+    Collision at 40 bits within a single workspace's dozen-or-so profiles
+    is astronomically unlikely, but the uniqueness constraint is real so
+    we retry the small chance we're wrong. Bounded retries (10) — hitting
+    that many collisions means something is very wrong, and 500ing is
+    the right response.
+    """
+    for _ in range(10):
+        candidate = _generate_cond_code()
+        exists = (
+            db.query(GatewayProfileRow)
+            .filter(
+                GatewayProfileRow.workspace_id == workspace_id,
+                GatewayProfileRow.cond_code == candidate,
+            )
+            .first()
+        )
+        if exists is None:
+            return candidate
+    raise HTTPException(
+        status_code=500,
+        detail="Could not generate a unique cond_code — retry the request.",
     )
 
 
@@ -389,15 +356,20 @@ def create_profile(
     ``working_copy`` may be an empty dict; validation only fires on
     publish. This lets admins iterate on the shape without every save
     tripping the capability catalog.
+
+    ``cond_code`` is server-generated and immutable — becomes the
+    public routing identifier ``cond-<code>-<alias>`` clients send in
+    ``model:``.
     """
     profile = GatewayProfileRow(
         workspace_id=workspace_id,
-        environment_id=None,       # v2 uses bindings, not row env
+        environment_id=None,       # v3 doesn't scope profiles to envs
         name=body.name,
         schema_version="2",
         config={},                  # v1 column intentionally empty for v2 rows
         working_copy=body.working_copy or None,
         model_alias=body.working_copy.get("model_alias") if body.working_copy else None,
+        cond_code=_generate_unique_cond_code(db, workspace_id),
     )
     db.add(profile)
     db.commit()
@@ -456,12 +428,24 @@ def update_working_copy(
 ):
     """Overwrite the working copy. Save never touches live traffic.
 
+    Refused once ``active_revision_id`` is set (profile is published) —
+    the working_copy is locked in that state. To change a published
+    profile, duplicate it into a fresh draft and edit that.
+
     Schema validation runs here so the UI catches typos immediately.
     Capability catalog is deferred to publish because presets change
     between LiteLLM version bumps and admins should be able to save an
     in-progress draft mid-migration.
     """
     profile = _load_profile(db, workspace_id, profile_id)
+    if profile.active_revision_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Published profile — working_copy is locked. Duplicate "
+                "this profile into a new draft to make changes."
+            ),
+        )
     try:
         parsed = GatewayProfileV2.model_validate(body.working_copy)
     except Exception as exc:
@@ -489,26 +473,33 @@ def delete_profile(
     """Delete a *draft* only. A profile that has ever been published is
     refused — deleting it would cascade-drop its immutable revision
     history via the FK ``ON DELETE CASCADE``, contradicting the
-    "revisions are forever" contract. Unbind, then archive out-of-band
-    if the profile truly needs to be retired."""
+    "revisions are forever" contract. Duplicate the profile if the
+    admin wants a fresh working_copy; contact ops to archive if the
+    published one truly needs to be retired."""
     profile = _load_profile(db, workspace_id, profile_id)
 
-    # Even one historical revision → refuse. This is stricter than the
-    # earlier "any active binding" check because a rolled-back profile
-    # with no current binding still has publish history that other
-    # bindings could roll back to.
+    if profile.active_revision_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Profile is published; deleting it would cascade-drop "
+                "its revision history. Duplicate it if you want a fresh "
+                "draft, or contact ops to archive."
+            ),
+        )
     revision_count = (
         db.query(GatewayProfileRevision)
         .filter(GatewayProfileRevision.profile_id == profile.id)
         .count()
     )
     if revision_count > 0:
+        # active_revision_id is null but there are past revisions —
+        # shouldn't happen under the current model (rollback keeps it
+        # set), but belt-and-braces: revision history is sacred.
         raise HTTPException(
             status_code=409,
             detail=(
-                "Profile has published revisions; deleting it would "
-                "cascade-drop that history. Unbind and leave the profile "
-                "in place, or contact ops to archive it."
+                "Profile has published revision history and can't be deleted."
             ),
         )
     db.delete(profile)
@@ -522,28 +513,39 @@ def delete_profile(
 def publish_profile(
     workspace_id: str,
     profile_id: UUID,
-    body: PublishBody,
+    body: PublishBody,  # noqa: ARG001 — kept for future extensions (comment/message)
     db: Session = Depends(get_db),
     _ws: str = Depends(_authorized_workspace_id),
     caller: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    """Atomic publish: new revision + binding pointer swap.
+    """Atomic publish: freeze working_copy → new revision → activate.
 
     Reads ``working_copy``, validates against schema + capability
-    catalog, appends a new revision, and updates the binding for
-    ``(workspace_id, environment_id, working_copy.model_alias)`` in one
-    transaction. Editing the working copy after publish does not affect
-    the served revision.
+    catalog, verifies vault credentials in the payload actually exist,
+    inserts a new revision, and points ``active_revision_id`` at it.
+    Editing the working copy after publish is refused; the caller has
+    to duplicate the profile to make further changes.
+
+    Environment is not part of publish — vault refs inside the
+    working_copy already scope credentials to an environment.
     """
     # Row-level lock: two operators publishing the same profile at the
-    # same time would otherwise race the version-allocation loop AND
-    # the binding upsert. FOR UPDATE serializes them; the second one
-    # sees the first one's committed state before it starts.
+    # same time would otherwise race the version-allocation loop.
+    # FOR UPDATE serializes them; the second one sees the first one's
+    # committed state before it starts.
     profile = _load_profile(db, workspace_id, profile_id, for_update=True)
     if not profile.working_copy:
         raise HTTPException(
             status_code=400,
             detail="working_copy is empty — nothing to publish",
+        )
+    if profile.active_revision_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Profile is already published. Duplicate to create a new "
+                "draft; to revert to an earlier revision, use rollback."
+            ),
         )
 
     # Pin the working-copy snapshot the instant we've validated it.
@@ -555,11 +557,8 @@ def publish_profile(
     working_snapshot: dict[str, Any] = dict(profile.working_copy)
     parsed = _validate_working_copy(working_snapshot)
 
-    # Publish-time ownership checks — must happen BEFORE we mutate any
-    # rows. Either failing here leaves the working copy intact.
-    _verify_environment_belongs_to_workspace(
-        db, workspace_id, body.environment_id,
-    )
+    # Credential ownership check — every target's vault ref must
+    # resolve to a credential in one of this workspace's environments.
     _verify_credentials_exist(db, workspace_id, parsed)
 
     # Version allocation with unique-constraint retry. Concurrent
@@ -580,9 +579,6 @@ def publish_profile(
         candidate = GatewayProfileRevision(
             profile_id=profile_id,
             version=current_max + 1,
-            # Pinned snapshot — never re-read profile.working_copy
-            # mid-loop, which could pick up a concurrent PUT and race
-            # the validated shape.
             snapshot=working_snapshot,
             published_by=caller,
         )
@@ -604,40 +600,9 @@ def publish_profile(
             ),
         )
 
-    # Upsert the binding — one row per (workspace, env, alias).
-    existing = (
-        db.query(GatewayProfileBinding)
-        .filter(
-            GatewayProfileBinding.workspace_id == workspace_id,
-            GatewayProfileBinding.environment_id == body.environment_id,
-            GatewayProfileBinding.model_alias == parsed.model_alias,
-        )
-        .one_or_none()
-    )
-    prior_revision_id = existing.revision_id if existing else None
-    if existing:
-        existing.revision_id = revision.id
-    else:
-        db.add(GatewayProfileBinding(
-            workspace_id=workspace_id,
-            environment_id=body.environment_id,
-            model_alias=parsed.model_alias,
-            revision_id=revision.id,
-        ))
-
-    # Append-only audit — one row per binding change so history survives
-    # subsequent rollbacks that would overwrite the current binding row.
-    db.add(GatewayProfileBindingEvent(
-        workspace_id=workspace_id,
-        environment_id=body.environment_id,
-        model_alias=parsed.model_alias,
-        prior_revision_id=prior_revision_id,
-        new_revision_id=revision.id,
-        actor=caller,
-        action="publish",
-    ))
-
-    # Cache the alias on the parent row so the /list view is cheap.
+    # Activate the new revision + cache the alias on the parent row so
+    # the /list view is cheap.
+    profile.active_revision_id = revision.id
     profile.model_alias = parsed.model_alias
     db.commit()
     db.refresh(profile)
@@ -654,25 +619,21 @@ def rollback_profile(
     body: RollbackBody,
     db: Session = Depends(get_db),
     _ws: str = Depends(_authorized_workspace_id),
-    caller: str = Depends(require_permission("platform.credentials.manage")),
+    caller: str = Depends(require_permission("platform.credentials.manage")),  # noqa: ARG001 — kept in signature for RBAC enforcement
 ):
-    """Point a binding at a historical revision of this profile.
+    """Point ``active_revision_id`` at a historical revision.
 
     Cross-profile revisions are rejected as a defense-in-depth check —
     the URL already scopes to a profile, but a mismatched revision id
-    in the body could otherwise silently repoint one profile's binding
-    at another profile's snapshot.
+    in the body could otherwise silently repoint one profile at
+    another's snapshot.
 
-    The environment must belong to the caller's workspace (checked
-    below), and every rollback writes an append-only audit row to
-    ``gateway_profile_binding_events``.
+    The working_copy is refreshed to match the rolled-back revision
+    so the UI shows the shape that's actually being served. It stays
+    locked (active_revision_id remains set) — to change the shape,
+    duplicate the profile.
     """
-    # Rollback races publish on the binding upsert too — same lock.
     profile = _load_profile(db, workspace_id, profile_id, for_update=True)
-
-    _verify_environment_belongs_to_workspace(
-        db, workspace_id, body.environment_id,
-    )
 
     revision = (
         db.query(GatewayProfileRevision)
@@ -688,8 +649,10 @@ def rollback_profile(
             detail="revision not found for this profile",
         )
 
-    # The snapshot carries the model_alias — use it as the binding key
-    # so we can't accidentally repoint a binding for a different alias.
+    # Bring the working_copy back in sync with the revision the admin
+    # rolled back to. Republish restores active_revision_id when they
+    # tweak and re-publish; until then, editing is unlocked so the
+    # rollback isn't a dead end.
     try:
         snapshot_parsed = GatewayProfileV2.model_validate(revision.snapshot)
     except Exception as exc:
@@ -698,38 +661,9 @@ def rollback_profile(
             detail=f"historical revision failed re-validation: {exc}",
         ) from exc
 
-    existing = (
-        db.query(GatewayProfileBinding)
-        .filter(
-            GatewayProfileBinding.workspace_id == workspace_id,
-            GatewayProfileBinding.environment_id == body.environment_id,
-            GatewayProfileBinding.model_alias == snapshot_parsed.model_alias,
-        )
-        .one_or_none()
-    )
-    prior_revision_id = existing.revision_id if existing else None
-    if existing:
-        existing.revision_id = body.revision_id
-    else:
-        db.add(GatewayProfileBinding(
-            workspace_id=workspace_id,
-            environment_id=body.environment_id,
-            model_alias=snapshot_parsed.model_alias,
-            revision_id=body.revision_id,
-        ))
-
-    # Append-only audit — capture actor + prior/new revision so the
-    # history survives further rollbacks that would overwrite the
-    # current binding row.
-    db.add(GatewayProfileBindingEvent(
-        workspace_id=workspace_id,
-        environment_id=body.environment_id,
-        model_alias=snapshot_parsed.model_alias,
-        prior_revision_id=prior_revision_id,
-        new_revision_id=body.revision_id,
-        actor=caller,
-        action="rollback",
-    ))
+    profile.active_revision_id = revision.id
+    profile.working_copy = dict(revision.snapshot)
+    profile.model_alias = snapshot_parsed.model_alias
     db.commit()
     db.refresh(profile)
     return _to_output(db, workspace_id, profile)
