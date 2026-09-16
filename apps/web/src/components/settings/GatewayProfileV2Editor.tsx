@@ -217,8 +217,40 @@ export default function GatewayProfileV2Editor({
     }),
   }), [state])
 
+  // Client-side Save gate (self-review layer 2): server rejects a save
+  // with empty ``credential_ref`` fields as a 14-error blob (three
+  // discriminated-union variants × N missing fields). Catch it here so
+  // Save is blocked with a readable inline hint instead. Mirrors the
+  // server's field-level requirements: id, provider, model, and a full
+  // vault:// reference are required per target.
+  const targetIssues = useMemo(() => {
+    return state.targets.map((t, i) => {
+      const issues: string[] = []
+      if (!t.id.trim()) issues.push("id is required")
+      if (!t.provider.trim() && t.transport !== "http_passthrough") {
+        issues.push("provider is required")
+      }
+      if (!t.model.trim()) issues.push("model is required")
+      if (!t.credential_env_id) issues.push("pick a credential vault")
+      if (!t.credential_handle) issues.push("pick a credential handle")
+      return { index: i, targetId: t.id || `#${i + 1}`, issues }
+    }).filter(x => x.issues.length > 0)
+  }, [state])
+
+  const canSave = isAdmin && targetIssues.length === 0
+
   async function save() {
     if (!isAdmin) return
+    if (targetIssues.length > 0) {
+      // Belt-and-braces — the button is disabled when this holds, but
+      // if a keyboard-driven save slips past the disabled state, catch
+      // it here and surface the same message the banner shows.
+      setErr(
+        `Fix ${targetIssues.length} target issue(s) before saving — ` +
+        targetIssues.map(t => `${t.targetId}: ${t.issues[0]}`).join("; "),
+      )
+      return
+    }
     setSaving(true); setErr(""); setMsg("")
     try {
       await guard.gatewayProfilesV2.updateWorkingCopy(
@@ -313,12 +345,38 @@ export default function GatewayProfileV2Editor({
         </div>
       )}
 
+      {/* Client-side Save gate (self-review layer 2). Blocks Save with
+          an inline banner so the admin never hits the server-side
+          discriminated-union noise blob. */}
+      {targetIssues.length > 0 && isAdmin && (
+        <div className="sbadge warn" style={{ display: "block", height: "auto", padding: "10px 12px", borderRadius: 8, whiteSpace: "normal" }}>
+          <strong>{targetIssues.length} target(s) need attention before Save</strong>
+          <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
+            {targetIssues.map(t => (
+              <li key={t.index} style={{ fontSize: 12, fontWeight: 400 }}>
+                <span className="mono">#{t.index + 1} {t.targetId}</span>:{" "}
+                {t.issues.join(", ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {err && <p style={{ margin: 0, color: "var(--err)", fontSize: 12 }}>{err}</p>}
       {msg && <p style={{ margin: 0, color: "var(--ok)", fontSize: 12 }}>{msg}</p>}
 
       {isAdmin && (
         <div>
-          <button onClick={save} disabled={saving} className="btn btn-primary btn-sm">
+          <button
+            onClick={save}
+            disabled={saving || !canSave}
+            className="btn btn-primary btn-sm"
+            title={
+              !canSave && targetIssues.length > 0
+                ? `Fix ${targetIssues.length} target issue(s) before saving`
+                : undefined
+            }
+          >
             {saving ? "Saving…" : "Save working copy"}
           </button>
         </div>

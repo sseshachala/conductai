@@ -98,6 +98,58 @@ def test_capability_mismatch_rides_the_same_error_shape():
     assert "anthropic_messages" in err["message"]
 
 
+def test_discriminated_union_noise_filtered_to_declared_transport():
+    """Pydantic's discriminated-union validation walks every variant
+    when the transport-tagged variant fails a field check. That
+    produces N×3 error blobs (e.g. ``targets.0.NativeHTTPTarget.credential_ref``
+    AND ``targets.0.LiteLLMSDKTarget.credential_ref`` AND
+    ``targets.0.HTTPPassthroughTarget.credential_ref``) for a single
+    logical error — real user-reported gotcha ("14 errors" for two
+    targets with empty credential_ref).
+
+    The filter should keep ONLY the errors whose variant matches the
+    target's declared ``transport``, and strip the variant class name
+    from the path so the UI sees ``targets.0.credential_ref`` cleanly.
+    """
+    with pytest.raises(HTTPException) as excinfo:
+        _validate({
+            "name": "p",
+            "model_alias": "coding",
+            "accepts": ["anthropic_messages"],
+            "targets": [
+                # User's declared transport is litellm_sdk. Real problem:
+                # credential_ref is empty. Pydantic will emit the same
+                # ``string_too_short`` error under every union variant.
+                {"id": "primary", "transport": "litellm_sdk",
+                 "provider": "anthropic",
+                 "model": "claude-sonnet-4-6",
+                 "credential_ref": ""},
+                {"id": "fallback", "transport": "litellm_sdk",
+                 "provider": "anthropic",
+                 "model": "claude-haiku-4-5-20251001",
+                 "credential_ref": ""},
+            ],
+        })
+    detail = _err_body(excinfo.value)
+    # No path should carry a union-variant class name — filtered out
+    # or stripped.
+    for variant_name in ("NativeHTTPTarget", "LiteLLMSDKTarget", "HTTPPassthroughTarget"):
+        assert not any(variant_name in e["path"] for e in detail["errors"]), (
+            f"union variant name {variant_name} leaked into paths: "
+            f"{[e['path'] for e in detail['errors']]}"
+        )
+    # Both targets must have their credential_ref error reported
+    # exactly once — the whole point of the filter.
+    per_target = {0: 0, 1: 0}
+    for e in detail["errors"]:
+        if e["target_index"] in per_target and "credential_ref" in e["path"]:
+            per_target[e["target_index"]] += 1
+    assert per_target == {0: 1, 1: 1}, (
+        f"expected one credential_ref error per target after filter, "
+        f"got {per_target} across errors={detail['errors']}"
+    )
+
+
 def test_schema_error_at_profile_root_has_no_target_index():
     """Errors on profile-level fields (empty targets, unknown operation)
     have ``target_index=None``; the UI should surface them as a
