@@ -216,3 +216,141 @@ def test_wrapper_owns_close_durable_call():
         "wrapper must reference close_durable_row so renewal is "
         "cancelled after finalize completes"
     )
+
+
+# ─── Y3 — stalled-upstream deadline enforcement ──────────────────────
+
+
+async def _drain(body_iterator):
+    """Helper — drain an async iterator to trigger the wrapper's
+    finally block."""
+    async for _ in body_iterator:
+        pass
+
+
+@pytest.mark.anyio("asyncio")
+async def test_wrap_v2_stream_enforces_deadline_when_upstream_stalls(monkeypatch):
+    """Y3 REPRODUCER — original X4 check ran BEFORE ``yield chunk``.
+    A stalled upstream (headers arrived, then no chunk ever produced)
+    blocked inside ``async for`` past the deadline — the check never
+    ran because there was never a next chunk to receive.
+
+    Fix wraps the chunk fetch in ``asyncio.wait_for`` so the deadline
+    trips even when the upstream is silent. Finalize records
+    ``execution_status='timeout'``.
+    """
+    from app.modules.guard.gateway_handler import _wrap_v2_stream_finalize
+
+    captured: dict = {}
+
+    async def _fake_finalize(*, execution_status, decision, **_kw):
+        captured.update(execution_status=execution_status, decision=decision)
+
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_lifecycle.finalize_durable_row",
+        _fake_finalize,
+    )
+    async def _noop_close(_durable):
+        return
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_lifecycle.close_durable_row",
+        _noop_close,
+    )
+
+    async def _stalled_upstream():
+        # Never yields — simulates upstream that sent headers and
+        # then went silent. Deliberately long to guarantee the
+        # deadline trips before the sleep completes.
+        await asyncio.sleep(5.0)
+        yield b"never-reached"
+
+    inner = StreamingResponse(_stalled_upstream(), media_type="text/event-stream")
+    import time as _t
+    wrapped = _wrap_v2_stream_finalize(
+        inner,
+        durable=None,
+        row_id="row-stalled",
+        workspace_id="ws",
+        provider="anthropic",
+        model="claude",
+        body={},
+        ingress_decision="allowed",
+        ingress_rule_id=None,
+        routing_meta={},
+        clerk_user_id=None,
+        ai_tool=None,
+        user_email=None,
+        started_monotonic=_t.monotonic(),
+        stream_deadline_seconds=0.1,
+    )
+
+    # Bound the assertion to a hard 2s so a regression fails fast
+    # instead of hanging the suite (the fix must trip in ~0.1s).
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(_drain(wrapped.body_iterator), timeout=2.0)
+    assert captured["execution_status"] == "timeout", (
+        f"stalled upstream must land as execution_status='timeout'; "
+        f"got {captured}"
+    )
+    assert captured["decision"] == "error"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_wrap_v2_stream_drains_cleanly_when_upstream_finishes(monkeypatch):
+    """Regression guard — the deadline-fetch fix must NOT break the
+    happy path where upstream finishes cleanly before the deadline.
+    Without this, moving to wait_for-based iteration could break
+    StopAsyncIteration handling."""
+    from app.modules.guard.gateway_handler import _wrap_v2_stream_finalize
+
+    captured: dict = {}
+
+    async def _fake_finalize(*, execution_status, decision, response_bytes, **_kw):
+        captured.update(
+            execution_status=execution_status,
+            decision=decision,
+            response_bytes=response_bytes,
+        )
+
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_lifecycle.finalize_durable_row",
+        _fake_finalize,
+    )
+    async def _noop_close(_durable):
+        return
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_lifecycle.close_durable_row",
+        _noop_close,
+    )
+
+    async def _fast_upstream():
+        yield b"data: chunk-1\n\n"
+        yield b"data: [DONE]\n\n"
+
+    inner = StreamingResponse(_fast_upstream(), media_type="text/event-stream")
+    import time as _t
+    wrapped = _wrap_v2_stream_finalize(
+        inner,
+        durable=None,
+        row_id="row-fast",
+        workspace_id="ws",
+        provider="anthropic",
+        model="claude",
+        body={},
+        ingress_decision="allowed",
+        ingress_rule_id=None,
+        routing_meta={},
+        clerk_user_id=None,
+        ai_tool=None,
+        user_email=None,
+        started_monotonic=_t.monotonic(),
+        stream_deadline_seconds=10.0,
+    )
+
+    async for _ in wrapped.body_iterator:
+        pass
+
+    assert captured["execution_status"] == "ok"
+    assert captured["decision"] == "allowed"
+    assert b"chunk-1" in (captured["response_bytes"] or b"")
+    assert b"[DONE]" in (captured["response_bytes"] or b"")

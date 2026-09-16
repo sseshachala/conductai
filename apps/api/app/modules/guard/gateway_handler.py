@@ -1117,26 +1117,56 @@ def _wrap_v2_stream_finalize(
     async def _wrapped():
         collected = bytearray()
         stream_exc: BaseException | None = None
+        # Y3 — the original ``async for chunk in original`` implicitly
+        # awaits ``__anext__``. That await has no timeout of its own,
+        # so a stalled upstream (headers arrived, then no chunk ever
+        # sent) blocks here indefinitely — the profile's
+        # ``timeout_seconds`` is only checked BEFORE each chunk yields.
+        # Reviewer's reproducer: a mock body_iterator whose
+        # ``__anext__`` sleeps past the deadline never trips the check.
+        #
+        # Fix: drive the iteration by hand, ``wait_for(anext)`` with
+        # the remaining budget as the timeout. TimeoutError from
+        # wait_for lands in the outer except and finalize records
+        # ``execution_status='timeout'``.
+        iterator = original.__aiter__() if hasattr(original, "__aiter__") else original
         try:
-            async for chunk in original:
-                # X4 wall-clock deadline enforcement — the coordinator's
-                # wait_for only covered header arrival; enforce the
-                # profile's total-request budget across the body too.
-                if (
-                    stream_deadline_seconds is not None
-                    and (time.monotonic() - started_monotonic)
-                    > stream_deadline_seconds
-                ):
-                    raise _a.TimeoutError(
-                        f"stream body exceeded profile "
-                        f"timeout_seconds={stream_deadline_seconds}"
+            while True:
+                if stream_deadline_seconds is not None:
+                    remaining = stream_deadline_seconds - (
+                        time.monotonic() - started_monotonic
                     )
+                    if remaining <= 0:
+                        raise _a.TimeoutError(
+                            f"stream body exceeded profile "
+                            f"timeout_seconds={stream_deadline_seconds}"
+                        )
+                    try:
+                        chunk = await _a.wait_for(
+                            iterator.__anext__(), timeout=remaining,
+                        )
+                    except _a.TimeoutError:
+                        # Re-raise with our message so the finalize
+                        # branch below distinguishes stalled-upstream
+                        # timeout from other timeouts.
+                        raise _a.TimeoutError(
+                            f"stream body exceeded profile "
+                            f"timeout_seconds={stream_deadline_seconds}"
+                            f" (stalled upstream)"
+                        )
+                else:
+                    try:
+                        chunk = await iterator.__anext__()
+                    except StopAsyncIteration:
+                        break
                 if isinstance(chunk, str):
                     chunk_bytes = chunk.encode("utf-8")
                 else:
                     chunk_bytes = chunk
                 collected.extend(chunk_bytes)
                 yield chunk_bytes
+        except StopAsyncIteration:
+            pass
         except BaseException as exc:  # noqa: BLE001 — need CancelledError too
             stream_exc = exc
             raise
