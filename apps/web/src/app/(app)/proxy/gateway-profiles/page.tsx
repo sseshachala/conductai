@@ -561,15 +561,42 @@ function ProfileDetail({
 
 function HowToUse({ profile }: { profile: GatewayProfileV2Out }) {
   const identifier = conditIdentifier(profile)
-  // Gateway URL is the client-facing endpoint. Backend router mounts
-  // at ``/gateway/v1/<provider>/...`` (see
-  // ``apps/api/app/modules/guard/routers/gateway_proxy.py`` — the
-  // prefix is ``/gateway/v1``, provider is the next path segment).
-  // Previously this displayed ``/v1/gateway`` — following the setup
-  // instructions verbatim never reached the intended endpoint.
-  const gatewayUrl = typeof window !== "undefined"
-    ? `${window.location.origin.replace(/\/$/, "")}/gateway/v1`
-    : "/gateway/v1"
+  // Z4 fix — the Gateway URL must include a provider suffix.
+  // Backend router mounts at ``/gateway/v1/<provider>/<vendor-path>``
+  // (see ``apps/api/app/modules/guard/routers/gateway_proxy.py`` —
+  // prefix ``/gateway/v1``, provider = next path segment). Displaying
+  // just ``/gateway/v1`` was still an incomplete URL — SDKs point at
+  // it and get 404.
+  //
+  // Derive the provider suffix from the profile's targets. For a
+  // profile with an anthropic target, users need
+  // ``/gateway/v1/anthropic``. For OpenAI + OpenRouter (via
+  // passthrough) users go through ``/gateway/v1/openai``. When a
+  // profile fronts multiple providers (mixed fallback), we list all
+  // of them so the admin picks the one matching their SDK.
+  const origin = typeof window !== "undefined"
+    ? window.location.origin.replace(/\/$/, "")
+    : ""
+  const wc = (profile.working_copy as {
+    targets?: Array<{ transport?: string; provider?: string; integration?: string }>
+  } | null | undefined) ?? {}
+  const surfaces = new Set<string>()
+  for (const t of wc.targets ?? []) {
+    // Passthrough routes speak OpenAI Chat Completions today
+    // (OpenRouter is OpenAI-compatible) — the SDK still points at
+    // /gateway/v1/openai for those.
+    if (t.transport === "http_passthrough") {
+      surfaces.add("openai")
+    } else if (t.provider === "anthropic" || t.provider === "openai") {
+      surfaces.add(t.provider)
+    }
+  }
+  const urls = surfaces.size === 0
+    // Fallback for a draft with no targets yet — show both so the
+    // admin sees the pattern.
+    ? [`${origin}/gateway/v1/anthropic`, `${origin}/gateway/v1/openai`]
+    : [...surfaces].map(p => `${origin}/gateway/v1/${p}`)
+
   return (
     <div className="card card-pad" style={{ background: "var(--surface-2)" }}>
       <div className="eyebrow" style={{ marginBottom: 8 }}>How to use this profile</div>
@@ -578,9 +605,23 @@ function HowToUse({ profile }: { profile: GatewayProfileV2Out }) {
         <code className="mono" style={{ fontSize: 12.5, wordBreak: "break-all" }}>{identifier}</code>
         <CopyButton value={identifier} />
 
-        <span style={{ fontSize: 12, color: "var(--text-2)" }}>Gateway URL</span>
-        <code className="mono" style={{ fontSize: 12.5, wordBreak: "break-all" }}>{gatewayUrl}</code>
-        <CopyButton value={gatewayUrl} />
+        <span style={{ fontSize: 12, color: "var(--text-2)" }}>
+          Gateway URL{urls.length > 1 ? "s (per SDK)" : ""}
+        </span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {urls.map(u => (
+            <code
+              key={u}
+              className="mono"
+              style={{ fontSize: 12.5, wordBreak: "break-all" }}
+            >{u}</code>
+          ))}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {urls.map(u => (
+            <CopyButton key={u} value={u} />
+          ))}
+        </div>
 
         <span style={{ fontSize: 12, color: "var(--text-2)" }}>Auth token</span>
         <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>
@@ -589,8 +630,9 @@ function HowToUse({ profile }: { profile: GatewayProfileV2Out }) {
         <a className="btn btn-ghost btn-sm" href="/settings" style={{ height: 26, fontSize: 11.5 }}>Manage</a>
       </div>
       <p style={{ fontSize: 11.5, color: "var(--text-3)", margin: "10px 0 0" }}>
-        Set your SDK's <code className="mono">model:</code> to the profile identifier and
-        the base URL to the gateway URL.
+        Point your SDK's base URL at the matching entry above (Anthropic
+        SDK → ``/gateway/v1/anthropic``, OpenAI SDK → ``/gateway/v1/openai``)
+        and set <code className="mono">model:</code> to the profile identifier.
       </p>
     </div>
   )
