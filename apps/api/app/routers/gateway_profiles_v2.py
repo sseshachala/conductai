@@ -9,11 +9,11 @@ Endpoint map:
 
     POST   /               create draft (working_copy only, no revision)
     GET    /               list profiles in this workspace
-    GET    /{profile_id}   read one — working_copy + revisions + bindings
+    GET    /{profile_id}   read one — working_copy + revisions + active_revision
     PUT    /{profile_id}   update working_copy (schema-validated)
-    DELETE /{profile_id}   drop draft (rejected if any binding points at it)
-    POST   /{profile_id}/publish       atomic: revision + binding
-    POST   /{profile_id}/rollback      atomic: binding → older revision
+    DELETE /{profile_id}   drop draft
+    POST   /{profile_id}/publish       atomic: revision + active_revision_id swap
+    POST   /{profile_id}/rollback      atomic: active_revision_id → older revision
     GET    /{profile_id}/revisions     list history
 
 Publish is the load-bearing operation:
@@ -24,14 +24,18 @@ Publish is the load-bearing operation:
 4. In one transaction:
    - Insert a new ``gateway_profile_revisions`` row with
      ``version = max(existing) + 1``.
-   - Upsert the ``gateway_profile_bindings`` row for
-     ``(workspace_id, environment_id, model_alias)`` to the new
-     revision.
+   - Swap ``gateway_profiles.active_revision_id`` to the new revision.
    - Cache ``profile.model_alias`` on the parent row for cheap listing.
 
 Rollback is the same atomic pointer-swap without the revision insert;
-history is intact and the previous binding is discoverable via the
-``revisions`` list.
+history is intact and the previous ``active_revision_id`` is discoverable
+via the ``revisions`` list.
+
+**v3 schema note**: bindings by ``(workspace_id, environment_id, model_alias)``
+are gone. v3 resolves by ``cond_code`` (parsed from the client's
+``model:`` field) directly against ``gateway_profiles.active_revision_id``
+— environment is carried inside each target's ``credential_ref``. Any
+reference to a "bindings" table in older comments/tests is stale.
 
 Everything Guard owns (permissions, spend, allowed destinations),
 Gateway runtime owns (retry classification), or LiteLLM owns
@@ -318,20 +322,134 @@ def _generate_unique_cond_code(db: Session, workspace_id: str) -> str:
 
 
 def _validate_working_copy(working_copy: dict[str, Any]) -> GatewayProfileV2:
-    """Parse + capability-catalog check. Raises 400 on either failure."""
+    """Parse + capability-catalog check. Raises 400 on either failure.
+
+    Errors are returned as a structured body so the UI can highlight the
+    offending field on the specific target rather than showing a bare
+    error string. Shape:
+
+    ``{"detail": "...", "errors": [{"path": "targets.2.credential_ref",
+      "message": "...", "target_index": 2}]}``
+
+    The server is authoritative — the client-side capability catalog
+    mirror at ``apps/web/src/lib/gatewayCapabilityCatalog.ts`` is a UX
+    hint, not a gate. This function's decision is what publishes stand
+    or fall on.
+    """
+    from pydantic import ValidationError
+
+    # Map the transport literal on each target back to the discriminated-
+    # union variant class name Pydantic uses in loc paths. Absence in
+    # this map means an unknown transport (Pydantic will already have
+    # emitted a top-level literal_error we surface verbatim).
+    _TRANSPORT_VARIANT_NAME: dict[str, str] = {
+        "native_http": "NativeHTTPTarget",
+        "litellm_sdk": "LiteLLMSDKTarget",
+        "http_passthrough": "HTTPPassthroughTarget",
+    }
+
     try:
         parsed = GatewayProfileV2.model_validate(working_copy)
-    except Exception as exc:
+    except ValidationError as exc:
+        raw_targets = working_copy.get("targets")
+        raw_targets_list = raw_targets if isinstance(raw_targets, list) else []
+
+        errors: list[dict[str, Any]] = []
+        for e in exc.errors():
+            loc_parts = e.get("loc", ())
+            loc = ".".join(str(p) for p in loc_parts)
+            # ``loc`` for a targets-list error looks like
+            # ("targets", 2, "credential_ref") for direct field errors
+            # or ("targets", 2, "LiteLLMSDKTarget", "credential_ref")
+            # when the discriminated union tried each variant. Extract
+            # the target index so the UI can highlight the row, and
+            # collect the variant name (if any) so we can filter noise
+            # from mismatched-variant errors below.
+            target_index: int | None = None
+            variant_name: str | None = None
+            if (
+                len(loc_parts) >= 2
+                and loc_parts[0] == "targets"
+                and isinstance(loc_parts[1], int)
+            ):
+                target_index = loc_parts[1]
+                if len(loc_parts) >= 3 and isinstance(loc_parts[2], str) \
+                        and loc_parts[2] in _TRANSPORT_VARIANT_NAME.values():
+                    variant_name = loc_parts[2]
+
+            # Discriminated-union noise filter (self-review #2): when
+            # a target's ``transport`` is set, Pydantic still walks the
+            # other two variants and emits per-variant errors that are
+            # confusing ("target[0].NativeHTTPTarget.transport should
+            # be native_http" when the user chose litellm_sdk). Drop
+            # those; keep only errors whose variant matches the
+            # target's declared transport.
+            if variant_name is not None and target_index is not None:
+                if 0 <= target_index < len(raw_targets_list):
+                    declared_transport = raw_targets_list[target_index].get("transport") \
+                        if isinstance(raw_targets_list[target_index], dict) else None
+                    expected_variant = _TRANSPORT_VARIANT_NAME.get(
+                        declared_transport or ""
+                    )
+                    if expected_variant and variant_name != expected_variant:
+                        continue  # skip mismatched-variant noise
+                    # Strip the variant name from the reported path so the
+                    # UI sees ``targets.2.credential_ref`` regardless of
+                    # which union variant matched.
+                    loc = ".".join(
+                        str(p) for i, p in enumerate(loc_parts) if i != 2
+                    )
+
+            errors.append({
+                "path": loc,
+                "message": e.get("msg", "invalid"),
+                "target_index": target_index,
+                "type": e.get("type", "value_error"),
+            })
+
+        # If the noise filter left us with zero errors (edge case: all
+        # errors were mismatched-variant noise, which should never
+        # happen if the input passed the top-level schema shape), fall
+        # back to reporting the raw errors so nothing gets swallowed.
+        if not errors:
+            for e in exc.errors():
+                loc_parts = e.get("loc", ())
+                errors.append({
+                    "path": ".".join(str(p) for p in loc_parts),
+                    "message": e.get("msg", "invalid"),
+                    "target_index": (
+                        loc_parts[1]
+                        if len(loc_parts) >= 2 and loc_parts[0] == "targets"
+                        and isinstance(loc_parts[1], int) else None
+                    ),
+                    "type": e.get("type", "value_error"),
+                })
+
         raise HTTPException(
-            status_code=400, detail=f"schema invalid: {exc}",
+            status_code=400,
+            detail={"summary": "schema invalid", "errors": errors},
         ) from exc
+
     try:
         validate_targets_against_accepts(
             accepts=parsed.accepts, targets=parsed.targets,
         )
     except CapabilityMismatch as exc:
+        # CapabilityMismatch's message already names the target id +
+        # missing operation + transport/integration. Preserve that in
+        # the same structured shape so the UI has a consistent
+        # ``detail`` object to render.
         raise HTTPException(
-            status_code=400, detail=f"capability check failed: {exc}",
+            status_code=400,
+            detail={
+                "summary": "capability check failed",
+                "errors": [{
+                    "path": "targets",
+                    "message": str(exc),
+                    "target_index": None,
+                    "type": "capability_mismatch",
+                }],
+            },
         ) from exc
     return parsed
 

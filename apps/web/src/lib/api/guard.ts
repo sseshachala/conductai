@@ -2,6 +2,74 @@ import { API, AuthFetch, del, json, patch, post, put } from "./client"
 
 const base = () => `${API}/guard`
 
+// ─── Structured validation errors (PR 6, #2033) ──────────────────────
+// Publish + save endpoints for Gateway Profile v2 return errors as
+// ``{"detail": {"summary": "...", "errors": [{"path": "targets.2.
+// credential_ref", "message": "...", "target_index": 2, "type":
+// "value_error"}]}}``. `_formatGatewayError` collapses that back into
+// a human-readable string so `new Error(msg).message` reads sensibly
+// wherever the editor dialogs surface it. Callers that want per-target
+// highlighting can catch and re-parse via `GatewayValidationError`.
+export interface GatewayValidationErrorItem {
+  path: string
+  message: string
+  target_index: number | null
+  type: string
+}
+
+export class GatewayValidationError extends Error {
+  summary: string
+  errors: GatewayValidationErrorItem[]
+
+  constructor(summary: string, errors: GatewayValidationErrorItem[]) {
+    // Human-readable message: summary + up to three offending fields
+    // ``target[2] credential_ref: <msg>``. Beyond three, elide with
+    // ``+N more`` so the toast doesn't dominate the viewport.
+    const lines = errors.slice(0, 3).map((e) => {
+      const where =
+        e.target_index !== null && e.target_index !== undefined
+          ? `target[${e.target_index}] ${e.path.split(".").slice(-1)[0]}`
+          : e.path || "(profile)"
+      return `${where}: ${e.message}`
+    })
+    if (errors.length > 3) {
+      lines.push(`+${errors.length - 3} more`)
+    }
+    super([summary, ...lines].filter(Boolean).join(" — "))
+    this.name = "GatewayValidationError"
+    this.summary = summary
+    this.errors = errors
+  }
+}
+
+/**
+ * Parse a response body into a readable error. Prefers the structured
+ * shape (PR 6). Falls back to the raw text so older-shape backends and
+ * non-validation 4xx/5xx still surface something legible.
+ */
+function _formatGatewayError(bodyText: string, status: number): Error {
+  try {
+    const parsed = JSON.parse(bodyText)
+    const detail = parsed?.detail
+    if (
+      detail &&
+      typeof detail === "object" &&
+      Array.isArray(detail.errors)
+    ) {
+      return new GatewayValidationError(
+        typeof detail.summary === "string" ? detail.summary : "invalid",
+        detail.errors as GatewayValidationErrorItem[],
+      )
+    }
+    if (typeof detail === "string" && detail.length > 0) {
+      return new Error(detail)
+    }
+  } catch {
+    // fall through
+  }
+  return new Error(bodyText || `HTTP ${status}`)
+}
+
 // Mutation helpers that THROW on non-2xx and return the parsed JSON body.
 // The base `post`/`put`/`del` in ./client swallow errors — the caller gets
 // a raw Response object even for 4xx/5xx, which silently masks server
@@ -17,7 +85,7 @@ async function _mutateJson<T>(
   })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
-    throw new Error(text || `HTTP ${res.status}`)
+    throw _formatGatewayError(text, res.status)
   }
   return res.json() as Promise<T>
 }
@@ -28,7 +96,7 @@ async function _mutateVoid(
   const res = await f(url, { method })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
-    throw new Error(text || `HTTP ${res.status}`)
+    throw _formatGatewayError(text, res.status)
   }
 }
 

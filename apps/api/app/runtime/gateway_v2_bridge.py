@@ -16,11 +16,11 @@ stays a thin, testable fork of the v1 path:
   so the downstream response gate and audit lifecycle don't have to
   branch on transport type.
 
-Phase 1 (this module + gateway_handler wire-in): non-streaming only.
-Streaming is a follow-up commit; the handler returns 501 for
-``stream=true`` v2 requests until it lands. The v2 flag stays OFF until
-streaming ships so no client sees the 501 unless we flip it on
-intentionally for a canary.
+Streaming lands via ``NativeHTTPTransport`` — see
+``gateway_handler._execute_v2`` for the ``stream=true`` path.
+LiteLLM SDK streaming isn't wired yet: a stream request that wins
+against a LiteLLM target returns 501 (see the guard in
+``_execute_v2``) rather than crashing inside ``coerce_response_body``.
 """
 from __future__ import annotations
 

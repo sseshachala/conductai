@@ -7,12 +7,18 @@ Two resolver paths live here, selected per request by the
   ``gateway_profiles.config`` column, matched to the URL's provider
   surface. This is the historical path; kept alive for workspaces that
   haven't yet published a v2 profile.
-- **v2** — ``resolve_v2()`` looks up the immutable
-  ``gateway_profile_bindings`` row for
-  ``(workspace_id, environment_id, model_alias)`` and follows to the
-  pinned revision. Zero alphabetical fallback. The revision id is
-  returned so callers can pin it through every attempt of the same
-  request.
+- **v2** (v3 schema) — ``resolve_v2()`` looks up
+  ``gateway_profiles.active_revision_id`` for ``(workspace_id,
+  cond_code)`` and returns the pinned revision. Zero alphabetical
+  fallback. The revision id is pinned through every attempt of the
+  same request so a mid-flight publish can't shift routes on live
+  traffic.
+- **Legacy note**: earlier drafts of v2 used a
+  ``gateway_profile_bindings`` table keyed by
+  ``(workspace_id, environment_id, model_alias)``. That table is gone
+  in v3 — env selection happens inside each target's
+  ``credential_ref``, and ``model_alias`` is display-only. Any older
+  comment/test referencing the bindings table is stale.
 
 The v1 path also carries a bug fix in this commit: the historical
 selector picked by name-then-environment BEFORE checking provider

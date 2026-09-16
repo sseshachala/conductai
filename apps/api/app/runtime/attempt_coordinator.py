@@ -30,19 +30,23 @@ Nothing in this module reads the database. The caller passes a
 the client payload. That keeps the coordinator unit-testable without
 Postgres + Vault decryption plumbing.
 
-Not shipped in this file:
+The gateway route wiring (reads ``model:`` from body, calls
+``resolve_v2``, then calls into this module) lives in
+``gateway_handler.py`` — separate concern, kept out of the
+coordinator so this module stays unit-testable without FastAPI.
 
-- The gateway route wiring (reads ``model:`` from body, calls
-  ``resolve_v2``, then calls into this module). That's a request-path
-  change in ``gateway_handler.py`` — separate concern, worth its own
-  review.
+Transports the coordinator dispatches to:
 
-PR 5 lands HTTP passthrough via ``HTTPPassthroughTransport`` — OpenRouter
-is the reference integration; Portkey / Helicone / Azure OpenAI / Custom
-follow in separate PRs. An unregistered ``integration`` raises
-``UnsupportedPassthroughIntegration`` from the transport rather than
-the coordinator's ``UnsupportedTransport`` (which now covers only
-truly unknown target types).
+- ``NativeHTTPTransport`` (``transport=native_http``) — direct HTTP
+  to Anthropic + OpenAI. Streaming supported.
+- ``LiteLLMTransport`` (``transport=litellm_sdk``) — LiteLLM SDK for
+  translation cases. Non-streaming path is production; streaming
+  through the SDK is a follow-up.
+- ``HTTPPassthroughTransport`` (``transport=http_passthrough``) —
+  external gateways. OpenRouter is the reference integration; other
+  integrations (Portkey / Helicone / Azure / Custom) fail at the
+  transport layer with ``UnsupportedPassthroughIntegration`` until
+  each ships its per-integration auth-header semantics.
 """
 from __future__ import annotations
 
@@ -72,8 +76,10 @@ log = structlog.get_logger(__name__)
 class UnsupportedTransport(Exception):
     """Raised when the coordinator encounters a target type it can't
     dispatch. Should be unreachable in practice — the schema union
-    covers every legal target, and PR 5 lands the passthrough executor
-    so ``UnsupportedTransport`` no longer fires for passthrough targets.
+    covers every legal target and each has a matching transport wired
+    in ``_dispatch``. Kept as a defensive fallback for a corrupted
+    profile row (e.g. a schema migration mid-request) rather than a
+    silent request-time crash.
     """
 
 
