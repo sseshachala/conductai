@@ -183,26 +183,21 @@ async def handle_gateway_request(
         except Exception:
             return _fail_closed(400, "Body must be valid JSON")
 
-        # #2001 — v2 request-path wire-in is intentionally NOT hooked here
-        # yet. The prior draft did an early-return before policy eval +
-        # durable audit ran, which is a parallel-path anti-pattern:
-        # v2-served traffic would be ungoverned and unrecorded until a
-        # follow-up commit threaded Guard + audit through. The reviewer
-        # correctly flagged this.
+        # #2004 Phase 1 — v2 execution wire-in. We're INSIDE the request
+        # lifecycle here: Guard policy hasn't run yet, durable audit
+        # hasn't opened, response gate hasn't attached. The v2 fork
+        # deliberately does NOT short-circuit any of those; it only
+        # replaces the ``transport.forward`` step further down. Every
+        # v1 gate below (policy eval, rate limit, redaction, guidance
+        # injection, durable audit open/close, response gate) runs
+        # identically for a v2-routed request.
         #
-        # The safe rule: v2 target execution has to live INSIDE the
-        # existing governed lifecycle (Guard policy, durable-audit
-        # open/close/finalize, response gate, spend accounting). The
-        # config plane (schema, publish, bindings, revisions, coordinator,
-        # LiteLLMTransport) is fine to ship because it doesn't move a
-        # single client byte. Turning the flag on today is safe because
-        # nothing here consumes it — every request still flows through
-        # the v1 path below.
-        #
-        # Wiring plan lives in the follow-up PR: v2 lookup + target
-        # execution happens where v1 currently calls transport.forward,
-        # so ONE lifecycle governs both writer paths. See #2001
-        # follow-up.
+        # Resolution + credential pre-fetch happen in this DB block; the
+        # coordinator call happens later, outside the DB block, using
+        # a resolver closure over the pre-fetched keys. Flag stays OFF
+        # by default; a missing binding falls through to v1 rather
+        # than fail-closed, so a partial rollout never surprises a
+        # workspace that hasn't published a v2 profile yet.
 
         model, _routing_meta = _apply_tier_resolution(db, workspace_id, provider, body)
         if operation != "inference":
@@ -211,6 +206,30 @@ async def handle_gateway_request(
                 "operation": operation,
                 "billable": False,
             }
+
+        # #2004 Phase 1 — v2 lookup + credential pre-fetch. Runs while
+        # the DB session is still open; if a binding matches, we hand
+        # the coordinator a pre-resolved credential map so the forward
+        # step doesn't need to reach back into the DB. A None plan means
+        # v1 handles this request as before.
+        _v2_plan = None
+        _environment_id_hdr = request.headers.get("x-conductai-environment-id")
+        if settings.guard_gateway_profile_v2 and _environment_id_hdr:
+            _v2_plan = _build_v2_plan(
+                db=db,
+                workspace_id=workspace_id,
+                environment_id=_environment_id_hdr,
+                provider=provider,
+                upstream_path=upstream_path,
+                body=body,
+            )
+            if _v2_plan is not None:
+                _routing_meta = {
+                    **(_routing_meta or {}),
+                    "gateway_version": "v2",
+                    "revision_id": str(_v2_plan.resolved.revision_id),
+                    "v2_operation": _v2_plan.operation,
+                }
         if _routing_meta:
             log.info(
                 "proxy.tier_resolved",
@@ -510,49 +529,88 @@ async def handle_gateway_request(
     #     the reconciler's lease-expiry sweep.
     import asyncio as _asyncio
     try:
-        _response = await transport.forward(
-            sender=_forward,
-            upstream=upstream,
-            path=upstream_path,
-            body=body,
-            real_key=real_key,
-            auth_header_out=auth_header_out,
-            bearer=bearer,
-            is_stream=is_stream,
-            extra_headers=extra_headers,
-            background=background,
-            audit_args=(
-                workspace_id,
-                clerk_user_id,
-                ai_tool,
-                provider,
-                model,
-                _audit_decision,
-                _audit_rule_id,
-                started,
-                body,
-                prompt_summary,
-                _user_email,
-                _run_id,
-                _workflow,
-                _workflow_id,
-                _hook_session_id,
-                _routing_meta,
-                # Phase 0 of #1959 — index 16 = resolved agent identity id. Read by
-                # router._schedule_audit and forwarded to audit.record so Gateway
-                # rows carry agent attribution end-to-end.
-                str(_agent_identity_id) if _agent_identity_id else None,
-                # Follow-up to #1971 — index 17 = FastAPI request path so
-                # /proxy/* vs /gateway/v1/* is queryable from audit rows.
-                request.url.path,
-                # Phase 2 of #1959 — index 18 = durable row id. When set,
-                # _schedule_audit dispatches to finalize() instead of record().
-                _durable_row_id,
-            ),
-            upstream_api_key=_upstream_key,
-            vendor_key=_vault_key_val,
-            provider=provider,
-        )
+        if _v2_plan is not None:
+            # #2004 Phase 1 — v2 executes the coordinator + LiteLLM SDK
+            # transport inside the same lifecycle as v1. Same audit row,
+            # same response gate, same finalize path — only the actual
+            # upstream call differs. Non-streaming only for Phase 1;
+            # streaming raises early at plan build time.
+            _response = await _execute_v2(plan=_v2_plan, body=body)
+            # Reflect coordinator attempt records back into routing_meta
+            # so the durable audit row lands with the full attempt list.
+            _routing_meta = _merge_routing_meta(_routing_meta, _v2_plan.last_meta)
+            # v2 bypasses transport.forward → no _schedule_audit fires
+            # inside a background task. Finalize the durable row here so
+            # the row moves from ``accepted`` to a terminal state before
+            # this request returns; otherwise the reconciler would sweep
+            # it later and the client-visible latency would show the
+            # audit as pending for seconds after the response was sent.
+            if _durable_row_id:
+                try:
+                    _v2_body_bytes = _response.body if hasattr(_response, "body") else None
+                except Exception:
+                    _v2_body_bytes = None
+                await _finalize_durable_row(
+                    row_id=_durable_row_id,
+                    workspace_id=workspace_id,
+                    decision=_audit_decision,
+                    provider=provider,
+                    model=model,
+                    body=body,
+                    response_bytes=_v2_body_bytes,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    rule_id=_audit_rule_id,
+                    routing_meta=_routing_meta,
+                    execution_status="ok",
+                    result_summary=None,
+                    clerk_user_id=clerk_user_id,
+                    ai_tool=ai_tool,
+                    user_email=_user_email,
+                )
+        else:
+            _response = await transport.forward(
+                sender=_forward,
+                upstream=upstream,
+                path=upstream_path,
+                body=body,
+                real_key=real_key,
+                auth_header_out=auth_header_out,
+                bearer=bearer,
+                is_stream=is_stream,
+                extra_headers=extra_headers,
+                background=background,
+                audit_args=(
+                    workspace_id,
+                    clerk_user_id,
+                    ai_tool,
+                    provider,
+                    model,
+                    _audit_decision,
+                    _audit_rule_id,
+                    started,
+                    body,
+                    prompt_summary,
+                    _user_email,
+                    _run_id,
+                    _workflow,
+                    _workflow_id,
+                    _hook_session_id,
+                    _routing_meta,
+                    # Phase 0 of #1959 — index 16 = resolved agent identity id. Read by
+                    # router._schedule_audit and forwarded to audit.record so Gateway
+                    # rows carry agent attribution end-to-end.
+                    str(_agent_identity_id) if _agent_identity_id else None,
+                    # Follow-up to #1971 — index 17 = FastAPI request path so
+                    # /proxy/* vs /gateway/v1/* is queryable from audit rows.
+                    request.url.path,
+                    # Phase 2 of #1959 — index 18 = durable row id. When set,
+                    # _schedule_audit dispatches to finalize() instead of record().
+                    _durable_row_id,
+                ),
+                upstream_api_key=_upstream_key,
+                vendor_key=_vault_key_val,
+                provider=provider,
+            )
         # #1733 PR 4: response gate (non-streaming).
         if (
             operation == "inference"
@@ -620,3 +678,182 @@ async def handle_gateway_request(
         await _close_durable(_durable)
 
     return _response
+
+
+# ─── #2004 v2 execution bridge ────────────────────────────────────────
+
+
+class _V2Plan:
+    """Everything the forward step needs to serve a v2 request.
+
+    Built while the DB session is still open; the coordinator + LiteLLM
+    call use only the pre-resolved fields on this object, so the
+    session can be closed before the network call fires. ``last_meta``
+    is filled in by ``_execute_v2`` after the coordinator returns so
+    the handler can merge attempt records into ``routing_meta`` for the
+    durable audit row.
+    """
+
+    __slots__ = ("resolved", "operation", "credential_resolver", "last_meta")
+
+    def __init__(self, resolved, operation, credential_resolver):
+        self.resolved = resolved
+        self.operation = operation
+        self.credential_resolver = credential_resolver
+        self.last_meta: dict = {}
+
+
+def _build_v2_plan(
+    *,
+    db,
+    workspace_id: str,
+    environment_id: str,
+    provider: str,
+    upstream_path: str,
+    body: dict,
+) -> _V2Plan | None:
+    """Return a v2 execution plan or None (fall through to v1).
+
+    Returns None on any of:
+      - model alias absent (client didn't set body['model']).
+      - no v2 binding for (workspace, env, alias).
+      - the URL surface isn't in the v2 operation map yet.
+      - stream=true (Phase 1 non-streaming only — streaming lands in a
+        follow-up commit tracked on #2004).
+
+    Raises via HTTPException on credentials being partially resolvable —
+    that's a config error, not a silent degrade. The caller sees a 503
+    with the specific target id so ops can fix it in Vault.
+    """
+    from app.modules.guard.gateway_v2_bridge import (
+        CredentialsUnavailable,
+        build_credential_resolver,
+        map_operation,
+    )
+    from app.modules.guard.gateway_runtime import resolve_v2
+    from fastapi import HTTPException as _HTTPException
+
+    if body.get("stream") is True:
+        # Phase 1 non-streaming only. Silent v1 fallback is acceptable
+        # because the v2 flag stays off in prod until streaming ships.
+        return None
+
+    model_alias = body.get("model")
+    if not model_alias:
+        return None
+
+    operation = map_operation(provider, upstream_path)
+    if operation is None:
+        return None
+
+    resolved = resolve_v2(
+        db,
+        workspace_id=workspace_id,
+        environment_id=environment_id,
+        model_alias=model_alias,
+    )
+    if resolved is None:
+        return None
+
+    if operation not in resolved.profile.accepts:
+        # Published profile advertises the alias but not this operation.
+        # A publish-time check should have caught this — surface loudly
+        # instead of falling to v1 and hiding the misconfiguration.
+        raise _HTTPException(
+            status_code=400,
+            detail=(
+                f"Gateway Profile v2 for alias {model_alias!r} does not "
+                f"accept operation {operation!r}. Advertised operations: "
+                f"{list(resolved.profile.accepts)!r}. Republish with "
+                f"{operation!r} in ``accepts`` or route this URL to a "
+                f"different alias."
+            ),
+        )
+
+    try:
+        resolver = build_credential_resolver(
+            db,
+            workspace_id=workspace_id,
+            environment_id=environment_id,
+            provider=provider,
+            profile=resolved.profile,
+        )
+    except CredentialsUnavailable as exc:
+        raise _HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    return _V2Plan(resolved=resolved, operation=operation, credential_resolver=resolver)
+
+
+async def _execute_v2(*, plan: _V2Plan, body: dict, routing_meta_ref):
+    """Run the coordinator + shape its result into a JSONResponse.
+
+    Attempt records land on ``plan.last_meta`` so the caller can merge
+    them into ``routing_meta`` for the durable audit row. Non-streaming
+    only in Phase 1 — the plan builder already refused stream=true.
+    """
+    from app.runtime.attempt_coordinator import (
+        AllAttemptsFailed as _AllAttemptsFailed,
+        AttemptCoordinator as _AttemptCoordinator,
+    )
+    from app.runtime.gateway_v2_bridge import coerce_response_body
+    from fastapi import HTTPException as _HTTPException
+
+    coordinator = _AttemptCoordinator()
+    try:
+        result = await coordinator.execute(
+            resolved=plan.resolved,
+            operation=plan.operation,
+            payload=body,
+            credential_resolver=plan.credential_resolver,
+            stream=False,
+        )
+    except _AllAttemptsFailed as exc:
+        plan.last_meta = {
+            "winning_target_id": None,
+            "attempt_count": len(exc.attempts),
+            "attempts": [
+                {
+                    "target_id": a.target_id,
+                    "transport": a.transport,
+                    "provider_or_integration": a.provider_or_integration,
+                    "succeeded": a.succeeded,
+                    "error_class": a.error_class,
+                }
+                for a in exc.attempts
+            ],
+        }
+        raise _HTTPException(
+            status_code=502,
+            detail=(
+                f"All Gateway v2 targets failed for revision "
+                f"{plan.resolved.revision_id}: {exc}"
+            ),
+        ) from exc
+
+    plan.last_meta = {
+        "winning_target_id": result.winning_target_id,
+        "attempt_count": len(result.attempts),
+        "attempts": [
+            {
+                "target_id": a.target_id,
+                "transport": a.transport,
+                "provider_or_integration": a.provider_or_integration,
+                "succeeded": a.succeeded,
+                "error_class": a.error_class,
+            }
+            for a in result.attempts
+        ],
+    }
+    return JSONResponse(content=coerce_response_body(result.response))
+
+
+def _merge_routing_meta(current: dict | None, updates: dict) -> dict:
+    """Return ``current`` merged with ``updates`` — never mutates in
+    place. ``routing_meta`` gets threaded through the audit args tuple
+    and downstream lifecycle finalize; a shared mutable reference would
+    cross the request/audit boundary and could race the background
+    finalize task."""
+    return {**(current or {}), **updates}

@@ -2,6 +2,69 @@ import { API, AuthFetch, del, json, patch, post, put } from "./client"
 
 const base = () => `${API}/guard`
 
+// ─── Gateway Profile v2 (#2001/#2003) ───────────────────────────────
+
+export type GatewayProfileV2Operation =
+  | "anthropic_messages"
+  | "anthropic_count_tokens"
+  | "openai_chat_completions"
+  | "openai_responses"
+
+export type GatewayProfileV2Target =
+  | {
+      id: string
+      transport: "litellm_sdk"
+      provider: string
+      model: string
+      credential_ref: string
+      provider_options?: Record<string, unknown>
+    }
+  | {
+      id: string
+      transport: "http_passthrough"
+      integration: string
+      model: string
+      credential_ref: string
+      endpoint?: string | null
+      provider_options?: Record<string, unknown>
+    }
+
+export interface GatewayProfileV2WorkingCopy {
+  name: string
+  model_alias: string
+  accepts: GatewayProfileV2Operation[]
+  timeout_seconds?: number
+  max_attempts?: number
+  targets: GatewayProfileV2Target[]
+}
+
+export interface GatewayProfileV2Revision {
+  id: string
+  version: number
+  published_by: string
+  published_at: string
+}
+
+export interface GatewayProfileV2Binding {
+  workspace_id: string
+  environment_id: string
+  model_alias: string
+  revision_id: string
+  updated_at: string
+}
+
+export interface GatewayProfileV2Out {
+  id: string
+  workspace_id: string
+  name: string
+  model_alias: string | null
+  working_copy: Record<string, unknown> | null
+  revisions: GatewayProfileV2Revision[]
+  bindings: GatewayProfileV2Binding[]
+  created_at: string
+  updated_at: string
+}
+
 export type GuardPolicyAction = "block" | "approval" | "warn" | "audit"
 
 export interface GuardPolicy {
@@ -323,6 +386,27 @@ export const guard = {
       }),
     push: (f: AuthFetch, workspaceId: string, id: string, environmentId: string) =>
       post(f, `${API}/workspaces/${workspaceId}/gateways/${id}/push`, { environment_id: environmentId }),
+  },
+
+  gatewayProfilesV2: {
+    list: (f: AuthFetch, workspaceId: string) =>
+      json<GatewayProfileV2Out[]>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2`),
+    get: (f: AuthFetch, workspaceId: string, id: string) =>
+      json<GatewayProfileV2Out>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}`),
+    create: (f: AuthFetch, workspaceId: string, body: { name: string; working_copy?: Record<string, unknown> }) =>
+      post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2`, body),
+    updateWorkingCopy: (f: AuthFetch, workspaceId: string, id: string, workingCopy: Record<string, unknown>) =>
+      put(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/working_copy`, { working_copy: workingCopy }),
+    publish: (f: AuthFetch, workspaceId: string, id: string, environmentId: string) =>
+      post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/publish`, { environment_id: environmentId }),
+    rollback: (f: AuthFetch, workspaceId: string, id: string, body: { environment_id: string; revision_id: string }) =>
+      post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rollback`, body),
+    revisions: (f: AuthFetch, workspaceId: string, id: string) =>
+      json<GatewayProfileV2Revision[]>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/revisions`),
+    revisionSnapshot: (f: AuthFetch, workspaceId: string, id: string, revisionId: string) =>
+      json<Record<string, unknown>>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/revisions/${revisionId}`),
+    remove: (f: AuthFetch, workspaceId: string, id: string) =>
+      del(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}`),
   },
 
   notifications: {
