@@ -51,31 +51,58 @@ const PASSTHROUGH_INTEGRATION_OPERATIONS: Record<string, Operation[]> = {
   // shape. Absent = deriveAccepts contributes nothing for them.
 }
 
-// Auto-derive `accepts` from the target providers. Every Anthropic
-// target contributes anthropic_messages; every OpenAI target
-// contributes openai_chat_completions and openai_responses. Each
-// http_passthrough target contributes whatever its integration
-// certifies (PR X6 fix — the previous version ignored passthrough
-// targets entirely, so an OpenRouter-only profile saved with empty
-// accepts and 400'd on publish).
+// Compute the operations ONE target can serve. Anthropic native /
+// litellm → anthropic_messages + count_tokens. OpenAI native / litellm
+// → chat_completions + responses. Passthrough looks up the per-
+// integration matrix (OpenRouter: chat_completions only).
+function _capabilitiesOf(t: DraftTarget): Operation[] {
+  if (t.transport === "native_http" || t.transport === "litellm_sdk") {
+    if (t.provider === "anthropic") {
+      return ["anthropic_messages", "anthropic_count_tokens"]
+    }
+    if (t.provider === "openai") {
+      return ["openai_chat_completions", "openai_responses"]
+    }
+    return []
+  }
+  if (t.transport === "http_passthrough") {
+    return PASSTHROUGH_INTEGRATION_OPERATIONS[t.integration] ?? []
+  }
+  return []
+}
+
+// Auto-derive `accepts` from the target list using the INTERSECTION of
+// each target's certified operations.
+//
+// Why intersection (Z3 fix): the backend requires every target to
+// serve every accepted operation — see
+// ``validate_targets_against_accepts`` in
+// ``apps/api/app/modules/guard/capability_catalog.py``. The old code
+// used the union, which meant a mixed fallback profile (e.g. native
+// OpenAI primary + OpenRouter fallback) advertised
+// ``openai_responses`` — OpenRouter can't serve that operation, so
+// publish rejected the profile.
+//
+// With intersection, the profile advertises only what BOTH targets
+// can serve. In the OpenAI + OpenRouter example that's just
+// ``openai_chat_completions``, which is what OpenRouter supports and
+// what the client actually uses. If two targets have no operations in
+// common (e.g. Anthropic + OpenAI) the derived accepts is empty and
+// publish rejects — which is correct: those targets can't share a
+// profile without a translation layer.
 function deriveAccepts(targets: DraftTarget[]): Operation[] {
-  const seen = new Set<Operation>()
-  for (const t of targets) {
-    if (t.transport === "native_http" || t.transport === "litellm_sdk") {
-      if (t.provider === "anthropic") {
-        seen.add("anthropic_messages")
-        seen.add("anthropic_count_tokens")
-      }
-      if (t.provider === "openai") {
-        seen.add("openai_chat_completions")
-        seen.add("openai_responses")
-      }
-    } else if (t.transport === "http_passthrough") {
-      const ops = PASSTHROUGH_INTEGRATION_OPERATIONS[t.integration] ?? []
-      for (const op of ops) seen.add(op)
+  if (targets.length === 0) return []
+
+  // Start with the first target's capabilities, then narrow to the
+  // shared subset with each subsequent target.
+  const first = new Set<Operation>(_capabilitiesOf(targets[0]))
+  for (let i = 1; i < targets.length; i += 1) {
+    const cap = new Set<Operation>(_capabilitiesOf(targets[i]))
+    for (const op of first) {
+      if (!cap.has(op)) first.delete(op)
     }
   }
-  return [...seen]
+  return [...first]
 }
 
 type EnvironmentRow = { id: string; name: string }

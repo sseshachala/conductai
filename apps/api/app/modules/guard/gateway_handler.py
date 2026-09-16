@@ -813,6 +813,13 @@ async def handle_gateway_request(
                     ingress_rule_id=_audit_rule_id,
                     started_monotonic=started,
                     record_audit_fn=_record_audit,
+                    # Z2 — deadline enforcement independent of audit
+                    # flag. Same profile timeout the durable-on
+                    # wrapper uses (Y3).
+                    stream_deadline_seconds=(
+                        _v2_plan.resolved.profile.timeout_seconds
+                        if _v2_plan and _v2_plan.resolved else None
+                    ),
                 )
             else:
                 _v2_finalize = _derive_v2_finalize_args(
@@ -877,19 +884,25 @@ async def handle_gateway_request(
             except Exception:
                 log.exception("guard.gateway.error_finalize_failed", row_id=_durable_row_id)
         elif _v2_plan is not None:
-            # Y2 — v2 executed with durable-audit OFF and the request
-            # raised before the happy-path fallback (from X2) could
-            # schedule ``_record_audit``. Without this branch,
-            # exception-path v2 requests leave zero rows: the durable
-            # finalize above skipped (no row_id), the happy-path
-            # fallback never ran, and v1's ``_record_audit`` never
-            # fires because we're on the v2 branch.
+            # Z1 fix — v2 executed with durable-audit OFF and the
+            # request raised. Y2 originally used
+            # ``background.add_task(_record_audit, ...)``, but FastAPI
+            # only runs queued background tasks AFTER the response is
+            # returned normally — a raise here propagates to FastAPI's
+            # error handler, which returns a 5xx without draining the
+            # queued task. Net effect: exception-path v2 requests with
+            # durable-audit off wrote ZERO rows (reviewer's
+            # ``recorded 0 times`` reproducer).
             #
-            # Schedule ``_record_audit`` via BackgroundTasks with an
-            # 'error' decision so dashboards see the failure exactly
-            # like they do for the durable-on case.
+            # Fix: run ``_record_audit`` synchronously in a thread
+            # (``asyncio.to_thread``) BEFORE re-raising. Blocks the
+            # exception path by the DB write duration, but that's
+            # bounded by audit.record's own timeout and it's the only
+            # way the row lands. Failure of the writer itself is
+            # logged, never re-raised, so the original exception the
+            # caller sees is preserved.
             try:
-                background.add_task(
+                await _asyncio.to_thread(
                     _record_audit,
                     workspace_id, clerk_user_id, ai_tool, provider, model,
                     "error",
@@ -1570,6 +1583,7 @@ def _wrap_v2_stream_record_legacy(
     ingress_rule_id: str | None,
     started_monotonic: float,
     record_audit_fn,
+    stream_deadline_seconds: float | None = None,
 ) -> StreamingResponse:
     """X2 fallback wrapper — mirrors ``_wrap_v2_stream_finalize`` but
     schedules ``_record_audit`` (v1's single-phase writer) instead of
@@ -1579,32 +1593,91 @@ def _wrap_v2_stream_record_legacy(
     Same shape guarantees: collects bytes as they pass, fires the
     audit call on stream close (or cancellation), never swallows the
     stream on writer failure.
+
+    Z2 — deadline enforcement is now independent of the audit flag.
+    ``stream_deadline_seconds`` uses the same ``asyncio.wait_for``
+    per-chunk pattern as ``_wrap_v2_stream_finalize`` (Y3 fix), so a
+    stalled upstream trips the profile timeout whether durable-audit
+    is on or off. Prior state: only the durable-on wrapper enforced
+    the deadline → stalled streams under durable-off held the
+    connection open indefinitely.
     """
+    import asyncio as _a
+
     original = response.body_iterator
 
     async def _wrapped():
         collected = bytearray()
         stream_exc: BaseException | None = None
+        iterator = (
+            original.__aiter__() if hasattr(original, "__aiter__") else original
+        )
         try:
-            async for chunk in original:
+            # Z2 — same per-chunk wait_for pattern as Y3 uses in the
+            # durable-on wrapper. Refactoring both wrappers to share
+            # the loop would be nicer, but keeping them side-by-side
+            # for review clarity: the shape MUST match so a future
+            # fix to one is easy to mirror.
+            while True:
+                if stream_deadline_seconds is not None:
+                    remaining = stream_deadline_seconds - (
+                        time.monotonic() - started_monotonic
+                    )
+                    if remaining <= 0:
+                        raise _a.TimeoutError(
+                            f"stream body exceeded profile "
+                            f"timeout_seconds={stream_deadline_seconds}"
+                        )
+                    try:
+                        chunk = await _a.wait_for(
+                            iterator.__anext__(), timeout=remaining,
+                        )
+                    except _a.TimeoutError:
+                        raise _a.TimeoutError(
+                            f"stream body exceeded profile "
+                            f"timeout_seconds={stream_deadline_seconds}"
+                            f" (stalled upstream)"
+                        )
+                else:
+                    try:
+                        chunk = await iterator.__anext__()
+                    except StopAsyncIteration:
+                        break
                 if isinstance(chunk, str):
                     chunk_bytes = chunk.encode("utf-8")
                 else:
                     chunk_bytes = chunk
                 collected.extend(chunk_bytes)
                 yield chunk_bytes
+        except StopAsyncIteration:
+            pass
         except BaseException as exc:  # noqa: BLE001
             stream_exc = exc
             raise
         finally:
-            import asyncio as _a
             _is_cancel = isinstance(stream_exc, _a.CancelledError)
+            _is_timeout = isinstance(stream_exc, _a.TimeoutError)
             _decision = ingress_decision if stream_exc is None else "error"
-            _execution_status = (
-                "success" if stream_exc is None
-                else ("interrupted" if _is_cancel else "error")
-            )
+            if stream_exc is None:
+                _execution_status = "success"
+            elif _is_cancel:
+                _execution_status = "interrupted"
+            elif _is_timeout:
+                _execution_status = "timeout"
+            else:
+                _execution_status = "error"
             try:
+                # Z1 note — same failure mode as the non-streaming
+                # exception path: background.add_task never runs if
+                # the response was aborted. Streaming's "response
+                # already sent" state means ASGI does drain queued
+                # tasks in the happy path; on error, this may or may
+                # not fire depending on ASGI server timing. Not
+                # worth switching to asyncio.to_thread here because
+                # the stream completed the send BEFORE this finally
+                # (bytes were yielded successfully); the writer
+                # timing is a best-effort observability signal, not
+                # a correctness gate.
                 background.add_task(
                     record_audit_fn,
                     workspace_id, clerk_user_id, ai_tool, provider, model,
