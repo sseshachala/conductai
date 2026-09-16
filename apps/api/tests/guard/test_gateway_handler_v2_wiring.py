@@ -24,23 +24,33 @@ def test_build_v2_plan_imports_bridge_from_runtime():
     # invoking the function. All rejection paths below drive it.
 
 
-def test_build_v2_plan_streaming_fails_explicit():
-    """Client sent a cond-<code>-<alias> identifier AND stream=true.
-    Silent v1 fallback would misrepresent which profile served the
-    request; return 501 instead."""
-    from app.modules.guard.gateway_handler import _build_v2_plan
+def test_build_v2_plan_no_longer_rejects_streaming_at_plan_time(monkeypatch):
+    """PR 2.5 — streaming lands. Regression test asserts plan-build no
+    longer 501s for stream=true; the 501 branch belonged in Phase 1 and
+    is gone. The plan proceeds to resolve_v2, which we stub to return
+    None so the test asserts we got PAST the streaming pre-check and
+    into the normal resolution path (404 not 501)."""
+    from app.modules.guard import gateway_handler
     from fastapi import HTTPException
+
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_runtime.resolve_v2",
+        lambda db, *, workspace_id, cond_code: None,
+    )
+
     with pytest.raises(HTTPException) as excinfo:
-        _build_v2_plan(
-            db=None,   # never touched — early rejection
+        gateway_handler._build_v2_plan(
+            db=None,
             workspace_id="ws",
             cond_code="abc12345",
             provider="anthropic",
             upstream_path="/v1/messages",
             body={"stream": True, "model": "cond-abc12345-coding"},
         )
-    assert excinfo.value.status_code == 501
-    assert "streaming" in str(excinfo.value.detail).lower()
+    # NOT 501 (streaming refusal) — 404 (unknown cond_code), meaning we
+    # got past the streaming pre-check into normal resolution.
+    assert excinfo.value.status_code == 404
+    assert "abc12345" in str(excinfo.value.detail)
 
 
 def test_build_v2_plan_unmapped_url_fails_explicit():
@@ -91,12 +101,11 @@ def test_build_v2_plan_unknown_cond_code_fails_explicit(monkeypatch):
 
 def test_execute_v2_signature_matches_caller():
     """Regression for the stale ``routing_meta_ref`` positional. The
-    caller passes only ``plan`` and ``body``; ensure the signature
-    accepts that shape."""
+    caller passes only ``plan`` and ``body`` (and PR 2.5 adds ``stream``
+    as an optional kwarg). Ensure required kwargs still match caller."""
     import inspect
     from app.modules.guard.gateway_handler import _execute_v2
     sig = inspect.signature(_execute_v2)
-    # Only plan + body are required keyword args.
     required = {
         name for name, p in sig.parameters.items()
         if p.default is inspect.Parameter.empty
@@ -104,6 +113,9 @@ def test_execute_v2_signature_matches_caller():
     assert required == {"plan", "body"}, (
         f"_execute_v2 kwargs drifted from caller ({required})"
     )
+    # PR 2.5 — ``stream`` is an optional keyword with default False.
+    assert "stream" in sig.parameters
+    assert sig.parameters["stream"].default is False
 
 
 # ─── Response-gate block: preserve upstream body + use gate's rule id ─
@@ -164,6 +176,140 @@ def test_derive_finalize_block_uses_gate_rule_and_upstream_body():
     assert out["rule_id"] == "gate-rule-response-block"
     # upstream body preserved so token usage stays in the row
     assert out["response_bytes"] == pre_gate_upstream
+
+
+# ─── PR 2.5 — streaming through _execute_v2 ───────────────────────────
+
+
+@pytest.mark.anyio("asyncio")
+async def test_execute_v2_streaming_returns_streaming_response(monkeypatch):
+    """When the coordinator returns a StreamingUpstream (native_http +
+    stream=True), _execute_v2 wraps it in a StreamingResponse and does
+    NOT wrap it in a JSONResponse. Tests the isinstance branch."""
+    from fastapi.responses import StreamingResponse
+
+    from app.modules.guard.gateway_handler import _execute_v2, _V2Plan
+    from app.runtime.attempt_coordinator import (
+        AttemptRecord,
+        CoordinatorResult,
+    )
+    from app.runtime.native_http_transport import StreamingUpstream
+
+    class _FakeHTTPXResp:
+        headers = {"content-type": "text/event-stream"}
+        async def aiter_bytes(self):
+            for chunk in [b"data: {\"x\":1}\n\n", b"data: [DONE]\n\n"]:
+                yield chunk
+        async def aclose(self):
+            pass
+
+    upstream = StreamingUpstream(
+        status_code=200,
+        headers=dict(_FakeHTTPXResp.headers),
+        response=_FakeHTTPXResp(),
+        provider="anthropic",
+    )
+
+    class _FakeCoordinator:
+        async def execute(self, *, resolved, operation, payload, credential_resolver, stream):
+            assert stream is True
+            return CoordinatorResult(
+                response=upstream,
+                revision_id=resolved.revision_id if resolved is not None else None,
+                attempts=[AttemptRecord(
+                    target_id="primary",
+                    transport="native_http",
+                    provider_or_integration="anthropic",
+                    started_at_monotonic=0.0,
+                    completed_at_monotonic=0.1,
+                    succeeded=True,
+                    error_class=None,
+                    error_summary=None,
+                )],
+                winning_target_id="primary",
+            )
+
+    monkeypatch.setattr(
+        "app.runtime.attempt_coordinator.AttemptCoordinator",
+        lambda: _FakeCoordinator(),
+    )
+
+    # A tiny stub plan — resolved.revision_id + resolved.profile.accepts
+    # are the only fields _execute_v2 reads directly; other fields go
+    # through the coordinator we've stubbed.
+    from types import SimpleNamespace
+    plan = _V2Plan(
+        resolved=SimpleNamespace(
+            revision_id="rev-1",
+            profile=SimpleNamespace(accepts=["anthropic_messages"]),
+        ),
+        operation="anthropic_messages",
+        credential_resolver=lambda ref: "sk-fake",
+    )
+
+    response = await _execute_v2(plan=plan, body={"stream": True}, stream=True)
+    assert isinstance(response, StreamingResponse), (
+        f"streaming request should return StreamingResponse, got {type(response).__name__}"
+    )
+    assert response.status_code == 200
+    assert response.media_type == "text/event-stream"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_execute_v2_streaming_501_for_non_native_transport(monkeypatch):
+    """If the coordinator wins with a non-native transport (LiteLLM SDK,
+    which returns a generator, or passthrough), streaming through
+    _execute_v2 raises 501 rather than crashing inside coerce_response_body.
+    Names the winning target so the operator knows which one to swap."""
+    from fastapi import HTTPException
+
+    from app.modules.guard.gateway_handler import _execute_v2, _V2Plan
+    from app.runtime.attempt_coordinator import (
+        AttemptRecord,
+        CoordinatorResult,
+    )
+
+    class _FakeCoordinator:
+        async def execute(self, *, resolved, operation, payload, credential_resolver, stream):
+            # A LiteLLM stream would return an async generator, not a
+            # StreamingUpstream. Simulate that with a MagicMock().
+            from unittest.mock import MagicMock
+            return CoordinatorResult(
+                response=MagicMock(),
+                revision_id=resolved.revision_id if resolved is not None else None,
+                attempts=[AttemptRecord(
+                    target_id="litellm-primary",
+                    transport="litellm_sdk",
+                    provider_or_integration="anthropic",
+                    started_at_monotonic=0.0,
+                    completed_at_monotonic=0.1,
+                    succeeded=True,
+                    error_class=None,
+                    error_summary=None,
+                )],
+                winning_target_id="litellm-primary",
+            )
+
+    monkeypatch.setattr(
+        "app.runtime.attempt_coordinator.AttemptCoordinator",
+        lambda: _FakeCoordinator(),
+    )
+
+    from types import SimpleNamespace
+    plan = _V2Plan(
+        resolved=SimpleNamespace(
+            revision_id="rev-1",
+            profile=SimpleNamespace(accepts=["anthropic_messages"]),
+        ),
+        operation="anthropic_messages",
+        credential_resolver=lambda ref: "sk-fake",
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await _execute_v2(plan=plan, body={"stream": True}, stream=True)
+    assert excinfo.value.status_code == 501
+    assert "native_http" in str(excinfo.value.detail)
+    assert "litellm-primary" in str(excinfo.value.detail)
 
 
 def test_derive_finalize_block_with_malformed_envelope_falls_back_to_ingress():

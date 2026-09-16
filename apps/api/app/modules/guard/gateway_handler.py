@@ -556,7 +556,13 @@ async def handle_gateway_request(
             # upstream call differs. Finalize is intentionally deferred
             # to AFTER the response gate below so a blocked response
             # doesn't land on top of a pre-gate "ok" row.
-            _response = await _execute_v2(plan=_v2_plan, body=body)
+            #
+            # PR 2.5 — streaming: pass ``stream`` down so the coordinator +
+            # native_http transport can return a live StreamingResponse.
+            # Non-streaming returns a JSONResponse (same shape as before).
+            _response = await _execute_v2(
+                plan=_v2_plan, body=body, stream=is_stream,
+            )
             # Reflect coordinator attempt records back into routing_meta
             # so the durable audit row lands with the full attempt list.
             _routing_meta = _merge_routing_meta(_routing_meta, _v2_plan.last_meta)
@@ -565,12 +571,20 @@ async def handle_gateway_request(
             # 451 error envelope carrying no token usage. Finalize needs
             # the upstream bytes so cost + token accounting still work
             # even for a blocked response.
-            try:
-                _v2_upstream_body_bytes: bytes | None = (
-                    _response.body if hasattr(_response, "body") else None
-                )
-            except Exception:
-                _v2_upstream_body_bytes = None
+            #
+            # For streaming: body isn't materialised until the stream
+            # drains, so the pre-gate snapshot is unavailable here.
+            # `_wrap_v2_stream_finalize` collects bytes as they pass
+            # through and calls finalize on stream-close.
+            if isinstance(_response, StreamingResponse):
+                _v2_upstream_body_bytes: bytes | None = None
+            else:
+                try:
+                    _v2_upstream_body_bytes = (
+                        _response.body if hasattr(_response, "body") else None
+                    )
+                except Exception:
+                    _v2_upstream_body_bytes = None
         else:
             _response = await transport.forward(
                 sender=_forward,
@@ -646,30 +660,52 @@ async def handle_gateway_request(
         # row. v1 gets its finalize inside transport.forward's
         # _schedule_audit path (which fires after the response is sent
         # in a BackgroundTask), so v1 isn't touched here.
+        #
+        # Streaming: finalize can't run synchronously — we haven't seen
+        # the vendor bytes yet. Wrap the stream generator so finalize
+        # fires when the stream drains (or client disconnects). Non-
+        # streaming still finalizes inline.
         if _v2_plan is not None and _durable_row_id:
-            _v2_finalize = _derive_v2_finalize_args(
-                post_gate_response=_response,
-                pre_gate_upstream_body=_v2_upstream_body_bytes,
-                ingress_decision=_audit_decision,
-                ingress_rule_id=_audit_rule_id,
-            )
-            await _finalize_durable_row(
-                row_id=_durable_row_id,
-                workspace_id=workspace_id,
-                decision=_v2_finalize["decision"],
-                provider=provider,
-                model=model,
-                body=body,
-                response_bytes=_v2_finalize["response_bytes"],
-                duration_ms=int((time.monotonic() - started) * 1000),
-                rule_id=_v2_finalize["rule_id"],
-                routing_meta=_routing_meta,
-                execution_status=_v2_finalize["execution_status"],
-                result_summary=None,
-                clerk_user_id=clerk_user_id,
-                ai_tool=ai_tool,
-                user_email=_user_email,
-            )
+            if isinstance(_response, StreamingResponse):
+                _response = _wrap_v2_stream_finalize(
+                    _response,
+                    row_id=_durable_row_id,
+                    workspace_id=workspace_id,
+                    provider=provider,
+                    model=model,
+                    body=body,
+                    ingress_decision=_audit_decision,
+                    ingress_rule_id=_audit_rule_id,
+                    routing_meta=_routing_meta,
+                    clerk_user_id=clerk_user_id,
+                    ai_tool=ai_tool,
+                    user_email=_user_email,
+                    started_monotonic=started,
+                )
+            else:
+                _v2_finalize = _derive_v2_finalize_args(
+                    post_gate_response=_response,
+                    pre_gate_upstream_body=_v2_upstream_body_bytes,
+                    ingress_decision=_audit_decision,
+                    ingress_rule_id=_audit_rule_id,
+                )
+                await _finalize_durable_row(
+                    row_id=_durable_row_id,
+                    workspace_id=workspace_id,
+                    decision=_v2_finalize["decision"],
+                    provider=provider,
+                    model=model,
+                    body=body,
+                    response_bytes=_v2_finalize["response_bytes"],
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    rule_id=_v2_finalize["rule_id"],
+                    routing_meta=_routing_meta,
+                    execution_status=_v2_finalize["execution_status"],
+                    result_summary=None,
+                    clerk_user_id=clerk_user_id,
+                    ai_tool=ai_tool,
+                    user_email=_user_email,
+                )
     except BaseException as _forward_exc:  # noqa: BLE001 — need CancelledError too
         # Best-effort finalize so the row lands terminated immediately
         # instead of waiting on the reconciler's lease sweep. WHERE
@@ -791,16 +827,11 @@ def _build_v2_plan(
     # for v2 routing. Any failure below must be loud — silently routing a
     # `cond-<code>-<alias>` request through v1 with unrelated config
     # would lie about the profile working.
-
-    if body.get("stream") is True:
-        raise _HTTPException(
-            status_code=501,
-            detail=(
-                "Gateway Profile v2 does not support streaming yet. Send "
-                "with stream=false, or route this client through the v1 "
-                "gateway URL."
-            ),
-        )
+    #
+    # PR 2.5: streaming is now supported end-to-end for the launch set
+    # (Anthropic Messages, OpenAI Chat + Responses) via NativeHTTPTransport
+    # + StreamingResponse. The pre-check that used to raise 501 here is
+    # gone; ``_execute_v2`` threads ``stream`` down through the coordinator.
 
     operation = map_operation(provider, upstream_path)
     if operation is None:
@@ -857,18 +888,26 @@ def _build_v2_plan(
     return _V2Plan(resolved=resolved, operation=operation, credential_resolver=resolver)
 
 
-async def _execute_v2(*, plan: _V2Plan, body: dict):
-    """Run the coordinator + shape its result into a JSONResponse.
+async def _execute_v2(*, plan: _V2Plan, body: dict, stream: bool = False):
+    """Run the coordinator + shape its result into a JSONResponse or
+    ``StreamingResponse`` depending on the request's ``stream`` flag.
 
     Attempt records land on ``plan.last_meta`` so the caller can merge
-    them into ``routing_meta`` for the durable audit row. Non-streaming
-    only in Phase 1 — the plan builder already refused stream=true.
+    them into ``routing_meta`` for the durable audit row.
+
+    PR 2.5 — streaming: when the coordinator returns a
+    ``StreamingUpstream`` (from the native_http transport with
+    ``stream=True``), we wrap its ``aiter_bytes()`` in a
+    ``StreamingResponse`` and close the underlying httpx response when
+    the client disconnects or the generator exhausts. Retry-after-headers
+    is enforced by the coordinator (any success return locks the target).
     """
     from app.runtime.attempt_coordinator import (
         AllAttemptsFailed as _AllAttemptsFailed,
         AttemptCoordinator as _AttemptCoordinator,
     )
     from app.runtime.gateway_v2_bridge import coerce_response_body
+    from app.runtime.native_http_transport import StreamingUpstream as _StreamingUpstream
     from fastapi import HTTPException as _HTTPException
 
     coordinator = _AttemptCoordinator()
@@ -878,7 +917,7 @@ async def _execute_v2(*, plan: _V2Plan, body: dict):
             operation=plan.operation,
             payload=body,
             credential_resolver=plan.credential_resolver,
-            stream=False,
+            stream=stream,
         )
     except _AllAttemptsFailed as exc:
         plan.last_meta = {
@@ -917,7 +956,172 @@ async def _execute_v2(*, plan: _V2Plan, body: dict):
             for a in result.attempts
         ],
     }
+
+    if isinstance(result.response, _StreamingUpstream):
+        return _build_v2_stream_response(result.response)
+    if stream:
+        # Non-native transports (LiteLLM SDK, http_passthrough) don't
+        # produce a StreamingUpstream. Rather than crash inside
+        # coerce_response_body on an async iterator, raise a clean 501
+        # naming the transport that won the coordinator race.
+        raise _HTTPException(
+            status_code=501,
+            detail=(
+                f"Gateway Profile v2 streaming supports transport="
+                f"native_http only in this launch. Winning target "
+                f"{result.winning_target_id!r} used a different "
+                "transport; add a native_http target ahead of it or "
+                "request stream=false."
+            ),
+        )
     return JSONResponse(content=coerce_response_body(result.response))
+
+
+# hop-by-hop headers httpx already handles or Starlette re-emits — never
+# forward these back to the client verbatim, or the chunked framing
+# breaks and the client sees Content-Length mismatch errors.
+_STREAM_HOP_HEADERS: frozenset[str] = frozenset({
+    "content-length",
+    "content-encoding",
+    "transfer-encoding",
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "upgrade",
+})
+
+
+def _build_v2_stream_response(upstream) -> StreamingResponse:
+    """Wrap a ``StreamingUpstream`` in a Starlette ``StreamingResponse``.
+
+    Generator yields raw bytes as they arrive and closes the httpx
+    response in ``finally`` so a dropped client connection doesn't leak
+    a pooled slot. Vendor content-type is preserved (SSE for Anthropic /
+    OpenAI) so downstream SDKs consume the stream unchanged.
+    """
+    async def _gen():
+        try:
+            async for chunk in upstream.response.aiter_bytes():
+                yield chunk
+        finally:
+            try:
+                await upstream.response.aclose()
+            except Exception:
+                log.warning(
+                    "gateway.v2.native_http.stream_close_failed",
+                    provider=upstream.provider,
+                )
+
+    forwarded_headers = {
+        k: v
+        for k, v in upstream.headers.items()
+        if k.lower() not in _STREAM_HOP_HEADERS
+    }
+    return StreamingResponse(
+        _gen(),
+        status_code=upstream.status_code,
+        headers=forwarded_headers,
+        media_type=upstream.headers.get("content-type"),
+    )
+
+
+def _wrap_v2_stream_finalize(
+    response: StreamingResponse,
+    *,
+    row_id,
+    workspace_id: str,
+    provider: str,
+    model: str,
+    body: dict,
+    ingress_decision: str,
+    ingress_rule_id: str | None,
+    routing_meta: dict | None,
+    clerk_user_id: str | None,
+    ai_tool: str | None,
+    user_email: str | None,
+    started_monotonic: float,
+) -> StreamingResponse:
+    """Fire durable-audit finalize when the streaming response closes.
+
+    Collects bytes as they pass through so the audit row records the full
+    upstream body for cost + token accounting. Non-streaming v2 does its
+    finalize synchronously in ``handle_gateway_request``; for streaming
+    the finalize *has to* wait until the stream drains, which is why
+    this wrapper exists.
+
+    ponytail: response gate for streaming is a post-hoc buffered scan
+    (see ``_wrap_streaming_response``) and never modifies bytes, so we
+    can safely treat what we see == what the vendor emitted. If a
+    future gate rewrites stream chunks, revisit the ``response_bytes``
+    argument passed to finalize below.
+    """
+    original = response.body_iterator
+
+    async def _wrapped():
+        collected = bytearray()
+        stream_exc: BaseException | None = None
+        try:
+            async for chunk in original:
+                if isinstance(chunk, str):
+                    chunk_bytes = chunk.encode("utf-8")
+                else:
+                    chunk_bytes = chunk
+                collected.extend(chunk_bytes)
+                yield chunk_bytes
+        except BaseException as exc:  # noqa: BLE001 — need CancelledError too
+            stream_exc = exc
+            raise
+        finally:
+            from app.modules.guard.gateway_lifecycle import (
+                finalize_durable_row as _finalize_durable_row,
+            )
+            _is_cancel = isinstance(stream_exc, __import__("asyncio").CancelledError)
+            _decision = ingress_decision if stream_exc is None else "error"
+            _execution_status = (
+                "ok" if stream_exc is None
+                else ("interrupted" if _is_cancel else "error")
+            )
+            _result_summary = (
+                None
+                if stream_exc is None
+                else (
+                    "Stream cancelled by client" if _is_cancel
+                    else f"stream aborted: {type(stream_exc).__name__}: {str(stream_exc)[:400]}"
+                )
+            )
+            try:
+                await _finalize_durable_row(
+                    row_id=row_id,
+                    workspace_id=workspace_id,
+                    decision=_decision,
+                    provider=provider,
+                    model=model,
+                    body=body,
+                    response_bytes=bytes(collected) or None,
+                    duration_ms=int((time.monotonic() - started_monotonic) * 1000),
+                    rule_id=ingress_rule_id,
+                    routing_meta=routing_meta,
+                    execution_status=_execution_status,
+                    result_summary=_result_summary,
+                    clerk_user_id=clerk_user_id,
+                    ai_tool=ai_tool,
+                    user_email=user_email,
+                )
+            except Exception:
+                log.exception(
+                    "guard.gateway.v2.stream_finalize_failed",
+                    row_id=row_id,
+                )
+
+    return StreamingResponse(
+        _wrapped(),
+        media_type=response.media_type,
+        headers=dict(response.headers),
+        status_code=response.status_code,
+    )
 
 
 def _merge_routing_meta(current: dict | None, updates: dict) -> dict:

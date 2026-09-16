@@ -13,6 +13,14 @@ coordinator only enforces the "no attempt N+1 after first byte"
 invariant by delegating streaming responses back to the caller as-is
 without wrapping them in retry logic.
 
+PR 2.5: for ``NativeHTTPTransport`` streaming attempts, the transport
+raises ``httpx.HTTPStatusError`` on 4xx/5xx *before* returning any
+bytes (see ``_execute_stream``). That means the coordinator's normal
+retry classifier walks pre-body upstream errors, but the moment the
+transport returns a ``StreamingUpstream`` (or LiteLLM stream generator)
+the coordinator records success and returns — no chance to retry
+against a fallback target once headers went out.
+
 Retries live here. LiteLLM's own retry ladder is off (``num_retries=0``
 inside ``LiteLLMTransport``), and the passthrough transports don't
 retry either. This is the single owner.

@@ -1,4 +1,4 @@
-"""Contract tests for NativeHTTPTransport (PR 2).
+"""Contract tests for NativeHTTPTransport (PR 2 + PR 2.5 streaming).
 
 Locks the transport's runtime invariants:
 
@@ -9,8 +9,10 @@ Locks the transport's runtime invariants:
 - Credential comes from the caller-supplied resolver, is only used
   for the duration of the single call, and an empty resolver return
   raises before any HTTP touches the wire.
-- Streaming is refused symmetrically with the LiteLLM transport
-  (Phase 1 non-streaming only).
+- Streaming (PR 2.5) returns a ``StreamingUpstream`` with the live
+  httpx.Response; 4xx/5xx before body is raised as HTTPStatusError so
+  the coordinator's retry classifier walks it exactly like a
+  non-streaming upstream error.
 - Unknown provider / unsupported operation raise ValueError, not
   silent fallthrough — capability catalog should have caught these
   at publish, but belt-and-braces at execute time.
@@ -141,12 +143,100 @@ async def test_client_model_field_is_replaced_by_target_model(monkeypatch):
     assert captured["body"]["messages"] == [{"role": "user", "content": "hi"}]
 
 
+class _FakeStreamResponse:
+    """A stand-in for the still-open httpx.Response returned by
+    ``client.send(request, stream=True)``. Records ``aclose()`` so tests
+    can assert cleanup, exposes an async ``aiter_bytes`` generator, and
+    lets tests inject an error status + body payload."""
+
+    def __init__(self, status_code=200, chunks=None, error_body=b""):
+        self.status_code = status_code
+        self.headers = {"content-type": "text/event-stream"}
+        self._chunks = list(chunks or [])
+        self._error_body = error_body
+        self.aclose_calls = 0
+        self.aread_calls = 0
+
+    async def aiter_bytes(self):
+        for chunk in self._chunks:
+            yield chunk
+
+    async def aread(self):
+        self.aread_calls += 1
+        return self._error_body
+
+    async def aclose(self):
+        self.aclose_calls += 1
+
+
 @pytest.mark.anyio("asyncio")
-async def test_streaming_refused():
-    """Streaming isn't supported in this PR — coordinator refuses at
-    plan build time; belt-and-braces at the transport."""
+async def test_streaming_returns_streaming_upstream(monkeypatch):
+    """PR 2.5 — stream=True returns a StreamingUpstream carrying the
+    live httpx.Response. Coordinator gets a happy-path return the
+    moment headers are past the 400 check, meaning no retry after
+    headers."""
+    from app.runtime.native_http_transport import StreamingUpstream
+
+    fake_response = _FakeStreamResponse(
+        status_code=200,
+        chunks=[b"data: {\"delta\":\"hi\"}\n\n", b"data: [DONE]\n\n"],
+    )
+    captured_request: dict = {}
+
+    def _build_request(method, url, headers, content):
+        captured_request.update(method=method, url=url, headers=headers, content=content)
+        return MagicMock(spec_set=["method", "url"])
+
+    async def _fake_send(request, stream):
+        assert stream is True, "coordinator must ask for a live stream"
+        return fake_response
+
     transport = NativeHTTPTransport()
-    with pytest.raises(NotImplementedError, match=r"streaming"):
+    fake_client = MagicMock()
+    fake_client.build_request = _build_request
+    fake_client.send = _fake_send
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    result = await transport.execute(
+        target=_target(),
+        operation="anthropic_messages",
+        payload={"messages": [{"role": "user", "content": "hi"}], "stream": True},
+        credential_resolver=lambda ref: "sk-ant-live",
+        stream=True,
+    )
+    assert isinstance(result, StreamingUpstream)
+    assert result.status_code == 200
+    assert result.headers["content-type"] == "text/event-stream"
+    assert result.provider == "anthropic"
+    # Body payload asked for stream=true.
+    import json
+    body = json.loads(captured_request["content"])
+    assert body["stream"] is True
+
+
+@pytest.mark.anyio("asyncio")
+async def test_streaming_upstream_4xx_raises_httpstatuserror(monkeypatch):
+    """4xx from the vendor during a streaming attempt must raise
+    HTTPStatusError (with response.status_code set) so the coordinator
+    can retry the next target. The still-open response must be closed
+    before the exception propagates — otherwise the pool leaks a slot."""
+    import httpx
+
+    fake_response = _FakeStreamResponse(status_code=401, error_body=b'{"error":"bad key"}')
+
+    def _build_request(method, url, headers, content):
+        return MagicMock(spec_set=["method", "url"])
+
+    async def _fake_send(request, stream):
+        return fake_response
+
+    transport = NativeHTTPTransport()
+    fake_client = MagicMock()
+    fake_client.build_request = _build_request
+    fake_client.send = _fake_send
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
         await transport.execute(
             target=_target(),
             operation="anthropic_messages",
@@ -154,6 +244,11 @@ async def test_streaming_refused():
             credential_resolver=lambda ref: "sk-fake",
             stream=True,
         )
+    assert excinfo.value.response.status_code == 401
+    # Cleanup: response was aread + aclose'd before we raised, so the
+    # httpx pool doesn't leak.
+    assert fake_response.aread_calls == 1
+    assert fake_response.aclose_calls == 1
 
 
 @pytest.mark.anyio("asyncio")
