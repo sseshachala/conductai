@@ -53,12 +53,12 @@ const PRESET_CHIPS: PresetChip[] = [
       max_attempts: 2,
       targets: [
         {
-          id: "primary", transport: "litellm_sdk",
+          id: "primary", transport: "native_http",
           provider: "anthropic", model: "claude-sonnet-4-6",
           credential_ref: "",
         },
         {
-          id: "fallback", transport: "litellm_sdk",
+          id: "fallback", transport: "native_http",
           provider: "anthropic", model: "claude-haiku-4-5-20251001",
           credential_ref: "",
         },
@@ -76,7 +76,7 @@ const PRESET_CHIPS: PresetChip[] = [
       max_attempts: 1,
       targets: [
         {
-          id: "primary", transport: "litellm_sdk",
+          id: "primary", transport: "native_http",
           provider: "anthropic", model: "claude-opus-4-7",
           credential_ref: "",
         },
@@ -94,12 +94,12 @@ const PRESET_CHIPS: PresetChip[] = [
       max_attempts: 2,
       targets: [
         {
-          id: "primary", transport: "litellm_sdk",
+          id: "primary", transport: "native_http",
           provider: "openai", model: "gpt-4o",
           credential_ref: "",
         },
         {
-          id: "fallback", transport: "litellm_sdk",
+          id: "fallback", transport: "native_http",
           provider: "openai", model: "gpt-4o-mini",
           credential_ref: "",
         },
@@ -117,7 +117,7 @@ const PRESET_CHIPS: PresetChip[] = [
       max_attempts: 1,
       targets: [
         {
-          id: "primary", transport: "litellm_sdk",
+          id: "primary", transport: "native_http",
           provider: "openai", model: "o1",
           credential_ref: "",
         },

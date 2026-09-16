@@ -51,6 +51,17 @@ def _sdk_target(id: str, provider: str = "anthropic", model: str = "claude-sonne
     )
 
 
+def _native_target(id: str, provider: str = "anthropic", model: str = "claude-sonnet-4-6"):
+    from app.modules.guard.gateway_config import NativeHTTPTarget
+    return NativeHTTPTarget(
+        id=id,
+        transport="native_http",
+        provider=provider,
+        model=model,
+        credential_ref=f"vault://{ENV}/{provider}",
+    )
+
+
 def _profile(*, targets, timeout_seconds: int = 30, max_attempts: int = 3) -> GatewayProfileV2:
     return GatewayProfileV2(
         name="prod",
@@ -373,3 +384,50 @@ async def test_transient_error_by_class_name_does_retry():
         credential_resolver=lambda ref: "sk-fake",
     )
     assert result.winning_target_id == "fallback"
+
+
+# ─── PR 2: native_http dispatch ────────────────────────────────────────
+
+
+@pytest.mark.anyio("asyncio")
+async def test_native_target_dispatches_to_native_transport():
+    """PR 2 wires two transports into the coordinator. A native_http
+    target must route to the native transport, NOT the LiteLLM one."""
+    sdk = MagicMock()
+    sdk.execute = AsyncMock(return_value={"never": "called"})
+    native = MagicMock()
+    native.execute = AsyncMock(return_value={"content": "native-ok"})
+
+    coord = AttemptCoordinator(sdk_transport=sdk, native_http_transport=native)
+    result = await coord.execute(
+        resolved=_resolved(_profile(targets=[_native_target("primary")])),
+        operation="anthropic_messages",
+        payload={"messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "sk-fake",
+    )
+    assert result.response == {"content": "native-ok"}
+    assert native.execute.await_count == 1
+    assert sdk.execute.await_count == 0
+
+
+@pytest.mark.anyio("asyncio")
+async def test_mixed_targets_dispatch_per_row():
+    """Primary is native_http; fallback is litellm_sdk. Primary times
+    out (transient); coordinator hits fallback via LiteLLM."""
+    sdk = MagicMock()
+    sdk.execute = AsyncMock(return_value={"content": "sdk-ok"})
+    native = MagicMock()
+    native.execute = AsyncMock(side_effect=TimeoutError("primary timeout"))
+
+    coord = AttemptCoordinator(sdk_transport=sdk, native_http_transport=native)
+    result = await coord.execute(
+        resolved=_resolved(_profile(targets=[
+            _native_target("primary"), _sdk_target("fallback"),
+        ])),
+        operation="anthropic_messages",
+        payload={"messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "sk-fake",
+    )
+    assert result.winning_target_id == "fallback"
+    assert native.execute.await_count == 1
+    assert sdk.execute.await_count == 1

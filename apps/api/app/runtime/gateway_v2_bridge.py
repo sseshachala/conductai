@@ -32,6 +32,7 @@ from app.modules.guard.gateway_config import (
     GatewayProfileV2,
     HTTPPassthroughTarget,
     LiteLLMSDKTarget,
+    NativeHTTPTarget,
     Operation,
 )
 from app.modules.guard.gateway_credentials import resolve_gateway_key
@@ -122,7 +123,7 @@ def build_credential_resolver(
             # slips through, the coordinator raises UnsupportedTransport
             # first — don't waste a Vault lookup on it.
             continue
-        if not isinstance(target, LiteLLMSDKTarget):  # pragma: no cover - future safety
+        if not isinstance(target, (NativeHTTPTarget, LiteLLMSDKTarget)):  # pragma: no cover - future safety
             continue
 
         key = resolve_gateway_key(

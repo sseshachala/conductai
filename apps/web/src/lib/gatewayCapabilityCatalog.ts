@@ -20,7 +20,7 @@ export const ALL_OPERATIONS: Operation[] = [
   "openai_responses",
 ]
 
-export type Transport = "litellm_sdk" | "http_passthrough"
+export type Transport = "native_http" | "litellm_sdk" | "http_passthrough"
 
 export type Integration =
   | "portkey"
@@ -29,6 +29,13 @@ export type Integration =
   | "helicone_openai"
   | "azure_openai"
   | "custom"
+
+// Native HTTP certified per provider. Preferred for Anthropic + OpenAI:
+// preserves the vendor's protocol contract end-to-end, no SDK translation.
+const _NATIVE_HTTP: Record<string, Operation[]> = {
+  anthropic: ["anthropic_messages", "anthropic_count_tokens"],
+  openai: ["openai_chat_completions", "openai_responses"],
+}
 
 // LiteLLM SDK certified per provider. Anything else = not certified.
 const _LITELLM_SDK: Record<string, Operation[]> = {
@@ -44,10 +51,14 @@ const _HTTP_PASSTHROUGH: Record<Integration, Operation[]> = {
 }
 
 export type TargetShape =
+  | { transport: "native_http"; provider: string }
   | { transport: "litellm_sdk"; provider: string }
   | { transport: "http_passthrough"; integration: Integration }
 
 export function certifiedOperations(target: TargetShape): Set<Operation> {
+  if (target.transport === "native_http") {
+    return new Set(_NATIVE_HTTP[target.provider.toLowerCase()] ?? [])
+  }
   if (target.transport === "litellm_sdk") {
     return new Set(_LITELLM_SDK[target.provider.toLowerCase()] ?? [])
   }
@@ -75,9 +86,10 @@ export function validateTargetsAgainstAccepts(args: {
     const certified = certifiedOperations(target)
     const missing = args.accepts.filter(op => !certified.has(op))
     if (missing.length === 0) return
-    const where = target.transport === "litellm_sdk"
-      ? `transport=litellm_sdk, provider=${target.provider}`
-      : `transport=http_passthrough, integration=${target.integration}`
+    const where =
+      target.transport === "http_passthrough"
+        ? `transport=http_passthrough, integration=${target.integration}`
+        : `transport=${target.transport}, provider=${target.provider}`
     const hint = target.transport === "http_passthrough"
       ? "HTTP passthrough targets aren't certified until #2005 lands the executor."
       : "Remove the operation from accepts, or drop this target."
