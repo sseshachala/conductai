@@ -22,6 +22,7 @@ export function LensEmbed({
   title,
   emptyText,
   placeholder,
+  persistKey,
 }: {
   sessionId?: string | null
   initialQuery?: string | null
@@ -31,6 +32,10 @@ export function LensEmbed({
   title?: string
   emptyText?: string
   placeholder?: string
+  /** Persist the server-issued session id in localStorage under
+   *  `lens.session.<persistKey>`. Reload = same session, no lost
+   *  pending_action_ids. Omit for one-shot surfaces. */
+  persistKey?: string
 }) {
   return (
     <div
@@ -60,6 +65,7 @@ export function LensEmbed({
         initialSessionId={sessionId ?? null}
         emptyText={emptyText}
         placeholder={placeholder}
+        persistKey={persistKey}
       />
     </div>
   )

@@ -147,6 +147,7 @@ export default function GatewayProfilesV2Page() {
             title="Lens · Gateway Profiles"
             emptyText="Pick a chip above, or type what you want (e.g. “route ‘coding’ through Claude, GPT-4 as backup”)."
             placeholder="Ask Lens to create, edit, or publish a profile…"
+            persistKey={workspaceId ? `gateway-profiles-v2:${workspaceId}` : undefined}
           />
         </div>
 
