@@ -220,9 +220,16 @@ async def handle_gateway_request(
         # A client that sent `cond-<code>-<alias>` explicitly asked for
         # a v2 profile; silently routing them via v1 when the flag is
         # off would misrepresent which profile served the traffic.
+        #
+        # PR 3 canary: the flag is now per-workspace via
+        # ``gateway_profile_v2_enabled_for(workspace_id)`` — allowlist +
+        # pct bucketing on top of the global kill switch. Deterministic
+        # bucketing means a workspace never oscillates between v1 and v2
+        # mid-session for a given rollout pct.
         _v2_plan = None
+        _v2_enabled = settings.gateway_profile_v2_enabled_for(workspace_id)
         _cond_code = _extract_cond_code(body.get("model"))
-        if _cond_code is not None and not settings.guard_gateway_profile_v2:
+        if _cond_code is not None and not _v2_enabled:
             from fastapi import HTTPException as _HTTPException
             raise _HTTPException(
                 status_code=501,
@@ -232,7 +239,7 @@ async def handle_gateway_request(
                     "ask ops to enable v2."
                 ),
             )
-        if settings.guard_gateway_profile_v2:
+        if _v2_enabled:
             if _cond_code is not None:
                 _v2_plan = _build_v2_plan(
                     db=db,
