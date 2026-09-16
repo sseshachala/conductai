@@ -211,7 +211,7 @@ async def test_execute_v2_streaming_returns_streaming_response(monkeypatch):
     )
 
     class _FakeCoordinator:
-        async def execute(self, *, resolved, operation, payload, credential_resolver, stream):
+        async def execute(self, *, resolved, operation, payload, credential_resolver, stream, **_kw):
             assert stream is True
             return CoordinatorResult(
                 response=upstream,
@@ -270,7 +270,7 @@ async def test_execute_v2_streaming_501_for_non_native_transport(monkeypatch):
     )
 
     class _FakeCoordinator:
-        async def execute(self, *, resolved, operation, payload, credential_resolver, stream):
+        async def execute(self, *, resolved, operation, payload, credential_resolver, stream, **_kw):
             # A LiteLLM stream would return an async generator, not a
             # StreamingUpstream. Simulate that with a MagicMock().
             from unittest.mock import MagicMock
