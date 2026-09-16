@@ -1,0 +1,24 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "endpoint": "/guard/mcp",
+  "workspace_id": "00000000-0000-0000-0000-000000000001",
+  "observer_token_env": "CANARY_OBSERVER_TOKEN",
+  "agents": [
+    {"id": "00000000-0000-0000-0000-000000000002", "token_env": "CANARY_AGENT_001"},
+    {"id": "00000000-0000-0000-0000-000000000003", "token_env": "CANARY_AGENT_002"}
+  ],
+  "duration_seconds": 30,
+  "spawn_rate": 1,
+  "rps": 5,
+  "concurrency": 2,
+  "max_requests": 200,
+  "timeout_seconds": 10,
+  "drain_seconds": 15,
+  "reconnect_every": 20,
+  "abort_error_rate": 0.05,
+  "abort_p95_ms": 3000,
+  "min_achieved_rps_ratio": 0.5,
+  "scenarios": [
+    {"name": "allowed", "tool_name": "mcp_canary_read", "tool_input": {"path": "canary/public.txt"}, "decision": "allowed"}
+  ]
+}

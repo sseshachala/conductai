@@ -1,0 +1,43 @@
+name: conduct-mcp-canary
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: conduct_mcp_canary
+      POSTGRES_HOST_AUTH_METHOD: trust
+    networks: [data]
+    volumes: [database:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD, pg_isready, -U, postgres, -d, conduct_mcp_canary]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    networks: [data]
+  api:
+    image: conduct-e2e-api
+    working_dir: /app
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, '8000']
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql://postgres@postgres/conduct_mcp_canary
+      REDIS_URL: redis://redis:6379
+      ENCRYPTION_KEY: ${MCP_CANARY_ENCRYPTION_KEY:?Run through local_smoke.py}
+      CLERK_SECRET_KEY: ''
+      CLERK_FRONTEND_API: ''
+      ALLOWED_ORIGINS: http://localhost:3120
+    volumes:
+      - ../../apps/api:/app:ro
+      - ../../config:/config:ro
+    ports: ['127.0.0.1:3120:8000']
+    networks: [data, edge]
+    depends_on:
+      postgres:
+        condition: service_healthy
+networks:
+  data:
+    internal: true
+  edge: {}
+volumes:
+  database: {}
