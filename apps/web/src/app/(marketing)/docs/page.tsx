@@ -90,7 +90,7 @@ type TabId = typeof TABS[number]["id"]
 
 const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
   "overview": [
-    { href: "#try-in-60-seconds", label: "Try in 60 seconds" },
+    { href: "#try-in-60-seconds", label: "Hosted trial" },
     { href: "#how-it-works",      label: "Architecture" },
     { href: "#threat-model",      label: "Security & threat model" },
     { href: "#action-tools",      label: "Gating agent actions" },
@@ -98,7 +98,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
   ],
   "getting-started": [
     { href: "#overview",     label: "Overview" },
-    { href: "#quick-trial",  label: "Zero-install trial (60s)" },
+    { href: "#quick-trial",  label: "Hosted trial" },
     { href: "#environments", label: "Environments" },
     { href: "#deployment",   label: "Deployment options" },
     { href: "#cli-install",  label: "CLI. Installation" },
@@ -166,11 +166,14 @@ function TabOverview() {
     <div className="space-y-16">
       <section id="try-in-60-seconds">
         <div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 px-6 py-5">
-          <p className="text-xs uppercase tracking-wide text-indigo-700 font-semibold mb-2">Try Conduct in 60 seconds</p>
+          <p className="text-xs uppercase tracking-wide text-indigo-700 font-semibold mb-2">Hosted trial</p>
           <h2 className="text-lg font-bold text-stone-900 mb-3">Zero local install. Point any Anthropic SDK at the hosted Guard proxy.</h2>
-          <Pre>{`curl -fsSL conductai.ai/install | sh`}</Pre>
+          <Pre>{`curl --proto '=https' --proto-redir '=https' -fL https://conductai.ai/install -o conduct-install.sh
+# Inspect before running.
+less conduct-install.sh
+[ "$(head -n 1 conduct-install.sh)" = '#!/bin/sh' ] && sh conduct-install.sh`}</Pre>
           <p className="text-sm text-stone-600 mt-3">
-            Prompts for email + company, provisions a 7-day trial workspace, drops <Code>~/.conduct/env</Code> with a trial token for Anthropic + OpenAI, and prints a magic-link URL to sign into the dashboard.{" "}
+            Requires curl, Python 3, an interactive terminal, and email verification. Paste the verification URL from your email to provision a trial and write <Code>~/.conduct/env</Code>. Existing accounts require sign-in.{" "}
             <a href="/docs?tab=getting-started#quick-trial" className="text-indigo-600 hover:underline font-medium">Full walkthrough →</a>
           </p>
           <p className="text-xs text-stone-500 mt-2">
@@ -384,11 +387,14 @@ function TabGettingStarted() {
       </section>
 
       <section id="quick-trial">
-        <SectionHeading id="quick-trial">Zero-install trial (60 seconds)</SectionHeading>
+        <SectionHeading id="quick-trial">Hosted trial (email verification required)</SectionHeading>
         <p className="text-stone-500 text-sm mb-4">
-          Point any Anthropic-SDK client on your machine at the hosted Guard proxy with a trial token. No local install, no signup form — the shell script prompts for email + company and does the rest.
+          Requires curl, Python 3, an interactive terminal, and access to your email. Enter your email and company, then paste the verification URL from your email before credentials are issued. Existing accounts sign in instead. Automation requires credentials from an authorized administrator; conduct login uses browser authorization.
         </p>
-        <Pre>{`curl -fsSL conductai.ai/install | sh`}</Pre>
+        <Pre>{`curl --proto '=https' --proto-redir '=https' -fL https://conductai.ai/install -o conduct-install.sh
+# Inspect before running.
+less conduct-install.sh
+[ "$(head -n 1 conduct-install.sh)" = '#!/bin/sh' ] && sh conduct-install.sh`}</Pre>
         <p className="text-stone-500 text-sm mt-4 mb-2">What it does:</p>
         <ul className="list-disc list-inside space-y-1 text-sm text-stone-600 mb-4">
           <li>Provisions a 7-day trial workspace (200 requests/day shared across Anthropic + OpenAI, no credit card)</li>

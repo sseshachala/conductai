@@ -130,8 +130,8 @@ export default function MCPPage() {
             <div>
               <p className="font-semibold text-stone-900 mb-2">Tool discovery and registration</p>
               <p className="leading-relaxed">
-                Conduct exposes a <span className="font-mono text-stone-700">.well-known/mcp.json</span> endpoint.
-                MCP clients can discover and register Guard-wrapped servers automatically.
+                Configure your MCP client with <span className="font-mono text-stone-700">https://api.conductai.ai/guard/mcp</span>.
+                OAuth-capable clients use the server's authentication discovery. Workspace access requires authorization.
               </p>
             </div>
             <div>

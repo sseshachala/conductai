@@ -10,6 +10,8 @@ const nextConfig = {
   },
   async redirects() {
     return [
+      { source: "/docs/self-hosted", destination: "/deployment", permanent: true },
+      { source: "/docs/templates", destination: "/registry", permanent: true },
       {
         source: "/products/agent-booster",
         destination: "/tools/agent-booster",
@@ -32,6 +34,12 @@ const nextConfig = {
       // the URL in marketing copy stays `/install` — clean and stable.
       { source: "/install", destination: "/install.sh" },
     ]
+  },
+  async headers() {
+    return ["/install", "/install.sh"].map((source) => ({
+      source,
+      headers: [{ key: "Content-Type", value: "text/x-shellscript; charset=utf-8" }],
+    }))
   },
 }
 

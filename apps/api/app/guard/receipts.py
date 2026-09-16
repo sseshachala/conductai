@@ -26,6 +26,7 @@ SHARE_TOKEN_PREFIX = "cond_bkr_"
 
 
 DEFAULT_LOCAL_WEB_URL = "http://localhost:3000"
+DEFAULT_HOSTED_WEB_URL = "https://app.conductai.ai"
 
 
 def web_base_url() -> str:
@@ -36,9 +37,8 @@ def web_base_url() -> str:
          approval.py + customer_alert.py which already read it.
       2. `APP_URL` — canonical env var (also feeds `settings.app_url`).
          Prod deploys set this to the public host (Render, Vercel, etc.).
-      3. `DEFAULT_LOCAL_WEB_URL` — zero-config default so a dev running
-         the API against `next dev` gets clickable block URLs out of the
-         box.
+      3. Localhost for explicit development/test deployments; otherwise
+         the hosted app. Missing production configuration is never localhost.
 
     We read env vars directly rather than going through
     `settings.app_url` so we can distinguish "not set" from "set to the
@@ -50,7 +50,10 @@ def web_base_url() -> str:
         val = os.environ.get(var)
         if val:
             return val.rstrip("/")
-    return DEFAULT_LOCAL_WEB_URL
+    # Local URLs require an explicitly local deployment.
+    if os.environ.get("ENVIRONMENT", "").lower() in {"development", "test", "testing"}:
+        return DEFAULT_LOCAL_WEB_URL
+    return DEFAULT_HOSTED_WEB_URL
 
 
 # Backwards-compat alias — earlier PRs referenced the private name.

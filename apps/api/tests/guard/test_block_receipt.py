@@ -222,6 +222,7 @@ def test_guarded_client_call_forwards_hook_session_id_to_audit(monkeypatch):
 def test_receipt_url_honors_env_overrides_and_defaults_to_localhost(monkeypatch):
     """Resolution order: CONDUCT_WEB_URL > APP_URL > localhost default."""
     from app.guard.receipts import build_receipt_url, DEFAULT_LOCAL_WEB_URL
+    monkeypatch.setenv("ENVIRONMENT", "development")
 
     monkeypatch.delenv("CONDUCT_WEB_URL", raising=False)
     monkeypatch.delenv("APP_URL", raising=False)
@@ -234,6 +235,15 @@ def test_receipt_url_honors_env_overrides_and_defaults_to_localhost(monkeypatch)
     monkeypatch.setenv("CONDUCT_WEB_URL", "https://staging.example.com")
     url = build_receipt_url("abc", "cond_bkr_xyz")
     assert url == "https://staging.example.com/b/abc/cond_bkr_xyz"
+
+
+def test_hosted_receipt_default_never_uses_localhost(monkeypatch):
+    from app.guard.receipts import web_base_url
+    monkeypatch.delenv("CONDUCT_WEB_URL", raising=False)
+    monkeypatch.delenv("APP_URL", raising=False)
+    for environment in ("production", "staging", ""):
+        monkeypatch.setenv("ENVIRONMENT", environment)
+        assert web_base_url() == "https://app.conductai.ai"
 
 
 # ─── HTTP endpoint tests ──────────────────────────────────────────────────────

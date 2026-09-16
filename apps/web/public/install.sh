@@ -20,6 +20,13 @@
 
 set -e
 
+for dependency in curl python3; do
+    if ! command -v "$dependency" >/dev/null 2>&1; then
+        printf 'error: %s is required before starting the trial.\n' "$dependency" >&2
+        exit 1
+    fi
+done
+
 CONDUCT_API_URL="${CONDUCT_API_URL:-https://api.conductai.ai}"
 ENV_FILE="${HOME}/.conduct/env"
 
@@ -32,9 +39,9 @@ RESET=$(printf '\033[0m')
 printf '\n%sConductGuard trial installer%s\n' "$BOLD" "$RESET"
 printf '%s7-day trial, 200 requests/day, no credit card.%s\n\n' "$DIM" "$RESET"
 
-if [ ! -t 0 ] && [ ! -r /dev/tty ]; then
+if ! ( : < /dev/tty ) 2>/dev/null; then
     printf '%serror: no tty available for prompts.%s\n' "$YELLOW" "$RESET" >&2
-    printf 'Re-run as: sh <(curl -fsSL %s/install)\n' "$CONDUCT_API_URL" >&2
+    printf 'Run the downloaded installer in an interactive terminal. Email verification is required.\n' >&2
     exit 1
 fi
 
@@ -112,8 +119,7 @@ fi
 if ! command -v python3 >/dev/null 2>&1; then
     printf '%serror: python3 is required to parse the redeem response.%s\n' "$YELLOW" "$RESET" >&2
     printf 'Install python3 (macOS: brew install python; Linux: apt install python3),\n' >&2
-    printf 'then re-run this installer. The redeem response was:\n\n' >&2
-    printf '%s\n' "$HTTP_BODY" >&2
+    printf 'then re-run this installer.\n' >&2
     exit 1
 fi
 
@@ -148,7 +154,6 @@ fi
 
 if [ -z "$AGENT_TOKEN" ]; then
     printf '%serror: could not extract agent_token from response.%s\n' "$YELLOW" "$RESET" >&2
-    printf '%s\n' "$HTTP_BODY" >&2
     exit 1
 fi
 

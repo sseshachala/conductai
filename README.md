@@ -20,13 +20,18 @@ _Built for engineering teams. Install in 10 minutes. Evidence for the CISO from 
 
 </div>
 
-### 60-second trial (no install)
+### Hosted trial (email verification required)
 
 ```bash
-curl -fsSL conductai.ai/install | sh
+curl --proto '=https' --proto-redir '=https' -fL https://conductai.ai/install -o conduct-install.sh
+# Inspect before running.
+less conduct-install.sh
+[ "$(head -n 1 conduct-install.sh)" = '#!/bin/sh' ] && sh conduct-install.sh
 ```
 
 Prompts for email + company, provisions a 7-day trial workspace, drops `~/.conduct/env` with `ANTHROPIC_BASE_URL` + `OPENAI_BASE_URL` + a trial token (200 requests/day shared across both providers). Any Anthropic- or OpenAI-SDK client on the machine (Cursor, Claude Code, LangChain, LiteLLM, raw SDK) now routes through the Guard proxy. A blocked call comes back with a `Receipt: https://conductai.ai/theguard/blocks/…` URL — click it to view the block, ask Lens follow-up questions, and log in to the dashboard via the magic-link the installer prints.
+
+Requires curl, Python 3, an interactive terminal, and access to your email. Paste the verification URL from your email into the installer before credentials can be issued. Existing accounts use sign-in. This is not unattended anonymous provisioning; automation requires credentials from an authorized administrator.
 
 ### Full install (for daily use)
 

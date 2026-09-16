@@ -153,6 +153,16 @@ const clerkHandler = clerkMiddleware(async (auth, req) => {
 })
 
 export default async function middleware(req: NextRequest, evt: unknown) {
+  if (req.nextUrl.pathname === "/onboard/verify") {
+    const response = _applySecurityHeaders(NextResponse.next(), "/setup")
+    response.headers.set("Referrer-Policy", "no-referrer")
+    response.headers.set("Cache-Control", "no-store")
+    return response
+  }
+  // Bootstrap assets must work without Clerk or a browser session.
+  if (["/install", "/install.sh", "/llms.txt"].includes(req.nextUrl.pathname)) {
+    return _applySecurityHeaders(NextResponse.next(), req.nextUrl.pathname)
+  }
   // Marketing → app subdomain redirect. Fires before Clerk so unauthed
   // navigations to /sign-in, /sign-up, /theguard/*, etc. from the
   // marketing domain end up on app.conductai.ai — matches where Clerk
