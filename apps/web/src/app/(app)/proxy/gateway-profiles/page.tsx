@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 
 import AppShell from "@/components/AppShell"
 import GatewayProfileV2DeleteDialog from "@/components/settings/GatewayProfileV2DeleteDialog"
+import GatewayProfileV2ImportDialog from "@/components/settings/GatewayProfileV2ImportDialog"
 import GatewayProfileV2Editor from "@/components/settings/GatewayProfileV2Editor"
 import GatewayProfileV2PublishDialog from "@/components/settings/GatewayProfileV2PublishDialog"
 import GatewayProfileV2RollbackDialog from "@/components/settings/GatewayProfileV2RollbackDialog"
@@ -156,6 +157,7 @@ export default function GatewayProfilesV2Page() {
   const [filter, setFilter] = useState<Filter>("all")
   const [showPublish, setShowPublish] = useState(false)
   const [showRollback, setShowRollback] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   // Type-to-confirm delete dialog target. When non-null, renders the
   // dialog against this profile. Cleared on confirm or cancel.
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
@@ -369,6 +371,11 @@ export default function GatewayProfilesV2Page() {
                 title="Empty draft you fill in from scratch.">
                 {busy === "blank" ? "Creating…" : "+ Blank draft"}
               </button>
+              <button className="chip" disabled={busy !== ""}
+                onClick={() => setShowImport(true)}
+                title="Paste a Gateway Profile v2 JSON to import as a new draft.">
+                Import JSON
+              </button>
             </div>
           </div>
         )}
@@ -465,6 +472,18 @@ export default function GatewayProfilesV2Page() {
             />
           )
         })()}
+        {showImport && (
+          <GatewayProfileV2ImportDialog
+            workspaceId={workspaceId}
+            onClose={() => setShowImport(false)}
+            onImported={(profileId) => {
+              // Reload the list and select the imported profile so
+              // the editor opens on it — matches the CLI's next_url
+              // behavior (jump straight to the editor page).
+              void load().then(() => setSelectedId(profileId))
+            }}
+          />
+        )}
       </div>
     </AppShell>
   )

@@ -168,6 +168,25 @@ export interface GatewayProfileV2Out {
   updated_at: string
 }
 
+/**
+ * Response shape for the ``/import`` endpoint. Mirrors backend
+ * ``ImportProfileOut``. ``credential_gaps`` lists every target that
+ * needs a vault + credential handle pick post-import (the editor's
+ * Save gate then blocks Save until they're filled).
+ */
+export interface GatewayProfileV2ImportGap {
+  target_index: number
+  target_id: string
+  transport: string
+  reason: string
+}
+
+export interface GatewayProfileV2ImportOut {
+  profile: GatewayProfileV2Out
+  credential_gaps: GatewayProfileV2ImportGap[]
+  next_url: string
+}
+
 export type GuardPolicyAction = "block" | "approval" | "warn" | "audit"
 
 export interface GuardPolicy {
@@ -512,6 +531,29 @@ export const guard = {
       json<Record<string, unknown>>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/revisions/${revisionId}`),
     remove: (f: AuthFetch, workspaceId: string, id: string) =>
       _mutateVoid(f, "DELETE", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}`),
+    /**
+     * Import a profile from a portable JSON payload. Server strips
+     * every credential_ref on import; response.credential_gaps
+     * lists targets that still need a vault pick. Same endpoint the
+     * CLI conduct import --gateway-config hits.
+     */
+    importJson: (
+      f: AuthFetch, workspaceId: string,
+      body: { working_copy: Record<string, unknown>; name_override?: string },
+    ) =>
+      _mutateJson<GatewayProfileV2ImportOut>(
+        f, "POST",
+        `${API}/workspaces/${workspaceId}/gateway-profiles-v2/import`,
+        body,
+      ),
+    /**
+     * Export a profile as portable JSON (credentials stripped).
+     * Round-trips cleanly through importJson.
+     */
+    exportJson: (f: AuthFetch, workspaceId: string, id: string) =>
+      json<Record<string, unknown>>(
+        f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/export`,
+      ),
   },
 
   notifications: {
