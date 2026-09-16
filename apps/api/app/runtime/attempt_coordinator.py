@@ -301,12 +301,45 @@ def _name_of(target) -> str:
     return "unknown"
 
 
+# Exception class names known to be PERMANENT failures — do not retry.
+# Checked BEFORE the transient set because the OpenAI/Anthropic SDK
+# inheritance graph puts ``AuthenticationError`` → ``APIStatusError`` →
+# ``APIError``, so a plain MRO walk over the transient set would
+# misclassify an auth failure as retryable.
+_PERMANENT_ERROR_CLASSES: frozenset[str] = frozenset({
+    # OpenAI/Anthropic/LiteLLM 4xx client-error classes
+    "AuthenticationError",       # 401
+    "PermissionDeniedError",     # 403
+    "NotFoundError",             # 404
+    "BadRequestError",           # 400
+    "UnprocessableEntityError",  # 422
+    "ConflictError",             # 409
+    "InvalidRequestError",       # LiteLLM
+    "ContextWindowExceededError",
+    "ContentPolicyViolationError",
+    "BudgetExceededError",
+    # Our own client-error family — payload validation, schema issues,
+    # dev-time bugs. Retrying against the next target would fail the
+    # exact same way.
+    "ValueError",
+    "TypeError",
+    "KeyError",
+    "UnsupportedPayloadFields",
+})
+
+
+# HTTP status codes that are ALWAYS permanent when the SDK exposes one
+# on the exception (client errors that will fail identically on the
+# next target). 408 (Request Timeout) and 429 (Too Many Requests)
+# deliberately excluded — those are transient.
+_PERMANENT_STATUS_CODES: frozenset[int] = frozenset({
+    400, 401, 402, 403, 404, 405, 406, 409, 410, 411, 412, 413, 414,
+    415, 416, 417, 418, 421, 422, 423, 424, 426, 428, 431, 451,
+})
+
+
 # Exception class names that count as transient upstream failures worth
-# a fallback attempt. Anything not in this set (auth failure, config
-# error, credential resolution error, our own ValueError, etc.) is a
-# permanent failure for the request — trying the next target is a waste
-# of the profile's timeout budget and could mislead the client into
-# thinking the request was retried against a healthy target.
+# a fallback attempt.
 #
 # Class NAMES are compared instead of importing LiteLLM's exception
 # tree so the transport module and its dependencies stay decoupled from
@@ -334,14 +367,33 @@ _TRANSIENT_ERROR_CLASSES: frozenset[str] = frozenset({
 
 
 def _is_retryable(exc: BaseException) -> bool:
-    """Return True if the exception looks like a transient upstream
-    failure worth trying the next target for."""
-    # Walk the class MRO so subclasses of the transient set (LiteLLM's
-    # e.g. ``AnthropicError`` subclassing ``APIError``) match.
-    for cls in type(exc).__mro__:
-        if cls.__name__ in _TRANSIENT_ERROR_CLASSES:
+    """Return True only for transient upstream failures worth trying
+    the next target for.
+
+    Order matters:
+      1. Permanent class names (auth, bad request, our ValueError) →
+         never retry, even if a parent class is in the transient set.
+      2. HTTP status on the exception → 4xx permanent (except 408/429),
+         5xx transient.
+      3. Transient class names via MRO walk → retry.
+      4. Default → not retryable (fail-safe).
+    """
+    mro_names = {cls.__name__ for cls in type(exc).__mro__}
+    if mro_names & _PERMANENT_ERROR_CLASSES:
+        return False
+
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        response = getattr(exc, "response", None)
+        if response is not None:
+            status = getattr(response, "status_code", None)
+    if isinstance(status, int):
+        if status in _PERMANENT_STATUS_CODES:
+            return False
+        if status == 408 or status == 429 or status >= 500:
             return True
-    return False
+
+    return bool(mro_names & _TRANSIENT_ERROR_CLASSES)
 
 
 __all__ = [

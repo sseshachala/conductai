@@ -268,48 +268,98 @@ async def test_transport_registers_iff_flag_is_on(monkeypatch):
 
 
 @pytest.mark.anyio("asyncio")
-async def test_client_supplied_api_base_is_dropped(fake_litellm):
-    """Review fix: client cannot inject ``api_base`` or ``base_url`` to
-    redirect traffic to a different endpoint while still using the
-    Vault-resolved key. The whitelist drops SDK controls before they
-    reach LiteLLM."""
-    await LiteLLMTransport().execute(
-        target=_target(provider="openai", model="gpt-4o"),
-        operation="openai_chat_completions",
-        payload={
-            "messages": [{"role": "user", "content": "hi"}],
-            "api_base": "https://attacker.example.com/v1",  # MUST be dropped
-            "base_url": "https://also-attacker.example.com/v1",
-            "organization": "attacker-org",
-            "proxy": "socks5://malicious",
-        },
-        credential_resolver=lambda ref: "sk-fake",
-    )
-    kwargs = fake_litellm.acompletion.await_args.kwargs
-    assert "api_base" not in kwargs
-    assert "base_url" not in kwargs
-    assert "organization" not in kwargs
-    assert "proxy" not in kwargs
+async def test_client_supplied_api_base_raises(fake_litellm):
+    """Review fix (#2001 round 3): client injecting ``api_base`` or
+    ``base_url`` must produce a clear validation error, not silently
+    disappear from the request. Silent drop hid the "you can't override
+    endpoints from a client payload" contract from the caller."""
+    from app.runtime.litellm_transport import UnsupportedPayloadFields
+    with pytest.raises(UnsupportedPayloadFields, match=r"transport-controlled"):
+        await LiteLLMTransport().execute(
+            target=_target(provider="openai", model="gpt-4o"),
+            operation="openai_chat_completions",
+            payload={
+                "messages": [{"role": "user", "content": "hi"}],
+                "api_base": "https://attacker.example.com/v1",
+            },
+            credential_resolver=lambda ref: "sk-fake",
+        )
+    fake_litellm.acompletion.assert_not_awaited()
 
 
 @pytest.mark.anyio("asyncio")
-async def test_client_supplied_callbacks_is_dropped(fake_litellm):
+async def test_client_supplied_callbacks_raises(fake_litellm):
     """LiteLLM's ``callbacks``/``success_callback``/``failure_callback``
-    would let a client register plugins server-side. Reject at the
-    whitelist."""
+    would let a client register plugins server-side. Reject loudly."""
+    from app.runtime.litellm_transport import UnsupportedPayloadFields
+    with pytest.raises(UnsupportedPayloadFields, match=r"transport-controlled"):
+        await LiteLLMTransport().execute(
+            target=_target(provider="openai", model="gpt-4o"),
+            operation="openai_chat_completions",
+            payload={
+                "messages": [{"role": "user", "content": "hi"}],
+                "callbacks": ["custom_plugin"],
+            },
+            credential_resolver=lambda ref: "sk-fake",
+        )
+    fake_litellm.acompletion.assert_not_awaited()
+
+
+@pytest.mark.anyio("asyncio")
+async def test_unknown_operation_body_field_raises(fake_litellm):
+    """Review fix (#2001 round 3): an unknown operation body field
+    (e.g. a legit LiteLLM parameter we haven't added to the allowlist
+    yet) must surface as a clear error to the caller rather than being
+    silently ignored. Bug pattern the reviewer flagged: sending
+    ``max_completion_tokens=10`` for OpenAI o1 and seeing it disappear.
+    """
+    from app.runtime.litellm_transport import UnsupportedPayloadFields
+    with pytest.raises(UnsupportedPayloadFields, match=r"unsupported fields"):
+        await LiteLLMTransport().execute(
+            target=_target(provider="openai", model="gpt-4o"),
+            operation="openai_chat_completions",
+            payload={
+                "messages": [{"role": "user", "content": "hi"}],
+                "totally_made_up_field": True,
+            },
+            credential_resolver=lambda ref: "sk-fake",
+        )
+    fake_litellm.acompletion.assert_not_awaited()
+
+
+@pytest.mark.anyio("asyncio")
+async def test_max_completion_tokens_is_forwarded_now(fake_litellm):
+    """Regression lock for the review-flagged field. ``max_completion_tokens``
+    (OpenAI o1/o3 series) is now on the allowlist and must forward."""
     await LiteLLMTransport().execute(
-        target=_target(provider="openai", model="gpt-4o"),
+        target=_target(provider="openai", model="o1-mini"),
         operation="openai_chat_completions",
         payload={
             "messages": [{"role": "user", "content": "hi"}],
-            "callbacks": ["custom_plugin"],
-            "success_callback": ["another_plugin"],
+            "max_completion_tokens": 512,
+            "store": False,
         },
         credential_resolver=lambda ref: "sk-fake",
     )
     kwargs = fake_litellm.acompletion.await_args.kwargs
-    assert "callbacks" not in kwargs
-    assert "success_callback" not in kwargs
+    assert kwargs["max_completion_tokens"] == 512
+    assert kwargs["store"] is False
+
+
+@pytest.mark.anyio("asyncio")
+async def test_bad_payload_does_not_trigger_credential_resolve(fake_litellm):
+    """Payload validation runs BEFORE credential resolution so a
+    malformed request never causes a Vault decrypt."""
+    from app.runtime.litellm_transport import UnsupportedPayloadFields
+    resolved: list[str] = []
+    with pytest.raises(UnsupportedPayloadFields):
+        await LiteLLMTransport().execute(
+            target=_target(provider="openai", model="gpt-4o"),
+            operation="openai_chat_completions",
+            payload={"messages": [], "api_base": "https://x"},
+            credential_resolver=lambda ref: (resolved.append(ref) or "sk-fake"),
+        )
+    assert resolved == []
 
 
 @pytest.mark.anyio("asyncio")

@@ -270,6 +270,87 @@ async def test_permanent_error_stops_after_first_target():
 
 
 @pytest.mark.anyio("asyncio")
+async def test_authentication_error_is_permanent_even_though_it_extends_api_error():
+    """Round-3 review fix (#2001): the OpenAI SDK inheritance chain is
+    ``AuthenticationError`` → ``APIStatusError`` → ``APIError``. A naive
+    MRO walk over the transient set would match ``APIError`` and burn
+    the fallback budget re-hitting the second target with the same bad
+    credential. Permanent classes must be excluded FIRST."""
+    class APIError(Exception):
+        """LiteLLM/OpenAI SDK's ``APIError`` for test purposes."""
+    class APIStatusError(APIError):
+        pass
+    class AuthenticationError(APIStatusError):
+        status_code = 401
+
+    sdk = MagicMock()
+    sdk.execute = AsyncMock(side_effect=AuthenticationError("bad key"))
+    coord = AttemptCoordinator(sdk_transport=sdk)
+    with pytest.raises(AllAttemptsFailed) as excinfo:
+        await coord.execute(
+            resolved=_resolved(_profile(targets=[
+                _sdk_target("primary"), _sdk_target("fallback"),
+            ])),
+            operation="anthropic_messages",
+            payload={"messages": [{"role": "user", "content": "hi"}]},
+            credential_resolver=lambda ref: "sk-fake",
+        )
+    assert [a.target_id for a in excinfo.value.attempts] == ["primary"]
+    assert sdk.execute.await_count == 1
+
+
+@pytest.mark.anyio("asyncio")
+async def test_http_400_status_code_is_permanent_via_status_attribute():
+    """Some SDKs surface a numeric ``status_code`` on the exception
+    without a subclass matching our permanent-name list. Reject those
+    at the HTTP-status check so a 400 isn't retried."""
+    class HTTPError(Exception):
+        def __init__(self, msg, status_code):
+            super().__init__(msg)
+            self.status_code = status_code
+
+    sdk = MagicMock()
+    sdk.execute = AsyncMock(side_effect=HTTPError("bad body", 400))
+    coord = AttemptCoordinator(sdk_transport=sdk)
+    with pytest.raises(AllAttemptsFailed) as excinfo:
+        await coord.execute(
+            resolved=_resolved(_profile(targets=[
+                _sdk_target("primary"), _sdk_target("fallback"),
+            ])),
+            operation="anthropic_messages",
+            payload={"messages": [{"role": "user", "content": "hi"}]},
+            credential_resolver=lambda ref: "sk-fake",
+        )
+    assert [a.target_id for a in excinfo.value.attempts] == ["primary"]
+
+
+@pytest.mark.anyio("asyncio")
+async def test_http_500_status_code_still_retries():
+    """5xx (and 408/429) remain transient — the whole point of retry
+    classification is those specific cases."""
+    class HTTPError(Exception):
+        def __init__(self, msg, status_code):
+            super().__init__(msg)
+            self.status_code = status_code
+
+    sdk = MagicMock()
+    sdk.execute = AsyncMock(side_effect=[
+        HTTPError("upstream down", 503),
+        {"content": "ok"},
+    ])
+    coord = AttemptCoordinator(sdk_transport=sdk)
+    result = await coord.execute(
+        resolved=_resolved(_profile(targets=[
+            _sdk_target("primary"), _sdk_target("fallback"),
+        ])),
+        operation="anthropic_messages",
+        payload={"messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "sk-fake",
+    )
+    assert result.winning_target_id == "fallback"
+
+
+@pytest.mark.anyio("asyncio")
 async def test_transient_error_by_class_name_does_retry():
     """LiteLLM's ``RateLimitError`` (or any exception subclassing a
     known transient class name) counts as retryable even though we

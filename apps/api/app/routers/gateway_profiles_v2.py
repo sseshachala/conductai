@@ -262,15 +262,25 @@ class ProfileOut(BaseModel):
 
 def _load_profile(
     db: Session, workspace_id: str, profile_id: UUID,
+    *, for_update: bool = False,
 ) -> GatewayProfileRow:
-    profile = (
-        db.query(GatewayProfileRow)
-        .filter(
-            GatewayProfileRow.id == profile_id,
-            GatewayProfileRow.workspace_id == workspace_id,
-        )
-        .one_or_none()
+    """Load a profile scoped to the caller's workspace.
+
+    Set ``for_update=True`` for publish and rollback so a Postgres
+    row-level lock (``SELECT ... FOR UPDATE``) serializes concurrent
+    publishes on the same profile — otherwise two operators clicking
+    Publish at once can race the version allocation loop AND the
+    binding upsert. The lock is released when the request transaction
+    commits or rolls back. On SQLite (unit tests) ``with_for_update()``
+    is a no-op, so tests still work.
+    """
+    q = db.query(GatewayProfileRow).filter(
+        GatewayProfileRow.id == profile_id,
+        GatewayProfileRow.workspace_id == workspace_id,
     )
+    if for_update:
+        q = q.with_for_update()
+    profile = q.one_or_none()
     if profile is None:
         raise HTTPException(status_code=404, detail="Profile not found")
     return profile
@@ -525,7 +535,11 @@ def publish_profile(
     transaction. Editing the working copy after publish does not affect
     the served revision.
     """
-    profile = _load_profile(db, workspace_id, profile_id)
+    # Row-level lock: two operators publishing the same profile at the
+    # same time would otherwise race the version-allocation loop AND
+    # the binding upsert. FOR UPDATE serializes them; the second one
+    # sees the first one's committed state before it starts.
+    profile = _load_profile(db, workspace_id, profile_id, for_update=True)
     if not profile.working_copy:
         raise HTTPException(
             status_code=400,
@@ -653,7 +667,8 @@ def rollback_profile(
     below), and every rollback writes an append-only audit row to
     ``gateway_profile_binding_events``.
     """
-    profile = _load_profile(db, workspace_id, profile_id)
+    # Rollback races publish on the binding upsert too — same lock.
+    profile = _load_profile(db, workspace_id, profile_id, for_update=True)
 
     _verify_environment_belongs_to_workspace(
         db, workspace_id, body.environment_id,

@@ -166,6 +166,11 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None,
             self._order_by.extend(args)
             return self
 
+        def with_for_update(self):
+            # SQLite/fake: no-op. Postgres serializes concurrent
+            # publishes here; unit tests only need the surface.
+            return self
+
         def all(self):
             return self._session._match_all(self._model, self._filters)
 
